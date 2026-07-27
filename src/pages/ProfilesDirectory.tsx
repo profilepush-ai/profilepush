@@ -3,9 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Upload, X, FileText, Sparkles, CheckCircle2,
   UserPlus, Link2, Copy, Check, ArrowRight, Star, PenLine,
-  Plus, Trash2, Clock, Search, ChevronDown, ChevronRight,
+  Plus, Trash2, Clock, Search, ChevronDown, ChevronRight, Filter,
   UserCircle2, MapPin, Mail, Phone, ExternalLink,
-  Download, Calendar, Edit2, Target, ClipboardPaste, Cpu, Users,
+  Download, Calendar, Edit2, Target, ClipboardPaste, Cpu, Users, Table2,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -86,6 +86,42 @@ const STAGE_CFG = {
 } as const;
 
 type BenchStage = keyof typeof STAGE_CFG;
+
+type BenchDatePreset = '15d' | 'today' | 'week' | 'month' | 'all';
+
+const BENCH_DATE_PRESETS: { id: BenchDatePreset; label: string }[] = [
+  { id: '15d', label: 'Last 15 days' },
+  { id: 'today', label: 'Today' },
+  { id: 'week', label: 'Last 7 days' },
+  { id: 'month', label: 'This month' },
+  { id: 'all', label: 'All time' },
+];
+
+function getBenchDateStart(preset: BenchDatePreset): Date | null {
+  const now = new Date();
+  if (preset === 'all') return null;
+  if (preset === 'today') {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+  if (preset === '15d') {
+    const start = new Date(now);
+    start.setDate(now.getDate() - 14);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+  if (preset === 'week') {
+    const start = new Date(now);
+    start.setDate(now.getDate() - 6);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+  const start = new Date(now);
+  start.setDate(1);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
 
 function MField({ label, value, onChange, placeholder, type = 'text', required }: {
   label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; required?: boolean;
@@ -203,9 +239,9 @@ export default function ProfilesDirectory() {
 
   const [search, setSearch]             = useState('');
   const [assignedFilter, setAssignedFilter] = useState('');
-  const [filterOpen, setFilterOpen]     = useState(false);
-  const statusDropdownRef  = useRef<HTMLDivElement>(null);
-  const assignDropdownRef  = useRef<HTMLDivElement>(null);
+  const [assignedFilterOpen, setAssignedFilterOpen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'bench'>('bench');
+  const assignedFilterRef = useRef<HTMLDivElement>(null);
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [profileAssignments, setProfileAssignments] = useState<ProfileAssignment[]>([]);
@@ -215,7 +251,6 @@ export default function ProfilesDirectory() {
   const [benchStagePopup, setBenchStagePopup] = useState<{ profileId: string; rect: DOMRect } | null>(null);
   const benchStagePopupRef = useRef<HTMLDivElement>(null);
 
-  const [benchStageFilter, setBenchStageFilter] = useState<BenchStage | null>(null);
   const [submissions, setSubmissions] = useState<{candidate_name: string; client_name: string; vendor_name: string}[]>([]);
 
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
@@ -223,9 +258,10 @@ export default function ProfilesDirectory() {
   const [detailLogs, setDetailLogs]       = useState<ActivityLog[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  // Date range filter
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo]     = useState('');
+  // Date filter
+  const [datePreset, setDatePreset] = useState<BenchDatePreset>('15d');
+  const [dateOpen, setDateOpen] = useState(false);
+  const dateDropdownRef = useRef<HTMLDivElement>(null);
 
   // Priority skills inline edit
   const [editingPrioritySkills, setEditingPrioritySkills] = useState(false);
@@ -295,15 +331,6 @@ export default function ProfilesDirectory() {
   }, [assignPopup]);
 
   useEffect(() => {
-    if (!filterOpen) return;
-    function handle(e: MouseEvent) {
-      if (assignDropdownRef.current && !assignDropdownRef.current.contains(e.target as Node)) setFilterOpen(false);
-    }
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [filterOpen]);
-
-  useEffect(() => {
     if (!benchStagePopup) return;
     function handle(e: MouseEvent) {
       if (benchStagePopupRef.current && !benchStagePopupRef.current.contains(e.target as Node)) setBenchStagePopup(null);
@@ -311,6 +338,24 @@ export default function ProfilesDirectory() {
     document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
   }, [benchStagePopup]);
+
+  useEffect(() => {
+    if (!dateOpen) return;
+    function handle(e: MouseEvent) {
+      if (dateDropdownRef.current && !dateDropdownRef.current.contains(e.target as Node)) setDateOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [dateOpen]);
+
+  useEffect(() => {
+    if (!assignedFilterOpen) return;
+    function handle(e: MouseEvent) {
+      if (assignedFilterRef.current && !assignedFilterRef.current.contains(e.target as Node)) setAssignedFilterOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [assignedFilterOpen]);
 
   async function fetchStats() {
     setStatsLoading(true);
@@ -947,14 +992,34 @@ export default function ProfilesDirectory() {
     };
   });
 
+  const sidebarProfiles = (sidebarTab === 'bench'
+    ? profiles.filter(p => p.bench_stage !== 'Placed' && p.bench_stage !== 'Lost')
+    : profiles.filter(p => hotlistIds.has(p.id))
+  ).sort((a, b) => {
+    const da = b.updated_at || b.created_at || '';
+    const db = a.updated_at || a.created_at || '';
+    return da.localeCompare(db);
+  });
+
+  const sidebarProfileIds = new Set(sidebarProfiles.map(p => p.id));
+
   const searchFilteredStats = profileStats.filter(({ profile: p }) => {
+    if (!sidebarProfileIds.has(p.id)) return false;
+
+    const profileUserIds = profileAssignments.filter(a => a.profile_id === p.id).map(a => a.user_id);
+
+    if (assignedFilter === '__unassigned__') {
+      if (profileUserIds.length > 0) return false;
+    } else if (assignedFilter && !profileUserIds.includes(assignedFilter)) {
+      return false;
+    }
+
     const q = search.toLowerCase().trim();
     if (q) {
       const matchesCandidate = p.candidate_name.toLowerCase().includes(q)
         || (p.target_role ?? '').toLowerCase().includes(q)
         || (p.phone ?? '').toLowerCase().includes(q)
         || (p.email ?? '').toLowerCase().includes(q);
-      const profileUserIds = profileAssignments.filter(a => a.profile_id === p.id).map(a => a.user_id);
       const assignedMems = teamMembers.filter(m => m.user_id && profileUserIds.includes(m.user_id));
       const matchesAssignee = assignedMems.some(m => memberName(m).toLowerCase().includes(q) || m.invited_email.toLowerCase().includes(q));
       const matchesSubmission = submissions
@@ -962,33 +1027,26 @@ export default function ProfilesDirectory() {
         .some(s => s.candidate_name.toLowerCase() === p.candidate_name.toLowerCase());
       if (!matchesCandidate && !matchesAssignee && !matchesSubmission) return false;
     }
-    const profileUserIds = profileAssignments.filter(a => a.profile_id === p.id).map(a => a.user_id);
-    const matchesAssigned = !assignedFilter
-      || (assignedFilter === '__unassigned__' ? profileUserIds.length === 0 : profileUserIds.includes(assignedFilter));
-    // Date range filter
-    if (dateFrom) {
+
+    // Date preset filter
+    const start = getBenchDateStart(datePreset);
+    if (start) {
       const created = new Date(p.created_at);
-      if (created < new Date(dateFrom)) return false;
+      if (created < start) return false;
     }
-    if (dateTo) {
-      const created = new Date(p.created_at);
-      const toEnd = new Date(dateTo);
-      toEnd.setDate(toEnd.getDate() + 1);
-      if (created >= toEnd) return false;
-    }
-    return matchesAssigned;
+    return true;
   });
 
-  const filteredStats = benchStageFilter
-    ? searchFilteredStats.filter(s => (s.profile.bench_stage ?? 'New') === benchStageFilter)
-    : searchFilteredStats;
+  const filteredStats = searchFilteredStats;
 
   const handleSearchChange = (v: string) => setSearch(v);
-  const handleAssignedFilter = (v: string) => { setAssignedFilter(v); setFilterOpen(false); };
-
-  const assignedLabel = !assignedFilter ? 'All'
-    : assignedFilter === '__unassigned__' ? 'Unassigned'
-    : teamMembers.find(m => m.user_id === assignedFilter) ? memberName(teamMembers.find(m => m.user_id === assignedFilter)!) : 'User';
+  const datePresetLabel = BENCH_DATE_PRESETS.find(p => p.id === datePreset)?.label ?? 'Last 15 days';
+  const selectedAssignee = teamMembers.find(m => m.user_id === assignedFilter);
+  const assignedFilterLabel = !assignedFilter
+    ? 'All assignees'
+    : assignedFilter === '__unassigned__'
+      ? 'Unassigned'
+      : (selectedAssignee ? memberName(selectedAssignee) : 'Assigned');
 
   const selectedStat = profileStats.find(s => s.profile.id === selectedProfileId) ?? null;
 
@@ -1013,24 +1071,34 @@ export default function ProfilesDirectory() {
             </button>
           )}
         </div>
-        {/* Date range filter — top right */}
+        {/* Date selector + add new — top right */}
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          <Calendar size={13} className="text-gray-400 shrink-0" />
-          <input
-            type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-            className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-400 bg-white text-gray-700 cursor-pointer shadow-sm"
-          />
-          <span className="text-xs text-gray-400">—</span>
-          <input
-            type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-            className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-400 bg-white text-gray-700 cursor-pointer shadow-sm"
-          />
-          {(dateFrom || dateTo) && (
-            <button onClick={() => { setDateFrom(''); setDateTo(''); }}
-              className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-lg transition-colors">
-              <X size={9} /> Clear
+          <div ref={dateDropdownRef} className="relative shrink-0">
+            <button
+              onClick={() => setDateOpen(o => !o)}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border bg-white text-gray-700 border-gray-200 hover:border-gray-300 transition-colors whitespace-nowrap"
+            >
+              <Calendar size={11} className="text-gray-400" />
+              {datePresetLabel}
+              <ChevronDown size={10} className={`transition-transform text-gray-400 ${dateOpen ? 'rotate-180' : ''}`} />
             </button>
-          )}
+            {dateOpen && (
+              <div className="absolute right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg z-50 w-52 py-1.5">
+                {BENCH_DATE_PRESETS.map(option => (
+                  <button
+                    key={option.id}
+                    onClick={() => { setDatePreset(option.id); setDateOpen(false); }}
+                    className={`w-full text-left text-xs px-3 py-2 transition-colors flex items-center gap-2 ${
+                      datePreset === option.id ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {datePreset === option.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />}
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => { setSelectedProfileId(null); navigate('/bench', { replace: true }); }}
             className="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors shadow-sm"
@@ -1046,42 +1114,42 @@ export default function ProfilesDirectory() {
         {/* ── Column 1: Candidates ── */}
         <div className="w-72 flex flex-col border-r border-gray-200 bg-white shrink-0 overflow-hidden">
 
-          {/* Pipeline stage cards (3×2) */}
-          <div className="p-2.5 border-b border-gray-200 grid grid-cols-3 gap-1.5 shrink-0">
-            {(['New', 'Assigned', 'Sourcing', 'Submitted', 'Placed', 'Lost'] as const).map(stage => {
-              const count = searchFilteredStats.filter(s => (s.profile.bench_stage ?? 'New') === stage).length;
-              const isActive = benchStageFilter === stage;
-              const cfg = STAGE_CFG[stage];
-              return (
-                <button key={stage} onClick={() => setBenchStageFilter(f => f === stage ? null : stage)}
-                  className={`flex items-center justify-between px-2.5 py-2 rounded-xl border transition-all text-left ${isActive ? cfg.activeCls : `${cfg.bg} ${cfg.border} hover:shadow-sm`}`}>
-                  <div>
-                    <p className={`text-lg font-black tabular-nums leading-none ${isActive ? 'text-white' : cfg.text}`}>{count}</p>
-                    <p className={`text-[8px] font-bold uppercase tracking-wide mt-0.5 ${isActive ? 'text-white/70' : 'text-gray-400'}`}>{stage}</p>
-                  </div>
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? 'bg-white/40' : cfg.dot}`} />
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Filters row */}
-          <div className="px-2.5 py-2 border-b border-gray-200 flex items-center gap-2 shrink-0">
-            {/* Assignee filter */}
-            <div className="relative flex-1" ref={assignDropdownRef}>
-              <button onClick={() => setFilterOpen(o => !o)}
-                className={`w-full flex items-center justify-between gap-1 text-[11px] font-semibold border rounded-lg px-2 py-1.5 transition-colors ${assignedFilter ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                <span className="truncate">{assignedLabel}</span>
-                <ChevronDown size={10} className={`shrink-0 transition-transform ${filterOpen ? 'rotate-180' : ''}`} />
+          <div className="h-[44px] flex items-center justify-between px-3 border-b border-gray-200 shrink-0">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Candidates</h3>
+            <div ref={assignedFilterRef} className="relative">
+              <button
+                onClick={() => setAssignedFilterOpen(o => !o)}
+                title="Filter by assignee"
+                className={`h-7 w-7 rounded-lg border flex items-center justify-center transition-colors ${assignedFilter ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300'}`}
+              >
+                <Filter size={12} />
+                {assignedFilter && (
+                  <span className="absolute -top-1 -right-1 h-3.5 min-w-[14px] px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold leading-[14px] text-center">
+                    1
+                  </span>
+                )}
               </button>
-              {filterOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[160px] overflow-hidden">
-                  {[{ value: '', label: 'All Assignees' }, { value: '__unassigned__', label: 'Unassigned' },
-                    ...teamMembers.filter(m => m.user_id).map(m => ({ value: m.user_id!, label: memberName(m) }))
-                  ].map(opt => (
-                    <button key={opt.value} onClick={() => handleAssignedFilter(opt.value)}
-                      className={`w-full text-left px-3 py-2 text-xs border-b border-gray-50 last:border-0 transition-colors ${assignedFilter === opt.value ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`}>
-                      {opt.label}
+              {assignedFilterOpen && (
+                <div className="absolute right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg z-30 min-w-[180px] overflow-hidden">
+                  <button
+                    onClick={() => { setAssignedFilter(''); setAssignedFilterOpen(false); }}
+                    className={`w-full text-left px-3 py-2 text-xs transition-colors ${assignedFilter === '' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    All assignees
+                  </button>
+                  <button
+                    onClick={() => { setAssignedFilter('__unassigned__'); setAssignedFilterOpen(false); }}
+                    className={`w-full text-left px-3 py-2 text-xs transition-colors ${assignedFilter === '__unassigned__' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    Unassigned
+                  </button>
+                  {teamMembers.filter(m => m.user_id).map(member => (
+                    <button
+                      key={member.user_id}
+                      onClick={() => { setAssignedFilter(member.user_id!); setAssignedFilterOpen(false); }}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors ${assignedFilter === member.user_id ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`}
+                    >
+                      {memberName(member)}
                     </button>
                   ))}
                 </div>
@@ -1089,14 +1157,29 @@ export default function ProfilesDirectory() {
             </div>
           </div>
 
+          <div className="px-3 py-2 border-b border-gray-100 shrink-0">
+            <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+              {(['hotlist', 'bench'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setSidebarTab(tab)}
+                  className={`flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-all text-center ${
+                    sidebarTab === tab
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {tab === 'hotlist' ? 'Hotlist' : 'Bench'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Candidate count */}
           <div className="px-3 py-1.5 shrink-0 flex items-center justify-between border-b border-gray-50">
             <span className="text-[10px] text-gray-400 font-medium">{filteredStats.length} candidate{filteredStats.length !== 1 ? 's' : ''}</span>
-            {benchStageFilter && (
-              <button onClick={() => setBenchStageFilter(null)}
-                className="flex items-center gap-0.5 text-[10px] font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 px-1.5 py-0.5 rounded-full transition-colors">
-                {benchStageFilter} <X size={8} />
-              </button>
+            {assignedFilter && (
+              <span className="text-[10px] text-blue-600 font-semibold truncate max-w-[130px]">{assignedFilterLabel}</span>
             )}
           </div>
 
@@ -1155,7 +1238,7 @@ export default function ProfilesDirectory() {
                   <div className="px-6 py-4 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-white">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                        <Users size={18} className="text-blue-600" />
+                        <Table2 size={18} className="text-blue-600" />
                       </div>
                       <div>
                         <p className="text-sm font-bold text-gray-900">Bulk Import Profiles</p>
@@ -1166,15 +1249,12 @@ export default function ProfilesDirectory() {
 
                   {bulkStep === 'paste' && (
                     <div className="px-6 py-5">
-                      <label className="block text-xs font-bold text-gray-700 mb-2">Create in bulk by copy-pasting your bench data here</label>
-                      <p className="text-[11px] text-gray-400 mb-3">Copy header row + data rows from Google Sheets or Excel and paste below. We auto-map Name, Role, Skills, Visa, Rate and more.</p>
                       <textarea
                         value={bulkPasteText}
                         onChange={e => setBulkPasteText(e.target.value)}
                         placeholder={"Name\tRole\tSkills\tVisa\tWork Type\tRate\tLocation\n" + "John Doe\tJava Developer\tJava, Spring Boot, AWS\tH1B\tRemote\t65\tNew York, NY\n" + "Jane Smith\tReact Developer\tReact, TypeScript, Node\tGC\tHybrid\t70\tAustin, TX"}
                         className="w-full h-56 text-[11px] font-mono text-gray-700 border border-gray-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 placeholder:text-gray-300"
                       />
-                      <p className="text-[10px] text-gray-400 mt-2">Supports tab-separated data (default when copied from spreadsheets).</p>
                       <div className="mt-4 flex justify-end">
                         <button
                           onClick={handleBulkPreview}
@@ -1359,7 +1439,7 @@ export default function ProfilesDirectory() {
                         {hotlistIds.has(p.id) ? 'On Hotlist' : hotlistAdding === p.id ? 'Adding...' : '+ Hotlist'}
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); navigate(`/job-match-ai?profileId=${p.id}`); }}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/job-watch-ai?profileId=${p.id}`); }}
                         className="flex items-center gap-1 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg transition-colors border border-emerald-600 shrink-0"
                       >
                         <Cpu size={10} className="shrink-0" />

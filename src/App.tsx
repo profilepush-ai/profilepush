@@ -172,7 +172,7 @@ export default function App() {
             <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
             <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
             <Route path="/hotlist-ai" element={<ProtectedRoute><AIBenchMatch /></ProtectedRoute>} />
-            <Route path="/job-match-ai" element={<ProtectedRoute><RadarPage /></ProtectedRoute>} />
+            <Route path="/job-watch-ai" element={<ProtectedRoute><RadarPage /></ProtectedRoute>} />
           </Routes>
         </Suspense>
       </AuthProvider>

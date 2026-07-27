@@ -3,17 +3,18 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Radar, RefreshCw, User, Briefcase, MapPin, ChevronDown, ChevronUp,
   AlertTriangle, CheckCircle2, XCircle, Zap,
-  Search, Target, Loader2, Users, Check, Clock, Plus, Trash2,
-  Eye, EyeOff, Calendar, Sparkles, ExternalLink, Pencil,
+  Search, Target, Loader2, Users, Check, Clock,
+  Eye, EyeOff, Sparkles, ExternalLink, Info, Power, Save, Pencil,
   Bookmark, BookmarkCheck, PenLine, Ban, X, ArrowUpRight,
-  FileText, Activity, Download, GraduationCap, Building2,
+  FileText, Activity, Download,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
+import { triggerProfileEmbedding } from '../lib/embeddings';
 import { useAuth } from '../contexts/AuthContext';
-import type { Profile, ResumeFile, ActivityLog } from '../types/database';
+import type { Profile, ResumeFile, ActivityLog, EducationEntry, ExperienceEntry } from '../types/database';
 
 interface RadarMatchResult {
   id: string;
@@ -39,6 +40,11 @@ interface JobInfo {
   platform?: string | null;
 }
 
+type EditableMatchProfile = Profile & {
+  work_authorization?: string | null;
+  relocation_open?: boolean | null;
+};
+
 type SortField = 'score' | 'date' | 'profile';
 type SortDir = 'asc' | 'desc';
 
@@ -48,12 +54,32 @@ const JOB_BOARD_SOURCES = new Set(['linkedin', 'dice', 'indeed', 'monster', 'car
 const SOCIAL_GROUP_PLATFORMS = new Set(['facebook', 'linkedin']);
 const CHAT_GROUP_PLATFORMS = new Set(['whatsapp']);
 
+const EMPTY_EXPERIENCE: ExperienceEntry = {
+  company: '',
+  title: '',
+  location: '',
+  start_date: '',
+  end_date: '',
+  current: false,
+  description: '',
+};
+
+const EMPTY_EDUCATION: EducationEntry = {
+  institution: '',
+  degree: '',
+  field: '',
+  start_year: '',
+  end_year: '',
+  gpa: '',
+};
+
 type PipelineStep = 'idle' | 'matching' | 'done';
 
 interface WatchSchedule {
   id: string;
   account_id: string;
-  profile_id: string;
+  profile_id: string | null;
+  external_job_post_id?: string | null;
   boards: string[];
   frequency: 'hourly' | 'daily' | 'twice_daily' | 'weekly';
   is_active: boolean;
@@ -63,27 +89,10 @@ interface WatchSchedule {
   updated_at: string;
 }
 
-interface WatchScheduleRun {
-  id: string;
-  schedule_id: string;
-  account_id: string;
-  status: 'success' | 'failed' | 'partial' | 'running' | 'error';
-  jobs_fetched: number;
-  jobs_matched: number;
-  boards_searched: string[];
-  duration_ms: number;
-  error_message: string | null;
-  started_at: string;
-  completed_at: string | null;
-  created_at: string;
-}
-
-type RadarTab = 'results' | 'watch' | 'history';
-
-
+const DEFAULT_WATCH_BOARDS = ['linkedin', 'dice', 'indeed', 'monster'];
 
 export default function RadarPage() {
-  const { account, user } = useAuth();
+  const { account, user, subscription } = useAuth();
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -123,7 +132,6 @@ export default function RadarPage() {
   const hideDisqualified = false;
   const [sourceTab, setSourceTab] = useState<SourceTab>('all');
   const [jobSearchQuery, setJobSearchQuery] = useState('');
-  const [col4Tab, setCol4Tab] = useState<'watch' | 'history'>('watch');
   const [previewResult, setPreviewResult] = useState<RadarMatchResult | null>(null);
   const [savedJobIds, setSavedJobIds] = useState<Set<string>>(new Set());
   const [savingJobId, setSavingJobId] = useState<string | null>(null);
@@ -133,26 +141,34 @@ export default function RadarPage() {
   const sortField: SortField = 'score';
   const sortDir: SortDir = 'desc';
 
-  // Watch schedules
-  const [radarTab, setRadarTab] = useState<RadarTab>('results');
-  const [watchSchedules, setWatchSchedules] = useState<WatchSchedule[]>([]);
-  const [showWatchForm, setShowWatchForm] = useState(false);
-  const [watchFormProfile, setWatchFormProfile] = useState<string>('');
-  const [watchFormBoards, setWatchFormBoards] = useState<Set<string>>(new Set(['linkedin', 'dice', 'indeed']));
-  const [watchFormFrequency, setWatchFormFrequency] = useState<'hourly' | 'daily' | 'twice_daily' | 'weekly'>('daily');
+  // Account-level watch settings
+  const [globalWatch, setGlobalWatch] = useState<WatchSchedule | null>(null);
   const [savingWatch, setSavingWatch] = useState(false);
-  const [scheduleRuns, setScheduleRuns] = useState<WatchScheduleRun[]>([]);
-  const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
+  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
 
   // Candidate details tabs
-  const [detailTab, setDetailTab] = useState<'matchers' | 'profile' | 'docs' | 'activity'>('matchers');
+  const [detailTab, setDetailTab] = useState<'profile' | 'docs' | 'activity'>('profile');
   const [profileDocs, setProfileDocs] = useState<ResumeFile[]>([]);
   const [profileActivity, setProfileActivity] = useState<ActivityLog[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [activityLoading, setActivityLoading] = useState(false);
-  const [showAllSkills, setShowAllSkills] = useState(false);
-  const [expandedExpIdx, setExpandedExpIdx] = useState<number | null>(null);
-  const [expandedEduIdx, setExpandedEduIdx] = useState<number | null>(null);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [savingProfileFields, setSavingProfileFields] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    target_role: '',
+    priority_skills: '',
+    core_skills: '',
+    years_experience: '',
+    visa_status: '',
+    work_authorization: '',
+    work_type: '',
+    preferred_locations: '',
+    desired_salary_min: '',
+    desired_salary_max: '',
+    relocation_open: false,
+  });
+  const [profileExperience, setProfileExperience] = useState<ExperienceEntry[]>([]);
+  const [profileEducation, setProfileEducation] = useState<EducationEntry[]>([]);
   const [matchPage, setMatchPage] = useState(1);
 
   // Boards to scrape
@@ -161,8 +177,7 @@ export default function RadarPage() {
     if (account?.id) {
       loadData();
       loadHotlist();
-      loadWatchSchedules();
-      loadScheduleRuns();
+      loadGlobalWatchSchedule();
       // Recover from interrupted scan — results are already persisted by the edge function
       try {
         const saved = localStorage.getItem(scanStateKey);
@@ -176,17 +191,16 @@ export default function RadarPage() {
     }
   }, [account?.id]);
 
-  // Poll for schedule status updates when any are actively running
+  // Poll for watch status updates when running
   useEffect(() => {
-    const hasRunning = watchSchedules.some(s => s.run_status === 'scraping' || s.run_status === 'matching');
+    const hasRunning = globalWatch?.run_status === 'scraping' || globalWatch?.run_status === 'matching';
     if (!hasRunning || !account?.id) return;
     const interval = setInterval(() => {
-      loadWatchSchedules();
-      loadScheduleRuns();
+      loadGlobalWatchSchedule();
     }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchSchedules.length, account?.id]);
+  }, [globalWatch?.run_status, account?.id]);
 
   useEffect(() => {
     if (!selectedProfileId && profiles.length > 0) {
@@ -202,14 +216,119 @@ export default function RadarPage() {
       loadProfileDocs(selectedProfileId);
       loadProfileActivity(selectedProfileId);
       setMatchPage(1);
-      setShowAllSkills(false);
-      setExpandedExpIdx(null);
-      setExpandedEduIdx(null);
+      setIsEditingProfile(false);
     } else {
       setProfileDocs([]);
       setProfileActivity([]);
+      setIsEditingProfile(false);
     }
   }, [selectedProfileId]);
+
+  useEffect(() => {
+    const selected = profiles.find(p => p.id === selectedProfileId) as EditableMatchProfile | undefined;
+    if (!selected) {
+      setProfileForm({
+        target_role: '',
+        priority_skills: '',
+        core_skills: '',
+        years_experience: '',
+        visa_status: '',
+        work_authorization: '',
+        work_type: '',
+        preferred_locations: '',
+        desired_salary_min: '',
+        desired_salary_max: '',
+        relocation_open: false,
+      });
+      setProfileExperience([]);
+      setProfileEducation([]);
+      return;
+    }
+
+    setProfileForm({
+      target_role: selected.target_role ?? '',
+      priority_skills: selected.priority_skills ?? '',
+      core_skills: selected.core_skills ?? '',
+      years_experience: selected.years_experience != null ? String(selected.years_experience) : '',
+      visa_status: selected.visa_status ?? '',
+      work_authorization: selected.work_authorization ?? '',
+      work_type: selected.work_type ?? '',
+      preferred_locations: selected.preferred_locations ?? '',
+      desired_salary_min: selected.desired_salary_min != null ? String(selected.desired_salary_min) : '',
+      desired_salary_max: selected.desired_salary_max != null ? String(selected.desired_salary_max) : '',
+      relocation_open: Boolean(selected.relocation_open),
+    });
+    setProfileExperience(Array.isArray(selected.experience) ? selected.experience : []);
+    setProfileEducation(Array.isArray(selected.education) ? selected.education : []);
+  }, [selectedProfileId, profiles]);
+
+  function updateProfileField(
+    field: keyof typeof profileForm,
+    value: string | boolean,
+  ) {
+    setProfileForm(prev => ({ ...prev, [field]: value }));
+  }
+
+  function updateExperienceField(index: number, field: keyof ExperienceEntry, value: string | boolean) {
+    setProfileExperience(prev => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  }
+
+  function updateEducationField(index: number, field: keyof EducationEntry, value: string) {
+    setProfileEducation(prev => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  }
+
+  function addExperienceRow() {
+    setProfileExperience(prev => [...prev, { ...EMPTY_EXPERIENCE }]);
+  }
+
+  function removeExperienceRow(index: number) {
+    setProfileExperience(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function addEducationRow() {
+    setProfileEducation(prev => [...prev, { ...EMPTY_EDUCATION }]);
+  }
+
+  function removeEducationRow(index: number) {
+    setProfileEducation(prev => prev.filter((_, i) => i !== index));
+  }
+
+  async function saveProfileForMatching(profileId: string) {
+    setSavingProfileFields(true);
+    const updatePayload = {
+      target_role: profileForm.target_role.trim(),
+      priority_skills: profileForm.priority_skills.trim(),
+      core_skills: profileForm.core_skills.trim(),
+      years_experience: profileForm.years_experience.trim() ? Number(profileForm.years_experience.trim()) : null,
+      visa_status: profileForm.visa_status.trim(),
+      work_authorization: profileForm.work_authorization.trim(),
+      work_type: profileForm.work_type.trim(),
+      preferred_locations: profileForm.preferred_locations.trim(),
+      desired_salary_min: profileForm.desired_salary_min.trim() ? Number(profileForm.desired_salary_min.trim()) : null,
+      desired_salary_max: profileForm.desired_salary_max.trim() ? Number(profileForm.desired_salary_max.trim()) : null,
+      relocation_open: profileForm.relocation_open,
+      experience: profileExperience,
+      education: profileEducation,
+    };
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updatePayload as unknown as Record<string, unknown>)
+      .eq('id', profileId)
+      .select('*')
+      .single();
+
+    if (error || !data) {
+      showToast('Failed to update candidate details', 'error');
+      setSavingProfileFields(false);
+      return;
+    }
+
+    setProfiles(prev => prev.map(p => (p.id === profileId ? (data as Profile) : p)));
+    triggerProfileEmbedding(profileId);
+    showToast('Profile updated and vector refresh started', 'success');
+    setSavingProfileFields(false);
+  }
 
   async function loadProfileDocs(profileId: string) {
     setDocsLoading(true);
@@ -234,114 +353,72 @@ export default function RadarPage() {
     setActivityLoading(false);
   }
 
-  async function loadWatchSchedules() {
+  async function loadGlobalWatchSchedule() {
     if (!account?.id) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('watch_schedules')
       .select('*')
       .eq('account_id', account.id)
-      .order('created_at', { ascending: false });
-    if (data) setWatchSchedules(data);
-  }
+      .is('profile_id', null)
+      .is('external_job_post_id', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-  async function loadScheduleRuns() {
-    if (!account?.id) return;
-    const { data } = await supabase
-      .from('watch_schedule_runs')
+    if (error) {
+      showToast('Failed to load watch settings', 'error');
+      return;
+    }
+
+    if (data) {
+      const normalizedFrequency = isPaidPlan
+        ? data.frequency
+        : 'daily';
+
+      if (!isPaidPlan && data.frequency !== 'daily') {
+        await supabase.from('watch_schedules').update({ frequency: 'daily' }).eq('id', data.id);
+      }
+
+      setGlobalWatch({ ...data, frequency: normalizedFrequency });
+      return;
+    }
+
+    const { data: created, error: createError } = await supabase
+      .from('watch_schedules')
+      .insert({
+        account_id: account.id,
+        profile_id: null,
+        boards: DEFAULT_WATCH_BOARDS,
+        frequency: 'daily',
+        is_active: true,
+      })
       .select('*')
-      .eq('account_id', account.id)
-      .order('started_at', { ascending: false })
-      .limit(100);
-    if (data) setScheduleRuns(data);
+      .single();
+
+    if (createError) {
+      showToast('Failed to initialize watch settings', 'error');
+      return;
+    }
+
+    if (created) setGlobalWatch(created as WatchSchedule);
   }
 
-  async function createWatchSchedule() {
-    if (!account?.id || !watchFormProfile) return;
+  async function updateGlobalWatch(patch: Partial<WatchSchedule>) {
+    if (!globalWatch?.id) return;
     setSavingWatch(true);
-    const { error } = await supabase.from('watch_schedules').insert({
-      account_id: account.id,
-      profile_id: watchFormProfile,
-      boards: Array.from(watchFormBoards),
-      frequency: watchFormFrequency,
-    });
-    setSavingWatch(false);
-    if (error) {
-      showToast('Failed to create watch schedule', 'error');
-    } else {
-      showToast('Watch schedule created', 'success');
-      setShowWatchForm(false);
-      setWatchFormProfile('');
-      setWatchFormBoards(new Set(['linkedin', 'dice', 'indeed']));
-      setWatchFormFrequency('daily');
-      await loadWatchSchedules();
-    }
-  }
-
-  async function toggleWatchSchedule(id: string, currentActive: boolean) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('watch_schedules')
-      .update({ is_active: !currentActive, updated_at: new Date().toISOString() })
-      .eq('id', id);
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', globalWatch.id)
+      .select('*')
+      .single();
+    setSavingWatch(false);
+
     if (error) {
-      showToast('Failed to update schedule', 'error');
-    } else {
-      setWatchSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: !currentActive } : s));
+      showToast('Failed to update watch settings', 'error');
+      return;
     }
-  }
-
-  async function deleteWatchSchedule(id: string) {
-    const { error } = await supabase.from('watch_schedules').delete().eq('id', id);
-    if (error) {
-      showToast('Failed to delete schedule', 'error');
-    } else {
-      setWatchSchedules(prev => prev.filter(s => s.id !== id));
-      showToast('Schedule deleted', 'success');
-    }
-  }
-
-  async function runWatchScheduleNow(schedule: WatchSchedule) {
-    setRunningScheduleId(schedule.id);
-    try {
-      if (!schedule.is_active) {
-        await supabase.from('watch_schedules').update({ is_active: true }).eq('id', schedule.id);
-        setWatchSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, is_active: true } : s));
-      }
-
-      setWatchSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, run_status: 'scraping' } : s));
-
-      const pollStatus = async () => {
-        const { data } = await supabase
-          .from('watch_schedules')
-          .select('run_status')
-          .eq('id', schedule.id)
-          .maybeSingle();
-        if (data?.run_status && data.run_status !== schedule.run_status) {
-          setWatchSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, run_status: data.run_status } : s));
-        }
-      };
-
-      const pollInterval = setInterval(pollStatus, 3000);
-
-      const { error: fnError } = await supabase.functions.invoke('job-watch-trigger', {
-        body: { schedule_id: schedule.id },
-      });
-
-      clearInterval(pollInterval);
-
-      if (fnError) {
-        showToast(`Watch run failed: ${fnError.message}`, 'error');
-        setWatchSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, run_status: 'idle' } : s));
-      } else {
-        setWatchSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, run_status: 'idle', last_run_at: new Date().toISOString() } : s));
-        showToast('Watch run complete! Check results below.', 'success');
-        await Promise.all([loadData(), loadScheduleRuns()]);
-      }
-    } catch (err) {
-      showToast(`Failed to run watch: ${(err as Error).message}`, 'error');
-      setWatchSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, run_status: 'idle' } : s));
-    } finally {
-      setRunningScheduleId(null);
-    }
+    if (data) setGlobalWatch(data as WatchSchedule);
   }
 
   async function loadHotlist() {
@@ -624,7 +701,6 @@ export default function RadarPage() {
                   setPipelineDetail(`Matching ${profile.candidate_name} — ${msg.total_so_far} match${msg.total_so_far === 1 ? '' : 'es'} so far...`);
                   if (msg.matched > 0) {
                     await loadResultsOnly();
-                    setRadarTab('results');
                   }
                 } else if (msg.type === 'done') {
                   // final message for this profile
@@ -638,7 +714,6 @@ export default function RadarPage() {
           totalNewMatches += (matchData.matched ?? 0);
           if (matchData.matched > 0) {
             await loadResultsOnly();
-            setRadarTab('results');
           }
         }
       } catch (err) {
@@ -652,15 +727,11 @@ export default function RadarPage() {
       setPipelineStep('done');
       setPipelineDetail('');
       showToast(`Found ${totalNewMatches} match${totalNewMatches === 1 ? '' : 'es'} from recent jobs`, 'success');
-      setRadarTab('results');
       await loadResultsOnly();
     } else {
       setPipelineStep('done');
       setPipelineDetail('');
-      showToast(
-        "Currently, we don\u2019t have any matching jobs for this profile. This profile is now being continuously monitored by our Job Watch Radar. You\u2019ll receive an alert the moment a 70%+ match is detected. Please try other candidates in the meanwhile.",
-        'info'
-      );
+      showToast('No matches found right now. Job Watch will keep checking hotlist candidates automatically.', 'success');
     }
     cleanup();
   }
@@ -950,25 +1021,34 @@ export default function RadarPage() {
             const profile = profiles.find(p => p.id === selectedProfileId);
             if (!profile) return null;
             return (
-              <div className="w-[260px] flex-shrink-0 border-r border-slate-200 overflow-hidden bg-slate-50/50 flex flex-col">
+              <div className="w-[340px] flex-shrink-0 border-r border-slate-200 overflow-hidden bg-slate-50/50 flex flex-col">
                 {/* Col 2 Header */}
                 <div className="sticky top-0 z-10 bg-white border-b border-slate-200">
-                  <div className="px-4 h-[44px] flex items-center">
-                    <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Candidate Details</h3>
+                  <div className="px-2.5 h-[40px] flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Details</h3>
+                    {detailTab === 'profile' && (
+                      <button
+                        onClick={() => setIsEditingProfile(prev => !prev)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 transition-colors"
+                        title={isEditingProfile ? 'Close edit mode' : 'Edit profile fields'}
+                      >
+                        <Pencil size={11} />
+                        {isEditingProfile ? 'Close' : 'Edit'}
+                      </button>
+                    )}
                   </div>
-                  <div className="px-3 py-2">
+                  <div className="px-2 py-1.5">
                     <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                      {(['matchers', 'profile', 'docs', 'activity'] as const).map(tab => (
+                      {(['profile', 'docs', 'activity'] as const).map(tab => (
                         <button
                           key={tab}
                           onClick={() => setDetailTab(tab)}
-                          className={`flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 text-[10px] font-semibold rounded-md transition-all ${
+                          className={`flex-1 flex items-center justify-center gap-1 px-1 py-1 text-[10px] font-semibold rounded-md transition-all ${
                             detailTab === tab
                               ? 'bg-white text-slate-900 shadow-sm'
                               : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >
-                          {tab === 'matchers' && 'Matchers'}
                           {tab === 'profile' && 'Profile'}
                           {tab === 'docs' && 'Docs'}
                           {tab === 'activity' && 'Activity'}
@@ -979,213 +1059,319 @@ export default function RadarPage() {
                 </div>
 
                 {/* Col 2 Body */}
-                <div className="flex-1 overflow-y-auto p-4">
-
-                {/* ── Matchers Tab ── */}
-                {detailTab === 'matchers' && (
-                  <>
-                    <div className="mb-3">
-                      <h3 className="text-sm font-bold text-slate-900 truncate">{profile.candidate_name}</h3>
-                      <span className={`inline-block mt-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                        profile.bench_stage === 'Placed' ? 'bg-emerald-50 text-emerald-700' :
-                        profile.bench_stage === 'Sourcing' ? 'bg-blue-50 text-blue-700' :
-                        profile.bench_stage === 'Submitted' ? 'bg-orange-50 text-orange-700' :
-                        'bg-slate-100 text-slate-600'
-                      }`}>
-                        {profile.bench_stage}
-                      </span>
-                    </div>
-
-                    <div className="space-y-3">
-                      {profile.target_role && (
-                        <div>
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Target Role</p>
-                          <p className="text-xs text-slate-800">{profile.target_role}</p>
-                        </div>
-                      )}
-                      {profile.years_experience != null && (
-                        <div>
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Experience</p>
-                          <p className="text-xs text-slate-800">{profile.years_experience} years</p>
-                        </div>
-                      )}
-                      {profile.visa_status && (
-                        <div>
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Visa Status</p>
-                          <p className="text-xs text-slate-800">{profile.visa_status}</p>
-                        </div>
-                      )}
-                      {profile.work_type && (
-                        <div>
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Work Type</p>
-                          <p className="text-xs text-slate-800">{profile.work_type}</p>
-                        </div>
-                      )}
-                      {profile.preferred_locations && (
-                        <div>
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Preferred Locations</p>
-                          <p className="text-xs text-slate-800">{profile.preferred_locations}</p>
-                        </div>
-                      )}
-                      {(profile.desired_salary_min || profile.desired_salary_max) && (
-                        <div>
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Hourly Rate</p>
-                          <p className="text-xs text-slate-800">
-                            ${profile.desired_salary_min ?? '?'} - ${profile.desired_salary_max ?? '?'}/hr
-                          </p>
-                        </div>
-                      )}
-                      {profile.notice_period && (
-                        <div>
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Notice Period</p>
-                          <p className="text-xs text-slate-800">{profile.notice_period}</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {profile.priority_skills && (
-                      <div className="mt-4 pt-3 border-t border-slate-200">
-                        <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-wide mb-1.5">Priority Skills</p>
-                        <div className="flex flex-wrap gap-1">
-                          {profile.priority_skills.split(',').map((skill, i) => (
-                            <span key={i} className="text-[10px] font-semibold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">
-                              {skill.trim()}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-
+                <div className={`flex-1 p-2.5 ${detailTab === 'profile' && !isEditingProfile ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                 {/* ── Profile Tab ── */}
                 {detailTab === 'profile' && (
-                  <div className="space-y-4">
-                    {/* Personal Info */}
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Personal Information</p>
-                      <div className="space-y-2.5 bg-white rounded-lg border border-slate-100 p-3">
-                        <div className="flex items-center gap-2">
-                          <User size={12} className="text-slate-400 shrink-0" />
-                          <span className="text-xs text-slate-800 font-medium">{profile.candidate_name}</span>
-                        </div>
-                        {profile.email && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-slate-400 font-medium w-[50px] shrink-0">Email</span>
-                            <span className="text-xs text-slate-700 truncate">{profile.email}</span>
-                          </div>
-                        )}
-                        {profile.phone && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-slate-400 font-medium w-[50px] shrink-0">Phone</span>
-                            <span className="text-xs text-slate-700">{profile.phone}</span>
-                          </div>
-                        )}
-                        {(profile.city || profile.state || profile.country) && (
-                          <div className="flex items-center gap-2">
-                            <MapPin size={12} className="text-slate-400 shrink-0" />
-                            <span className="text-xs text-slate-700">
-                              {[profile.city, profile.state, profile.country].filter(Boolean).join(', ')}
-                            </span>
-                          </div>
-                        )}
-                        {profile.linkedin_url && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-slate-400 font-medium w-[50px] shrink-0">LinkedIn</span>
-                            <a href={profile.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline truncate">View Profile</a>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                  <div className="space-y-2.5">
+                    {(() => {
+                      const hasText = (value: string | null | undefined) => Boolean(value && value.trim().length > 0);
+                      const matchFieldChecks = [
+                        hasText(profileForm.target_role),
+                        hasText(profileForm.priority_skills),
+                        hasText(profileForm.years_experience),
+                        hasText(profileForm.visa_status),
+                        hasText(profileForm.work_authorization),
+                        hasText(profileForm.work_type),
+                        hasText(profileForm.preferred_locations),
+                        hasText(profileForm.desired_salary_min),
+                        hasText(profileForm.desired_salary_max),
+                        Boolean(profileForm.relocation_open),
+                      ];
+                      const totalMatchFields = matchFieldChecks.length;
+                      const filledMatchFields = matchFieldChecks.filter(Boolean).length;
+                      const completionPct = Math.round((filledMatchFields / totalMatchFields) * 100);
+                      const hasMissingFields = filledMatchFields < totalMatchFields;
+                      const createdAt = new Date(profile.created_at).getTime();
+                      const daysSinceCreated = Number.isFinite(createdAt)
+                        ? Math.max(0, Math.floor((Date.now() - createdAt) / (1000 * 60 * 60 * 24)))
+                        : 0;
+                      const matches70Plus = results.filter(
+                        r => r.profile_id === profile.id && !r.disqualified && r.final_average_score >= 70,
+                      ).length;
 
-                    {/* Work Experience */}
-                    {profile.experience && profile.experience.length > 0 && (
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Work Experience</p>
-                        <div className="space-y-2">
-                          {profile.experience.map((exp, i) => (
-                            <div
-                              key={i}
-                              className="bg-white rounded-lg border border-slate-100 p-3 cursor-pointer hover:border-slate-200 transition-colors"
-                              onClick={() => setExpandedExpIdx(expandedExpIdx === i ? null : i)}
-                            >
-                              <div className="flex items-start gap-2">
-                                <Building2 size={12} className="text-slate-400 mt-0.5 shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-semibold text-slate-900 truncate">{exp.title}</p>
-                                  <p className="text-[11px] text-slate-600">{exp.company}</p>
-                                  <p className="text-[10px] text-slate-400 mt-0.5">
-                                    {exp.start_date} - {exp.current ? 'Present' : exp.end_date}
-                                    {exp.location && ` | ${exp.location}`}
-                                  </p>
-                                  {expandedExpIdx === i && exp.description && (
-                                    <p className="text-[11px] text-slate-600 mt-2 leading-relaxed whitespace-pre-line border-t border-slate-100 pt-2">
-                                      {exp.description}
-                                    </p>
-                                  )}
-                                </div>
-                                <ChevronDown size={12} className={`text-slate-400 shrink-0 mt-0.5 transition-transform ${expandedExpIdx === i ? 'rotate-180' : ''}`} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                      const matchFieldRows = [
+                        { label: 'Target Role', value: profileForm.target_role },
+                        { label: 'Years Exp', value: profileForm.years_experience },
+                        { label: 'Visa Status', value: profileForm.visa_status },
+                        { label: 'Work Authorization', value: profileForm.work_authorization },
+                        { label: 'Work Type', value: profileForm.work_type },
+                        { label: 'Preferred Locations', value: profileForm.preferred_locations },
+                        { label: 'Min Rate ($/hr)', value: profileForm.desired_salary_min },
+                        { label: 'Max Rate ($/hr)', value: profileForm.desired_salary_max },
+                        { label: 'Relocation Open', value: profileForm.relocation_open ? 'Yes' : 'No' },
+                        { label: 'Priority Skills', value: profileForm.priority_skills },
+                      ];
 
-                    {/* Education */}
-                    {profile.education && profile.education.length > 0 && (
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Education</p>
-                        <div className="space-y-2">
-                          {profile.education.map((edu, i) => (
-                            <div
-                              key={i}
-                              className="bg-white rounded-lg border border-slate-100 p-3 cursor-pointer hover:border-slate-200 transition-colors"
-                              onClick={() => setExpandedEduIdx(expandedEduIdx === i ? null : i)}
-                            >
-                              <div className="flex items-start gap-2">
-                                <GraduationCap size={12} className="text-slate-400 mt-0.5 shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-semibold text-slate-900">{edu.degree} {edu.field && `in ${edu.field}`}</p>
-                                  <p className="text-[11px] text-slate-600">{edu.institution}</p>
-                                  <p className="text-[10px] text-slate-400 mt-0.5">{edu.start_year} - {edu.end_year}</p>
-                                  {expandedEduIdx === i && edu.gpa && (
-                                    <p className="text-[11px] text-slate-600 mt-2 border-t border-slate-100 pt-2">
-                                      GPA: {edu.gpa}
-                                    </p>
-                                  )}
-                                </div>
-                                <ChevronDown size={12} className={`text-slate-400 shrink-0 mt-0.5 transition-transform ${expandedEduIdx === i ? 'rotate-180' : ''}`} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Core Skills */}
-                    {profile.core_skills && (() => {
-                      const allSkills = profile.core_skills.split(',').map(s => s.trim()).filter(Boolean);
-                      const visibleSkills = showAllSkills ? allSkills : allSkills.slice(0, 5);
                       return (
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Core Skills</p>
-                          <div className="flex flex-wrap gap-1">
-                            {visibleSkills.map((skill, i) => (
-                              <span key={i} className="text-[10px] font-medium bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
-                                {skill}
-                              </span>
-                            ))}
+                        <>
+                          <div className="bg-white rounded-xl border border-slate-200 p-2.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-bold text-slate-900 leading-tight">{profile.candidate_name}</p>
+                              <button
+                                onClick={() => setIsEditingProfile(prev => !prev)}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 transition-colors"
+                                title={isEditingProfile ? 'Close edit mode' : 'Edit profile fields'}
+                              >
+                                <Pencil size={10} />
+                                {isEditingProfile ? 'Close' : 'Edit'}
+                              </button>
+                            </div>
+
+                            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                              <div className="rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Days Since Created</p>
+                                <p className="mt-0.5 text-sm font-bold text-slate-900">{daysSinceCreated}</p>
+                              </div>
+                              <div className="rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Jobs Matched (70+)</p>
+                                <p className="mt-0.5 text-sm font-bold text-slate-900">{matches70Plus}</p>
+                              </div>
+                            </div>
                           </div>
-                          {allSkills.length > 5 && (
-                            <button
-                              onClick={() => setShowAllSkills(!showAllSkills)}
-                              className="mt-1.5 text-[10px] font-medium text-blue-600 hover:text-blue-700 transition-colors"
-                            >
-                              {showAllSkills ? 'Show less' : `+${allSkills.length - 5} more`}
-                            </button>
+
+                          <div className="bg-white rounded-xl border border-slate-200 p-2.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Match Health</p>
+                            <p className="mt-0.5 text-sm font-bold text-slate-900">{completionPct}%</p>
+
+                            {hasMissingFields && (
+                              <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                                80% health gets very high quality matches.
+                              </p>
+                            )}
+                          </div>
+
+                          {!isEditingProfile ? (
+                            <div className="bg-white rounded-xl border border-slate-200 p-2.5">
+                              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Core Matching Inputs</p>
+                              <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg">
+                                {matchFieldRows.map((row) => {
+                                  const hasValue = hasText(row.value);
+                                  const isPrioritySkills = row.label === 'Priority Skills';
+                                  const skills = isPrioritySkills
+                                    ? row.value.split(',').map(skill => skill.trim()).filter(Boolean)
+                                    : [];
+
+                                  return (
+                                    <div key={row.label} className="grid grid-cols-[104px_1fr] items-start gap-1.5 px-2 py-1.5">
+                                      <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide pt-0.5">{row.label}</p>
+                                      {!isPrioritySkills ? (
+                                        <p className={`text-[11px] font-medium ${hasValue ? 'text-slate-800' : 'text-slate-400 italic'}`}>
+                                          {hasValue ? row.value : 'Empty'}
+                                        </p>
+                                      ) : skills.length > 0 ? (
+                                        <div className="flex flex-wrap gap-0.5">
+                                          {skills.map(skill => (
+                                            <span key={skill} className="inline-flex items-center rounded-md bg-slate-100 px-1 py-0.5 text-[10px] font-medium text-slate-700">
+                                              {skill}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-[11px] font-medium text-slate-400 italic">Empty</p>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="space-y-2.5 bg-white rounded-xl border border-slate-200 p-2.5">
+                                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Core Matching Inputs</p>
+
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Target Role</label>
+                                  <input
+                                    value={profileForm.target_role}
+                                    onChange={(e) => updateProfileField('target_role', e.target.value)}
+                                    placeholder="Ex: Senior Java Developer"
+                                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Priority Skills</label>
+                                  <textarea
+                                    value={profileForm.priority_skills}
+                                    onChange={(e) => updateProfileField('priority_skills', e.target.value)}
+                                    placeholder="Comma-separated top skills"
+                                    rows={3}
+                                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                                  />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Years Exp</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={profileForm.years_experience}
+                                      onChange={(e) => updateProfileField('years_experience', e.target.value)}
+                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Visa Status</label>
+                                    <input
+                                      value={profileForm.visa_status}
+                                      onChange={(e) => updateProfileField('visa_status', e.target.value)}
+                                      placeholder="Ex: H1B"
+                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Work Authorization</label>
+                                    <input
+                                      value={profileForm.work_authorization}
+                                      onChange={(e) => updateProfileField('work_authorization', e.target.value)}
+                                      placeholder="Ex: C2C, W2"
+                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Work Type</label>
+                                    <input
+                                      value={profileForm.work_type}
+                                      onChange={(e) => updateProfileField('work_type', e.target.value)}
+                                      placeholder="Remote / Hybrid"
+                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Preferred Locations</label>
+                                  <input
+                                    value={profileForm.preferred_locations}
+                                    onChange={(e) => updateProfileField('preferred_locations', e.target.value)}
+                                    placeholder="Ex: Austin, Remote"
+                                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                                  />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Min Rate ($/hr)</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={profileForm.desired_salary_min}
+                                      onChange={(e) => updateProfileField('desired_salary_min', e.target.value)}
+                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Max Rate ($/hr)</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={profileForm.desired_salary_max}
+                                      onChange={(e) => updateProfileField('desired_salary_max', e.target.value)}
+                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                                    />
+                                  </div>
+                                </div>
+
+                                <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={profileForm.relocation_open}
+                                    onChange={(e) => updateProfileField('relocation_open', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded border-slate-300"
+                                  />
+                                  Open to relocation
+                                </label>
+                              </div>
+
+                              <div className="space-y-2 bg-white rounded-xl border border-slate-200 p-2.5">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Work History</p>
+                                  <button
+                                    onClick={addExperienceRow}
+                                    className="text-[10px] font-semibold text-blue-600 hover:text-blue-700"
+                                  >
+                                    + Add
+                                  </button>
+                                </div>
+                                {profileExperience.length === 0 ? (
+                                  <p className="text-[11px] text-slate-400">No work history added yet.</p>
+                                ) : (
+                                  <div className="space-y-1.5">
+                                    {profileExperience.map((exp, idx) => (
+                                      <div key={idx} className="rounded-lg border border-slate-100 bg-slate-50 p-2 space-y-1.5">
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                          <input value={exp.title} onChange={(e) => updateExperienceField(idx, 'title', e.target.value)} placeholder="Title" className="rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                          <input value={exp.company} onChange={(e) => updateExperienceField(idx, 'company', e.target.value)} placeholder="Company" className="rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                          <input value={exp.start_date} onChange={(e) => updateExperienceField(idx, 'start_date', e.target.value)} placeholder="Start" className="rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                          <input value={exp.current ? '' : exp.end_date} onChange={(e) => updateExperienceField(idx, 'end_date', e.target.value)} placeholder="End" disabled={exp.current} className="rounded-md border border-slate-200 px-2 py-1 text-xs disabled:bg-slate-100" />
+                                        </div>
+                                        <input value={exp.location} onChange={(e) => updateExperienceField(idx, 'location', e.target.value)} placeholder="Location" className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                        <textarea value={exp.description} onChange={(e) => updateExperienceField(idx, 'description', e.target.value)} rows={2} placeholder="Summary / achievements" className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                        <div className="flex items-center justify-between">
+                                          <label className="text-[10px] text-slate-600 flex items-center gap-1.5">
+                                            <input type="checkbox" checked={Boolean(exp.current)} onChange={(e) => updateExperienceField(idx, 'current', e.target.checked)} className="w-3 h-3" />
+                                            Current role
+                                          </label>
+                                          <button onClick={() => removeExperienceRow(idx)} className="text-[10px] font-semibold text-red-500 hover:text-red-600">Remove</button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="space-y-2 bg-white rounded-xl border border-slate-200 p-2.5">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Education</p>
+                                  <button
+                                    onClick={addEducationRow}
+                                    className="text-[10px] font-semibold text-blue-600 hover:text-blue-700"
+                                  >
+                                    + Add
+                                  </button>
+                                </div>
+                                {profileEducation.length === 0 ? (
+                                  <p className="text-[11px] text-slate-400">No education added yet.</p>
+                                ) : (
+                                  <div className="space-y-1.5">
+                                    {profileEducation.map((edu, idx) => (
+                                      <div key={idx} className="rounded-lg border border-slate-100 bg-slate-50 p-2 space-y-1.5">
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                          <input value={edu.degree} onChange={(e) => updateEducationField(idx, 'degree', e.target.value)} placeholder="Degree" className="rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                          <input value={edu.field} onChange={(e) => updateEducationField(idx, 'field', e.target.value)} placeholder="Field" className="rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                        </div>
+                                        <input value={edu.institution} onChange={(e) => updateEducationField(idx, 'institution', e.target.value)} placeholder="Institution" className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                          <input value={edu.start_year} onChange={(e) => updateEducationField(idx, 'start_year', e.target.value)} placeholder="Start" className="rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                          <input value={edu.end_year} onChange={(e) => updateEducationField(idx, 'end_year', e.target.value)} placeholder="End" className="rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                          <input value={edu.gpa ?? ''} onChange={(e) => updateEducationField(idx, 'gpa', e.target.value)} placeholder="GPA" className="rounded-md border border-slate-200 px-2 py-1 text-xs" />
+                                        </div>
+                                        <div className="flex justify-end">
+                                          <button onClick={() => removeEducationRow(idx)} className="text-[10px] font-semibold text-red-500 hover:text-red-600">Remove</button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              <button
+                                onClick={() => saveProfileForMatching(profile.id)}
+                                disabled={savingProfileFields}
+                                className="w-full flex items-center justify-center gap-1.5 px-2.5 py-2 text-xs font-bold text-white rounded-lg bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-700 hover:to-sky-600 disabled:opacity-50 transition-colors"
+                              >
+                                {savingProfileFields ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                                {savingProfileFields ? 'Saving...' : 'Save Profile & Refresh Vector'}
+                              </button>
+                            </>
                           )}
-                        </div>
+                        </>
                       );
                     })()}
                   </div>
@@ -1195,18 +1381,18 @@ export default function RadarPage() {
                 {detailTab === 'docs' && (
                   <div>
                     {docsLoading ? (
-                      <div className="flex items-center justify-center py-12">
+                      <div className="flex items-center justify-center py-8">
                         <Loader2 size={18} className="animate-spin text-slate-400" />
                       </div>
                     ) : profileDocs.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <FileText size={28} className="text-slate-300 mb-2" />
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <FileText size={24} className="text-slate-300 mb-1.5" />
                         <p className="text-xs text-slate-500">No documents uploaded</p>
                       </div>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {profileDocs.map(doc => (
-                          <div key={doc.id} className="flex items-center gap-2.5 bg-white rounded-lg border border-slate-100 p-3 hover:border-slate-200 transition-colors">
+                          <div key={doc.id} className="flex items-center gap-2 bg-white rounded-lg border border-slate-100 p-2 hover:border-slate-200 transition-colors">
                             <FileText size={14} className="text-slate-400 shrink-0" />
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-medium text-slate-800 truncate">{doc.file_name}</p>
@@ -1237,18 +1423,18 @@ export default function RadarPage() {
                 {detailTab === 'activity' && (
                   <div>
                     {activityLoading ? (
-                      <div className="flex items-center justify-center py-12">
+                      <div className="flex items-center justify-center py-8">
                         <Loader2 size={18} className="animate-spin text-slate-400" />
                       </div>
                     ) : profileActivity.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <Activity size={28} className="text-slate-300 mb-2" />
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <Activity size={24} className="text-slate-300 mb-1.5" />
                         <p className="text-xs text-slate-500">No activity recorded yet</p>
                       </div>
                     ) : (
                       <div className="space-y-0">
                         {profileActivity.map((log, i) => (
-                          <div key={log.id} className="relative flex gap-3 pb-4">
+                          <div key={log.id} className="relative flex gap-2.5 pb-3">
                             {i < profileActivity.length - 1 && (
                               <div className="absolute left-[7px] top-5 bottom-0 w-px bg-slate-200" />
                             )}
@@ -1268,30 +1454,6 @@ export default function RadarPage() {
                   </div>
                 )}
 
-                </div>
-                {/* Col 2 Footer - Action Buttons */}
-                <div className="border-t border-slate-200 bg-white p-3 flex flex-col gap-2">
-                  <button
-                    onClick={() => navigate(`/bench?edit=${profile.id}`)}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-                  >
-                    <Pencil size={12} />
-                    Edit Profile
-                  </button>
-                  <button
-                    onClick={() => navigate(`/bench?profile=${profile.id}`)}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                  >
-                    <ArrowUpRight size={12} />
-                    Open in Bench
-                  </button>
-                  <button
-                    onClick={() => navigate(`/jobs?profile=${profile.id}`)}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors"
-                  >
-                    <Search size={12} />
-                    Go to Job Finder
-                  </button>
                 </div>
               </div>
             );
@@ -1324,6 +1486,45 @@ export default function RadarPage() {
             <div className="sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
               <div className="flex items-center h-[44px] px-3 gap-3 border-b border-slate-100">
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide shrink-0">Matches</h3>
+                <div className="hidden md:flex items-center gap-2.5">
+                  <button
+                    onClick={() => updateGlobalWatch({ is_active: !globalWatch?.is_active })}
+                    disabled={!globalWatch || savingWatch}
+                    className={`inline-flex items-center gap-1.5 px-2.5 h-7 rounded-full border text-[10px] font-bold transition-colors ${
+                      globalWatch?.is_active
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={globalWatch?.is_active ? 'Turn watch off' : 'Turn watch on'}
+                  >
+                    {savingWatch ? <Loader2 size={11} className="animate-spin" /> : <Power size={11} />}
+                    <span>{globalWatch?.is_active ? 'ON' : 'OFF'}</span>
+                  </button>
+                  {!isPaidPlan && (
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center w-6 h-6 rounded-full border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors"
+                        aria-label="Free plan watch schedule details"
+                      >
+                        <Info size={11} />
+                      </button>
+                      <div className="pointer-events-none absolute left-1/2 top-8 z-20 w-72 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                        <p className="text-[11px] leading-relaxed text-slate-600">
+                          Free accounts are limited to only Daily matches. Upgrade your account to setup hourly match schedules
+                        </p>
+                        <button
+                          onClick={() => navigate('/billing')}
+                          className="pointer-events-auto mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white shadow-sm hover:opacity-90 transition-opacity"
+                          style={{ background: 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)' }}
+                        >
+                          <ArrowUpRight size={11} />
+                          Upgrade now
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="flex-1" />
                 <button
                   onClick={runRadarScan}
@@ -1696,245 +1897,10 @@ export default function RadarPage() {
         )}
 
         </div> {/* end col3 */}
-
-        {/* ── COL 4: Watch & History ──────────────────────────────────────── */}
-        <div className="flex-1 min-w-0 hidden xl:flex flex-col border-l border-slate-200 bg-white overflow-hidden">
-          {/* Col4 Header */}
-          <div className="sticky top-0 z-10 bg-white border-b border-slate-200">
-            <div className="px-3 h-[44px] flex items-center justify-between border-b border-slate-100">
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Automation</h3>
-              <button
-                onClick={() => { setWatchFormProfile(selectedProfileId ?? ''); setShowWatchForm(true); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 hover:from-blue-700 hover:via-orange-600 hover:to-yellow-500 text-white text-[11px] font-bold rounded-lg transition-all shadow-sm shrink-0"
-              >
-                <Plus size={12} />
-                Watch Schedule
-              </button>
-            </div>
-            <div className="px-3 py-2">
-              <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                <button
-                  onClick={() => setCol4Tab('watch')}
-                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
-                    col4Tab === 'watch'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  Schedules
-                  {watchSchedules.length > 0 && <span className={`text-[10px] min-w-[16px] px-1 rounded-full font-bold ${col4Tab === 'watch' ? 'bg-slate-200 text-slate-700' : 'text-slate-400'}`}>{watchSchedules.length}</span>}
-                </button>
-                <button
-                  onClick={() => setCol4Tab('history')}
-                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
-                    col4Tab === 'history'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  History
-                  {scheduleRuns.length > 0 && <span className={`text-[10px] min-w-[16px] px-1 rounded-full font-bold ${col4Tab === 'history' ? 'bg-slate-200 text-slate-700' : 'text-slate-400'}`}>{scheduleRuns.length}</span>}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Col4 Content */}
-          <div className="flex-1 overflow-y-auto">
-            {col4Tab === 'watch' ? (
-              <div className="p-3 space-y-2">
-                {watchSchedules.length === 0 ? (
-                  <div className="text-center py-8 px-4">
-                    <div className="w-10 h-10 mx-auto rounded-full bg-slate-100 flex items-center justify-center mb-3">
-                      <Clock size={18} className="text-slate-400" />
-                    </div>
-                    <p className="text-xs text-slate-500 leading-relaxed">No schedules yet. Create one to automate radar scans.</p>
-                  </div>
-                ) : (
-                  watchSchedules.map(schedule => {
-                    const prof = profiles.find(p => p.id === schedule.profile_id);
-                    return (
-                      <div key={schedule.id} className={`rounded-lg border p-3 transition-all ${schedule.is_active ? 'border-slate-200 bg-white shadow-sm' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className={`w-2 h-2 rounded-full shrink-0 mt-0.5 ${schedule.is_active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                            <span className="text-[11px] font-semibold text-slate-800 truncate">{prof?.candidate_name ?? 'Unknown'}</span>
-                          </div>
-                          <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${
-                            schedule.frequency === 'hourly' ? 'bg-red-50 text-red-600' :
-                            schedule.frequency === 'daily' ? 'bg-blue-50 text-blue-600' :
-                            schedule.frequency === 'twice_daily' ? 'bg-amber-50 text-amber-600' :
-                            'bg-slate-100 text-slate-600'
-                          }`}>{schedule.frequency.replace('_', ' ')}</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mb-2 pl-4">{schedule.boards.join(', ')}</p>
-                        <div className="flex items-center gap-1 pl-3">
-                          {(schedule.run_status === 'scraping' || schedule.run_status === 'matching') ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 font-medium">
-                              <Loader2 size={10} className="animate-spin" />
-                              {schedule.run_status === 'scraping' ? 'Searching...' : 'Matching...'}
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => runWatchScheduleNow(schedule)}
-                              disabled={runningScheduleId === schedule.id}
-                              className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
-                              title="Run now"
-                            >
-                              <Zap size={12} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => toggleWatchSchedule(schedule.id, schedule.is_active)}
-                            className={`p-1.5 rounded-md transition-colors ${schedule.is_active ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-400 hover:bg-slate-100'}`}
-                            title={schedule.is_active ? 'Pause' : 'Resume'}
-                          >
-                            {schedule.is_active ? <Eye size={12} /> : <EyeOff size={12} />}
-                          </button>
-                          <button
-                            onClick={() => deleteWatchSchedule(schedule.id)}
-                            className="p-1.5 rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            ) : (
-              <div className="p-3 space-y-2">
-                {scheduleRuns.length === 0 ? (
-                  <div className="text-center py-8 px-4">
-                    <div className="w-10 h-10 mx-auto rounded-full bg-slate-100 flex items-center justify-center mb-3">
-                      <Clock size={18} className="text-slate-400" />
-                    </div>
-                    <p className="text-xs text-slate-500 leading-relaxed">Run history will appear here once schedules execute.</p>
-                  </div>
-                ) : (
-                  scheduleRuns.slice(0, 25).map(run => {
-                    const schedule = watchSchedules.find(s => s.id === run.schedule_id);
-                    const prof = profiles.find(p => p.id === schedule?.profile_id);
-                    return (
-                      <div key={run.id} className="rounded-lg border border-slate-200 p-3 bg-white shadow-sm">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[11px] font-semibold text-slate-800 truncate">{prof?.candidate_name ?? 'Unknown'}</span>
-                          <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${
-                            run.status === 'success' ? 'bg-emerald-50 text-emerald-700' :
-                            run.status === 'partial' ? 'bg-amber-50 text-amber-700' :
-                            run.status === 'running' ? 'bg-blue-50 text-blue-700' :
-                            'bg-red-50 text-red-700'
-                          }`}>
-                            {run.status === 'running' && <Loader2 size={8} className="animate-spin" />}
-                            {run.status}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 text-[10px] text-slate-500 mb-1">
-                          <span className="tabular-nums">{run.jobs_fetched} fetched</span>
-                          <span className="text-blue-600 font-semibold tabular-nums">{run.jobs_matched} matched</span>
-                        </div>
-                        <p className="text-[9px] text-slate-400">
-                          {new Date(run.started_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        </div> {/* end flex wrapper for col2+col3+col4 */}
+        </div> {/* end flex wrapper for col2+col3 */}
         </div>
         </div>
       </div>
-
-      {/* Watch Schedule Create Modal */}
-      {showWatchForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowWatchForm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-bold text-slate-900">Create Watch Schedule</h3>
-              <button onClick={() => setShowWatchForm(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
-                <XCircle size={18} />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Profile</label>
-                <select
-                  value={watchFormProfile}
-                  onChange={e => setWatchFormProfile(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
-                >
-                  <option value="">Select profile...</option>
-                  {profiles.map(p => (
-                    <option key={p.id} value={p.id}>{p.candidate_name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Frequency</label>
-                <select
-                  value={watchFormFrequency}
-                  onChange={e => setWatchFormFrequency(e.target.value as 'hourly' | 'daily' | 'twice_daily' | 'weekly')}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
-                >
-                  <option value="hourly">Hourly</option>
-                  <option value="daily">Daily</option>
-                  <option value="twice_daily">Twice Daily</option>
-                  <option value="weekly">Weekly</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job Boards</label>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { id: 'linkedin', label: 'LinkedIn' },
-                    { id: 'dice', label: 'Dice' },
-                    { id: 'indeed', label: 'Indeed' },
-                    { id: 'monster', label: 'Monster' },
-                  ].map(b => (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => setWatchFormBoards(prev => {
-                        const next = new Set(prev);
-                        if (next.has(b.id)) next.delete(b.id); else next.add(b.id);
-                        return next;
-                      })}
-                      className={`text-xs px-3 py-2 rounded-lg border font-medium transition-colors ${
-                        watchFormBoards.has(b.id)
-                          ? 'bg-blue-50 border-blue-300 text-blue-700'
-                          : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}
-                    >
-                      {watchFormBoards.has(b.id) && <Check size={10} className="inline mr-1" />}
-                      {b.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-              <button onClick={() => setShowWatchForm(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors">
-                Cancel
-              </button>
-              <button
-                onClick={createWatchSchedule}
-                disabled={!watchFormProfile || watchFormBoards.size === 0 || savingWatch}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
-              >
-                {savingWatch ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                Create Schedule
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Preview Modal */}
       {previewResult && (() => {

@@ -71,7 +71,7 @@ async function runFullPipeline(
 ): Promise<{ id: string; status: string; jobs_matched: number }> {
   const scheduleId = schedule.id as string;
   const accountId = schedule.account_id as string;
-  const profileId = schedule.profile_id as string;
+  const profileId = schedule.profile_id as string | null;
   const boards = (schedule.boards as string[]) ?? [];
   const startTime = Date.now();
 
@@ -96,23 +96,41 @@ async function runFullPipeline(
     last_run_at: new Date().toISOString(),
   }).eq("id", scheduleId);
 
-  // Load profile for search params
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("target_role, core_skills, priority_skills, preferred_locations, city, state, work_type")
-    .eq("id", profileId)
-    .maybeSingle();
+  let targetProfileIds: string[] = [];
+  if (profileId) {
+    targetProfileIds = [profileId];
+  } else {
+    const { data: hotlistRows, error: hotlistErr } = await supabase
+      .from("hotlist")
+      .select("profile_id")
+      .eq("account_id", accountId);
 
-  if (!profile) {
-    await finishRun(supabase, scheduleId, runId, "error", 0, 0, startTime, "Profile not found");
+    if (hotlistErr) {
+      await finishRun(supabase, scheduleId, runId, "error", 0, 0, startTime, `Failed to load hotlist: ${hotlistErr.message}`);
+      return { id: scheduleId, status: "error", jobs_matched: 0 };
+    }
+
+    targetProfileIds = Array.from(new Set((hotlistRows ?? []).map((row) => row.profile_id as string).filter(Boolean)));
+  }
+
+  if (targetProfileIds.length === 0) {
+    await finishRun(supabase, scheduleId, runId, "error", 0, 0, startTime, "No hotlist candidates found");
     return { id: scheduleId, status: "error", jobs_matched: 0 };
   }
 
-  const jobTitle = (profile.target_role as string) ?? "";
-  const location = (profile.preferred_locations as string) ?? (profile.city as string) ?? (profile.state as string) ?? "";
+  const { data: profileRows, error: profilesErr } = await supabase
+    .from("profiles")
+    .select("id, candidate_name, target_role, preferred_locations, city, state")
+    .in("id", targetProfileIds);
 
-  if (!jobTitle) {
-    await finishRun(supabase, scheduleId, runId, "error", 0, 0, startTime, "Profile has no target role set");
+  if (profilesErr) {
+    await finishRun(supabase, scheduleId, runId, "error", 0, 0, startTime, `Failed to load profiles: ${profilesErr.message}`);
+    return { id: scheduleId, status: "error", jobs_matched: 0 };
+  }
+
+  const profiles = profileRows ?? [];
+  if (profiles.length === 0) {
+    await finishRun(supabase, scheduleId, runId, "error", 0, 0, startTime, "No valid profiles found for watch run");
     return { id: scheduleId, status: "error", jobs_matched: 0 };
   }
 
@@ -122,37 +140,43 @@ async function runFullPipeline(
     "Authorization": `Bearer ${serviceRoleKey}`,
   };
 
-  const scrapePromises = boards.map(async (board) => {
-    const fnName = BOARD_FUNCTION_MAP[board];
-    if (!fnName) return;
-    try {
-      const searchBody: Record<string, unknown> = {
-        account_id: accountId,
-        max_results: 25,
-        force_refresh: false,
-      };
-      if (board === "linkedin") {
-        searchBody.job_title = `"${jobTitle}"`;
-        searchBody.location = location;
-        searchBody.posted_within = "Past Week";
-      } else if (board === "dice") {
-        searchBody.keyword = `"${jobTitle}"`;
-        searchBody.location = location;
-        searchBody.posted_date = "Past week";
-      } else {
-        searchBody.keyword = `"${jobTitle}"`;
-        searchBody.location = location;
-        searchBody.date_posted = "Past week";
-      }
+  const scrapePromises = profiles.flatMap((profileRow) => {
+    const jobTitle = (profileRow.target_role as string) ?? "";
+    const location = (profileRow.preferred_locations as string) ?? (profileRow.city as string) ?? (profileRow.state as string) ?? "";
+    if (!jobTitle) return [];
 
-      await fetch(`${supabaseUrl}/functions/v1/${fnName}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(searchBody),
-      });
-    } catch {
-      // Individual board failure shouldn't block pipeline
-    }
+    return boards.map(async (board) => {
+      const fnName = BOARD_FUNCTION_MAP[board];
+      if (!fnName) return;
+      try {
+        const searchBody: Record<string, unknown> = {
+          account_id: accountId,
+          max_results: 25,
+          force_refresh: false,
+        };
+        if (board === "linkedin") {
+          searchBody.job_title = `"${jobTitle}"`;
+          searchBody.location = location;
+          searchBody.posted_within = "Past Week";
+        } else if (board === "dice") {
+          searchBody.keyword = `"${jobTitle}"`;
+          searchBody.location = location;
+          searchBody.posted_date = "Past week";
+        } else {
+          searchBody.keyword = `"${jobTitle}"`;
+          searchBody.location = location;
+          searchBody.date_posted = "Past week";
+        }
+
+        await fetch(`${supabaseUrl}/functions/v1/${fnName}`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(searchBody),
+        });
+      } catch {
+        // Individual board failure shouldn't block pipeline
+      }
+    });
   });
 
   await Promise.allSettled(scrapePromises);
@@ -163,27 +187,43 @@ async function runFullPipeline(
   // ── Step 3: Run radar-match ──
   let jobsMatched = 0;
   let jobsFetched = 0;
-  let runStatus = "success";
+  let runStatus: "success" | "partial" | "error" = "success";
   let errorMsg: string | null = null;
+  let successfulProfiles = 0;
 
-  try {
-    const res = await fetch(`${supabaseUrl}/functions/v1/radar-match`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ profile_id: profileId, account_id: accountId }),
-    });
+  for (const profileRow of profiles) {
+    const currentProfileId = profileRow.id as string;
+    const role = (profileRow.target_role as string) ?? "";
+    if (!role) continue;
 
-    const result = await res.json();
-    jobsMatched = result.matched ?? 0;
-    jobsFetched = jobsMatched + (result.skipped ?? 0);
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/radar-match`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ profile_id: currentProfileId, account_id: accountId }),
+      });
 
-    if (!res.ok || result.error) {
-      runStatus = "error";
-      errorMsg = result.error ?? `HTTP ${res.status}`;
+      const result = await res.json();
+      const matched = result.matched ?? 0;
+      const fetched = matched + (result.skipped ?? 0);
+      jobsMatched += matched;
+      jobsFetched += fetched;
+
+      if (!res.ok || result.error) {
+        runStatus = runStatus === "success" ? "partial" : runStatus;
+        errorMsg = result.error ?? `HTTP ${res.status}`;
+      } else {
+        successfulProfiles += 1;
+      }
+    } catch (err) {
+      runStatus = runStatus === "success" ? "partial" : runStatus;
+      errorMsg = (err as Error).message;
     }
-  } catch (err) {
+  }
+
+  if (successfulProfiles === 0) {
     runStatus = "error";
-    errorMsg = (err as Error).message;
+    if (!errorMsg) errorMsg = "All candidate matching attempts failed";
   }
 
   // ── Step 4: Finish run ──
@@ -191,22 +231,18 @@ async function runFullPipeline(
 
   // Send notification on success
   if (runStatus === "success") {
-    const candidateName = profile.target_role ?? "your candidate";
-    const { data: profileName } = await supabase
-      .from("profiles")
-      .select("candidate_name")
-      .eq("id", profileId)
-      .maybeSingle();
+    const watchContext = profileId
+      ? (profiles.find((p) => p.id === profileId)?.candidate_name as string | undefined) ?? "your candidate"
+      : `${successfulProfiles} hotlist candidate${successfulProfiles === 1 ? "" : "s"}`;
 
-    const name = (profileName?.candidate_name as string) ?? candidateName;
     await supabase.from("notifications").insert({
       account_id: accountId,
       type: "watch_complete",
       title: "Watch Schedule Complete",
       body: jobsMatched > 0
-        ? `Found ${jobsMatched} matching jobs for ${name}. Check the Job Match AI results.`
-        : `No new matching jobs found for ${name} this run.`,
-      link: "/job-match-ai",
+        ? `Found ${jobsMatched} matching jobs for ${watchContext}. Check the Job Watch AI results.`
+        : `No new matching jobs found for ${watchContext} this run.`,
+      link: "/job-watch-ai",
       read: false,
     });
   }
