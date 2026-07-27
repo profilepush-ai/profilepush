@@ -149,36 +149,26 @@ function GifSlot({
   const [hovered, setHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setIsVisible(true); observer.disconnect(); } },
-      { rootMargin: '300px' }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  const isVideo = !!imageUrl && /\.(webm|mp4|mov)(\?|$)/i.test(imageUrl);
 
   useEffect(() => {
     const vid = videoRef.current;
-    if (vid && imageUrl && isVisible) {
+    if (vid && imageUrl) {
       vid.setAttribute('webkit-playsinline', '');
       vid.play().catch(() => {});
     }
-  }, [imageUrl, isVisible]);
+  }, [imageUrl]);
 
   async function handleFile(file: File) {
-    if (file.type !== 'video/webm') return;
+    if (!['video/webm', 'video/mp4'].includes(file.type)) return;
     setUploading(true);
     try {
-      const path = `features/${featureKey}.webm`;
+      const ext = file.type === 'video/mp4' ? 'mp4' : 'webm';
+      const path = `features/${featureKey}.${ext}`;
       const { error: uploadErr } = await supabase.storage
         .from('landing-assets')
-        .upload(path, file, { upsert: true, contentType: 'video/webm' });
+        .upload(path, file, { upsert: true, contentType: file.type });
       if (uploadErr) throw uploadErr;
 
       const { data: urlData } = supabase.storage.from('landing-assets').getPublicUrl(path);
@@ -196,7 +186,7 @@ function GifSlot({
   }
 
   return (
-    <div ref={containerRef} className="relative w-full">
+    <div className="relative w-full">
       <div
         className="relative w-full aspect-[2/1] overflow-hidden border border-gray-200 shadow-2xl shadow-gray-300/40 ring-1 ring-gray-100/80 bg-white group"
         onMouseEnter={() => setHovered(true)}
@@ -204,7 +194,8 @@ function GifSlot({
       >
         {/* Content area */}
       <div className={`absolute inset-0 bg-gradient-to-br ${accent}`}>
-        {imageUrl && isVisible ? (
+        {imageUrl ? (
+          isVideo ? (
           <video
             ref={videoRef}
             src={imageUrl}
@@ -217,6 +208,14 @@ function GifSlot({
             disableRemotePlayback
             className="w-full h-full object-cover"
           />
+          ) : (
+            <img
+              src={imageUrl}
+              alt="Feature preview"
+              loading="lazy"
+              className="w-full h-full object-cover"
+            />
+          )
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-3">
             <div className="w-16 h-16 rounded-2xl bg-gray-100 border border-gray-200 flex items-center justify-center">
@@ -233,7 +232,7 @@ function GifSlot({
           <input
             ref={inputRef}
             type="file"
-            accept=".webm,video/webm"
+            accept=".webm,.mp4,video/webm,video/mp4"
             className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
           />
@@ -285,7 +284,13 @@ export default function LandingPage() {
   const { user } = useAuth();
   const canEdit = user?.email === 'poornapotluri27@gmail.com';
 
-  const [screenshots, setScreenshots] = useState<Record<string, string>>({});
+  const storageBaseUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/landing-assets/features`;
+  const fallbackScreenshots = FEATURES.reduce<Record<string, string>>((acc, f) => {
+    acc[f.key] = `${storageBaseUrl}/${f.key}.webm`;
+    return acc;
+  }, {});
+
+  const [screenshots, setScreenshots] = useState<Record<string, string>>(fallbackScreenshots);
 
   useEffect(() => {
     supabase
@@ -296,10 +301,10 @@ export default function LandingPage() {
           console.warn('Failed to load landing screenshots:', error.message);
           return;
         }
-        if (data) {
+        if (data && data.length > 0) {
           const map: Record<string, string> = {};
           data.forEach(r => { map[r.feature_key] = r.image_url; });
-          setScreenshots(map);
+          setScreenshots(prev => ({ ...prev, ...map }));
         }
       })
       .catch(() => {});

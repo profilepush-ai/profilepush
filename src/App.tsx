@@ -8,6 +8,7 @@ import { useAuth } from './contexts/AuthContext';
 
 const SignUp = lazy(() => import('./pages/SignUp'));
 const SignIn = lazy(() => import('./pages/SignIn'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Dashboard = lazy(() => import('./pages/Desk'));
 const ProfilesDirectory = lazy(() => import('./pages/ProfilesDirectory'));
 const ProfileDetails = lazy(() => import('./pages/ProfileDetails'));
@@ -116,6 +117,7 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/signup" element={<SignUp />} />
             <Route path="/signin" element={<SignIn />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/onboard/:token" element={<CandidateOnboarding />} />
             <Route path="/confirm-applied/:token" element={<ConfirmApplied />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
