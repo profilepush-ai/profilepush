@@ -53,6 +53,7 @@ type SourceTab = 'all' | 'job_boards' | 'social_groups' | 'chat_groups' | 'other
 const JOB_BOARD_SOURCES = new Set(['linkedin', 'dice', 'indeed', 'monster', 'careerbuilder']);
 const SOCIAL_GROUP_PLATFORMS = new Set(['facebook', 'linkedin']);
 const CHAT_GROUP_PLATFORMS = new Set(['whatsapp']);
+const LIVE_MATCH_COOLDOWN_KEY = 'radar_live_match_cooldowns';
 
 const EMPTY_EXPERIENCE: ExperienceEntry = {
   company: '',
@@ -100,7 +101,7 @@ export default function RadarPage() {
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [hotlistProfileIds, setHotlistProfileIds] = useState<Set<string>>(new Set());
-  const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'all'>('all');
+  const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'all'>('hotlist');
   const [candidateQuery, setCandidateQuery] = useState('');
   const [results, setResults] = useState<RadarMatchResult[]>([]);
   const [jobMap, setJobMap] = useState<Map<string, JobInfo>>(new Map());
@@ -138,6 +139,7 @@ export default function RadarPage() {
   const [queuedJobIds, setQueuedJobIds] = useState<Set<string>>(new Set());
   const [queuingJobId, setQueuingJobId] = useState<string | null>(null);
   const [disqualifyingJobId, setDisqualifyingJobId] = useState<string | null>(null);
+  const [liveMatchCooldowns, setLiveMatchCooldowns] = useState<Record<string, number>>({});
   const sortField: SortField = 'score';
   const sortDir: SortDir = 'desc';
 
@@ -203,13 +205,27 @@ export default function RadarPage() {
   }, [globalWatch?.run_status, account?.id]);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LIVE_MATCH_COOLDOWN_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, number>;
+      if (parsed && typeof parsed === 'object') setLiveMatchCooldowns(parsed);
+    } catch {
+      setLiveMatchCooldowns({});
+    }
+  }, []);
+
+  useEffect(() => {
     if (!selectedProfileId && profiles.length > 0) {
       const urlProfileId = searchParams.get('profileId');
       const match = urlProfileId ? profiles.find(p => p.id === urlProfileId) : null;
       const mostRecent = [...profiles].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-      setSelectedProfileId(match ? match.id : mostRecent?.id ?? profiles[0].id);
+      const hotlistMostRecent = [...profiles]
+        .filter(p => hotlistProfileIds.has(p.id))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+      setSelectedProfileId(match ? match.id : hotlistMostRecent?.id ?? mostRecent?.id ?? profiles[0].id);
     }
-  }, [profiles, selectedProfileId]);
+  }, [profiles, selectedProfileId, searchParams, hotlistProfileIds]);
 
   useEffect(() => {
     if (selectedProfileId) {
@@ -619,21 +635,54 @@ export default function RadarPage() {
     return `${days}d ago`;
   }
 
+  function formatCooldown(ms: number): string {
+    if (ms <= 0) return '0m';
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.ceil((ms % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours <= 0) return `${minutes}m`;
+    return `${hours}h ${minutes}m`;
+  }
+
+  const selectedCooldownAt = selectedProfileId ? (liveMatchCooldowns[selectedProfileId] ?? 0) : 0;
+  const cooldownRemainingMs = Math.max(0, selectedCooldownAt + (24 * 60 * 60 * 1000) - Date.now());
+  const isLiveMatchCooldownActive = !isPaidPlan && cooldownRemainingMs > 0;
+
+  function stampLiveMatchCooldown(profileId: string) {
+    const next = { ...liveMatchCooldowns, [profileId]: Date.now() };
+    setLiveMatchCooldowns(next);
+    try {
+      localStorage.setItem(LIVE_MATCH_COOLDOWN_KEY, JSON.stringify(next));
+    } catch {
+      // no-op if storage is unavailable
+    }
+  }
+
   async function runRadarScan() {
     if (!account?.id) return;
+    if (!selectedProfileId) {
+      showToast('Select a candidate to run Live Match', 'error');
+      return;
+    }
+    if (isLiveMatchCooldownActive) {
+      showToast('Live Match is available once every 24 hours on free plans', 'error');
+      return;
+    }
+
     abortRef.current = false;
     setScanning(true);
     localStorage.setItem(scanStateKey, JSON.stringify({ running: true, startedAt: Date.now() }));
 
-    const targetProfiles = selectedProfileId
-      ? profiles.filter(p => p.id === selectedProfileId)
-      : profiles.filter(p => p.bench_stage !== 'Placed' && p.bench_stage !== 'Lost');
+    const targetProfiles = profiles.filter(p => p.id === selectedProfileId);
 
     if (targetProfiles.length === 0) {
       showToast('No active profiles to scan', 'error');
       setScanning(false);
       localStorage.removeItem(scanStateKey);
       return;
+    }
+
+    if (!isPaidPlan) {
+      stampLiveMatchCooldown(selectedProfileId);
     }
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
@@ -1024,7 +1073,7 @@ export default function RadarPage() {
               <div className="w-[340px] flex-shrink-0 border-r border-slate-200 overflow-hidden bg-slate-50/50 flex flex-col">
                 {/* Col 2 Header */}
                 <div className="sticky top-0 z-10 bg-white border-b border-slate-200">
-                  <div className="px-2.5 h-[40px] flex items-center justify-between">
+                  <div className="px-3 h-[44px] flex items-center justify-between border-b border-slate-100">
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Details</h3>
                     {detailTab === 'profile' && (
                       <button
@@ -1037,13 +1086,13 @@ export default function RadarPage() {
                       </button>
                     )}
                   </div>
-                  <div className="px-2 py-1.5">
+                  <div className="px-3 py-2">
                     <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
                       {(['profile', 'docs', 'activity'] as const).map(tab => (
                         <button
                           key={tab}
                           onClick={() => setDetailTab(tab)}
-                          className={`flex-1 flex items-center justify-center gap-1 px-1 py-1 text-[10px] font-semibold rounded-md transition-all ${
+                          className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
                             detailTab === tab
                               ? 'bg-white text-slate-900 shadow-sm'
                               : 'text-slate-500 hover:text-slate-700'
@@ -1062,7 +1111,7 @@ export default function RadarPage() {
                 <div className={`flex-1 p-2.5 ${detailTab === 'profile' && !isEditingProfile ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                 {/* ── Profile Tab ── */}
                 {detailTab === 'profile' && (
-                  <div className="space-y-2.5">
+                  <div className={isEditingProfile ? 'space-y-2.5' : 'h-full flex flex-col gap-2'}>
                     {(() => {
                       const hasText = (value: string | null | undefined) => Boolean(value && value.trim().length > 0);
                       const matchFieldChecks = [
@@ -1081,6 +1130,29 @@ export default function RadarPage() {
                       const filledMatchFields = matchFieldChecks.filter(Boolean).length;
                       const completionPct = Math.round((filledMatchFields / totalMatchFields) * 100);
                       const hasMissingFields = filledMatchFields < totalMatchFields;
+                      const healthTone = completionPct < 60
+                        ? {
+                          wrap: 'border-red-200 bg-red-50',
+                          title: 'text-red-600',
+                          score: 'text-red-700',
+                          helper: 'text-red-600',
+                          message: 'This candidate is not getting the right matches. Get at least 80% for good matches.',
+                        }
+                        : completionPct < 80
+                        ? {
+                          wrap: 'border-amber-200 bg-amber-50',
+                          title: 'text-amber-700',
+                          score: 'text-amber-700',
+                          helper: 'text-amber-700',
+                          message: 'Matches can improve. Push this profile to 80%+ for stronger results.',
+                        }
+                        : {
+                          wrap: 'border-emerald-200 bg-emerald-50',
+                          title: 'text-emerald-700',
+                          score: 'text-emerald-700',
+                          helper: 'text-emerald-700',
+                          message: 'Great profile health. This candidate is set up for high quality matches.',
+                        };
                       const createdAt = new Date(profile.created_at).getTime();
                       const daysSinceCreated = Number.isFinite(createdAt)
                         ? Math.max(0, Math.floor((Date.now() - createdAt) / (1000 * 60 * 60 * 24)))
@@ -1105,19 +1177,7 @@ export default function RadarPage() {
                       return (
                         <>
                           <div className="bg-white rounded-xl border border-slate-200 p-2.5">
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm font-bold text-slate-900 leading-tight">{profile.candidate_name}</p>
-                              <button
-                                onClick={() => setIsEditingProfile(prev => !prev)}
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 transition-colors"
-                                title={isEditingProfile ? 'Close edit mode' : 'Edit profile fields'}
-                              >
-                                <Pencil size={10} />
-                                {isEditingProfile ? 'Close' : 'Edit'}
-                              </button>
-                            </div>
-
-                            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                            <div className="grid grid-cols-2 gap-1.5">
                               <div className="rounded-lg border border-slate-200 bg-slate-50 p-1.5">
                                 <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Days Since Created</p>
                                 <p className="mt-0.5 text-sm font-bold text-slate-900">{daysSinceCreated}</p>
@@ -1129,21 +1189,17 @@ export default function RadarPage() {
                             </div>
                           </div>
 
-                          <div className="bg-white rounded-xl border border-slate-200 p-2.5">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Match Health</p>
-                            <p className="mt-0.5 text-sm font-bold text-slate-900">{completionPct}%</p>
-
-                            {hasMissingFields && (
-                              <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                                80% health gets very high quality matches.
-                              </p>
-                            )}
+                          <div className={`rounded-xl border p-2.5 ${healthTone.wrap}`}>
+                            <p className={`text-sm font-bold ${healthTone.score}`}>{completionPct}% Match Health</p>
+                            <p className={`mt-1 text-[10px] leading-relaxed ${healthTone.helper}`}>
+                              {healthTone.message}
+                            </p>
                           </div>
 
                           {!isEditingProfile ? (
-                            <div className="bg-white rounded-xl border border-slate-200 p-2.5">
-                              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Core Matching Inputs</p>
-                              <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg">
+                            <div className="bg-white rounded-xl border border-slate-200 p-2.5 flex-1 min-h-0 flex flex-col">
+                              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Match Rules</p>
+                              <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg flex-1 min-h-0 overflow-y-auto">
                                 {matchFieldRows.map((row) => {
                                   const hasValue = hasText(row.value);
                                   const isPrioritySkills = row.label === 'Priority Skills';
@@ -1159,12 +1215,14 @@ export default function RadarPage() {
                                           {hasValue ? row.value : 'Empty'}
                                         </p>
                                       ) : skills.length > 0 ? (
-                                        <div className="flex flex-wrap gap-0.5">
+                                        <div>
+                                          <div className="flex flex-wrap gap-0.5">
                                           {skills.map(skill => (
                                             <span key={skill} className="inline-flex items-center rounded-md bg-slate-100 px-1 py-0.5 text-[10px] font-medium text-slate-700">
                                               {skill}
                                             </span>
                                           ))}
+                                          </div>
                                         </div>
                                       ) : (
                                         <p className="text-[11px] font-medium text-slate-400 italic">Empty</p>
@@ -1177,7 +1235,7 @@ export default function RadarPage() {
                           ) : (
                             <>
                               <div className="space-y-2.5 bg-white rounded-xl border border-slate-200 p-2.5">
-                                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Core Matching Inputs</p>
+                                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Match Rules</p>
 
                                 <div>
                                   <label className="block text-[11px] font-semibold text-slate-500 mb-1">Target Role</label>
@@ -1461,27 +1519,6 @@ export default function RadarPage() {
 
           {/* ── COL 3: Match Results ───────────────────────────────────────── */}
           <div className="flex-1 min-w-0 overflow-y-auto">
-            {/* Pipeline Progress */}
-            {scanning && pipelineStep !== 'idle' && (
-              <div className="bg-white border-b border-sky-200 px-5 py-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex items-center gap-2 text-sky-600">
-                    <Target size={14} className="animate-pulse" />
-                    <span className="text-sm font-medium">Matching profiles against jobs...</span>
-                  </div>
-                </div>
-                {pipelineDetail && <p className="text-sm text-slate-600 mb-2">{pipelineDetail}</p>}
-                {pipelineProgress.total > 0 && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-sky-500 rounded-full transition-all duration-300" style={{ width: `${(pipelineProgress.current / pipelineProgress.total) * 100}%` }} />
-                    </div>
-                    <span className="text-xs text-slate-500 font-medium">{pipelineProgress.current}/{pipelineProgress.total}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Filter Tabs - Sticky Column Header */}
             <div className="sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
               <div className="flex items-center h-[44px] px-3 gap-3 border-b border-slate-100">
@@ -1526,14 +1563,27 @@ export default function RadarPage() {
                   )}
                 </div>
                 <div className="flex-1" />
-                <button
-                  onClick={runRadarScan}
-                  disabled={scanning}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 hover:from-blue-700 hover:via-orange-600 hover:to-yellow-500 disabled:opacity-50 text-white text-[11px] font-bold rounded-lg transition-all shadow-sm shrink-0"
-                >
-                  {scanning ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                  {scanning ? 'Scanning...' : 'Live Match'}
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {isLiveMatchCooldownActive && (
+                    <p className="text-[10px] text-slate-500 whitespace-nowrap">
+                      Refresh in {formatCooldown(cooldownRemainingMs)}.{' '}
+                      <button
+                        onClick={() => navigate('/billing')}
+                        className="text-blue-600 hover:text-blue-700 font-semibold"
+                      >
+                        Upgrade for hourly refresh
+                      </button>
+                    </p>
+                  )}
+                  <button
+                    onClick={runRadarScan}
+                    disabled={scanning || !selectedProfileId || isLiveMatchCooldownActive}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 hover:from-blue-700 hover:via-orange-600 hover:to-yellow-500 disabled:from-slate-300 disabled:via-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white text-[11px] font-bold rounded-lg transition-all shadow-sm"
+                  >
+                    {scanning ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    {scanning ? 'Scanning...' : 'Live Match'}
+                  </button>
+                </div>
               </div>
               <div className="px-3 py-2">
                 <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
@@ -1565,6 +1615,25 @@ export default function RadarPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Pipeline Progress */}
+              {scanning && pipelineStep !== 'idle' && (
+                <div className="border-t border-sky-100 bg-sky-50/70 px-3 py-2">
+                  <div className="flex items-center gap-2 text-sky-700">
+                    <Target size={12} className="animate-pulse" />
+                    <span className="text-[11px] font-semibold">Matching profiles against jobs...</span>
+                  </div>
+                  {pipelineDetail && <p className="mt-0.5 text-[11px] text-sky-700/90">{pipelineDetail}</p>}
+                  {pipelineProgress.total > 0 && (
+                    <div className="mt-1 flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-sky-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-sky-500 rounded-full transition-all duration-300" style={{ width: `${(pipelineProgress.current / pipelineProgress.total) * 100}%` }} />
+                      </div>
+                      <span className="text-[10px] text-sky-700 font-medium whitespace-nowrap">{pipelineProgress.current}/{pipelineProgress.total}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Results List */}
