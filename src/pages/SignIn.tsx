@@ -241,12 +241,12 @@ export default function SignIn() {
 
         <div className="space-y-8">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">Job Sourcing</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">AI Copilot</p>
             <h2 className="text-3xl font-extrabold text-gray-900 leading-tight mb-4">
-              Source jobs from every<br />board in one click.
+              AI Copilot for Bench Sales<br />Recruiters to Hit 10X Submissions.
             </h2>
             <p className="text-gray-500 text-sm leading-relaxed">
-              LinkedIn, Indeed, Dice, Monster, CareerBuilder — searched simultaneously. Stop switching tabs and start placing candidates.
+              Parse resumes in seconds, search multiple job boards at once, score matches with AI, and move faster from sourcing to submissions.
             </p>
           </div>
 
@@ -329,7 +329,7 @@ export default function SignIn() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-xs font-semibold text-gray-700 mb-1.5">Email</label>
+              <label htmlFor="email" className="block text-xs font-semibold text-gray-700 mb-1.5">Work Email</label>
               <div className="relative">
                 <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
