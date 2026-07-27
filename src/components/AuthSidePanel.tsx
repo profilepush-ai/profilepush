@@ -45,17 +45,15 @@ export default function AuthSidePanel() {
       </Link>
 
       <div className="flex-1 flex items-center">
-        <div>
-          <h2 className="text-3xl font-extrabold text-gray-900 leading-tight">
-            AI Copilot for Bench Sales
-            <br />
-            Recruiters to Hit 10X Submissions.
-          </h2>
-          <div className="mt-6 inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-sky-100 via-blue-100 to-cyan-100 border border-blue-200 px-8 py-5 shadow-sm">
-            <span className="text-4xl font-extrabold tracking-tight text-blue-700">
+        <div className="max-w-xl">
+          <div className="inline-flex items-center justify-center rounded-2xl bg-white border border-gray-200 px-8 py-5 shadow-sm">
+            <span className="text-6xl font-extrabold tracking-tight text-gray-700">
               {formatRecruiterCount(recruiterCount)}
             </span>
           </div>
+          <p className="mt-6 text-3xl font-bold leading-tight text-gray-700">
+            Bench Sales teams are already using profilepush.ai to hit 10X submissions.
+          </p>
         </div>
       </div>
 
