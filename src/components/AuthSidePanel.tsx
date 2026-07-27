@@ -51,9 +51,11 @@ export default function AuthSidePanel() {
             <br />
             Recruiters to Hit 10X Submissions.
           </h2>
-          <p className="text-gray-500 text-sm mt-5">
-            {formatRecruiterCount(recruiterCount)} recruiters using profilepush.ai
-          </p>
+          <div className="mt-6 inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-sky-100 via-blue-100 to-cyan-100 border border-blue-200 px-8 py-5 shadow-sm">
+            <span className="text-4xl font-extrabold tracking-tight text-blue-700">
+              {formatRecruiterCount(recruiterCount)}
+            </span>
+          </div>
         </div>
       </div>
 
