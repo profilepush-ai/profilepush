@@ -10,6 +10,15 @@ function formatRecruiterCount(count: number | null): string {
   return new Intl.NumberFormat('en-US').format(count);
 }
 
+const RECRUITER_AVATARS = [
+  { name: 'Aarav', src: 'https://i.pravatar.cc/64?img=12' },
+  { name: 'Sophia', src: 'https://i.pravatar.cc/64?img=32' },
+  { name: 'Diego', src: 'https://i.pravatar.cc/64?img=15' },
+  { name: 'Meera', src: 'https://i.pravatar.cc/64?img=41' },
+  { name: 'Noah', src: 'https://i.pravatar.cc/64?img=22' },
+  { name: 'Anika', src: 'https://i.pravatar.cc/64?img=47' },
+];
+
 export default function AuthSidePanel() {
   const [recruiterCount, setRecruiterCount] = useState<number | null>(null);
 
@@ -40,20 +49,33 @@ export default function AuthSidePanel() {
 
   return (
     <div className="hidden lg:flex lg:w-1/2 bg-gray-100 flex-col justify-between p-12">
-      <Link to="/" className="flex items-center gap-2 font-bold text-lg">
+      <Link to="/" className="flex items-center gap-2 font-bold text-lg text-gray-300">
         <Logo size="lg" />
       </Link>
 
       <div className="flex-1 flex items-center">
         <div className="max-w-xl">
-          <div className="inline-flex items-center justify-center rounded-2xl bg-white border border-gray-200 px-8 py-5 shadow-sm">
-            <span className="text-6xl font-extrabold tracking-tight text-gray-700">
-              {formatRecruiterCount(recruiterCount)}
-            </span>
-          </div>
-          <p className="mt-6 text-3xl font-bold leading-tight text-gray-700">
-            Bench Sales teams are already using profilepush.ai to hit 10X submissions.
+          <span className="block text-8xl xl:text-9xl 2xl:text-[10rem] leading-[0.9] font-extrabold tracking-tight bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">
+            {recruiterCount === null ? '...' : `${formatRecruiterCount(recruiterCount)}+`}
+          </span>
+          <p className="mt-2 text-sm font-semibold uppercase tracking-[0.2em] text-gray-400">
+            Recruiters joined already and loving it.
           </p>
+
+          <div className="mt-10 flex items-center gap-4">
+            <div className="flex -space-x-3">
+              {RECRUITER_AVATARS.map((avatar) => (
+                <img
+                  key={avatar.name}
+                  src={avatar.src}
+                  alt={`${avatar.name} avatar`}
+                  className="h-11 w-11 rounded-full border-2 border-white object-cover shadow-sm"
+                  loading="lazy"
+                />
+              ))}
+            </div>
+            <p className="text-sm font-medium text-gray-400">Real recruiters. Real momentum.</p>
+          </div>
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Upload, X, FileText, UploadCloud, Sparkles, CheckCircle2,
+  Upload, X, FileText, Sparkles, CheckCircle2,
   UserPlus, Link2, Copy, Check, ArrowRight, Star, PenLine,
   Plus, Trash2, Clock, Search, ChevronDown, ChevronRight,
   UserCircle2, MapPin, Mail, Phone, ExternalLink,
@@ -164,7 +164,6 @@ export default function ProfilesDirectory() {
   const [loading, setLoading]         = useState(true);
   const [parsing, setParsing]         = useState(false);
   const [parseSteps, setParseSteps]   = useState<ParseStep[]>([]);
-  const [dragOver, setDragOver]       = useState(false);
   const [showModal, setShowModal]     = useState(false);
   const [parsed, setParsed]           = useState<ParsedProfile>(BLANK_PARSED);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -178,10 +177,8 @@ export default function ProfilesDirectory() {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pasteText, setPasteText]           = useState('');
 
-  const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkPasteText, setBulkPasteText] = useState('');
   const [bulkParsedRows, setBulkParsedRows] = useState<Record<string, string>[]>([]);
-  const [bulkColumns, setBulkColumns] = useState<string[]>([]);
   const [bulkCreating, setBulkCreating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
   const [bulkStep, setBulkStep] = useState<'paste' | 'parsing' | 'preview' | 'creating' | 'done'>('paste');
@@ -805,8 +802,6 @@ export default function ProfilesDirectory() {
       if (!data.profiles || data.profiles.length === 0) {
         throw new Error('AI could not parse any candidates from the data.');
       }
-      const cols = Object.keys(data.profiles[0]).filter(k => data.profiles.some((p: Record<string, unknown>) => p[k]));
-      setBulkColumns(cols);
       setBulkParsedRows(data.profiles);
       setBulkStep('preview');
     } catch (err) {
@@ -867,21 +862,12 @@ export default function ProfilesDirectory() {
     showToast(`${created} profiles created successfully.`, 'success');
   }
 
-  function resetBulkModal() {
-    setShowBulkModal(false);
+  function resetBulkImportState() {
     setBulkPasteText('');
     setBulkParsedRows([]);
-    setBulkColumns([]);
     setBulkCreating(false);
     setBulkProgress({ done: 0, total: 0 });
     setBulkStep('paste');
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
   }
 
   async function handleSave() {
@@ -1006,8 +992,6 @@ export default function ProfilesDirectory() {
 
   const selectedStat = profileStats.find(s => s.profile.id === selectedProfileId) ?? null;
 
-  const recentProfiles = [...profiles].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
   // ── render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -1047,10 +1031,16 @@ export default function ProfilesDirectory() {
               <X size={9} /> Clear
             </button>
           )}
+          <button
+            onClick={() => { setSelectedProfileId(null); navigate('/bench', { replace: true }); }}
+            className="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+          >
+            + Add New
+          </button>
         </div>
       </div>
 
-      {/* 3-Column Layout */}
+      {/* 2-Column Layout */}
       <div className="flex-1 flex overflow-hidden min-h-0">
 
         {/* ── Column 1: Candidates ── */}
@@ -1116,7 +1106,7 @@ export default function ProfilesDirectory() {
               <div className="flex items-center justify-center py-10"><LogoSpinner size={16} /></div>
             ) : filteredStats.length === 0 ? (
               <div className="py-10 text-center px-4">
-                <p className="text-xs text-gray-400">{profiles.length === 0 ? 'No candidates yet. Add one using the panel on the right.' : 'No candidates match your filters.'}</p>
+                  <p className="text-xs text-gray-400">{profiles.length === 0 ? 'No candidates yet. Click + Add New to upload one.' : 'No candidates match your filters.'}</p>
               </div>
             ) : filteredStats.map(({ profile: p, applied, saved }) => {
               const isSelected = selectedProfileId === p.id;
@@ -1159,76 +1149,139 @@ export default function ProfilesDirectory() {
         <div className="flex-1 flex flex-col overflow-hidden bg-gray-50 min-w-0">
           {!selectedStat ? (
             <div className="flex-1 flex items-center justify-center p-8">
-              <div className="w-full max-w-sm">
-                {/* Upload drop zone */}
-                <div
-                  className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 cursor-pointer transition-all group ${
-                    dragOver
-                      ? 'border-blue-400 bg-blue-50'
-                      : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50/40'
-                  }`}
-                  onClick={() => !parsing && fileInputRef.current?.click()}
-                  onDragOver={e => { e.preventDefault(); }}
-                  onDrop={e => { e.preventDefault(); }}
-                >
-                  {/* glow */}
-                  <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(ellipse_at_center,_rgba(59,130,246,0.06)_0%,_transparent_70%)] pointer-events-none" />
-
-                  <div className={`relative w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-all shadow-sm ${
-                    dragOver ? 'bg-blue-100 scale-110' : 'bg-blue-50 group-hover:scale-105 group-hover:bg-blue-100'
-                  }`}>
-                    {parsing
-                      ? <LogoSpinner size={24} />
-                      : <UploadCloud size={28} className={dragOver ? 'text-blue-600' : 'text-blue-400 group-hover:text-blue-500'} />
-                    }
+              <div className="w-full max-w-4xl space-y-4">
+                {/* Bulk import inline widget */}
+                <div className="rounded-2xl border border-blue-200 bg-white shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-white">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                        <Users size={18} className="text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">Bulk Import Profiles</p>
+                        <p className="text-[11px] text-gray-500 mt-0.5">Paste Google Sheet or Excel rows to upload multiple candidates in one go.</p>
+                      </div>
+                    </div>
                   </div>
 
-                  <p className="text-sm font-bold text-gray-800 mb-1">
-                    {parsing ? 'Processing resume…' : dragOver ? 'Drop to upload' : 'Upload a Resume'}
-                  </p>
-                  <p className="text-xs text-gray-400 text-center mb-4 leading-relaxed">
-                    AI parses it into a candidate profile instantly.<br />PDF, Word, RTF, TXT or paste text supported.
-                  </p>
+                  {bulkStep === 'paste' && (
+                    <div className="px-6 py-5">
+                      <label className="block text-xs font-bold text-gray-700 mb-2">Create in bulk by copy-pasting your bench data here</label>
+                      <p className="text-[11px] text-gray-400 mb-3">Copy header row + data rows from Google Sheets or Excel and paste below. We auto-map Name, Role, Skills, Visa, Rate and more.</p>
+                      <textarea
+                        value={bulkPasteText}
+                        onChange={e => setBulkPasteText(e.target.value)}
+                        placeholder={"Name\tRole\tSkills\tVisa\tWork Type\tRate\tLocation\n" + "John Doe\tJava Developer\tJava, Spring Boot, AWS\tH1B\tRemote\t65\tNew York, NY\n" + "Jane Smith\tReact Developer\tReact, TypeScript, Node\tGC\tHybrid\t70\tAustin, TX"}
+                        className="w-full h-56 text-[11px] font-mono text-gray-700 border border-gray-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 placeholder:text-gray-300"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-2">Supports tab-separated data (default when copied from spreadsheets).</p>
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          onClick={handleBulkPreview}
+                          disabled={!bulkPasteText.trim()}
+                          className="flex items-center gap-1.5 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl transition-colors shadow-sm"
+                        >
+                          Preview Data
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
-                  <div className="flex items-center gap-1.5 mb-5">
-                    <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600">
-                      <Sparkles size={9} /> AI Powered
-                    </span>
-                  </div>
+                  {bulkStep === 'parsing' && (
+                    <div className="px-6 py-10 flex flex-col items-center justify-center gap-4">
+                      <LogoSpinner size={28} />
+                      <p className="text-sm font-semibold text-gray-700">AI is analyzing your spreadsheet data...</p>
+                      <p className="text-xs text-gray-400">Intelligently mapping columns to candidate profile fields</p>
+                    </div>
+                  )}
 
-                  {!parsing && (
-                    <div className="flex items-center gap-2">
+                  {bulkStep === 'preview' && (
+                    <div className="px-6 py-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-semibold text-gray-700">{bulkParsedRows.length} candidates parsed by AI</p>
+                        <button onClick={() => setBulkStep('paste')} className="text-[11px] text-blue-600 hover:text-blue-700 font-medium">Edit Data</button>
+                      </div>
+                      <div className="border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto max-h-[42vh]">
+                          <table className="w-full text-[11px]">
+                            <thead className="bg-gray-50 sticky top-0">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide">#</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Name</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Role</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Skills</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Visa</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Work Type</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Location</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Rate</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {bulkParsedRows.map((row, idx) => (
+                                <tr key={idx} className="hover:bg-gray-50/50">
+                                  <td className="px-3 py-2 text-gray-400 font-medium">{idx + 1}</td>
+                                  <td className="px-3 py-2 text-gray-900 font-medium whitespace-nowrap">{(row as Record<string,unknown>).candidate_name as string || '-'}</td>
+                                  <td className="px-3 py-2 text-gray-700 max-w-[140px] truncate">{(row as Record<string,unknown>).target_role as string || '-'}</td>
+                                  <td className="px-3 py-2 text-gray-700 max-w-[180px] truncate">{(row as Record<string,unknown>).core_skills as string || '-'}</td>
+                                  <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).visa_status as string || '-'}</td>
+                                  <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).work_type as string || '-'}</td>
+                                  <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).preferred_locations as string || (row as Record<string,unknown>).location as string || '-'}</td>
+                                  <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).desired_salary_max ? `${(row as Record<string,unknown>).desired_salary_max}/hr` : '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center justify-between">
+                        <p className="text-[10px] text-gray-400">Profiles will be created in batches of 5. Upload resumes individually afterward.</p>
+                        <button
+                          onClick={handleBulkCreate}
+                          className="flex items-center gap-1.5 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl transition-colors shadow-sm"
+                        >
+                          Create {bulkParsedRows.length} Profiles
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {bulkStep === 'creating' && (
+                    <div className="px-6 py-10 flex flex-col items-center justify-center gap-4">
+                      <LogoSpinner size={28} />
+                      <p className="text-sm font-semibold text-gray-700">Creating profiles in batches...</p>
+                      <div className="w-64 h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${bulkProgress.total ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%` }} />
+                      </div>
+                      <p className="text-xs text-gray-500">{bulkProgress.done} / {bulkProgress.total} profiles created</p>
+                    </div>
+                  )}
+
+                  {bulkStep === 'done' && (
+                    <div className="px-6 py-10 flex flex-col items-center justify-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center">
+                        <Check size={24} className="text-emerald-600" />
+                      </div>
+                      <p className="text-sm font-semibold text-gray-700">{bulkProgress.done} profiles created successfully!</p>
+                      <p className="text-[11px] text-gray-400">Import another sheet to add more candidates.</p>
                       <button
-                        onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                        className="flex items-center gap-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-colors shadow-sm shadow-blue-200"
+                        onClick={resetBulkImportState}
+                        className="mt-1 text-sm font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2.5 rounded-xl transition-colors"
                       >
-                        <Upload size={12} /> Choose File
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); setShowPasteModal(true); }}
-                        className="flex items-center gap-2 text-xs font-bold bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-5 py-2.5 rounded-xl transition-colors"
-                      >
-                        <ClipboardPaste size={12} /> Paste Text
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); setShowBulkModal(true); }}
-                        className="flex items-center gap-2 text-xs font-bold bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-5 py-2.5 rounded-xl transition-colors"
-                      >
-                        <Users size={12} /> Bulk Import
+                        Import Another Sheet
                       </button>
                     </div>
                   )}
                 </div>
 
-                {/* Divider */}
-                <div className="flex items-center gap-3 my-4">
-                  <div className="flex-1 h-px bg-gray-100" />
-                  <span className="text-[10px] text-gray-400 font-medium">or</span>
-                  <div className="flex-1 h-px bg-gray-100" />
-                </div>
-
-                {/* Secondary actions */}
-                <div className="flex gap-2">
+                {/* Action buttons */}
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={parsing}
+                    className="flex items-center justify-center gap-1.5 text-xs font-semibold bg-white hover:bg-blue-50 border border-gray-200 hover:border-blue-300 text-gray-700 hover:text-blue-700 px-3 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+                  >
+                    {parsing ? <LogoSpinner size={11} /> : <Upload size={12} />} AI Resume Upload
+                  </button>
                   <button
                     onClick={() => { setParsed(BLANK_PARSED); setPendingFile(null); setShowModal(true); }}
                     className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold bg-white hover:bg-violet-50 border border-gray-200 hover:border-violet-300 text-gray-700 hover:text-violet-700 px-3 py-2.5 rounded-xl transition-colors"
@@ -1238,12 +1291,19 @@ export default function ProfilesDirectory() {
                   <button
                     onClick={generateOnboardingLink}
                     disabled={generatingLink}
-                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold bg-white hover:bg-emerald-50 border border-gray-200 hover:border-emerald-300 text-gray-700 hover:text-emerald-700 px-3 py-2.5 rounded-xl transition-colors"
+                    className="flex items-center justify-center gap-1.5 text-xs font-semibold bg-white hover:bg-emerald-50 border border-gray-200 hover:border-emerald-300 text-gray-700 hover:text-emerald-700 px-3 py-2.5 rounded-xl transition-colors"
                   >
                     {generatingLink ? <LogoSpinner size={11} /> : <Link2 size={12} />}
-                    {generatingLink ? 'Generating…' : 'Onboarding Link'}
+                    {generatingLink ? 'Generating…' : 'Send Onboarding Link'}
+                  </button>
+                  <button
+                    onClick={() => setShowPasteModal(true)}
+                    className="flex items-center justify-center gap-1.5 text-xs font-semibold bg-white hover:bg-amber-50 border border-gray-200 hover:border-amber-300 text-gray-700 hover:text-amber-700 px-3 py-2.5 rounded-xl transition-colors"
+                  >
+                    <ClipboardPaste size={12} /> Paste Text
                   </button>
                 </div>
+                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.rtf,.txt" className="hidden" onChange={handleFileChange} />
               </div>
             </div>
           ) : (() => {
@@ -1769,134 +1829,6 @@ export default function ProfilesDirectory() {
           })()}
         </div>
 
-        {/* ── Column 3: Add Profiles ── */}
-        <div className="w-72 flex flex-col border-l border-gray-200 bg-white shrink-0 overflow-y-auto">
-
-          {/* Upload Resume — prominent hero widget */}
-          <div
-            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            className={`relative flex flex-col items-center justify-center p-6 border-b border-gray-200 transition-all cursor-pointer group ${dragOver ? 'bg-blue-50' : 'bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'}`}
-            style={{ minHeight: '40%' }}
-            onClick={() => !parsing && fileInputRef.current?.click()}
-          >
-            {/* Background glow */}
-            <div className={`absolute inset-0 transition-opacity ${dragOver ? 'opacity-0' : 'opacity-20'} bg-[radial-gradient(ellipse_at_center,_rgba(255,255,255,0.3)_0%,_transparent_70%)] pointer-events-none`} />
-            <div className={`relative w-14 h-14 rounded-2xl flex items-center justify-center mb-4 transition-all shadow-lg ${dragOver ? 'bg-blue-100 scale-110' : 'bg-white/20 group-hover:scale-110 group-hover:bg-white/30'}`}>
-              {parsing ? (
-                <LogoSpinner size={22} />
-              ) : (
-                <UploadCloud size={26} className={dragOver ? 'text-blue-600' : 'text-white'} />
-              )}
-            </div>
-            <p className={`text-base font-bold mb-1 ${dragOver ? 'text-blue-700' : 'text-white'}`}>
-              {parsing ? 'Processing…' : dragOver ? 'Drop to Upload' : 'Upload Resume'}
-            </p>
-            <p className={`text-[11px] text-center mb-3 ${dragOver ? 'text-blue-500' : 'text-blue-200'}`}>
-              PDF, Word, RTF, TXT or Paste Text
-            </p>
-            <div className="flex items-center gap-1.5 mb-4">
-              <div className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border ${dragOver ? 'bg-blue-100 border-blue-200 text-blue-700' : 'bg-white/20 border-white/30 text-white'}`}>
-                <Sparkles size={9} /> AI Powered
-              </div>
-            </div>
-            {!parsing && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                  className={`flex items-center gap-1.5 text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow ${dragOver ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-white text-blue-700 hover:bg-blue-50'}`}>
-                  <Upload size={12} /> Choose File
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); setShowPasteModal(true); }}
-                  className={`flex items-center gap-1.5 text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow ${dragOver ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-white/20 border border-white/30 text-white hover:bg-white/30'}`}>
-                  <ClipboardPaste size={12} /> Paste Text
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); setShowBulkModal(true); }}
-                  className={`flex items-center gap-1.5 text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow ${dragOver ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-white/20 border border-white/30 text-white hover:bg-white/30'}`}>
-                  <Users size={12} /> Bulk Import
-                </button>
-              </div>
-            )}
-            <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.rtf,.txt" className="hidden" onChange={handleFileChange} />
-          </div>
-
-          {/* Onboarding Link */}
-          <div className="p-4 border-b border-gray-100">
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
-                <Link2 size={16} className="text-emerald-500" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-gray-800">Onboarding Link</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">Candidates submit their own profile</p>
-              </div>
-            </div>
-            <button onClick={generateOnboardingLink} disabled={generatingLink}
-              className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-emerald-50 border border-gray-200 hover:border-emerald-300 text-gray-700 hover:text-emerald-700 text-xs font-bold px-3 py-2.5 rounded-xl transition-colors">
-              {generatingLink ? <><LogoSpinner size={12} /> Generating…</> : <><Link2 size={12} /> Generate Link</>}
-            </button>
-          </div>
-
-          {/* Add Manually */}
-          <div className="p-4 border-b border-gray-100">
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
-                <UserPlus size={16} className="text-violet-500" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-gray-800">Add Manually</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">Enter candidate details by hand</p>
-              </div>
-            </div>
-            <button onClick={() => { setParsed(BLANK_PARSED); setPendingFile(null); setShowModal(true); }}
-              className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-violet-50 border border-gray-200 hover:border-violet-300 text-gray-700 hover:text-violet-700 text-xs font-bold px-3 py-2.5 rounded-xl transition-colors">
-              <UserPlus size={12} /> Add Profile
-            </button>
-          </div>
-
-          {/* Recent profiles */}
-          <div className="flex-1 p-4 min-h-0">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">Recent</p>
-            {loading ? (
-              <div className="flex items-center justify-center py-6"><LogoSpinner size={14} /></div>
-            ) : recentProfiles.length === 0 ? (
-              <div className="text-center py-6">
-                <FileText size={20} className="text-gray-200 mx-auto mb-2" />
-                <p className="text-[11px] text-gray-400">No profiles yet</p>
-              </div>
-            ) : (
-              <div className="space-y-0.5 max-h-64 overflow-y-auto -mx-1">
-                {recentProfiles.map(p => {
-                  const daysAgo = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86_400_000);
-                  const sinceLabel = daysAgo === 0 ? 'Today' : daysAgo === 1 ? '1d' : `${daysAgo}d`;
-                  const stage = (p.bench_stage ?? 'New') as BenchStage;
-                  const cfg = STAGE_CFG[stage];
-                  const isSelected = selectedProfileId === p.id;
-                  return (
-                    <button key={p.id} onClick={() => setSelectedProfileId(p.id)}
-                      className={`w-full text-left flex items-center gap-2.5 py-2 px-2 rounded-xl transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                      <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                        <span className="text-[11px] font-black text-blue-600">{p.candidate_name[0]?.toUpperCase()}</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-700' : 'text-gray-700'}`}>{p.candidate_name}</p>
-                        <p className="text-[10px] text-gray-400 truncate">{p.target_role}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="text-[9px] text-gray-400">{sinceLabel}</span>
-                        <span className={`text-[9px] font-bold uppercase px-1 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>{stage}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-        </div>
       </div>
 
       {/* ── Bench Stage popup ── */}
@@ -2392,135 +2324,6 @@ export default function ProfilesDirectory() {
                 <Sparkles size={12} /> Parse with AI
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Bulk Import Modal ── */}
-      {showBulkModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[85vh]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center">
-                  <Users size={16} className="text-emerald-600" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-sm text-gray-900">Bulk Import Profiles</h2>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Create multiple profiles by pasting your bench Google Sheet data</p>
-                </div>
-              </div>
-              <button onClick={resetBulkModal} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={16} /></button>
-            </div>
-
-            {bulkStep === 'paste' && (
-              <div className="px-6 py-5 flex-1 overflow-auto">
-                <label className="block text-xs font-bold text-gray-700 mb-2">Create in bulk by copy-pasting your bench Google Sheet data here</label>
-                <p className="text-[11px] text-gray-400 mb-3">Copy the header row + data rows from your spreadsheet (Google Sheets or Excel) and paste below. The system will auto-detect columns like Name, Role, Skills, Visa, Rate, etc.</p>
-                <textarea
-                  value={bulkPasteText}
-                  onChange={e => setBulkPasteText(e.target.value)}
-                  placeholder={"Name\tRole\tSkills\tVisa\tWork Type\tRate\tLocation\n" + "John Doe\tJava Developer\tJava, Spring Boot, AWS\tH1B\tRemote\t65\tNew York, NY\n" + "Jane Smith\tReact Developer\tReact, TypeScript, Node\tGC\tHybrid\t70\tAustin, TX"}
-                  className="w-full h-52 text-[11px] font-mono text-gray-700 border border-gray-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 placeholder:text-gray-300"
-                  autoFocus
-                />
-                <p className="text-[10px] text-gray-400 mt-2">Supports tab-separated data (default when copying from Google Sheets or Excel). Include the header row.</p>
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={handleBulkPreview}
-                    disabled={!bulkPasteText.trim()}
-                    className="flex items-center gap-1.5 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl transition-colors shadow-sm"
-                  >
-                    Preview Data
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {bulkStep === 'parsing' && (
-              <div className="px-6 py-10 flex flex-col items-center justify-center gap-4">
-                <LogoSpinner size={28} />
-                <p className="text-sm font-semibold text-gray-700">AI is analyzing your spreadsheet data...</p>
-                <p className="text-xs text-gray-400">Intelligently mapping columns to candidate profile fields</p>
-              </div>
-            )}
-
-            {bulkStep === 'preview' && (
-              <div className="flex-1 overflow-auto px-6 py-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-semibold text-gray-700">{bulkParsedRows.length} candidates parsed by AI</p>
-                  <button onClick={() => setBulkStep('paste')} className="text-[11px] text-blue-600 hover:text-blue-700 font-medium">Edit Data</button>
-                </div>
-                <div className="border border-gray-200 rounded-xl overflow-hidden">
-                  <div className="overflow-x-auto max-h-[45vh]">
-                    <table className="w-full text-[11px]">
-                      <thead className="bg-gray-50 sticky top-0">
-                        <tr>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide">#</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Name</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Role</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Skills</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Visa</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Work Type</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Location</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Rate</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {bulkParsedRows.map((row, idx) => (
-                          <tr key={idx} className="hover:bg-gray-50/50">
-                            <td className="px-3 py-2 text-gray-400 font-medium">{idx + 1}</td>
-                            <td className="px-3 py-2 text-gray-900 font-medium whitespace-nowrap">{(row as Record<string,unknown>).candidate_name as string || '-'}</td>
-                            <td className="px-3 py-2 text-gray-700 max-w-[140px] truncate">{(row as Record<string,unknown>).target_role as string || '-'}</td>
-                            <td className="px-3 py-2 text-gray-700 max-w-[180px] truncate">{(row as Record<string,unknown>).core_skills as string || '-'}</td>
-                            <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).visa_status as string || '-'}</td>
-                            <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).work_type as string || '-'}</td>
-                            <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).preferred_locations as string || (row as Record<string,unknown>).location as string || '-'}</td>
-                            <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).desired_salary_max ? `${(row as Record<string,unknown>).desired_salary_max}/hr` : '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="mt-4 flex items-center justify-between">
-                  <p className="text-[10px] text-gray-400">Profiles will be created in batches of 5. You can upload resumes individually later.</p>
-                  <button
-                    onClick={handleBulkCreate}
-                    className="flex items-center gap-1.5 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl transition-colors shadow-sm"
-                  >
-                    Create {bulkParsedRows.length} Profiles
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {bulkStep === 'creating' && (
-              <div className="px-6 py-10 flex flex-col items-center justify-center gap-4">
-                <LogoSpinner size={28} />
-                <p className="text-sm font-semibold text-gray-700">Creating profiles in batches...</p>
-                <div className="w-64 h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${bulkProgress.total ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%` }} />
-                </div>
-                <p className="text-xs text-gray-500">{bulkProgress.done} / {bulkProgress.total} profiles created</p>
-              </div>
-            )}
-
-            {bulkStep === 'done' && (
-              <div className="px-6 py-10 flex flex-col items-center justify-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center">
-                  <Check size={24} className="text-emerald-600" />
-                </div>
-                <p className="text-sm font-semibold text-gray-700">{bulkProgress.done} profiles created successfully!</p>
-                <p className="text-[11px] text-gray-400">You can now upload resumes for each profile individually.</p>
-                <button
-                  onClick={resetBulkModal}
-                  className="mt-2 text-sm font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2.5 rounded-xl transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            )}
           </div>
         </div>
       )}
