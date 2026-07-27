@@ -1,18 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL ?? '').trim();
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
+const DEFAULT_SUPABASE_URL = 'https://nhwqcqzvotgdngtxulwi.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5od3FjcXp2b3RnZG5ndHh1bHdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NjY3NDQsImV4cCI6MjA5NjQ0Mjc0NH0.DCPM9hZwqEsfmStT1beaUtp3P-uDVkCZL8xv0ZFpCss';
+
+const envSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL ?? '').trim();
+const envSupabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
+
+const supabaseUrl = envSupabaseUrl || DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = envSupabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const supabaseConfigMissing = {
-  url: !supabaseUrl,
-  anonKey: !supabaseAnonKey,
+  url: !envSupabaseUrl,
+  anonKey: !envSupabaseAnonKey,
 };
 
-if (!isSupabaseConfigured) {
+if (!envSupabaseUrl || !envSupabaseAnonKey) {
   console.error(
-    'Missing Supabase env vars. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable auth and data APIs.'
+    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Using built-in public defaults for this project.'
   );
 }
 
@@ -32,12 +39,9 @@ async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit): Pro
   return lastResponse!;
 }
 
-const fallbackUrl = 'https://example.supabase.co';
-const fallbackAnonKey = 'missing-anon-key';
-
 export const supabase = createClient<Database>(
-  isSupabaseConfigured ? supabaseUrl : fallbackUrl,
-  isSupabaseConfigured ? supabaseAnonKey : fallbackAnonKey,
+  supabaseUrl,
+  supabaseAnonKey,
   {
   global: { fetch: fetchWithRetry },
   }

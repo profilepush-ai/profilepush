@@ -7,6 +7,7 @@ import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
 
 const DEFAULT_REDIRECT = '/job-finder';
+const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
 
 type GoogleCredentialResponse = {
   credential?: string;
@@ -76,7 +77,7 @@ export default function SignIn() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
-  const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();
+  const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? DEFAULT_GOOGLE_CLIENT_ID).trim();
 
   if (loading) {
     return (
