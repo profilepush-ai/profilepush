@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import Logo from './Logo';
 
+const COUNTER_REFRESH_MS = 30000;
+
 function formatRecruiterCount(count: number | null): string {
   if (count === null) return '...';
   return new Intl.NumberFormat('en-US').format(count);
@@ -15,11 +17,7 @@ export default function AuthSidePanel() {
     let active = true;
 
     async function loadRecruiterCount() {
-      const { count, error } = await supabase
-        .from('account_members')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'active')
-        .not('user_id', 'is', null);
+      const { data, error } = await supabase.rpc('get_public_recruiter_count');
 
       if (!active) return;
       if (error) {
@@ -27,13 +25,16 @@ export default function AuthSidePanel() {
         return;
       }
 
-      setRecruiterCount(typeof count === 'number' ? count : 0);
+      const parsed = typeof data === 'number' ? data : Number(data ?? 0);
+      setRecruiterCount(Number.isFinite(parsed) ? parsed : 0);
     }
 
     loadRecruiterCount();
+    const intervalId = window.setInterval(loadRecruiterCount, COUNTER_REFRESH_MS);
 
     return () => {
       active = false;
+      window.clearInterval(intervalId);
     };
   }, []);
 
