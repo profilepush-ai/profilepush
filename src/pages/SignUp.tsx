@@ -322,7 +322,7 @@ export default function SignUp() {
         type: 'standard',
         size: 'large',
         theme: 'outline',
-        text: 'signup_with',
+        text: 'continue_with',
         shape: 'pill',
         logo_alignment: 'left',
         width: 380,

@@ -180,7 +180,7 @@ export default function SignIn() {
         type: 'standard',
         size: 'large',
         theme: 'outline',
-        text: 'signin_with',
+        text: 'continue_with',
         shape: 'pill',
         logo_alignment: 'left',
         width: 380,
