@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, Navigate } from 'react-router-dom';
 import {
   Eye, EyeOff, ArrowRight, Building2, User, Mail, Lock,
@@ -86,6 +86,40 @@ function detectCountryCode(): string {
 }
 
 const DEFAULT_COUNTRY = COUNTRIES[0];
+const DEFAULT_SIGNUP_REDIRECT = '/bench';
+const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
+
+type GoogleCredentialResponse = {
+  credential?: string;
+};
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: {
+            client_id: string;
+            callback: (response: GoogleCredentialResponse) => void;
+          }) => void;
+          renderButton: (
+            parent: HTMLElement,
+            options: {
+              type?: 'standard' | 'icon';
+              theme?: 'outline' | 'filled_blue' | 'filled_black';
+              size?: 'small' | 'medium' | 'large';
+              text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
+              shape?: 'rectangular' | 'pill' | 'circle' | 'square';
+              logo_alignment?: 'left' | 'center';
+              width?: number;
+            }
+          ) => void;
+          prompt: () => void;
+        };
+      };
+    };
+  }
+}
 
 // ── Webhook ────────────────────────────────────────────────────────────────────
 
@@ -208,8 +242,11 @@ export default function SignUp() {
   const [password, setPassword]         = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting]     = useState(false);
+  const [oauthSubmitting, setOauthSubmitting] = useState(false);
   const [error, setError]               = useState<string | null>(null);
   const [confirmEmail, setConfirmEmail] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? DEFAULT_GOOGLE_CLIENT_ID).trim();
 
   // Auto-detect country from browser locale on mount
   useEffect(() => {
@@ -227,6 +264,88 @@ export default function SignUp() {
   }
 
   if (user) return <Navigate to="/desk" replace />;
+
+  async function handleGoogleSignUp() {
+    setOauthSubmitting(true);
+    setError(null);
+
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}${DEFAULT_SIGNUP_REDIRECT}`,
+      },
+    });
+
+    if (oauthError) {
+      setError(oauthError.message);
+      setOauthSubmitting(false);
+    }
+  }
+
+  const handleGoogleCredential = useCallback(async (response: GoogleCredentialResponse) => {
+    if (!response.credential) {
+      setError('Google sign up did not return a credential. Please try again.');
+      return;
+    }
+
+    setOauthSubmitting(true);
+    setError(null);
+
+    const { error: idTokenError } = await supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token: response.credential,
+    });
+
+    if (idTokenError) {
+      setError(idTokenError.message);
+      setOauthSubmitting(false);
+      return;
+    }
+
+    navigate(DEFAULT_SIGNUP_REDIRECT, { replace: true });
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!googleClientId || !googleButtonRef.current) return;
+
+    const initializeGoogleButton = () => {
+      if (!window.google?.accounts?.id || !googleButtonRef.current) return;
+
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: handleGoogleCredential,
+      });
+
+      googleButtonRef.current.innerHTML = '';
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        type: 'standard',
+        size: 'large',
+        theme: 'outline',
+        text: 'signup_with',
+        shape: 'pill',
+        logo_alignment: 'left',
+        width: 380,
+      });
+    };
+
+    const existingScript = document.getElementById('google-gsi-script') as HTMLScriptElement | null;
+    if (existingScript) {
+      if (window.google?.accounts?.id) {
+        initializeGoogleButton();
+      } else {
+        existingScript.addEventListener('load', initializeGoogleButton, { once: true });
+      }
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'google-gsi-script';
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = initializeGoogleButton;
+    document.head.appendChild(script);
+  }, [googleClientId, handleGoogleCredential]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -398,6 +517,41 @@ export default function SignUp() {
             </div>
           )}
 
+          {googleClientId ? (
+            <div className="mb-4">
+              <div ref={googleButtonRef} className="w-full" />
+              {oauthSubmitting && (
+                <div className="mt-2 text-xs text-gray-500 flex items-center gap-2">
+                  <LogoSpinner size={14} /> Signing you up with Google...
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleGoogleSignUp}
+              disabled={submitting || oauthSubmitting}
+              className="w-full bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed text-gray-700 font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors mb-4"
+            >
+              {oauthSubmitting ? (
+                <><LogoSpinner size={15} /> Redirecting to Google...</>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                    <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.5 3.9-5.5 3.9-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.2.8 3.9 1.5l2.7-2.6C16.9 3.3 14.7 2.4 12 2.4 6.9 2.4 2.8 6.5 2.8 11.6s4.1 9.2 9.2 9.2c5.3 0 8.8-3.7 8.8-8.9 0-.6-.1-1.1-.2-1.7H12z"/>
+                  </svg>
+                  Continue with Google
+                </>
+              )}
+            </button>
+          )}
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-px bg-gray-200 flex-1" />
+            <span className="text-xs text-gray-400">OR</span>
+            <div className="h-px bg-gray-200 flex-1" />
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
 
             {/* Full Name */}
@@ -492,7 +646,7 @@ export default function SignUp() {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || oauthSubmitting}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm shadow-blue-200 mt-2"
             >
               {submitting ? (
