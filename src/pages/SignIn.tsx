@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
+import AuthSidePanel from '../components/AuthSidePanel';
 
 const DEFAULT_REDIRECT = '/job-finder';
 const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
@@ -233,42 +234,7 @@ export default function SignIn() {
 
   return (
     <div className="min-h-screen bg-white flex">
-      {/* Left panel — brand */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gray-100 flex-col justify-between p-12">
-        <Link to="/" className="flex items-center gap-2 font-bold text-lg">
-          <Logo size="lg" />
-        </Link>
-
-        <div className="space-y-8">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">AI Copilot</p>
-            <h2 className="text-3xl font-extrabold text-gray-900 leading-tight mb-4">
-              AI Copilot for Bench Sales<br />Recruiters to Hit 10X Submissions.
-            </h2>
-            <p className="text-gray-500 text-sm leading-relaxed">
-              Parse resumes in seconds, search multiple job boards at once, score matches with AI, and move faster from sourcing to submissions.
-            </p>
-          </div>
-
-          {/* Review widget */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex gap-0.5 mb-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <svg key={i} viewBox="0 0 16 16" fill="#FBBF24" className="w-3.5 h-3.5">
-                  <path d="M8 1l1.85 3.75L14 5.5l-3 2.92.7 4.1L8 10.4l-3.7 2.12.7-4.1L2 5.5l4.15-.75L8 1z" />
-                </svg>
-              ))}
-            </div>
-            <p className="text-gray-600 text-sm leading-relaxed mb-4">"We cut our sourcing time in half. ProfilePush searches every board at once — it's a game changer."</p>
-            <div>
-              <p className="text-gray-900 text-sm font-semibold">Priya Nair</p>
-              <p className="text-gray-400 text-xs">Senior Bench Sales Recruiter, TechForce Staffing</p>
-            </div>
-          </div>
-        </div>
-
-        <p className="text-gray-400 text-xs">© {new Date().getFullYear()} ProfilePush · Built for Bench Sales Recruiters</p>
-      </div>
+      <AuthSidePanel />
 
       {/* Right panel — form */}
       <div className="flex-1 flex items-center justify-center px-6 py-12">
