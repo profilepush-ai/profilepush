@@ -1,0 +1,9 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="32" height="32" rx="8" fill="white"/>
+  <!-- Yellow dot -->
+  <circle cx="9" cy="11" r="4" fill="#facc15"/>
+  <!-- Orange dot -->
+  <circle cx="9" cy="21" r="4" fill="#f97316"/>
+  <!-- Blue chevron -->
+  <polyline points="16,7 25,16 16,25" stroke="#2563eb" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

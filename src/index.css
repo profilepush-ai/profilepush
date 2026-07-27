@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.2s ease-out;
+  }
+}
+
+/* Job description HTML renderer */
+.job-desc p   { margin-bottom: 0.5rem; font-size: 0.875rem; line-height: 1.6; color: #374151; }
+.job-desc ul,
+.job-desc ol  { padding-left: 1.25rem; margin-bottom: 0.5rem; }
+.job-desc ul  { list-style-type: disc; }
+.job-desc ol  { list-style-type: decimal; }
+.job-desc li  { font-size: 0.875rem; line-height: 1.5; color: #374151; margin-bottom: 0.2rem; }
+.job-desc h1,
+.job-desc h2,
+.job-desc h3,
+.job-desc h4  { font-weight: 600; color: #111827; margin-top: 0.75rem; margin-bottom: 0.25rem; }
+.job-desc h1  { font-size: 1rem; }
+.job-desc h2  { font-size: 0.9375rem; }
+.job-desc h3  { font-size: 0.875rem; }
+.job-desc strong { font-weight: 600; }
+.job-desc em     { font-style: italic; }
+.job-desc br     { display: block; margin-bottom: 0.25rem; }
+.job-desc a      { color: #2563eb; text-decoration: underline; }
+.job-desc table  { font-size: 0.875rem; border-collapse: collapse; }
+.job-desc td,
+.job-desc th     { padding: 0.25rem 0.5rem; border: 1px solid #e5e7eb; }

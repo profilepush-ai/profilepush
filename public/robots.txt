@@ -1,0 +1,19 @@
+User-agent: *
+Allow: /
+
+# Block authenticated app pages
+Disallow: /dashboard
+Disallow: /profiles
+Disallow: /profile-details/
+Disallow: /job-finder
+Disallow: /wishlist
+Disallow: /resume-ai
+Disallow: /account
+Disallow: /support
+Disallow: /roadmap
+Disallow: /billing
+Disallow: /submissions
+Disallow: /onboard/
+Disallow: /confirm-applied/
+
+Sitemap: https://profilepush.ai/sitemap.xml

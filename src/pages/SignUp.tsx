@@ -1,0 +1,516 @@
+import { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, Navigate } from 'react-router-dom';
+import {
+  Eye, EyeOff, ArrowRight, Building2, User, Mail, Lock,
+  CheckCircle, Phone, ChevronDown, Search,
+} from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import Logo from '../components/Logo';
+import LogoSpinner from '../components/LogoSpinner';
+
+// ── Country data ───────────────────────────────────────────────────────────────
+
+interface Country { code: string; dial: string; name: string; }
+
+const COUNTRIES: Country[] = [
+  { code: 'US', dial: '+1',    name: 'United States' },
+  { code: 'IN', dial: '+91',   name: 'India' },
+  { code: 'CA', dial: '+1',    name: 'Canada' },
+  { code: 'GB', dial: '+44',   name: 'United Kingdom' },
+  { code: 'AU', dial: '+61',   name: 'Australia' },
+  { code: 'PH', dial: '+63',   name: 'Philippines' },
+  { code: 'SG', dial: '+65',   name: 'Singapore' },
+  { code: 'NZ', dial: '+64',   name: 'New Zealand' },
+  { code: 'IE', dial: '+353',  name: 'Ireland' },
+  { code: 'ZA', dial: '+27',   name: 'South Africa' },
+  { code: 'NG', dial: '+234',  name: 'Nigeria' },
+  { code: 'PK', dial: '+92',   name: 'Pakistan' },
+  { code: 'BD', dial: '+880',  name: 'Bangladesh' },
+  { code: 'LK', dial: '+94',   name: 'Sri Lanka' },
+  { code: 'NP', dial: '+977',  name: 'Nepal' },
+  { code: 'MY', dial: '+60',   name: 'Malaysia' },
+  { code: 'ID', dial: '+62',   name: 'Indonesia' },
+  { code: 'TH', dial: '+66',   name: 'Thailand' },
+  { code: 'VN', dial: '+84',   name: 'Vietnam' },
+  { code: 'CN', dial: '+86',   name: 'China' },
+  { code: 'JP', dial: '+81',   name: 'Japan' },
+  { code: 'KR', dial: '+82',   name: 'South Korea' },
+  { code: 'HK', dial: '+852',  name: 'Hong Kong' },
+  { code: 'TW', dial: '+886',  name: 'Taiwan' },
+  { code: 'DE', dial: '+49',   name: 'Germany' },
+  { code: 'FR', dial: '+33',   name: 'France' },
+  { code: 'IT', dial: '+39',   name: 'Italy' },
+  { code: 'ES', dial: '+34',   name: 'Spain' },
+  { code: 'NL', dial: '+31',   name: 'Netherlands' },
+  { code: 'SE', dial: '+46',   name: 'Sweden' },
+  { code: 'NO', dial: '+47',   name: 'Norway' },
+  { code: 'DK', dial: '+45',   name: 'Denmark' },
+  { code: 'FI', dial: '+358',  name: 'Finland' },
+  { code: 'PL', dial: '+48',   name: 'Poland' },
+  { code: 'CH', dial: '+41',   name: 'Switzerland' },
+  { code: 'BE', dial: '+32',   name: 'Belgium' },
+  { code: 'AT', dial: '+43',   name: 'Austria' },
+  { code: 'PT', dial: '+351',  name: 'Portugal' },
+  { code: 'CZ', dial: '+420',  name: 'Czech Republic' },
+  { code: 'RO', dial: '+40',   name: 'Romania' },
+  { code: 'UA', dial: '+380',  name: 'Ukraine' },
+  { code: 'RU', dial: '+7',    name: 'Russia' },
+  { code: 'TR', dial: '+90',   name: 'Turkey' },
+  { code: 'IL', dial: '+972',  name: 'Israel' },
+  { code: 'SA', dial: '+966',  name: 'Saudi Arabia' },
+  { code: 'AE', dial: '+971',  name: 'UAE' },
+  { code: 'QA', dial: '+974',  name: 'Qatar' },
+  { code: 'KW', dial: '+965',  name: 'Kuwait' },
+  { code: 'EG', dial: '+20',   name: 'Egypt' },
+  { code: 'GH', dial: '+233',  name: 'Ghana' },
+  { code: 'KE', dial: '+254',  name: 'Kenya' },
+  { code: 'MX', dial: '+52',   name: 'Mexico' },
+  { code: 'BR', dial: '+55',   name: 'Brazil' },
+  { code: 'AR', dial: '+54',   name: 'Argentina' },
+  { code: 'CO', dial: '+57',   name: 'Colombia' },
+  { code: 'CL', dial: '+56',   name: 'Chile' },
+  { code: 'PE', dial: '+51',   name: 'Peru' },
+];
+
+function countryFlag(code: string): string {
+  return code.toUpperCase().split('').map(c =>
+    String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)
+  ).join('');
+}
+
+function detectCountryCode(): string {
+  const lang = navigator.language ?? 'en-US';
+  const parts = lang.split('-');
+  return parts.length >= 2 ? parts[parts.length - 1].toUpperCase() : 'US';
+}
+
+const DEFAULT_COUNTRY = COUNTRIES[0];
+
+// ── Webhook ────────────────────────────────────────────────────────────────────
+
+async function sendSignupWebhook(payload: Record<string, string>) {
+  try {
+    await fetch(
+      'https://services.leadconnectorhq.com/hooks/48XyGfN1WxneooOcHGHn/webhook-trigger/5acdf9f6-c8e2-44ea-91be-163a46cf83fd',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+  } catch (err) {
+    console.error('Signup webhook failed:', err);
+  }
+}
+
+// ── Country selector dropdown ─────────────────────────────────────────────────
+
+function CountrySelector({
+  value,
+  onChange,
+}: {
+  value: Country;
+  onChange: (c: Country) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (open) setTimeout(() => searchRef.current?.focus(), 50);
+    else setSearch('');
+  }, [open]);
+
+  const filtered = search.trim()
+    ? COUNTRIES.filter(c =>
+        c.name.toLowerCase().includes(search.toLowerCase()) ||
+        c.dial.includes(search) ||
+        c.code.toLowerCase().includes(search.toLowerCase())
+      )
+    : COUNTRIES;
+
+  return (
+    <div ref={containerRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1.5 h-full px-3 text-sm text-gray-700 hover:bg-gray-50 rounded-l-lg transition-colors border-r border-gray-200 focus:outline-none"
+      >
+        <span className="text-base leading-none">{countryFlag(value.code)}</span>
+        <span className="font-medium text-xs text-gray-600">{value.dial}</span>
+        <ChevronDown size={11} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
+          {/* Search */}
+          <div className="p-2 border-b border-gray-100">
+            <div className="relative">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search country..."
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-7 pr-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:border-blue-400"
+              />
+            </div>
+          </div>
+          {/* List */}
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-4">No results</p>
+            ) : (
+              filtered.map(c => (
+                <button
+                  key={c.code}
+                  type="button"
+                  onClick={() => { onChange(c); setOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-blue-50 transition-colors ${c.code === value.code ? 'bg-blue-50' : ''}`}
+                >
+                  <span className="text-base leading-none">{countryFlag(c.code)}</span>
+                  <span className="text-xs text-gray-700 flex-1 truncate">{c.name}</span>
+                  <span className="text-xs text-gray-400 shrink-0">{c.dial}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
+
+export default function SignUp() {
+  const navigate = useNavigate();
+  const { refreshAccount, user, loading } = useAuth();
+
+  const [fullName, setFullName]         = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [email, setEmail]               = useState('');
+  const [phoneCountry, setPhoneCountry] = useState<Country>(DEFAULT_COUNTRY);
+  const [phone, setPhone]               = useState('');
+  const [password, setPassword]         = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting]     = useState(false);
+  const [error, setError]               = useState<string | null>(null);
+  const [confirmEmail, setConfirmEmail] = useState(false);
+
+  // Auto-detect country from browser locale on mount
+  useEffect(() => {
+    const code = detectCountryCode();
+    const found = COUNTRIES.find(c => c.code === code);
+    if (found) setPhoneCountry(found);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <LogoSpinner size={20} />
+      </div>
+    );
+  }
+
+  if (user) return <Navigate to="/desk" replace />;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!fullName.trim() || !businessName.trim() || !email.trim() || !phone.trim() || !password) {
+      setError('All fields are required.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 5) {
+      setError('Please enter a valid phone number.');
+      return;
+    }
+
+    const fullPhone = `${phoneCountry.dial}${phone.trim()}`;
+
+    setSubmitting(true);
+    setError(null);
+
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: { full_name: fullName.trim(), phone: fullPhone } },
+    });
+
+    if (signUpError) {
+      setError(signUpError.message);
+      setSubmitting(false);
+      return;
+    }
+
+    const authUser = signUpData.user;
+    if (!authUser) {
+      setError('Signup failed — please try again.');
+      setSubmitting(false);
+      return;
+    }
+
+    if (!signUpData.session) {
+      setConfirmEmail(true);
+      setSubmitting(false);
+      return;
+    }
+
+    const accountId = crypto.randomUUID();
+
+    const { error: accountErr } = await supabase
+      .from('accounts')
+      .insert({ id: accountId, name: businessName.trim(), owner_id: authUser.id });
+
+    if (accountErr) {
+      setError(`Failed to create workspace: ${accountErr.message}`);
+      setSubmitting(false);
+      return;
+    }
+
+    const { error: memberErr } = await supabase
+      .from('account_members')
+      .insert({
+        account_id: accountId,
+        user_id: authUser.id,
+        invited_email: authUser.email!,
+        role: 'owner',
+        status: 'active',
+      });
+
+    if (memberErr) {
+      setError(`Workspace created but member setup failed: ${memberErr.message}`);
+      setSubmitting(false);
+      return;
+    }
+
+    // Fire webhook (non-blocking)
+    sendSignupWebhook({
+      action: 'new account signup',
+      account_id: accountId,
+      owner_id: authUser.id,
+      user_id: authUser.id,
+      full_name: fullName.trim(),
+      business_name: businessName.trim(),
+      email: email.trim(),
+      phone: fullPhone,
+    });
+
+    await refreshAccount();
+    navigate('/bench');
+  }
+
+  if (confirmEmail) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-sm text-center">
+          <Link to="/" className="flex items-center justify-center gap-2 text-blue-600 font-bold text-base mb-10">
+            <Logo size="md" />
+          </Link>
+          <div className="w-14 h-14 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center mx-auto mb-5">
+            <CheckCircle size={26} className="text-blue-600" />
+          </div>
+          <h1 className="text-xl font-extrabold text-gray-900 mb-2">Check your inbox</h1>
+          <p className="text-gray-500 text-sm leading-relaxed mb-6">
+            We sent a confirmation link to <span className="text-gray-900 font-semibold">{email}</span>. Click it to activate your account, then sign in — your workspace will be created automatically on first login.
+          </p>
+          <Link
+            to="/signin"
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm shadow-sm shadow-blue-200"
+          >
+            Go to Sign In <ArrowRight size={14} />
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-white flex">
+      {/* Left panel — brand */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gray-100 flex-col justify-between p-12">
+        <Link to="/" className="flex items-center gap-2 font-bold text-lg">
+          <Logo size="lg" />
+        </Link>
+
+        <div className="space-y-8">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-3">Job Sourcing</p>
+            <h2 className="text-3xl font-extrabold text-gray-900 leading-tight mb-4">
+              Source jobs from every<br />board in one click.
+            </h2>
+            <p className="text-gray-500 text-sm leading-relaxed">
+              LinkedIn, Indeed, Dice, Monster, CareerBuilder — searched simultaneously. Stop switching tabs and start placing candidates.
+            </p>
+          </div>
+
+          {/* Review widget */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+            <div className="flex gap-0.5 mb-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <svg key={i} viewBox="0 0 16 16" fill="#FBBF24" className="w-3.5 h-3.5">
+                  <path d="M8 1l1.85 3.75L14 5.5l-3 2.92.7 4.1L8 10.4l-3.7 2.12.7-4.1L2 5.5l4.15-.75L8 1z" />
+                </svg>
+              ))}
+            </div>
+            <p className="text-gray-600 text-sm leading-relaxed mb-4">"We cut our sourcing time in half. ProfilePush searches every board at once — it's a game changer."</p>
+            <div>
+              <p className="text-gray-900 text-sm font-semibold">Priya Nair</p>
+              <p className="text-gray-400 text-xs">Senior Bench Sales Recruiter, TechForce Staffing</p>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-gray-400 text-xs">© {new Date().getFullYear()} ProfilePush · Built for Bench Sales Recruiters</p>
+      </div>
+
+      {/* Right panel — form */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-sm">
+          <Link to="/" className="flex items-center gap-2 text-blue-600 font-bold text-base mb-10 lg:hidden">
+            <Logo size="md" />
+          </Link>
+
+          <h1 className="text-2xl font-extrabold text-gray-900 mb-1">Create your free account</h1>
+          <p className="text-gray-500 text-sm mb-8">Free forever with $5 AI credits every month. Set up your team's workspace in minutes.</p>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-6">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+
+            {/* Full Name */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Your Full Name</label>
+              <div className="relative">
+                <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={e => setFullName(e.target.value)}
+                  placeholder="Jane Smith"
+                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                  autoComplete="name"
+                />
+              </div>
+            </div>
+
+            {/* Business Name */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Business / Agency Name</label>
+              <div className="relative">
+                <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={businessName}
+                  onChange={e => setBusinessName(e.target.value)}
+                  placeholder="Acme Staffing LLC"
+                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                  autoComplete="organization"
+                />
+              </div>
+            </div>
+
+            {/* Work Email */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Work Email</label>
+              <div className="relative">
+                <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="jane@acmestaffing.com"
+                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                  autoComplete="email"
+                />
+              </div>
+            </div>
+
+            {/* Phone Number */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Phone Number</label>
+              <div className="flex border border-gray-200 rounded-lg overflow-visible focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all bg-white">
+                <CountrySelector value={phoneCountry} onChange={setPhoneCountry} />
+                <div className="relative flex-1">
+                  <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    placeholder="555 123 4567"
+                    className="w-full bg-transparent text-gray-900 placeholder-gray-400 text-sm rounded-r-lg pl-8 pr-4 py-2.5 focus:outline-none"
+                    autoComplete="tel-national"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Password</label>
+              <div className="relative">
+                <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Min. 6 characters"
+                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-10 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm shadow-blue-200 mt-2"
+            >
+              {submitting ? (
+                <><LogoSpinner size={15} /> Creating account…</>
+              ) : (
+                <>Create Account <ArrowRight size={15} /></>
+              )}
+            </button>
+          </form>
+
+          <p className="text-center text-sm text-gray-500 mt-6">
+            Already have an account?{' '}
+            <Link to="/signin" className="text-blue-600 hover:text-blue-700 font-semibold transition-colors">
+              Sign in
+            </Link>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
