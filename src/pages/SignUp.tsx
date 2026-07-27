@@ -247,6 +247,7 @@ export default function SignUp() {
   const [confirmEmail, setConfirmEmail] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? DEFAULT_GOOGLE_CLIENT_ID).trim();
+  const showExtendedFields = email.trim().length > 0;
 
   // Auto-detect country from browser locale on mount
   useEffect(() => {
@@ -509,7 +510,7 @@ export default function SignUp() {
           </Link>
 
           <h1 className="text-2xl font-extrabold text-gray-900 mb-1">Create your free account</h1>
-          <p className="text-gray-500 text-sm mb-8">Free forever with $5 AI credits every month. Set up your team's workspace in minutes.</p>
+          <p className="text-gray-500 text-sm mb-8">Start with Google or enter your work email to continue.</p>
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-6">
@@ -554,39 +555,7 @@ export default function SignUp() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
 
-            {/* Full Name */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Your Full Name</label>
-              <div className="relative">
-                <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={e => setFullName(e.target.value)}
-                  placeholder="Jane Smith"
-                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                  autoComplete="name"
-                />
-              </div>
-            </div>
-
-            {/* Business Name */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Business / Agency Name</label>
-              <div className="relative">
-                <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={businessName}
-                  onChange={e => setBusinessName(e.target.value)}
-                  placeholder="Acme Staffing LLC"
-                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                  autoComplete="organization"
-                />
-              </div>
-            </div>
-
-            {/* Work Email */}
+            {/* Work Email (first step) */}
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1.5">Work Email</label>
               <div className="relative">
@@ -602,59 +571,95 @@ export default function SignUp() {
               </div>
             </div>
 
-            {/* Phone Number */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Phone Number</label>
-              <div className="flex border border-gray-200 rounded-lg overflow-visible focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all bg-white">
-                <CountrySelector value={phoneCountry} onChange={setPhoneCountry} />
-                <div className="relative flex-1">
-                  <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                    placeholder="555 123 4567"
-                    className="w-full bg-transparent text-gray-900 placeholder-gray-400 text-sm rounded-r-lg pl-8 pr-4 py-2.5 focus:outline-none"
-                    autoComplete="tel-national"
-                  />
+            {showExtendedFields && (
+              <>
+                {/* Full Name */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Your Full Name</label>
+                  <div className="relative">
+                    <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={e => setFullName(e.target.value)}
+                      placeholder="Jane Smith"
+                      className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                      autoComplete="name"
+                    />
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Password */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Password</label>
-              <div className="relative">
-                <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="Min. 6 characters"
-                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-10 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                  autoComplete="new-password"
-                />
+                {/* Business Name */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Business / Agency Name</label>
+                  <div className="relative">
+                    <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={businessName}
+                      onChange={e => setBusinessName(e.target.value)}
+                      placeholder="Acme Staffing LLC"
+                      className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                      autoComplete="organization"
+                    />
+                  </div>
+                </div>
+
+                {/* Phone Number */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Phone Number</label>
+                  <div className="flex border border-gray-200 rounded-lg overflow-visible focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all bg-white">
+                    <CountrySelector value={phoneCountry} onChange={setPhoneCountry} />
+                    <div className="relative flex-1">
+                      <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input
+                        type="tel"
+                        value={phone}
+                        onChange={e => setPhone(e.target.value)}
+                        placeholder="555 123 4567"
+                        className="w-full bg-transparent text-gray-900 placeholder-gray-400 text-sm rounded-r-lg pl-8 pr-4 py-2.5 focus:outline-none"
+                        autoComplete="tel-national"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Password</label>
+                  <div className="relative">
+                    <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      placeholder="Min. 6 characters"
+                      className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-10 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+
                 <button
-                  type="button"
-                  onClick={() => setShowPassword(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  type="submit"
+                  disabled={submitting || oauthSubmitting}
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm shadow-blue-200 mt-2"
                 >
-                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  {submitting ? (
+                    <><LogoSpinner size={15} /> Creating account…</>
+                  ) : (
+                    <>Create Account <ArrowRight size={15} /></>
+                  )}
                 </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={submitting || oauthSubmitting}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm shadow-blue-200 mt-2"
-            >
-              {submitting ? (
-                <><LogoSpinner size={15} /> Creating account…</>
-              ) : (
-                <>Create Account <ArrowRight size={15} /></>
-              )}
-            </button>
+              </>
+            )}
           </form>
 
           <p className="text-center text-sm text-gray-500 mt-6">
