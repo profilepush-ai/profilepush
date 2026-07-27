@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowRight, Mail, Lock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -7,6 +7,38 @@ import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
 
 const DEFAULT_REDIRECT = '/job-finder';
+
+type GoogleCredentialResponse = {
+  credential?: string;
+};
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: {
+            client_id: string;
+            callback: (response: GoogleCredentialResponse) => void;
+          }) => void;
+          renderButton: (
+            parent: HTMLElement,
+            options: {
+              type?: 'standard' | 'icon';
+              theme?: 'outline' | 'filled_blue' | 'filled_black';
+              size?: 'small' | 'medium' | 'large';
+              text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
+              shape?: 'rectangular' | 'pill' | 'circle' | 'square';
+              logo_alignment?: 'left' | 'center';
+              width?: number;
+            }
+          ) => void;
+          prompt: () => void;
+        };
+      };
+    };
+  }
+}
 
 function getSafeRedirect(path: string | undefined): string {
   if (!path) return DEFAULT_REDIRECT;
@@ -43,6 +75,8 @@ export default function SignIn() {
   const [resettingPassword, setResettingPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();
 
   if (loading) {
     return (
@@ -103,6 +137,74 @@ export default function SignIn() {
       setOauthSubmitting(false);
     }
   }
+
+  const handleGoogleCredential = useCallback(async (response: GoogleCredentialResponse) => {
+    if (!response.credential) {
+      setError('Google sign in did not return a credential. Please try again.');
+      return;
+    }
+
+    setOauthSubmitting(true);
+    setError(null);
+    setInfo(null);
+
+    const { error: idTokenError } = await supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token: response.credential,
+    });
+
+    if (idTokenError) {
+      setError(normalizeAuthError(idTokenError.message));
+      setOauthSubmitting(false);
+      return;
+    }
+
+    navigate(from, { replace: true });
+  }, [from, navigate]);
+
+  useEffect(() => {
+    if (!googleClientId || !googleButtonRef.current) return;
+
+    const initializeGoogleButton = () => {
+      if (!window.google?.accounts?.id || !googleButtonRef.current) return;
+
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: handleGoogleCredential,
+      });
+
+      googleButtonRef.current.innerHTML = '';
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        type: 'standard',
+        size: 'large',
+        theme: 'outline',
+        text: 'signin_with',
+        shape: 'pill',
+        logo_alignment: 'left',
+        width: 380,
+      });
+
+      window.google.accounts.id.prompt();
+    };
+
+    const existingScript = document.getElementById('google-gsi-script') as HTMLScriptElement | null;
+    if (existingScript) {
+      if (window.google?.accounts?.id) {
+        initializeGoogleButton();
+      } else {
+        existingScript.addEventListener('load', initializeGoogleButton, { once: true });
+      }
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'google-gsi-script';
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = initializeGoogleButton;
+    document.head.appendChild(script);
+  }, [googleClientId, handleGoogleCredential]);
 
   async function handleForgotPassword() {
     if (!email.trim()) {
@@ -188,23 +290,34 @@ export default function SignIn() {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={submitting || oauthSubmitting || resettingPassword}
-            className="w-full bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed text-gray-700 font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors mb-4"
-          >
-            {oauthSubmitting ? (
-              <><LogoSpinner size={15} /> Redirecting to Google…</>
-            ) : (
-              <>
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                  <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.5 3.9-5.5 3.9-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.2.8 3.9 1.5l2.7-2.6C16.9 3.3 14.7 2.4 12 2.4 6.9 2.4 2.8 6.5 2.8 11.6s4.1 9.2 9.2 9.2c5.3 0 8.8-3.7 8.8-8.9 0-.6-.1-1.1-.2-1.7H12z"/>
-                </svg>
-                Continue with Google
-              </>
-            )}
-          </button>
+          {googleClientId ? (
+            <div className="mb-4">
+              <div ref={googleButtonRef} className="w-full" />
+              {oauthSubmitting && (
+                <div className="mt-2 text-xs text-gray-500 flex items-center gap-2">
+                  <LogoSpinner size={14} /> Signing you in with Google...
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={submitting || oauthSubmitting || resettingPassword}
+              className="w-full bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed text-gray-700 font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors mb-4"
+            >
+              {oauthSubmitting ? (
+                <><LogoSpinner size={15} /> Redirecting to Google...</>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                    <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.5 3.9-5.5 3.9-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.2.8 3.9 1.5l2.7-2.6C16.9 3.3 14.7 2.4 12 2.4 6.9 2.4 2.8 6.5 2.8 11.6s4.1 9.2 9.2 9.2c5.3 0 8.8-3.7 8.8-8.9 0-.6-.1-1.1-.2-1.7H12z"/>
+                  </svg>
+                  Continue with Google
+                </>
+              )}
+            </button>
+          )}
 
           <div className="flex items-center gap-3 mb-4">
             <div className="h-px bg-gray-200 flex-1" />
