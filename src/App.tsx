@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import LandingPage from './pages/LandingPage';
 import LogoSpinner from './components/LogoSpinner';
 import { useAuth } from './contexts/AuthContext';
@@ -140,39 +141,39 @@ export default function App() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/signup" element={<SignUp />} />
-            <Route path="/signin" element={<SignIn />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/onboard/:token" element={<CandidateOnboarding />} />
-            <Route path="/confirm-applied/:token" element={<ConfirmApplied />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/terms" element={<TermsAndConditions />} />
-            <Route path="/security" element={<SecurityPage />} />
-            <Route path="/about" element={<AboutUs />} />
-            <Route path="/contact" element={<ContactUs />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/cancellation-refund" element={<CancellationRefundPolicy />} />
-            <Route path="/vs/:competitor" element={<ComparisonPage />} />
-            <Route path="/book-demo" element={<BookDemo />} />
-            <Route path="/why-ai-copilot" element={<WhyAICopilot />} />
-            <Route path="/how-it-works" element={<HowItWorks />} />
-            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/" element={<ErrorBoundary><LandingPage /></ErrorBoundary>} />
+            <Route path="/signup" element={<ErrorBoundary><SignUp /></ErrorBoundary>} />
+            <Route path="/signin" element={<ErrorBoundary><SignIn /></ErrorBoundary>} />
+            <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
+            <Route path="/onboard/:token" element={<ErrorBoundary><CandidateOnboarding /></ErrorBoundary>} />
+            <Route path="/confirm-applied/:token" element={<ErrorBoundary><ConfirmApplied /></ErrorBoundary>} />
+            <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
+            <Route path="/terms" element={<ErrorBoundary><TermsAndConditions /></ErrorBoundary>} />
+            <Route path="/security" element={<ErrorBoundary><SecurityPage /></ErrorBoundary>} />
+            <Route path="/about" element={<ErrorBoundary><AboutUs /></ErrorBoundary>} />
+            <Route path="/contact" element={<ErrorBoundary><ContactUs /></ErrorBoundary>} />
+            <Route path="/pricing" element={<ErrorBoundary><PricingPage /></ErrorBoundary>} />
+            <Route path="/cancellation-refund" element={<ErrorBoundary><CancellationRefundPolicy /></ErrorBoundary>} />
+            <Route path="/vs/:competitor" element={<ErrorBoundary><ComparisonPage /></ErrorBoundary>} />
+            <Route path="/book-demo" element={<ErrorBoundary><BookDemo /></ErrorBoundary>} />
+            <Route path="/why-ai-copilot" element={<ErrorBoundary><WhyAICopilot /></ErrorBoundary>} />
+            <Route path="/how-it-works" element={<ErrorBoundary><HowItWorks /></ErrorBoundary>} />
+            <Route path="/admin" element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
 
             {/* Protected */}
-            <Route path="/desk" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/bench" element={<ProtectedRoute><ProfilesDirectory /></ProtectedRoute>} />
-            <Route path="/profile-details/:id" element={<ProtectedRoute><ProfileDetails /></ProtectedRoute>} />
-            <Route path="/job-finder" element={<ProtectedRoute>{null}</ProtectedRoute>} />
-            <Route path="/submission-queue" element={<ProtectedRoute>{null}</ProtectedRoute>} />
-            <Route path="/resume-ai" element={<ProtectedRoute>{null}</ProtectedRoute>} />
-            <Route path="/account" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
-            <Route path="/support" element={<ProtectedRoute><SupportPage /></ProtectedRoute>} />
-            <Route path="/roadmap" element={<ProtectedRoute><RoadmapPage /></ProtectedRoute>} />
-            <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
-            <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
-            <Route path="/hotlist-ai" element={<ProtectedRoute><AIBenchMatch /></ProtectedRoute>} />
-            <Route path="/job-watch-ai" element={<ProtectedRoute><RadarPage /></ProtectedRoute>} />
+            <Route path="/desk" element={<ProtectedRoute><ErrorBoundary><Dashboard /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/bench" element={<ProtectedRoute><ErrorBoundary><ProfilesDirectory /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/profile-details/:id" element={<ProtectedRoute><ErrorBoundary><ProfileDetails /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/job-finder" element={<ProtectedRoute><ErrorBoundary>{null}</ErrorBoundary></ProtectedRoute>} />
+            <Route path="/submission-queue" element={<ProtectedRoute><ErrorBoundary>{null}</ErrorBoundary></ProtectedRoute>} />
+            <Route path="/resume-ai" element={<ProtectedRoute><ErrorBoundary>{null}</ErrorBoundary></ProtectedRoute>} />
+            <Route path="/account" element={<ProtectedRoute><ErrorBoundary><AccountSettings /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/support" element={<ProtectedRoute><ErrorBoundary><SupportPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/roadmap" element={<ProtectedRoute><ErrorBoundary><RoadmapPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/hotlist-ai" element={<ProtectedRoute><ErrorBoundary><AIBenchMatch /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/job-watch-ai" element={<ProtectedRoute><ErrorBoundary><RadarPage /></ErrorBoundary></ProtectedRoute>} />
           </Routes>
         </Suspense>
       </AuthProvider>
