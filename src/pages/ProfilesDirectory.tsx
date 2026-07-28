@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Upload, X, FileText, Sparkles, CheckCircle2,
@@ -174,7 +174,7 @@ function SectionHeader({ title, color = 'blue' }: { title: string; color?: strin
 }
 
 function CollapsibleSection({ title, color = 'gray', defaultOpen = false, count, action, children }: {
-  title: string; color?: string; defaultOpen?: boolean; count?: number; action?: React.ReactNode; children: React.ReactNode;
+  title: string; color?: string; defaultOpen?: boolean; count?: number; action?: ReactNode; children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -195,6 +195,40 @@ function CollapsibleSection({ title, color = 'gray', defaultOpen = false, count,
       {open && <div className="px-4 py-4 border-t border-gray-100">{children}</div>}
     </div>
   );
+}
+
+function DetailSection({ title, color = 'gray', children }: { title: string; color?: string; children: ReactNode }) {
+  const cls: Record<string, string> = {
+    blue: 'border-blue-200 bg-blue-50/70',
+    emerald: 'border-emerald-200 bg-emerald-50/70',
+    violet: 'border-violet-200 bg-violet-50/70',
+    amber: 'border-amber-200 bg-amber-50/70',
+    gray: 'border-gray-200 bg-gray-50/70',
+  };
+
+  return (
+    <div className={`rounded-xl border px-3 py-3 ${cls[color] ?? cls.gray}`}>
+      <p className="text-[9px] font-bold uppercase tracking-wider text-gray-600 mb-2">{title}</p>
+      <div className="space-y-2">{children}</div>
+    </div>
+  );
+}
+
+function DetailField({ label, value, emptyText = '—' }: { label: string; value: ReactNode; emptyText?: string }) {
+  const text = value ?? emptyText;
+  return (
+    <div>
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">{label}</p>
+      <div className="text-xs text-gray-700 font-medium break-words">{text}</div>
+    </div>
+  );
+}
+
+function formatProfileValue(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') return value.trim() || '—';
+  return String(value);
 }
 
 const BLANK_EDU: EducationEntry = { institution: '', degree: '', field: '', start_year: '', end_year: '', gpa: '' };
@@ -1825,39 +1859,52 @@ export default function ProfilesDirectory() {
                     </div>
                   </div>
 
-                  {/* Sub-col 2: Preferences + Work & Education */}
+                  {/* Sub-col 2: Full profile */}
                   <div className="flex-1 flex flex-col border-r border-gray-200 overflow-hidden min-w-0">
                     <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Preferences & History</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Full Profile</p>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                      {/* Work Preferences */}
-                      {(p.work_type || p.notice_period || p.years_experience != null || p.availability || p.desired_salary_min || p.desired_salary_max || p.preferred_locations) && (
-                        <div className="space-y-2.5">
-                          <p className="text-[9px] font-bold uppercase tracking-wider text-blue-600">Work Preferences</p>
-                          {p.work_type && <div><p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Work Type</p><p className="text-xs text-gray-700 font-medium">{p.work_type}</p></div>}
-                          {p.notice_period && <div><p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Notice</p><p className="text-xs text-gray-700 font-medium">{p.notice_period}</p></div>}
-                          {p.years_experience != null && <div><p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Experience</p><p className="text-xs text-gray-700 font-medium">{p.years_experience} yr{p.years_experience !== 1 ? 's' : ''}</p></div>}
-                          {p.availability && <div><p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Availability</p><p className="text-xs text-gray-700 font-medium">{p.availability}</p></div>}
-                          {(p.desired_salary_min || p.desired_salary_max) && (
-                            <div>
-                              <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Hourly Rate</p>
-                              <p className="text-xs text-gray-700 font-medium">
-                                {p.desired_salary_min ? `${Number(p.desired_salary_min).toLocaleString()}` : ''}
-                                {p.desired_salary_min && p.desired_salary_max ? ' – ' : ''}
-                                {p.desired_salary_max ? `${Number(p.desired_salary_max).toLocaleString()}/hr` : ''}
-                              </p>
-                            </div>
-                          )}
-                          {p.preferred_locations && <div><p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Preferred Locations</p><p className="text-xs text-gray-700 font-medium">{p.preferred_locations}</p></div>}
-                        </div>
-                      )}
+                      <DetailSection title="Profile Overview" color="blue">
+                        <DetailField label="Candidate" value={p.candidate_name || '—'} />
+                        <DetailField label="Target role" value={p.target_role || '—'} />
+                        <DetailField label="Location" value={([p.location, p.city, p.state, p.zip_code, p.country].filter(Boolean).join(', ') || '—')} />
+                        <DetailField label="Core skills" value={(p.core_skills || '—')} />
+                        <DetailField label="Years of experience" value={p.years_experience != null ? `${p.years_experience} yr${p.years_experience !== 1 ? 's' : ''}` : '—'} />
+                      </DetailSection>
 
-                      {/* Work Experience */}
-                      {Array.isArray(p.experience) && p.experience.length > 0 && (
-                        <div className="pt-2 border-t border-gray-100 space-y-2">
-                          <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-600">Work Experience</p>
-                          {p.experience.map((exp: ExperienceEntry, i: number) => {
+                      <DetailSection title="Contact Details" color="gray">
+                        <DetailField label="Phone" value={p.phone || '—'} />
+                        <DetailField label="Email" value={p.email || '—'} />
+                        <DetailField label="LinkedIn" value={p.linkedin_url || '—'} />
+                        <DetailField label="GitHub" value={p.github_url || '—'} />
+                        <DetailField label="Portfolio" value={p.portfolio_url || '—'} />
+                      </DetailSection>
+
+                      <DetailSection title="Work Preferences" color="amber">
+                        <DetailField label="Work type" value={p.work_type || '—'} />
+                        <DetailField label="Notice period" value={p.notice_period || '—'} />
+                        <DetailField label="Availability" value={p.availability || '—'} />
+                        <DetailField label="Preferred locations" value={p.preferred_locations || '—'} />
+                        <DetailField label="Salary range" value={(() => {
+                          const min = p.desired_salary_min != null ? Number(p.desired_salary_min).toLocaleString() : '';
+                          const max = p.desired_salary_max != null ? Number(p.desired_salary_max).toLocaleString() : '';
+                          if (!min && !max) return '—';
+                          return `${min}${min && max ? ' – ' : ''}${max}${max ? '/hr' : ''}`;
+                        })()} />
+                      </DetailSection>
+
+                      <DetailSection title="Visa & Work Eligibility" color="violet">
+                        <DetailField label="Visa status" value={p.visa_status || '—'} />
+                        <DetailField label="Profile status" value={p.profile_status || '—'} />
+                        <DetailField label="Bench stage" value={p.bench_stage || '—'} />
+                        <DetailField label="Assigned to" value={p.assigned_to || '—'} />
+                        <DetailField label="Created" value={p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'} />
+                      </DetailSection>
+
+                      <DetailSection title="Work Experience" color="emerald">
+                        {Array.isArray(p.experience) && p.experience.length > 0 ? (
+                          p.experience.map((exp: ExperienceEntry, i: number) => {
                             const expanded = expandedExpIds.has(i);
                             const hasDesc = !!exp.description;
                             return (
@@ -1871,8 +1918,8 @@ export default function ProfilesDirectory() {
                                   className={`w-full text-left p-2.5 ${hasDesc ? 'cursor-pointer hover:bg-gray-50/70' : 'cursor-default'} transition-colors`}>
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0 flex-1">
-                                      <p className="text-xs font-bold text-gray-800 truncate">{exp.title}</p>
-                                      <p className="text-[11px] text-gray-500 truncate">{exp.company}</p>
+                                      <p className="text-xs font-bold text-gray-800 truncate">{exp.title || 'Untitled role'}</p>
+                                      <p className="text-[11px] text-gray-500 truncate">{exp.company || 'Unknown company'}</p>
                                       <div className="flex items-center gap-2 text-[9px] text-gray-400 mt-0.5">
                                         {exp.location && <span className="truncate">{exp.location}</span>}
                                         {(exp.start_date || exp.end_date) && (
@@ -1893,30 +1940,28 @@ export default function ProfilesDirectory() {
                                 )}
                               </div>
                             );
-                          })}
-                        </div>
-                      )}
+                          })
+                        ) : (
+                          <p className="text-[11px] text-gray-400 italic">No work experience added</p>
+                        )}
+                      </DetailSection>
 
-                      {/* Education */}
-                      {Array.isArray(p.education) && p.education.length > 0 && (
-                        <div className="pt-2 border-t border-gray-100 space-y-2">
-                          <p className="text-[9px] font-bold uppercase tracking-wider text-violet-600">Education</p>
-                          {p.education.map((edu: EducationEntry, i: number) => (
+                      <DetailSection title="Education" color="violet">
+                        {Array.isArray(p.education) && p.education.length > 0 ? (
+                          p.education.map((edu: EducationEntry, i: number) => (
                             <div key={i} className="bg-white border border-gray-200 rounded-xl p-2.5 space-y-1">
-                              <p className="text-xs font-bold text-gray-800 truncate">{edu.institution}</p>
-                              <p className="text-[11px] text-gray-600 truncate">{edu.degree}{edu.field ? ` · ${edu.field}` : ''}</p>
+                              <p className="text-xs font-bold text-gray-800 truncate">{edu.institution || 'Institution not provided'}</p>
+                              <p className="text-[11px] text-gray-600 truncate">{[edu.degree, edu.field].filter(Boolean).join(' · ') || '—'}</p>
                               <div className="flex items-center gap-2 text-[9px] text-gray-400">
                                 {(edu.start_year || edu.end_year) && <span>{edu.start_year}{edu.start_year && edu.end_year ? ' – ' : ''}{edu.end_year}</span>}
                                 {edu.gpa && <span>GPA {edu.gpa}</span>}
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {!p.work_type && !p.notice_period && p.years_experience == null && !p.availability && !p.desired_salary_min && !p.desired_salary_max && !p.preferred_locations && (!Array.isArray(p.experience) || p.experience.length === 0) && (!Array.isArray(p.education) || p.education.length === 0) && (
-                        <p className="text-[11px] text-gray-400 italic">No preferences or history added</p>
-                      )}
+                          ))
+                        ) : (
+                          <p className="text-[11px] text-gray-400 italic">No education added</p>
+                        )}
+                      </DetailSection>
                     </div>
                   </div>
 
