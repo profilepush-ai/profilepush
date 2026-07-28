@@ -12,16 +12,13 @@ const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash
 async function chargeMatchCredits(
   supabase: ReturnType<typeof createClient>,
   accountId: string,
-  matchedCount: number,
   profileId: string,
+  matchResult: MatchResult,
 ): Promise<boolean> {
-  const normalizedCount = Math.max(0, matchedCount);
-  if (normalizedCount <= 0) return true;
-
-  const chargeUsd = Number((normalizedCount * 0.025).toFixed(6));
+  const chargeUsd = 0.025;
   const { data: hasFunds } = await supabase.rpc("check_credit_balance", {
     p_account_id: accountId,
-    p_min_balance: Number((normalizedCount * 0.10).toFixed(6)),
+    p_min_balance: 0.10,
   });
 
   if (hasFunds === false) return false;
@@ -31,7 +28,13 @@ async function chargeMatchCredits(
     function_name: "radar-match",
     provider: "gemini",
     cost_usd: chargeUsd,
-    metadata: { profile_id: profileId, matched_jobs: normalizedCount, source: "job-watch-ai" },
+    metadata: {
+      profile_id: profileId,
+      matched_job_id: matchResult.job_id,
+      job_source: matchResult.job_source,
+      final_score: matchResult.score,
+      source: "job-watch-ai",
+    },
   });
 
   return !error;
@@ -299,29 +302,41 @@ Deno.serve(async (req: Request) => {
 
           // Save to DB immediately
           if (qualifyingResults.length > 0) {
-            if (account_id) {
-              const charged = await chargeMatchCredits(supabase, account_id, qualifyingResults.length, profile_id);
+            const rows = [] as Array<{
+              profile_id: string;
+              job_source: string;
+              job_id: string;
+              final_average_score: number;
+              score_breakdown: Record<string, { score: number; candidate_value: string; job_value: string; rule: string }>;
+              ai_notes: string;
+              disqualified: boolean;
+              disqualify_reason: string | null;
+            }>;
 
-              if (!charged) {
-                controller.enqueue(encoder.encode(JSON.stringify({ type: "error", error: "Insufficient credits. Please top up your account." }) + "\n"));
-                controller.close();
-                return;
+            for (const result of qualifyingResults) {
+              if (account_id) {
+                const charged = await chargeMatchCredits(supabase, account_id, profile_id, result);
+                if (!charged) {
+                  controller.enqueue(encoder.encode(JSON.stringify({ type: "error", error: "Insufficient credits. Please top up your account." }) + "\n"));
+                  controller.close();
+                  return;
+                }
               }
+
+              rows.push({
+                profile_id,
+                job_source: result.job_source,
+                job_id: result.job_id,
+                final_average_score: result.score,
+                score_breakdown: result.breakdown,
+                ai_notes: result.notes,
+                disqualified: result.disqualified,
+                disqualify_reason: result.reason,
+              });
             }
 
-            const rows = qualifyingResults.map(r => ({
-              profile_id,
-              job_source: r.job_source,
-              job_id: r.job_id,
-              final_average_score: r.score,
-              score_breakdown: r.breakdown,
-              ai_notes: r.notes,
-              disqualified: r.disqualified,
-              disqualify_reason: r.reason,
-            }));
-
             await supabase.from("radar_match_results").insert(rows);
-            totalMatched += qualifyingResults.length;
+            totalMatched += rows.length;
           }
 
           controller.enqueue(encoder.encode(JSON.stringify({ type: "batch", matched: qualifyingResults.length, total_so_far: totalMatched, progress: Math.min(i + batchSize, relevantJobs.length), total_jobs: relevantJobs.length }) + "\n"));

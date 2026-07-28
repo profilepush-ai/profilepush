@@ -13,6 +13,7 @@ import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
 import { triggerProfileEmbedding } from '../lib/embeddings';
+import { getMatchHealthPercent } from '../lib/match-health';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile, ResumeFile, ActivityLog, EducationEntry, ExperienceEntry } from '../types/database';
 
@@ -1070,6 +1071,18 @@ export default function RadarPage() {
               <>
                 {sidebarProfiles.map(profile => {
                   const isSelected = selectedProfileId === profile.id;
+                  const matchedCount = results.filter(r => r.profile_id === profile.id && !r.disqualified && r.final_average_score >= 70).length;
+                  const healthScore = getMatchHealthPercent(profile);
+                  const healthTone = healthScore === 0
+                    ? { chip: 'bg-gray-50 text-gray-500', label: 'Health' }
+                    : healthScore < 60
+                    ? { chip: 'bg-red-50 text-red-700', label: 'Health' }
+                    : healthScore < 80
+                    ? { chip: 'bg-amber-50 text-amber-700', label: 'Health' }
+                    : { chip: 'bg-emerald-50 text-emerald-700', label: 'Health' };
+                  const matchedTone = matchedCount === 0
+                    ? 'bg-gray-50 text-gray-500'
+                    : 'bg-violet-50 text-violet-700';
                   return (
                     <button
                       key={profile.id}
@@ -1087,6 +1100,14 @@ export default function RadarPage() {
                             {profile.candidate_name}
                           </p>
                           <p className="text-[10px] text-gray-400 truncate mt-0.5">{profile.target_role || 'No target role'}</p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                            <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${matchedTone}`}>
+                              Matched <span className="ml-0.5 text-[10px] font-bold">{matchedCount}</span>
+                            </span>
+                            <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${healthTone.chip}`}>
+                              {healthTone.label} <span className="ml-0.5 text-[10px] font-bold">{healthScore}</span>
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </button>
@@ -1153,22 +1174,16 @@ export default function RadarPage() {
                   <div className={isEditingProfile ? 'space-y-2.5' : 'h-full flex flex-col gap-2'}>
                     {(() => {
                       const hasText = (value: string | null | undefined) => Boolean(value && value.trim().length > 0);
-                      const matchFieldChecks = [
-                        hasText(profileForm.target_role),
-                        hasText(profileForm.priority_skills),
-                        hasText(profileForm.years_experience),
-                        hasText(profileForm.visa_status),
-                        hasText(profileForm.work_authorization),
-                        hasText(profileForm.work_type),
-                        hasText(profileForm.preferred_locations),
-                        hasText(profileForm.desired_salary_min),
-                        hasText(profileForm.desired_salary_max),
-                        Boolean(profileForm.relocation_open),
-                      ];
-                      const totalMatchFields = matchFieldChecks.length;
-                      const filledMatchFields = matchFieldChecks.filter(Boolean).length;
-                      const completionPct = Math.round((filledMatchFields / totalMatchFields) * 100);
-                      const hasMissingFields = filledMatchFields < totalMatchFields;
+                      const completionPct = getMatchHealthPercent({
+                        target_role: profileForm.target_role,
+                        years_experience: profileForm.years_experience,
+                        visa_status: profileForm.visa_status,
+                        work_authorization: profileForm.work_authorization,
+                        work_type: profileForm.work_type,
+                        preferred_locations: profileForm.preferred_locations,
+                        desired_salary_min: profileForm.desired_salary_min,
+                        desired_salary_max: profileForm.desired_salary_max,
+                      });
                       const healthTone = completionPct < 60
                         ? {
                           wrap: 'border-red-200 bg-red-50',

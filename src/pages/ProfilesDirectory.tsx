@@ -13,6 +13,7 @@ import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
 import { throttledAll } from '../lib/query-throttle';
 import { triggerProfileEmbedding } from '../lib/embeddings';
+import { getMatchHealthPercent } from '../lib/match-health';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile, WishlistedJob, EducationEntry, ExperienceEntry, ResumeFile, ActivityLog, ProfileAssignment } from '../types/database';
 
@@ -277,6 +278,9 @@ export default function ProfilesDirectory() {
   const [prioritySkillsItems, setPrioritySkillsItems]     = useState<string[]>([]);
   const [newSkillInput, setNewSkillInput]                 = useState('');
   const [aiGeneratingSkills, setAiGeneratingSkills]       = useState(false);
+  const [editingMatchHealth, setEditingMatchHealth]       = useState(false);
+  const [matchHealthDraft, setMatchHealthDraft]           = useState<Partial<Profile>>({});
+  const [savingMatchHealth, setSavingMatchHealth]         = useState(false);
   const newSkillRef = useRef<HTMLInputElement>(null);
 
   // Collapsed states
@@ -369,6 +373,8 @@ export default function ProfilesDirectory() {
     setDetailLoading(true);
     setSelectedDocIds(new Set());
     setEditingPrioritySkills(false);
+    setEditingMatchHealth(false);
+    setMatchHealthDraft({});
     setNewSkillInput('');
     setSkillsExpanded(false);
     setExpandedExpIds(new Set());
@@ -489,6 +495,33 @@ export default function ProfilesDirectory() {
     await supabase.from('profiles').update({ priority_skills: value }).eq('id', profileId);
     setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, priority_skills: value } : p));
     setEditingPrioritySkills(false);
+  }
+
+  async function saveMatchHealthRules() {
+    if (!selectedProfileId) return;
+    setSavingMatchHealth(true);
+    const payload = {
+      target_role: matchHealthDraft.target_role ?? '',
+      priority_skills: matchHealthDraft.priority_skills ?? '',
+      years_experience: matchHealthDraft.years_experience != null && matchHealthDraft.years_experience !== '' ? Number(matchHealthDraft.years_experience) : null,
+      visa_status: matchHealthDraft.visa_status ?? '',
+      work_authorization: matchHealthDraft.work_authorization ?? '',
+      work_type: matchHealthDraft.work_type ?? '',
+      preferred_locations: matchHealthDraft.preferred_locations ?? '',
+      desired_salary_min: matchHealthDraft.desired_salary_min != null && matchHealthDraft.desired_salary_min !== '' ? Number(matchHealthDraft.desired_salary_min) : null,
+      desired_salary_max: matchHealthDraft.desired_salary_max != null && matchHealthDraft.desired_salary_max !== '' ? Number(matchHealthDraft.desired_salary_max) : null,
+    };
+    const { data, error } = await supabase.from('profiles').update(payload).eq('id', selectedProfileId).select().single();
+    if (error) {
+      showToast('Failed to update match rules', 'error');
+    } else {
+      setProfiles(prev => prev.map(p => p.id === selectedProfileId ? { ...p, ...data } : p));
+      setEditingMatchHealth(false);
+      setMatchHealthDraft({});
+      showToast('Match rules updated');
+      triggerProfileEmbedding(selectedProfileId);
+    }
+    setSavingMatchHealth(false);
   }
 
   async function generatePrioritySkills(p: Profile) {
@@ -1259,36 +1292,36 @@ export default function ProfilesDirectory() {
               <div className="py-10 text-center px-4">
                   <p className="text-xs text-gray-400">{profiles.length === 0 ? 'No candidates yet. Click + Add New to upload one.' : 'No candidates match your filters.'}</p>
               </div>
-            ) : filteredStats.map(({ profile: p, applied, saved }) => {
+            ) : filteredStats.map(({ profile: p, matched }) => {
               const isSelected = selectedProfileId === p.id;
-              const stage = (p.bench_stage ?? 'New') as BenchStage;
-              const cfg = STAGE_CFG[stage];
+              const matchedCount = matched;
+              const healthScore = getMatchHealthPercent(p);
+              const healthTone = healthScore === 0
+                ? { chip: 'bg-gray-50 text-gray-500' }
+                : healthScore < 60
+                ? { chip: 'bg-red-50 text-red-700' }
+                : healthScore < 80
+                ? { chip: 'bg-amber-50 text-amber-700' }
+                : { chip: 'bg-emerald-50 text-emerald-700' };
+              const matchedTone = matchedCount === 0
+                ? 'bg-gray-50 text-gray-500'
+                : 'bg-violet-50 text-violet-700';
               return (
                 <button key={p.id} onClick={() => setSelectedProfileId(isSelected ? null : p.id)}
                   className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-all ${isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50/70'}`}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className={`text-sm font-semibold truncate flex-1 ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>{p.candidate_name}</p>
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      <button
-                        onClick={e => { e.stopPropagation(); navigate(`/job-finder?profileId=${p.id}`); }}
-                        title="Find Jobs"
-                        className="p-1 rounded hover:bg-blue-100 transition-colors group/si"
-                      >
-                        <Search size={10} className="text-gray-300 group-hover/si:text-blue-500 transition-colors" />
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); navigate(`/resume-ai?profileId=${p.id}`); }}
-                        title="Resume AI"
-                        className="p-1 rounded hover:bg-blue-100 transition-colors group/ri"
-                      >
-                        <Sparkles size={10} className="text-gray-300 group-hover/ri:text-blue-500 transition-colors" />
-                      </button>
-                      <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border shrink-0 ${cfg.bg} ${cfg.border} ${cfg.text}`}>{stage}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>{p.candidate_name}</p>
+                      <p className="text-[11px] text-gray-500 truncate mt-0.5">{p.target_role}</p>
                     </div>
                   </div>
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5">{p.target_role}</p>
-                  <div className="flex items-center gap-3 mt-1.5">
-                    <span className="text-[10px] text-gray-400">{applied} applied · {saved} saved</span>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${matchedTone}`}>
+                      Matched <span className="ml-0.5 text-[10px] font-bold">{matchedCount}</span>
+                    </span>
+                    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${healthTone.chip}`}>
+                      Health <span className="ml-0.5 text-[10px] font-bold">{healthScore}</span>
+                    </span>
                   </div>
                 </button>
               );
@@ -1465,6 +1498,39 @@ export default function ProfilesDirectory() {
             const daysAgo = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86_400_000);
             const sinceLabel = daysAgo === 0 ? 'Today' : daysAgo === 1 ? '1d ago' : `${daysAgo}d ago`;
             const activeBoards = BOARDS.filter(b => { const m = perBoard[b.key]; return m && (m.fetched + m.matched + m.applied + m.rewritten) > 0; });
+            const matchFieldRows = [
+              { label: 'Target Role', field: 'target_role' as const, type: 'text' as const, options: [] as string[], value: editingMatchHealth ? (matchHealthDraft.target_role ?? '') : (p.target_role ?? '') },
+              { label: 'Years Exp', field: 'years_experience' as const, type: 'number' as const, options: [] as string[], value: editingMatchHealth ? (matchHealthDraft.years_experience ?? '') : (p.years_experience != null ? `${p.years_experience} yr${p.years_experience !== 1 ? 's' : ''}` : '') },
+              { label: 'Visa Status', field: 'visa_status' as const, type: 'select' as const, options: VISA_OPTIONS, value: editingMatchHealth ? (matchHealthDraft.visa_status ?? '') : (p.visa_status ?? '') },
+              { label: 'Work Authorization', field: 'work_authorization' as const, type: 'select' as const, options: WORK_AUTH_OPTIONS, value: editingMatchHealth ? (matchHealthDraft.work_authorization ?? '') : (p.work_authorization ?? '') },
+              { label: 'Work Type', field: 'work_type' as const, type: 'select' as const, options: WORK_OPTIONS, value: editingMatchHealth ? (matchHealthDraft.work_type ?? '') : (p.work_type ?? '') },
+              { label: 'Preferred Locations', field: 'preferred_locations' as const, type: 'text' as const, options: [] as string[], value: editingMatchHealth ? (matchHealthDraft.preferred_locations ?? '') : (p.preferred_locations ?? '') },
+              { label: 'Min Rate', field: 'desired_salary_min' as const, type: 'number' as const, options: [] as string[], value: editingMatchHealth ? (matchHealthDraft.desired_salary_min ?? '') : (p.desired_salary_min != null ? `${Number(p.desired_salary_min).toLocaleString()}` : '') },
+              { label: 'Max Rate', field: 'desired_salary_max' as const, type: 'number' as const, options: [] as string[], value: editingMatchHealth ? (matchHealthDraft.desired_salary_max ?? '') : (p.desired_salary_max != null ? `${Number(p.desired_salary_max).toLocaleString()}/hr` : '') },
+            ];
+            const matchHealthPct = getMatchHealthPercent({
+              target_role: p.target_role,
+              years_experience: p.years_experience,
+              visa_status: p.visa_status,
+              work_authorization: p.work_authorization,
+              work_type: p.work_type,
+              preferred_locations: p.preferred_locations,
+              desired_salary_min: p.desired_salary_min,
+              desired_salary_max: p.desired_salary_max,
+            });
+            const matchHealthTone = matchHealthPct === 0
+              ? 'border-gray-200 bg-gray-50 text-gray-500'
+              : matchHealthPct < 60
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : matchHealthPct < 80
+              ? 'border-amber-200 bg-amber-50 text-amber-700'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700';
+            const updateMatchHealthField = (
+              field: 'target_role' | 'years_experience' | 'visa_status' | 'work_authorization' | 'work_type' | 'preferred_locations' | 'desired_salary_min' | 'desired_salary_max',
+              value: string | number | null,
+            ) => {
+              setMatchHealthDraft(prev => ({ ...prev, [field]: value }));
+            };
 
             return (
               <div className="flex-1 flex flex-col overflow-hidden">
@@ -1472,16 +1538,11 @@ export default function ProfilesDirectory() {
                 {/* ── Shared candidate header ── */}
                 <div className="bg-white border-b border-gray-200 px-5 py-3 shrink-0">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
-                        <span className="text-sm font-black text-blue-600">{p.candidate_name[0]?.toUpperCase()}</span>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h2 className="text-sm font-bold text-gray-900 truncate">{p.candidate_name}</h2>
-                        <p className="text-xs text-gray-500 truncate">{p.target_role}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                    <div className="min-w-0 flex-1">
+                    <h2 className="text-sm font-bold text-gray-900 truncate">{p.candidate_name}</h2>
+                    <p className="text-xs text-gray-500 truncate">{p.target_role}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
@@ -1543,19 +1604,13 @@ export default function ProfilesDirectory() {
                         Find Jobs
                       </button>
                       <button
-                        onClick={e => { e.stopPropagation(); const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect(); setBenchStagePopup(benchStagePopup?.profileId === p.id ? null : { profileId: p.id, rect }); }}
-                        className={`flex items-center gap-1.5 text-[11px] font-semibold border rounded-full pl-2 pr-2.5 py-0.5 transition-colors cursor-pointer ${stageCfg.bg} ${stageCfg.border} ${stageCfg.text}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${stageCfg.dot}`} />{benchStage}<ChevronDown size={9} className="shrink-0" />
-                      </button>
-                      <button
                         onClick={e => { e.stopPropagation(); const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect(); setAssignPopup(assignPopup?.profileId === p.id ? null : { profileId: p.id, search: '', rect }); }}
                         className={`flex items-center gap-1.5 text-[11px] font-medium border rounded-lg px-2 py-0.5 transition-colors ${assignedMembers.length > 0 ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100'}`}>
                         <UserCircle2 size={11} className="shrink-0" />
                         <span className="truncate max-w-[80px]">{assignedMembers.length > 0 ? assignedMembers.map(m => memberName(m)).join(', ') : 'Unassigned'}</span>
                         <ChevronDown size={9} className="shrink-0" />
                       </button>
-                      <span className="text-[10px] text-gray-400 flex items-center gap-0.5 shrink-0"><Clock size={9} />{sinceLabel}</span>
-                      <button onClick={() => { setEditDraft({ candidate_name: p.candidate_name, target_role: p.target_role, email: p.email, phone: p.phone, location: p.location, city: p.city, state: p.state, country: p.country, linkedin_url: p.linkedin_url, github_url: p.github_url, portfolio_url: p.portfolio_url, core_skills: p.core_skills, visa_status: p.visa_status, work_type: p.work_type, notice_period: p.notice_period, years_experience: p.years_experience, availability: p.availability, desired_salary_min: p.desired_salary_min, desired_salary_max: p.desired_salary_max, preferred_locations: p.preferred_locations }); setShowEditModal(true); }}
+                      <button onClick={() => { setEditDraft({ candidate_name: p.candidate_name, target_role: p.target_role, email: p.email, phone: p.phone, location: p.location, city: p.city, state: p.state, country: p.country, linkedin_url: p.linkedin_url, github_url: p.github_url, portfolio_url: p.portfolio_url, core_skills: p.core_skills, visa_status: p.visa_status, work_type: p.work_type, work_authorization: p.work_authorization ?? '', notice_period: p.notice_period, years_experience: p.years_experience, availability: p.availability, desired_salary_min: p.desired_salary_min, desired_salary_max: p.desired_salary_max, preferred_locations: p.preferred_locations, relocation_status: (p as Record<string, unknown>).relocation_status as string ?? '' }); setShowEditModal(true); }}
                         className="flex items-center gap-1 text-[11px] font-semibold text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 px-2.5 py-1 rounded-lg transition-colors border border-gray-200 shrink-0">
                         <Edit2 size={10} /> Edit
                       </button>
@@ -1569,9 +1624,85 @@ export default function ProfilesDirectory() {
                   {/* Sub-col 1: Profile */}
                   <div className="flex-1 flex flex-col border-r border-gray-200 overflow-hidden min-w-0">
                     <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Profile</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Match Rules</p>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-3">
+
+                      <div className={`rounded-xl border p-2.5 ${matchHealthTone}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-sm font-bold ${matchHealthTone}`}>{matchHealthPct}% Match Health</p>
+                          {editingMatchHealth ? (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={saveMatchHealthRules}
+                                disabled={savingMatchHealth}
+                                className="flex items-center gap-1 text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white px-2 py-1 rounded-lg transition-colors"
+                              >
+                                <Check size={10} /> {savingMatchHealth ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                onClick={() => { setEditingMatchHealth(false); setMatchHealthDraft({}); }}
+                                className="text-[10px] font-semibold text-gray-600 hover:text-gray-900 bg-white hover:bg-gray-100 px-2 py-1 rounded-lg border border-gray-200 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setMatchHealthDraft({
+                                  target_role: p.target_role ?? '',
+                                  years_experience: p.years_experience ?? null,
+                                  visa_status: p.visa_status ?? '',
+                                  work_authorization: p.work_authorization ?? '',
+                                  work_type: p.work_type ?? '',
+                                  preferred_locations: p.preferred_locations ?? '',
+                                  desired_salary_min: p.desired_salary_min ?? null,
+                                  desired_salary_max: p.desired_salary_max ?? null,
+                                });
+                                setEditingMatchHealth(true);
+                              }}
+                              title="Edit match rules"
+                              className="flex items-center justify-center w-6 h-6 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors"
+                            >
+                              <Edit2 size={11} />
+                            </button>
+                          )}
+                        </div>
+                        <div className="mt-2 space-y-1.5">
+                          {matchFieldRows.map((row) => {
+                            const hasValue = String(row.value ?? '').trim().length > 0;
+                            return (
+                              <div key={row.label} className="flex flex-col gap-1 rounded-lg bg-white/70 px-2 py-1.5 border border-gray-100">
+                                <p className="text-[10px] font-semibold text-gray-600">{row.label}</p>
+                                {editingMatchHealth ? (
+                                  row.type === 'select' ? (
+                                    <select
+                                      value={String((matchHealthDraft as Record<string, unknown>)[row.field] ?? '')}
+                                      onChange={(e) => updateMatchHealthField(row.field, e.target.value)}
+                                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] bg-white focus:outline-none focus:border-amber-300"
+                                    >
+                                      <option value="">Select…</option>
+                                      {row.options.map(option => <option key={option} value={option}>{option}</option>)}
+                                    </select>
+                                  ) : (
+                                    <input
+                                      type={row.type}
+                                      value={String((matchHealthDraft as Record<string, unknown>)[row.field] ?? '')}
+                                      onChange={(e) => updateMatchHealthField(row.field, e.target.value)}
+                                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] bg-white focus:outline-none focus:border-amber-300"
+                                    />
+                                  )
+                                ) : (
+                                  <p className={`text-[10px] font-medium ${hasValue ? 'text-gray-800' : 'text-gray-400 italic'}`}>
+                                    {hasValue ? row.value : 'Empty'}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
 
                       {/* ── Priority Skills — always at top ── */}
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
@@ -1579,11 +1710,6 @@ export default function ProfilesDirectory() {
                           <div className="flex items-center gap-1.5">
                             <Star size={10} className="text-amber-500 fill-amber-400 shrink-0" />
                             <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Priority Skills</p>
-                            {(p.priority_skills ? p.priority_skills.split(',').filter(s => s.trim()) : []).length > 0 && (
-                              <span className="text-[9px] font-bold text-amber-600 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-full">
-                                {p.priority_skills.split(',').filter(s => s.trim()).length}/10
-                              </span>
-                            )}
                           </div>
                           <div className="flex items-center gap-1">
                             {/* AI Generate button */}
@@ -1603,8 +1729,8 @@ export default function ProfilesDirectory() {
                                   setNewSkillInput('');
                                   setEditingPrioritySkills(true);
                                 }}
-                                className="flex items-center gap-0.5 text-[9px] font-semibold text-amber-600 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 px-2 py-1 rounded-lg transition-colors">
-                                <Edit2 size={9} /> Edit
+                                className="flex items-center justify-center text-amber-600 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 w-7 h-7 rounded-lg transition-colors">
+                                <Edit2 size={9} />
                               </button>
                             )}
                           </div>
@@ -1695,52 +1821,7 @@ export default function ProfilesDirectory() {
                         )}
                       </div>
 
-                      {/* Contact info */}
-                      {p.email && <div><p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Email</p><p className="text-xs text-gray-700 font-medium break-all">{p.email}</p></div>}
-                      {p.phone && <div><p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Phone</p><p className="text-xs text-gray-700 font-medium">{p.phone}</p></div>}
-                      {p.location && <div><p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Location</p><p className="text-xs text-gray-700 font-medium">{p.location}</p></div>}
-                      {(p.city || p.state || p.country) && (
-                        <div><p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">City / State</p><p className="text-xs text-gray-700 font-medium">{[p.city, p.state, p.country].filter(Boolean).join(', ')}</p></div>
-                      )}
-                      {p.visa_status && <div><p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Visa Status</p><p className="text-xs text-gray-700 font-medium">{p.visa_status}</p></div>}
-                      {(p.linkedin_url || p.github_url || p.portfolio_url) && (
-                        <div className="pt-2 border-t border-gray-100 space-y-1.5">
-                          {p.linkedin_url && <a href={p.linkedin_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 transition-colors truncate"><ExternalLink size={10} className="shrink-0" />LinkedIn</a>}
-                          {p.github_url && <a href={p.github_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 transition-colors truncate"><ExternalLink size={10} className="shrink-0" />GitHub</a>}
-                          {p.portfolio_url && <a href={p.portfolio_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-800 transition-colors truncate"><ExternalLink size={10} className="shrink-0" />Portfolio</a>}
-                        </div>
-                      )}
-                      {p.core_skills && (() => {
-                        const allSkills = p.core_skills.split(',').map(s => s.trim()).filter(Boolean);
-                        const PREVIEW = 4;
-                        const shown = skillsExpanded ? allSkills : allSkills.slice(0, PREVIEW);
-                        return (
-                          <div className="pt-2 border-t border-gray-100">
-                            <button
-                              onClick={() => setSkillsExpanded(v => !v)}
-                              className="flex items-center justify-between w-full mb-2 group">
-                              <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 group-hover:text-gray-600 transition-colors">
-                                All Skills <span className="text-gray-300 font-normal">({allSkills.length})</span>
-                              </p>
-                              <ChevronDown size={10} className={`text-gray-400 transition-transform duration-200 ${skillsExpanded ? 'rotate-180' : ''}`} />
-                            </button>
-                            <div className="flex flex-wrap gap-1">
-                              {shown.map(skill => (
-                                <span key={skill} className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">{skill}</span>
-                              ))}
-                              {!skillsExpanded && allSkills.length > PREVIEW && (
-                                <button onClick={() => setSkillsExpanded(true)}
-                                  className="text-[10px] text-blue-500 hover:text-blue-700 font-semibold px-1">
-                                  +{allSkills.length - PREVIEW} more
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })()}
-                      {!p.email && !p.phone && !p.location && !p.core_skills && !(p.priority_skills) && (
-                        <p className="text-[11px] text-gray-400 italic">No profile info</p>
-                      )}
+
                     </div>
                   </div>
 
@@ -2435,6 +2516,7 @@ export default function ProfilesDirectory() {
                 <MField label="Portfolio URL"     value={editDraft.portfolio_url ?? ''}   onChange={v => setEditDraft(d => ({ ...d, portfolio_url: v }))}   placeholder="yoursite.com" />
                 <MSelect label="Visa Status"   value={editDraft.visa_status ?? ''}    onChange={v => setEditDraft(d => ({ ...d, visa_status: v }))}    options={VISA_OPTIONS} />
                 <MSelect label="Work Type"     value={editDraft.work_type ?? ''}      onChange={v => setEditDraft(d => ({ ...d, work_type: v }))}      options={WORK_OPTIONS} />
+                <MSelect label="Work Authorization" value={editDraft.work_authorization ?? ''} onChange={v => setEditDraft(d => ({ ...d, work_authorization: v }))} options={WORK_AUTH_OPTIONS} />
                 <MField label="Preferred Locations" value={editDraft.preferred_locations ?? ''} onChange={v => setEditDraft(d => ({ ...d, preferred_locations: v }))} placeholder="Remote, Austin, NYC" />
                 <MField label="Hourly Rate Min ($)" value={editDraft.desired_salary_min ?? ''} onChange={v => setEditDraft(d => ({ ...d, desired_salary_min: v }))} type="number" placeholder="45" />
                 <MField label="Hourly Rate Max ($)" value={editDraft.desired_salary_max ?? ''} onChange={v => setEditDraft(d => ({ ...d, desired_salary_max: v }))} type="number" placeholder="75" />

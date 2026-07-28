@@ -49,6 +49,7 @@ const TIMEFRAMES = [
 const FN_LABELS: Record<string, string> = {
   'parse-resume':          'Resume Parse',
   'score-job-match':       'Job Match Score',
+  'radar-match':           'Job Watch AI',
   'rewrite-resume':        'Resume Rewrite',
   'rewrite-field':         'Field Rewrite',
   'generate-search-ideas': 'Search Ideas',
@@ -74,7 +75,7 @@ const CAT_COLORS: Record<CategoryKey, string> = {
 
 function fnCategory(fn: string): CategoryKey {
   if (fn.includes('rewrite'))  return 'AI Rewrite';
-  if (fn.includes('score'))    return 'AI Match';
+  if (fn.includes('score') || fn.includes('radar'))    return 'AI Match';
   if (fn.includes('parse'))    return 'AI Extract';
   if (fn.includes('ideas'))    return 'AI Ideas';
   if (fn.includes('summary'))  return 'AI Insights';
@@ -234,18 +235,19 @@ export default function BillingPage() {
   const showToast = (message: string, type: 'success' | 'error') => setToast({ message, type });
 
   const load = useCallback(async () => {
-    if (!account) return;
+    const accountId = account?.id;
+    if (!accountId) return;
     setLoading(true);
     const since = timeframe > 0 ? new Date(Date.now() - timeframe * 86_400_000).toISOString() : null;
-    const q = supabase.from('api_usage_log').select('*').eq('account_id', account.id).order('created_at', { ascending: false });
+    const q = supabase.from('api_usage_log').select('*').eq('account_id', accountId).order('created_at', { ascending: false });
     if (since) q.gte('created_at', since);
     const [{ data }, { data: members }, { data: balanceRow }] = await Promise.all([
       q,
-      supabase.from('account_members').select('user_id, display_name, invited_email').eq('account_id', account.id),
-      supabase.from('accounts').select('credits_balance').eq('id', account.id).maybeSingle(),
+      supabase.from('account_members').select('user_id, display_name, invited_email').eq('account_id', accountId),
+      supabase.from('accounts').select('credits_balance').eq('id', accountId).maybeSingle(),
     ]);
     setUsageLogs(data ?? []);
-    setVisibleBalance(Number(balanceRow?.credits_balance ?? account.credits_balance ?? 0));
+    setVisibleBalance(Number(balanceRow?.credits_balance ?? account?.credits_balance ?? 0));
     const names: Record<string, string> = {};
     for (const m of members ?? []) {
       if (m.user_id) names[m.user_id] = m.display_name || m.invited_email || 'Unknown';
@@ -253,9 +255,9 @@ export default function BillingPage() {
     setUserNames(names);
     setPage(1);
     setLoading(false);
-  }, [account, timeframe]);
+  }, [account?.id, timeframe]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
     if (typeof account?.credits_balance === 'number') {
