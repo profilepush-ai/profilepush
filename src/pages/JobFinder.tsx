@@ -268,7 +268,179 @@ const EXPERIENCE_MAP: Record<string, string> = {
   'Executive': 'Executive',
 };
 
+const INDEED_JOB_TYPE_MAP: Record<string, string> = {
+  'Full-time': 'fulltime',
+  'Part-time': 'parttime',
+  'Contract': 'contract',
+  'Internship': 'internship',
+};
+
+const INDEED_DATE_POSTED_MAP: Record<string, string | undefined> = {
+  'Any time': undefined,
+  'Last 24 hours': '1',
+  'Last week': '7',
+  'Last month': '14',
+};
+
+const DEBUG_PANEL_EMAILS = new Set([
+  'poornapotluri27@gmail.com',
+  'chanduchowdary24@gmail.com',
+]);
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function parseDelimitedValues(source: string): string[] {
+  return source
+    .split(/[,|/;\n]+/)
+    .map(value => value.trim())
+    .filter(Boolean)
+    .filter((value, index, arr) => arr.findIndex(entry => entry.toLowerCase() === value.toLowerCase()) === index);
+}
+
+function isSearchableSkill(skill: string): boolean {
+  if (skill.length < 2 || skill.length > 32) return false;
+  if (skill.split(/\s+/).length > 4) return false;
+  if (/^(communication|leadership|team player|problem solving|collaboration|agile)$/i.test(skill)) return false;
+  return true;
+}
+
+function getProfileSearchSkills(profile: Profile | null): { source: 'priority_skills' | 'core_skills' | 'none'; skills: string[] } {
+  const prioritySkills = parseDelimitedValues(profile?.priority_skills || '')
+    .filter(isSearchableSkill)
+    .slice(0, 3);
+
+  if (prioritySkills.length > 0) {
+    return { source: 'priority_skills', skills: prioritySkills };
+  }
+
+  const coreSkills = parseDelimitedValues(profile?.core_skills || '')
+    .filter(isSearchableSkill)
+    .slice(0, 2);
+
+  if (coreSkills.length > 0) {
+    return { source: 'core_skills', skills: coreSkills };
+  }
+
+  return { source: 'none', skills: [] };
+}
+
+function escapeIndeedPhrase(value: string): string {
+  return value.replace(/"/g, '\\"').trim();
+}
+
+function getIndeedSearchFilters(jobTypes: string[]): { jobType: string; remote: string } {
+  const nonRemoteType = jobTypes.find(type => type !== 'Remote') ?? '';
+  return {
+    jobType: INDEED_JOB_TYPE_MAP[nonRemoteType] ?? '',
+    remote: jobTypes.includes('Remote') ? 'remote' : '',
+  };
+}
+
+function buildIndeedKeyword(rawKeyword: string, profile: Profile | null, useProfileFilters: boolean): string {
+  const keywordText = rawKeyword.trim();
+  if (!profile || !useProfileFilters || !keywordText) return keywordText;
+
+  const titleVariants = [keywordText, profile?.target_role ?? '']
+    .map(value => value.trim())
+    .filter(Boolean)
+    .filter((value, index, arr) => arr.findIndex(entry => entry.toLowerCase() === value.toLowerCase()) === index)
+    .slice(0, 2);
+
+  const titleClause = titleVariants.length > 0
+    ? `title:(${titleVariants.map(value => `"${escapeIndeedPhrase(value)}"`).join(' or ')})`
+    : keywordText;
+
+  return titleClause.trim();
+}
+
+function getIndeedApifyTitle(indeedKeyword: string): string {
+  const match = indeedKeyword.match(/title:\((.*)\)/i);
+  if (!match) return indeedKeyword.trim();
+
+  const inner = match[1] ?? '';
+  const quoted = Array.from(inner.matchAll(/"([^"]+)"/g))
+    .map(entry => entry[1]?.trim() ?? '')
+    .filter(Boolean);
+
+  if (quoted.length > 0) return quoted[0];
+  return inner.replace(/[()]/g, ' ').trim();
+}
+
+function buildMonsterQuery(rawKeyword: string, profile: Profile | null, jobTypes: string[], useProfileFilters: boolean): string {
+  const keywordText = rawKeyword.trim();
+  if (!profile || !useProfileFilters || !keywordText) return keywordText;
+
+  const skillTerms = getProfileSearchSkills(profile).skills
+    .filter(skill => !keywordText.toLowerCase().includes(skill.toLowerCase()))
+    .filter(skill => skill.length <= 30)
+    .slice(0, 2);
+
+  const typeTerms = jobTypes.filter(type => type !== 'Full-time');
+  return [keywordText, ...skillTerms, ...typeTerms]
+    .filter(Boolean)
+    .filter((value, index, arr) => arr.findIndex(entry => entry.toLowerCase() === value.toLowerCase()) === index)
+    .join(' ');
+}
+
+function buildBoardPayloadPreview(
+  keywordText: string,
+  locationText: string,
+  dateText: string,
+  experienceText: string,
+  jobTypes: string[],
+  maxItems: number,
+  profile: Profile | null,
+  useProfileFilters: boolean,
+) {
+  const empType = jobTypes.filter(type => type !== 'Remote')[0] ?? '';
+  const workArr = jobTypes.includes('Remote') ? 'Remote' : '';
+  const indeedKeyword = buildIndeedKeyword(keywordText, profile, useProfileFilters);
+  const indeedTitle = getIndeedApifyTitle(indeedKeyword);
+  const indeedDatePosted = INDEED_DATE_POSTED_MAP[dateText];
+  const { jobType, remote } = getIndeedSearchFilters(jobTypes);
+  const monsterKeyword = buildMonsterQuery(keywordText, profile, jobTypes, useProfileFilters);
+  const skillContext = getProfileSearchSkills(profile);
+
+  return {
+    skillContext,
+    boards: {
+      LinkedIn: {
+        job_title: keywordText,
+        location: locationText,
+        posted_within: POSTED_WITHIN_MAP[dateText] ?? 'Any Time',
+        experience_level: experienceText ? (EXPERIENCE_MAP[experienceText] ?? '') : '',
+        employment_type: empType,
+        work_arrangement: workArr,
+        max_results: maxItems,
+      },
+      Dice: {
+        keyword: keywordText,
+        location: locationText,
+        posted_date: dateText,
+        max_results: maxItems,
+      },
+      Indeed: {
+        title: indeedTitle,
+        location: locationText,
+        country: 'us',
+        datePosted: indeedDatePosted,
+        limit: maxItems,
+      },
+      Monster: {
+        keyword: monsterKeyword,
+        location: locationText,
+        date_posted: dateText,
+        max_results: maxItems,
+      },
+      CareerBuilder: {
+        keyword: keywordText,
+        location: locationText,
+        date_posted: dateText,
+        max_results: maxItems,
+      },
+    },
+  };
+}
 
 function timeAgo(dateStr: string | null | undefined): string | null {
   if (!dateStr) return null;
@@ -661,6 +833,7 @@ export default function JobFinder() {
   const [experienceLevel, setExperienceLevel] = useState('');
   const [maxResults, setMaxResults] = useState(25);
   const [filtersFromProfile, setFiltersFromProfile] = useState(false);
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   // Mock jobs state (Dice / Indeed / CareerBuilder)
   const [allJobs, setAllJobs] = useState<MockJob[]>([]);
@@ -1541,12 +1714,14 @@ export default function JobFinder() {
     setIndeedJobs([]);
     setIndeedSearch(null);
     try {
+      const indeedKeyword = buildIndeedKeyword(keyword, selectedProfile, Boolean(selectedProfile));
+      const { jobType, remote } = getIndeedSearchFilters(selectedJobTypes);
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
       const res = await fetch(`${supabaseUrl}/functions/v1/indeed-search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}`, 'Apikey': supabaseKey },
-        body: JSON.stringify({ keyword, location, date_posted: dateFilter, account_id: account?.id ?? null, user_id: user?.id ?? null, force_refresh: forceRefresh, excluded_job_ids: excludedIds ?? null, max_results: maxResults }),
+        body: JSON.stringify({ keyword: indeedKeyword, location, date_posted: dateFilter, job_type: jobType, remote, account_id: account?.id ?? null, user_id: user?.id ?? null, force_refresh: forceRefresh, excluded_job_ids: excludedIds ?? null, max_results: maxResults }),
       });
       const data = await res.json();
 
@@ -1631,12 +1806,13 @@ export default function JobFinder() {
     setMonsterJobs([]);
     setMonsterSearch(null);
     try {
+      const monsterKeyword = buildMonsterQuery(keyword, selectedProfile, selectedJobTypes, Boolean(selectedProfile));
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
       const res = await fetch(`${supabaseUrl}/functions/v1/monster-search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}`, 'Apikey': supabaseKey },
-        body: JSON.stringify({ keyword, location, date_posted: dateFilter, account_id: account?.id ?? null, user_id: user?.id ?? null, force_refresh: forceRefresh, excluded_job_ids: excludedIds ?? null, max_results: maxResults }),
+        body: JSON.stringify({ keyword: monsterKeyword, location, date_posted: dateFilter, account_id: account?.id ?? null, user_id: user?.id ?? null, force_refresh: forceRefresh, excluded_job_ids: excludedIds ?? null, max_results: maxResults }),
       });
       const data = await res.json();
 
@@ -1828,7 +2004,9 @@ export default function JobFinder() {
     } else if (board === 'indeed') {
       setIndeedSearching(true); setIndeedHasSearched(true); setIndeedError(null);
       try {
-        const res = await fetch(`${supabaseUrl}/functions/v1/indeed-search`, { method: 'POST', headers, body: JSON.stringify({ ...baseBody, date_posted: d, excluded_job_ids: indeedJobs.map(j => j.id) }) });
+        const indeedKeyword = buildIndeedKeyword(k, selectedProfile, Boolean(selectedProfile));
+        const { jobType, remote } = getIndeedSearchFilters(jt ? [jt] : []);
+        const res = await fetch(`${supabaseUrl}/functions/v1/indeed-search`, { method: 'POST', headers, body: JSON.stringify({ ...baseBody, keyword: indeedKeyword, date_posted: d, job_type: jobType, remote, excluded_job_ids: indeedJobs.map(j => j.id) }) });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
         setIndeedJobs(prev => [...prev, ...(data.jobs ?? [])]);
@@ -1836,7 +2014,8 @@ export default function JobFinder() {
     } else if (board === 'monster') {
       setMonsterSearching(true); setMonsterHasSearched(true); setMonsterError(null);
       try {
-        const res = await fetch(`${supabaseUrl}/functions/v1/monster-search`, { method: 'POST', headers, body: JSON.stringify({ ...baseBody, date_posted: d, excluded_job_ids: monsterJobs.map(j => j.id) }) });
+        const monsterKeyword = buildMonsterQuery(k, selectedProfile, jt ? [jt] : [], Boolean(selectedProfile));
+        const res = await fetch(`${supabaseUrl}/functions/v1/monster-search`, { method: 'POST', headers, body: JSON.stringify({ ...baseBody, keyword: monsterKeyword, date_posted: d, excluded_job_ids: monsterJobs.map(j => j.id) }) });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
         setMonsterJobs(prev => [...prev, ...(data.jobs ?? [])]);
@@ -2155,6 +2334,18 @@ export default function JobFinder() {
     }
   }
   const activePortal = PORTAL_TABS.find(t => t.id === activeTab)!
+  const canViewDebugPanel = DEBUG_PANEL_EMAILS.has((user?.email ?? '').toLowerCase());
+
+  const boardPayloadPreview = buildBoardPayloadPreview(
+    keyword,
+    location,
+    dateFilter,
+    experienceLevel,
+    selectedJobTypes,
+    maxResults,
+    selectedProfile,
+    Boolean(selectedProfile),
+  );
 
   return (
     <div className="h-screen flex flex-col bg-gray-100 font-sans overflow-hidden">
@@ -2233,8 +2424,44 @@ export default function JobFinder() {
               {searchIdeas.length > 0 ? 'AI Ideas' : 'AI Ideas'}
             </button>
           )}
+          {canViewDebugPanel && (
+            <button
+              type="button"
+              onClick={() => setDebugPanelOpen(open => !open)}
+              aria-label={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+              title={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+              className={`flex items-center justify-center h-[30px] w-[30px] rounded-lg border transition-colors shrink-0 ${debugPanelOpen ? 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200' : 'border-gray-200 bg-white text-gray-400 hover:text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+            >
+              <Eye size={12} />
+            </button>
+          )}
         </div>
       </div>
+
+      {canViewDebugPanel && debugPanelOpen && (
+      <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 shrink-0">
+        <div className="flex items-center gap-2 mb-2">
+          <Info size={12} className="text-slate-500 shrink-0" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Search Payload Preview</span>
+          {selectedProfile && boardPayloadPreview.skillContext.source !== 'none' && (
+            <span className="text-[10px] text-slate-500">
+              Using {boardPayloadPreview.skillContext.source === 'priority_skills' ? 'priority skills' : 'core skills'}: {boardPayloadPreview.skillContext.skills.join(', ')}
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2">
+          {Object.entries(boardPayloadPreview.boards).map(([board, payload]) => (
+            <div key={board} className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm min-h-[128px]">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="text-[11px] font-bold text-slate-700">{board}</span>
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">Request</span>
+              </div>
+              <pre className="text-[10px] leading-4 text-slate-600 whitespace-pre-wrap break-words font-mono">{JSON.stringify(payload, null, 2)}</pre>
+            </div>
+          ))}
+        </div>
+      </div>
+      )}
 
       {/* Board selector dropdown portal - outside overflow container */}
       {boardSelectorOpen && (

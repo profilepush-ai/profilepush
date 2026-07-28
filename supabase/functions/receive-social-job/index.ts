@@ -120,15 +120,19 @@ Deno.serve(async (req: Request) => {
     // Generate embeddings for newly upserted social jobs (fire-and-forget)
     if (data && data.length > 0) {
       const embeddingPayload = data.map((r: { id: string }) => ({ type: "job", id: r.id, table: "social_jobs" }));
-      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-embedding`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          "Apikey": Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-        },
-        body: JSON.stringify(embeddingPayload),
-      }).catch(() => {});
+      const EMB_BATCH = 20;
+      for (let i = 0; i < embeddingPayload.length; i += EMB_BATCH) {
+        const batch = embeddingPayload.slice(i, i + EMB_BATCH);
+        fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-embedding`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            "Apikey": Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+          },
+          body: JSON.stringify(batch),
+        }).catch(() => {});
+      }
     }
 
     return respond({

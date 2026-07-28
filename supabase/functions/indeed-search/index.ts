@@ -306,11 +306,28 @@ Deno.serve(async (req: Request) => {
         };
       });
 
-      const { error: insertErr } = await supabase.from("indeed_jobs").insert(rows);
+      const { data: inserted, error: insertErr } = await supabase.from("indeed_jobs").insert(rows).select("id");
       if (insertErr) {
         await supabase.from("indeed_job_searches").update({ status: "failed" }).eq("id", searchRecord.id);
         if (queueEntry) await supabase.from("scrape_queue").update({ status: "failed", error_message: insertErr.message, completed_at: new Date().toISOString() }).eq("id", queueEntry.id);
         throw new Error(`Failed to save jobs: ${insertErr.message}`);
+      }
+
+      if (inserted && inserted.length > 0) {
+        const embeddingPayload = inserted.map((r: { id: string }) => ({ type: "job", id: r.id, table: "indeed_jobs" }));
+        const EMB_BATCH = 20;
+        for (let i = 0; i < embeddingPayload.length; i += EMB_BATCH) {
+          const batch = embeddingPayload.slice(i, i + EMB_BATCH);
+          fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-embedding`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "Apikey": Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+            },
+            body: JSON.stringify(batch),
+          }).catch(() => {});
+        }
       }
     }
 

@@ -26,7 +26,7 @@ interface Member {
   data_access: 'full' | 'assigned_only';
 }
 
-type Section = 'profile' | 'workspace' | 'team' | 'security' | 'billing' | 'notifications' | 'danger';
+type Section = 'profile' | 'workspace' | 'team' | 'watch_schedule' | 'security' | 'billing' | 'notifications' | 'danger';
 
 interface WatchSchedule {
   id: string;
@@ -76,7 +76,6 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ElementType; danger?:
   { id: 'notifications', label: 'Notifications',      icon: Bell      },
   { id: 'danger',        label: 'Danger Zone',        icon: AlertTriangle, danger: true },
 ];
-type Section = 'profile' | 'workspace' | 'team' | 'watch_schedule' | 'security' | 'billing' | 'notifications' | 'danger';
 
 // ─── Small reusable pieces ─────────────────────────────────────────────────────
 
