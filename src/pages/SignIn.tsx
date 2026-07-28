@@ -3,6 +3,7 @@ import { Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowRight, Mail, Lock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { buildSignupWebhookPayload, sendSignupWebhook } from '../lib/auth-webhook';
 import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
 import AuthSidePanel from '../components/AuthSidePanel';
@@ -160,6 +161,17 @@ export default function SignIn() {
       setError(normalizeAuthError(idTokenError.message));
       setOauthSubmitting(false);
       return;
+    }
+
+    const user = (await supabase.auth.getUser()).data.user;
+    if (user) {
+      void sendSignupWebhook(buildSignupWebhookPayload({
+        action: 'google oauth sign in',
+        userId: user.id,
+        email: user.email ?? '',
+        fullName: user.user_metadata?.full_name ?? user.user_metadata?.name ?? '',
+        provider: 'google',
+      }));
     }
 
     navigate(from, { replace: true });

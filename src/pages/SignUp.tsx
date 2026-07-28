@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { buildSignupWebhookPayload, sendSignupWebhook } from '../lib/auth-webhook';
 import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
 import AuthSidePanel from '../components/AuthSidePanel';
@@ -119,23 +120,6 @@ declare global {
         };
       };
     };
-  }
-}
-
-// ── Webhook ────────────────────────────────────────────────────────────────────
-
-async function sendSignupWebhook(payload: Record<string, string>) {
-  try {
-    await fetch(
-      'https://services.leadconnectorhq.com/hooks/48XyGfN1WxneooOcHGHn/webhook-trigger/5acdf9f6-c8e2-44ea-91be-163a46cf83fd',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }
-    );
-  } catch (err) {
-    console.error('Signup webhook failed:', err);
   }
 }
 
@@ -304,6 +288,17 @@ export default function SignUp() {
       return;
     }
 
+    const user = (await supabase.auth.getUser()).data.user;
+    if (user) {
+      void sendSignupWebhook(buildSignupWebhookPayload({
+        action: 'google oauth signup',
+        userId: user.id,
+        email: user.email ?? '',
+        fullName: user.user_metadata?.full_name ?? user.user_metadata?.name ?? '',
+        provider: 'google',
+      }));
+    }
+
     navigate(DEFAULT_SIGNUP_REDIRECT, { replace: true });
   }, [navigate]);
 
@@ -424,16 +419,17 @@ export default function SignUp() {
     }
 
     // Fire webhook (non-blocking)
-    sendSignupWebhook({
+    void sendSignupWebhook(buildSignupWebhookPayload({
       action: 'new account signup',
-      account_id: accountId,
-      owner_id: authUser.id,
-      user_id: authUser.id,
-      full_name: fullName.trim(),
-      business_name: businessName.trim(),
+      accountId,
+      ownerId: authUser.id,
+      userId: authUser.id,
+      fullName: fullName.trim(),
+      businessName: businessName.trim(),
       email: email.trim(),
       phone: fullPhone,
-    });
+      provider: 'email',
+    }));
 
     await refreshAccount();
     navigate('/bench');
