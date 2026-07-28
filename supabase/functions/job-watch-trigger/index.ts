@@ -63,6 +63,15 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+const HOTLIST_RETENTION_DAYS = 15;
+
+function isHotlistEligible(profile: Record<string, unknown>, now = new Date()): boolean {
+  const createdAt = profile.created_at ? new Date(profile.created_at as string) : null;
+  if (!createdAt || Number.isNaN(createdAt.getTime())) return true;
+  const ageDays = (now.getTime() - createdAt.getTime()) / 86_400_000;
+  return ageDays <= HOTLIST_RETENTION_DAYS;
+}
+
 async function runFullPipeline(
   supabase: ReturnType<typeof createClient>,
   supabaseUrl: string,
@@ -110,7 +119,8 @@ async function runFullPipeline(
       return { id: scheduleId, status: "error", jobs_matched: 0 };
     }
 
-    targetProfileIds = Array.from(new Set((hotlistRows ?? []).map((row) => row.profile_id as string).filter(Boolean)));
+    const candidateIds = Array.from(new Set((hotlistRows ?? []).map((row) => row.profile_id as string).filter(Boolean)));
+    targetProfileIds = candidateIds;
   }
 
   if (targetProfileIds.length === 0) {
@@ -120,7 +130,7 @@ async function runFullPipeline(
 
   const { data: profileRows, error: profilesErr } = await supabase
     .from("profiles")
-    .select("id, candidate_name, target_role, preferred_locations, city, state")
+    .select("id, created_at, candidate_name, target_role, preferred_locations, city, state")
     .in("id", targetProfileIds);
 
   if (profilesErr) {
@@ -128,10 +138,19 @@ async function runFullPipeline(
     return { id: scheduleId, status: "error", jobs_matched: 0 };
   }
 
-  const profiles = profileRows ?? [];
+  const profiles = (profileRows ?? []).filter((profile) => isHotlistEligible(profile as Record<string, unknown>));
   if (profiles.length === 0) {
-    await finishRun(supabase, scheduleId, runId, "error", 0, 0, startTime, "No valid profiles found for watch run");
+    await finishRun(supabase, scheduleId, runId, "error", 0, 0, startTime, "No eligible hotlist profiles found for watch run");
     return { id: scheduleId, status: "error", jobs_matched: 0 };
+  }
+
+  const expiredProfileIds = (profileRows ?? [])
+    .filter((profile) => !isHotlistEligible(profile as Record<string, unknown>))
+    .map((profile) => profile.id as string)
+    .filter(Boolean);
+
+  if (expiredProfileIds.length > 0) {
+    await supabase.from("hotlist").delete().in("profile_id", expiredProfileIds).eq("account_id", accountId);
   }
 
   // ── Step 1: Run scrapers (await each so we know scraping is done) ──

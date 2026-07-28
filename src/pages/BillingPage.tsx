@@ -213,9 +213,10 @@ function Tip({ text }: { text: string }) {
 }
 
 export default function BillingPage() {
-  const { account, subscription, membership, user, refreshAccount } = useAuth();
+  const { account, subscription, membership, user } = useAuth();
 
   const [usageLogs, setUsageLogs] = useState<UsageRow[]>([]);
+  const [visibleBalance, setVisibleBalance] = useState<number | null>(null);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading]     = useState(true);
   const [timeframe, setTimeframe] = useState(30);
@@ -238,11 +239,13 @@ export default function BillingPage() {
     const since = timeframe > 0 ? new Date(Date.now() - timeframe * 86_400_000).toISOString() : null;
     const q = supabase.from('api_usage_log').select('*').eq('account_id', account.id).order('created_at', { ascending: false });
     if (since) q.gte('created_at', since);
-    const [{ data }, { data: members }] = await Promise.all([
+    const [{ data }, { data: members }, { data: balanceRow }] = await Promise.all([
       q,
       supabase.from('account_members').select('user_id, display_name, invited_email').eq('account_id', account.id),
+      supabase.from('accounts').select('credits_balance').eq('id', account.id).maybeSingle(),
     ]);
     setUsageLogs(data ?? []);
+    setVisibleBalance(Number(balanceRow?.credits_balance ?? account.credits_balance ?? 0));
     const names: Record<string, string> = {};
     for (const m of members ?? []) {
       if (m.user_id) names[m.user_id] = m.display_name || m.invited_email || 'Unknown';
@@ -253,6 +256,12 @@ export default function BillingPage() {
   }, [account, timeframe]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (typeof account?.credits_balance === 'number') {
+      setVisibleBalance(account.credits_balance);
+    }
+  }, [account?.credits_balance]);
 
   const isOwner     = membership?.role === 'owner';
   const hasActiveSub = subscription?.status === 'active';
@@ -271,7 +280,7 @@ export default function BillingPage() {
     }
   }, [subscription?.plan_amount_usd, hasActiveSub]);
 
-  const balance = account?.credits_balance ?? 0;
+  const balance = visibleBalance ?? account?.credits_balance ?? 0;
   const planBudget = hasActiveSub ? (subscription!.plan_amount_usd ?? 0) : 5;
 
   function fireCrmEvent(event: string, extra: Record<string, unknown> = {}) {

@@ -66,9 +66,18 @@ const BOARD_COL: Record<string, string> = {
 };
 
 interface TeamMember { user_id: string | null; invited_email: string; role: string; display_name: string | null; }
+interface HotlistRow { profile_id: string; created_at: string | null; }
 
 function memberName(m: TeamMember): string {
   return m.display_name?.trim() || m.invited_email.split('@')[0];
+}
+
+const HOTLIST_RETENTION_DAYS = 15;
+function isHotlistEligible(profile: Profile): boolean {
+  const createdAt = profile.created_at ? new Date(profile.created_at) : null;
+  if (!createdAt || Number.isNaN(createdAt.getTime())) return true;
+  const ageDays = (Date.now() - createdAt.getTime()) / 86_400_000;
+  return ageDays <= HOTLIST_RETENTION_DAYS;
 }
 
 const VISA_OPTIONS = ['US Citizen', 'Green Card', 'H1B', 'H4 EAD', 'OPT/CPT', 'TN', 'Other'];
@@ -192,7 +201,7 @@ const BLANK_EXP: ExperienceEntry = { company: '', title: '', location: '', start
 
 export default function ProfilesDirectory() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { account } = useAuth();
+  const { account, subscription } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -285,13 +294,65 @@ export default function ProfilesDirectory() {
 
   // Hotlist
   const [hotlistIds, setHotlistIds] = useState<Set<string>>(new Set());
+  const [hotlistRows, setHotlistRows] = useState<HotlistRow[]>([]);
   const [hotlistAdding, setHotlistAdding] = useState<string | null>(null);
+  const [sidebarTabInitialized, setSidebarTabInitialized] = useState(false);
+  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+
+  async function addProfileToHotlist(profileId: string) {
+    if (!account?.id) return;
+    const { error } = await supabase.from('hotlist').upsert({
+      profile_id: profileId,
+      account_id: account.id,
+      created_at: new Date().toISOString(),
+    }, { onConflict: 'profile_id,account_id' });
+
+    if (!error) {
+      setHotlistRows(prev => prev.some(row => row.profile_id === profileId)
+        ? prev
+        : [{ profile_id: profileId, created_at: new Date().toISOString() }, ...prev]);
+      setHotlistIds(prev => {
+        const next = new Set(prev);
+        next.add(profileId);
+        return next;
+      });
+    }
+  }
 
   useEffect(() => {
-    supabase.from('hotlist').select('profile_id').then(({ data }) => {
-      if (data) setHotlistIds(new Set(data.map(r => r.profile_id)));
+    if (!account?.id) {
+      setHotlistRows([]);
+      setHotlistIds(new Set());
+      setSidebarTabInitialized(false);
+      return;
+    }
+
+    supabase.from('hotlist').select('profile_id, created_at').eq('account_id', account.id).order('created_at', { ascending: false }).then(({ data }) => {
+      setHotlistRows((data ?? []) as HotlistRow[]);
     });
-  }, []);
+  }, [account?.id]);
+
+  useEffect(() => {
+    const profileMap = new Map(profiles.map(p => [p.id, p]));
+    const nextIds = new Set<string>();
+    for (const row of hotlistRows) {
+      const profile = profileMap.get(row.profile_id);
+      if (profile && isHotlistEligible(profile)) nextIds.add(row.profile_id);
+    }
+    setHotlistIds(prev => {
+      const prevArray = Array.from(prev);
+      const nextArray = Array.from(nextIds);
+      if (prevArray.length === nextArray.length && prevArray.every((id, index) => id === nextArray[index])) return prev;
+      return nextIds;
+    });
+  }, [hotlistRows, profiles]);
+
+  useEffect(() => {
+    if (!sidebarTabInitialized && profiles.length > 0) {
+      setSidebarTab(profiles.some(p => hotlistIds.has(p.id)) ? 'hotlist' : 'bench');
+      setSidebarTabInitialized(true);
+    }
+  }, [profiles, hotlistIds, sidebarTabInitialized]);
 
   useEffect(() => { fetchProfiles(); fetchStats(); fetchTeamMembers(); fetchAllAssignments(); }, []);
   useEffect(() => () => { if (queuePollRef.current) clearInterval(queuePollRef.current); }, []);
@@ -590,6 +651,8 @@ export default function ProfilesDirectory() {
             category: 'original',
           });
         }
+
+        await addProfileToHotlist(profileId);
       }
 
       // Generate embedding for the profile (fire-and-forget)
@@ -685,6 +748,7 @@ export default function ProfilesDirectory() {
         category: 'original',
       });
 
+      await addProfileToHotlist(profile.id);
       await fetchProfiles();
       setPendingFile(file);
       setPreFill(p => ({ ...p, candidate_name: displayName }));
@@ -892,10 +956,13 @@ export default function ProfilesDirectory() {
         tax_terms: (p.tax_terms as string) || '',
       }));
 
-      const { error } = await supabase.from('profiles').insert(inserts);
+      const { data: createdRows, error } = await supabase.from('profiles').insert(inserts).select('id');
       if (error) {
         showToast(`Batch ${Math.floor(i / batchSize) + 1} failed: ${error.message}`, 'error');
       } else {
+        for (const row of createdRows ?? []) {
+          await addProfileToHotlist(row.id);
+        }
         created += batch.length;
       }
       setBulkProgress({ done: Math.min(created, total), total });
@@ -948,6 +1015,7 @@ export default function ProfilesDirectory() {
       }
     }
 
+    await addProfileToHotlist(profile.id);
     await supabase.from('resume_files').insert({ profile_id: profile.id, file_name: parsed.file_name || 'manual', file_url: fileUrl, category: 'resume' });
     await supabase.from('activity_logs').insert({
       profile_id: profile.id, event_type: 'profile_parsed',
@@ -996,9 +1064,9 @@ export default function ProfilesDirectory() {
     ? profiles.filter(p => p.bench_stage !== 'Placed' && p.bench_stage !== 'Lost')
     : profiles.filter(p => hotlistIds.has(p.id))
   ).sort((a, b) => {
-    const da = b.updated_at || b.created_at || '';
-    const db = a.updated_at || a.created_at || '';
-    return da.localeCompare(db);
+    const da = new Date(b.created_at || '').getTime();
+    const db = new Date(a.created_at || '').getTime();
+    return da - db;
   });
 
   const sidebarProfileIds = new Set(sidebarProfiles.map(p => p.id));
@@ -1392,6 +1460,8 @@ export default function ProfilesDirectory() {
             const assignedMembers = teamMembers.filter(m => m.user_id && assignedUserIds.includes(m.user_id));
             const benchStage     = (p.bench_stage ?? 'New') as BenchStage;
             const stageCfg       = STAGE_CFG[benchStage];
+            const isHotlistMember = hotlistIds.has(p.id);
+            const isHotlistExpired = !isHotlistEligible(p);
             const daysAgo = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86_400_000);
             const sinceLabel = daysAgo === 0 ? 'Today' : daysAgo === 1 ? '1d ago' : `${daysAgo}d ago`;
             const activeBoards = BOARDS.filter(b => { const m = perBoard[b.key]; return m && (m.fetched + m.matched + m.applied + m.rewritten) > 0; });
@@ -1415,28 +1485,48 @@ export default function ProfilesDirectory() {
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
-                          if (hotlistIds.has(p.id)) return;
+                          if (isHotlistMember) {
+                            if (!account?.id) return;
+                            await supabase.from('hotlist').delete().eq('profile_id', p.id).eq('account_id', account.id);
+                            setHotlistIds(prev => {
+                              const next = new Set(prev);
+                              next.delete(p.id);
+                              return next;
+                            });
+                            showToast(`${p.candidate_name} removed from hotlist`);
+                            return;
+                          }
+
+                          if (isHotlistExpired && !isPaidPlan) {
+                            showToast('Upgrade to Pro to add candidates older than 15 days back to Hotlist.', 'error');
+                            return;
+                          }
+
+                          if (!account?.id) return;
                           setHotlistAdding(p.id);
-                          const { error } = await supabase.from('hotlist').insert({ profile_id: p.id });
+                          const { error } = await supabase.from('hotlist').upsert({
+                            profile_id: p.id,
+                            account_id: account.id,
+                            created_at: new Date().toISOString(),
+                          }, { onConflict: 'profile_id,account_id' });
+
                           if (!error) {
                             setHotlistIds(prev => new Set([...prev, p.id]));
                             showToast(`${p.candidate_name} added to hotlist`);
-                          } else if (error.code === '23505') {
-                            setHotlistIds(prev => new Set([...prev, p.id]));
                           } else {
-                            showToast('Failed to add to hotlist', 'error');
+                            showToast('Failed to update hotlist', 'error');
                           }
                           setHotlistAdding(null);
                         }}
-                        disabled={hotlistIds.has(p.id) || hotlistAdding === p.id}
+                        disabled={hotlistAdding === p.id || (!isHotlistMember && isHotlistExpired && !isPaidPlan)}
                         className={`flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors border shrink-0 ${
-                          hotlistIds.has(p.id)
-                            ? 'bg-amber-50 text-amber-600 border-amber-200 cursor-default'
+                          isHotlistMember
+                            ? 'bg-amber-50 text-amber-600 border-amber-200 cursor-pointer'
                             : 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500'
-                        }`}
+                        } ${(!isHotlistMember && isHotlistExpired && !isPaidPlan) ? 'opacity-70 cursor-not-allowed' : ''}`}
                       >
                         <Target size={10} className="shrink-0" />
-                        {hotlistIds.has(p.id) ? 'On Hotlist' : hotlistAdding === p.id ? 'Adding...' : '+ Hotlist'}
+                        {hotlistAdding === p.id ? 'Updating...' : isHotlistMember ? 'Remove' : isHotlistExpired && !isPaidPlan ? 'Pro Required' : '+ Hotlist'}
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); navigate(`/job-watch-ai?profileId=${p.id}`); }}

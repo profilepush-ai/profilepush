@@ -90,16 +90,27 @@ interface WatchSchedule {
   updated_at: string;
 }
 
+interface HotlistRow { profile_id: string; created_at: string | null; }
+
 const DEFAULT_WATCH_BOARDS = ['linkedin', 'dice', 'indeed', 'monster'];
+const HOTLIST_RETENTION_DAYS = 15;
+
+function isHotlistEligible(profile: Profile): boolean {
+  const createdAt = profile.created_at ? new Date(profile.created_at) : null;
+  if (!createdAt || Number.isNaN(createdAt.getTime())) return true;
+  const ageDays = (Date.now() - createdAt.getTime()) / 86_400_000;
+  return ageDays <= HOTLIST_RETENTION_DAYS;
+}
 
 export default function RadarPage() {
-  const { account, user, subscription } = useAuth();
+  const { account, user, subscription, refreshAccount } = useAuth();
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
   }, []);
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [hotlistRows, setHotlistRows] = useState<HotlistRow[]>([]);
   const [hotlistProfileIds, setHotlistProfileIds] = useState<Set<string>>(new Set());
   const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'all'>('hotlist');
   const [candidateQuery, setCandidateQuery] = useState('');
@@ -438,8 +449,29 @@ export default function RadarPage() {
   }
 
   async function loadHotlist() {
-    const { data } = await supabase.from('hotlist').select('profile_id');
-    if (data) setHotlistProfileIds(new Set(data.map(h => h.profile_id)));
+    if (!account?.id) {
+      setHotlistRows([]);
+      setHotlistProfileIds(new Set());
+      return;
+    }
+
+    const { data } = await supabase.from('hotlist').select('profile_id, created_at').eq('account_id', account.id).order('created_at', { ascending: false });
+    const rows = (data ?? []) as HotlistRow[];
+    setHotlistRows(rows);
+
+    const profileIds = rows.map((row) => row.profile_id).filter(Boolean);
+    const nextIds = new Set<string>();
+
+    if (profileIds.length > 0) {
+      const { data: profileRows } = await supabase.from('profiles').select('id, created_at').in('id', profileIds);
+      const profileMap = new Map((profileRows ?? []).map((profile) => [profile.id, profile]));
+      for (const row of rows) {
+        const profile = profileMap.get(row.profile_id);
+        if (profile && isHotlistEligible(profile as Profile)) nextIds.add(row.profile_id);
+      }
+    }
+
+    setHotlistProfileIds(nextIds);
   }
 
   async function loadResultsOnly() {
@@ -721,6 +753,11 @@ export default function RadarPage() {
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
           console.error(`Radar match failed for ${profile.candidate_name}:`, errData);
+          if (response.status === 402) {
+            showToast(errData.error || 'Insufficient credits. Please top up your account.', 'error');
+            cleanup();
+            return;
+          }
           continue;
         }
 
@@ -771,6 +808,8 @@ export default function RadarPage() {
     }
 
     if (abortRef.current) { cleanup(); return; }
+
+    await refreshAccount();
 
     if (totalNewMatches > 0) {
       setPipelineStep('done');
@@ -957,9 +996,9 @@ export default function RadarPage() {
     if (!q) return true;
     return p.candidate_name.toLowerCase().includes(q) || (p.target_role ?? '').toLowerCase().includes(q);
   }).sort((a, b) => {
-    const da = a.updated_at || a.created_at || '';
-    const db = b.updated_at || b.created_at || '';
-    return db.localeCompare(da);
+    const da = new Date(b.created_at || '').getTime();
+    const db = new Date(a.created_at || '').getTime();
+    return da - db;
   });
 
   if (loading) {

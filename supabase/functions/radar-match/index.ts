@@ -9,6 +9,34 @@ const corsHeaders = {
 
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
 
+async function chargeMatchCredits(
+  supabase: ReturnType<typeof createClient>,
+  accountId: string,
+  matchedCount: number,
+  profileId: string,
+): Promise<boolean> {
+  const normalizedCount = Math.max(0, matchedCount);
+  if (normalizedCount <= 0) return true;
+
+  const chargeUsd = Number((normalizedCount * 0.025).toFixed(6));
+  const { data: hasFunds } = await supabase.rpc("check_credit_balance", {
+    p_account_id: accountId,
+    p_min_balance: Number((normalizedCount * 0.10).toFixed(6)),
+  });
+
+  if (hasFunds === false) return false;
+
+  const { error } = await supabase.from("api_usage_log").insert({
+    account_id: accountId,
+    function_name: "radar-match",
+    provider: "gemini",
+    cost_usd: chargeUsd,
+    metadata: { profile_id: profileId, matched_jobs: normalizedCount, source: "job-watch-ai" },
+  });
+
+  return !error;
+}
+
 interface ExtractedJob {
   job_id: string;
   source: string;
@@ -267,10 +295,21 @@ Deno.serve(async (req: Request) => {
           }
 
           const batchResults = scoreJobsAgainstProfile(extractedJobs, profile);
+          const qualifyingResults = batchResults.filter(r => (r.score ?? 0) >= 70);
 
           // Save to DB immediately
-          if (batchResults.length > 0) {
-            const rows = batchResults.map(r => ({
+          if (qualifyingResults.length > 0) {
+            if (account_id) {
+              const charged = await chargeMatchCredits(supabase, account_id, qualifyingResults.length, profile_id);
+
+              if (!charged) {
+                controller.enqueue(encoder.encode(JSON.stringify({ type: "error", error: "Insufficient credits. Please top up your account." }) + "\n"));
+                controller.close();
+                return;
+              }
+            }
+
+            const rows = qualifyingResults.map(r => ({
               profile_id,
               job_source: r.job_source,
               job_id: r.job_id,
@@ -282,10 +321,10 @@ Deno.serve(async (req: Request) => {
             }));
 
             await supabase.from("radar_match_results").insert(rows);
-            totalMatched += batchResults.length;
+            totalMatched += qualifyingResults.length;
           }
 
-          controller.enqueue(encoder.encode(JSON.stringify({ type: "batch", matched: batchResults.length, total_so_far: totalMatched, progress: Math.min(i + batchSize, relevantJobs.length), total_jobs: relevantJobs.length }) + "\n"));
+          controller.enqueue(encoder.encode(JSON.stringify({ type: "batch", matched: qualifyingResults.length, total_so_far: totalMatched, progress: Math.min(i + batchSize, relevantJobs.length), total_jobs: relevantJobs.length }) + "\n"));
         }
 
         controller.enqueue(encoder.encode(JSON.stringify({ type: "done", matched: totalMatched, skipped: existingJobIds.size }) + "\n"));
