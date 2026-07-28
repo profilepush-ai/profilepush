@@ -49,7 +49,7 @@ type EditableMatchProfile = Profile & {
 type SortField = 'score' | 'date' | 'profile';
 type SortDir = 'asc' | 'desc';
 
-type SourceTab = 'all' | 'job_boards' | 'social_groups' | 'chat_groups' | 'others';
+type SourceTab = 'all' | 'new' | 'reviewed' | 'queued';
 
 const JOB_BOARD_SOURCES = new Set(['linkedin', 'dice', 'indeed', 'monster', 'careerbuilder']);
 const SOCIAL_GROUP_PLATFORMS = new Set(['facebook', 'linkedin']);
@@ -103,6 +103,106 @@ function isHotlistEligible(profile: Profile): boolean {
   return ageDays <= HOTLIST_RETENTION_DAYS;
 }
 
+function getScoreColor(score: number) {
+  if (score >= 80) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+  if (score >= 60) return 'text-sky-600 bg-sky-50 border-sky-200';
+  if (score >= 40) return 'text-amber-600 bg-amber-50 border-amber-200';
+  return 'text-red-600 bg-red-50 border-red-200';
+}
+
+function getScoreBg(score: number) {
+  if (score >= 80) return 'bg-emerald-500';
+  if (score >= 60) return 'bg-sky-500';
+  if (score >= 40) return 'bg-amber-500';
+  return 'bg-red-500';
+}
+
+function getScoreTextClass(score: number) {
+  if (score >= 80) return 'text-emerald-600';
+  if (score >= 60) return 'text-sky-600';
+  if (score >= 40) return 'text-amber-600';
+  return 'text-red-600';
+}
+
+function formatScoreLabel(key: string) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\bmatch\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function shouldClampScoreValue(key: string) {
+  return /skill/i.test(key);
+}
+
+function ScoreBreakdownChart({ items, detailMap, compact = false, expandedKeys, onToggleExpand }: { items: Array<{ key: string; score: number }>; detailMap: Record<string, { candidate_value: string; job_value: string; rule: string } | undefined>; compact?: boolean; expandedKeys?: Set<string>; onToggleExpand?: (key: string) => void }) {
+  if (!items.length) return null;
+
+  const sortedItems = [...items].sort((a, b) => b.score - a.score);
+  const gridClass = compact ? 'grid-cols-[0.6fr_0.8fr_1.8fr]' : 'grid-cols-[0.6fr_0.8fr_1.2fr_0.9fr]';
+  const textClass = compact ? 'text-[10px]' : 'text-[11px]';
+  const headerClass = compact ? 'px-2 py-1.5' : 'px-3 py-2';
+  const rowClass = compact ? 'px-2 py-1.5' : 'px-3 py-2';
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+      <div className={`grid ${gridClass} gap-2 border-b border-slate-100 bg-slate-50 ${headerClass} text-[10px] font-semibold uppercase tracking-wide text-slate-500`}>
+        <span>Score</span>
+        <span>Rule</span>
+        {!compact && <span>Candidate</span>}
+        <span>Job</span>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {sortedItems.map((item) => {
+          const detail = detailMap[item.key];
+          const isSkillLike = shouldClampScoreValue(item.key);
+          const isExpanded = expandedKeys?.has(item.key) ?? false;
+          const canExpand = isSkillLike && Boolean(detail?.job_value);
+
+          return (
+            <div key={item.key} className={`grid ${gridClass} gap-2 ${rowClass} ${textClass} text-slate-700`}>
+              <div className="flex items-center justify-start gap-2">
+                <span className={`min-w-[1.8rem] text-left font-semibold ${getScoreTextClass(item.score)}`}>
+                  {Math.round(item.score)}
+                </span>
+                <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${getScoreBg(item.score)}`}
+                    style={{ width: `${Math.max(6, Math.min(100, Math.round(item.score)))}%` }}
+                  />
+                </div>
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium text-slate-800">{formatScoreLabel(item.key)}</div>
+              </div>
+              {!compact && (
+                <div className="min-w-0 text-slate-600 break-words">{detail?.candidate_value || '—'}</div>
+              )}
+              <div className="min-w-0">
+                <div className={`flex items-start justify-between gap-2 text-slate-600 break-words ${canExpand && !isExpanded ? 'line-clamp-2' : ''}`}>
+                  <span className="flex-1">{detail?.job_value || '—'}</span>
+                  {canExpand && (
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); onToggleExpand?.(item.key); }}
+                      className="mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700"
+                      aria-label={isExpanded ? 'Collapse row' : 'Expand row'}
+                    >
+                      {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function RadarPage() {
   const { account, user, subscription, refreshAccount } = useAuth();
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -137,6 +237,8 @@ export default function RadarPage() {
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(searchParams.get('profileId'));
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedScoreKeys, setExpandedScoreKeys] = useState<Set<string>>(new Set());
+  const [insightOpenById, setInsightOpenById] = useState<Record<string, boolean>>({});
+  const [insightGeneratingId, setInsightGeneratingId] = useState<string | null>(null);
   const [reviewedMap, setReviewedMap] = useState<Record<string, number>>(() => {
     try {
       return JSON.parse(localStorage.getItem('radar_reviewed') ?? '{}');
@@ -657,6 +759,114 @@ export default function RadarPage() {
     }
   }
 
+  async function generateInsight(result: RadarMatchResult) {
+    if (insightGeneratingId === result.id) return;
+
+    setInsightGeneratingId(result.id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supportedJobSourceMap: Record<string, Record<string, string | number | null>> = {
+        linkedin: { linkedin_job_id: result.job_id },
+        dice: { dice_job_id: result.job_id },
+        indeed: { indeed_job_id: result.job_id },
+        monster: { monster_job_id: result.job_id },
+        careerbuilder: { careerbuilder_job_id: result.job_id },
+      };
+
+      const jobSourcePayload = supportedJobSourceMap[result.job_source];
+      if (!jobSourcePayload) {
+        showToast('AI insight is only available for standard job board matches', 'error');
+        return;
+      }
+
+      const payload: Record<string, string | number | null> = {
+        profile_id: result.profile_id,
+        account_id: account?.id ?? null,
+        ...jobSourcePayload,
+      };
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/score-job-match`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Unable to generate AI insight');
+
+      const nextInsight = typeof data.summary === 'string' ? data.summary.trim() : '';
+      if (!nextInsight) throw new Error('No insight returned');
+
+      setResults(prev => prev.map(item => item.id === result.id ? { ...item, ai_notes: nextInsight } : item));
+      setInsightOpenById(prev => ({ ...prev, [result.id]: true }));
+
+      try {
+        const radarUpdate = await supabase
+          .from('radar_match_results')
+          .update({ ai_notes: nextInsight })
+          .eq('profile_id', result.profile_id)
+          .eq('job_id', result.job_id)
+          .eq('job_source', result.job_source);
+
+        if (radarUpdate.error && radarUpdate.error.code !== 'PGRST116') {
+          console.error('Failed to persist insight to radar_match_results', radarUpdate.error);
+        }
+
+        if (!radarUpdate.data || radarUpdate.data.length === 0) {
+          await supabase.from('radar_match_results').insert({
+            profile_id: result.profile_id,
+            job_source: result.job_source,
+            job_id: result.job_id,
+            final_average_score: result.final_average_score,
+            score_breakdown: result.score_breakdown,
+            ai_notes: nextInsight,
+            disqualified: result.disqualified,
+            disqualify_reason: result.disqualify_reason,
+          });
+        }
+
+        const jobScoreColumn = result.job_source === 'linkedin'
+          ? 'linkedin_job_id'
+          : result.job_source === 'dice'
+            ? 'dice_job_id'
+            : result.job_source === 'indeed'
+              ? 'indeed_job_id'
+              : result.job_source === 'monster'
+                ? 'monster_job_id'
+                : result.job_source === 'careerbuilder'
+                  ? 'careerbuilder_job_id'
+                  : result.job_source === 'external'
+                    ? 'external_job_post_id'
+                    : result.job_source === 'social'
+                      ? 'social_job_id'
+                      : null;
+
+        if (jobScoreColumn) {
+          const scoreUpdate = await supabase
+            .from('job_match_scores')
+            .update({ summary: nextInsight })
+            .eq('profile_id', result.profile_id)
+            .eq(jobScoreColumn, result.job_id);
+
+          if (scoreUpdate.error && scoreUpdate.error.code !== 'PGRST116') {
+            console.error('Failed to persist insight to job_match_scores', scoreUpdate.error);
+          }
+        }
+      } catch (persistErr) {
+        console.error('Failed to persist AI insight', persistErr);
+      }
+
+      showToast('AI insight generated', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Unable to generate AI insight', 'error');
+    } finally {
+      setInsightGeneratingId(null);
+    }
+  }
+
   function formatTimeAgo(ts: number): string {
     const diff = nowTick - ts;
     const mins = Math.floor(diff / 60000);
@@ -945,8 +1155,16 @@ export default function RadarPage() {
 
   const filteredResults = profileResults
     .filter(r => {
-      if (sourceTab === 'all') return true;
-      return getSourceCategory(r) === sourceTab;
+      if (sourceTab === 'new') {
+        return !reviewedMap[r.id] && !queuedJobIds.has(r.job_id) && !savedJobIds.has(r.job_id);
+      }
+      if (sourceTab === 'reviewed') {
+        return Boolean(reviewedMap[r.id]);
+      }
+      if (sourceTab === 'queued') {
+        return queuedJobIds.has(r.job_id) || savedJobIds.has(r.job_id);
+      }
+      return true;
     })
     .filter(r => {
       if (!jobSearchQuery.trim()) return true;
@@ -975,20 +1193,6 @@ export default function RadarPage() {
   const MATCH_PAGE_SIZE = 10;
   const totalMatchPages = Math.max(1, Math.ceil(filteredResults.length / MATCH_PAGE_SIZE));
   const paginatedResults = filteredResults.slice((matchPage - 1) * MATCH_PAGE_SIZE, matchPage * MATCH_PAGE_SIZE);
-
-  function getScoreColor(score: number) {
-    if (score >= 80) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
-    if (score >= 60) return 'text-sky-600 bg-sky-50 border-sky-200';
-    if (score >= 40) return 'text-amber-600 bg-amber-50 border-amber-200';
-    return 'text-red-600 bg-red-50 border-red-200';
-  }
-
-  function getScoreBg(score: number) {
-    if (score >= 80) return 'bg-emerald-500';
-    if (score >= 60) return 'bg-sky-500';
-    if (score >= 40) return 'bg-amber-500';
-    return 'bg-red-500';
-  }
 
   const benchProfiles = profiles.filter(p => p.bench_stage !== 'Placed' && p.bench_stage !== 'Lost');
   const hotlistProfiles = profiles.filter(p => hotlistProfileIds.has(p.id));
@@ -1039,7 +1243,7 @@ export default function RadarPage() {
 
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* ── COL 1: Candidates Sidebar ──────────────────────────────────── */}
-        <div className="w-[260px] flex-shrink-0 hidden lg:flex flex-col overflow-hidden bg-white border-r border-gray-200 min-h-0">
+        <div className="w-72 flex-shrink-0 hidden lg:flex flex-col overflow-hidden bg-white border-r border-gray-200 min-h-0">
           <div className="h-[44px] flex items-center px-3 border-b border-gray-200 shrink-0">
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Candidates</h3>
           </div>
@@ -1230,19 +1434,6 @@ export default function RadarPage() {
 
                       return (
                         <>
-                          <div className="bg-white rounded-xl border border-slate-200 p-2.5">
-                            <div className="grid grid-cols-2 gap-1.5">
-                              <div className="rounded-lg border border-slate-200 bg-slate-50 p-1.5">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Days Since Created</p>
-                                <p className="mt-0.5 text-sm font-bold text-slate-900">{daysSinceCreated}</p>
-                              </div>
-                              <div className="rounded-lg border border-slate-200 bg-slate-50 p-1.5">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Jobs Matched (70+)</p>
-                                <p className="mt-0.5 text-sm font-bold text-slate-900">{matches70Plus}</p>
-                              </div>
-                            </div>
-                          </div>
-
                           <div className={`rounded-xl border p-2.5 ${healthTone.wrap}`}>
                             <p className={`text-sm font-bold ${healthTone.score}`}>{completionPct}% Match Health</p>
                             <p className={`mt-1 text-[10px] leading-relaxed ${healthTone.helper}`}>
@@ -1643,10 +1834,9 @@ export default function RadarPage() {
                 <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
                   {([
                     { key: 'all' as const, label: 'All', count: profileResults.length },
-                    { key: 'job_boards' as const, label: 'Job Boards', count: profileResults.filter(r => JOB_BOARD_SOURCES.has(r.job_source)).length },
-                    { key: 'social_groups' as const, label: 'Social', count: profileResults.filter(r => r.job_source === 'social' && SOCIAL_GROUP_PLATFORMS.has(jobMap.get(r.job_id)?.platform?.toLowerCase() ?? '')).length },
-                    { key: 'chat_groups' as const, label: 'Chat', count: profileResults.filter(r => r.job_source === 'social' && CHAT_GROUP_PLATFORMS.has(jobMap.get(r.job_id)?.platform?.toLowerCase() ?? '')).length },
-                    { key: 'others' as const, label: 'Others', count: profileResults.filter(r => getSourceCategory(r) === 'others').length },
+                    { key: 'new' as const, label: 'New', count: profileResults.filter(r => !reviewedMap[r.id] && !queuedJobIds.has(r.job_id) && !savedJobIds.has(r.job_id)).length },
+                    { key: 'reviewed' as const, label: 'Reviewed', count: profileResults.filter(r => Boolean(reviewedMap[r.id])).length },
+                    { key: 'queued' as const, label: 'Queued', count: profileResults.filter(r => queuedJobIds.has(r.job_id) || savedJobIds.has(r.job_id)).length },
                   ]).map(tab => (
                     <button
                       key={tab.key}
@@ -1714,278 +1904,198 @@ export default function RadarPage() {
                     result.disqualified ? 'border-red-200 bg-red-50/30' : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <button
-                    onClick={() => handleExpand(result.id, isExpanded)}
-                    className="w-full px-5 py-4 flex items-center gap-4 text-left"
-                  >
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-slate-900 truncate">
-                          {job?.job_title ?? 'Unknown Job'}
-                        </span>
-                        {result.disqualified && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">
-                            <XCircle size={10} />
-                            DQ
+                  <div className="w-full px-5 py-4 text-left">
+                    <div className="grid gap-3 lg:grid-cols-[1fr_1.15fr] items-start">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium text-slate-900 truncate">
+                            {job?.job_title ?? 'Unknown Job'}
                           </span>
-                        )}
+                          {result.disqualified && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">
+                              <XCircle size={10} />
+                              DQ
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-2 flex flex-col gap-1.5 text-[11px] text-slate-500">
+                          {job?.company_name && (
+                            <span className="inline-flex w-fit items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                              <Briefcase size={11} />
+                              {job.company_name}
+                            </span>
+                          )}
+                          {job?.location && (
+                            <span className="inline-flex w-fit items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                              <MapPin size={11} />
+                              {job.location}
+                            </span>
+                          )}
+                          <span className="inline-flex w-fit items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 capitalize">
+                            {result.job_source}
+                          </span>
+                        </div>
+
+                        <div className="mt-2 w-fit max-w-[320px] min-w-[220px] rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50/80 via-white to-slate-50 p-2.5 shadow-sm">
+                          <div className="flex items-center justify-start gap-2">
+                            <div className="flex items-center gap-2">
+                              {result.ai_notes && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setInsightOpenById(prev => ({ ...prev, [result.id]: !(prev[result.id] ?? Boolean(result.ai_notes)) })); }}
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700"
+                                  aria-label={(insightOpenById[result.id] ?? Boolean(result.ai_notes)) ? 'Hide insight' : 'Show insight'}
+                                >
+                                  {(insightOpenById[result.id] ?? Boolean(result.ai_notes)) ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); void generateInsight(result); }}
+                                disabled={insightGeneratingId === result.id}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700 shadow-sm transition-all hover:bg-blue-100 disabled:opacity-60"
+                              >
+                                {insightGeneratingId === result.id ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                                AI Insight
+                              </button>
+                            </div>
+                          </div>
+                          {(insightOpenById[result.id] ?? Boolean(result.ai_notes)) && (
+                            <div className="mt-2 rounded-lg border border-slate-200/80 bg-white/90 p-2.5">
+                              {result.ai_notes ? (
+                                <p className="whitespace-pre-line break-words text-[11px] leading-5 text-slate-600">
+                                  {result.ai_notes}
+                                </p>
+                              ) : (
+                                <p className="text-[11px] italic text-slate-400">Generate AI insight to see the summary here.</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 font-medium text-slate-500">
+                            {(() => {
+                              const category = getSourceCategory(result);
+                              if (category === 'job_boards') return 'Job Board';
+                              if (category === 'social_groups') return 'Social';
+                              if (category === 'chat_groups') return 'Chat';
+                              return 'Other';
+                            })()}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <Clock size={10} />
+                            matched {formatTimeAgo(new Date(result.created_at).getTime())}
+                          </span>
+                          {reviewedMap[result.id] && (
+                            <span className="inline-flex items-center gap-1 italic">
+                              reviewed {formatTimeAgo(reviewedMap[result.id])}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                        <span className="flex items-center gap-1">
-                          <User size={12} />
-                          {profile?.candidate_name ?? 'Unknown'}
-                        </span>
-                        {job?.company_name && (
-                          <span className="flex items-center gap-1">
-                            <Briefcase size={12} />
-                            {job.company_name}
-                          </span>
-                        )}
-                        {job?.location && (
-                          <span className="flex items-center gap-1">
-                            <MapPin size={12} />
-                            {job.location}
-                          </span>
-                        )}
-                        <span className="text-slate-400 capitalize">{result.job_source}</span>
-                        <span className="flex items-center gap-1 text-slate-400">
-                          <Clock size={10} />
-                          matched {formatTimeAgo(new Date(result.created_at).getTime())}
-                        </span>
-                        {reviewedMap[result.id] && (
-                          <span className="text-slate-400 italic">
-                            reviewed {formatTimeAgo(reviewedMap[result.id])}
-                          </span>
-                        )}
+
+                      <div className="min-w-0">
+                        <ScoreBreakdownChart
+                          items={Object.entries(result.score_breakdown).map(([key, value]) => {
+                            const isDetailed = typeof value === 'object' && value !== null && 'score' in value;
+                            return {
+                              key,
+                              score: isDetailed ? (value as { score: number }).score : (Number(value) || 0),
+                            };
+                          })}
+                          detailMap={Object.fromEntries(
+                            Object.entries(result.score_breakdown).map(([key, value]) => {
+                              const isDetailed = typeof value === 'object' && value !== null && 'score' in value;
+                              return [key, isDetailed ? { candidate_value: value.candidate_value, job_value: value.job_value, rule: value.rule } : undefined];
+                            })
+                          )}
+                          compact
+                          expandedKeys={expandedScoreKeys}
+                          onToggleExpand={(key) => setExpandedScoreKeys(prev => {
+                            const next = new Set(prev);
+                            if (next.has(key)) next.delete(key);
+                            else next.add(key);
+                            return next;
+                          })}
+                        />
                       </div>
                     </div>
+                  </div>
 
-                    {/* Action icons + Expand toggle */}
-                    <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); addToSubmissionQueue(result); }}
-                        disabled={savedJobIds.has(result.job_id) || savingJobId === result.job_id}
-                        className={`p-1.5 rounded-md transition-colors ${
-                          savedJobIds.has(result.job_id)
-                            ? 'text-blue-600 bg-blue-50'
-                            : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'
-                        }`}
-                        title={savedJobIds.has(result.job_id) ? 'Saved' : 'Save to submissions'}
-                      >
-                        <Bookmark size={14} className={savedJobIds.has(result.job_id) ? 'fill-current' : ''} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); addToResumeAIQueue(result); }}
-                        disabled={queuedJobIds.has(result.job_id) || queuingJobId === result.job_id}
-                        className={`p-1.5 rounded-md transition-colors ${
-                          queuedJobIds.has(result.job_id)
-                            ? 'text-teal-600 bg-teal-50'
-                            : 'text-slate-400 hover:text-teal-600 hover:bg-teal-50'
-                        }`}
-                        title={queuedJobIds.has(result.job_id) ? 'Queued for Resume AI' : 'Queue for Resume AI'}
-                      >
-                        <PenLine size={14} />
-                      </button>
-                      {!result.disqualified && (
+                  <div className="mx-4 mb-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {savedJobIds.has(result.job_id) ? (
+                        <span title="Added to Submission" className="inline-flex items-center justify-center rounded-lg bg-green-50 px-3 py-1.5 text-[11px] font-semibold text-green-600">
+                          <BookmarkCheck size={14} className="mr-1.5" />
+                          Saved
+                        </span>
+                      ) : (
                         <button
-                          onClick={(e) => { e.stopPropagation(); disqualifyResult(result); }}
-                          disabled={disqualifyingJobId === result.job_id}
-                          className="p-1.5 rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          title="Disqualify"
+                          onClick={(e) => { e.stopPropagation(); addToSubmissionQueue(result); }}
+                          disabled={savingJobId === result.job_id}
+                          title="Submission Queue"
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-all hover:bg-slate-100 disabled:opacity-60"
                         >
-                          <XCircle size={14} />
+                          {savingJobId === result.job_id ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <Bookmark size={14} className="mr-1.5" />}
+                          + Queue
                         </button>
                       )}
+
+                      {queuedJobIds.has(result.job_id) ? (
+                        <span title="Queued for Resume AI" className="inline-flex items-center justify-center rounded-lg bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-600">
+                          <CheckCircle2 size={14} className="mr-1.5" />
+                          Queued
+                        </span>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); addToResumeAIQueue(result); }}
+                          disabled={queuingJobId === result.job_id}
+                          title="Resume AI Queue"
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-all hover:bg-slate-50 disabled:opacity-60"
+                        >
+                          {queuingJobId === result.job_id ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <PenLine size={14} className="mr-1.5" />}
+                          + Rewrite
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
                       {job?.job_url && (
                         <a
                           href={job.job_url}
                           target="_blank"
                           rel="noopener noreferrer"
+                          title="Apply Link"
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-500 shadow-sm transition-all hover:bg-slate-50"
                           onClick={(e) => e.stopPropagation()}
-                          className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                          title="Open job posting"
                         >
                           <ExternalLink size={14} />
                         </a>
                       )}
+
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleExpand(result.id, isExpanded); }}
-                        className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors ml-0.5"
+                        onClick={(e) => { e.stopPropagation(); setPreviewResult(result); }}
+                        title="Preview Job"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-all hover:bg-slate-100"
                       >
-                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        <Eye size={13} />
+                        Full JD
                       </button>
-                    </div>
-                  </button>
 
-                  {/* AI Summary strip with score — shown in collapsed state */}
-                  {!isExpanded && (
-                    <div className="mx-4 mb-3 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-50 via-sky-50 to-blue-50 border border-blue-100 flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        {result.ai_notes ? (
-                          <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
-                            <Sparkles size={11} className="inline mr-1 text-blue-500 -mt-0.5" />
-                            {result.ai_notes}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-slate-400 italic">No AI summary available</p>
-                        )}
-                      </div>
-                      <div className={`flex-shrink-0 w-12 h-12 rounded-lg border flex flex-col items-center justify-center ${getScoreColor(result.final_average_score)}`}>
-                        <span className="text-base font-bold leading-none">{result.final_average_score}</span>
-                        <span className="text-[9px] opacity-70">score</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Expanded details */}
-                  {isExpanded && (
-                    <div className="px-5 pb-5 pt-0 border-t border-slate-100">
-                      {/* AI Assessment — full in expanded */}
-                      {result.ai_notes && (
-                        <div className="mt-4 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-50 via-sky-50/60 to-blue-50 border border-blue-100">
-                          <div className="flex items-start gap-2">
-                            <Sparkles size={13} className="text-blue-500 mt-0.5 flex-shrink-0" />
-                            <p className="text-sm text-slate-700 leading-relaxed">{result.ai_notes}</p>
-                          </div>
-                        </div>
+                      {!result.disqualified && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); disqualifyResult(result); }}
+                          disabled={disqualifyingJobId === result.job_id}
+                          title="Disqualify"
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                        >
+                          {disqualifyingJobId === result.job_id ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14} />}
+                        </button>
                       )}
-
-                      {result.disqualified && result.disqualify_reason && (
-                        <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3">
-                          <AlertTriangle size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
-                          <p className="text-xs text-red-700">{result.disqualify_reason}</p>
-                        </div>
-                      )}
-
-                      {/* Score breakdown — collapsible items */}
-                      <div className="mt-4">
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Score Breakdown</h4>
-                        <div className="space-y-1">
-                          {Object.entries(result.score_breakdown).map(([key, value]) => {
-                            const isDetailed = typeof value === 'object' && value !== null && 'score' in value;
-                            const score = isDetailed ? (value as { score: number }).score : (value as number);
-                            const detail = isDetailed ? value as { score: number; candidate_value: string; job_value: string; rule: string } : null;
-                            const itemKey = `${result.id}__${key}`;
-                            const isItemOpen = expandedScoreKeys.has(itemKey);
-                            return (
-                              <div key={key} className="rounded-lg border border-slate-100 overflow-hidden">
-                                <button
-                                  onClick={() => {
-                                    setExpandedScoreKeys(prev => {
-                                      const next = new Set(prev);
-                                      if (next.has(itemKey)) next.delete(itemKey);
-                                      else next.add(itemKey);
-                                      return next;
-                                    });
-                                  }}
-                                  className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-50 transition-colors text-left"
-                                >
-                                  <span className="text-xs font-medium text-slate-700 capitalize flex-1">{key.replace(/_/g, ' ')}</span>
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                                      <div
-                                        className={`h-full rounded-full ${getScoreBg(score)}`}
-                                        style={{ width: `${score}%` }}
-                                      />
-                                    </div>
-                                    <span className={`text-[11px] font-bold min-w-[36px] text-right ${score >= 80 ? 'text-emerald-600' : score >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{score}/100</span>
-                                    {detail && (
-                                      <ChevronDown size={12} className={`text-slate-400 transition-transform ${isItemOpen ? 'rotate-180' : ''}`} />
-                                    )}
-                                  </div>
-                                </button>
-                                {isItemOpen && detail && (
-                                  <div className="px-3 pb-3 pt-0 bg-slate-50 border-t border-slate-100">
-                                    <div className="grid grid-cols-2 gap-2 mt-2">
-                                      <div>
-                                        <span className="text-[10px] font-medium text-slate-400 uppercase">Candidate</span>
-                                        <p className="text-[11px] text-slate-600 mt-0.5">{detail.candidate_value || 'Not specified'}</p>
-                                      </div>
-                                      <div>
-                                        <span className="text-[10px] font-medium text-slate-400 uppercase">Job Requirement</span>
-                                        <p className="text-[11px] text-slate-600 mt-0.5">{detail.job_value || 'Not specified'}</p>
-                                      </div>
-                                    </div>
-                                    <div className="mt-2 pt-2 border-t border-slate-200">
-                                      <span className="text-[10px] font-medium text-slate-400 uppercase">Reasoning</span>
-                                      <p className="text-[11px] text-slate-500 mt-0.5 italic">{detail.rule}</p>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          {savedJobIds.has(result.job_id) ? (
-                            <span title="Added to Submission" className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-green-50 text-green-500 cursor-default">
-                              <BookmarkCheck size={15} />
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => addToSubmissionQueue(result)}
-                              disabled={savingJobId === result.job_id}
-                              title="Submission Queue"
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors disabled:opacity-50"
-                            >
-                              {savingJobId === result.job_id ? <Loader2 size={15} className="animate-spin" /> : <Bookmark size={15} />}
-                            </button>
-                          )}
-
-                          {queuedJobIds.has(result.job_id) ? (
-                            <span title="Queued for Resume AI" className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-50 text-emerald-500 cursor-default">
-                              <CheckCircle2 size={15} />
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => addToResumeAIQueue(result)}
-                              disabled={queuingJobId === result.job_id}
-                              title="Resume AI Queue"
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-violet-50 hover:text-violet-600 transition-colors disabled:opacity-50"
-                            >
-                              {queuingJobId === result.job_id ? <Loader2 size={15} className="animate-spin" /> : <PenLine size={15} />}
-                            </button>
-                          )}
-
-                          {job?.job_url && (
-                            <a
-                              href={job.job_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Apply Link"
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-sky-50 hover:text-sky-600 transition-colors"
-                            >
-                              <ExternalLink size={15} />
-                            </a>
-                          )}
-
-                          <button
-                            onClick={() => setPreviewResult(result)}
-                            title="Preview Job"
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-                          >
-                            <Eye size={15} />
-                          </button>
-                        </div>
-
-                        {!result.disqualified && (
-                          <button
-                            onClick={() => disqualifyResult(result)}
-                            disabled={disqualifyingJobId === result.job_id}
-                            title="Disqualify"
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-50"
-                          >
-                            {disqualifyingJobId === result.job_id ? <Loader2 size={15} className="animate-spin" /> : <Ban size={15} />}
-                          </button>
-                        )}
-                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               );
             })}
@@ -2115,30 +2225,22 @@ export default function RadarPage() {
                 {previewResult.score_breakdown && Object.keys(previewResult.score_breakdown).length > 0 && (
                   <div>
                     <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Matching Rules</h3>
-                    <div className="space-y-2.5">
-                      {Object.entries(previewResult.score_breakdown).map(([key, value]) => {
-                        const isDetailed = typeof value === 'object' && value !== null && 'score' in value;
-                        const score = isDetailed ? (value as { score: number }).score : (Number(value) || 0);
-                        const detail = isDetailed ? value as { score: number; candidate_value: string; job_value: string; rule: string } : null;
-                        return (
-                          <div key={key} className="bg-gray-50 rounded-lg p-2.5">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs text-gray-600 capitalize flex-1 font-medium">{key.replace(/_/g, ' ')}</span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${score >= 80 ? 'bg-emerald-100 text-emerald-700' : score >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{score}</span>
-                            </div>
-                            <div className="h-1 bg-gray-200 rounded-full overflow-hidden mb-1.5">
-                              <div className={`h-full rounded-full ${score >= 80 ? 'bg-emerald-500' : score >= 50 ? 'bg-amber-500' : 'bg-red-400'}`} style={{ width: `${Math.min(score, 100)}%` }} />
-                            </div>
-                            {detail && (
-                              <div className="text-[10px] space-y-0.5">
-                                <div className="flex gap-1"><span className="text-gray-400">You:</span><span className="text-gray-600 truncate">{detail.candidate_value || '—'}</span></div>
-                                <div className="flex gap-1"><span className="text-gray-400">Job:</span><span className="text-gray-600 truncate">{detail.job_value || '—'}</span></div>
-                                <div className="text-gray-400 italic mt-0.5">{detail.rule}</div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div className="space-y-3">
+                      <ScoreBreakdownChart
+                        items={Object.entries(previewResult.score_breakdown).map(([key, value]) => {
+                          const isDetailed = typeof value === 'object' && value !== null && 'score' in value;
+                          return {
+                            key,
+                            score: isDetailed ? (value as { score: number }).score : (Number(value) || 0),
+                          };
+                        })}
+                        detailMap={Object.fromEntries(
+                          Object.entries(previewResult.score_breakdown).map(([key, value]) => {
+                            const isDetailed = typeof value === 'object' && value !== null && 'score' in value;
+                            return [key, isDetailed ? { candidate_value: value.candidate_value, job_value: value.job_value, rule: value.rule } : undefined];
+                          })
+                        )}
+                      />
                     </div>
                   </div>
                 )}

@@ -63,13 +63,15 @@ export default function WishlistPage() {
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const [profileSearch, setProfileSearch] = useState('');
+  const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'all'>('all');
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
+  const [profileQueueCounts, setProfileQueueCounts] = useState<Record<string, { queued: number; initiated: number }>>({});
 
   const [jobs, setJobs] = useState<WishlistedJob[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [selectedJob, setSelectedJob] = useState<WishlistedJob | null>(null);
   const [jobSearch, setJobSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'All' | 'New' | 'Matched' | 'Submission Initiated'>('Matched');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'New' | 'Matched' | 'Submission Initiated'>('All');
 
   const [matchScores, setMatchScores] = useState<Record<string, MatchScore>>({});
   const [scoringJobId, setScoringJobId] = useState<string | null>(null);
@@ -103,6 +105,21 @@ export default function WishlistPage() {
         setAllProfiles(profiles);
         setLoadingProfiles(false);
         if (profiles.length > 0) selectProfile(profiles[0]);
+      });
+
+    supabase.from('wishlisted_jobs').select('profile_id, status')
+      .then(({ data }) => {
+        const counts: Record<string, { queued: number; initiated: number }> = {};
+        for (const row of (data ?? []) as Array<{ profile_id: string; status: string }>) {
+          const bucket = counts[row.profile_id] ?? { queued: 0, initiated: 0 };
+          if (row.status === 'Submission Initiated') {
+            bucket.initiated += 1;
+          } else {
+            bucket.queued += 1;
+          }
+          counts[row.profile_id] = bucket;
+        }
+        setProfileQueueCounts(counts);
       });
   }, []);
 
@@ -439,27 +456,44 @@ export default function WishlistPage() {
   });
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100 font-sans overflow-hidden">
+    <div className="h-screen flex flex-col bg-slate-100 font-sans overflow-hidden">
       <AppNav />
 
-      <div className="flex-1 grid grid-cols-[280px_minmax(0,1fr)_480px] overflow-hidden min-h-0">
+      <div className="flex-1 grid grid-cols-[18rem_minmax(0,1fr)_440px] overflow-hidden min-h-0">
 
         {/* COL 1: Candidates List */}
-        <div className="flex flex-col overflow-hidden bg-white border-r border-gray-200 min-h-0">
-          <div className="px-4 py-3 border-b border-gray-100 shrink-0">
-            <div className="flex items-center gap-2 mb-2.5">
+        <div className="flex flex-col overflow-hidden bg-white border-r border-slate-200 min-h-0">
+          <div className="h-[44px] flex items-center justify-between border-b border-slate-200 bg-white px-3 shrink-0">
+            <div className="flex items-center gap-2">
               <Users size={14} className="text-blue-600 shrink-0" />
-              <span className="text-xs font-bold text-gray-800 uppercase tracking-wider flex-1">Candidates</span>
-              <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">{allProfiles.length}</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-900">Candidates</span>
             </div>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{allProfiles.length}</span>
+          </div>
+
+          <div className="border-b border-slate-200 bg-white px-3 py-2 shrink-0">
+            <div className="flex items-center rounded-lg bg-slate-100 p-0.5">
+              {(['hotlist', 'all'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setSidebarTab(tab)}
+                  className={`flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-all text-center ${sidebarTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  {tab === 'hotlist' ? 'Hotlist' : 'All Bench'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-b border-slate-200 bg-white px-3 py-2.5 shrink-0">
             <div className="relative">
-              <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search candidates..."
                 value={profileSearch}
                 onChange={e => setProfileSearch(e.target.value)}
-                className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-[11px] text-slate-700 shadow-sm outline-none ring-0 placeholder:text-slate-400 focus:border-blue-400"
               />
             </div>
           </div>
@@ -469,19 +503,18 @@ export default function WishlistPage() {
               <div className="flex items-center justify-center py-10"><LogoSpinner size={18} /></div>
             ) : filteredProfiles.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-2">
-                <Users size={18} className="text-gray-300" />
-                <p className="text-xs text-gray-400">No candidates found</p>
+                <Users size={18} className="text-slate-300" />
+                <p className="text-xs text-slate-400">{sidebarTab === 'hotlist' ? 'No hotlisted candidates' : 'No candidates found'}</p>
               </div>
             ) : filteredProfiles.map(p => {
               const isSelected = selectedProfile?.id === p.id;
+              const counts = profileQueueCounts[p.id] ?? { queued: 0, initiated: 0 };
               return (
                 <button
                   key={p.id}
                   onClick={() => selectProfile(p)}
-                  className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-all ${
-                    isSelected
-                      ? 'bg-blue-50 border-l-2 border-l-blue-500'
-                      : 'hover:bg-gray-50 border-l-2 border-l-transparent'
+                  className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-all ${
+                    isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50/70 border-l-2 border-l-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
@@ -493,6 +526,14 @@ export default function WishlistPage() {
                         {p.candidate_name}
                       </p>
                       <p className="text-[10px] text-gray-400 truncate mt-0.5">{p.target_role || 'No target role'}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        <span className="inline-flex items-center rounded-md bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700">
+                          Queued <span className="ml-0.5 text-[10px] font-bold">{counts.queued}</span>
+                        </span>
+                        <span className="inline-flex items-center rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
+                          Initiated <span className="ml-0.5 text-[10px] font-bold">{counts.initiated}</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -501,10 +542,10 @@ export default function WishlistPage() {
           </div>
 
           {selectedProfile && (
-            <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 shrink-0">
+            <div className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 shrink-0">
               <button
                 onClick={() => navigate('/job-finder')}
-                className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-2 rounded-xl transition-colors"
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100"
               >
                 <Search size={11} /> Find More Jobs
               </button>
@@ -513,59 +554,59 @@ export default function WishlistPage() {
         </div>
 
         {/* COL 2: Submission Queue */}
-        <div className="flex flex-col overflow-hidden bg-gray-50 min-h-0">
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0">
+        <div className="flex flex-col overflow-hidden bg-slate-50/80 min-h-0">
+          <div className="h-[44px] flex items-center gap-2 border-b border-slate-200 bg-white px-4 shrink-0">
             <Bookmark size={13} className="text-blue-500 shrink-0" />
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-              {selectedProfile ? `${selectedProfile.candidate_name}'s Queue` : 'Submission Queue'}
-            </span>
-            <div className="flex items-center gap-1 ml-auto">
+            <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-900">Submission Queue</span>
+          </div>
+
+          <div className="border-b border-slate-200 bg-white px-3 py-3 shrink-0">
+            <div className="relative">
+              <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search queue..."
+                value={jobSearch}
+                onChange={e => setJobSearch(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-[11px] text-slate-700 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-400"
+              />
+            </div>
+          </div>
+
+          <div className="border-b border-slate-200 bg-white px-3 py-2 shrink-0">
+            <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 p-1">
               {(['All', 'New', 'Matched', 'Submission Initiated'] as const).map(s => (
-                <button key={s} onClick={() => setStatusFilter(s)}
-                  className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors ${statusFilter === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'}`}>
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`flex-1 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold transition-all ${statusFilter === s ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
                   {s === 'Submission Initiated' ? 'Initiated' : s}
-                  {s !== 'All' && jobs.length > 0 && (
-                    <span className="ml-1 opacity-70">
-                      {jobs.filter(j => j.status === s).length}
-                    </span>
-                  )}
+                  {s !== 'All' && jobs.length > 0 && <span className="ml-1 text-[9px] opacity-70">{jobs.filter(j => j.status === s).length}</span>}
                 </button>
               ))}
             </div>
           </div>
 
           {!selectedProfile ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-6">
-              <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center">
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50">
                 <Bookmark size={24} className="text-blue-400" />
               </div>
               <div>
-                <p className="text-base font-bold text-gray-900">Select a Candidate</p>
-                <p className="text-sm text-gray-400 mt-1 max-w-sm">Choose a candidate from the left panel to view their submission queue and match scores.</p>
+                <p className="text-base font-bold text-slate-900">Select a Candidate</p>
+                <p className="mt-1 max-w-sm text-sm text-slate-400">Choose a candidate from the left panel to view their submission queue and match scores.</p>
               </div>
             </div>
           ) : (
             <>
-              <div className="px-3 pt-3 pb-2 shrink-0">
-                <div className="relative">
-                  <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search queue..."
-                    value={jobSearch}
-                    onChange={e => setJobSearch(e.target.value)}
-                    className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300"
-                  />
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2 min-h-0">
+              <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5 min-h-0">
                 {loadingJobs ? (
                   <div className="flex items-center justify-center py-10"><LogoSpinner size={18} /></div>
                 ) : filteredJobs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-3">
-                    <Bookmark size={20} className="text-gray-300" />
-                    <p className="text-xs text-gray-400">{jobs.length === 0 ? 'No jobs in queue yet' : 'No jobs match filters'}</p>
+                    <Bookmark size={20} className="text-slate-300" />
+                    <p className="text-xs text-slate-400">{jobs.length === 0 ? 'No jobs in queue yet' : 'No jobs match filters'}</p>
                   </div>
                 ) : filteredJobs.map(job => {
                   const isSelected = selectedJob?.id === job.id;
@@ -576,161 +617,116 @@ export default function WishlistPage() {
                   const colors = ms ? scoreColor(ms.score) : null;
 
                   return (
-                    <div key={job.id} className={`rounded-xl transition-all border ${
-                      isSelected ? 'bg-white border-blue-200 shadow-sm' : 'bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm'
-                    }`}>
-                      {/* Job Card Header */}
-                      <div
-                        onClick={() => selectJob(job)}
-                        className="flex items-start gap-2.5 p-3 cursor-pointer"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className={`inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded border ${BOARD_COLORS[job.board] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                              {job.board}
-                            </span>
-                            <span
-                              className={`flex items-center gap-0.5 text-[9px] font-semibold rounded-full px-1.5 py-0.5 ${
-                                job.status === 'Submitted'
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : job.status === 'Submission Initiated'
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : job.status === 'Matched'
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : 'bg-gray-100 text-gray-500'
-                              }`}
-                            >
-                              {job.status === 'Submitted' || job.status === 'Submission Initiated' || job.status === 'Matched' ? <CheckCircle2 size={8} /> : <Circle size={8} />}
-                              {job.status === 'Submission Initiated' ? 'Initiated' : job.status}
-                            </span>
-                            {job.rewrite_file_url && (
-                              <span className="flex items-center gap-0.5 text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                                <FileText size={8} /> Resume
+                    <div key={job.id} className={`rounded-xl border bg-white shadow-sm transition-all ${isSelected ? 'border-blue-200' : 'border-slate-200 hover:border-slate-300'}`}>
+                      <div onClick={() => selectJob(job)} className="w-full px-4 py-3 text-left">
+                        <div className="grid gap-3 lg:grid-cols-[1fr_0.8fr] items-start">
+                          <div className="min-w-0">
+                            <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                              <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${BOARD_COLORS[job.board] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                {job.board}
                               </span>
-                            )}
-                          </div>
-                          <p className={`text-[12px] font-bold leading-tight truncate ${isSelected ? 'text-blue-800' : 'text-gray-800'}`}>
-                            {job.job_title}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="flex items-center gap-0.5 text-[10px] text-gray-500 truncate">
-                              <Building2 size={9} className="shrink-0 text-gray-300" />
-                              {job.company}
-                            </span>
-                            {job.location && (
-                              <span className="flex items-center gap-0.5 text-[10px] text-gray-400 truncate">
-                                <MapPin size={8} className="shrink-0 text-gray-300" />
-                                {job.location}
+                              <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${job.status === 'Submitted' ? 'bg-emerald-100 text-emerald-700' : job.status === 'Submission Initiated' ? 'bg-amber-100 text-amber-700' : job.status === 'Matched' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                                {job.status === 'Submitted' || job.status === 'Submission Initiated' || job.status === 'Matched' ? <CheckCircle2 size={8} /> : <Circle size={8} />}
+                                {job.status === 'Submission Initiated' ? 'Initiated' : job.status}
                               </span>
-                            )}
+                              {job.rewrite_file_url && (
+                                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600">
+                                  <FileText size={8} /> Resume
+                                </span>
+                              )}
+                            </div>
+                            <p className={`truncate text-[12px] font-semibold leading-tight ${isSelected ? 'text-blue-800' : 'text-slate-800'}`}>{job.job_title}</p>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                <Building2 size={9} className="text-slate-300" />
+                                {job.company}
+                              </span>
+                              {job.location && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                  <MapPin size={8} className="text-slate-300" />
+                                  {job.location}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
-                        {/* Score badge + actions */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {ms ? (
-                            <button
-                              onClick={e => { e.stopPropagation(); setExpandedJobId(isExpanded ? null : job.id); }}
-                              className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg border transition-colors ${colors!.bg} ${colors!.border} ${colors!.text}`}
-                            >
-                              <Sparkles size={10} />
-                              {ms.score}
-                              {isExpanded ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
-                            </button>
-                          ) : canScore ? (
-                            <button
-                              onClick={e => { e.stopPropagation(); generateScore(job); }}
-                              disabled={!!scoringJobId}
-                              className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded-lg transition-colors disabled:opacity-40"
-                            >
-                              {isScoring ? <LogoSpinner size={10} /> : <Sparkles size={10} />}
-                              {isScoring ? 'Scoring' : 'Score'}
-                            </button>
-                          ) : null}
-
-                          {job.job_url && (
-                            <a href={job.job_url} target="_blank" rel="noopener noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              className="p-1.5 text-gray-300 hover:text-blue-600 transition-colors">
-                              <ExternalLink size={11} />
-                            </a>
-                          )}
-
-                          <button
-                            onClick={e => { e.stopPropagation(); removeJob(job); }}
-                            className="p-1.5 text-gray-200 hover:text-red-500 transition-colors"
-                          >
-                            <Trash2 size={11} />
-                          </button>
+                          <div className="min-w-0">
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                              {ms ? (
+                                <button onClick={e => { e.stopPropagation(); setExpandedJobId(isExpanded ? null : job.id); }} className={`flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-[11px] font-semibold transition-colors ${colors!.bg} ${colors!.border} ${colors!.text}`}>
+                                  <span className="flex items-center gap-1"><Sparkles size={10} /> {ms.score}</span>
+                                  {isExpanded ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
+                                </button>
+                              ) : canScore ? (
+                                <button onClick={e => { e.stopPropagation(); generateScore(job); }} disabled={!!scoringJobId} className="flex w-full items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] font-semibold text-amber-700 transition-colors disabled:opacity-40">
+                                  {isScoring ? <LogoSpinner size={10} /> : <Sparkles size={10} />}
+                                  {isScoring ? 'Scoring' : 'Score'}
+                                </button>
+                              ) : (
+                                <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[10px] font-medium text-slate-500">Awaiting score</div>
+                              )}
+                              <p className="mt-2 text-[10px] leading-relaxed text-slate-500">{ms ? ms.summary || 'Match details ready' : 'Tap to score and unlock actions'}</p>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Expanded Score Details */}
+                      <div className="mx-4 mb-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                        <div className="flex items-center gap-1.5">
+                          {job.job_url && (
+                            <a href={job.job_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-400 transition-colors hover:text-blue-600">
+                              <ExternalLink size={11} />
+                            </a>
+                          )}
+                          <button onClick={e => { e.stopPropagation(); removeJob(job); }} className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-400 transition-colors hover:text-red-500">
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                        <span className="text-[10px] font-medium text-slate-400">{formatDate(job.created_at)}</span>
+                      </div>
+
                       {isExpanded && ms && (
-                        <div className="px-3 pb-3 border-t border-gray-100 animate-in slide-in-from-top-1 duration-200">
-                          <div className="mt-3 space-y-3">
-                            {/* Score bar */}
+                        <div className="border-t border-slate-100 px-4 pb-4 pt-3">
+                          <div className="space-y-3">
                             <div className="flex items-center gap-3">
-                              <div className={`text-2xl font-black tabular-nums leading-none ${colors!.text}`}>
-                                {ms.score}<span className="text-xs font-bold text-gray-300">/100</span>
-                              </div>
+                              <div className={`text-2xl font-black tabular-nums leading-none ${colors!.text}`}>{ms.score}<span className="text-xs font-bold text-slate-300">/100</span></div>
                               <div className="flex-1">
-                                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                                   <div className={`h-full rounded-full transition-all ${colors!.bar}`} style={{ width: `${ms.score}%` }} />
                                 </div>
                               </div>
                             </div>
-
-                            {/* Summary */}
-                            {ms.summary && (
-                              <p className="text-[11px] text-gray-600 leading-relaxed">{ms.summary}</p>
-                            )}
-
-                            {/* Strengths */}
+                            {ms.summary && <p className="text-[11px] leading-relaxed text-slate-600">{ms.summary}</p>}
                             {ms.strengths.length > 0 && (
                               <div>
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1">Strengths</p>
+                                <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">Strengths</p>
                                 <div className="flex flex-wrap gap-1">
-                                  {ms.strengths.map((s, i) => (
-                                    <span key={i} className="text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">{s}</span>
-                                  ))}
+                                  {ms.strengths.map((s, i) => <span key={i} className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">{s}</span>)}
                                 </div>
                               </div>
                             )}
-
-                            {/* Gaps */}
                             {ms.gaps.length > 0 && (
                               <div>
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1">Gaps</p>
+                                <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">Gaps</p>
                                 <div className="flex flex-wrap gap-1">
-                                  {ms.gaps.map((g, i) => (
-                                    <span key={i} className="text-[10px] font-medium bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded">{g}</span>
-                                  ))}
+                                  {ms.gaps.map((g, i) => <span key={i} className="rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-600">{g}</span>)}
                                 </div>
                               </div>
                             )}
-
-                            {/* Optimization points */}
                             {ms.optimization_points.length > 0 && (
                               <div>
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1">Optimization</p>
+                                <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">Optimization</p>
                                 <div className="space-y-1">
                                   {ms.optimization_points.map((pt, i) => (
                                     <div key={i} className="flex items-start gap-1.5">
-                                      <span className="shrink-0 w-4 h-4 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[9px] font-bold mt-0.5">{i + 1}</span>
-                                      <p className="text-[10px] text-gray-600 leading-relaxed">{pt}</p>
+                                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[9px] font-bold text-blue-700">{i + 1}</span>
+                                      <p className="text-[10px] leading-relaxed text-slate-600">{pt}</p>
                                     </div>
                                   ))}
                                 </div>
                               </div>
                             )}
-
-                            {/* Regen button */}
-                            <button
-                              onClick={() => regenerateScore(job)}
-                              disabled={!!scoringJobId}
-                              className="flex items-center gap-1.5 text-[10px] font-semibold text-gray-500 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40"
-                            >
+                            <button onClick={() => regenerateScore(job)} disabled={!!scoringJobId} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:opacity-40">
                               <RotateCcw size={10} /> Regenerate Score
                             </button>
                           </div>
@@ -745,7 +741,7 @@ export default function WishlistPage() {
         </div>
 
         {/* COL 3: Context Panel */}
-        <div className="flex flex-col overflow-hidden bg-white border-l border-gray-200 min-h-0">
+        <div className="flex flex-col overflow-hidden bg-white border-l border-slate-200 min-h-0">
 
           {!selectedJob ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
@@ -772,21 +768,23 @@ export default function WishlistPage() {
 
           ) : selectedJob.status === 'Matched' ? (
             <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
-              {/* Email Tab Header */}
-              <div className="flex items-center px-3 py-2.5 bg-white border-b border-gray-200 shrink-0">
-                {(['client', 'candidate'] as const).map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setEmailTab(tab)}
-                    className={`flex-1 text-xs font-semibold py-1.5 rounded-lg transition-colors capitalize text-center ${
-                      emailTab === tab
-                        ? 'bg-blue-600 text-white'
-                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
-                    }`}
-                  >
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </button>
-                ))}
+              <div className="h-[44px] flex items-center gap-2 border-b border-slate-200 bg-white px-4 shrink-0">
+                <Mail size={14} className="text-blue-500" />
+                <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-900">Email Outreach Draft</span>
+              </div>
+
+              <div className="border-b border-slate-200 bg-white px-3 py-2.5 shrink-0">
+                <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 p-1">
+                  {(['client', 'candidate'] as const).map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setEmailTab(tab)}
+                      className={`flex-1 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold capitalize transition-all ${emailTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      {tab === 'candidate' ? 'Candidate' : 'Client'}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Email Generation */}

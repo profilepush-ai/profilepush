@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, Bookmark, BookmarkCheck,
   User, X, ExternalLink, Briefcase, MapPin, DollarSign, Clock,
-  SlidersHorizontal, Users, Zap, ChevronLeft, ChevronRight,
+  Users, Zap, ChevronLeft, ChevronRight,
   Building2, AlertCircle, RefreshCw, Sparkles, Eye, PenLine, Download, ChevronDown, Check,
   Lightbulb, ChevronUp, ArrowRight, Info, ThumbsUp, CheckCircle2,
 } from 'lucide-react';
@@ -12,6 +12,7 @@ import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
 import { throttled, throttledAll } from '../lib/query-throttle';
+import { buildProfileBoardStats } from '../lib/job-finder-stats';
 import { useAuth } from '../contexts/AuthContext';
 import { generateMockJobs, type MockJob } from '../lib/mockJobs';
 import type { Profile } from '../types/database';
@@ -815,6 +816,7 @@ export default function JobFinder() {
   const [candidateTab, setCandidateTab] = useState<'hotlist' | 'all'>('all');
   const [hotlistProfileIds, setHotlistProfileIds] = useState<string[]>([]);
   const [candidateQuery, setCandidateQuery] = useState('');
+  const [profileBoardStats, setProfileBoardStats] = useState<Record<string, { fetched: number; matched: number }>>({});
 
   // AI search ideas
   const [searchIdeas, setSearchIdeas] = useState<SearchIdea[]>([]);
@@ -962,6 +964,58 @@ export default function JobFinder() {
 
 
   useEffect(() => { if (account?.id) loadProfiles(); }, [account?.id]);
+  useEffect(() => {
+    if (profiles.length === 0) {
+      setProfileBoardStats({});
+      return;
+    }
+
+    async function loadProfileBoardStats() {
+      const boardConfigs = [
+        ['linkedin_job_searches', 'linkedin_jobs'],
+        ['dice_job_searches', 'dice_jobs'],
+        ['indeed_job_searches', 'indeed_jobs'],
+        ['monster_job_searches', 'monster_jobs'],
+        ['careerbuilder_job_searches', 'careerbuilder_jobs'],
+      ] as const;
+
+      const searchRowsByBoard: Array<Array<{ id: string; profile_id: string | null; created_at: string | null }>> = [];
+      const jobsByBoard: Array<Array<{ id?: string; search_id: string | null }>> = [];
+
+      for (const [searchTable, jobTable] of boardConfigs) {
+        const { data: searches } = await supabase.from(searchTable).select('id, profile_id, created_at');
+        const searchRows = (searches ?? []) as Array<{ id: string; profile_id: string | null; created_at: string | null }>;
+        searchRowsByBoard.push(searchRows);
+
+        const { data: jobs } = await supabase.from(jobTable).select('id, search_id');
+        jobsByBoard.push((jobs ?? []) as Array<{ id?: string; search_id: string | null }>);
+      }
+
+      const { data: scoreRows } = await supabase
+        .from('job_match_scores')
+        .select('profile_id, linkedin_job_id, dice_job_id, indeed_job_id, monster_job_id, careerbuilder_job_id');
+
+      const matchedRows = (scoreRows ?? []) as Array<Record<string, unknown>>;
+      const statsByProfile = buildProfileBoardStats({
+        profiles,
+        boardSearches: searchRowsByBoard,
+        boardJobs: jobsByBoard,
+        scoreRows: matchedRows.map(row => ({
+          profile_id: row.profile_id as string | null,
+          linkedin_job_id: row.linkedin_job_id as string | null,
+          dice_job_id: row.dice_job_id as string | null,
+          indeed_job_id: row.indeed_job_id as string | null,
+          monster_job_id: row.monster_job_id as string | null,
+          careerbuilder_job_id: row.careerbuilder_job_id as string | null,
+        })),
+      });
+
+      setProfileBoardStats(statsByProfile);
+    }
+
+    loadProfileBoardStats();
+  }, [profiles]);
+
   useEffect(() => {
     supabase.from('hotlist').select('profile_id').then(({ data }) => {
       if (data) setHotlistProfileIds(data.map((r: { profile_id: string }) => r.profile_id));
@@ -2351,92 +2405,6 @@ export default function JobFinder() {
     <div className="h-screen flex flex-col bg-gray-100 font-sans overflow-hidden">
       <AppNav />
 
-      {/* Filter header bar */}
-      <div className="bg-white border-b border-gray-200 flex items-center shrink-0">
-        <div className="w-56 min-w-[224px] shrink-0 px-3 py-2 border-r border-gray-200 flex items-center gap-1.5">
-          <SlidersHorizontal size={12} className="text-gray-400 shrink-0" />
-          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Filters</span>
-          {filtersFromProfile && (
-            <button type="button" onClick={resetFilters}
-              className="ml-auto text-[9px] font-semibold text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded-md transition-colors whitespace-nowrap">
-              Reset
-            </button>
-          )}
-        </div>
-        <div className="flex-1 flex items-center gap-2 px-3 py-2 overflow-x-auto">
-          <div className="relative shrink-0">
-            <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            <input type="text" value={keyword} onChange={e => { setKeyword(e.target.value); setFiltersFromProfile(false); }} placeholder="Job title or skill"
-              className="w-56 pl-6 pr-2 h-[30px] text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300" />
-          </div>
-          <div className="relative shrink-0">
-            <MapPin size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            <input type="text" value={location} onChange={e => { setLocation(e.target.value); setFiltersFromProfile(false); }} placeholder="City or Remote"
-              className="w-48 pl-6 pr-2 h-[30px] text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300" />
-          </div>
-          <select value={selectedJobTypes[0] ?? ''} onChange={e => setSelectedJobTypes(e.target.value ? [e.target.value] : [])}
-            className="text-[11px] border border-gray-200 rounded-lg px-2 h-[30px] text-gray-700 focus:outline-none focus:border-blue-400 bg-white shrink-0">
-            <option value="">Any type</option>
-            {JOB_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-          </select>
-          <select value={dateFilter} onChange={e => setDateFilter(e.target.value)}
-            className="text-[11px] border border-gray-200 rounded-lg px-2 h-[30px] text-gray-700 focus:outline-none focus:border-blue-400 bg-white shrink-0">
-            {DATE_FILTERS.map(df => <option key={df} value={df}>{df}</option>)}
-          </select>
-          <select value={experienceLevel} onChange={e => setExperienceLevel(e.target.value)}
-            className="text-[11px] border border-gray-200 rounded-lg px-2 h-[30px] text-gray-700 focus:outline-none focus:border-blue-400 bg-white shrink-0">
-            <option value="">Any level</option>
-            {EXPERIENCE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
-          </select>
-          <div className="flex items-center gap-1.5 shrink-0 h-[30px]">
-            <input type="range" min={5} max={200} step={5} value={maxResults} onChange={e => setMaxResults(Number(e.target.value))}
-              className="w-16 h-1.5 accent-blue-600 cursor-pointer" />
-            <span className="text-[10px] font-semibold text-gray-500 min-w-[22px]">{maxResults}</span>
-          </div>
-          <div ref={boardSelectorRef} className="relative flex shrink-0">
-            <button type="button" onClick={searchAll}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3 h-[30px] rounded-l-lg transition-colors">
-              <Search size={11} /> Search ({selectedBoards.size})
-            </button>
-            <button type="button" onClick={e => { e.stopPropagation(); setBoardSelectorOpen(o => !o); }}
-              className="flex items-center px-2 h-[30px] bg-blue-600 hover:bg-blue-700 text-white rounded-r-lg transition-colors border-l border-blue-500">
-              <ChevronDown size={10} className={`transition-transform ${boardSelectorOpen ? 'rotate-180' : ''}`} />
-            </button>
-          </div>
-          {selectedProfile && (
-            <button
-              ref={ideasBtnRef}
-              type="button"
-              onClick={() => {
-                if (searchIdeas.length === 0 && !ideasLoading) {
-                  generateSearchIdeas();
-                }
-                setIdeasPopupOpen(o => !o);
-              }}
-              disabled={ideasLoading}
-              className={`flex items-center gap-1.5 px-3 h-[30px] rounded-lg text-[11px] font-semibold transition-all shrink-0 ${
-                searchIdeas.length > 0
-                  ? 'bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100'
-                  : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white'
-              } disabled:opacity-60`}
-            >
-              {ideasLoading ? <LogoSpinner size={10} /> : <Sparkles size={10} />}
-              {searchIdeas.length > 0 ? 'AI Ideas' : 'AI Ideas'}
-            </button>
-          )}
-          {canViewDebugPanel && (
-            <button
-              type="button"
-              onClick={() => setDebugPanelOpen(open => !open)}
-              aria-label={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
-              title={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
-              className={`flex items-center justify-center h-[30px] w-[30px] rounded-lg border transition-colors shrink-0 ${debugPanelOpen ? 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200' : 'border-gray-200 bg-white text-gray-400 hover:text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
-            >
-              <Eye size={12} />
-            </button>
-          )}
-        </div>
-      </div>
 
       {canViewDebugPanel && debugPanelOpen && (
       <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 shrink-0">
@@ -2463,6 +2431,40 @@ export default function JobFinder() {
       </div>
       )}
 
+      <div className="shrink-0 border-b border-gray-200 bg-white px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={globalSearch}
+              onChange={e => setGlobalSearch(e.target.value)}
+              placeholder="Filter visible jobs across all boards…"
+              className="w-full h-[38px] rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-10 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+            />
+            {globalSearch && (
+              <button
+                type="button"
+                onClick={() => setGlobalSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Clear search"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          <div ref={boardSelectorRef} className="relative flex shrink-0">
+            <button type="button" onClick={searchAll}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3 h-[38px] rounded-l-lg transition-colors">
+              <Search size={11} /> Search ({selectedBoards.size})
+            </button>
+            <button type="button" onClick={e => { e.stopPropagation(); setBoardSelectorOpen(o => !o); }}
+              className="flex items-center px-2 h-[38px] bg-blue-600 hover:bg-blue-700 text-white rounded-r-lg transition-colors border-l border-blue-500">
+              <ChevronDown size={10} className={`transition-transform ${boardSelectorOpen ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+        </div>
+      </div>
       {/* Board selector dropdown portal - outside overflow container */}
       {boardSelectorOpen && (
         <div className="fixed inset-0 z-[100]" onClick={() => setBoardSelectorOpen(false)}>
@@ -2569,15 +2571,15 @@ export default function JobFinder() {
       <div className="flex-1 flex overflow-hidden min-h-0">
 
         {/* ── Candidates sidebar ── */}
-        <div className="w-56 min-w-[224px] shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+        <div className="w-72 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
           <div className="px-3 py-2.5 border-b border-gray-100 shrink-0">
-            <div className="flex items-center gap-1 mb-2">
+            <div className="flex items-center bg-slate-100 rounded-lg p-0.5 mb-2">
               {(['hotlist', 'all'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setCandidateTab(tab)}
-                  className={`flex-1 text-[11px] font-semibold py-1.5 rounded-lg transition-colors text-center ${
-                    candidateTab === tab ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+                  className={`flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-all text-center ${
+                    candidateTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
                   {tab === 'hotlist' ? 'Hotlist' : 'All Bench'}
@@ -2606,23 +2608,32 @@ export default function JobFinder() {
               </div>
             ) : filteredCandidates.map(p => {
               const isSelected = selectedProfile?.id === p.id;
+              const boardStats = profileBoardStats[p.id] ?? { fetched: 0, matched: 0 };
               return (
                 <button
                   key={p.id}
                   onClick={() => setSelectedProfile(p)}
-                  className={`w-full text-left px-4 py-2.5 border-b border-gray-50 transition-all ${
-                    isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50 border-l-2 border-l-transparent'
+                  className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-all ${
+                    isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50/70 border-l-2 border-l-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                      <User size={12} className={isSelected ? 'text-blue-600' : 'text-gray-400'} />
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                      <User size={13} className={isSelected ? 'text-blue-600' : 'text-gray-400'} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className={`text-[11px] font-semibold truncate leading-tight ${isSelected ? 'text-blue-900' : 'text-gray-800'}`}>
+                      <p className={`text-[12px] font-semibold truncate leading-tight ${isSelected ? 'text-blue-900' : 'text-gray-800'}`}>
                         {p.candidate_name}
                       </p>
-                      <p className="text-[9px] text-gray-400 truncate mt-0.5">{p.target_role || 'No target role'}</p>
+                      <p className="text-[10px] text-gray-400 truncate mt-0.5">{p.target_role || 'No target role'}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${boardStats.fetched > 0 ? 'bg-amber-50 text-amber-700' : 'bg-gray-50 text-gray-500'}`}>
+                          Fetched <span className="ml-0.5 text-[10px] font-bold">{boardStats.fetched}</span>
+                        </span>
+                        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${boardStats.matched > 0 ? 'bg-violet-50 text-violet-700' : 'bg-gray-50 text-gray-500'}`}>
+                          Matched <span className="ml-0.5 text-[10px] font-bold">{boardStats.matched}</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -2631,23 +2642,76 @@ export default function JobFinder() {
           </div>
         </div>
 
-        {/* ── Right panel: search bar + board columns ── */}
+        {/* ── Right panel: board filters + columns ── */}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-
-          {/* Global search bar */}
-          <div className="px-3 pt-3 pb-2 shrink-0 bg-gray-100">
-            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl shadow-sm px-3 py-2">
-              <Search size={13} className="text-gray-400 shrink-0" />
-              <input
-                type="text"
-                value={globalSearch}
-                onChange={e => setGlobalSearch(e.target.value)}
-                placeholder="Filter visible jobs across all boards…"
-                className="flex-1 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none bg-transparent"
-              />
-              {globalSearch && (
-                <button type="button" onClick={() => setGlobalSearch('')} className="text-gray-300 hover:text-gray-500 transition-colors shrink-0">
-                  <X size={12} />
+          <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative shrink-0">
+                <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input type="text" value={keyword} onChange={e => { setKeyword(e.target.value); setFiltersFromProfile(false); }} placeholder="Job title or skill"
+                  className="w-56 pl-6 pr-2 h-[30px] text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300 bg-white" />
+              </div>
+              <div className="relative shrink-0">
+                <MapPin size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input type="text" value={location} onChange={e => { setLocation(e.target.value); setFiltersFromProfile(false); }} placeholder="City or Remote"
+                  className="w-48 pl-6 pr-2 h-[30px] text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300 bg-white" />
+              </div>
+              <select value={selectedJobTypes[0] ?? ''} onChange={e => setSelectedJobTypes(e.target.value ? [e.target.value] : [])}
+                className="text-[11px] border border-gray-200 rounded-lg px-2 h-[30px] text-gray-700 focus:outline-none focus:border-blue-400 bg-white shrink-0">
+                <option value="">Any type</option>
+                {JOB_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+              </select>
+              <select value={dateFilter} onChange={e => setDateFilter(e.target.value)}
+                className="text-[11px] border border-gray-200 rounded-lg px-2 h-[30px] text-gray-700 focus:outline-none focus:border-blue-400 bg-white shrink-0">
+                {DATE_FILTERS.map(df => <option key={df} value={df}>{df}</option>)}
+              </select>
+              <select value={experienceLevel} onChange={e => setExperienceLevel(e.target.value)}
+                className="text-[11px] border border-gray-200 rounded-lg px-2 h-[30px] text-gray-700 focus:outline-none focus:border-blue-400 bg-white shrink-0">
+                <option value="">Any level</option>
+                {EXPERIENCE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
+              </select>
+              <div className="flex items-center gap-1.5 shrink-0 h-[30px]">
+                <label className="text-[10px] font-semibold text-gray-500">Max</label>
+                <input type="number" min={5} max={200} step={5} value={maxResults} onChange={e => setMaxResults(Number(e.target.value))}
+                  className="w-14 h-[30px] rounded-lg border border-gray-200 px-2 text-[11px] text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white" />
+              </div>
+              {filtersFromProfile && (
+                <button type="button" onClick={resetFilters}
+                  className="text-[9px] font-semibold text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded-md transition-colors whitespace-nowrap shrink-0">
+                  Reset
+                </button>
+              )}
+              {selectedProfile && (
+                <button
+                  ref={ideasBtnRef}
+                  type="button"
+                  onClick={() => {
+                    if (searchIdeas.length === 0 && !ideasLoading) {
+                      generateSearchIdeas();
+                    }
+                    setIdeasPopupOpen(o => !o);
+                  }}
+                  disabled={ideasLoading}
+                  aria-label="Open AI search ideas"
+                  title="AI search ideas"
+                  className={`flex items-center justify-center h-[30px] w-[30px] rounded-lg border transition-all shrink-0 ${
+                    searchIdeas.length > 0
+                      ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                      : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border-transparent'
+                  } disabled:opacity-60`}
+                >
+                  {ideasLoading ? <LogoSpinner size={10} /> : <Sparkles size={10} />}
+                </button>
+              )}
+              {canViewDebugPanel && (
+                <button
+                  type="button"
+                  onClick={() => setDebugPanelOpen(open => !open)}
+                  aria-label={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+                  title={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+                  className={`flex items-center justify-center h-[30px] w-[30px] rounded-lg border transition-colors shrink-0 ${debugPanelOpen ? 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200' : 'border-gray-200 bg-white text-gray-400 hover:text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+                >
+                  <Eye size={12} />
                 </button>
               )}
             </div>

@@ -68,6 +68,7 @@ const BOARD_COL: Record<string, string> = {
 
 interface TeamMember { user_id: string | null; invited_email: string; role: string; display_name: string | null; }
 interface HotlistRow { profile_id: string; created_at: string | null; }
+type DocCategory = 'resume' | 'rewritten' | 'experience' | 'education' | 'visa' | 'others';
 
 function memberName(m: TeamMember): string {
   return m.display_name?.trim() || m.invited_email.split('@')[0];
@@ -177,12 +178,20 @@ function CollapsibleSection({ title, color = 'gray', defaultOpen = false, count,
   title: string; color?: string; defaultOpen?: boolean; count?: number; action?: ReactNode; children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-4 py-3 bg-gray-50/60 hover:bg-gray-100/60 transition-colors text-left"
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen(v => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen(v => !v);
+          }
+        }}
+        className="w-full flex items-center gap-2 px-4 py-3 bg-gray-50/60 hover:bg-gray-100/60 transition-colors text-left cursor-pointer"
       >
         <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 shrink-0 ${open ? '' : '-rotate-90'}`} />
         <SectionHeader title={title} color={color} />
@@ -190,14 +199,15 @@ function CollapsibleSection({ title, color = 'gray', defaultOpen = false, count,
           <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full">{count}</span>
         )}
         <span className="flex-1" />
-        {action && <span onClick={e => e.stopPropagation()}>{action}</span>}
-      </button>
+        {action && <div className="shrink-0" onClick={e => e.stopPropagation()}>{action}</div>}
+      </div>
       {open && <div className="px-4 py-4 border-t border-gray-100">{children}</div>}
     </div>
   );
 }
 
-function DetailSection({ title, color = 'gray', children }: { title: string; color?: string; children: ReactNode }) {
+function DetailSection({ title, color = 'gray', defaultOpen = false, children }: { title: string; color?: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
   const cls: Record<string, string> = {
     blue: 'border-blue-200 bg-blue-50/70',
     emerald: 'border-emerald-200 bg-emerald-50/70',
@@ -208,8 +218,15 @@ function DetailSection({ title, color = 'gray', children }: { title: string; col
 
   return (
     <div className={`rounded-xl border px-3 py-3 ${cls[color] ?? cls.gray}`}>
-      <p className="text-[9px] font-bold uppercase tracking-wider text-gray-600 mb-2">{title}</p>
-      <div className="space-y-2">{children}</div>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between gap-2 text-left"
+      >
+        <p className="text-[9px] font-bold uppercase tracking-wider text-gray-600">{title}</p>
+        <ChevronDown size={12} className={`text-gray-400 transition-transform duration-200 shrink-0 ${open ? '' : '-rotate-90'}`} />
+      </button>
+      {open && <div className="mt-2 space-y-2">{children}</div>}
     </div>
   );
 }
@@ -300,6 +317,7 @@ export default function ProfilesDirectory() {
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [detailFiles, setDetailFiles]     = useState<ResumeFile[]>([]);
   const [detailLogs, setDetailLogs]       = useState<ActivityLog[]>([]);
+  const [docUploadTarget, setDocUploadTarget] = useState<DocCategory>('resume');
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Date filter
@@ -329,6 +347,48 @@ export default function ProfilesDirectory() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editDraft, setEditDraft]         = useState<Partial<Profile>>({});
   const [editSaving, setEditSaving]       = useState(false);
+  const [editingFullProfile, setEditingFullProfile] = useState(false);
+  const [fullProfileDraft, setFullProfileDraft]     = useState<Partial<Profile>>({});
+  const [savingFullProfile, setSavingFullProfile]   = useState(false);
+  const [experienceAddOpen, setExperienceAddOpen]     = useState(false);
+  const [educationAddOpen, setEducationAddOpen]       = useState(false);
+  const [experienceDraft, setExperienceDraft]         = useState<ExperienceEntry>(BLANK_EXP);
+  const [educationDraft, setEducationDraft]           = useState<EducationEntry>(BLANK_EDU);
+
+  type FullProfileField = keyof Pick<Profile, 'candidate_name' | 'phone' | 'email' | 'linkedin_url' | 'github_url' | 'portfolio_url' | 'location' | 'city' | 'state' | 'zip_code' | 'country' | 'core_skills' | 'notice_period' | 'availability'>;
+
+  function startEditingFullProfile(profile: Profile) {
+    setFullProfileDraft({
+      candidate_name: profile.candidate_name ?? '',
+      phone: profile.phone ?? '',
+      email: profile.email ?? '',
+      linkedin_url: profile.linkedin_url ?? '',
+      github_url: profile.github_url ?? '',
+      portfolio_url: profile.portfolio_url ?? '',
+      location: profile.location ?? '',
+      city: profile.city ?? '',
+      state: profile.state ?? '',
+      zip_code: profile.zip_code ?? '',
+      country: profile.country ?? '',
+      core_skills: profile.core_skills ?? '',
+      notice_period: profile.notice_period ?? '',
+      availability: profile.availability ?? '',
+      experience: Array.isArray(profile.experience) ? profile.experience.map(item => ({ ...item })) : [],
+      education: Array.isArray(profile.education) ? profile.education.map(item => ({ ...item })) : [],
+    });
+    setExperienceDraft(BLANK_EXP);
+    setEducationDraft(BLANK_EDU);
+    setExperienceAddOpen(false);
+    setEducationAddOpen(false);
+    setEditingFullProfile(true);
+  }
+
+  function cancelEditingFullProfile() {
+    setEditingFullProfile(false);
+    setFullProfileDraft({});
+    setExperienceAddOpen(false);
+    setEducationAddOpen(false);
+  }
 
   // Hotlist
   const [hotlistIds, setHotlistIds] = useState<Set<string>>(new Set());
@@ -603,13 +663,68 @@ export default function ProfilesDirectory() {
     triggerProfileEmbedding(selectedProfileId);
   }
 
-  async function uploadDocForProfile(file: File) {
+  async function saveFullProfileEdits() {
+    if (!selectedProfileId) return;
+    setSavingFullProfile(true);
+    const { data, error } = await supabase.from('profiles').update(fullProfileDraft).eq('id', selectedProfileId).select().single();
+    if (error) {
+      showToast('Failed to update profile', 'error');
+    } else {
+      if (data) setProfiles(prev => prev.map(p => p.id === selectedProfileId ? { ...p, ...data } : p));
+      setEditingFullProfile(false);
+      setFullProfileDraft({});
+      setExperienceAddOpen(false);
+      setEducationAddOpen(false);
+      showToast('Profile updated');
+      triggerProfileEmbedding(selectedProfileId);
+    }
+    setSavingFullProfile(false);
+  }
+
+  function addExperienceEntry() {
+    const nextEntry: ExperienceEntry = {
+      ...experienceDraft,
+      company: experienceDraft.company?.trim() ?? '',
+      title: experienceDraft.title?.trim() ?? '',
+      location: experienceDraft.location?.trim() ?? '',
+      start_date: experienceDraft.start_date?.trim() ?? '',
+      end_date: experienceDraft.end_date?.trim() ?? '',
+      current: Boolean(experienceDraft.current),
+      description: experienceDraft.description?.trim() ?? '',
+    };
+    setFullProfileDraft(prev => ({
+      ...prev,
+      experience: [...(Array.isArray(prev.experience) ? prev.experience : []), nextEntry],
+    }));
+    setExperienceDraft(BLANK_EXP);
+    setExperienceAddOpen(false);
+  }
+
+  function addEducationEntry() {
+    const nextEntry: EducationEntry = {
+      ...educationDraft,
+      institution: educationDraft.institution?.trim() ?? '',
+      degree: educationDraft.degree?.trim() ?? '',
+      field: educationDraft.field?.trim() ?? '',
+      start_year: educationDraft.start_year?.trim() ?? '',
+      end_year: educationDraft.end_year?.trim() ?? '',
+      gpa: educationDraft.gpa?.trim() ?? '',
+    };
+    setFullProfileDraft(prev => ({
+      ...prev,
+      education: [...(Array.isArray(prev.education) ? prev.education : []), nextEntry],
+    }));
+    setEducationDraft(BLANK_EDU);
+    setEducationAddOpen(false);
+  }
+
+  async function uploadDocForProfile(file: File, category: DocCategory = 'resume') {
     if (!selectedProfileId) return;
     const storagePath = `${selectedProfileId}/${Date.now()}-${file.name}`;
     const { error } = await supabase.storage.from('resumes').upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
     if (error) { showToast('Upload failed', 'error'); return; }
     const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(storagePath);
-    const { data: rec } = await supabase.from('resume_files').insert({ profile_id: selectedProfileId, file_name: file.name, file_url: urlData.publicUrl, category: 'resume' }).select().single();
+    const { data: rec } = await supabase.from('resume_files').insert({ profile_id: selectedProfileId, file_name: file.name, file_url: urlData.publicUrl, category }).select().single();
     if (rec) setDetailFiles(prev => [rec as ResumeFile, ...prev]);
     showToast('Document uploaded');
   }
@@ -1342,20 +1457,23 @@ export default function ProfilesDirectory() {
                 : 'bg-violet-50 text-violet-700';
               return (
                 <button key={p.id} onClick={() => setSelectedProfileId(isSelected ? null : p.id)}
-                  className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-all ${isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50/70'}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>{p.candidate_name}</p>
-                      <p className="text-[11px] text-gray-500 truncate mt-0.5">{p.target_role}</p>
+                  className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-all ${isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50/70 border-l-2 border-l-transparent'}`}>
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                      <UserCircle2 size={13} className={isSelected ? 'text-blue-600' : 'text-gray-400'} />
                     </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${matchedTone}`}>
-                      Matched <span className="ml-0.5 text-[10px] font-bold">{matchedCount}</span>
-                    </span>
-                    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${healthTone.chip}`}>
-                      Health <span className="ml-0.5 text-[10px] font-bold">{healthScore}</span>
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-[12px] font-semibold truncate leading-tight ${isSelected ? 'text-blue-900' : 'text-gray-800'}`}>{p.candidate_name}</p>
+                      <p className="text-[10px] text-gray-400 truncate mt-0.5">{p.target_role || 'No target role'}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${matchedTone}`}>
+                          Matched <span className="ml-0.5 text-[10px] font-bold">{matchedCount}</span>
+                        </span>
+                        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${healthTone.chip}`}>
+                          Health <span className="ml-0.5 text-[10px] font-bold">{healthScore}</span>
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </button>
               );
@@ -1566,6 +1684,46 @@ export default function ProfilesDirectory() {
               setMatchHealthDraft(prev => ({ ...prev, [field]: value }));
             };
 
+            const resumeFiles = detailFiles.filter(f => f.category === 'resume' || /resume/i.test(f.file_name));
+            const aiResumeFiles = detailFiles.filter(f => f.category === 'rewritten' || /rewritten|ai/i.test(f.file_name));
+            const experienceFiles = detailFiles.filter(f => f.category === 'experience' || /experience/i.test(f.file_name));
+            const educationFiles = detailFiles.filter(f => f.category === 'education' || /education/i.test(f.file_name));
+            const visaFiles = detailFiles.filter(f => f.category === 'visa' || /visa/i.test(f.file_name));
+            const otherFiles = detailFiles.filter(f => !resumeFiles.some(r => r.id === f.id) && !aiResumeFiles.some(a => a.id === f.id) && !experienceFiles.some(e => e.id === f.id) && !educationFiles.some(e => e.id === f.id) && !visaFiles.some(v => v.id === f.id));
+            const renderDocCard = (f: ResumeFile) => {
+              const catColors: Record<string, string> = {
+                resume: 'bg-blue-50 text-blue-700 border-blue-200',
+                rewritten: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+              };
+              const dateLabel = new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              const isChecked = selectedDocIds.has(f.id);
+              return (
+                <div key={f.id} onClick={() => setSelectedDocIds(prev => { const s = new Set(prev); isChecked ? s.delete(f.id) : s.add(f.id); return s; })}
+                  className={`p-2.5 border rounded-xl cursor-pointer transition-colors ${isChecked ? 'border-blue-300 bg-blue-50/60' : 'border-gray-200 bg-white hover:bg-gray-50/50'}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 min-w-0 flex-1">
+                      <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${isChecked ? 'bg-blue-500 border-blue-500' : 'border-gray-300 bg-white'}`}>
+                        {isChecked && <Check size={8} className="text-white" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold text-gray-700 truncate">{f.file_name}</p>
+                        <p className="text-[9px] text-gray-400 mt-0.5">{dateLabel}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${catColors[f.category] ?? 'bg-gray-50 text-gray-500 border-gray-200'}`}>{f.category}</span>
+                      {f.file_url && (
+                        <a href={f.file_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                          className="flex items-center gap-0.5 text-[9px] text-blue-600 hover:text-blue-800 transition-colors">
+                          <ExternalLink size={8} /> View
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            };
+
             return (
               <div className="flex-1 flex flex-col overflow-hidden">
 
@@ -1644,20 +1802,24 @@ export default function ProfilesDirectory() {
                         <span className="truncate max-w-[80px]">{assignedMembers.length > 0 ? assignedMembers.map(m => memberName(m)).join(', ') : 'Unassigned'}</span>
                         <ChevronDown size={9} className="shrink-0" />
                       </button>
-                      <button onClick={() => { setEditDraft({ candidate_name: p.candidate_name, target_role: p.target_role, email: p.email, phone: p.phone, location: p.location, city: p.city, state: p.state, country: p.country, linkedin_url: p.linkedin_url, github_url: p.github_url, portfolio_url: p.portfolio_url, core_skills: p.core_skills, visa_status: p.visa_status, work_type: p.work_type, work_authorization: p.work_authorization ?? '', notice_period: p.notice_period, years_experience: p.years_experience, availability: p.availability, desired_salary_min: p.desired_salary_min, desired_salary_max: p.desired_salary_max, preferred_locations: p.preferred_locations, relocation_status: (p as Record<string, unknown>).relocation_status as string ?? '' }); setShowEditModal(true); }}
-                        className="flex items-center gap-1 text-[11px] font-semibold text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 px-2.5 py-1 rounded-lg transition-colors border border-gray-200 shrink-0">
-                        <Edit2 size={10} /> Edit
+                      <button
+                        type="button"
+                        onClick={() => startEditingFullProfile(p)}
+                        title="Edit profile"
+                        className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors shrink-0"
+                      >
+                        <Edit2 size={14} />
                       </button>
                     </div>
                   </div>
                 </div>
 
-                {/* ── 4 Sub-columns ── */}
+                {/* ── 3 Sub-columns ── */}
                 <div className="flex-1 flex overflow-hidden">
 
                   {/* Sub-col 1: Profile */}
                   <div className="flex-1 flex flex-col border-r border-gray-200 overflow-hidden min-w-0">
-                    <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
+                    <div className="h-11 px-4 border-b border-gray-200 bg-gray-50 shrink-0 flex items-center justify-between gap-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Match Rules</p>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -1861,105 +2023,212 @@ export default function ProfilesDirectory() {
 
                   {/* Sub-col 2: Full profile */}
                   <div className="flex-1 flex flex-col border-r border-gray-200 overflow-hidden min-w-0">
-                    <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
+                    <div className="h-11 px-4 border-b border-gray-200 bg-gray-50 shrink-0 flex items-center justify-between gap-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Full Profile</p>
+                      {editingFullProfile ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={saveFullProfileEdits}
+                            disabled={savingFullProfile}
+                            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors"
+                          >
+                            <Check size={10} /> {savingFullProfile ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditingFullProfile}
+                            className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => startEditingFullProfile(p)}
+                          title="Edit profile"
+                          className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                      )}
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                      <DetailSection title="Profile Overview" color="blue">
-                        <DetailField label="Candidate" value={p.candidate_name || '—'} />
-                        <DetailField label="Target role" value={p.target_role || '—'} />
-                        <DetailField label="Location" value={([p.location, p.city, p.state, p.zip_code, p.country].filter(Boolean).join(', ') || '—')} />
-                        <DetailField label="Core skills" value={(p.core_skills || '—')} />
-                        <DetailField label="Years of experience" value={p.years_experience != null ? `${p.years_experience} yr${p.years_experience !== 1 ? 's' : ''}` : '—'} />
-                      </DetailSection>
-
                       <DetailSection title="Contact Details" color="gray">
-                        <DetailField label="Phone" value={p.phone || '—'} />
-                        <DetailField label="Email" value={p.email || '—'} />
-                        <DetailField label="LinkedIn" value={p.linkedin_url || '—'} />
-                        <DetailField label="GitHub" value={p.github_url || '—'} />
-                        <DetailField label="Portfolio" value={p.portfolio_url || '—'} />
+                        {editingFullProfile ? (
+                          <div className="space-y-2">
+                            <input value={String((fullProfileDraft as Record<string, unknown>).phone ?? '')} onChange={e => setFullProfileDraft(prev => ({ ...prev, phone: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Phone" />
+                            <input value={String((fullProfileDraft as Record<string, unknown>).email ?? '')} onChange={e => setFullProfileDraft(prev => ({ ...prev, email: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Email" />
+                            <input value={String((fullProfileDraft as Record<string, unknown>).linkedin_url ?? '')} onChange={e => setFullProfileDraft(prev => ({ ...prev, linkedin_url: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="LinkedIn URL" />
+                            <input value={String((fullProfileDraft as Record<string, unknown>).github_url ?? '')} onChange={e => setFullProfileDraft(prev => ({ ...prev, github_url: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="GitHub URL" />
+                            <input value={String((fullProfileDraft as Record<string, unknown>).portfolio_url ?? '')} onChange={e => setFullProfileDraft(prev => ({ ...prev, portfolio_url: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Portfolio URL" />
+                          </div>
+                        ) : (
+                          <>
+                            <DetailField label="Phone" value={p.phone || '—'} />
+                            <DetailField label="Email" value={p.email || '—'} />
+                            <DetailField label="LinkedIn" value={p.linkedin_url || '—'} />
+                            <DetailField label="GitHub" value={p.github_url || '—'} />
+                            <DetailField label="Portfolio" value={p.portfolio_url || '—'} />
+                          </>
+                        )}
                       </DetailSection>
 
-                      <DetailSection title="Work Preferences" color="amber">
-                        <DetailField label="Work type" value={p.work_type || '—'} />
-                        <DetailField label="Notice period" value={p.notice_period || '—'} />
-                        <DetailField label="Availability" value={p.availability || '—'} />
-                        <DetailField label="Preferred locations" value={p.preferred_locations || '—'} />
-                        <DetailField label="Salary range" value={(() => {
-                          const min = p.desired_salary_min != null ? Number(p.desired_salary_min).toLocaleString() : '';
-                          const max = p.desired_salary_max != null ? Number(p.desired_salary_max).toLocaleString() : '';
-                          if (!min && !max) return '—';
-                          return `${min}${min && max ? ' – ' : ''}${max}${max ? '/hr' : ''}`;
-                        })()} />
-                      </DetailSection>
-
-                      <DetailSection title="Visa & Work Eligibility" color="violet">
-                        <DetailField label="Visa status" value={p.visa_status || '—'} />
-                        <DetailField label="Profile status" value={p.profile_status || '—'} />
-                        <DetailField label="Bench stage" value={p.bench_stage || '—'} />
-                        <DetailField label="Assigned to" value={p.assigned_to || '—'} />
-                        <DetailField label="Created" value={p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'} />
+                      <DetailSection title="Availability & Notice" color="amber">
+                        {editingFullProfile ? (
+                          <div className="space-y-2">
+                            <select value={String((fullProfileDraft as Record<string, unknown>).notice_period ?? '')} onChange={e => setFullProfileDraft(prev => ({ ...prev, notice_period: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs bg-white">
+                              <option value="">Select…</option>
+                              {NOTICE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                            </select>
+                            <select value={String((fullProfileDraft as Record<string, unknown>).availability ?? '')} onChange={e => setFullProfileDraft(prev => ({ ...prev, availability: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs bg-white">
+                              <option value="">Select…</option>
+                              {['Immediate', '1 Week', '2 Weeks', '1 Month', '2 Months'].map(option => <option key={option} value={option}>{option}</option>)}
+                            </select>
+                          </div>
+                        ) : (
+                          <>
+                            <DetailField label="Notice period" value={p.notice_period || '—'} />
+                            <DetailField label="Availability" value={p.availability || '—'} />
+                          </>
+                        )}
                       </DetailSection>
 
                       <DetailSection title="Work Experience" color="emerald">
-                        {Array.isArray(p.experience) && p.experience.length > 0 ? (
-                          p.experience.map((exp: ExperienceEntry, i: number) => {
-                            const expanded = expandedExpIds.has(i);
-                            const hasDesc = !!exp.description;
-                            return (
-                              <div key={i} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                                <button
-                                  onClick={() => hasDesc && setExpandedExpIds(prev => {
-                                    const s = new Set(prev);
-                                    s.has(i) ? s.delete(i) : s.add(i);
-                                    return s;
-                                  })}
-                                  className={`w-full text-left p-2.5 ${hasDesc ? 'cursor-pointer hover:bg-gray-50/70' : 'cursor-default'} transition-colors`}>
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-xs font-bold text-gray-800 truncate">{exp.title || 'Untitled role'}</p>
-                                      <p className="text-[11px] text-gray-500 truncate">{exp.company || 'Unknown company'}</p>
-                                      <div className="flex items-center gap-2 text-[9px] text-gray-400 mt-0.5">
-                                        {exp.location && <span className="truncate">{exp.location}</span>}
-                                        {(exp.start_date || exp.end_date) && (
-                                          <span className="shrink-0">{exp.start_date}{exp.start_date && (exp.end_date || exp.current) ? ' – ' : ''}{exp.current ? 'Present' : exp.end_date}</span>
-                                        )}
+                        {editingFullProfile ? (
+                          <div className="space-y-2">
+                            {Array.isArray(fullProfileDraft.experience) && fullProfileDraft.experience.length > 0 ? (
+                              fullProfileDraft.experience.map((exp: ExperienceEntry, i: number) => (
+                                <div key={i} className="rounded-xl border border-gray-200 bg-white p-2.5 text-xs text-gray-600">
+                                  <p className="font-semibold text-gray-800">{exp.title || 'Untitled role'}</p>
+                                  <p className="mt-0.5 text-[11px] text-gray-500">{exp.company || 'Unknown company'}</p>
+                                  <p className="mt-1 text-[10px] text-gray-400">{[exp.location, exp.start_date, exp.end_date].filter(Boolean).join(' • ') || '—'}</p>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-[11px] text-gray-400 italic">No work experience added</p>
+                            )}
+                            {experienceAddOpen ? (
+                              <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-2.5">
+                                <input value={experienceDraft.company} onChange={e => setExperienceDraft(prev => ({ ...prev, company: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Company" />
+                                <input value={experienceDraft.title} onChange={e => setExperienceDraft(prev => ({ ...prev, title: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Title" />
+                                <input value={experienceDraft.location} onChange={e => setExperienceDraft(prev => ({ ...prev, location: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Location" />
+                                <div className="grid grid-cols-2 gap-2">
+                                  <input value={experienceDraft.start_date} onChange={e => setExperienceDraft(prev => ({ ...prev, start_date: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Start date" />
+                                  <input value={experienceDraft.end_date} onChange={e => setExperienceDraft(prev => ({ ...prev, end_date: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="End date" />
+                                </div>
+                                <label className="flex items-center gap-2 text-[10px] font-semibold text-gray-600">
+                                  <input type="checkbox" checked={Boolean(experienceDraft.current)} onChange={e => setExperienceDraft(prev => ({ ...prev, current: e.target.checked }))} />
+                                  Current role
+                                </label>
+                                <textarea value={experienceDraft.description} onChange={e => setExperienceDraft(prev => ({ ...prev, description: e.target.value }))} rows={3} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Description" />
+                                <div className="flex items-center gap-2">
+                                  <button type="button" onClick={addExperienceEntry} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white">Save</button>
+                                  <button type="button" onClick={() => { setExperienceAddOpen(false); setExperienceDraft(BLANK_EXP); }} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600">Cancel</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button type="button" onClick={() => setExperienceAddOpen(true)} className="flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:text-blue-800">
+                                <Plus size={10} /> Add
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          Array.isArray(p.experience) && p.experience.length > 0 ? (
+                            p.experience.map((exp: ExperienceEntry, i: number) => {
+                              const expanded = expandedExpIds.has(i);
+                              const hasDesc = !!exp.description;
+                              return (
+                                <div key={i} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                                  <button
+                                    onClick={() => hasDesc && setExpandedExpIds(prev => {
+                                      const s = new Set(prev);
+                                      s.has(i) ? s.delete(i) : s.add(i);
+                                      return s;
+                                    })}
+                                    className={`w-full text-left p-2.5 ${hasDesc ? 'cursor-pointer hover:bg-gray-50/70' : 'cursor-default'} transition-colors`}>
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-xs font-bold text-gray-800 truncate">{exp.title || 'Untitled role'}</p>
+                                        <p className="text-[11px] text-gray-500 truncate">{exp.company || 'Unknown company'}</p>
+                                        <div className="flex items-center gap-2 text-[9px] text-gray-400 mt-0.5">
+                                          {exp.location && <span className="truncate">{exp.location}</span>}
+                                          {(exp.start_date || exp.end_date) && (
+                                            <span className="shrink-0">{exp.start_date}{exp.start_date && (exp.end_date || exp.current) ? ' – ' : ''}{exp.current ? 'Present' : exp.end_date}</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        {exp.current && <span className="text-[8px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full">Current</span>}
+                                        {hasDesc && <ChevronDown size={10} className={`text-gray-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />}
                                       </div>
                                     </div>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      {exp.current && <span className="text-[8px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full">Current</span>}
-                                      {hasDesc && <ChevronDown size={10} className={`text-gray-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />}
+                                  </button>
+                                  {expanded && hasDesc && (
+                                    <div className="px-2.5 pb-2.5 pt-0 border-t border-gray-100">
+                                      <p className="text-[10px] text-gray-500 leading-relaxed whitespace-pre-line">{exp.description}</p>
                                     </div>
-                                  </div>
-                                </button>
-                                {expanded && hasDesc && (
-                                  <div className="px-2.5 pb-2.5 pt-0 border-t border-gray-100">
-                                    <p className="text-[10px] text-gray-500 leading-relaxed whitespace-pre-line">{exp.description}</p>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <p className="text-[11px] text-gray-400 italic">No work experience added</p>
+                                  )}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p className="text-[11px] text-gray-400 italic">No work experience added</p>
+                          )
                         )}
                       </DetailSection>
 
                       <DetailSection title="Education" color="violet">
-                        {Array.isArray(p.education) && p.education.length > 0 ? (
-                          p.education.map((edu: EducationEntry, i: number) => (
-                            <div key={i} className="bg-white border border-gray-200 rounded-xl p-2.5 space-y-1">
-                              <p className="text-xs font-bold text-gray-800 truncate">{edu.institution || 'Institution not provided'}</p>
-                              <p className="text-[11px] text-gray-600 truncate">{[edu.degree, edu.field].filter(Boolean).join(' · ') || '—'}</p>
-                              <div className="flex items-center gap-2 text-[9px] text-gray-400">
-                                {(edu.start_year || edu.end_year) && <span>{edu.start_year}{edu.start_year && edu.end_year ? ' – ' : ''}{edu.end_year}</span>}
-                                {edu.gpa && <span>GPA {edu.gpa}</span>}
+                        {editingFullProfile ? (
+                          <div className="space-y-2">
+                            {Array.isArray(fullProfileDraft.education) && fullProfileDraft.education.length > 0 ? (
+                              fullProfileDraft.education.map((edu: EducationEntry, i: number) => (
+                                <div key={i} className="rounded-xl border border-gray-200 bg-white p-2.5 text-xs text-gray-600">
+                                  <p className="font-semibold text-gray-800">{edu.institution || 'Institution not provided'}</p>
+                                  <p className="mt-0.5 text-[11px] text-gray-500">{[edu.degree, edu.field].filter(Boolean).join(' · ') || '—'}</p>
+                                  <p className="mt-1 text-[10px] text-gray-400">{[edu.start_year, edu.end_year].filter(Boolean).join(' – ') || '—'}</p>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-[11px] text-gray-400 italic">No education added</p>
+                            )}
+                            {educationAddOpen ? (
+                              <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-2.5">
+                                <input value={educationDraft.institution} onChange={e => setEducationDraft(prev => ({ ...prev, institution: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Institution" />
+                                <input value={educationDraft.degree} onChange={e => setEducationDraft(prev => ({ ...prev, degree: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Degree" />
+                                <input value={educationDraft.field} onChange={e => setEducationDraft(prev => ({ ...prev, field: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Field" />
+                                <div className="grid grid-cols-2 gap-2">
+                                  <input value={educationDraft.start_year} onChange={e => setEducationDraft(prev => ({ ...prev, start_year: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="Start year" />
+                                  <input value={educationDraft.end_year} onChange={e => setEducationDraft(prev => ({ ...prev, end_year: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="End year" />
+                                </div>
+                                <input value={educationDraft.gpa} onChange={e => setEducationDraft(prev => ({ ...prev, gpa: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs" placeholder="GPA" />
+                                <div className="flex items-center gap-2">
+                                  <button type="button" onClick={addEducationEntry} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white">Save</button>
+                                  <button type="button" onClick={() => { setEducationAddOpen(false); setEducationDraft(BLANK_EDU); }} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600">Cancel</button>
+                                </div>
                               </div>
-                            </div>
-                          ))
+                            ) : (
+                              <button type="button" onClick={() => setEducationAddOpen(true)} className="flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:text-blue-800">
+                                <Plus size={10} /> Add
+                              </button>
+                            )}
+                          </div>
                         ) : (
-                          <p className="text-[11px] text-gray-400 italic">No education added</p>
+                          Array.isArray(p.education) && p.education.length > 0 ? (
+                            p.education.map((edu: EducationEntry, i: number) => (
+                              <div key={i} className="bg-white border border-gray-200 rounded-xl p-2.5 space-y-1">
+                                <p className="text-xs font-bold text-gray-800 truncate">{edu.institution || 'Institution not provided'}</p>
+                                <p className="text-[11px] text-gray-600 truncate">{[edu.degree, edu.field].filter(Boolean).join(' · ') || '—'}</p>
+                                <div className="flex items-center gap-2 text-[9px] text-gray-400">
+                                  {(edu.start_year || edu.end_year) && <span>{edu.start_year}{edu.start_year && edu.end_year ? ' – ' : ''}{edu.end_year}</span>}
+                                  {edu.gpa && <span>GPA {edu.gpa}</span>}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-[11px] text-gray-400 italic">No education added</p>
+                          )
                         )}
                       </DetailSection>
                     </div>
@@ -1967,7 +2236,7 @@ export default function ProfilesDirectory() {
 
                   {/* Sub-col 3: Documents */}
                   <div className="flex-1 flex flex-col border-r border-gray-200 overflow-hidden min-w-0">
-                    <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0 flex items-center justify-between">
+                    <div className="h-11 px-4 border-b border-gray-200 bg-gray-50 shrink-0 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Documents</p>
                         {detailFiles.length > 0 && <span className="text-[9px] font-semibold text-gray-400 bg-gray-200 rounded-full px-1.5 py-0.5">{detailFiles.length}</span>}
@@ -1989,58 +2258,97 @@ export default function ProfilesDirectory() {
                             <Download size={9} /> {selectedDocIds.size}
                           </button>
                         )}
-                        <button onClick={() => docUploadRef.current?.click()}
+                        <button onClick={() => { setDocUploadTarget('resume'); docUploadRef.current?.click(); }}
                           title="Upload document"
                           className="flex items-center gap-0.5 text-[9px] font-semibold text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-lg transition-colors">
                           <Plus size={9} /> Upload
                         </button>
                         <input ref={docUploadRef} type="file" accept=".pdf,.doc,.docx,.rtf,.txt,.html" className="hidden"
-                          onChange={e => { const f = e.target.files?.[0]; if (f) uploadDocForProfile(f); e.target.value = ''; }} />
+                          onChange={e => { const f = e.target.files?.[0]; if (f) uploadDocForProfile(f, docUploadTarget); e.target.value = ''; }} />
                       </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3">
                       {detailLoading ? (
                         <div className="flex items-center justify-center py-6"><LogoSpinner size={14} /></div>
-                      ) : detailFiles.length === 0 ? (
-                        <div className="text-center py-6">
-                          <FileText size={18} className="text-gray-200 mx-auto mb-2" />
-                          <p className="text-[11px] text-gray-400">No documents yet</p>
-                        </div>
                       ) : (
                         <div className="space-y-2">
-                          {detailFiles.map(f => {
-                            const catColors: Record<string, string> = {
-                              resume:    'bg-blue-50 text-blue-700 border-blue-200',
-                              rewritten: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                            };
-                            const dateLabel = new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                            const isChecked = selectedDocIds.has(f.id);
-                            return (
-                              <div key={f.id} onClick={() => setSelectedDocIds(prev => { const s = new Set(prev); isChecked ? s.delete(f.id) : s.add(f.id); return s; })}
-                                className={`p-2.5 border rounded-xl cursor-pointer transition-colors ${isChecked ? 'border-blue-300 bg-blue-50/60' : 'border-gray-200 bg-white hover:bg-gray-50/50'}`}>
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex items-start gap-2 min-w-0 flex-1">
-                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${isChecked ? 'bg-blue-500 border-blue-500' : 'border-gray-300 bg-white'}`}>
-                                      {isChecked && <Check size={8} className="text-white" />}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-[11px] font-semibold text-gray-700 truncate">{f.file_name}</p>
-                                      <p className="text-[9px] text-gray-400 mt-0.5">{dateLabel}</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-col items-end gap-1 shrink-0">
-                                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${catColors[f.category] ?? 'bg-gray-50 text-gray-500 border-gray-200'}`}>{f.category}</span>
-                                    {f.file_url && (
-                                      <a href={f.file_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-                                        className="flex items-center gap-0.5 text-[9px] text-blue-600 hover:text-blue-800 transition-colors">
-                                        <ExternalLink size={8} /> View
-                                      </a>
-                                    )}
-                                  </div>
-                                </div>
+                          <CollapsibleSection title="Resume" color="blue" defaultOpen={false} count={resumeFiles.length} action={<button type="button" onClick={(e) => { e.stopPropagation(); setDocUploadTarget('resume'); docUploadRef.current?.click(); }} className="text-[10px] font-semibold text-blue-600 hover:text-blue-800">+ Upload</button>}>
+                            {resumeFiles.length === 0 ? (
+                              <div className="flex flex-col items-start gap-2">
+                                <p className="text-[11px] text-gray-400 italic">No resume files yet</p>
+                                <button type="button" onClick={() => { setDocUploadTarget('resume'); docUploadRef.current?.click(); }} className="flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:text-blue-800">
+                                  <Plus size={10} /> Upload
+                                </button>
                               </div>
-                            );
-                          })}
+                            ) : (
+                              <div className="space-y-2">{resumeFiles.map(renderDocCard)}</div>
+                            )}
+                          </CollapsibleSection>
+
+                          <CollapsibleSection title="AI Resumes" color="emerald" defaultOpen={false} count={aiResumeFiles.length} action={<button type="button" onClick={(e) => { e.stopPropagation(); setDocUploadTarget('rewritten'); docUploadRef.current?.click(); }} className="text-[10px] font-semibold text-emerald-600 hover:text-emerald-800">+ Upload</button>}>
+                            {aiResumeFiles.length === 0 ? (
+                              <div className="flex flex-col items-start gap-2">
+                                <p className="text-[11px] text-gray-400 italic">No AI resume files yet</p>
+                                <button type="button" onClick={() => { setDocUploadTarget('rewritten'); docUploadRef.current?.click(); }} className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 hover:text-emerald-800">
+                                  <Plus size={10} /> Upload
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">{aiResumeFiles.map(renderDocCard)}</div>
+                            )}
+                          </CollapsibleSection>
+
+                          <CollapsibleSection title="Experience" color="violet" defaultOpen={false} count={experienceFiles.length} action={<button type="button" onClick={(e) => { e.stopPropagation(); setDocUploadTarget('experience'); docUploadRef.current?.click(); }} className="text-[10px] font-semibold text-violet-600 hover:text-violet-800">+ Upload</button>}>
+                            {experienceFiles.length === 0 ? (
+                              <div className="flex flex-col items-start gap-2">
+                                <p className="text-[11px] text-gray-400 italic">No experience files yet</p>
+                                <button type="button" onClick={() => { setDocUploadTarget('experience'); docUploadRef.current?.click(); }} className="flex items-center gap-1 text-[10px] font-semibold text-violet-600 hover:text-violet-800">
+                                  <Plus size={10} /> Upload
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">{experienceFiles.map(renderDocCard)}</div>
+                            )}
+                          </CollapsibleSection>
+
+                          <CollapsibleSection title="Education" color="amber" defaultOpen={false} count={educationFiles.length} action={<button type="button" onClick={(e) => { e.stopPropagation(); setDocUploadTarget('education'); docUploadRef.current?.click(); }} className="text-[10px] font-semibold text-amber-600 hover:text-amber-800">+ Upload</button>}>
+                            {educationFiles.length === 0 ? (
+                              <div className="flex flex-col items-start gap-2">
+                                <p className="text-[11px] text-gray-400 italic">No education files yet</p>
+                                <button type="button" onClick={() => { setDocUploadTarget('education'); docUploadRef.current?.click(); }} className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 hover:text-amber-800">
+                                  <Plus size={10} /> Upload
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">{educationFiles.map(renderDocCard)}</div>
+                            )}
+                          </CollapsibleSection>
+
+                          <CollapsibleSection title="Visa" color="gray" defaultOpen={false} count={visaFiles.length} action={<button type="button" onClick={(e) => { e.stopPropagation(); setDocUploadTarget('visa'); docUploadRef.current?.click(); }} className="text-[10px] font-semibold text-gray-600 hover:text-gray-800">+ Upload</button>}>
+                            {visaFiles.length === 0 ? (
+                              <div className="flex flex-col items-start gap-2">
+                                <p className="text-[11px] text-gray-400 italic">No visa files yet</p>
+                                <button type="button" onClick={() => { setDocUploadTarget('visa'); docUploadRef.current?.click(); }} className="flex items-center gap-1 text-[10px] font-semibold text-gray-600 hover:text-gray-800">
+                                  <Plus size={10} /> Upload
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">{visaFiles.map(renderDocCard)}</div>
+                            )}
+                          </CollapsibleSection>
+
+                          <CollapsibleSection title="Others" color="gray" defaultOpen={false} count={otherFiles.length} action={<button type="button" onClick={(e) => { e.stopPropagation(); setDocUploadTarget('others'); docUploadRef.current?.click(); }} className="text-[10px] font-semibold text-gray-600 hover:text-gray-800">+ Upload</button>}>
+                            {otherFiles.length === 0 ? (
+                              <div className="flex flex-col items-start gap-2">
+                                <p className="text-[11px] text-gray-400 italic">No other files yet</p>
+                                <button type="button" onClick={() => { setDocUploadTarget('others'); docUploadRef.current?.click(); }} className="flex items-center gap-1 text-[10px] font-semibold text-gray-600 hover:text-gray-800">
+                                  <Plus size={10} /> Upload
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">{otherFiles.map(renderDocCard)}</div>
+                            )}
+                          </CollapsibleSection>
                         </div>
                       )}
                     </div>
@@ -2048,8 +2356,11 @@ export default function ProfilesDirectory() {
 
                   {/* Sub-col 4: Activity */}
                   <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                    <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
+                    <div className="h-11 px-4 border-b border-gray-200 bg-gray-50 shrink-0 flex items-center justify-between gap-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Activity</p>
+                      <span className="text-[10px] font-semibold text-gray-500 bg-white border border-gray-200 rounded-full px-2 py-0.5">
+                        {p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                      </span>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-3">
                       {/* Metrics */}
