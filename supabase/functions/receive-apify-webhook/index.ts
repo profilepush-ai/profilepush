@@ -25,6 +25,12 @@ const APIFY_TOKEN = Deno.env.get("APIFY_TOKEN") ?? "";
 
 // ── Item mappers ─────────────────────────────────────────────────────────────
 
+function asIsoOrNull(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 function mapDiceItem(j: Record<string, unknown>, searchId: string) {
   return {
     search_id: searchId,
@@ -48,37 +54,110 @@ function mapDiceItem(j: Record<string, unknown>, searchId: string) {
 }
 
 function mapIndeedItem(j: Record<string, unknown>, searchId: string) {
-  const locationStr = (j.location as string) ?? "";
-  const parts = locationStr.split(",").map((s: string) => s.trim());
-  const city = parts[0] || null;
-  const state = parts.length >= 2 ? parts[parts.length - 1] : null;
-  const jobTypes = Array.isArray(j.jobType) ? (j.jobType as string[]) : [];
+  const locationObj = (j.location && typeof j.location === "object" && !Array.isArray(j.location))
+    ? j.location as Record<string, unknown>
+    : {};
+  const employer = (j.employer && typeof j.employer === "object" && !Array.isArray(j.employer))
+    ? j.employer as Record<string, unknown>
+    : {};
+  const parentEmployer = (j.parentEmployer && typeof j.parentEmployer === "object" && !Array.isArray(j.parentEmployer))
+    ? j.parentEmployer as Record<string, unknown>
+    : {};
+  const baseSalary = (j.baseSalary && typeof j.baseSalary === "object" && !Array.isArray(j.baseSalary))
+    ? j.baseSalary as Record<string, unknown>
+    : {};
+  const description = (j.description && typeof j.description === "object" && !Array.isArray(j.description))
+    ? j.description as Record<string, unknown>
+    : {};
+  const attributes = (j.attributes && typeof j.attributes === "object" && !Array.isArray(j.attributes))
+    ? j.attributes as Record<string, unknown>
+    : {};
+  const benefits = (j.benefits && typeof j.benefits === "object" && !Array.isArray(j.benefits))
+    ? j.benefits as Record<string, unknown>
+    : {};
+  const occupations = (j.occupations && typeof j.occupations === "object" && !Array.isArray(j.occupations))
+    ? j.occupations as Record<string, unknown>
+    : {};
+  const employerAttributes = (j.employerAttributes && typeof j.employerAttributes === "object" && !Array.isArray(j.employerAttributes))
+    ? j.employerAttributes as Record<string, unknown>
+    : {};
+
+  const title = typeof j.title === "string"
+    ? j.title
+    : ((j.title as Record<string, unknown> | undefined)?.text as string | undefined) ?? null;
+  const city = (locationObj.city as string) || null;
+  const state = (locationObj.admin1Code as string) || null;
+  const locationDisplay = [city, state].filter(Boolean).join(", ") || null;
+
+  const salaryMin = typeof baseSalary.min === "number" ? baseSalary.min : null;
+  const salaryMax = typeof baseSalary.max === "number" ? baseSalary.max : null;
+  const salaryUnit = (baseSalary.unitOfWork as string) || null;
+  const salaryCurrency = (baseSalary.currencyCode as string) || null;
+  const salaryDisplay = salaryMin != null || salaryMax != null
+    ? `${salaryMin ?? salaryMax}${salaryMin != null && salaryMax != null ? ` - ${salaryMax}` : ""}${salaryCurrency ? ` ${salaryCurrency}` : ""}${salaryUnit ? `/${salaryUnit}` : ""}`
+    : null;
+
+  const employmentType = (() => {
+    const types = j.jobTypes;
+    if (types && typeof types === "object" && !Array.isArray(types)) {
+      const values = Object.values(types as Record<string, unknown>).filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+      if (values.length > 0) return values[0];
+    }
+    const values = Object.values(employerAttributes).filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+    return values[0] ?? null;
+  })();
+
+  const hasRemoteAttribute = Object.values(attributes).some((value) =>
+    typeof value === "string" && value.toLowerCase().includes("remote")
+  );
+  const isRemote = hasRemoteAttribute || (locationDisplay ?? "").toLowerCase().includes("remote");
+
+  const datePublished = asIsoOrNull(j.datePublished);
+  const dateOnIndeed = asIsoOrNull(j.dateOnIndeed);
+  const expirationDate = asIsoOrNull(j.expirationDate);
 
   return {
     search_id: searchId,
-    indeed_key: (j.id as string) ?? null,
-    job_url: (j.url as string) ?? null,
-    apply_url: (j.externalApplyLink as string) || null,
-    job_title: (j.positionName as string) ?? null,
-    company_name: (j.company as string) ?? null,
-    company_page_url: null,
-    company_logo_url: (j.companyLogo as string) || null,
+    indeed_key: (j.key as string) || (j.id as string) || null,
+    ref_num: (j.refNum as string) || null,
+    language: (j.language as string) || null,
+    job_url: (j.url as string) || null,
+    apply_url: (j.jobUrl as string) || null,
+    job_title: title,
+    company_name: (employer.name as string) || null,
+    company_page_url: (employer.companyPageUrl as string) || null,
+    company_logo_url: (employer.logoUrl as string) || null,
     location_city: city,
     location_state: state,
-    location_display: locationStr || null,
-    salary_display: (j.salary as string) || null,
-    salary_min: null,
-    salary_max: null,
-    salary_unit: null,
-    salary_currency: null,
-    employment_type: jobTypes.length > 0 ? jobTypes[0] : null,
-    is_remote: locationStr.toLowerCase().includes("remote"),
-    is_urgent: false,
-    date_published: (j.scrapedAt as string) ? new Date(j.scrapedAt as string).toISOString() : null,
-    job_description: (j.description as string) ?? null,
-    benefits: {},
-    attributes: {},
-    occupations: {},
+    location_display: locationDisplay,
+    location_country: (locationObj.countryName as string) || null,
+    location_country_code: (locationObj.countryCode as string) || null,
+    location_admin1_code: (locationObj.admin1Code as string) || null,
+    location_postal_code: (locationObj.postalCode as string) || null,
+    location_latitude: typeof locationObj.latitude === "number" ? locationObj.latitude : null,
+    location_longitude: typeof locationObj.longitude === "number" ? locationObj.longitude : null,
+    salary_display: salaryDisplay,
+    salary_min: salaryMin,
+    salary_max: salaryMax,
+    salary_unit: salaryUnit,
+    salary_currency: salaryCurrency,
+    employment_type: employmentType,
+    is_remote: isRemote,
+    is_urgent: Boolean(j.isUrgentHire),
+    is_repost: typeof j.isRepost === "boolean" ? j.isRepost : null,
+    is_latest_post: typeof j.isLatestPost === "boolean" ? j.isLatestPost : null,
+    is_placement: typeof j.isPlacement === "boolean" ? j.isPlacement : null,
+    is_high_volume_hiring: typeof j.isHighVolumeHiring === "boolean" ? j.isHighVolumeHiring : null,
+    is_expired: typeof j.expired === "boolean" ? j.expired : null,
+    date_published: datePublished || dateOnIndeed,
+    date_on_indeed: dateOnIndeed,
+    expiration_date: expirationDate,
+    job_description: (description.html as string) || (description.text as string) || null,
+    benefits,
+    attributes,
+    occupations,
+    employer_payload: employer,
+    parent_employer_payload: parentEmployer,
     raw_payload: j,
   };
 }
@@ -203,9 +282,9 @@ function extractSearchParams(board: Board, input: Record<string, unknown>): Reco
       };
     case "indeed":
       return {
-        keyword: String(input.position ?? input.keyword ?? "").trim().toLowerCase(),
+        keyword: String(input.title ?? input.keyword ?? input.position ?? "").trim().toLowerCase(),
         location: String(input.location ?? "").trim().toLowerCase(),
-        date_posted: "Any time",
+        date_posted: String(input.datePosted ?? "Any time"),
       };
     case "linkedin":
       return {

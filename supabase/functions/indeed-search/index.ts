@@ -8,10 +8,100 @@ const corsHeaders = {
 };
 
 const APIFY_TOKEN = Deno.env.get("APIFY_TOKEN") ?? "";
-const APIFY_ACTOR = "kaix~indeed-scraper";
+const APIFY_ACTOR = "valig~indeed-jobs-scraper";
 const MAX_JOBS = 25;
 const COST_MULTIPLIER = 4;
 const MAX_CONCURRENT = 20;
+
+const FROM_DAYS_MAP: Record<string, string | undefined> = {
+  "Any time": undefined,
+  "Last 24 hours": "1",
+  "Last week": "7",
+  "Last month": "14",
+  "last24Hours": "1",
+  "last3Days": "3",
+  "lastWeek": "7",
+  "last14Days": "14",
+};
+
+function extractIndeedTitlePhrases(keyword: string): string[] {
+  const match = keyword.match(/title:\((.*)\)/i);
+  if (!match) return [];
+
+  const inner = match[1] ?? "";
+  const quoted = Array.from(inner.matchAll(/"([^"]+)"/g))
+    .map((entry) => entry[1]?.trim() ?? "")
+    .filter(Boolean);
+
+  if (quoted.length > 0) return quoted;
+
+  return inner
+    .split(/\bor\b/i)
+    .map((part) => part.replace(/[()]/g, " ").trim())
+    .filter(Boolean);
+}
+
+function normalizeKeywordForApify(keyword: string): string {
+  const phrases = extractIndeedTitlePhrases(keyword);
+  if (phrases.length > 0) {
+    // Apify actor expects plain keyword text; send the primary phrase.
+    return phrases[0] ?? keyword;
+  }
+  return keyword;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function asBooleanOrNull(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function asTimestampOrNull(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function toEmploymentType(jobTypes: unknown, employerAttributes: Record<string, unknown>): string | null {
+  if (jobTypes && typeof jobTypes === "object" && !Array.isArray(jobTypes)) {
+    const values = Object.values(jobTypes as Record<string, unknown>).filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+    if (values.length > 0) return values[0] ?? null;
+  }
+  const employerValues = Object.values(employerAttributes).filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+  return employerValues[0] ?? null;
+}
+
+function toSalaryDisplay(baseSalary: Record<string, unknown>): string | null {
+  const min = asNumber(baseSalary.min);
+  const max = asNumber(baseSalary.max);
+  const unit = typeof baseSalary.unitOfWork === "string" ? baseSalary.unitOfWork : "";
+  const currency = typeof baseSalary.currencyCode === "string" ? baseSalary.currencyCode : "";
+
+  if (min == null && max == null) return null;
+  const bounds = min != null && max != null
+    ? `${min} - ${max}`
+    : `${min ?? max}`;
+  const suffix = [currency, unit].filter(Boolean).join("/");
+  return suffix ? `${bounds} ${suffix}` : bounds;
+}
+
+function toIndeedTitleText(item: Record<string, unknown>): string {
+  if (typeof item.title === "string") return item.title;
+  const titleObj = asRecord(item.title);
+  const nested = titleObj.text;
+  return typeof nested === "string" ? nested : "";
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -29,6 +119,8 @@ Deno.serve(async (req: Request) => {
       keyword = "",
       location = "",
       date_posted = "Any time",
+      job_type = "",
+      remote = "",
       account_id = null,
       user_id = null,
       max_results = MAX_JOBS,
@@ -101,25 +193,20 @@ Deno.serve(async (req: Request) => {
       throw new Error("Failed to create search record");
     }
 
-    // Map date_posted to fromDays param
-    const fromDaysMap: Record<string, string | undefined> = {
-      "last24Hours": "1",
-      "last3Days": "3",
-      "lastWeek": "7",
-      "last14Days": "14",
-      "Any time": undefined,
-    };
-    const fromDays = fromDaysMap[normalizedDatePosted] ?? fromDaysMap[date_posted];
+    const fromDays = FROM_DAYS_MAP[normalizedDatePosted] ?? FROM_DAYS_MAP[date_posted];
+    const normalizedJobType = String(job_type).trim().toLowerCase();
+    const normalizedRemote = String(remote).trim().toLowerCase();
 
+    const apifyKeyword = normalizeKeywordForApify((keyword as string).trim());
     const apifyInput: Record<string, unknown> = {
-      keyword: (keyword as string).trim(),
+      title: apifyKeyword,
       location: (location as string).trim(),
-      country: "US",
-      maxItems: effectiveMax,
-      searchMode: "rich",
-      sort: "date",
+      country: "us",
+      limit: effectiveMax,
     };
-    if (fromDays) apifyInput.fromDays = fromDays;
+    if (fromDays) apifyInput.datePosted = fromDays;
+    if (normalizedJobType) apifyInput.jobType = normalizedJobType;
+    if (normalizedRemote) apifyInput.remote = normalizedRemote;
 
     const runRes = await fetch(
       `https://api.apify.com/v2/acts/${APIFY_ACTOR}/runs?token=${APIFY_TOKEN}&waitForFinish=120`,
@@ -151,48 +238,70 @@ Deno.serve(async (req: Request) => {
 
     if (items.length > 0) {
       const rows = items.map((j) => {
-        const title = (j.title as Record<string, unknown>) ?? {};
-        const urls = (j.urls as Record<string, unknown>) ?? {};
-        const salary = (j.salary as Record<string, unknown>) ?? {};
-        const company = (j.company as Record<string, unknown>) ?? {};
-        const loc = (j.location as Record<string, unknown>) ?? {};
-        const classification = (j.classification as Record<string, unknown>) ?? {};
-        const workArrangement = (j.workArrangement as Record<string, unknown>) ?? {};
-        const dates = (j.dates as Record<string, unknown>) ?? {};
-        const signals = (j.signals as Record<string, unknown>) ?? {};
-        const requirements = (j.requirements as Record<string, unknown>) ?? {};
-        const description = (j.description as Record<string, unknown>) ?? {};
-        const companyLogos = (company.logos as Record<string, unknown>) ?? {};
-        const companyUrls = (company.urls as Record<string, unknown>) ?? {};
+        const locationObj = asRecord(j.location);
+        const employer = asRecord(j.employer);
+        const parentEmployer = asRecord(j.parentEmployer);
+        const baseSalary = asRecord(j.baseSalary);
+        const description = asRecord(j.description);
+        const benefits = asRecord(j.benefits);
+        const attributes = asRecord(j.attributes);
+        const occupations = asRecord(j.occupations);
+        const employerAttributes = asRecord(j.employerAttributes);
 
-        const locationDisplay = (loc.formatted as string) || (loc.formattedShort as string) || "";
-        const isRemote = Boolean(workArrangement.isRemote) || locationDisplay.toLowerCase().includes("remote");
+        const locationCity = typeof locationObj.city === "string" ? locationObj.city : null;
+        const locationState = typeof locationObj.admin1Code === "string" ? locationObj.admin1Code : null;
+        const locationDisplay = [locationCity, locationState].filter(Boolean).join(", ");
+        const titleText = toIndeedTitleText(j) || null;
+        const isRemote = locationDisplay.toLowerCase().includes("remote") ||
+          Object.values(attributes).some((v) => typeof v === "string" && v.toLowerCase().includes("remote"));
+        const salaryMin = asNumber(baseSalary.min);
+        const salaryMax = asNumber(baseSalary.max);
+        const salaryUnit = typeof baseSalary.unitOfWork === "string" ? baseSalary.unitOfWork : null;
+        const salaryCurrency = typeof baseSalary.currencyCode === "string" ? baseSalary.currencyCode : null;
+        const salaryDisplay = toSalaryDisplay(baseSalary);
 
         return {
           search_id: searchRecord.id,
-          indeed_key: (j.id as string) ?? null,
-          job_url: (urls.indeed as string) ?? null,
-          apply_url: (urls.external as string) || (urls.apply as string) || null,
-          job_title: (title.text as string) ?? null,
-          company_name: (company.name as string) ?? null,
-          company_page_url: (companyUrls.indeed as string) || (companyUrls.website as string) || null,
-          company_logo_url: (companyLogos.square as string) || (companyLogos.rectangular as string) || null,
-          location_city: (loc.city as string) || null,
-          location_state: (loc.state as string) || null,
+          indeed_key: (j.key as string) || (j.id as string) || null,
+          ref_num: (j.refNum as string) || null,
+          language: (j.language as string) || null,
+          job_url: (j.url as string) || null,
+          apply_url: (j.jobUrl as string) || null,
+          job_title: titleText,
+          company_name: (employer.name as string) || null,
+          company_page_url: (employer.companyPageUrl as string) || null,
+          company_logo_url: (employer.logoUrl as string) || null,
+          location_city: locationCity,
+          location_state: locationState,
           location_display: locationDisplay || null,
-          salary_display: (salary.text as string) || null,
-          salary_min: (salary.min as number) ?? null,
-          salary_max: (salary.max as number) ?? null,
-          salary_unit: (salary.period as string) || null,
-          salary_currency: (salary.currency as string) || null,
-          employment_type: (classification.jobType as string) || null,
+          location_country: (locationObj.countryName as string) || null,
+          location_country_code: (locationObj.countryCode as string) || null,
+          location_admin1_code: (locationObj.admin1Code as string) || null,
+          location_postal_code: (locationObj.postalCode as string) || null,
+          location_latitude: asNumber(locationObj.latitude),
+          location_longitude: asNumber(locationObj.longitude),
+          salary_display: salaryDisplay,
+          salary_min: salaryMin,
+          salary_max: salaryMax,
+          salary_unit: salaryUnit,
+          salary_currency: salaryCurrency,
+          employment_type: toEmploymentType(j.jobTypes, employerAttributes),
           is_remote: isRemote,
-          is_urgent: Boolean(signals.isUrgentHire),
-          date_published: (dates.posted as string) || (dates.onIndeed as string) || null,
+          is_urgent: Boolean(j.isUrgentHire),
+          is_repost: asBooleanOrNull(j.isRepost),
+          is_latest_post: asBooleanOrNull(j.isLatestPost),
+          is_placement: asBooleanOrNull(j.isPlacement),
+          is_high_volume_hiring: asBooleanOrNull(j.isHighVolumeHiring),
+          is_expired: asBooleanOrNull(j.expired),
+          date_published: asTimestampOrNull(j.datePublished) || asTimestampOrNull(j.dateOnIndeed),
+          date_on_indeed: asTimestampOrNull(j.dateOnIndeed),
+          expiration_date: asTimestampOrNull(j.expirationDate),
           job_description: (description.html as string) || (description.text as string) || null,
-          benefits: j.benefits ?? {},
-          attributes: classification.attributes ?? {},
-          occupations: classification.occupations ?? {},
+          benefits,
+          attributes,
+          occupations,
+          employer_payload: employer,
+          parent_employer_payload: parentEmployer,
           raw_payload: j,
         };
       });
