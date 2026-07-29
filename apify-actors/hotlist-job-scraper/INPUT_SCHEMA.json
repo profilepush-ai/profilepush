@@ -1,0 +1,9 @@
+{
+  "supabase_url": "https://your-project.supabase.co",
+  "supabase_service_role_key": "eyJhbGc...",
+  "gemini_api_key": "AIza...",
+  "boards": ["linkedin", "dice", "indeed", "monster", "careerbuilder"],
+  "max_results": 25,
+  "posted_within": "Past 24 hours",
+  "dry_run": false
+}

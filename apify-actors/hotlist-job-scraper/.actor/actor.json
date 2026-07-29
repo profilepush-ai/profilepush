@@ -1,0 +1,70 @@
+{
+  "actorSpecification": 1,
+  "name": "hotlist-job-scraper",
+  "title": "Hotlist Job Scraper",
+  "description": "Fetches active hotlist profiles from Supabase, normalizes roles/locations via Gemini LLM, and triggers scrapers across LinkedIn, Dice, Indeed, Monster, and CareerBuilder.",
+  "version": "1.0",
+  "input": {
+    "title": "Hotlist Job Scraper Input",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+      "supabase_url": {
+        "title": "Supabase Project URL",
+        "type": "string",
+        "description": "Your Supabase project URL (e.g. https://xyz.supabase.co)",
+        "editor": "textfield"
+      },
+      "supabase_service_role_key": {
+        "title": "Supabase Service Role Key",
+        "type": "string",
+        "description": "Service role key from Supabase → Settings → API",
+        "editor": "textfield",
+        "isSecret": true
+      },
+      "gemini_api_key": {
+        "title": "Gemini API Key (optional)",
+        "type": "string",
+        "description": "Google Gemini API key for LLM-based role/location normalization. If omitted, raw deduplication is used.",
+        "editor": "textfield",
+        "isSecret": true
+      },
+      "boards": {
+        "title": "Job Boards to Search",
+        "type": "array",
+        "description": "Which job boards to trigger searches on",
+        "editor": "stringList",
+        "default": ["linkedin", "dice", "indeed", "monster", "careerbuilder"],
+        "items": {
+          "type": "string",
+          "enum": ["linkedin", "dice", "indeed", "monster", "careerbuilder"]
+        }
+      },
+      "max_results": {
+        "title": "Max Results Per Board Per Search",
+        "type": "integer",
+        "description": "Maximum jobs to fetch per board per role+location combination",
+        "default": 25,
+        "minimum": 5,
+        "maximum": 100,
+        "editor": "number"
+      },
+      "posted_within": {
+        "title": "Posted Within (LinkedIn)",
+        "type": "string",
+        "description": "How recent the job postings should be (LinkedIn field)",
+        "default": "Past 24 hours",
+        "enum": ["Past 24 hours", "Past Week", "Past Month", "Any Time"],
+        "editor": "select"
+      },
+      "dry_run": {
+        "title": "Dry Run",
+        "type": "boolean",
+        "description": "If true, fetch profiles and compute combinations but do NOT trigger any scrapers",
+        "default": false,
+        "editor": "checkbox"
+      }
+    },
+    "required": ["supabase_url", "supabase_service_role_key"]
+  }
+}
