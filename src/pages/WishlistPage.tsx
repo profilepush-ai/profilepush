@@ -63,7 +63,7 @@ export default function WishlistPage() {
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const [profileSearch, setProfileSearch] = useState('');
-  const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'all'>('all');
+  const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'all'>('hotlist');
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
   const [profileQueueCounts, setProfileQueueCounts] = useState<Record<string, { queued: number; initiated: number }>>({});
 

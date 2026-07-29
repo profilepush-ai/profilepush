@@ -16,10 +16,10 @@ const navItems = [
   { path: '/bench',      label: 'Bench',          icon: Users },
   { path: '/job-watch-ai',   label: 'Job Watch AI',   icon: Radar },
   { path: '/job-finder',    label: 'Job Finder',     icon: Search },
-  { path: '/hotlist-ai', label: 'Hotlist AI',  icon: Target },
   { path: '/submission-queue', label: 'Submission Queue', icon: Bookmark },
-  { path: '/resume-ai',     label: 'Resume AI',      icon: PenLine },
+  { path: '/hotlist-ai', label: 'Hotlist AI',  icon: Target },
   { path: '/tracker',       label: 'Tracker',        icon: FileText },
+  { path: '/resume-ai',     label: 'Resume AI',      icon: PenLine },
 ];
 
 function CreditsChip({ balance }: { balance: number }) {

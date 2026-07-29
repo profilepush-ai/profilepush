@@ -301,7 +301,7 @@ export default function ProfilesDirectory() {
   const [search, setSearch]             = useState('');
   const [assignedFilter, setAssignedFilter] = useState('');
   const [assignedFilterOpen, setAssignedFilterOpen] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'bench'>('bench');
+  const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'bench'>('hotlist');
   const assignedFilterRef = useRef<HTMLDivElement>(null);
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -447,7 +447,7 @@ export default function ProfilesDirectory() {
 
   useEffect(() => {
     if (!sidebarTabInitialized && profiles.length > 0) {
-      setSidebarTab(profiles.some(p => hotlistIds.has(p.id)) ? 'hotlist' : 'bench');
+      setSidebarTab('hotlist');
       setSidebarTabInitialized(true);
     }
   }, [profiles, hotlistIds, sidebarTabInitialized]);

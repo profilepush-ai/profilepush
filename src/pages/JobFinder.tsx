@@ -249,11 +249,13 @@ type PortalId = typeof PORTAL_TABS[number]['id'];
 const JOB_TYPES = ['Full-time', 'Part-time', 'Contract', 'Remote', 'Internship'];
 const DATE_FILTERS = ['Any time', 'Last 24 hours', 'Last week', 'Last month'];
 const EXPERIENCE_LEVELS = ['Entry level', 'Mid level', 'Senior level', 'Executive'];
+const RESULT_OPTIONS = [25, 50, 75, 100];
 const LINKEDIN_PAGE_SIZE = 10;
 const DICE_PAGE_SIZE = 10;
 const INDEED_PAGE_SIZE = 10;
 const MONSTER_PAGE_SIZE = 10;
 const HISTORY_PAGE_SIZE = 10;
+const JOB_FINDER_SEARCH_COOLDOWN_KEY = 'job_finder_search_cooldowns';
 
 const POSTED_WITHIN_MAP: Record<string, string> = {
   'Any time': 'Any Time',
@@ -798,7 +800,7 @@ function JobPreviewModal({
 export default function JobFinder() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { account, user } = useAuth();
+  const { account, user, subscription } = useAuth();
 
   const paramProfileId = searchParams.get('profileId');
   const paramRole = searchParams.get('role') ?? '';
@@ -813,7 +815,7 @@ export default function JobFinder() {
   const [profileSearchIds, setProfileSearchIds] = useState<Set<string> | null>(null);
 
   // Candidates sidebar
-  const [candidateTab, setCandidateTab] = useState<'hotlist' | 'all'>('all');
+  const [candidateTab, setCandidateTab] = useState<'hotlist' | 'all'>('hotlist');
   const [hotlistProfileIds, setHotlistProfileIds] = useState<string[]>([]);
   const [candidateQuery, setCandidateQuery] = useState('');
   const [profileBoardStats, setProfileBoardStats] = useState<Record<string, { fetched: number; matched: number }>>({});
@@ -834,7 +836,7 @@ export default function JobFinder() {
   const [dateFilter, setDateFilter] = useState('Last 24 hours');
   const [experienceLevel, setExperienceLevel] = useState('');
   const [maxResults, setMaxResults] = useState(25);
-  const [filtersFromProfile, setFiltersFromProfile] = useState(false);
+  const [, setFiltersFromProfile] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   // Mock jobs state (Dice / Indeed / CareerBuilder)
@@ -927,6 +929,7 @@ export default function JobFinder() {
   const [boardVotes, setBoardVotes] = useState<Record<string, { id: string; vote_count: number }>>({});
   const [userVotedBoards, setUserVotedBoards] = useState<Set<string>>(new Set());
   const [votingBoard, setVotingBoard] = useState<string | null>(null);
+  const [searchCooldowns, setSearchCooldowns] = useState<Record<string, number>>({});
   const [linkedinColFilter, setLinkedinColFilter] = useState('');
   const [diceColFilter, setDiceColFilter] = useState('');
   const [indeedColFilter, setIndeedColFilter] = useState('');
@@ -962,8 +965,69 @@ export default function JobFinder() {
     setToast({ message, type });
   }, []);
 
+  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+  const boardCooldownKeyByLabel: Record<string, string> = {
+    LinkedIn: 'linkedin',
+    Dice: 'dice',
+    Indeed: 'indeed',
+    Monster: 'monster',
+    CareerBuilder: 'careerbuilder',
+  };
+  const selectedBoardCooldownKeys = Array.from(selectedBoards)
+    .map(board => boardCooldownKeyByLabel[board])
+    .filter((boardKey): boardKey is string => Boolean(boardKey));
+
+  function getCooldownRemainingMs(searchKey: string): number {
+    const cooldownAt = searchCooldowns[searchKey] ?? 0;
+    return Math.max(0, cooldownAt + (24 * 60 * 60 * 1000) - Date.now());
+  }
+
+  const selectedBoardCooldownRemainingMs = selectedBoardCooldownKeys
+    .map(getCooldownRemainingMs)
+    .filter(ms => ms > 0);
+  const searchCooldownRemainingMs = selectedBoardCooldownRemainingMs.length > 0
+    ? Math.min(...selectedBoardCooldownRemainingMs)
+    : 0;
+  const hasSelectedBoardCooldown = !isPaidPlan && selectedBoardCooldownRemainingMs.length > 0;
+  const isSearchCooldownActive = !isPaidPlan
+    && selectedBoardCooldownKeys.length > 0
+    && selectedBoardCooldownKeys.every(boardKey => getCooldownRemainingMs(boardKey) > 0);
+
+  function formatCooldown(ms: number): string {
+    if (ms <= 0) return '0m';
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.ceil((ms % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours <= 0) return `${minutes}m`;
+    return `${hours}h ${minutes}m`;
+  }
+
+  function stampSearchCooldown(searchKey: string) {
+    const next = { ...searchCooldowns, [searchKey]: Date.now() };
+    setSearchCooldowns(next);
+    try {
+      localStorage.setItem(JOB_FINDER_SEARCH_COOLDOWN_KEY, JSON.stringify(next));
+    } catch {
+      // no-op if storage is unavailable
+    }
+  }
+
 
   useEffect(() => { if (account?.id) loadProfiles(); }, [account?.id]);
+  useEffect(() => {
+    if (!isPaidPlan && maxResults !== 25) {
+      setMaxResults(25);
+    }
+  }, [isPaidPlan, maxResults]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(JOB_FINDER_SEARCH_COOLDOWN_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, number>;
+      if (parsed && typeof parsed === 'object') setSearchCooldowns(parsed);
+    } catch {
+      setSearchCooldowns({});
+    }
+  }, []);
   useEffect(() => {
     if (profiles.length === 0) {
       setProfileBoardStats({});
@@ -1363,14 +1427,6 @@ export default function JobFinder() {
     setFiltersFromProfile(true);
   }
 
-  function resetFilters() {
-    setKeyword('');
-    setLocation('');
-    setDateFilter('Last 24 hours');
-    setSelectedJobTypes([]);
-    setFiltersFromProfile(false);
-  }
-
   async function loadProfiles() {
     setProfilesLoading(true);
     const { data } = await throttled(() => supabase.from('profiles').select('*').order('updated_at', { ascending: false }));
@@ -1461,15 +1517,15 @@ export default function JobFinder() {
     e?.preventDefault();
     if (activeTab === 'History') return;
     if (activeTab === 'LinkedIn') {
-      runLinkedInSearch();
+      triggerBoardSearch('linkedin');
     } else if (activeTab === 'Dice') {
-      runDiceSearch();
+      triggerBoardSearch('dice');
     } else if (activeTab === 'Indeed') {
-      runIndeedSearch();
+      triggerBoardSearch('indeed');
     } else if (activeTab === 'Monster') {
-      runMonsterSearch();
+      triggerBoardSearch('monster');
     } else if (activeTab === 'CareerBuilder') {
-      runCbSearch();
+      triggerBoardSearch('careerbuilder');
     } else {
       runMockSearch();
     }
@@ -1522,11 +1578,55 @@ export default function JobFinder() {
   }
 
   function searchAll() {
-    if (selectedBoards.has('LinkedIn')) runLinkedInSearch();
-    if (selectedBoards.has('Dice')) runDiceSearch();
-    if (selectedBoards.has('Indeed')) runIndeedSearch();
-    if (selectedBoards.has('Monster')) runMonsterSearch();
-    if (selectedBoards.has('CareerBuilder')) runCbSearch();
+    let hasAvailableBoard = false;
+    if (selectedBoards.has('LinkedIn') && (isPaidPlan || getCooldownRemainingMs('linkedin') <= 0)) {
+      hasAvailableBoard = true;
+      triggerBoardSearch('linkedin');
+    }
+    if (selectedBoards.has('Dice') && (isPaidPlan || getCooldownRemainingMs('dice') <= 0)) {
+      hasAvailableBoard = true;
+      triggerBoardSearch('dice');
+    }
+    if (selectedBoards.has('Indeed') && (isPaidPlan || getCooldownRemainingMs('indeed') <= 0)) {
+      hasAvailableBoard = true;
+      triggerBoardSearch('indeed');
+    }
+    if (selectedBoards.has('Monster') && (isPaidPlan || getCooldownRemainingMs('monster') <= 0)) {
+      hasAvailableBoard = true;
+      triggerBoardSearch('monster');
+    }
+    if (selectedBoards.has('CareerBuilder') && (isPaidPlan || getCooldownRemainingMs('careerbuilder') <= 0)) {
+      hasAvailableBoard = true;
+      triggerBoardSearch('careerbuilder');
+    }
+
+    if (!hasAvailableBoard && !isPaidPlan) {
+      showToast('Job Finder search is available once every 24 hours on free plans', 'error');
+    }
+  }
+
+  function beginDailySearch(searchKey: string): boolean {
+    const cooldownAt = searchCooldowns[searchKey] ?? 0;
+    const cooldownRemainingMs = Math.max(0, cooldownAt + (24 * 60 * 60 * 1000) - Date.now());
+    const cooldownActive = !isPaidPlan && cooldownRemainingMs > 0;
+
+    if (cooldownActive) {
+      showToast('Job Finder search is available once every 24 hours on free plans', 'error');
+      return false;
+    }
+    if (!isPaidPlan) {
+      stampSearchCooldown(searchKey);
+    }
+    return true;
+  }
+
+  function triggerBoardSearch(board: 'linkedin' | 'dice' | 'indeed' | 'monster' | 'careerbuilder', forceRefresh = false) {
+    if (!beginDailySearch(board)) return;
+    if (board === 'linkedin') runLinkedInSearch(forceRefresh);
+    else if (board === 'dice') runDiceSearch(forceRefresh);
+    else if (board === 'indeed') runIndeedSearch(forceRefresh);
+    else if (board === 'monster') runMonsterSearch(forceRefresh);
+    else runCbSearch(forceRefresh);
   }
 
   function toggleCollapseBoard(id: string) {
@@ -2014,6 +2114,10 @@ export default function JobFinder() {
 
   function executeRefresh() {
     if (!refreshPopupBoard) return;
+    if (!beginDailySearch(refreshPopupBoard)) {
+      setRefreshPopupBoard(null);
+      return;
+    }
     const board = refreshPopupBoard;
     const k = refreshKeyword;
     const l = refreshLocation;
@@ -2453,16 +2557,6 @@ export default function JobFinder() {
               </button>
             )}
           </div>
-          <div ref={boardSelectorRef} className="relative flex shrink-0">
-            <button type="button" onClick={searchAll}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3 h-[38px] rounded-l-lg transition-colors">
-              <Search size={11} /> Search ({selectedBoards.size})
-            </button>
-            <button type="button" onClick={e => { e.stopPropagation(); setBoardSelectorOpen(o => !o); }}
-              className="flex items-center px-2 h-[38px] bg-blue-600 hover:bg-blue-700 text-white rounded-r-lg transition-colors border-l border-blue-500">
-              <ChevronDown size={10} className={`transition-transform ${boardSelectorOpen ? 'rotate-180' : ''}`} />
-            </button>
-          </div>
         </div>
       </div>
       {/* Board selector dropdown portal - outside overflow container */}
@@ -2645,75 +2739,181 @@ export default function JobFinder() {
         {/* ── Right panel: board filters + columns ── */}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-3 py-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative shrink-0">
-                <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input type="text" value={keyword} onChange={e => { setKeyword(e.target.value); setFiltersFromProfile(false); }} placeholder="Job title or skill"
-                  className="w-56 pl-6 pr-2 h-[30px] text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300 bg-white" />
+            <div className="flex items-stretch gap-2">
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="grid grid-cols-2 gap-x-2">
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    <label className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">Keyword</label>
+                    <div className="relative flex-1 min-w-0">
+                      <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={keyword}
+                        onChange={e => { setKeyword(e.target.value); setFiltersFromProfile(false); }}
+                        placeholder="Job title or skill"
+                        className="w-full pl-6 pr-2 h-[30px] text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300 bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    <label className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">Location</label>
+                    <div className="relative flex-1 min-w-0">
+                      <MapPin size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={location}
+                        onChange={e => { setLocation(e.target.value); setFiltersFromProfile(false); }}
+                        placeholder="City or Remote"
+                        className="w-full pl-6 pr-2 h-[30px] text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300 bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-x-2">
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    <label className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">Job type</label>
+                    <select
+                      value={selectedJobTypes[0] ?? ''}
+                      onChange={e => setSelectedJobTypes(e.target.value ? [e.target.value] : [])}
+                      className="flex-1 min-w-0 h-[30px] text-[11px] border border-gray-200 rounded-lg px-2 text-gray-700 focus:outline-none focus:border-blue-400 bg-white"
+                    >
+                      <option value="">Any type</option>
+                      {JOB_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </div>
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    <label className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">Posted</label>
+                    <select
+                      value={dateFilter}
+                      onChange={e => setDateFilter(e.target.value)}
+                      className="flex-1 min-w-0 h-[30px] text-[11px] border border-gray-200 rounded-lg px-2 text-gray-700 focus:outline-none focus:border-blue-400 bg-white"
+                    >
+                      {DATE_FILTERS.map(df => <option key={df} value={df}>{df}</option>)}
+                    </select>
+                  </div>
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    <label className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">Experience</label>
+                    <select
+                      value={experienceLevel}
+                      onChange={e => setExperienceLevel(e.target.value)}
+                      className="flex-1 min-w-0 h-[30px] text-[11px] border border-gray-200 rounded-lg px-2 text-gray-700 focus:outline-none focus:border-blue-400 bg-white"
+                    >
+                      <option value="">Any level</option>
+                      {EXPERIENCE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
+                    </select>
+                  </div>
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    <label className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">Results</label>
+                    <div className="relative group flex-1 min-w-0">
+                      <select
+                        value={maxResults}
+                        onChange={e => {
+                          const value = Number(e.target.value);
+                          if (!isPaidPlan && value !== 25) {
+                            setMaxResults(25);
+                            return;
+                          }
+                          setMaxResults(value);
+                        }}
+                        className="w-full h-[30px] text-[11px] border border-gray-200 rounded-lg px-2 text-gray-700 focus:outline-none focus:border-blue-400 bg-white"
+                      >
+                        {RESULT_OPTIONS.map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                      {!isPaidPlan && (
+                        <span className="pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[10px] font-medium text-white opacity-0 shadow transition-opacity group-hover:opacity-100 z-20">
+                          Free plans are limited to 25 results only
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="relative shrink-0">
-                <MapPin size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input type="text" value={location} onChange={e => { setLocation(e.target.value); setFiltersFromProfile(false); }} placeholder="City or Remote"
-                  className="w-48 pl-6 pr-2 h-[30px] text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300 bg-white" />
+
+              <div className="grid grid-rows-2 gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 h-[30px]">
+                  <div ref={boardSelectorRef} className="relative flex h-[30px]">
+                    <button
+                      type="button"
+                      onClick={searchAll}
+                      disabled={isSearchCooldownActive}
+                      className={`flex items-center gap-1.5 text-[11px] font-bold px-3 h-full rounded-l-lg transition-colors whitespace-nowrap ${
+                        hasSelectedBoardCooldown
+                          ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      }`}
+                    >
+                      <Search size={11} /> Search ({selectedBoards.size})
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSearchCooldownActive}
+                      onClick={e => { e.stopPropagation(); setBoardSelectorOpen(o => !o); }}
+                      className={`flex items-center px-2 h-full rounded-r-lg transition-colors border-l ${
+                        hasSelectedBoardCooldown
+                          ? 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white border-blue-500'
+                      }`}
+                    >
+                      <ChevronDown size={11} className={`transition-transform ${boardSelectorOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
+
+                  {selectedProfile && (
+                    <button
+                      ref={ideasBtnRef}
+                      type="button"
+                      onClick={() => {
+                        if (searchIdeas.length === 0 && !ideasLoading) {
+                          generateSearchIdeas();
+                        }
+                        setIdeasPopupOpen(o => !o);
+                      }}
+                      disabled={ideasLoading}
+                      aria-label="Open AI search ideas"
+                      title="AI search ideas"
+                      className={`flex items-center gap-1.5 justify-center h-[30px] px-2.5 rounded-lg border text-[10px] font-semibold transition-all shrink-0 whitespace-nowrap ${
+                        searchIdeas.length > 0
+                          ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                          : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border-transparent'
+                      } disabled:opacity-60`}
+                    >
+                      {ideasLoading ? <LogoSpinner size={10} /> : <Sparkles size={10} />}
+                      <span>AI Ideas</span>
+                    </button>
+                  )}
+
+                  {canViewDebugPanel && (
+                    <button
+                      type="button"
+                      onClick={() => setDebugPanelOpen(open => !open)}
+                      aria-label={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+                      title={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+                      className={`flex items-center justify-center h-[30px] w-[30px] rounded-lg border transition-colors shrink-0 ${debugPanelOpen ? 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200' : 'border-gray-200 bg-white text-gray-400 hover:text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+                    >
+                      <Eye size={12} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="h-[30px] flex items-center">
+                  {!isPaidPlan && (
+                    hasSelectedBoardCooldown ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate('/billing')}
+                        className="text-[10px] italic font-semibold text-amber-700 hover:text-amber-800 underline decoration-amber-300 underline-offset-2 whitespace-nowrap"
+                      >
+                        Refreshes in {formatCooldown(searchCooldownRemainingMs)}, Upgrade
+                      </button>
+                    ) : (
+                      <span className="text-[10px] italic font-semibold text-gray-500 whitespace-nowrap">Daily 1 refresh only for free plan</span>
+                    )
+                  )}
+                </div>
               </div>
-              <select value={selectedJobTypes[0] ?? ''} onChange={e => setSelectedJobTypes(e.target.value ? [e.target.value] : [])}
-                className="text-[11px] border border-gray-200 rounded-lg px-2 h-[30px] text-gray-700 focus:outline-none focus:border-blue-400 bg-white shrink-0">
-                <option value="">Any type</option>
-                {JOB_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-              </select>
-              <select value={dateFilter} onChange={e => setDateFilter(e.target.value)}
-                className="text-[11px] border border-gray-200 rounded-lg px-2 h-[30px] text-gray-700 focus:outline-none focus:border-blue-400 bg-white shrink-0">
-                {DATE_FILTERS.map(df => <option key={df} value={df}>{df}</option>)}
-              </select>
-              <select value={experienceLevel} onChange={e => setExperienceLevel(e.target.value)}
-                className="text-[11px] border border-gray-200 rounded-lg px-2 h-[30px] text-gray-700 focus:outline-none focus:border-blue-400 bg-white shrink-0">
-                <option value="">Any level</option>
-                {EXPERIENCE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
-              </select>
-              <div className="flex items-center gap-1.5 shrink-0 h-[30px]">
-                <label className="text-[10px] font-semibold text-gray-500">Max</label>
-                <input type="number" min={5} max={200} step={5} value={maxResults} onChange={e => setMaxResults(Number(e.target.value))}
-                  className="w-14 h-[30px] rounded-lg border border-gray-200 px-2 text-[11px] text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white" />
-              </div>
-              {filtersFromProfile && (
-                <button type="button" onClick={resetFilters}
-                  className="text-[9px] font-semibold text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded-md transition-colors whitespace-nowrap shrink-0">
-                  Reset
-                </button>
-              )}
-              {selectedProfile && (
-                <button
-                  ref={ideasBtnRef}
-                  type="button"
-                  onClick={() => {
-                    if (searchIdeas.length === 0 && !ideasLoading) {
-                      generateSearchIdeas();
-                    }
-                    setIdeasPopupOpen(o => !o);
-                  }}
-                  disabled={ideasLoading}
-                  aria-label="Open AI search ideas"
-                  title="AI search ideas"
-                  className={`flex items-center justify-center h-[30px] w-[30px] rounded-lg border transition-all shrink-0 ${
-                    searchIdeas.length > 0
-                      ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-                      : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border-transparent'
-                  } disabled:opacity-60`}
-                >
-                  {ideasLoading ? <LogoSpinner size={10} /> : <Sparkles size={10} />}
-                </button>
-              )}
-              {canViewDebugPanel && (
-                <button
-                  type="button"
-                  onClick={() => setDebugPanelOpen(open => !open)}
-                  aria-label={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
-                  title={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
-                  className={`flex items-center justify-center h-[30px] w-[30px] rounded-lg border transition-colors shrink-0 ${debugPanelOpen ? 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200' : 'border-gray-200 bg-white text-gray-400 hover:text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
-                >
-                  <Eye size={12} />
-                </button>
-              )}
             </div>
           </div>
 
@@ -2746,7 +2946,7 @@ export default function JobFinder() {
               <span className="text-xs font-bold text-white flex-1">LinkedIn</span>
               {linkedinSearching && <LogoSpinner size={11} />}
               {linkedinError && !linkedinSearching && (
-                <button onClick={() => runLinkedInSearch(true)} title="Retry" className="text-blue-200 hover:text-white transition-colors"><RefreshCw size={11} /></button>
+                <button onClick={() => triggerBoardSearch('linkedin', true)} title="Retry" className="text-blue-200 hover:text-white transition-colors"><RefreshCw size={11} /></button>
               )}
               {!linkedinError && (
                 <div className="relative group shrink-0">
@@ -2774,7 +2974,7 @@ export default function JobFinder() {
                   </div>
                   <p className="text-[11px] font-semibold text-amber-700">High Volume - Queued</p>
                   <p className="text-[10px] text-gray-500 leading-relaxed">Your search is in the queue. Expected wait time: ~{Math.ceil((boardQueueStatus.linkedin.eta_seconds) / 60)} min</p>
-                  <button onClick={() => { setBoardQueueStatus(prev => ({ ...prev, linkedin: null })); runLinkedInSearch(); }}
+                  <button onClick={() => { setBoardQueueStatus(prev => ({ ...prev, linkedin: null })); triggerBoardSearch('linkedin'); }}
                     className="mt-1 text-[10px] font-medium text-blue-600 hover:text-blue-800 underline">Retry now</button>
                 </div>
               )}
@@ -2800,7 +3000,7 @@ export default function JobFinder() {
                         className="px-3 py-1.5 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
                         {boardHistoryLoading['linkedin'] ? <LogoSpinner size={10} /> : <RefreshCw size={10} />} Load History
                       </button>
-                      <button onClick={() => runLinkedInSearch()}
+                      <button onClick={() => triggerBoardSearch('linkedin')}
                         className="px-3 py-1.5 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors flex items-center gap-1.5">
                         <Search size={10} /> Search New Jobs
                       </button>
@@ -2809,7 +3009,7 @@ export default function JobFinder() {
                     <>
                       <Search size={20} className="text-blue-300" />
                       <p className="text-[11px] text-gray-500">No recent history. Search for new jobs.</p>
-                      <button onClick={() => runLinkedInSearch()}
+                      <button onClick={() => triggerBoardSearch('linkedin')}
                         className="px-3 py-1.5 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
                         <Search size={10} /> Search New Jobs
                       </button>
@@ -2992,7 +3192,7 @@ export default function JobFinder() {
               <span className="text-xs font-bold text-white flex-1">Dice</span>
               {diceSearching && <LogoSpinner size={11} />}
               {diceError && !diceSearching && (
-                <button onClick={() => runDiceSearch(true)} title="Retry" className="text-orange-200 hover:text-white transition-colors"><RefreshCw size={11} /></button>
+                <button onClick={() => triggerBoardSearch('dice', true)} title="Retry" className="text-orange-200 hover:text-white transition-colors"><RefreshCw size={11} /></button>
               )}
               {!diceError && (
                 <div className="relative group shrink-0">
@@ -3020,7 +3220,7 @@ export default function JobFinder() {
                   </div>
                   <p className="text-[11px] font-semibold text-amber-700">High Volume - Queued</p>
                   <p className="text-[10px] text-gray-500 leading-relaxed">Your search is in the queue. Expected wait time: ~{Math.ceil((boardQueueStatus.dice.eta_seconds) / 60)} min</p>
-                  <button onClick={() => { setBoardQueueStatus(prev => ({ ...prev, dice: null })); runDiceSearch(); }}
+                  <button onClick={() => { setBoardQueueStatus(prev => ({ ...prev, dice: null })); triggerBoardSearch('dice'); }}
                     className="mt-1 text-[10px] font-medium text-orange-600 hover:text-orange-800 underline">Retry now</button>
                 </div>
               )}
@@ -3046,7 +3246,7 @@ export default function JobFinder() {
                         className="px-3 py-1.5 text-[11px] font-semibold text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
                         {boardHistoryLoading['dice'] ? <LogoSpinner size={10} /> : <RefreshCw size={10} />} Load History
                       </button>
-                      <button onClick={() => runDiceSearch()}
+                      <button onClick={() => triggerBoardSearch('dice')}
                         className="px-3 py-1.5 text-[11px] font-semibold text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg transition-colors flex items-center gap-1.5">
                         <Search size={10} /> Search New Jobs
                       </button>
@@ -3055,7 +3255,7 @@ export default function JobFinder() {
                     <>
                       <Search size={20} className="text-orange-300" />
                       <p className="text-[11px] text-gray-500">No recent history. Search for new jobs.</p>
-                      <button onClick={() => runDiceSearch()}
+                      <button onClick={() => triggerBoardSearch('dice')}
                         className="px-3 py-1.5 text-[11px] font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
                         <Search size={10} /> Search New Jobs
                       </button>
@@ -3238,7 +3438,7 @@ export default function JobFinder() {
               <span className="text-xs font-bold text-white flex-1">Indeed</span>
               {indeedSearching && <LogoSpinner size={11} />}
               {indeedError && !indeedSearching && (
-                <button onClick={() => runIndeedSearch(true)} title="Retry" className="text-violet-200 hover:text-white transition-colors"><RefreshCw size={11} /></button>
+                <button onClick={() => triggerBoardSearch('indeed', true)} title="Retry" className="text-violet-200 hover:text-white transition-colors"><RefreshCw size={11} /></button>
               )}
               {!indeedError && (
                 <div className="relative group shrink-0">
@@ -3263,7 +3463,7 @@ export default function JobFinder() {
                         className="px-3 py-1.5 text-[11px] font-semibold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
                         {boardHistoryLoading['indeed'] ? <LogoSpinner size={10} /> : <RefreshCw size={10} />} Load History
                       </button>
-                      <button onClick={() => runIndeedSearch()}
+                      <button onClick={() => triggerBoardSearch('indeed')}
                         className="px-3 py-1.5 text-[11px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-lg transition-colors flex items-center gap-1.5">
                         <Search size={10} /> Search New Jobs
                       </button>
@@ -3272,7 +3472,7 @@ export default function JobFinder() {
                     <>
                       <Search size={20} className="text-violet-300" />
                       <p className="text-[11px] text-gray-500">No recent history. Search for new jobs.</p>
-                      <button onClick={() => runIndeedSearch()}
+                      <button onClick={() => triggerBoardSearch('indeed')}
                         className="px-3 py-1.5 text-[11px] font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
                         <Search size={10} /> Search New Jobs
                       </button>
@@ -3293,7 +3493,7 @@ export default function JobFinder() {
                   </div>
                   <p className="text-[11px] font-semibold text-amber-700">High Volume - Queued</p>
                   <p className="text-[10px] text-gray-500 leading-relaxed">Your search is in the queue. Expected wait time: ~{Math.ceil((boardQueueStatus.indeed.eta_seconds) / 60)} min</p>
-                  <button onClick={() => { setBoardQueueStatus(prev => ({ ...prev, indeed: null })); runIndeedSearch(); }}
+                  <button onClick={() => { setBoardQueueStatus(prev => ({ ...prev, indeed: null })); triggerBoardSearch('indeed'); }}
                     className="mt-1 text-[10px] font-medium text-violet-600 hover:text-violet-800 underline">Retry now</button>
                 </div>
               )}
@@ -3479,7 +3679,7 @@ export default function JobFinder() {
               <span className="text-xs font-bold text-white flex-1">Monster</span>
               {monsterSearching && <LogoSpinner size={11} />}
               {monsterError && !monsterSearching && (
-                <button onClick={() => runMonsterSearch(true)} title="Retry" className="text-green-200 hover:text-white transition-colors"><RefreshCw size={11} /></button>
+                <button onClick={() => triggerBoardSearch('monster', true)} title="Retry" className="text-green-200 hover:text-white transition-colors"><RefreshCw size={11} /></button>
               )}
               {!monsterError && (
                 <div className="relative group shrink-0">
@@ -3504,7 +3704,7 @@ export default function JobFinder() {
                         className="px-3 py-1.5 text-[11px] font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
                         {boardHistoryLoading['monster'] ? <LogoSpinner size={10} /> : <RefreshCw size={10} />} Load History
                       </button>
-                      <button onClick={() => runMonsterSearch()}
+                      <button onClick={() => triggerBoardSearch('monster')}
                         className="px-3 py-1.5 text-[11px] font-semibold text-green-600 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors flex items-center gap-1.5">
                         <Search size={10} /> Search New Jobs
                       </button>
@@ -3513,7 +3713,7 @@ export default function JobFinder() {
                     <>
                       <Search size={20} className="text-green-300" />
                       <p className="text-[11px] text-gray-500">No recent history. Search for new jobs.</p>
-                      <button onClick={() => runMonsterSearch()}
+                      <button onClick={() => triggerBoardSearch('monster')}
                         className="px-3 py-1.5 text-[11px] font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
                         <Search size={10} /> Search New Jobs
                       </button>
@@ -3534,7 +3734,7 @@ export default function JobFinder() {
                   </div>
                   <p className="text-[11px] font-semibold text-amber-700">High Volume - Queued</p>
                   <p className="text-[10px] text-gray-500 leading-relaxed">Your search is in the queue. Expected wait time: ~{Math.ceil((boardQueueStatus.monster.eta_seconds) / 60)} min</p>
-                  <button onClick={() => { setBoardQueueStatus(prev => ({ ...prev, monster: null })); runMonsterSearch(); }}
+                  <button onClick={() => { setBoardQueueStatus(prev => ({ ...prev, monster: null })); triggerBoardSearch('monster'); }}
                     className="mt-1 text-[10px] font-medium text-green-600 hover:text-green-800 underline">Retry now</button>
                 </div>
               )}

@@ -833,9 +833,10 @@ export default function ResumeAIPage() {
 
   async function loadProfiles() {
     setLoadingProfiles(true);
-    const { data } = await supabase.from('profiles').select('*').order('updated_at', { ascending: false });
+    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (data) {
       setAllProfiles(data as Profile[]);
+      await loadCandidateResumeStats(data as Profile[]);
       const pid = searchParams.get('profileId');
       if (!pid && data.length > 0) selectProfile(data[0] as Profile);
     }
@@ -937,6 +938,7 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
     }
 
     const job = newJob as WishlistedJob;
+    void loadCandidateResumeStats();
     setSelectedJob(job);
     setJobDesc(customJdText);
     setMatchScore(null);
@@ -1040,6 +1042,7 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
     setChangeItems(buildChangeSummary(selectedProfile!, rw, selectedJob!));
     setRewriteState('done');
     setCol2Mode('preview');
+    void loadCandidateResumeStats();
   }
 
   function parseResumeText(text: string): RewrittenField {
@@ -1153,8 +1156,37 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
   }
 
   // ── Candidate sidebar ──────────────────────────────────────────────────
-  const [candidateTab, setCandidateTab] = useState<'hotlist' | 'all'>('all');
+  const [candidateTab, setCandidateTab] = useState<'hotlist' | 'all'>('hotlist');
   const [hotlistProfileIds, setHotlistProfileIds] = useState<string[]>([]);
+  const [candidateResumeStats, setCandidateResumeStats] = useState<Record<string, { queued: number; rewritten: number }>>({});
+
+  async function loadCandidateResumeStats(profileList?: Profile[]) {
+    const sourceProfiles = profileList ?? allProfiles;
+    const profileIds = sourceProfiles.map(p => p.id);
+
+    if (profileIds.length === 0) {
+      setCandidateResumeStats({});
+      return;
+    }
+
+    const { data } = await supabase
+      .from('wishlisted_jobs')
+      .select('profile_id, resume_ai_queued, rewrite_file_url')
+      .in('profile_id', profileIds);
+
+    const stats: Record<string, { queued: number; rewritten: number }> = {};
+    profileIds.forEach(id => {
+      stats[id] = { queued: 0, rewritten: 0 };
+    });
+
+    (data ?? []).forEach((job: { profile_id: string; resume_ai_queued: boolean | null; rewrite_file_url: string | null }) => {
+      if (!stats[job.profile_id]) return;
+      if (job.resume_ai_queued) stats[job.profile_id].queued += 1;
+      if (job.rewrite_file_url) stats[job.profile_id].rewritten += 1;
+    });
+
+    setCandidateResumeStats(stats);
+  }
 
   useEffect(() => {
     supabase.from('hotlist').select('profile_id').then(({ data }) => {
@@ -1162,13 +1194,19 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
     });
   }, []);
 
-  const filteredCandidates = allProfiles.filter(p => {
-    const q = candidateQuery.toLowerCase();
-    const matchQ = !q || p.candidate_name.toLowerCase().includes(q) || (p.target_role ?? '').toLowerCase().includes(q);
-    if (!matchQ) return false;
-    if (candidateTab === 'hotlist') return hotlistProfileIds.includes(p.id);
-    return true;
-  });
+  const filteredCandidates = allProfiles
+    .filter(p => {
+      const q = candidateQuery.toLowerCase();
+      const matchQ = !q || p.candidate_name.toLowerCase().includes(q) || (p.target_role ?? '').toLowerCase().includes(q);
+      if (!matchQ) return false;
+      if (candidateTab === 'hotlist') return hotlistProfileIds.includes(p.id);
+      return true;
+    })
+    .sort((a, b) => {
+      const bCreatedAt = new Date(b.created_at || '').getTime();
+      const aCreatedAt = new Date(a.created_at || '').getTime();
+      return bCreatedAt - aCreatedAt;
+    });
 
   // Queue jobs = wishlisted jobs with resume_ai_queued=true
   const queueJobs = savedJobs.filter(j => j.resume_ai_queued);
@@ -1185,18 +1223,22 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
     <div className="h-screen flex flex-col bg-gray-100 font-sans overflow-hidden">
       <AppNav />
 
-      <div className="flex-1 grid grid-cols-[240px_260px_1fr_1fr] overflow-hidden min-h-0">
+      <div className="flex-1 grid grid-cols-[288px_260px_1fr_1fr] overflow-hidden min-h-0">
 
         {/* ── COL 1: Candidates Sidebar ──────────────────────────────────── */}
-        <div className="flex flex-col overflow-hidden bg-white border-r border-gray-200 min-h-0">
-          <div className="px-3 py-2.5 border-b border-gray-100 shrink-0">
-            <div className="flex items-center mb-2">
+        <div className="w-72 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden min-h-0">
+          <div className="h-[44px] flex items-center px-3 border-b border-gray-200 shrink-0">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Candidates</h3>
+          </div>
+
+          <div className="px-3 py-2 border-b border-gray-100 shrink-0">
+            <div className="flex items-center bg-slate-100 rounded-lg p-0.5 mb-2">
               {(['hotlist', 'all'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setCandidateTab(tab)}
-                  className={`flex-1 text-xs font-semibold py-1.5 rounded-lg transition-colors capitalize text-center ${
-                    candidateTab === tab ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+                  className={`flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-all text-center ${
+                    candidateTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
                   {tab === 'hotlist' ? 'Hotlist' : 'All Bench'}
@@ -1215,22 +1257,29 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
             </div>
           </div>
 
+          <div className="px-3 py-1.5 shrink-0 flex items-center border-b border-gray-50">
+            <span className="text-[10px] text-gray-400 font-medium">{filteredCandidates.length} candidate{filteredCandidates.length !== 1 ? 's' : ''}</span>
+          </div>
+
           <div className="flex-1 overflow-y-auto min-h-0">
             {loadingProfiles ? (
               <div className="flex items-center justify-center py-10"><LogoSpinner size={18} /></div>
             ) : filteredCandidates.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-2">
                 <User size={18} className="text-gray-300" />
-                <p className="text-xs text-gray-400">{candidateTab === 'hotlist' ? 'No hotlisted candidates' : 'No candidates found'}</p>
+                <p className="text-xs text-gray-400">{candidateTab === 'hotlist' ? 'No hotlisted candidates' : 'No candidates match your search.'}</p>
               </div>
             ) : filteredCandidates.map(p => {
               const isSelected = selectedProfile?.id === p.id;
+              const stats = candidateResumeStats[p.id] ?? { queued: 0, rewritten: 0 };
+              const queuedTone = stats.queued > 0 ? 'bg-amber-50 text-amber-700' : 'bg-gray-50 text-gray-500';
+              const rewrittenTone = stats.rewritten > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-500';
               return (
                 <button
                   key={p.id}
                   onClick={() => selectProfile(p)}
-                  className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-all ${
-                    isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50 border-l-2 border-l-transparent'
+                  className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-all ${
+                    isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50/70 border-l-2 border-l-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
@@ -1242,6 +1291,14 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
                         {p.candidate_name}
                       </p>
                       <p className="text-[10px] text-gray-400 truncate mt-0.5">{p.target_role || 'No target role'}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${queuedTone}`}>
+                          Queued <span className="ml-0.5 text-[10px] font-bold">{stats.queued}</span>
+                        </span>
+                        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${rewrittenTone}`}>
+                          Rewritten <span className="ml-0.5 text-[10px] font-bold">{stats.rewritten}</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </button>
