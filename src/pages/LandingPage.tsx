@@ -14,11 +14,11 @@ import { useAuth } from '../contexts/AuthContext';
 const FEATURES = [
   {
     key: 'resume-parsing',
-    headline: 'Your candidate, ready in 30 seconds.',
-    subline: 'Drop a resume PDF. Every skill, role, and detail — extracted, mapped, and ready to match. No copy-paste. Ever.',
+    headline: 'Your hotlist, ready in 30 seconds.',
+    subline: 'Paste Google Sheet or Excel rows of your hotlist to upload multiple candidates in one go.',
     accent: 'from-blue-100 to-white',
     badge: 'bg-blue-100 text-blue-700',
-    badgeLabel: 'Resume Parsing',
+    badgeLabel: 'Bulk Import Profiles',
     topGlow: 'rgba(147,197,253,0.6)',
   },
   {
@@ -188,7 +188,7 @@ function GifSlot({
   return (
     <div className="relative w-full">
       <div
-        className="relative w-full aspect-[2/1] overflow-hidden border border-gray-200 shadow-2xl shadow-gray-300/40 ring-1 ring-gray-100/80 bg-white group"
+        className="relative w-full aspect-[1866/968] overflow-hidden border border-gray-200 shadow-2xl shadow-gray-300/40 ring-1 ring-gray-100/80 bg-white group"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
@@ -206,14 +206,14 @@ function GifSlot({
             preload="metadata"
             disablePictureInPicture
             disableRemotePlayback
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain"
           />
           ) : (
             <img
               src={imageUrl}
               alt="Feature preview"
               loading="lazy"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
             />
           )
         ) : (

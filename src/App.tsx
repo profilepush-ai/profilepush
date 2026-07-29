@@ -38,6 +38,7 @@ const BookDemo = lazy(() => import('./pages/BookDemo'));
 const WhyAICopilot = lazy(() => import('./pages/WhyAICopilot'));
 const HowItWorks = lazy(() => import('./pages/HowItWorks'));
 const RadarPage = lazy(() => import('./pages/RadarPage'));
+const OnboardingVideo = lazy(() => import('./pages/OnboardingVideo'));
 
 function PageLoader() {
   return (
@@ -146,6 +147,7 @@ export default function App() {
             <Route path="/signin" element={<ErrorBoundary><SignIn /></ErrorBoundary>} />
             <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
             <Route path="/onboard/:token" element={<ErrorBoundary><CandidateOnboarding /></ErrorBoundary>} />
+            <Route path="/welcome" element={<ProtectedRoute><ErrorBoundary><OnboardingVideo /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/confirm-applied/:token" element={<ErrorBoundary><ConfirmApplied /></ErrorBoundary>} />
             <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
             <Route path="/terms" element={<ErrorBoundary><TermsAndConditions /></ErrorBoundary>} />

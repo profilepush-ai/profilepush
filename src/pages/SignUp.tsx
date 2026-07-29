@@ -88,7 +88,7 @@ function detectCountryCode(): string {
 }
 
 const DEFAULT_COUNTRY = COUNTRIES[0];
-const DEFAULT_SIGNUP_REDIRECT = '/bench';
+const DEFAULT_SIGNUP_REDIRECT = '/welcome';
 const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
 
 type GoogleCredentialResponse = {
@@ -460,7 +460,7 @@ export default function SignUp() {
     }));
 
     await refreshAccount();
-    navigate('/bench');
+    navigate('/welcome');
   }
 
   if (confirmEmail) {

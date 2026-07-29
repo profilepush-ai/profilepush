@@ -7,14 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const BOARD_FUNCTION_MAP: Record<string, string> = {
-  linkedin: "linkedin-search",
-  dice: "dice-search",
-  indeed: "indeed-search",
-  monster: "monster-search",
-  careerbuilder: "careerbuilder-search",
-};
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -27,10 +19,14 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json().catch(() => ({}));
     const forcedScheduleId = body.schedule_id ?? null;
+    const frequencyFilter = body.frequency_filter ?? null;
 
     let query = supabase.from("watch_schedules").select("*").eq("is_active", true);
     if (forcedScheduleId) {
       query = supabase.from("watch_schedules").select("*").eq("id", forcedScheduleId);
+    }
+    if (frequencyFilter) {
+      query = query.eq("frequency", frequencyFilter);
     }
     const { data: schedules, error: schedErr } = await query;
 
@@ -153,55 +149,16 @@ async function runFullPipeline(
     await supabase.from("hotlist").delete().in("profile_id", expiredProfileIds).eq("account_id", accountId);
   }
 
-  // ── Step 1: Run scrapers (await each so we know scraping is done) ──
+  // ── Skip Part 1: Scraping is now handled by apify-scraper-scheduler ──
+  // Jobs are already in linkedin_jobs, dice_jobs, indeed_jobs, monster_jobs, careerbuilder_jobs tables
+
+  // ── Step 2: Transition to matching ──
+  await supabase.from("watch_schedules").update({ run_status: "matching" }).eq("id", scheduleId);
+
   const headers = {
     "Content-Type": "application/json",
     "Authorization": `Bearer ${serviceRoleKey}`,
   };
-
-  const scrapePromises = profiles.flatMap((profileRow) => {
-    const jobTitle = (profileRow.target_role as string) ?? "";
-    const location = (profileRow.preferred_locations as string) ?? (profileRow.city as string) ?? (profileRow.state as string) ?? "";
-    if (!jobTitle) return [];
-
-    return boards.map(async (board) => {
-      const fnName = BOARD_FUNCTION_MAP[board];
-      if (!fnName) return;
-      try {
-        const searchBody: Record<string, unknown> = {
-          account_id: accountId,
-          max_results: 25,
-          force_refresh: false,
-        };
-        if (board === "linkedin") {
-          searchBody.job_title = `"${jobTitle}"`;
-          searchBody.location = location;
-          searchBody.posted_within = "Past Week";
-        } else if (board === "dice") {
-          searchBody.keyword = `"${jobTitle}"`;
-          searchBody.location = location;
-          searchBody.posted_date = "Past week";
-        } else {
-          searchBody.keyword = `"${jobTitle}"`;
-          searchBody.location = location;
-          searchBody.date_posted = "Past week";
-        }
-
-        await fetch(`${supabaseUrl}/functions/v1/${fnName}`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(searchBody),
-        });
-      } catch {
-        // Individual board failure shouldn't block pipeline
-      }
-    });
-  });
-
-  await Promise.allSettled(scrapePromises);
-
-  // ── Step 2: Transition to matching ──
-  await supabase.from("watch_schedules").update({ run_status: "matching" }).eq("id", scheduleId);
 
   // ── Step 3: Run radar-match ──
   let jobsMatched = 0;
@@ -305,6 +262,7 @@ function isScheduleDue(lastRun: Date | null, frequency: string, now: Date): bool
 
   switch (frequency) {
     case "hourly": return diffHours >= 1;
+    case "3_hours": return diffHours >= 3;
     case "twice_daily": return diffHours >= 12;
     case "daily": return diffHours >= 24;
     case "weekly": return diffHours >= 168;
