@@ -233,6 +233,16 @@ export default function SignUp() {
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? DEFAULT_GOOGLE_CLIENT_ID).trim();
   const showExtendedFields = email.trim().length > 0;
+  const googleNonceRef = useRef<string>('');
+
+  async function generateNonce(): Promise<{ raw: string; hashed: string }> {
+    const raw = crypto.randomUUID().replace(/-/g, '');
+    const encoder = new TextEncoder();
+    const data = encoder.encode(raw);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashed = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return { raw, hashed };
+  }
 
   // Auto-detect country from browser locale on mount
   useEffect(() => {
@@ -280,6 +290,7 @@ export default function SignUp() {
     const { error: idTokenError } = await supabase.auth.signInWithIdToken({
       provider: 'google',
       token: response.credential,
+      nonce: googleNonceRef.current || undefined,
     });
 
     if (idTokenError) {
@@ -333,12 +344,16 @@ export default function SignUp() {
   useEffect(() => {
     if (!googleClientId || !googleButtonRef.current) return;
 
-    const initializeGoogleButton = () => {
+    const initializeGoogleButton = async () => {
       if (!window.google?.accounts?.id || !googleButtonRef.current) return;
+
+      const { raw, hashed } = await generateNonce();
+      googleNonceRef.current = raw;
 
       window.google.accounts.id.initialize({
         client_id: googleClientId,
         callback: handleGoogleCredential,
+        nonce: hashed,
       });
 
       googleButtonRef.current.innerHTML = '';
