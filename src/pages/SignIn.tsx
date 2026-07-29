@@ -81,16 +81,6 @@ export default function SignIn() {
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? DEFAULT_GOOGLE_CLIENT_ID).trim();
   const showPasswordStep = email.trim().length > 0;
-  const googleNonceRef = useRef<string>('');
-
-  async function generateNonce(): Promise<{ raw: string; hashed: string }> {
-    const raw = crypto.randomUUID().replace(/-/g, '');
-    const encoder = new TextEncoder();
-    const data = encoder.encode(raw);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashed = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-    return { raw, hashed };
-  }
 
   if (loading) {
     return (
@@ -165,7 +155,6 @@ export default function SignIn() {
     const { error: idTokenError } = await supabase.auth.signInWithIdToken({
       provider: 'google',
       token: response.credential,
-      nonce: googleNonceRef.current || undefined,
     });
 
     if (idTokenError) {
@@ -219,16 +208,12 @@ export default function SignIn() {
   useEffect(() => {
     if (!googleClientId || !googleButtonRef.current) return;
 
-    const initializeGoogleButton = async () => {
+    const initializeGoogleButton = () => {
       if (!window.google?.accounts?.id || !googleButtonRef.current) return;
-
-      const { raw, hashed } = await generateNonce();
-      googleNonceRef.current = raw;
 
       window.google.accounts.id.initialize({
         client_id: googleClientId,
         callback: handleGoogleCredential,
-        nonce: hashed,
       });
 
       googleButtonRef.current.innerHTML = '';
@@ -248,9 +233,9 @@ export default function SignIn() {
     const existingScript = document.getElementById('google-gsi-script') as HTMLScriptElement | null;
     if (existingScript) {
       if (window.google?.accounts?.id) {
-        void initializeGoogleButton();
+        initializeGoogleButton();
       } else {
-        existingScript.addEventListener('load', () => void initializeGoogleButton(), { once: true });
+        existingScript.addEventListener('load', initializeGoogleButton, { once: true });
       }
       return;
     }
@@ -260,7 +245,7 @@ export default function SignIn() {
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
-    script.onload = () => void initializeGoogleButton();
+    script.onload = initializeGoogleButton;
     document.head.appendChild(script);
   }, [googleClientId, handleGoogleCredential]);
 
