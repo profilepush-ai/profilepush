@@ -973,13 +973,27 @@ export default function JobFinder() {
     Monster: 'monster',
     CareerBuilder: 'careerbuilder',
   };
+  const selectedProfileSearchScope = selectedProfile?.id ?? 'global';
   const selectedBoardCooldownKeys = Array.from(selectedBoards)
     .map(board => boardCooldownKeyByLabel[board])
-    .filter((boardKey): boardKey is string => Boolean(boardKey));
+    .filter((boardKey): boardKey is string => Boolean(boardKey))
+    .map(boardKey => `${selectedProfileSearchScope}:${boardKey}`);
+
+  function getScopedSearchKey(searchKey: string, profileId: string = selectedProfileSearchScope): string {
+    return `${profileId}:${searchKey}`;
+  }
 
   function getCooldownRemainingMs(searchKey: string): number {
     const cooldownAt = searchCooldowns[searchKey] ?? 0;
     return Math.max(0, cooldownAt + (24 * 60 * 60 * 1000) - Date.now());
+  }
+
+  function getBoardCooldownRemainingMs(boardKey: string): number {
+    return getCooldownRemainingMs(getScopedSearchKey(boardKey));
+  }
+
+  function isBoardCooldownActive(boardKey: string): boolean {
+    return !isPaidPlan && getBoardCooldownRemainingMs(boardKey) > 0;
   }
 
   const selectedBoardCooldownRemainingMs = selectedBoardCooldownKeys
@@ -1577,25 +1591,34 @@ export default function JobFinder() {
     if (activeTab === 'History') setActiveTab('LinkedIn');
   }
 
+  function getIdeasPopupStyle() {
+    const popupWidth = 288;
+    const popupMaxHeight = Math.round(window.innerHeight * 0.5);
+    const buttonRect = ideasBtnRef.current?.getBoundingClientRect();
+    const left = buttonRect ? Math.min(Math.max(12, buttonRect.left), Math.max(12, window.innerWidth - popupWidth - 12)) : 12;
+    const top = buttonRect ? Math.min(buttonRect.bottom + 6, Math.max(12, window.innerHeight - popupMaxHeight - 12)) : 12;
+    return { top, left };
+  }
+
   function searchAll() {
     let hasAvailableBoard = false;
-    if (selectedBoards.has('LinkedIn') && (isPaidPlan || getCooldownRemainingMs('linkedin') <= 0)) {
+    if (selectedBoards.has('LinkedIn') && (isPaidPlan || getCooldownRemainingMs(getScopedSearchKey('linkedin')) <= 0)) {
       hasAvailableBoard = true;
       triggerBoardSearch('linkedin');
     }
-    if (selectedBoards.has('Dice') && (isPaidPlan || getCooldownRemainingMs('dice') <= 0)) {
+    if (selectedBoards.has('Dice') && (isPaidPlan || getCooldownRemainingMs(getScopedSearchKey('dice')) <= 0)) {
       hasAvailableBoard = true;
       triggerBoardSearch('dice');
     }
-    if (selectedBoards.has('Indeed') && (isPaidPlan || getCooldownRemainingMs('indeed') <= 0)) {
+    if (selectedBoards.has('Indeed') && (isPaidPlan || getCooldownRemainingMs(getScopedSearchKey('indeed')) <= 0)) {
       hasAvailableBoard = true;
       triggerBoardSearch('indeed');
     }
-    if (selectedBoards.has('Monster') && (isPaidPlan || getCooldownRemainingMs('monster') <= 0)) {
+    if (selectedBoards.has('Monster') && (isPaidPlan || getCooldownRemainingMs(getScopedSearchKey('monster')) <= 0)) {
       hasAvailableBoard = true;
       triggerBoardSearch('monster');
     }
-    if (selectedBoards.has('CareerBuilder') && (isPaidPlan || getCooldownRemainingMs('careerbuilder') <= 0)) {
+    if (selectedBoards.has('CareerBuilder') && (isPaidPlan || getCooldownRemainingMs(getScopedSearchKey('careerbuilder')) <= 0)) {
       hasAvailableBoard = true;
       triggerBoardSearch('careerbuilder');
     }
@@ -1606,8 +1629,8 @@ export default function JobFinder() {
   }
 
   function beginDailySearch(searchKey: string): boolean {
-    const cooldownAt = searchCooldowns[searchKey] ?? 0;
-    const cooldownRemainingMs = Math.max(0, cooldownAt + (24 * 60 * 60 * 1000) - Date.now());
+    const scopedSearchKey = getScopedSearchKey(searchKey);
+    const cooldownRemainingMs = getCooldownRemainingMs(scopedSearchKey);
     const cooldownActive = !isPaidPlan && cooldownRemainingMs > 0;
 
     if (cooldownActive) {
@@ -1615,7 +1638,7 @@ export default function JobFinder() {
       return false;
     }
     if (!isPaidPlan) {
-      stampSearchCooldown(searchKey);
+      stampSearchCooldown(scopedSearchKey);
     }
     return true;
   }
@@ -2112,6 +2135,9 @@ export default function JobFinder() {
     setRefreshPopupBoard(board);
   }
 
+  const refreshPopupCooldownRemainingMs = refreshPopupBoard ? getBoardCooldownRemainingMs(refreshPopupBoard) : 0;
+  const refreshPopupCooldownActive = !isPaidPlan && refreshPopupCooldownRemainingMs > 0;
+
   function executeRefresh() {
     if (!refreshPopupBoard) return;
     if (!beginDailySearch(refreshPopupBoard)) {
@@ -2599,8 +2625,8 @@ export default function JobFinder() {
       {ideasPopupOpen && (
         <div className="fixed inset-0 z-[100]" onClick={() => setIdeasPopupOpen(false)}>
           <div
-            className="absolute bg-white border border-gray-200 rounded-xl shadow-2xl w-72 overflow-hidden"
-            style={{ top: (ideasBtnRef.current?.getBoundingClientRect().bottom ?? 0) + 6, left: ideasBtnRef.current?.getBoundingClientRect().left ?? 0 }}
+            className="absolute bg-white border border-gray-200 rounded-xl shadow-2xl w-72 max-h-[50vh] overflow-hidden"
+            style={getIdeasPopupStyle()}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-3 pt-2.5 pb-2 border-b border-gray-100">
@@ -2626,7 +2652,7 @@ export default function JobFinder() {
                   const isSel = selectedIdeaIndex === idx;
                   return (
                     <button key={idx} type="button"
-                      onClick={() => { applyIdea(idea, idx); setIdeasPopupOpen(false); searchAll(); }}
+                      onClick={() => { applyIdea(idea, idx); setIdeasPopupOpen(false); }}
                       title={`${idea.label}${idea.keyword ? ` · ${idea.keyword}` : ''}${idea.location ? ` in ${idea.location}` : ''}`}
                       className={`w-full flex items-center gap-2.5 px-3 py-2.5 transition-all text-left border-b border-gray-50 last:border-0 ${
                         isSel ? 'bg-gray-100' : 'hover:bg-amber-50'
@@ -2952,8 +2978,13 @@ export default function JobFinder() {
                 <div className="relative group shrink-0">
                   <button
                     onClick={refreshLinkedIn}
-                    title="Refresh LinkedIn"
-                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                    disabled={isBoardCooldownActive('linkedin')}
+                    title={isBoardCooldownActive('linkedin') ? `Refreshes in ${formatCooldown(getBoardCooldownRemainingMs('linkedin'))}, Upgrade` : 'Refresh LinkedIn'}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                      isBoardCooldownActive('linkedin')
+                        ? 'bg-white/5 text-white/40 cursor-not-allowed'
+                        : 'bg-white/10 hover:bg-white/20'
+                    }`}>
                     <RefreshCw size={10} className="text-white" />
                   </button>
                 </div>
@@ -3198,8 +3229,13 @@ export default function JobFinder() {
                 <div className="relative group shrink-0">
                   <button
                     onClick={refreshDice}
-                    title="Refresh Dice"
-                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                    disabled={isBoardCooldownActive('dice')}
+                    title={isBoardCooldownActive('dice') ? `Refreshes in ${formatCooldown(getBoardCooldownRemainingMs('dice'))}, Upgrade` : 'Refresh Dice'}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                      isBoardCooldownActive('dice')
+                        ? 'bg-white/5 text-white/40 cursor-not-allowed'
+                        : 'bg-white/10 hover:bg-white/20'
+                    }`}>
                     <RefreshCw size={10} className="text-white" />
                   </button>
                 </div>
@@ -3444,8 +3480,13 @@ export default function JobFinder() {
                 <div className="relative group shrink-0">
                   <button
                     onClick={refreshIndeed}
-                    title="Refresh Indeed"
-                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                    disabled={isBoardCooldownActive('indeed')}
+                    title={isBoardCooldownActive('indeed') ? `Refreshes in ${formatCooldown(getBoardCooldownRemainingMs('indeed'))}, Upgrade` : 'Refresh Indeed'}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                      isBoardCooldownActive('indeed')
+                        ? 'bg-white/5 text-white/40 cursor-not-allowed'
+                        : 'bg-white/10 hover:bg-white/20'
+                    }`}>
                     <RefreshCw size={10} className="text-white" />
                   </button>
                 </div>
@@ -3685,8 +3726,13 @@ export default function JobFinder() {
                 <div className="relative group shrink-0">
                   <button
                     onClick={refreshMonster}
-                    title="Refresh Monster"
-                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                    disabled={isBoardCooldownActive('monster')}
+                    title={isBoardCooldownActive('monster') ? `Refreshes in ${formatCooldown(getBoardCooldownRemainingMs('monster'))}, Upgrade` : 'Refresh Monster'}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                      isBoardCooldownActive('monster')
+                        ? 'bg-white/5 text-white/40 cursor-not-allowed'
+                        : 'bg-white/10 hover:bg-white/20'
+                    }`}>
                     <RefreshCw size={10} className="text-white" />
                   </button>
                 </div>
@@ -4082,10 +4128,21 @@ export default function JobFinder() {
               <button onClick={() => setRefreshPopupBoard(null)} className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                 Cancel
               </button>
-              <button onClick={executeRefresh} className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-1.5">
-                <RefreshCw size={11} />
-                Fetch Jobs
-              </button>
+              {refreshPopupCooldownActive ? (
+                <button
+                  type="button"
+                  onClick={() => navigate('/billing')}
+                  className="px-4 py-1.5 text-xs font-bold bg-gray-200 text-gray-500 rounded-lg transition-colors flex items-center gap-1.5 cursor-not-allowed"
+                >
+                  <RefreshCw size={11} />
+                  Refreshes in {formatCooldown(refreshPopupCooldownRemainingMs)}, Upgrade
+                </button>
+              ) : (
+                <button onClick={executeRefresh} className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-1.5">
+                  <RefreshCw size={11} />
+                  Fetch Jobs
+                </button>
+              )}
             </div>
           </div>
         </div>
