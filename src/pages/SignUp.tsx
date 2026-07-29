@@ -290,6 +290,34 @@ export default function SignUp() {
 
     const user = (await supabase.auth.getUser()).data.user;
     if (user) {
+      // Create account + owner member row if this is a brand-new Google user
+      const { data: existingMember } = await supabase
+        .from('account_members')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (!existingMember) {
+        const accountId = crypto.randomUUID();
+        const displayName = (user.user_metadata?.full_name ?? user.user_metadata?.name ?? '').trim();
+        const businessName = displayName || (user.email?.split('@')[0] ?? 'My Workspace');
+
+        const { error: accErr } = await supabase
+          .from('accounts')
+          .insert({ id: accountId, name: businessName, owner_id: user.id });
+
+        if (!accErr) {
+          await supabase.from('account_members').insert({
+            account_id: accountId,
+            user_id: user.id,
+            invited_email: user.email!,
+            role: 'owner',
+            status: 'active',
+          });
+        }
+      }
+
       void sendSignupWebhook(buildSignupWebhookPayload({
         action: 'google oauth signup',
         userId: user.id,
