@@ -14,8 +14,8 @@ import { NOTIFICATION_TYPES } from '../lib/notifications';
 const navItems = [
   { path: '/desk',          label: 'Desk',           icon: LayoutDashboard },
   { path: '/bench',      label: 'Bench',          icon: Users },
-  { path: '/job-watch-ai',   label: 'Job Watch AI',   icon: Radar },
   { path: '/job-finder',    label: 'Job Finder',     icon: Search },
+  { path: '/job-watch-ai',   label: 'Job Watch AI',   icon: Radar },
   { path: '/submission-queue', label: 'Submission Queue', icon: Bookmark },
   { path: '/hotlist-ai', label: 'Hotlist AI',  icon: Target },
   { path: '/tracker',       label: 'Tracker',        icon: FileText },

@@ -256,6 +256,11 @@ const INDEED_PAGE_SIZE = 10;
 const MONSTER_PAGE_SIZE = 10;
 const HISTORY_PAGE_SIZE = 10;
 const JOB_FINDER_SEARCH_COOLDOWN_KEY = 'job_finder_search_cooldowns';
+const JOB_FINDER_REFRESH_TIMESTAMPS_KEY = 'job_finder_refresh_timestamps';
+const FREE_PLAN_DAILY_LIMIT = 1;
+const PAID_PLAN_DAILY_LIMIT = 5;
+const PAID_PLAN_COOLDOWN_MS = 60 * 60 * 1000;       // 1 hour between refreshes
+const PAID_PLAN_WINDOW_MS  = 24 * 60 * 60 * 1000;  // rolling 24-hour window
 
 const POSTED_WITHIN_MAP: Record<string, string> = {
   'Any time': 'Any Time',
@@ -930,6 +935,8 @@ export default function JobFinder() {
   const [userVotedBoards, setUserVotedBoards] = useState<Set<string>>(new Set());
   const [votingBoard, setVotingBoard] = useState<string | null>(null);
   const [searchCooldowns, setSearchCooldowns] = useState<Record<string, number>>({});
+  // refreshTimestamps: { [scopedKey]: number[] } — timestamps of recent paid-plan refreshes
+  const [refreshTimestamps, setRefreshTimestamps] = useState<Record<string, number[]>>({});;
   const [linkedinColFilter, setLinkedinColFilter] = useState('');
   const [diceColFilter, setDiceColFilter] = useState('');
   const [indeedColFilter, setIndeedColFilter] = useState('');
@@ -985,7 +992,8 @@ export default function JobFinder() {
 
   function getCooldownRemainingMs(searchKey: string): number {
     const cooldownAt = searchCooldowns[searchKey] ?? 0;
-    return Math.max(0, cooldownAt + (24 * 60 * 60 * 1000) - Date.now());
+    const windowMs = isPaidPlan ? PAID_PLAN_COOLDOWN_MS : (24 * 60 * 60 * 1000);
+    return Math.max(0, cooldownAt + windowMs - Date.now());
   }
 
   function getBoardCooldownRemainingMs(boardKey: string): number {
@@ -993,7 +1001,30 @@ export default function JobFinder() {
   }
 
   function isBoardCooldownActive(boardKey: string): boolean {
-    return !isPaidPlan && getBoardCooldownRemainingMs(boardKey) > 0;
+    if (isPaidPlan) {
+      const scopedKey = getScopedSearchKey(boardKey);
+      return getRefreshCountInWindow(scopedKey) >= PAID_PLAN_DAILY_LIMIT || getCooldownRemainingMs(scopedKey) > 0;
+    }
+    return getBoardCooldownRemainingMs(boardKey) > 0;
+  }
+
+  // Returns how many paid-plan refreshes happened in the last 24 hours
+  function getRefreshCountInWindow(searchKey: string): number {
+    const now = Date.now();
+    const timestamps = refreshTimestamps[searchKey] ?? [];
+    return timestamps.filter(t => now - t < PAID_PLAN_WINDOW_MS).length;
+  }
+
+  // Adds current timestamp to the rolling window array (prunes old ones)
+  function recordRefreshTimestamp(searchKey: string) {
+    const now = Date.now();
+    const prev = refreshTimestamps[searchKey] ?? [];
+    const pruned = prev.filter(t => now - t < PAID_PLAN_WINDOW_MS);
+    const next = { ...refreshTimestamps, [searchKey]: [...pruned, now] };
+    setRefreshTimestamps(next);
+    try {
+      localStorage.setItem(JOB_FINDER_REFRESH_TIMESTAMPS_KEY, JSON.stringify(next));
+    } catch { /* no-op */ }
   }
 
   const selectedBoardCooldownRemainingMs = selectedBoardCooldownKeys
@@ -1002,10 +1033,18 @@ export default function JobFinder() {
   const searchCooldownRemainingMs = selectedBoardCooldownRemainingMs.length > 0
     ? Math.min(...selectedBoardCooldownRemainingMs)
     : 0;
-  const hasSelectedBoardCooldown = !isPaidPlan && selectedBoardCooldownRemainingMs.length > 0;
-  const isSearchCooldownActive = !isPaidPlan
-    && selectedBoardCooldownKeys.length > 0
-    && selectedBoardCooldownKeys.every(boardKey => getCooldownRemainingMs(boardKey) > 0);
+  const hasSelectedBoardCooldown = isPaidPlan
+    ? selectedBoardCooldownKeys.some(k => {
+        const sk = getScopedSearchKey(k);
+        return getRefreshCountInWindow(sk) >= PAID_PLAN_DAILY_LIMIT || getCooldownRemainingMs(sk) > 0;
+      })
+    : selectedBoardCooldownRemainingMs.length > 0;
+  const isSearchCooldownActive = isPaidPlan
+    ? selectedBoardCooldownKeys.length > 0 && selectedBoardCooldownKeys.every(k => {
+        const sk = getScopedSearchKey(k);
+        return getRefreshCountInWindow(sk) >= PAID_PLAN_DAILY_LIMIT || getCooldownRemainingMs(sk) > 0;
+      })
+    : !isPaidPlan && selectedBoardCooldownKeys.length > 0 && selectedBoardCooldownKeys.every(boardKey => getCooldownRemainingMs(boardKey) > 0);
 
   function formatCooldown(ms: number): string {
     if (ms <= 0) return '0m';
@@ -1040,6 +1079,16 @@ export default function JobFinder() {
       if (parsed && typeof parsed === 'object') setSearchCooldowns(parsed);
     } catch {
       setSearchCooldowns({});
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(JOB_FINDER_REFRESH_TIMESTAMPS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, number[]>;
+      if (parsed && typeof parsed === 'object') setRefreshTimestamps(parsed);
+    } catch {
+      setRefreshTimestamps({});
     }
   }, []);
   useEffect(() => {
@@ -1602,23 +1651,23 @@ export default function JobFinder() {
 
   function searchAll() {
     let hasAvailableBoard = false;
-    if (selectedBoards.has('LinkedIn') && (isPaidPlan || getCooldownRemainingMs(getScopedSearchKey('linkedin')) <= 0)) {
+    if (selectedBoards.has('LinkedIn') && (isPaidPlan ? (getRefreshCountInWindow(getScopedSearchKey('linkedin')) < PAID_PLAN_DAILY_LIMIT && getCooldownRemainingMs(getScopedSearchKey('linkedin')) <= 0) : getCooldownRemainingMs(getScopedSearchKey('linkedin')) <= 0)) {
       hasAvailableBoard = true;
       triggerBoardSearch('linkedin');
     }
-    if (selectedBoards.has('Dice') && (isPaidPlan || getCooldownRemainingMs(getScopedSearchKey('dice')) <= 0)) {
+    if (selectedBoards.has('Dice') && (isPaidPlan ? (getRefreshCountInWindow(getScopedSearchKey('dice')) < PAID_PLAN_DAILY_LIMIT && getCooldownRemainingMs(getScopedSearchKey('dice')) <= 0) : getCooldownRemainingMs(getScopedSearchKey('dice')) <= 0)) {
       hasAvailableBoard = true;
       triggerBoardSearch('dice');
     }
-    if (selectedBoards.has('Indeed') && (isPaidPlan || getCooldownRemainingMs(getScopedSearchKey('indeed')) <= 0)) {
+    if (selectedBoards.has('Indeed') && (isPaidPlan ? (getRefreshCountInWindow(getScopedSearchKey('indeed')) < PAID_PLAN_DAILY_LIMIT && getCooldownRemainingMs(getScopedSearchKey('indeed')) <= 0) : getCooldownRemainingMs(getScopedSearchKey('indeed')) <= 0)) {
       hasAvailableBoard = true;
       triggerBoardSearch('indeed');
     }
-    if (selectedBoards.has('Monster') && (isPaidPlan || getCooldownRemainingMs(getScopedSearchKey('monster')) <= 0)) {
+    if (selectedBoards.has('Monster') && (isPaidPlan ? (getRefreshCountInWindow(getScopedSearchKey('monster')) < PAID_PLAN_DAILY_LIMIT && getCooldownRemainingMs(getScopedSearchKey('monster')) <= 0) : getCooldownRemainingMs(getScopedSearchKey('monster')) <= 0)) {
       hasAvailableBoard = true;
       triggerBoardSearch('monster');
     }
-    if (selectedBoards.has('CareerBuilder') && (isPaidPlan || getCooldownRemainingMs(getScopedSearchKey('careerbuilder')) <= 0)) {
+    if (selectedBoards.has('CareerBuilder') && (isPaidPlan ? (getRefreshCountInWindow(getScopedSearchKey('careerbuilder')) < PAID_PLAN_DAILY_LIMIT && getCooldownRemainingMs(getScopedSearchKey('careerbuilder')) <= 0) : getCooldownRemainingMs(getScopedSearchKey('careerbuilder')) <= 0)) {
       hasAvailableBoard = true;
       triggerBoardSearch('careerbuilder');
     }
@@ -1630,16 +1679,32 @@ export default function JobFinder() {
 
   function beginDailySearch(searchKey: string): boolean {
     const scopedSearchKey = getScopedSearchKey(searchKey);
-    const cooldownRemainingMs = getCooldownRemainingMs(scopedSearchKey);
-    const cooldownActive = !isPaidPlan && cooldownRemainingMs > 0;
 
-    if (cooldownActive) {
+    if (isPaidPlan) {
+      // Check rolling 24h limit (5 refreshes)
+      const count = getRefreshCountInWindow(scopedSearchKey);
+      if (count >= PAID_PLAN_DAILY_LIMIT) {
+        showToast(`You've used all ${PAID_PLAN_DAILY_LIMIT} refreshes in the last 24 hours. Try again later.`, 'error');
+        return false;
+      }
+      // Check 1-hour gap between refreshes
+      const cooldownRemaining = getCooldownRemainingMs(scopedSearchKey);
+      if (cooldownRemaining > 0) {
+        showToast(`Please wait ${formatCooldown(cooldownRemaining)} before refreshing again.`, 'error');
+        return false;
+      }
+      stampSearchCooldown(scopedSearchKey);
+      recordRefreshTimestamp(scopedSearchKey);
+      return true;
+    }
+
+    // Free plan: 1 search per 24 hours
+    const cooldownRemainingMs = getCooldownRemainingMs(scopedSearchKey);
+    if (cooldownRemainingMs > 0) {
       showToast('Job Finder search is available once every 24 hours on free plans', 'error');
       return false;
     }
-    if (!isPaidPlan) {
-      stampSearchCooldown(scopedSearchKey);
-    }
+    stampSearchCooldown(scopedSearchKey);
     return true;
   }
 
@@ -2830,7 +2895,7 @@ export default function JobFinder() {
                     </select>
                   </div>
                   <div className="min-w-0 flex items-center gap-1.5">
-                    <label className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">Results</label>
+                    <label className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">Results Per Board</label>
                     <div className="relative group flex-1 min-w-0">
                       <select
                         value={maxResults}
@@ -2924,9 +2989,22 @@ export default function JobFinder() {
                   )}
                 </div>
 
-                <div className="h-[30px] flex items-center">
-                  {!isPaidPlan && (
-                    hasSelectedBoardCooldown ? (
+                <div className="h-[30px] flex items-center justify-center">
+                  {hasSelectedBoardCooldown && (
+                    isPaidPlan ? (() => {
+                      const sk = getScopedSearchKey(selectedBoardCooldownKeys[0] ?? 'linkedin');
+                      const allUsed = getRefreshCountInWindow(sk) >= PAID_PLAN_DAILY_LIMIT;
+                      const remaining = getCooldownRemainingMs(sk);
+                      return allUsed ? (
+                        <span className="text-[10px] italic font-semibold text-amber-600 whitespace-nowrap">
+                          All 5 refreshes used in last 24h — oldest unlocks soon
+                        </span>
+                      ) : (
+                        <span className="text-[10px] italic font-semibold text-amber-600 whitespace-nowrap">
+                          Next refresh in {formatCooldown(remaining)}
+                        </span>
+                      );
+                    })() : (
                       <button
                         type="button"
                         onClick={() => navigate('/billing')}
@@ -2934,9 +3012,21 @@ export default function JobFinder() {
                       >
                         Refreshes in {formatCooldown(searchCooldownRemainingMs)}, Upgrade
                       </button>
-                    ) : (
-                      <span className="text-[10px] italic font-semibold text-gray-500 whitespace-nowrap">Daily 1 refresh only for free plan</span>
                     )
+                  )}
+                  {!hasSelectedBoardCooldown && !isPaidPlan && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/billing')}
+                      className="text-[10px] italic font-semibold text-blue-600 hover:text-blue-700 underline decoration-blue-300 underline-offset-2 whitespace-nowrap"
+                    >
+                      Upgrade to Get 5 Refreshes Daily
+                    </button>
+                  )}
+                  {!hasSelectedBoardCooldown && isPaidPlan && selectedBoardCooldownKeys.length > 0 && (
+                    <span className="text-[10px] italic font-semibold text-gray-400 whitespace-nowrap">
+                      {PAID_PLAN_DAILY_LIMIT - Math.max(...selectedBoardCooldownKeys.map(k => getRefreshCountInWindow(getScopedSearchKey(k))))} of {PAID_PLAN_DAILY_LIMIT} refreshes left (24h window)
+                    </span>
                   )}
                 </div>
               </div>
