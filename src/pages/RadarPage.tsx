@@ -6,7 +6,7 @@ import {
   Search, Target, Loader2, Users, Check, Clock,
   Eye, EyeOff, Sparkles, ExternalLink, Info, Power, Save, Pencil,
   Bookmark, BookmarkCheck, PenLine, Ban, X, ArrowUpRight,
-  FileText, Activity, Download,
+  FileText, Activity, Download, Lock, Copy, Link2,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -14,6 +14,7 @@ import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
 import { triggerProfileEmbedding } from '../lib/embeddings';
 import { getMatchHealthPercent } from '../lib/match-health';
+import { buildScoreBreakdownDisplayItems, getDisplayJobDescription, getDisplayJobTitle } from '../lib/radar-match-ui';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile, ResumeFile, ActivityLog, EducationEntry, ExperienceEntry } from '../types/database';
 
@@ -39,6 +40,11 @@ interface JobInfo {
   job_description?: string | null;
   post_content?: string | null;
   platform?: string | null;
+  posted_at?: string | null;
+  employment_type?: string | null;
+  posted_by_name?: string | null;
+  profile_link?: string | null;
+  poster_email?: string | null;
 }
 
 type EditableMatchProfile = Profile & {
@@ -95,6 +101,11 @@ interface HotlistRow { profile_id: string; created_at: string | null; }
 
 const DEFAULT_WATCH_BOARDS = ['linkedin', 'dice', 'indeed', 'monster'];
 const HOTLIST_RETENTION_DAYS = 15;
+const FREE_PLAN_MATCH_LIMIT = 4;
+
+export function shouldLockMatchCard({ isPaidPlan, resultIndex, freePlanMatchLimit = FREE_PLAN_MATCH_LIMIT }: { isPaidPlan: boolean; resultIndex: number; freePlanMatchLimit?: number }) {
+  return !isPaidPlan && resultIndex >= freePlanMatchLimit;
+}
 
 function isHotlistEligible(profile: Profile): boolean {
   const createdAt = profile.created_at ? new Date(profile.created_at) : null;
@@ -124,12 +135,82 @@ function getScoreTextClass(score: number) {
   return 'text-red-600';
 }
 
+function getSourceBadgeDisplayName(source: string, platform?: string | null) {
+  if (source === 'social') {
+    const value = (platform ?? '').toLowerCase();
+    if (value.includes('facebook')) return 'Facebook';
+    if (value.includes('linkedin')) return 'LinkedIn';
+    if (value.includes('twitter') || value.includes('x')) return 'X';
+    if (value.includes('whatsapp')) return 'WhatsApp';
+    return 'Social';
+  }
+
+  if (source === 'linkedin') return 'LinkedIn';
+  if (source === 'dice') return 'Dice';
+  if (source === 'indeed') return 'Indeed';
+  if (source === 'monster') return 'Monster';
+  if (source === 'careerbuilder') return 'CareerBuilder';
+  if (source === 'external') return 'External';
+  return source.charAt(0).toUpperCase() + source.slice(1);
+}
+
+function getSourceLogoPath(source: string, platform?: string | null): string | null {
+  if (source === 'social') {
+    const value = (platform ?? '').toLowerCase();
+    if (value.includes('facebook')) return '/logos/facebook.png';
+    if (value.includes('linkedin')) return '/logos/linkedin.png';
+    if (value.includes('twitter') || value.includes('x')) return '/logos/x.png';
+    if (value.includes('whatsapp')) return '/logos/whatsapp.png';
+    return null;
+  }
+
+  const logoMap: Record<string, string> = {
+    'linkedin': '/logos/linkedin.png',
+    'dice': '/logos/dice.png',
+    'indeed': '/logos/indeed.png',
+    'monster': '/logos/monster.png',
+    'careerbuilder': '/logos/careerbuilder.png',
+  };
+
+  return logoMap[source] ?? null;
+}
+
+function renderSourceBadgeIcon(source: string, platform?: string | null) {
+  const logoPath = getSourceLogoPath(source, platform);
+  if (!logoPath) return <Briefcase size={12} className="shrink-0 text-slate-600" />;
+
+  return (
+    <img
+      src={logoPath}
+      alt={getSourceBadgeDisplayName(source, platform)}
+      className="shrink-0 h-3 w-3 object-contain"
+      onError={(e) => {
+        (e.target as HTMLImageElement).style.display = 'none';
+      }}
+    />
+  );
+}
+
 function formatScoreLabel(key: string) {
+  const labelMap: Record<string, string> = {
+    role_match: 'Role',
+    skills_match: 'Skills',
+    experience_match: 'Experience',
+    visa_match: 'Visa',
+    employment_type_match: 'Employment Type',
+    work_type_match: 'Work Type',
+    location_match: 'Location',
+    rate_match: 'Rate',
+  };
+
+  if (labelMap[key]) return labelMap[key];
+
   return key
     .replace(/_/g, ' ')
     .replace(/\bmatch\b/gi, '')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    .replace(/^./, c => c.toUpperCase());
 }
 
 function shouldClampScoreValue(key: string) {
@@ -285,6 +366,7 @@ export default function RadarPage() {
   });
   const [profileExperience, setProfileExperience] = useState<ExperienceEntry[]>([]);
   const [profileEducation, setProfileEducation] = useState<EducationEntry[]>([]);
+  const [prioritySkillInput, setPrioritySkillInput] = useState('');
   const [matchPage, setMatchPage] = useState(1);
 
   // Boards to scrape
@@ -403,6 +485,27 @@ export default function RadarPage() {
     setProfileExperience(prev => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
   }
 
+  function addPrioritySkill(skill: string) {
+    const trimmed = skill.trim();
+    if (!trimmed) return;
+    const existing = profileForm.priority_skills
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+    if (existing.includes(trimmed)) return;
+    const next = [...existing, trimmed];
+    setProfileForm(prev => ({ ...prev, priority_skills: next.join(', ') }));
+  }
+
+  function removePrioritySkill(skillToRemove: string) {
+    const next = profileForm.priority_skills
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean)
+      .filter(skill => skill !== skillToRemove);
+    setProfileForm(prev => ({ ...prev, priority_skills: next.join(', ') }));
+  }
+
   function updateEducationField(index: number, field: keyof EducationEntry, value: string) {
     setProfileEducation(prev => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
   }
@@ -456,7 +559,8 @@ export default function RadarPage() {
 
     setProfiles(prev => prev.map(p => (p.id === profileId ? (data as Profile) : p)));
     triggerProfileEmbedding(profileId);
-    showToast('Profile updated and vector refresh started', 'success');
+    setIsEditingProfile(false);
+    showToast('Profile updated and match rules refreshed', 'success');
     setSavingProfileFields(false);
   }
 
@@ -698,51 +802,119 @@ export default function RadarPage() {
     if (linkedinIds.length) {
       const { data } = await supabase
         .from('linkedin_jobs')
-        .select('id, job_title, company_name, location, job_url, job_description')
+        .select('id, job_title, company_name, location, job_url, job_description, employment_type, created_at')
         .in('id', linkedinIds);
-      data?.forEach(j => map.set(j.id, j));
+      data?.forEach(j => map.set(j.id, {
+        id: j.id,
+        job_title: j.job_title ?? null,
+        company_name: j.company_name ?? null,
+        location: j.location ?? null,
+        job_url: j.job_url ?? null,
+        job_description: j.job_description ?? null,
+        employment_type: j.employment_type ?? null,
+        posted_at: j.created_at ?? null,
+      }));
     }
     if (diceIds.length) {
       const { data } = await supabase
         .from('dice_jobs')
-        .select('id, job_title, company_name, location, job_url, job_description')
+        .select('id, job_title, company_name, location, job_url, job_description, employment_type, created_at')
         .in('id', diceIds);
-      data?.forEach(j => map.set(j.id, j));
+      data?.forEach(j => map.set(j.id, {
+        id: j.id,
+        job_title: j.job_title ?? null,
+        company_name: j.company_name ?? null,
+        location: j.location ?? null,
+        job_url: j.job_url ?? null,
+        job_description: j.job_description ?? null,
+        employment_type: j.employment_type ?? null,
+        posted_at: j.created_at ?? null,
+      }));
     }
     if (indeedIds.length) {
       const { data } = await supabase
         .from('indeed_jobs')
-        .select('id, job_title, company_name, location_display, job_url, job_description')
+        .select('id, job_title, company_name, location_display, job_url, job_description, employment_type, created_at')
         .in('id', indeedIds);
-      data?.forEach(j => map.set(j.id, { id: j.id, job_title: j.job_title, company_name: j.company_name, location: j.location_display, job_url: j.job_url, job_description: j.job_description }));
+      data?.forEach(j => map.set(j.id, {
+        id: j.id,
+        job_title: j.job_title ?? null,
+        company_name: j.company_name ?? null,
+        location: j.location_display ?? null,
+        job_url: j.job_url ?? null,
+        job_description: j.job_description ?? null,
+        employment_type: j.employment_type ?? null,
+        posted_at: j.created_at ?? null,
+      }));
     }
     if (monsterIds.length) {
       const { data } = await supabase
         .from('monster_jobs')
-        .select('id, job_title, company_name, location_display, apply_url, job_description')
+        .select('id, job_title, company_name, location_display, apply_url, job_description, employment_type, created_at')
         .in('id', monsterIds);
-      data?.forEach(j => map.set(j.id, { id: j.id, job_title: j.job_title, company_name: j.company_name, location: j.location_display, job_url: j.apply_url, job_description: j.job_description }));
+      data?.forEach(j => map.set(j.id, {
+        id: j.id,
+        job_title: j.job_title ?? null,
+        company_name: j.company_name ?? null,
+        location: j.location_display ?? null,
+        job_url: j.apply_url ?? null,
+        job_description: j.job_description ?? null,
+        employment_type: j.employment_type ?? null,
+        posted_at: j.created_at ?? null,
+      }));
     }
     if (careerbuilderIds.length) {
       const { data } = await supabase
         .from('careerbuilder_jobs')
-        .select('id, job_title, company_name, location_display, job_url, job_description')
+        .select('id, job_title, company_name, location_display, job_url, job_description, employment_type, created_at')
         .in('id', careerbuilderIds);
-      data?.forEach(j => map.set(j.id, { id: j.id, job_title: j.job_title, company_name: j.company_name, location: j.location_display, job_url: j.job_url, job_description: j.job_description }));
+      data?.forEach(j => map.set(j.id, {
+        id: j.id,
+        job_title: j.job_title ?? null,
+        company_name: j.company_name ?? null,
+        location: j.location_display ?? null,
+        job_url: j.job_url ?? null,
+        job_description: j.job_description ?? null,
+        employment_type: j.employment_type ?? null,
+        posted_at: j.created_at ?? null,
+      }));
     }
     if (externalIds.length) {
       const { data } = await supabase
         .from('external_job_posts')
-        .select('id, title, company, location, raw_description')
+        .select('id, title, company, location, raw_description, employment_type, created_at')
         .in('id', externalIds);
-      data?.forEach(j => map.set(j.id, { id: j.id, job_title: j.title, company_name: j.company, location: j.location, job_url: null, job_description: j.raw_description }));
+      data?.forEach(j => map.set(j.id, {
+        id: j.id,
+        job_title: j.title ?? null,
+        company_name: j.company ?? null,
+        location: j.location ?? null,
+        job_url: null,
+        job_description: j.raw_description ?? null,
+        employment_type: j.employment_type ?? null,
+        posted_at: j.created_at ?? null,
+      }));
     }
     if (socialIds.length) {
       const { data } = await supabase
         .from('social_jobs')
-        .select('id, job_title, company_name, location, post_url, job_description, platform, post_content')
+        .select('id, job_title, company_name, location, post_url, job_description, platform, post_content, employment_type, created_at, posted_at, posted_by_name, profile_link, poster_email')
         .in('id', socialIds);
-      data?.forEach(j => map.set(j.id, { id: j.id, job_title: j.job_title, company_name: j.company_name, location: j.location, job_url: j.post_url, job_description: j.job_description, platform: j.platform, post_content: j.post_content }));
+      data?.forEach(j => map.set(j.id, {
+        id: j.id,
+        job_title: j.job_title ?? null,
+        company_name: j.company_name ?? null,
+        location: j.location ?? null,
+        job_url: j.post_url ?? null,
+        job_description: j.job_description ?? null,
+        platform: j.platform ?? null,
+        post_content: j.post_content ?? null,
+        employment_type: j.employment_type ?? null,
+        posted_at: j.posted_at ?? j.created_at ?? null,
+        posted_by_name: j.posted_by_name ?? null,
+        profile_link: j.profile_link ?? null,
+        poster_email: j.poster_email ?? null,
+      }));
     }
 
     setJobMap(map);
@@ -1423,7 +1595,7 @@ export default function RadarPage() {
                         { label: 'Target Role', value: profileForm.target_role },
                         { label: 'Years Exp', value: profileForm.years_experience },
                         { label: 'Visa Status', value: profileForm.visa_status },
-                        { label: 'Work Authorization', value: profileForm.work_authorization },
+                        { label: 'Employment Type', value: profileForm.work_authorization },
                         { label: 'Work Type', value: profileForm.work_type },
                         { label: 'Preferred Locations', value: profileForm.preferred_locations },
                         { label: 'Min Rate ($/hr)', value: profileForm.desired_salary_min },
@@ -1494,13 +1666,36 @@ export default function RadarPage() {
 
                                 <div>
                                   <label className="block text-[11px] font-semibold text-slate-500 mb-1">Priority Skills</label>
-                                  <textarea
-                                    value={profileForm.priority_skills}
-                                    onChange={(e) => updateProfileField('priority_skills', e.target.value)}
-                                    placeholder="Comma-separated top skills"
-                                    rows={3}
-                                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
-                                  />
+                                  <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                      {profileForm.priority_skills
+                                        .split(',')
+                                        .map(item => item.trim())
+                                        .filter(Boolean)
+                                        .map(skill => (
+                                          <span key={skill} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700">
+                                            {skill}
+                                            <button type="button" onClick={() => removePrioritySkill(skill)} className="text-blue-400 hover:text-red-500">
+                                              <X size={10} />
+                                            </button>
+                                          </span>
+                                        ))}
+                                    </div>
+                                    <input
+                                      value={prioritySkillInput}
+                                      onChange={(e) => setPrioritySkillInput(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && prioritySkillInput.trim()) {
+                                          e.preventDefault();
+                                          addPrioritySkill(prioritySkillInput);
+                                          setPrioritySkillInput('');
+                                        }
+                                      }}
+                                      placeholder="Type a skill and press Enter"
+                                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                                    />
+                                    <p className="mt-1 text-[10px] text-slate-400">Press Enter to add a skill</p>
+                                  </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2">
@@ -1516,33 +1711,55 @@ export default function RadarPage() {
                                   </div>
                                   <div>
                                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Visa Status</label>
-                                    <input
+                                    <select
                                       value={profileForm.visa_status}
                                       onChange={(e) => updateProfileField('visa_status', e.target.value)}
-                                      placeholder="Ex: H1B"
-                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
-                                    />
+                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
+                                    >
+                                      <option value="">Select</option>
+                                      <option value="US Citizen">US Citizen</option>
+                                      <option value="Green Card">Green Card</option>
+                                      <option value="H1B">H1B</option>
+                                      <option value="H4EAD">H4EAD</option>
+                                      <option value="TN">TN</option>
+                                      <option value="OPT">OPT</option>
+                                      <option value="CPT">CPT</option>
+                                      <option value="F1">F1</option>
+                                      <option value="EAD">EAD</option>
+                                      <option value="Other">Other</option>
+                                    </select>
                                   </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2">
                                   <div>
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Work Authorization</label>
-                                    <input
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Employment Type</label>
+                                    <select
                                       value={profileForm.work_authorization}
                                       onChange={(e) => updateProfileField('work_authorization', e.target.value)}
-                                      placeholder="Ex: C2C, W2"
-                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
-                                    />
+                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
+                                    >
+                                      <option value="">Select</option>
+                                      <option value="C2C">C2C</option>
+                                      <option value="W2">W2</option>
+                                      <option value="1099">1099</option>
+                                      <option value="C2C or W2">C2C or W2</option>
+                                      <option value="Any">Any</option>
+                                    </select>
                                   </div>
                                   <div>
                                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Work Type</label>
-                                    <input
+                                    <select
                                       value={profileForm.work_type}
                                       onChange={(e) => updateProfileField('work_type', e.target.value)}
-                                      placeholder="Remote / Hybrid"
-                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
-                                    />
+                                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
+                                    >
+                                      <option value="">Select</option>
+                                      <option value="Remote">Remote</option>
+                                      <option value="Hybrid">Hybrid</option>
+                                      <option value="Onsite">Onsite</option>
+                                      <option value="Open">Open</option>
+                                    </select>
                                   </div>
                                 </div>
 
@@ -1670,7 +1887,7 @@ export default function RadarPage() {
                                 className="w-full flex items-center justify-center gap-1.5 px-2.5 py-2 text-xs font-bold text-white rounded-lg bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-700 hover:to-sky-600 disabled:opacity-50 transition-colors"
                               >
                                 {savingProfileFields ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                                {savingProfileFields ? 'Saving...' : 'Save Profile & Refresh Vector'}
+                                {savingProfileFields ? 'Saving...' : 'Save & Refresh Match Rules'}
                               </button>
                             </>
                           )}
@@ -1865,9 +2082,8 @@ export default function RadarPage() {
                 <div className="border-t border-sky-100 bg-sky-50/70 px-3 py-2">
                   <div className="flex items-center gap-2 text-sky-700">
                     <Target size={12} className="animate-pulse" />
-                    <span className="text-[11px] font-semibold">Matching profiles against jobs...</span>
+                    {pipelineDetail ? <span className="text-[11px] font-semibold">{pipelineDetail}</span> : <span className="text-[11px] font-semibold">Matching candidate name against jobs...</span>}
                   </div>
-                  {pipelineDetail && <p className="mt-0.5 text-[11px] text-sky-700/90">{pipelineDetail}</p>}
                   {pipelineProgress.total > 0 && (
                     <div className="mt-1 flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-sky-100 rounded-full overflow-hidden">
@@ -1892,24 +2108,44 @@ export default function RadarPage() {
               </div>
             ) : (
               <div className="space-y-3">
-            {paginatedResults.map(result => {
+            {paginatedResults.map((result, index) => {
               const profile = profiles.find(p => p.id === result.profile_id);
               const job = jobMap.get(result.job_id);
               const isExpanded = expandedId === result.id;
+              const globalResultIndex = (matchPage - 1) * MATCH_PAGE_SIZE + index;
+              const isLocked = shouldLockMatchCard({ isPaidPlan, resultIndex: globalResultIndex });
 
               return (
                 <div
                   key={result.id}
-                  className={`bg-white rounded-xl border shadow-sm transition-all ${
+                  className={`relative overflow-hidden rounded-xl border shadow-sm transition-all ${
                     result.disqualified ? 'border-red-200 bg-red-50/30' : 'border-slate-200 hover:border-slate-300'
-                  }`}
+                  } ${isLocked ? 'bg-slate-50/80' : 'bg-white'}`}
                 >
-                  <div className="w-full px-5 py-4 text-left">
+                  {isLocked && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+                      <div className="mx-4 flex max-w-sm flex-col items-center rounded-2xl border border-slate-200 bg-white/95 px-4 py-4 text-center shadow-lg">
+                        <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                          <Lock size={16} />
+                        </div>
+                        <p className="text-[11px] font-semibold text-slate-700">Upgrade to unlock all Matched Jobs</p>
+                        <button
+                          type="button"
+                          onClick={() => navigate('/billing')}
+                          className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm"
+                        >
+                          <ArrowUpRight size={11} />
+                          Upgrade now
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className={`w-full px-5 py-4 text-left ${isLocked ? 'blur-[2px] select-none' : ''}`}>
                     <div className="grid gap-3 lg:grid-cols-[1fr_1.15fr] items-start">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="font-medium text-slate-900 truncate">
-                            {job?.job_title ?? 'Unknown Job'}
+                        <div className="mb-2 flex flex-wrap items-start gap-2">
+                          <span className="break-words font-medium text-slate-900">
+                            {getDisplayJobTitle(job ?? undefined)}
                           </span>
                           {result.disqualified && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">
@@ -1932,10 +2168,51 @@ export default function RadarPage() {
                               {job.location}
                             </span>
                           )}
-                          <span className="inline-flex w-fit items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 capitalize">
-                            {result.job_source}
+                          <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600">
+                            {renderSourceBadgeIcon(result.job_source, job?.platform)}
+                            <span>{getSourceBadgeDisplayName(result.job_source, job?.platform)}</span>
                           </span>
                         </div>
+
+                        {result.job_source === 'social' && (job?.posted_by_name || job?.profile_link || job?.poster_email) && (
+                          <div className="mt-2 flex w-fit min-w-[220px] max-w-[320px] flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-2 shadow-sm">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Posted by</p>
+                            {job?.posted_by_name && (
+                              <div className="w-full">
+                                {job.profile_link ? (
+                                  <a
+                                    href={job.profile_link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-700 transition-all hover:bg-slate-100"
+                                    title={job.posted_by_name}
+                                  >
+                                    <span className="break-words text-left">{job.posted_by_name}</span>
+                                    <Link2 size={11} className="shrink-0 text-slate-500" />
+                                  </a>
+                                ) : (
+                                  <span className="flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-700" title={job.posted_by_name}>
+                                    <span className="break-words text-left">{job.posted_by_name}</span>
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {job?.poster_email && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard?.writeText(job.poster_email ?? '').catch(() => {});
+                                }}
+                                className="flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-700 transition-all hover:bg-slate-100"
+                                title={job.poster_email}
+                              >
+                                <span className="break-words text-left">{job.poster_email}</span>
+                                <Copy size={11} className="shrink-0 text-slate-500" />
+                              </button>
+                            )}
+                          </div>
+                        )}
 
                         <div className="mt-2 w-fit max-w-[320px] min-w-[220px] rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50/80 via-white to-slate-50 p-2.5 shadow-sm">
                           <div className="flex items-center justify-start gap-2">
@@ -1988,6 +2265,12 @@ export default function RadarPage() {
                             <Clock size={10} />
                             matched {formatTimeAgo(new Date(result.created_at).getTime())}
                           </span>
+                          {job?.posted_at && (
+                            <span className="inline-flex items-center gap-1">
+                              <Clock size={10} />
+                              posted {formatTimeAgo(new Date(job.posted_at).getTime())}
+                            </span>
+                          )}
                           {reviewedMap[result.id] && (
                             <span className="inline-flex items-center gap-1 italic">
                               reviewed {formatTimeAgo(reviewedMap[result.id])}
@@ -1998,18 +2281,9 @@ export default function RadarPage() {
 
                       <div className="min-w-0">
                         <ScoreBreakdownChart
-                          items={Object.entries(result.score_breakdown).map(([key, value]) => {
-                            const isDetailed = typeof value === 'object' && value !== null && 'score' in value;
-                            return {
-                              key,
-                              score: isDetailed ? (value as { score: number }).score : (Number(value) || 0),
-                            };
-                          })}
+                          items={buildScoreBreakdownDisplayItems(result.score_breakdown, profile, job).map(item => ({ key: item.key, score: item.score }))}
                           detailMap={Object.fromEntries(
-                            Object.entries(result.score_breakdown).map(([key, value]) => {
-                              const isDetailed = typeof value === 'object' && value !== null && 'score' in value;
-                              return [key, isDetailed ? { candidate_value: value.candidate_value, job_value: value.job_value, rule: value.rule } : undefined];
-                            })
+                            buildScoreBreakdownDisplayItems(result.score_breakdown, profile, job).map(item => [item.key, item.detail])
                           )}
                           compact
                           expandedKeys={expandedScoreKeys}
@@ -2076,7 +2350,15 @@ export default function RadarPage() {
                       )}
 
                       <button
-                        onClick={(e) => { e.stopPropagation(); setPreviewResult(result); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewResult(result);
+                          setReviewedMap(prev => {
+                            const next = { ...prev, [result.id]: Date.now() };
+                            try { localStorage.setItem('radar_reviewed', JSON.stringify(next)); } catch {}
+                            return next;
+                          });
+                        }}
                         title="Preview Job"
                         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-all hover:bg-slate-100"
                       >
@@ -2138,7 +2420,7 @@ export default function RadarPage() {
       {/* Preview Modal */}
       {previewResult && (() => {
         const previewJob = jobMap.get(previewResult.job_id);
-        const desc = previewJob?.job_description ?? '';
+        const desc = getDisplayJobDescription(previewJob);
         return (
           <div
             className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
@@ -2154,17 +2436,61 @@ export default function RadarPage() {
                   <Briefcase size={20} className="text-slate-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h2 className="font-bold text-gray-900 text-base leading-tight">{previewJob?.job_title ?? 'Untitled Job'}</h2>
+                  <h2 className="font-bold text-gray-900 text-base leading-tight">{getDisplayJobTitle(previewJob ?? undefined)}</h2>
                   <p className="text-sm font-medium mt-0.5 text-blue-600">{previewJob?.company_name ?? 'Unknown Company'}</p>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
                     {previewJob?.location && <span className="flex items-center gap-1 text-xs text-gray-500"><MapPin size={10} />{previewJob.location}</span>}
-                    <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full capitalize">{previewResult.job_source}</span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                      {renderSourceBadgeIcon(previewResult.job_source, previewJob?.platform)}
+                      <span>{getSourceBadgeDisplayName(previewResult.job_source, previewJob?.platform)}</span>
+                    </span>
                   </div>
                 </div>
                 <button onClick={() => setPreviewResult(null)} className="text-gray-400 hover:text-gray-600 transition-colors shrink-0 p-1">
                   <X size={18} />
                 </button>
               </div>
+
+              {previewResult.job_source === 'social' && (previewJob?.posted_by_name || previewJob?.profile_link || previewJob?.poster_email) && (
+                <div className="shrink-0 border-b border-gray-100 bg-slate-50/70 px-5 py-3">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Posted by</p>
+                  <div className="flex flex-col gap-2">
+                    {previewJob?.posted_by_name && (
+                      <div>
+                        {previewJob.profile_link ? (
+                          <a
+                            href={previewJob.profile_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-all hover:bg-slate-100"
+                            title={previewJob.posted_by_name}
+                          >
+                            <span className="break-words text-left">{previewJob.posted_by_name}</span>
+                            <Link2 size={13} className="shrink-0 text-slate-500" />
+                          </a>
+                        ) : (
+                          <span className="flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700" title={previewJob.posted_by_name}>
+                            <span className="break-words text-left">{previewJob.posted_by_name}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {previewJob?.poster_email && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(previewJob.poster_email ?? '').catch(() => {});
+                        }}
+                        className="flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-all hover:bg-slate-100"
+                        title={previewJob.poster_email}
+                      >
+                        <span className="break-words text-left">{previewJob.poster_email}</span>
+                        <Copy size={13} className="shrink-0 text-slate-500" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Score strip */}
               <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 shrink-0 flex items-center gap-3">
@@ -2201,7 +2527,7 @@ export default function RadarPage() {
                   </div>
                 )}
 
-                {desc.trim() ? (
+                {desc && desc !== 'No description available.' ? (
                   <div>
                     <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Job Description</h3>
                     {desc.includes('<') && desc.includes('>') ? (
@@ -2227,18 +2553,9 @@ export default function RadarPage() {
                     <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Matching Rules</h3>
                     <div className="space-y-3">
                       <ScoreBreakdownChart
-                        items={Object.entries(previewResult.score_breakdown).map(([key, value]) => {
-                          const isDetailed = typeof value === 'object' && value !== null && 'score' in value;
-                          return {
-                            key,
-                            score: isDetailed ? (value as { score: number }).score : (Number(value) || 0),
-                          };
-                        })}
+                        items={buildScoreBreakdownDisplayItems(previewResult.score_breakdown, previewResult.profile_id ? profiles.find(p => p.id === previewResult.profile_id) : undefined, previewJob).map(item => ({ key: item.key, score: item.score }))}
                         detailMap={Object.fromEntries(
-                          Object.entries(previewResult.score_breakdown).map(([key, value]) => {
-                            const isDetailed = typeof value === 'object' && value !== null && 'score' in value;
-                            return [key, isDetailed ? { candidate_value: value.candidate_value, job_value: value.job_value, rule: value.rule } : undefined];
-                          })
+                          buildScoreBreakdownDisplayItems(previewResult.score_breakdown, previewResult.profile_id ? profiles.find(p => p.id === previewResult.profile_id) : undefined, previewJob).map(item => [item.key, item.detail])
                         )}
                       />
                     </div>

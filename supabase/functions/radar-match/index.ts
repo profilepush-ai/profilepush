@@ -1,5 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { filterRelevantJobs } from "./relevance.ts";
+import { buildScrapeFallbackRequests } from "./scrape-fallback.ts";
+import { scoreEmploymentTypeMatch, scoreWorkTypeMatch } from "./match-utils.ts";
+import { hasMeaningfulJobContent } from "./content-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -49,6 +53,7 @@ interface ExtractedJob {
     core_skills: string[];
     years_experience: number | null;
     visa_types: string[];
+    employment_type: string;
     work_type: string;
     locations: string[];
     hourly_rate_min: number | null;
@@ -65,6 +70,70 @@ interface MatchResult {
   notes: string;
   disqualified: boolean;
   reason: string | null;
+}
+
+async function ensureProfileEmbedding(
+  supabase: ReturnType<typeof createClient>,
+  profileId: string,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<unknown | null> {
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("profile_embedding")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  const currentEmbedding = (profileRow as { profile_embedding?: unknown } | null)?.profile_embedding;
+  if (currentEmbedding) {
+    if (typeof currentEmbedding === "string") {
+      try {
+        return JSON.parse(currentEmbedding);
+      } catch {
+        return currentEmbedding;
+      }
+    }
+    return currentEmbedding;
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/generate-embedding`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "Apikey": serviceRoleKey,
+      },
+      body: JSON.stringify({ type: "profile", id: profileId }),
+    });
+
+    if (!response.ok) return null;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const { data: refreshedProfile } = await supabase
+        .from("profiles")
+        .select("profile_embedding")
+        .eq("id", profileId)
+        .maybeSingle();
+
+      const refreshedEmbedding = (refreshedProfile as { profile_embedding?: unknown } | null)?.profile_embedding;
+      if (refreshedEmbedding) {
+        if (typeof refreshedEmbedding === "string") {
+          try {
+            return JSON.parse(refreshedEmbedding);
+          } catch {
+            return refreshedEmbedding;
+          }
+        }
+        return refreshedEmbedding;
+      }
+    }
+  } catch {
+    // Fall back to the recent-jobs path if embedding generation is unavailable.
+  }
+
+  return null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -97,15 +166,20 @@ Deno.serve(async (req: Request) => {
       .eq("profile_id", profile_id);
 
     const existingJobIds = new Set((existingMatches ?? []).map((m: { job_id: string }) => m.job_id));
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Load jobs — use vector similarity if profile has embedding, else fallback to recent jobs
-    const allJobs: Array<{ id: string; source: string; title: string; description: string; location: string; extracted_skills: string; extracted_experience_years: number | null; extracted_visa_types: string; extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null }> = [];
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const profileEmbedding = await ensureProfileEmbedding(supabase, profile.id, supabaseUrl, serviceRoleKey);
+
+    // Load jobs — use vector similarity if the candidate profile has an embedding, else fallback to recent jobs from the last 7 days
+    const allJobs: Array<{ id: string; source: string; title: string; description: string; location: string; extracted_skills: string; extracted_experience_years: number | null; extracted_visa_types: string; extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null; employment_type: string | null }> = [];
     let usedVectorSearch = false;
 
-    if (profile.profile_embedding) {
-      // Use vector similarity to find 70%+ matching jobs across all tables
+    if (profileEmbedding) {
+      // Use vector similarity to find 70%+ matching jobs across all tables, but only from the last 7 days
       const { data: vectorMatches, error: vecErr } = await supabase.rpc("match_jobs_by_embedding", {
-        query_embedding: profile.profile_embedding,
+        query_embedding: profileEmbedding,
         similarity_threshold: 0.70,
         max_results: 200,
       });
@@ -139,8 +213,9 @@ Deno.serve(async (req: Request) => {
             const batchIds = ids.slice(i, i + 50);
             const { data: jobs } = await supabase
               .from(config.table)
-              .select(`id, job_title, job_description, ${config.locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max`)
-              .in("id", batchIds);
+              .select(`id, job_title, job_description, ${config.locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type, created_at`)
+              .in("id", batchIds)
+              .gte("created_at", sevenDaysAgo);
 
             if (jobs) {
               for (const j of jobs) {
@@ -155,6 +230,7 @@ Deno.serve(async (req: Request) => {
                   extracted_visa_types: Array.isArray(j.extracted_visa_types) ? j.extracted_visa_types.join(", ") : (j.extracted_visa_types ?? ""),
                   extracted_hourly_rate_min: j.extracted_hourly_rate_min,
                   extracted_hourly_rate_max: j.extracted_hourly_rate_max,
+                  employment_type: j.employment_type ?? null,
                 });
               }
             }
@@ -176,7 +252,8 @@ Deno.serve(async (req: Request) => {
       for (const { table, source, locationCol } of sources) {
         const query = supabase
           .from(table)
-          .select(`id, job_title, job_description, ${locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max`)
+          .select(`id, job_title, job_description, ${locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type, created_at`)
+          .gte("created_at", sevenDaysAgo)
           .order("created_at", { ascending: false })
           .limit(50);
 
@@ -195,6 +272,7 @@ Deno.serve(async (req: Request) => {
               extracted_visa_types: Array.isArray(j.extracted_visa_types) ? j.extracted_visa_types.join(", ") : (j.extracted_visa_types ?? ""),
               extracted_hourly_rate_min: j.extracted_hourly_rate_min,
               extracted_hourly_rate_max: j.extracted_hourly_rate_max,
+              employment_type: j.employment_type ?? null,
             });
           }
         }
@@ -202,41 +280,16 @@ Deno.serve(async (req: Request) => {
 
       // Load social_jobs (fallback path)
       {
-        const socialSelect = "id, job_title, job_description, location, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max";
+        const socialSelect = "id, job_title, job_description, location, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type";
 
-        let socialJobs: Record<string, unknown>[] = [];
+        const { data: socialJobsData } = await supabase
+          .from("social_jobs")
+          .select(socialSelect)
+          .gte("created_at", sevenDaysAgo)
+          .order("created_at", { ascending: false })
+          .limit(50);
 
-        if (account_id) {
-          const { data: owned } = await supabase
-            .from("social_jobs")
-            .select(socialSelect)
-            .eq("account_id", account_id)
-            .order("created_at", { ascending: false })
-            .limit(50);
-
-          const { data: shared } = await supabase
-            .from("social_jobs")
-            .select(socialSelect)
-            .is("account_id", null)
-            .order("created_at", { ascending: false })
-            .limit(50);
-
-          const seenIds = new Set<string>();
-          for (const j of [...(owned ?? []), ...(shared ?? [])]) {
-            if (!seenIds.has(j.id as string)) {
-              seenIds.add(j.id as string);
-              socialJobs.push(j);
-            }
-          }
-          socialJobs = socialJobs.slice(0, 50);
-        } else {
-          const { data } = await supabase
-            .from("social_jobs")
-            .select(socialSelect)
-            .order("created_at", { ascending: false })
-            .limit(50);
-          socialJobs = data ?? [];
-        }
+        const socialJobs = (socialJobsData ?? []) as Record<string, unknown>[];
 
         for (const j of socialJobs) {
           const skills = j.extracted_skills;
@@ -251,6 +304,7 @@ Deno.serve(async (req: Request) => {
             extracted_visa_types: Array.isArray(j.extracted_visa_types) ? (j.extracted_visa_types as string[]).join(", ") : ((j.extracted_visa_types as string) ?? ""),
             extracted_hourly_rate_min: j.extracted_hourly_rate_min as number | null,
             extracted_hourly_rate_max: j.extracted_hourly_rate_max as number | null,
+            employment_type: (j.employment_type as string | null) ?? null,
           });
         }
       }
@@ -260,21 +314,77 @@ Deno.serve(async (req: Request) => {
       return respond({ message: "No jobs found. Run a search first." });
     }
 
+    let effectiveJobs = allJobs;
+
     // Remove already-scored jobs (for fallback path; vector path already filters)
-    const newJobs = usedVectorSearch ? allJobs : allJobs.filter(j => !existingJobIds.has(j.id));
+    const newJobs = usedVectorSearch ? effectiveJobs : effectiveJobs.filter(j => !existingJobIds.has(j.id));
 
     if (newJobs.length === 0) {
       return respond({ message: "All jobs already scored", matched: 0, skipped: existingJobIds.size });
     }
 
+    const contentFilteredJobs = newJobs.filter((job) => hasMeaningfulJobContent(job));
+
     // Title relevance filter (skip for vector path since vector already filtered semantically)
     const targetRole = ((profile.target_role as string) ?? "").toLowerCase();
     const relevantJobs = usedVectorSearch
-      ? newJobs
-      : filterRelevantJobs(newJobs, targetRole, (profile.core_skills as string) ?? "");
+      ? contentFilteredJobs
+      : filterRelevantJobs(contentFilteredJobs, targetRole, (profile.core_skills as string) ?? "");
 
     if (relevantJobs.length === 0) {
-      return respond({ message: "No relevant jobs found matching the target role", matched: 0, skipped: existingJobIds.size + newJobs.length });
+      let scrapedJobs: Array<{ id: string; source: string; title: string; description: string; location: string; extracted_skills: string; extracted_experience_years: number | null; extracted_visa_types: string; extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null; employment_type: string | null }> = [];
+
+      const scrapeRequests = buildScrapeFallbackRequests(profile, account_id ?? null);
+      for (const request of scrapeRequests) {
+        try {
+          const response = await fetch(`${supabaseUrl}/functions/v1/${request.endpoint}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceRoleKey}`,
+              "Apikey": serviceRoleKey,
+            },
+            body: JSON.stringify(request.body),
+          });
+
+          if (!response.ok) continue;
+
+          const payload = await response.json().catch(() => null);
+          const jobs = Array.isArray(payload?.jobs) ? payload.jobs : [];
+          for (const job of jobs) {
+            const id = job.id as string | undefined;
+            if (!id || existingJobIds.has(id)) continue;
+            scrapedJobs.push({
+              id,
+              source: request.source,
+              title: (job.job_title as string) ?? "",
+              description: ((job.job_description as string) ?? (job.summary as string) ?? "").slice(0, 2000),
+              location: (job.location as string) ?? (job.location_display as string) ?? "",
+              extracted_skills: (job.extracted_skills as string) ?? (job.skills as string) ?? "",
+              extracted_experience_years: (job.extracted_experience_years as number | null) ?? null,
+              extracted_visa_types: (job.extracted_visa_types as string) ?? "",
+              extracted_hourly_rate_min: (job.extracted_hourly_rate_min as number | null) ?? null,
+              extracted_hourly_rate_max: (job.extracted_hourly_rate_max as number | null) ?? null,
+              employment_type: (job.employment_type as string | null) ?? null,
+            });
+          }
+        } catch {
+          // Ignore individual scraper failures and continue.
+        }
+      }
+
+      effectiveJobs = [...effectiveJobs, ...scrapedJobs];
+      const scrapedNewJobs = effectiveJobs.filter(j => !existingJobIds.has(j.id));
+      const scrapedContentFilteredJobs = scrapedNewJobs.filter((job) => hasMeaningfulJobContent(job));
+      const scrapedRelevantJobs = filterRelevantJobs(scrapedContentFilteredJobs, targetRole, (profile.core_skills as string) ?? "");
+
+      if (scrapedRelevantJobs.length === 0) {
+        return respond({ message: "No relevant jobs found matching the target role", matched: 0, skipped: existingJobIds.size + scrapedNewJobs.length });
+      }
+
+      effectiveJobs = scrapedRelevantJobs;
+    } else {
+      effectiveJobs = relevantJobs;
     }
 
     if (!GEMINI_API_KEY) {
@@ -358,34 +468,6 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-// ── Title Relevance Filter ────────────────────────────────────────────────────
-function filterRelevantJobs(
-  jobs: Array<{ id: string; source: string; title: string; description: string; location: string; extracted_skills: string; extracted_experience_years: number | null; extracted_visa_types: string; extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null }>,
-  targetRole: string,
-  coreSkills: string,
-): typeof jobs {
-  if (!targetRole) return jobs;
-
-  const roleWords = targetRole.split(/[\s/,\-]+/).filter(w => w.length > 2).map(w => w.toLowerCase());
-  const skillWords = coreSkills.toLowerCase().split(/[,;|]+/).map(s => s.trim()).filter(s => s.length > 2);
-  const primaryTech = roleWords.filter(w => !["senior", "junior", "lead", "staff", "principal", "mid", "level", "developer", "engineer", "architect", "manager"].includes(w));
-
-  return jobs.filter(job => {
-    const title = job.title.toLowerCase();
-    const desc = (job.description + " " + job.extracted_skills).toLowerCase();
-
-    if (primaryTech.length > 0) {
-      const titleHasTech = primaryTech.some(t => title.includes(t));
-      const descHasTech = primaryTech.filter(t => desc.includes(t)).length >= Math.ceil(primaryTech.length * 0.5);
-      if (!titleHasTech && !descHasTech) {
-        const skillMatches = skillWords.filter(s => desc.includes(s)).length;
-        if (skillMatches < 2) return false;
-      }
-    }
-    return true;
-  });
-}
-
 // ── LLM Field Extraction ──────────────────────────────────────────────────────
 async function extractJobFields(
   jobs: Array<{ id: string; source: string; title: string; description: string; location: string; extracted_skills: string; extracted_experience_years: number | null; extracted_visa_types: string; extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null }>,
@@ -407,6 +489,7 @@ Description: ${j.description.slice(0, 1200)}
 - core_skills: array of required technical skills (max 15)
 - years_experience: minimum years required (number or null)
 - visa_types: array of accepted visa/work authorization types (if mentioned), e.g. ["H1B", "GC", "USC", "EAD", "OPT"]
+- employment_type: the hiring arrangement or engagement type, e.g. "C2C", "W2", "1099", "Full-time", "Contract", "Any", or "Unknown"
 - work_type: "Remote" | "Hybrid" | "Onsite" | "Unknown"
 - locations: array of work locations mentioned
 - hourly_rate_min: minimum hourly rate in USD (number or null)
@@ -426,6 +509,7 @@ Return ONLY a JSON array:
     "core_skills": ["..."],
     "years_experience": null,
     "visa_types": ["..."],
+    "employment_type": "...",
     "work_type": "...",
     "locations": ["..."],
     "hourly_rate_min": null,
@@ -463,6 +547,7 @@ Return ONLY a JSON array:
           core_skills: Array.isArray(item.core_skills) ? item.core_skills : [],
           years_experience: typeof item.years_experience === "number" ? item.years_experience : (jobs[idx]?.extracted_experience_years ?? null),
           visa_types: Array.isArray(item.visa_types) ? item.visa_types : [],
+          employment_type: (item.employment_type as string) ?? (jobs[idx]?.employment_type ?? "Unknown"),
           work_type: (item.work_type as string) ?? "Unknown",
           locations: Array.isArray(item.locations) ? item.locations : [jobs[idx]?.location ?? ""],
           hourly_rate_min: typeof item.hourly_rate_min === "number" ? item.hourly_rate_min : (jobs[idx]?.extracted_hourly_rate_min ?? null),
@@ -485,6 +570,7 @@ Return ONLY a JSON array:
       core_skills: j.extracted_skills ? j.extracted_skills.split(",").map(s => s.trim()) : [],
       years_experience: j.extracted_experience_years,
       visa_types: j.extracted_visa_types ? j.extracted_visa_types.split(",").map(s => s.trim()) : [],
+      employment_type: j.employment_type ?? "Unknown",
       work_type: "Unknown",
       locations: j.location ? [j.location] : [],
       hourly_rate_min: j.extracted_hourly_rate_min,
@@ -500,6 +586,7 @@ function scoreJobsAgainstProfile(extractedJobs: ExtractedJob[], profile: Record<
   const candidateRole = ((profile.target_role as string) ?? "").toLowerCase();
   const candidateExp = (profile.years_experience as number) ?? 0;
   const candidateVisa = ((profile.visa_status as string) ?? "").toLowerCase();
+  const candidateEmploymentType = ((profile.work_authorization as string) ?? "").toLowerCase();
   const candidateWorkType = ((profile.work_type as string) ?? "").toLowerCase();
   const candidateLocations = ((profile.preferred_locations as string) ?? "").toLowerCase();
   const candidateRateMin = (profile.desired_salary_min as number) ?? 0;
@@ -575,28 +662,25 @@ function scoreJobsAgainstProfile(extractedJobs: ExtractedJob[], profile: Record<
       rule: "Disqualified if job specifies visa requirements and candidate visa is incompatible",
     };
 
-    // 5. Work Type Match (10%)
-    let workTypeScore = 80;
-    if (candidateWorkType && e.work_type.toLowerCase() !== "unknown") {
-      const jobWT = e.work_type.toLowerCase();
-      if (candidateWorkType.includes(jobWT) || jobWT.includes(candidateWorkType) || jobWT === "remote") {
-        workTypeScore = 100;
-      } else if (jobWT === "hybrid" && (candidateWorkType.includes("remote") || candidateWorkType.includes("hybrid"))) {
-        workTypeScore = 80;
-      } else if (jobWT === "onsite" && candidateWorkType.includes("remote")) {
-        workTypeScore = candidateRelocation ? 50 : 20;
-      } else {
-        workTypeScore = 50;
-      }
-    }
+    // 5. Employment Type Match (10%)
+    const employmentTypeScore = scoreEmploymentTypeMatch(candidateEmploymentType, e.employment_type);
+    breakdown.employment_type_match = {
+      score: employmentTypeScore,
+      candidate_value: (profile.work_authorization as string) ?? "Not specified",
+      job_value: e.employment_type || "Not specified",
+      rule: "Matches candidate employment-type preference against the job's stated employment type.",
+    };
+
+    // 6. Work Type Match (10%)
+    const workTypeScore = scoreWorkTypeMatch(candidateWorkType, e.work_type, candidateRelocation);
     breakdown.work_type_match = {
       score: workTypeScore,
       candidate_value: (profile.work_type as string) ?? "Not specified",
       job_value: e.work_type,
-      rule: "Full score if work type matches preference. Lower if mismatch.",
+      rule: "Full score if work arrangement matches preference. Lower if mismatch.",
     };
 
-    // 6. Location Match (10%)
+    // 7. Location Match (10%)
     let locationScore = 70;
     if (candidateLocations && e.locations.length > 0) {
       const jobLocLower = e.locations.map(l => l.toLowerCase()).join(" ");
@@ -619,7 +703,7 @@ function scoreJobsAgainstProfile(extractedJobs: ExtractedJob[], profile: Record<
       rule: "Full score if location overlaps. Remote jobs score high. Otherwise depends on relocation willingness.",
     };
 
-    // 7. Rate Match (5%)
+    // 8. Rate Match (5%)
     let rateScore = 70;
     if (e.hourly_rate_max != null && candidateRateMin > 0) {
       if (candidateRateMin <= e.hourly_rate_max) {
@@ -644,7 +728,7 @@ function scoreJobsAgainstProfile(extractedJobs: ExtractedJob[], profile: Record<
     };
 
     // Calculate weighted final score
-    const weights = { role_match: 20, skills_match: 25, experience_match: 15, visa_match: 15, work_type_match: 10, location_match: 10, rate_match: 5 };
+    const weights = { role_match: 20, skills_match: 25, experience_match: 15, visa_match: 15, employment_type_match: 10, work_type_match: 10, location_match: 10, rate_match: 5 };
     let totalWeight = 0;
     let weightedSum = 0;
     for (const [key, weight] of Object.entries(weights)) {

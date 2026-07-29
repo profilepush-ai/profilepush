@@ -9,6 +9,26 @@ const corsHeaders = {
 
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
 
+function normalizeEmploymentType(value: string): string {
+  const text = (value ?? "").toLowerCase().trim();
+  if (!text) return "";
+  if (/\b(c2c|corp[- ]to[- ]corp)\b/.test(text)) return "C2C";
+  if (/\b(w2)\b/.test(text)) return "W2";
+  if (/\b(1099)\b/.test(text)) return "1099";
+  if (/\b(any|open to all|any employment type)\b/.test(text)) return "Any";
+  return "";
+}
+
+function extractEmploymentTypeFromDescription(rawDescription: string): string {
+  const text = rawDescription ?? "";
+  const inferred = normalizeEmploymentType(text);
+  if (inferred) return inferred;
+
+  const match = text.match(/\b(c2c|w2|1099)\b/i);
+  if (!match) return "";
+  return normalizeEmploymentType(match[0]);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -81,7 +101,7 @@ Return ONLY a valid JSON object (no markdown):
   "location": "<location or empty string>",
   "skills": ["<skill1>", "<skill2>", ...up to 10 key skills],
   "experience_years": <integer or null>,
-  "employment_type": "<full-time|contract|part-time|internship or empty string>",
+  "employment_type": "<C2C|W2|1099|Any or empty string>",
   "summary": "<2-3 sentence summary of the role and key requirements>"
 }`;
 
@@ -108,6 +128,11 @@ Return ONLY a valid JSON object (no markdown):
       };
 
       const { parsed, usedModel, usageMetadata } = await callGeminiWithMeta(GEMINI_API_KEY, geminiPayload);
+      const inferredEmploymentType = extractEmploymentTypeFromDescription(raw_description);
+      const modelEmploymentType = String(parsed.employment_type ?? "").trim();
+      const normalizedModelEmploymentType = normalizeEmploymentType(modelEmploymentType);
+
+      parsed.employment_type = normalizedModelEmploymentType || inferredEmploymentType || modelEmploymentType || "";
 
       // Log usage
       logUsage(supabase, userId, accountId, "bench-match/parse", usedModel, usageMetadata);

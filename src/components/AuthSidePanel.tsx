@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import Logo from './Logo';
 
 const COUNTER_REFRESH_MS = 30000;
+const FALLBACK_RECRUITER_COUNT = 500;
 
 function formatRecruiterCount(count: number | null): string {
   if (count === null) return '...';
@@ -20,26 +21,36 @@ const RECRUITER_AVATARS = [
 ];
 
 export default function AuthSidePanel() {
-  const [recruiterCount, setRecruiterCount] = useState<number | null>(null);
+  const [recruiterCount, setRecruiterCount] = useState<number | null>(FALLBACK_RECRUITER_COUNT);
 
   useEffect(() => {
     let active = true;
 
     async function loadRecruiterCount() {
-      const { data, error } = await supabase.rpc('get_public_recruiter_count');
+      try {
+        const { data, error } = await supabase.rpc('get_public_recruiter_count');
 
-      if (!active) return;
-      if (error) {
-        console.error('Failed to load recruiter count:', error.message);
-        return;
+        if (!active) return;
+        if (error) {
+          console.error('Failed to load recruiter count:', error.message);
+          setRecruiterCount(FALLBACK_RECRUITER_COUNT);
+          return;
+        }
+
+        const parsed = typeof data === 'number' ? data : Number(data ?? 0);
+        const safeCount = Number.isFinite(parsed) && parsed > 0 ? parsed : FALLBACK_RECRUITER_COUNT;
+        setRecruiterCount(safeCount);
+      } catch (err) {
+        if (!active) return;
+        console.error('Failed to load recruiter count:', err);
+        setRecruiterCount(FALLBACK_RECRUITER_COUNT);
       }
-
-      const parsed = typeof data === 'number' ? data : Number(data ?? 0);
-      setRecruiterCount(Number.isFinite(parsed) ? parsed : 0);
     }
 
-    loadRecruiterCount();
-    const intervalId = window.setInterval(loadRecruiterCount, COUNTER_REFRESH_MS);
+    void loadRecruiterCount();
+    const intervalId = window.setInterval(() => {
+      void loadRecruiterCount();
+    }, COUNTER_REFRESH_MS);
 
     return () => {
       active = false;

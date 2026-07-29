@@ -100,6 +100,8 @@ type BenchStage = keyof typeof STAGE_CFG;
 
 type BenchDatePreset = '15d' | 'today' | 'week' | 'month' | 'all';
 
+export const DEFAULT_BENCH_DATE_PRESET: BenchDatePreset = 'all';
+
 const BENCH_DATE_PRESETS: { id: BenchDatePreset; label: string }[] = [
   { id: '15d', label: 'Last 15 days' },
   { id: 'today', label: 'Today' },
@@ -321,7 +323,7 @@ export default function ProfilesDirectory() {
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Date filter
-  const [datePreset, setDatePreset] = useState<BenchDatePreset>('15d');
+  const [datePreset, setDatePreset] = useState<BenchDatePreset>(DEFAULT_BENCH_DATE_PRESET);
   const [dateOpen, setDateOpen] = useState(false);
   const dateDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -1290,7 +1292,7 @@ export default function ProfilesDirectory() {
   const filteredStats = searchFilteredStats;
 
   const handleSearchChange = (v: string) => setSearch(v);
-  const datePresetLabel = BENCH_DATE_PRESETS.find(p => p.id === datePreset)?.label ?? 'Last 15 days';
+  const datePresetLabel = BENCH_DATE_PRESETS.find(p => p.id === datePreset)?.label ?? 'All time';
   const selectedAssignee = teamMembers.find(m => m.user_id === assignedFilter);
   const assignedFilterLabel = !assignedFilter
     ? 'All assignees'
@@ -1654,7 +1656,7 @@ export default function ProfilesDirectory() {
               { label: 'Target Role', field: 'target_role' as const, type: 'text' as const, options: [] as string[], value: editingMatchHealth ? (matchHealthDraft.target_role ?? '') : (p.target_role ?? '') },
               { label: 'Years Exp', field: 'years_experience' as const, type: 'number' as const, options: [] as string[], value: editingMatchHealth ? (matchHealthDraft.years_experience ?? '') : (p.years_experience != null ? `${p.years_experience} yr${p.years_experience !== 1 ? 's' : ''}` : '') },
               { label: 'Visa Status', field: 'visa_status' as const, type: 'select' as const, options: VISA_OPTIONS, value: editingMatchHealth ? (matchHealthDraft.visa_status ?? '') : (p.visa_status ?? '') },
-              { label: 'Work Authorization', field: 'work_authorization' as const, type: 'select' as const, options: WORK_AUTH_OPTIONS, value: editingMatchHealth ? (matchHealthDraft.work_authorization ?? '') : (p.work_authorization ?? '') },
+              { label: 'Employment Type', field: 'work_authorization' as const, type: 'select' as const, options: WORK_AUTH_OPTIONS, value: editingMatchHealth ? (matchHealthDraft.work_authorization ?? '') : (p.work_authorization ?? '') },
               { label: 'Work Type', field: 'work_type' as const, type: 'select' as const, options: WORK_OPTIONS, value: editingMatchHealth ? (matchHealthDraft.work_type ?? '') : (p.work_type ?? '') },
               { label: 'Preferred Locations', field: 'preferred_locations' as const, type: 'text' as const, options: [] as string[], value: editingMatchHealth ? (matchHealthDraft.preferred_locations ?? '') : (p.preferred_locations ?? '') },
               { label: 'Min Rate', field: 'desired_salary_min' as const, type: 'number' as const, options: [] as string[], value: editingMatchHealth ? (matchHealthDraft.desired_salary_min ?? '') : (p.desired_salary_min != null ? `${Number(p.desired_salary_min).toLocaleString()}` : '') },
@@ -2558,7 +2560,7 @@ export default function ProfilesDirectory() {
                 <MField label="Target Role" required value={preFill.target_role ?? ''} onChange={v => setPreFill(p => ({ ...p, target_role: v }))} placeholder="Senior React Developer" />
                 <MSelect label="Visa Status" required value={preFill.visa_status ?? ''} onChange={v => setPreFill(p => ({ ...p, visa_status: v }))} options={VISA_OPTIONS} />
                 <MSelect label="Work Type" required value={preFill.work_type ?? ''} onChange={v => setPreFill(p => ({ ...p, work_type: v }))} options={WORK_OPTIONS} />
-                <MSelect label="Work Authorization" required value={preFill.work_authorization ?? ''} onChange={v => setPreFill(p => ({ ...p, work_authorization: v }))} options={WORK_AUTH_OPTIONS} />
+                <MSelect label="Employment Type" required value={preFill.work_authorization ?? ''} onChange={v => setPreFill(p => ({ ...p, work_authorization: v }))} options={WORK_AUTH_OPTIONS} />
                 <MField label="Preferred Locations" required value={preFill.preferred_locations ?? ''} onChange={v => setPreFill(p => ({ ...p, preferred_locations: v }))} placeholder="Remote, Austin, NYC" />
                 <MField label="Hourly Rate Min ($)" required value={preFill.desired_salary_min ?? ''} onChange={v => setPreFill(p => ({ ...p, desired_salary_min: v }))} type="number" placeholder="45" />
                 <MField label="Hourly Rate Max ($)" required value={preFill.desired_salary_max ?? ''} onChange={v => setPreFill(p => ({ ...p, desired_salary_max: v }))} type="number" placeholder="75" />
@@ -2872,7 +2874,7 @@ export default function ProfilesDirectory() {
                 <MField label="Portfolio URL"     value={editDraft.portfolio_url ?? ''}   onChange={v => setEditDraft(d => ({ ...d, portfolio_url: v }))}   placeholder="yoursite.com" />
                 <MSelect label="Visa Status"   value={editDraft.visa_status ?? ''}    onChange={v => setEditDraft(d => ({ ...d, visa_status: v }))}    options={VISA_OPTIONS} />
                 <MSelect label="Work Type"     value={editDraft.work_type ?? ''}      onChange={v => setEditDraft(d => ({ ...d, work_type: v }))}      options={WORK_OPTIONS} />
-                <MSelect label="Work Authorization" value={editDraft.work_authorization ?? ''} onChange={v => setEditDraft(d => ({ ...d, work_authorization: v }))} options={WORK_AUTH_OPTIONS} />
+                <MSelect label="Employment Type" value={editDraft.work_authorization ?? ''} onChange={v => setEditDraft(d => ({ ...d, work_authorization: v }))} options={WORK_AUTH_OPTIONS} />
                 <MField label="Preferred Locations" value={editDraft.preferred_locations ?? ''} onChange={v => setEditDraft(d => ({ ...d, preferred_locations: v }))} placeholder="Remote, Austin, NYC" />
                 <MField label="Hourly Rate Min ($)" value={editDraft.desired_salary_min ?? ''} onChange={v => setEditDraft(d => ({ ...d, desired_salary_min: v }))} type="number" placeholder="45" />
                 <MField label="Hourly Rate Max ($)" value={editDraft.desired_salary_max ?? ''} onChange={v => setEditDraft(d => ({ ...d, desired_salary_max: v }))} type="number" placeholder="75" />
