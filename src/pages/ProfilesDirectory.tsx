@@ -596,9 +596,8 @@ export default function ProfilesDirectory() {
   async function saveMatchHealthRules() {
     if (!selectedProfileId) return;
     setSavingMatchHealth(true);
-    const payload = {
+    const payload: Record<string, string | number | null> = {
       target_role: matchHealthDraft.target_role ?? '',
-      priority_skills: matchHealthDraft.priority_skills ?? '',
       years_experience: matchHealthDraft.years_experience != null && matchHealthDraft.years_experience !== '' ? Number(matchHealthDraft.years_experience) : null,
       visa_status: matchHealthDraft.visa_status ?? '',
       work_authorization: matchHealthDraft.work_authorization ?? '',
@@ -607,6 +606,9 @@ export default function ProfilesDirectory() {
       desired_salary_min: matchHealthDraft.desired_salary_min != null && matchHealthDraft.desired_salary_min !== '' ? Number(matchHealthDraft.desired_salary_min) : null,
       desired_salary_max: matchHealthDraft.desired_salary_max != null && matchHealthDraft.desired_salary_max !== '' ? Number(matchHealthDraft.desired_salary_max) : null,
     };
+    if ('priority_skills' in matchHealthDraft) {
+      payload.priority_skills = matchHealthDraft.priority_skills ?? '';
+    }
     const { data, error } = await supabase.from('profiles').update(payload).eq('id', selectedProfileId).select().single();
     if (error) {
       showToast('Failed to update match rules', 'error');
@@ -1850,6 +1852,7 @@ export default function ProfilesDirectory() {
                               onClick={() => {
                                 setMatchHealthDraft({
                                   target_role: p.target_role ?? '',
+                                  priority_skills: p.priority_skills ?? '',
                                   years_experience: p.years_experience ?? null,
                                   visa_status: p.visa_status ?? '',
                                   work_authorization: p.work_authorization ?? '',
