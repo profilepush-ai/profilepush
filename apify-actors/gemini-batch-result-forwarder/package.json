@@ -1,0 +1,13 @@
+{
+  "name": "gemini-batch-result-forwarder",
+  "version": "1.0.0",
+  "description": "Fetches completed Gemini batch output and forwards it to the Gemini Batch Webhook Consumer actor",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "apify": "^3.0.0"
+  }
+}

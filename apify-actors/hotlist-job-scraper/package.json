@@ -3,17 +3,12 @@
   "version": "1.0.0",
   "description": "Fetches active hotlist profiles from Supabase, deduplicates roles+locations via LLM, and triggers job scrapers across all boards",
   "type": "module",
-  "main": "src/main.ts",
+  "main": "src/main.js",
   "scripts": {
-    "start": "apify run",
-    "build": "tsc"
+    "start": "node src/main.js"
   },
   "dependencies": {
-    "apify": "^3.0.0",
-    "@anthropic-ai/sdk": "^0.27.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "@google/genai": "^1.18.0",
+    "apify": "^3.0.0"
   }
 }

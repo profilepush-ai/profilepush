@@ -1,0 +1,124 @@
+{
+  "actorSpecification": 1,
+  "name": "gemini-batch-webhook-consumer",
+  "title": "Gemini Batch Webhook Consumer",
+  "description": "Receives Gemini batch payloads and immediately triggers Supabase board search functions.",
+  "version": "1.0",
+  "input": {
+    "title": "Gemini Batch Consumer Input",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+      "supabase_url": {
+        "title": "Supabase Project URL",
+        "type": "string",
+        "description": "Your Supabase project URL (e.g. https://xyz.supabase.co)",
+        "editor": "textfield"
+      },
+      "supabase_service_role_key": {
+        "title": "Supabase Service Role Key",
+        "type": "string",
+        "description": "Service role key from Supabase -> Settings -> API",
+        "editor": "textfield",
+        "isSecret": true
+      },
+      "gemini_payload": {
+        "title": "Gemini Payload (object)",
+        "type": "object",
+        "description": "Direct Gemini response payload. Supports selected/combinations arrays or raw candidate response shapes.",
+        "editor": "json"
+      },
+      "gemini_payload_json": {
+        "title": "Gemini Payload JSON (string)",
+        "type": "string",
+        "description": "Optional string form when payload arrives as JSON text or JSONL lines.",
+        "editor": "textarea"
+      },
+      "gemini_webhook_secret": {
+        "title": "Expected Gemini Webhook Secret",
+        "type": "string",
+        "description": "Optional shared secret. If provided, payload must include matching value in gemini_secret_field.",
+        "editor": "textfield",
+        "isSecret": true
+      },
+      "gemini_secret_field": {
+        "title": "Payload Secret Field",
+        "type": "string",
+        "description": "Field name in payload containing the secret.",
+        "default": "secret",
+        "editor": "textfield"
+      },
+      "boards": {
+        "title": "Job Boards to Search",
+        "type": "array",
+        "description": "Which boards to trigger (linkedin, dice, indeed, monster, careerbuilder)",
+        "editor": "stringList",
+        "default": ["linkedin", "dice", "indeed", "monster", "careerbuilder"]
+      },
+      "max_results": {
+        "title": "Max Results Per Board Per Search",
+        "type": "integer",
+        "description": "Maximum jobs to fetch per board per role+location combination",
+        "default": 25,
+        "minimum": 5,
+        "maximum": 100,
+        "editor": "number"
+      },
+      "posted_within": {
+        "title": "Posted Within",
+        "type": "string",
+        "description": "Posting freshness mapped into each board payload",
+        "default": "Past 24 hours",
+        "enum": ["Past 24 hours", "Past Week", "Past Month", "Any Time"],
+        "editor": "select"
+      },
+      "linkedin_experience_level": {
+        "title": "LinkedIn Experience Level",
+        "type": "string",
+        "description": "LinkedIn experience level",
+        "default": "Mid-Senior",
+        "editor": "textfield"
+      },
+      "linkedin_employment_type": {
+        "title": "LinkedIn Employment Type",
+        "type": "string",
+        "description": "LinkedIn employment type",
+        "default": "",
+        "editor": "textfield"
+      },
+      "linkedin_work_arrangement": {
+        "title": "LinkedIn Work Arrangement",
+        "type": "string",
+        "description": "LinkedIn work arrangement",
+        "default": "",
+        "editor": "textfield"
+      },
+      "max_combinations": {
+        "title": "Max Role-Location Combinations",
+        "type": "integer",
+        "description": "Cap on combinations consumed from Gemini payload",
+        "default": 90,
+        "minimum": 1,
+        "maximum": 500,
+        "editor": "number"
+      },
+      "max_concurrent": {
+        "title": "Max Concurrent Board Calls",
+        "type": "integer",
+        "description": "Concurrency limit for triggering Supabase board functions",
+        "default": 10,
+        "minimum": 1,
+        "maximum": 30,
+        "editor": "number"
+      },
+      "dry_run": {
+        "title": "Dry Run",
+        "type": "boolean",
+        "description": "If true, parse payload but do not trigger board functions",
+        "default": false,
+        "editor": "checkbox"
+      }
+    },
+    "required": ["supabase_url", "supabase_service_role_key"]
+  }
+}

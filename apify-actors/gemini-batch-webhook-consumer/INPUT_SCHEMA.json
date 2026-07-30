@@ -1,22 +1,22 @@
 {
   "supabase_url": "https://your-project.supabase.co",
   "supabase_service_role_key": "eyJhbGc...",
-  "gemini_api_key": "AIza...",
-  "gemini_models": ["gemini-2.5-flash"],
-  "llm_mode": "always",
-  "gemini_batch_submit_only": true,
-  "gemini_batch_job_name": "",
+  "gemini_payload": {
+    "selected": [
+      { "role": "Java Backend Developer", "location": "Dallas, TX" },
+      { "role": "Data Engineer", "location": "Austin, TX" }
+    ]
+  },
+  "gemini_payload_json": "",
+  "gemini_webhook_secret": "",
+  "gemini_secret_field": "secret",
   "boards": ["linkedin", "dice", "indeed", "monster", "careerbuilder"],
   "max_results": 25,
   "posted_within": "Past 24 hours",
   "linkedin_experience_level": "Mid-Senior",
   "linkedin_employment_type": "",
   "linkedin_work_arrangement": "",
-  "max_roles": 18,
-  "max_locations": 24,
   "max_combinations": 90,
-  "max_locations_per_role": 4,
-  "llm_candidate_cap": 60,
   "max_concurrent": 10,
   "dry_run": false
 }

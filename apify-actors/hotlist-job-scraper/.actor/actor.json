@@ -25,20 +25,45 @@
       "gemini_api_key": {
         "title": "Gemini API Key (optional)",
         "type": "string",
-        "description": "Google Gemini API key for LLM-based role/location normalization. If omitted, raw deduplication is used.",
+        "description": "Google Gemini API key for optional LLM re-ranking. The actor works without this key using deterministic ranking.",
         "editor": "textfield",
         "isSecret": true
+      },
+      "gemini_models": {
+        "title": "Gemini Model Fallback Chain",
+        "type": "array",
+        "description": "Model names to try in order. Only gemini-2.5-flash is supported in the current direct-flow setup.",
+        "editor": "stringList",
+        "default": ["gemini-2.5-flash"]
+      },
+      "llm_mode": {
+        "title": "LLM Mode",
+        "type": "string",
+        "description": "off: deterministic only, always: run Gemini re-ranking.",
+        "default": "always",
+        "enum": ["off", "always"],
+        "editor": "select"
+      },
+      "gemini_batch_submit_only": {
+        "title": "Gemini Batch Submit Only",
+        "type": "boolean",
+        "description": "If true, submit a Gemini Batch job and exit without triggering scrapers.",
+        "default": true,
+        "editor": "checkbox"
+      },
+      "gemini_batch_job_name": {
+        "title": "Gemini Batch Job Name",
+        "type": "string",
+        "description": "Optional pass-through field for observability. This actor does not consume batch output; use gemini-batch-webhook-consumer for payload consumption.",
+        "default": "",
+        "editor": "textfield"
       },
       "boards": {
         "title": "Job Boards to Search",
         "type": "array",
-        "description": "Which job boards to trigger searches on",
+        "description": "Which job boards to trigger searches on (linkedin, dice, indeed, monster, careerbuilder)",
         "editor": "stringList",
-        "default": ["linkedin", "dice", "indeed", "monster", "careerbuilder"],
-        "items": {
-          "type": "string",
-          "enum": ["linkedin", "dice", "indeed", "monster", "careerbuilder"]
-        }
+        "default": ["linkedin", "dice", "indeed", "monster", "careerbuilder"]
       },
       "max_results": {
         "title": "Max Results Per Board Per Search",
@@ -52,10 +77,85 @@
       "posted_within": {
         "title": "Posted Within (LinkedIn)",
         "type": "string",
-        "description": "How recent the job postings should be (LinkedIn field)",
+        "description": "How recent postings should be. Automatically mapped to each board's date field.",
         "default": "Past 24 hours",
         "enum": ["Past 24 hours", "Past Week", "Past Month", "Any Time"],
         "editor": "select"
+      },
+      "linkedin_experience_level": {
+        "title": "LinkedIn Experience Level",
+        "type": "string",
+        "description": "LinkedIn-specific experience level included in every role/location search payload.",
+        "default": "Mid-Senior",
+        "editor": "textfield"
+      },
+      "linkedin_employment_type": {
+        "title": "LinkedIn Employment Type",
+        "type": "string",
+        "description": "LinkedIn employment type field. Keep empty string if no filter is required.",
+        "default": "",
+        "editor": "textfield"
+      },
+      "linkedin_work_arrangement": {
+        "title": "LinkedIn Work Arrangement",
+        "type": "string",
+        "description": "LinkedIn work arrangement field (example: On-site, Hybrid, Remote). Keep empty string for no filter.",
+        "default": "",
+        "editor": "textfield"
+      },
+      "max_roles": {
+        "title": "Max Unique Roles",
+        "type": "integer",
+        "description": "Maximum number of role queries to keep after ranking.",
+        "default": 18,
+        "minimum": 5,
+        "maximum": 100,
+        "editor": "number"
+      },
+      "max_locations": {
+        "title": "Max Unique Locations",
+        "type": "integer",
+        "description": "Maximum number of locations to keep after ranking.",
+        "default": 24,
+        "minimum": 5,
+        "maximum": 120,
+        "editor": "number"
+      },
+      "max_combinations": {
+        "title": "Max Role-Location Combinations",
+        "type": "integer",
+        "description": "Hard cap on final role/location combinations sent to scrapers.",
+        "default": 90,
+        "minimum": 10,
+        "maximum": 500,
+        "editor": "number"
+      },
+      "max_locations_per_role": {
+        "title": "Max Locations Per Role",
+        "type": "integer",
+        "description": "Prevents one role from consuming the entire scraping budget.",
+        "default": 4,
+        "minimum": 1,
+        "maximum": 20,
+        "editor": "number"
+      },
+      "llm_candidate_cap": {
+        "title": "LLM Candidate Cap",
+        "type": "integer",
+        "description": "Maximum candidates per type sent to Gemini for re-ranking.",
+        "default": 60,
+        "minimum": 10,
+        "maximum": 200,
+        "editor": "number"
+      },
+      "max_concurrent": {
+        "title": "Max Concurrent Board Calls",
+        "type": "integer",
+        "description": "Concurrency limit for triggering board scraper functions.",
+        "default": 10,
+        "minimum": 1,
+        "maximum": 30,
+        "editor": "number"
       },
       "dry_run": {
         "title": "Dry Run",

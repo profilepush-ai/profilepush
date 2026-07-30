@@ -1,0 +1,13 @@
+{
+  "name": "gemini-batch-webhook-consumer",
+  "version": "1.0.0",
+  "description": "Consumes Gemini batch payload/webhook input and triggers Supabase board search functions",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "apify": "^3.0.0"
+  }
+}

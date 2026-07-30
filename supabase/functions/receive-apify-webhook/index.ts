@@ -22,6 +22,7 @@ const corsHeaders = {
 };
 
 const APIFY_TOKEN = Deno.env.get("APIFY_TOKEN") ?? "";
+const APIFY_WEBHOOK_SECRET = Deno.env.get("APIFY_WEBHOOK_SECRET") ?? "";
 
 // ── Item mappers ─────────────────────────────────────────────────────────────
 
@@ -328,6 +329,25 @@ Deno.serve(async (req: Request) => {
 
   const url = new URL(req.url);
   const board = url.searchParams.get("board") as Board | null;
+  const providedSecret = url.searchParams.get("secret") ?? "";
+
+  if (!APIFY_TOKEN) {
+    return new Response(JSON.stringify({ error: "Server misconfiguration: APIFY_TOKEN is missing" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (!APIFY_WEBHOOK_SECRET) {
+    return new Response(JSON.stringify({ error: "Server misconfiguration: APIFY_WEBHOOK_SECRET is missing" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (providedSecret !== APIFY_WEBHOOK_SECRET) {
+    return new Response(JSON.stringify({ error: "Unauthorized webhook secret" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   if (!board || !BOARD_TABLES[board]) {
     return new Response(JSON.stringify({ error: "Missing or invalid ?board= param. Use: dice|indeed|linkedin|monster|careerbuilder" }), {
