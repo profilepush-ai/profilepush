@@ -4,7 +4,7 @@ import Logo from '../components/Logo';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
-const LOOM_EMBED_URL = 'https://www.loom.com/embed/e4d985b799fe49f69f4f509d48d0cb98?autoplay=0&hide_owner=true&hide_share=true&hide_title=false&hideEmbedTopBar=false';
+const LOOM_EMBED_URL = 'https://www.loom.com/embed/691b8c9165be4319aed366641e54f159?autoplay=0&hide_owner=true&hide_share=true&hide_title=false&hideEmbedTopBar=false';
 
 async function logOnboardingAction(
   userId: string,

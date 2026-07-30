@@ -370,7 +370,7 @@ export default function LandingPage() {
             <div className="overflow-hidden border border-gray-200 shadow-2xl shadow-gray-300/40 ring-1 ring-gray-100/80 bg-white rounded-xl">
               <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
                 <iframe
-                  src="https://www.loom.com/embed/e4d985b799fe49f69f4f509d48d0cb98"
+                  src="https://www.loom.com/embed/691b8c9165be4319aed366641e54f159"
                   frameBorder="0"
                   allowFullScreen
                   className="absolute top-0 left-0 w-full h-full"
@@ -410,7 +410,7 @@ export default function LandingPage() {
           <div className="overflow-hidden border border-gray-200 shadow-2xl shadow-gray-300/40 ring-1 ring-gray-100/80 bg-white rounded-2xl">
             <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
               <iframe
-                src="https://www.loom.com/embed/e4d985b799fe49f69f4f509d48d0cb98"
+                src="https://www.loom.com/embed/691b8c9165be4319aed366641e54f159"
                 frameBorder="0"
                 allowFullScreen
                 className="absolute top-0 left-0 w-full h-full"
