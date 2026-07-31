@@ -205,6 +205,10 @@ function renderSourceBadgeIcon(source: string, platform?: string | null) {
 function formatScoreLabel(key: string) {
   const labelMap: Record<string, string> = {
     role_match: 'Role',
+    name_match: 'Role',
+    title_match: 'Role',
+    job_title_match: 'Role',
+    candidate_name_match: 'Role',
     skills_match: 'Skills',
     experience_match: 'Experience',
     visa_match: 'Visa',

@@ -14,6 +14,127 @@ const corsHeaders = {
 
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
 
+type ScoreBreakdownValue = number | {
+  score: number;
+  candidate_value?: string;
+  job_value?: string;
+  rule?: string;
+};
+
+type ParsedScorePayload = {
+  score: number;
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  score_breakdown?: Record<string, unknown>;
+  optimization_points: string[];
+};
+
+function extractQuotedItems(arrayBody: string): string[] {
+  const items: string[] = [];
+  const re = /"((?:\\.|[^"\\])*)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(arrayBody)) !== null) {
+    items.push(match[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').trim());
+  }
+  return items.filter(Boolean);
+}
+
+function findBalancedJsonObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+
+  return null;
+}
+
+function parseScorePayloadFromText(rawText: string): ParsedScorePayload | null {
+  const trimmed = rawText.trim();
+  const block = findBalancedJsonObject(trimmed) ?? trimmed;
+
+  try {
+    const parsed = JSON.parse(block) as ParsedScorePayload;
+    return {
+      score: Number(parsed.score ?? 0),
+      summary: String(parsed.summary ?? ''),
+      strengths: Array.isArray(parsed.strengths) ? parsed.strengths.map(v => String(v)).slice(0, 5) : [],
+      gaps: Array.isArray(parsed.gaps) ? parsed.gaps.map(v => String(v)).slice(0, 5) : [],
+      score_breakdown: parsed.score_breakdown,
+      optimization_points: Array.isArray(parsed.optimization_points) ? parsed.optimization_points.map(v => String(v)).slice(0, 3) : [],
+    };
+  } catch {
+    // Fall through to tolerant extraction below.
+  }
+
+  const scoreMatch = block.match(/"score"\s*:\s*(\d{1,3})/i);
+  if (!scoreMatch) return null;
+
+  const summaryMatch = block.match(/"summary"\s*:\s*"((?:\\.|[^"\\])*)/i);
+  const strengthsBody = block.match(/"strengths"\s*:\s*\[([\s\S]*?)\]/i)?.[1] ?? '';
+  const gapsBody = block.match(/"gaps"\s*:\s*\[([\s\S]*?)\]/i)?.[1] ?? '';
+  const optimizationBody = block.match(/"optimization_points"\s*:\s*\[([\s\S]*?)\]/i)?.[1] ?? '';
+
+  return {
+    score: Number(scoreMatch[1]),
+    summary: (summaryMatch?.[1] ?? '').replace(/\\"/g, '"').replace(/\\n/g, ' ').trim(),
+    strengths: extractQuotedItems(strengthsBody).slice(0, 5),
+    gaps: extractQuotedItems(gapsBody).slice(0, 5),
+    score_breakdown: undefined,
+    optimization_points: extractQuotedItems(optimizationBody).slice(0, 3),
+  };
+}
+
+function coerceScoreBreakdown(input: unknown): Record<string, ScoreBreakdownValue> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const out: Record<string, ScoreBreakdownValue> = {};
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      out[key] = Math.max(0, Math.min(100, Math.round(value)));
+      continue;
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const v = value as Record<string, unknown>;
+      const scoreNum = Math.max(0, Math.min(100, Math.round(Number(v.score) || 0)));
+      out[key] = {
+        score: scoreNum,
+        candidate_value: typeof v.candidate_value === "string" ? v.candidate_value : undefined,
+        job_value: typeof v.job_value === "string" ? v.job_value : undefined,
+        rule: typeof v.rule === "string" ? v.rule : undefined,
+      };
+    }
+  }
+  return out;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -161,6 +282,14 @@ Return ONLY a valid JSON object (no markdown):
   "summary": "<1 sentence, max 20 words, describing overall fit>",
   "strengths": ["<3-5 words>"],
   "gaps": ["<3-5 words>"],
+  "score_breakdown": {
+    "role_match": { "score": <0-100>, "candidate_value": "<short>", "job_value": "<short>", "rule": "<short rule>" },
+    "skills_match": { "score": <0-100>, "candidate_value": "<short>", "job_value": "<short>", "rule": "<short rule>" },
+    "experience_match": { "score": <0-100>, "candidate_value": "<short>", "job_value": "<short>", "rule": "<short rule>" },
+    "location_match": { "score": <0-100>, "candidate_value": "<short>", "job_value": "<short>", "rule": "<short rule>" },
+    "work_type_match": { "score": <0-100>, "candidate_value": "<short>", "job_value": "<short>", "rule": "<short rule>" },
+    "employment_type_match": { "score": <0-100>, "candidate_value": "<short>", "job_value": "<short>", "rule": "<short rule>" }
+  },
   "optimization_points": [
     "<specific actionable instruction for the resume rewrite, referencing actual candidate skills vs job requirements, max 25 words>",
     "<second specific actionable instruction, max 25 words>",
@@ -181,9 +310,22 @@ Return ONLY a valid JSON object (no markdown):
             summary:             { type: "STRING" },
             strengths:           { type: "ARRAY", items: { type: "STRING" } },
             gaps:                { type: "ARRAY", items: { type: "STRING" } },
+            score_breakdown: {
+              type: "OBJECT",
+              additionalProperties: {
+                type: "OBJECT",
+                properties: {
+                  score: { type: "NUMBER" },
+                  candidate_value: { type: "STRING" },
+                  job_value: { type: "STRING" },
+                  rule: { type: "STRING" },
+                },
+                required: ["score"],
+              },
+            },
             optimization_points: { type: "ARRAY", items: { type: "STRING" }, minItems: 3, maxItems: 3 },
           },
-          required: ["score", "summary", "strengths", "gaps", "optimization_points"],
+          required: ["score", "summary", "strengths", "gaps", "score_breakdown", "optimization_points"],
         },
       },
     };
@@ -242,20 +384,25 @@ Return ONLY a valid JSON object (no markdown):
     // Find the first part that is NOT a thinking part
     const parts = ((geminiBody?.candidates as Record<string, unknown>[])?.[0]
       ?.content?.parts ?? []) as Record<string, unknown>[];
-    const answerPart = parts.find(p => !p.thought) ?? parts[0] ?? {};
-    const rawText: string = (answerPart.text as string) ?? "";
+    const rawText = parts
+      .filter(p => !p.thought && typeof p.text === 'string')
+      .map(p => String(p.text))
+      .join('\n')
+      .trim();
 
-    const jsonStart = rawText.indexOf("{");
-    const jsonEnd   = rawText.lastIndexOf("}");
-    const jsonText  = jsonStart !== -1 && jsonEnd !== -1
-      ? rawText.slice(jsonStart, jsonEnd + 1)
-      : rawText.trim();
-
-    let parsed: { score: number; summary: string; strengths: string[]; gaps: string[]; optimization_points: string[] };
-    try { parsed = JSON.parse(jsonText); }
-    catch { throw new Error(`Failed to parse Gemini response: ${rawText.slice(0, 200)}`); }
+    const parsed = parseScorePayloadFromText(rawText);
+    if (!parsed) {
+      throw new Error(`Failed to parse Gemini response: ${rawText.slice(0, 300)}`);
+    }
 
     const score  = Math.min(100, Math.max(0, Math.round(Number(parsed.score) || 0)));
+    const optimizationPoints = Array.isArray(parsed.optimization_points)
+      ? parsed.optimization_points.slice(0, 3)
+      : [];
+    while (optimizationPoints.length < 3) {
+      optimizationPoints.push("Refine resume bullets to mirror role requirements with quantified impact.");
+    }
+
     const result = {
       profile_id,
       [jobCol]: jobId,
@@ -263,7 +410,8 @@ Return ONLY a valid JSON object (no markdown):
       summary:             String(parsed.summary ?? ""),
       strengths:           Array.isArray(parsed.strengths)           ? parsed.strengths.slice(0, 5)           : [],
       gaps:                Array.isArray(parsed.gaps)                ? parsed.gaps.slice(0, 5)                : [],
-      optimization_points: Array.isArray(parsed.optimization_points) ? parsed.optimization_points.slice(0, 3) : [],
+      score_breakdown:     coerceScoreBreakdown(parsed.score_breakdown),
+      optimization_points: optimizationPoints,
     };
 
     const { data: saved } = await supabase

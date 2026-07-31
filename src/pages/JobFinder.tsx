@@ -14,6 +14,7 @@ import { PlanModal } from '../components/PlanModal';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import { firstPreferredLocation } from '../lib/location-normalization';
 import { loadRazorpay, TIERS, INR_PER_USD, fmtINR } from '../lib/billing-plan';
+import { buildScoreBreakdownDisplayItems, type RadarScoreBreakdownEntry } from '../lib/radar-match-ui';
 import { supabase } from '../lib/supabase';
 import { throttled, throttledAll } from '../lib/query-throttle';
 import { buildProfileBoardStats } from '../lib/job-finder-stats';
@@ -30,7 +31,7 @@ interface SearchIdea {
   rationale: string;
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// -- Types -------------------------------------------------------------------
 
 interface LinkedInJob {
   id: string;
@@ -60,6 +61,7 @@ interface MatchScore {
   summary: string;
   strengths: string[];
   gaps: string[];
+  score_breakdown?: Record<string, RadarScoreBreakdownEntry | number>;
   cached?: boolean;
   queued?: boolean;
   job_id?: string;
@@ -484,6 +486,204 @@ function scoreColor(score: number): { ring: string; bg: string; text: string; ba
   return { ring: 'ring-red-400', bg: 'bg-red-50', text: 'text-red-600', bar: 'bg-red-400' };
 }
 
+function getScoreBg(score: number) {
+  if (score >= 80) return 'bg-emerald-500';
+  if (score >= 60) return 'bg-sky-500';
+  if (score >= 40) return 'bg-amber-500';
+  return 'bg-red-500';
+}
+
+function getScoreTextClass(score: number) {
+  if (score >= 80) return 'text-emerald-600';
+  if (score >= 60) return 'text-sky-600';
+  if (score >= 40) return 'text-amber-600';
+  return 'text-red-600';
+}
+
+function formatScoreLabel(key: string) {
+  const labelMap: Record<string, string> = {
+    role_match: 'Role',
+    name_match: 'Role',
+    title_match: 'Role',
+    job_title_match: 'Role',
+    candidate_name_match: 'Role',
+    skills_match: 'Skills',
+    experience_match: 'Experience',
+    visa_match: 'Visa',
+    employment_type_match: 'Employment Type',
+    work_type_match: 'Work Type',
+    location_match: 'Location',
+    rate_match: 'Rate',
+  };
+  if (labelMap[key]) return labelMap[key];
+  return key.replace(/_/g, ' ').replace(/\bmatch\b/gi, '').replace(/\s+/g, ' ').trim().replace(/^./, c => c.toUpperCase());
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? '').toLowerCase().trim().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ');
+}
+
+function splitTokens(value: string | null | undefined): string[] {
+  return normalizeText(value)
+    .split(' ')
+    .map(t => t.trim())
+    .filter(t => t.length > 2);
+}
+
+function parseSkills(value: string | null | undefined): string[] {
+  return (value ?? '')
+    .split(/[,/\n]/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function getNormalizedJobLocation(job: PreviewEntry['job']) {
+  if ('location_display' in job && job.location_display) return job.location_display;
+  if ('location' in job && job.location) return job.location;
+  return '';
+}
+
+function inferJobWorkType(job: PreviewEntry['job']): string {
+  const joined = normalizeText([
+    'is_remote' in job && job.is_remote ? 'remote' : '',
+    'work_setting' in job ? (job.work_setting ?? '') : '',
+    'employment_type' in job ? (job.employment_type ?? '') : '',
+    'job_description' in job ? (job.job_description ?? '') : '',
+  ].join(' '));
+  if (joined.includes('remote')) return 'Remote';
+  if (joined.includes('hybrid')) return 'Hybrid';
+  if (joined.includes('onsite') || joined.includes('on site')) return 'Onsite';
+  return 'Not specified';
+}
+
+function inferExperienceYears(job: PreviewEntry['job']): number | null {
+  const text = normalizeText([
+    'job_description' in job ? (job.job_description ?? '') : '',
+    'job_title' in job ? (job.job_title ?? '') : '',
+  ].join(' '));
+  const matches = Array.from(text.matchAll(/(\d{1,2})\s*\+?\s*(?:years|yrs|year)/g));
+  if (!matches.length) return null;
+  return Math.max(...matches.map(m => Number(m[1] ?? 0)).filter(n => Number.isFinite(n)));
+}
+
+function deriveFinderBreakdown(ms: MatchScore, profile: Profile | null, job: PreviewEntry['job']) {
+  if (!profile) return ms.score_breakdown ?? {};
+  if (ms.score_breakdown && Object.keys(ms.score_breakdown).length > 0) return ms.score_breakdown;
+
+  const candidateRole = profile.target_role ?? '';
+  const jobTitle = ('job_title' in job ? (job.job_title ?? '') : '') || '';
+  const roleTokens = splitTokens(candidateRole);
+  const titleTokens = new Set(splitTokens(jobTitle));
+  const roleOverlap = roleTokens.length === 0 ? 0 : roleTokens.filter(t => titleTokens.has(t)).length / roleTokens.length;
+  const roleScore = roleTokens.length ? Math.min(100, Math.round(roleOverlap * 100)) : ms.score;
+
+  const candidateSkills = parseSkills(profile.priority_skills || profile.core_skills || '');
+  const jobSkillPool = new Set(splitTokens(('job_description' in job ? (job.job_description ?? '') : '') + ' ' + jobTitle));
+  const matchedSkills = candidateSkills.filter(skill => splitTokens(skill).some(tok => jobSkillPool.has(tok)));
+  const skillOverlapCount = matchedSkills.length;
+  const skillsScore = candidateSkills.length ? Math.min(100, Math.round((skillOverlapCount / candidateSkills.length) * 100)) : ms.score;
+
+  const candidateYears = Number(profile.years_experience ?? 0) || 0;
+  const requiredYears = inferExperienceYears(job);
+  const experienceScore = requiredYears == null
+    ? 70
+    : candidateYears >= requiredYears
+      ? 100
+      : candidateYears >= requiredYears - 2
+        ? 65
+        : 30;
+
+  const preferredLocations = parseSkills(profile.preferred_locations || '');
+  const jobLocation = getNormalizedJobLocation(job);
+  const jobLocTokens = new Set(splitTokens(jobLocation));
+  const hasRemote = inferJobWorkType(job).toLowerCase() === 'remote';
+  const locationMatches = preferredLocations.filter(loc => splitTokens(loc).some(tok => jobLocTokens.has(tok))).length;
+  const locationScore = hasRemote
+    ? 90
+    : preferredLocations.length
+      ? Math.min(100, Math.round((locationMatches / preferredLocations.length) * 100))
+      : 70;
+
+  return {
+    role_match: {
+      score: roleScore,
+      candidate_value: candidateRole || 'Not specified',
+      job_value: jobTitle || 'Not specified',
+      rule: 'Compares candidate target role against job title keywords.',
+    },
+    skills_match: {
+      score: skillsScore,
+      candidate_value: candidateSkills.join(', ') || 'Not specified',
+      job_value: matchedSkills.length ? matchedSkills.join(', ') : 'No strong overlap found',
+      rule: 'Measures overlap between candidate priority skills and job requirements.',
+    },
+    experience_match: {
+      score: experienceScore,
+      candidate_value: candidateYears ? `${candidateYears} years` : 'Not specified',
+      job_value: requiredYears != null ? `${requiredYears}+ years required` : 'Not specified',
+      rule: 'Scores candidate experience against years requested in the job post.',
+    },
+    location_match: {
+      score: locationScore,
+      candidate_value: (profile.preferred_locations ?? '').trim() || 'Not specified',
+      job_value: jobLocation || 'Not specified',
+      rule: 'Checks preferred locations against job location, with remote-friendly scoring.',
+    },
+  } as Record<string, RadarScoreBreakdownEntry | number>;
+}
+
+function ScoreBreakdownTable({
+  items,
+  detailMap,
+  showComparison = false,
+}: {
+  items: Array<{ key: string; score: number }>;
+  detailMap: Record<string, { candidate_value: string; job_value: string; rule: string } | undefined>;
+  showComparison?: boolean;
+}) {
+  if (!items.length) return null;
+
+  const sortedItems = [...items].sort((a, b) => b.score - a.score);
+  const hiddenInlineRuleKeys = new Set(['role_match', 'name_match', 'title_match', 'job_title_match', 'candidate_name_match']);
+  const rows = showComparison
+    ? sortedItems
+    : sortedItems.filter(item => !hiddenInlineRuleKeys.has(item.key));
+
+  if (!rows.length) return null;
+  const gridClass = showComparison
+    ? 'grid-cols-[0.65fr_1fr_1.25fr_1.25fr]'
+    : 'grid-cols-[0.65fr_1.35fr_1.6fr]';
+  const cellClass = 'px-3 py-2 text-[11px]';
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+      <div className={showComparison ? 'overflow-x-auto' : ''}>
+        <div className={showComparison ? 'min-w-[38rem]' : 'w-full'}>
+          <div className={`grid ${gridClass} gap-2 border-b border-slate-100 bg-slate-50 px-2 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500`}>
+            <span>Score</span>
+            <span>Rule</span>
+            {showComparison && <span>Candidate</span>}
+            <span>Job</span>
+          </div>
+          <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
+            {rows.map(item => {
+              const detail = detailMap[item.key];
+              return (
+                <div key={item.key} className={`grid ${gridClass} gap-2 ${cellClass} text-slate-700`}>
+                  <div className={`font-semibold tabular-nums ${getScoreTextClass(item.score)}`}>{Math.round(item.score)}</div>
+                  <div className="font-medium text-slate-800 break-words whitespace-pre-wrap">{formatScoreLabel(item.key)}</div>
+                  {showComparison && <div className="min-w-0 text-slate-600 break-words whitespace-pre-wrap">{detail?.candidate_value || '—'}</div>}
+                  <div className="min-w-0 text-slate-600 break-all whitespace-pre-wrap">{detail?.job_value || '—'}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function cardClass(id: string, isSaved: boolean, ms: MatchScore | undefined, previewedIds: Set<string>, defaultHover: string): string {
   if (ms && !ms.queued) {
     const s = ms.score;
@@ -508,12 +708,16 @@ function sanitizeJobHtml(raw: string): string {
 }
 
 function ScoreBadge({
-  ms, colors, opened, onToggle,
+  ms, colors, opened, onToggle, profile, job, showComparison = false, variant = 'inline',
 }: {
   ms: MatchScore;
   colors: { ring: string; bg: string; text: string; bar: string };
   opened: boolean;
   onToggle: () => void;
+  profile?: Profile | null;
+  job?: PreviewEntry['job'];
+  showComparison?: boolean;
+  variant?: 'inline' | 'popup';
 }) {
   if (ms.queued) {
     return (
@@ -524,30 +728,51 @@ function ScoreBadge({
     );
   }
   const label = ms.score >= 80 ? 'Strong match' : ms.score >= 60 ? 'Good match' : ms.score >= 40 ? 'Moderate' : 'Weak match';
+  const breakdownSource = job ? deriveFinderBreakdown(ms, profile ?? null, job) : undefined;
+  const breakdownDisplay = breakdownSource
+    ? buildScoreBreakdownDisplayItems(
+        breakdownSource,
+        profile ? { work_authorization: profile.work_authorization, work_type: profile.work_type } : undefined,
+        job ? { employment_type: ('employment_type' in job ? (job.employment_type ?? null) : null), work_type: inferJobWorkType(job) } : undefined,
+      )
+    : [];
+  const detailMap = Object.fromEntries(breakdownDisplay.map(item => [item.key, item.detail])) as Record<string, { candidate_value: string; job_value: string; rule: string } | undefined>;
+  const isPopup = variant === 'popup';
+
   return (
-    <div className="mb-2">
+    <div className={isPopup ? '' : 'mb-2'}>
       <button
         onClick={onToggle}
-        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg ring-1 ${colors.ring} ${colors.bg} transition-all`}
+        className={isPopup
+          ? 'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-slate-200 bg-white transition-all hover:bg-slate-50'
+          : `w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg ring-1 ${colors.ring} ${colors.bg} transition-all`}
       >
-        <span className={`text-sm font-bold leading-none tabular-nums ${colors.text}`}>{ms.score}</span>
-        <div className="flex-1 h-1 bg-white/60 rounded-full overflow-hidden">
+        <span className={isPopup ? `text-sm font-semibold leading-none tabular-nums ${getScoreTextClass(ms.score)}` : `text-sm font-bold leading-none tabular-nums ${colors.text}`}>{ms.score}</span>
+        <div className={isPopup ? 'flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden' : 'flex-1 h-1 bg-white/60 rounded-full overflow-hidden'}>
           <div className={`h-full rounded-full ${colors.bar}`} style={{ width: `${ms.score}%` }} />
         </div>
-        <span className={`text-[9px] font-semibold ${colors.text} opacity-70 whitespace-nowrap`}>{label}</span>
+        <span className={isPopup ? `text-[10px] font-medium ${getScoreTextClass(ms.score)} whitespace-nowrap` : `text-[9px] font-semibold ${colors.text} opacity-70 whitespace-nowrap`}>{label}</span>
       </button>
       {opened && (
-        <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 space-y-2">
-          <p className="text-[11px] text-gray-700 leading-relaxed line-clamp-2">{ms.summary}</p>
-          <div className="flex flex-wrap gap-1">
-            {ms.strengths.slice(0, 2).map((s, i) => (
-              <span key={i} className="text-[9px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded-full truncate max-w-[130px]">{s}</span>
-            ))}
-            {ms.gaps.slice(0, 1).map((g, i) => (
-              <span key={i} className="text-[9px] bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded-full truncate max-w-[130px]">{g}</span>
-            ))}
-          </div>
-          {ms.cached && <span className="text-[9px] text-gray-400 block">cached</span>}
+        <div className={isPopup ? 'mt-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 space-y-2' : 'mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 space-y-2'}>
+          {ms.summary && <p className={isPopup ? 'text-[11px] text-slate-600 leading-relaxed' : 'text-[11px] text-gray-700 leading-relaxed'}>{ms.summary}</p>}
+          {breakdownDisplay.length > 0 ? (
+            <ScoreBreakdownTable
+              items={breakdownDisplay.map(item => ({ key: item.key, score: item.score }))}
+              detailMap={detailMap}
+              showComparison={showComparison}
+            />
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {ms.strengths.slice(0, 2).map((s, i) => (
+                <span key={i} className="text-[9px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded-full truncate max-w-[130px]">{s}</span>
+              ))}
+              {ms.gaps.slice(0, 1).map((g, i) => (
+                <span key={i} className="text-[9px] bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded-full truncate max-w-[130px]">{g}</span>
+              ))}
+            </div>
+          )}
+          {ms.cached && <span className="text-[9px] text-slate-400 block">cached</span>}
         </div>
       )}
     </div>
@@ -566,7 +791,7 @@ const PREVIEW_ACCENT: Record<string, { applyBtn: string; companyText: string; ic
 
 function JobPreviewModal({
   entry, ms, scoringJobId, expandedScore, setExpandedScore,
-  onScore, onSave, isSaved, isSaving, onClose, onAddToQueue, addingToQueue, addedToQueue,
+  onScore, onSave, isSaved, isSaving, onClose, onAddToQueue, addingToQueue, addedToQueue, profile,
 }: {
   entry: PreviewEntry;
   ms: MatchScore | null;
@@ -581,6 +806,7 @@ function JobPreviewModal({
   onAddToQueue?: () => void;
   addingToQueue?: boolean;
   addedToQueue?: boolean;
+  profile?: Profile | null;
 }) {
   const { source, job } = entry;
   const jobId = job.id;
@@ -703,7 +929,16 @@ function JobPreviewModal({
         {/* Match score strip */}
         <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 shrink-0">
           {ms ? (
-            <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === jobId} onToggle={() => setExpandedScore(prev => prev === jobId ? null : jobId)} />
+            <ScoreBadge
+              ms={ms}
+              colors={colors!}
+              opened={expandedScore === jobId}
+              onToggle={() => setExpandedScore(prev => prev === jobId ? null : jobId)}
+              profile={profile}
+              job={job}
+              showComparison
+              variant="popup"
+            />
           ) : (
             <button
               onClick={onScore}
@@ -762,7 +997,7 @@ function JobPreviewModal({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-100 flex items-center gap-2 shrink-0">
+        <div className="p-4 border-t border-gray-100 flex flex-wrap items-center gap-2 shrink-0">
           {applyUrl && (
             <a
               href={applyUrl}
@@ -773,18 +1008,26 @@ function JobPreviewModal({
               Apply Now <ExternalLink size={13} />
             </a>
           )}
-          <button
-            onClick={onSave}
-            disabled={isSaved || isSaving}
-            className={`flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl border transition-all ${isSaved ? 'bg-green-50 border-green-200 text-green-600 cursor-default' : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50'}`}
-          >
-            {isSaving ? <LogoSpinner size={13} /> : isSaved ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
-            {isSaved ? 'Added' : 'Add to Submission Queue'}
-          </button>
+
+          {isSaved ? (
+            <span className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl bg-green-50 border border-green-200 text-green-600 cursor-default">
+              <BookmarkCheck size={13} /> Added
+            </span>
+          ) : (
+            <button
+              onClick={onSave}
+              disabled={isSaving}
+              className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl border border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all disabled:opacity-50"
+            >
+              {isSaving ? <LogoSpinner size={13} /> : <Bookmark size={13} />}
+              Submission Queue
+            </button>
+          )}
+
           {onAddToQueue && (
             addedToQueue ? (
               <span className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 cursor-default">
-                <Download size={13} /> Added to Resume AI Queue
+                <CheckCircle2 size={13} /> Queued
               </span>
             ) : (
               <button
@@ -793,13 +1036,11 @@ function JobPreviewModal({
                 className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl border border-violet-200 bg-violet-50 text-violet-600 hover:bg-violet-100 hover:border-violet-300 transition-all disabled:opacity-50"
               >
                 {addingToQueue ? <LogoSpinner size={13} /> : <PenLine size={13} />}
-                {addingToQueue ? 'Adding...' : 'Add to Resume AI Queue'}
+                Resume AI Queue
               </button>
             )
           )}
-          <button onClick={onClose} className="ml-auto text-sm text-gray-400 hover:text-gray-600 px-3 py-2 rounded-xl hover:bg-gray-50 transition-colors">
-            Close
-          </button>
+
         </div>
       </div>
     </div>
@@ -1570,6 +1811,46 @@ export default function JobFinder() {
         created_at: j.created_at,
         raw: j,
       }));
+
+      const boardJobColumn: Record<'linkedin' | 'dice' | 'indeed' | 'monster', string> = {
+        linkedin: 'linkedin_job_id',
+        dice: 'dice_job_id',
+        indeed: 'indeed_job_id',
+        monster: 'monster_job_id',
+      };
+      const jobIds = normalized.map(job => job.id).filter(Boolean);
+
+      if (jobIds.length > 0) {
+        const scoreColumn = boardJobColumn[board];
+        const { data: existingScores } = await throttled(() =>
+          supabase
+            .from('job_match_scores')
+            .select(`score, summary, strengths, gaps, score_breakdown, ${scoreColumn}`)
+            .eq('profile_id', selectedProfile.id)
+            .in(scoreColumn, jobIds)
+        );
+
+        if (existingScores && existingScores.length > 0) {
+          const hydrated = (existingScores as Array<Record<string, any>>).reduce<Record<string, MatchScore>>((acc, row) => {
+            const jobId = row[scoreColumn] as string | null;
+            if (!jobId) return acc;
+            acc[jobId] = {
+              score: Number(row.score ?? 0),
+              summary: String(row.summary ?? ''),
+              strengths: Array.isArray(row.strengths) ? row.strengths : [],
+              gaps: Array.isArray(row.gaps) ? row.gaps : [],
+              score_breakdown: row.score_breakdown && typeof row.score_breakdown === 'object' ? row.score_breakdown : undefined,
+              cached: true,
+            };
+            return acc;
+          }, {});
+
+          if (Object.keys(hydrated).length > 0) {
+            setMatchScores(prev => ({ ...prev, ...hydrated }));
+          }
+        }
+      }
+
       setHistoryJobs(prev => {
         const existing = prev.filter(h => h.source !== board);
         return [...existing, ...normalized].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -3339,7 +3620,7 @@ export default function JobFinder() {
                     {job.location && <p className="flex items-center gap-1 text-[10px] text-gray-400"><MapPin size={8} />{job.location}</p>}
                     {job.salary_range && <p className="flex items-center gap-1 text-[10px] text-gray-400"><DollarSign size={8} />{job.salary_range}</p>}
                     {job.time_posted && <p className="flex items-center gap-1 text-[10px] text-gray-400"><Clock size={8} />{job.time_posted}</p>}
-                    {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} />}
+                    {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} profile={selectedProfile} job={job} />}
                     <div className="flex items-center gap-1 pt-1 border-t border-gray-100 mt-auto">
                       {(job.apply_url || job.job_url) && (
                         <a href={job.apply_url ?? job.job_url ?? '#'} target="_blank" rel="noopener noreferrer" title="Apply"
@@ -3347,12 +3628,20 @@ export default function JobFinder() {
                       )}
                       <button onClick={() => { setPreviewedIds(p => { const n = new Set(p); n.add(job.id); return n; }); setPreviewJob({ source: 'linkedin', job }); }} title="Preview"
                         className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"><Eye size={11} /></button>
-                      {!ms && (
-                        <button onClick={() => getMatchScore(job)} disabled={!!scoringJobId} title="AI Match"
-                          className="p-1 rounded-lg text-gray-500 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-40 transition-colors">
-                          {isScoring ? <LogoSpinner size={11} /> : <Sparkles size={11} />}
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          if (ms && !ms.queued) {
+                            setExpandedScore(prev => prev === job.id ? null : job.id);
+                            return;
+                          }
+                          getMatchScore(job);
+                        }}
+                        disabled={!!scoringJobId && scoringJobId !== job.id}
+                        title={ms && !ms.queued ? 'Matched - view breakdown' : 'AI Match'}
+                        className={`p-1 rounded-lg disabled:opacity-40 transition-colors ${ms && !ms.queued ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
+                      >
+                        {isScoring ? <LogoSpinner size={11} /> : ms && !ms.queued ? <Check size={11} /> : <Sparkles size={11} />}
+                      </button>
                       <button onClick={() => saveLinkedInJob(job)} disabled={isSaved || isSaving} title={isSaved ? 'In Queue' : 'Add to Queue'}
                         className={`p-1 rounded-lg transition-colors ${isSaved ? 'text-green-600 bg-green-50 cursor-default' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}>
                         {isSaving ? <LogoSpinner size={11} /> : isSaved ? <BookmarkCheck size={11} /> : <Bookmark size={11} />}
@@ -3420,7 +3709,7 @@ export default function JobFinder() {
                               </div>
                               {job.location && <p className="flex items-center gap-1 text-[10px] text-gray-400"><MapPin size={8} />{job.location}</p>}
                               {job.salary_range && <p className="flex items-center gap-1 text-[10px] text-gray-400"><DollarSign size={8} />{job.salary_range}</p>}
-                              {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} />}
+                              {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} profile={selectedProfile} job={job} />}
                               <div className="flex items-center gap-1 pt-1 border-t border-gray-100 mt-auto">
                                 {(job.apply_url || job.job_url) && (
                                   <a href={job.apply_url ?? job.job_url ?? '#'} target="_blank" rel="noopener noreferrer" title="Apply"
@@ -3428,12 +3717,20 @@ export default function JobFinder() {
                                 )}
                                 <button onClick={() => { setPreviewedIds(p => { const n = new Set(p); n.add(job.id); return n; }); setPreviewJob({ source: 'linkedin', job }); }} title="Preview"
                                   className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"><Eye size={11} /></button>
-                                {!ms && (
-                                  <button onClick={() => getMatchScore(job)} disabled={!!scoringJobId} title="AI Match"
-                                    className="p-1 rounded-lg text-gray-500 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-40 transition-colors">
-                                    {scoringJobId === job.id ? <LogoSpinner size={11} /> : <Sparkles size={11} />}
-                                  </button>
-                                )}
+                                <button
+                                  onClick={() => {
+                                    if (ms && !ms.queued) {
+                                      setExpandedScore(prev => prev === job.id ? null : job.id);
+                                      return;
+                                    }
+                                    getMatchScore(job);
+                                  }}
+                                  disabled={!!scoringJobId && scoringJobId !== job.id}
+                                  title={ms && !ms.queued ? 'Matched - view breakdown' : 'AI Match'}
+                                  className={`p-1 rounded-lg disabled:opacity-40 transition-colors ${ms && !ms.queued ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
+                                >
+                                  {scoringJobId === job.id ? <LogoSpinner size={11} /> : ms && !ms.queued ? <Check size={11} /> : <Sparkles size={11} />}
+                                </button>
                                 <button onClick={() => saveLinkedInJob(job)} disabled={isSaved || isSaving} title={isSaved ? 'In Queue' : 'Add to Queue'}
                                   className={`p-1 rounded-lg transition-colors ${isSaved ? 'text-green-600 bg-green-50 cursor-default' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}>
                                   {isSaving ? <LogoSpinner size={11} /> : isSaved ? <BookmarkCheck size={11} /> : <Bookmark size={11} />}
@@ -3590,7 +3887,7 @@ export default function JobFinder() {
                     {job.location && <p className="flex items-center gap-1 text-[10px] text-gray-400"><MapPin size={8} />{job.location}</p>}
                     {job.salary_range && <p className="flex items-center gap-1 text-[10px] text-gray-400"><DollarSign size={8} />{job.salary_range}</p>}
                     {timeAgo(job.posted) && <p className="flex items-center gap-1 text-[10px] text-gray-400"><Clock size={8} />{timeAgo(job.posted)}</p>}
-                    {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} />}
+                    {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} profile={selectedProfile} job={job} />}
                     <div className="flex items-center gap-1 pt-1 border-t border-gray-100 mt-auto">
                       {job.job_url && (
                         <a href={job.job_url} target="_blank" rel="noopener noreferrer" title="Apply"
@@ -3598,12 +3895,20 @@ export default function JobFinder() {
                       )}
                       <button onClick={() => { setPreviewedIds(p => { const n = new Set(p); n.add(job.id); return n; }); setPreviewJob({ source: 'dice', job }); }} title="Preview"
                         className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"><Eye size={11} /></button>
-                      {!ms && (
-                        <button onClick={() => getDiceMatchScore(job)} disabled={!!scoringJobId} title="AI Match"
-                          className="p-1 rounded-lg text-gray-500 hover:bg-orange-50 hover:text-orange-600 disabled:opacity-40 transition-colors">
-                          {isScoring ? <LogoSpinner size={11} /> : <Sparkles size={11} />}
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          if (ms && !ms.queued) {
+                            setExpandedScore(prev => prev === job.id ? null : job.id);
+                            return;
+                          }
+                          getDiceMatchScore(job);
+                        }}
+                        disabled={!!scoringJobId && scoringJobId !== job.id}
+                        title={ms && !ms.queued ? 'Matched - view breakdown' : 'AI Match'}
+                        className={`p-1 rounded-lg disabled:opacity-40 transition-colors ${ms && !ms.queued ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-gray-500 hover:bg-orange-50 hover:text-orange-600'}`}
+                      >
+                        {isScoring ? <LogoSpinner size={11} /> : ms && !ms.queued ? <Check size={11} /> : <Sparkles size={11} />}
+                      </button>
                       <button onClick={() => saveDiceJob(job)} disabled={isSaved || isSaving} title={isSaved ? 'In Queue' : 'Add to Queue'}
                         className={`p-1 rounded-lg transition-colors ${isSaved ? 'text-green-600 bg-green-50 cursor-default' : 'text-gray-500 hover:bg-orange-50 hover:text-orange-600'}`}>
                         {isSaving ? <LogoSpinner size={11} /> : isSaved ? <BookmarkCheck size={11} /> : <Bookmark size={11} />}
@@ -3671,7 +3976,7 @@ export default function JobFinder() {
                               </div>
                               {job.location && <p className="flex items-center gap-1 text-[10px] text-gray-400"><MapPin size={8} />{job.location}</p>}
                               {job.salary_range && <p className="flex items-center gap-1 text-[10px] text-gray-400"><DollarSign size={8} />{job.salary_range}</p>}
-                              {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} />}
+                              {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} profile={selectedProfile} job={job} />}
                               <div className="flex items-center gap-1 pt-1 border-t border-gray-100 mt-auto">
                                 {job.job_url && (
                                   <a href={job.job_url} target="_blank" rel="noopener noreferrer" title="Apply"
@@ -3679,12 +3984,20 @@ export default function JobFinder() {
                                 )}
                                 <button onClick={() => { setPreviewedIds(p => { const n = new Set(p); n.add(job.id); return n; }); setPreviewJob({ source: 'dice', job }); }} title="Preview"
                                   className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"><Eye size={11} /></button>
-                                {!ms && (
-                                  <button onClick={() => getDiceMatchScore(job)} disabled={!!scoringJobId} title="AI Match"
-                                    className="p-1 rounded-lg text-gray-500 hover:bg-orange-50 hover:text-orange-600 disabled:opacity-40 transition-colors">
-                                    {scoringJobId === job.id ? <LogoSpinner size={11} /> : <Sparkles size={11} />}
-                                  </button>
-                                )}
+                                <button
+                                  onClick={() => {
+                                    if (ms && !ms.queued) {
+                                      setExpandedScore(prev => prev === job.id ? null : job.id);
+                                      return;
+                                    }
+                                    getDiceMatchScore(job);
+                                  }}
+                                  disabled={!!scoringJobId && scoringJobId !== job.id}
+                                  title={ms && !ms.queued ? 'Matched - view breakdown' : 'AI Match'}
+                                  className={`p-1 rounded-lg disabled:opacity-40 transition-colors ${ms && !ms.queued ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-gray-500 hover:bg-orange-50 hover:text-orange-600'}`}
+                                >
+                                  {scoringJobId === job.id ? <LogoSpinner size={11} /> : ms && !ms.queued ? <Check size={11} /> : <Sparkles size={11} />}
+                                </button>
                                 <button onClick={() => saveDiceJob(job)} disabled={isSaved || isSaving} title={isSaved ? 'In Queue' : 'Add to Queue'}
                                   className={`p-1 rounded-lg transition-colors ${isSaved ? 'text-green-600 bg-green-50 cursor-default' : 'text-gray-500 hover:bg-orange-50 hover:text-orange-600'}`}>
                                   {isSaving ? <LogoSpinner size={11} /> : isSaved ? <BookmarkCheck size={11} /> : <Bookmark size={11} />}
@@ -3836,7 +4149,7 @@ export default function JobFinder() {
                     {job.location_display && <p className="flex items-center gap-1 text-[10px] text-gray-400"><MapPin size={8} />{job.location_display}</p>}
                     {job.salary_display && <p className="flex items-center gap-1 text-[10px] text-gray-400"><DollarSign size={8} />{job.salary_display}</p>}
                     {timeAgo(job.date_published) && <p className="flex items-center gap-1 text-[10px] text-gray-400"><Clock size={8} />{timeAgo(job.date_published)}</p>}
-                    {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} />}
+                    {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} profile={selectedProfile} job={job} />}
                     <div className="flex items-center gap-1 pt-1 border-t border-gray-100 mt-auto">
                       {(job.job_url ?? job.apply_url) && (
                         <a href={job.job_url ?? job.apply_url ?? '#'} target="_blank" rel="noopener noreferrer" title="Apply"
@@ -3844,12 +4157,20 @@ export default function JobFinder() {
                       )}
                       <button onClick={() => { setPreviewedIds(p => { const n = new Set(p); n.add(job.id); return n; }); setPreviewJob({ source: 'indeed', job }); }} title="Preview"
                         className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"><Eye size={11} /></button>
-                      {!ms && (
-                        <button onClick={() => getIndeedMatchScore(job)} disabled={!!scoringJobId} title="AI Match"
-                          className="p-1 rounded-lg text-gray-500 hover:bg-violet-50 hover:text-violet-600 disabled:opacity-40 transition-colors">
-                          {isScoring ? <LogoSpinner size={11} /> : <Sparkles size={11} />}
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          if (ms && !ms.queued) {
+                            setExpandedScore(prev => prev === job.id ? null : job.id);
+                            return;
+                          }
+                          getIndeedMatchScore(job);
+                        }}
+                        disabled={!!scoringJobId && scoringJobId !== job.id}
+                        title={ms && !ms.queued ? 'Matched - view breakdown' : 'AI Match'}
+                        className={`p-1 rounded-lg disabled:opacity-40 transition-colors ${ms && !ms.queued ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-gray-500 hover:bg-violet-50 hover:text-violet-600'}`}
+                      >
+                        {isScoring ? <LogoSpinner size={11} /> : ms && !ms.queued ? <Check size={11} /> : <Sparkles size={11} />}
+                      </button>
                       <button onClick={() => saveIndeedJob(job)} disabled={isSaved || isSaving} title={isSaved ? 'In Queue' : 'Add to Queue'}
                         className={`p-1 rounded-lg transition-colors ${isSaved ? 'text-green-600 bg-green-50 cursor-default' : 'text-gray-500 hover:bg-violet-50 hover:text-violet-600'}`}>
                         {isSaving ? <LogoSpinner size={11} /> : isSaved ? <BookmarkCheck size={11} /> : <Bookmark size={11} />}
@@ -3917,7 +4238,7 @@ export default function JobFinder() {
                               </div>
                               {job.location_display && <p className="flex items-center gap-1 text-[10px] text-gray-400"><MapPin size={8} />{job.location_display}</p>}
                               {job.salary_display && <p className="flex items-center gap-1 text-[10px] text-gray-400"><DollarSign size={8} />{job.salary_display}</p>}
-                              {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} />}
+                              {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} profile={selectedProfile} job={job} />}
                               <div className="flex items-center gap-1 pt-1 border-t border-gray-100 mt-auto">
                                 {(job.job_url ?? job.apply_url) && (
                                   <a href={job.job_url ?? job.apply_url ?? '#'} target="_blank" rel="noopener noreferrer" title="Apply"
@@ -3925,12 +4246,20 @@ export default function JobFinder() {
                                 )}
                                 <button onClick={() => { setPreviewedIds(p => { const n = new Set(p); n.add(job.id); return n; }); setPreviewJob({ source: 'indeed', job }); }} title="Preview"
                                   className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"><Eye size={11} /></button>
-                                {!ms && (
-                                  <button onClick={() => getIndeedMatchScore(job)} disabled={!!scoringJobId} title="AI Match"
-                                    className="p-1 rounded-lg text-gray-500 hover:bg-violet-50 hover:text-violet-600 disabled:opacity-40 transition-colors">
-                                    {scoringJobId === job.id ? <LogoSpinner size={11} /> : <Sparkles size={11} />}
-                                  </button>
-                                )}
+                                <button
+                                  onClick={() => {
+                                    if (ms && !ms.queued) {
+                                      setExpandedScore(prev => prev === job.id ? null : job.id);
+                                      return;
+                                    }
+                                    getIndeedMatchScore(job);
+                                  }}
+                                  disabled={!!scoringJobId && scoringJobId !== job.id}
+                                  title={ms && !ms.queued ? 'Matched - view breakdown' : 'AI Match'}
+                                  className={`p-1 rounded-lg disabled:opacity-40 transition-colors ${ms && !ms.queued ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-gray-500 hover:bg-violet-50 hover:text-violet-600'}`}
+                                >
+                                  {scoringJobId === job.id ? <LogoSpinner size={11} /> : ms && !ms.queued ? <Check size={11} /> : <Sparkles size={11} />}
+                                </button>
                                 <button onClick={() => saveIndeedJob(job)} disabled={isSaved || isSaving} title={isSaved ? 'In Queue' : 'Add to Queue'}
                                   className={`p-1 rounded-lg transition-colors ${isSaved ? 'text-green-600 bg-green-50 cursor-default' : 'text-gray-500 hover:bg-violet-50 hover:text-violet-600'}`}>
                                   {isSaving ? <LogoSpinner size={11} /> : isSaved ? <BookmarkCheck size={11} /> : <Bookmark size={11} />}
@@ -4082,7 +4411,7 @@ export default function JobFinder() {
                     {job.location_display && <p className="flex items-center gap-1 text-[10px] text-gray-400"><MapPin size={8} />{job.location_display}</p>}
                     {(job.salary_min || job.salary_max) && <p className="flex items-center gap-1 text-[10px] text-gray-400"><DollarSign size={8} />{job.salary_min && job.salary_max ? `${job.salary_min}–${job.salary_max}` : (job.salary_min ?? job.salary_max)}</p>}
                     {(job.date_recency || timeAgo(job.date_published)) && <p className="flex items-center gap-1 text-[10px] text-gray-400"><Clock size={8} />{job.date_recency ?? timeAgo(job.date_published)}</p>}
-                    {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} />}
+                    {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} profile={selectedProfile} job={job} />}
                     <div className="flex items-center gap-1 pt-1 border-t border-gray-100 mt-auto">
                       {job.apply_url && (
                         <a href={job.apply_url} target="_blank" rel="noopener noreferrer" title="Apply"
@@ -4090,12 +4419,20 @@ export default function JobFinder() {
                       )}
                       <button onClick={() => { setPreviewedIds(p => { const n = new Set(p); n.add(job.id); return n; }); setPreviewJob({ source: 'monster', job }); }} title="Preview"
                         className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"><Eye size={11} /></button>
-                      {!ms && (
-                        <button onClick={() => getMonsterMatchScore(job)} disabled={!!scoringJobId} title="AI Match"
-                          className="p-1 rounded-lg text-gray-500 hover:bg-green-50 hover:text-green-600 disabled:opacity-40 transition-colors">
-                          {isScoring ? <LogoSpinner size={11} /> : <Sparkles size={11} />}
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          if (ms && !ms.queued) {
+                            setExpandedScore(prev => prev === job.id ? null : job.id);
+                            return;
+                          }
+                          getMonsterMatchScore(job);
+                        }}
+                        disabled={!!scoringJobId && scoringJobId !== job.id}
+                        title={ms && !ms.queued ? 'Matched - view breakdown' : 'AI Match'}
+                        className={`p-1 rounded-lg disabled:opacity-40 transition-colors ${ms && !ms.queued ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-gray-500 hover:bg-green-50 hover:text-green-600'}`}
+                      >
+                        {isScoring ? <LogoSpinner size={11} /> : ms && !ms.queued ? <Check size={11} /> : <Sparkles size={11} />}
+                      </button>
                       <button onClick={() => saveMonsterJob(job)} disabled={isSaved || isSaving} title={isSaved ? 'In Queue' : 'Add to Queue'}
                         className={`p-1 rounded-lg transition-colors ${isSaved ? 'text-green-600 bg-green-50 cursor-default' : 'text-gray-500 hover:bg-green-50 hover:text-green-600'}`}>
                         {isSaving ? <LogoSpinner size={11} /> : isSaved ? <BookmarkCheck size={11} /> : <Bookmark size={11} />}
@@ -4163,7 +4500,7 @@ export default function JobFinder() {
                               </div>
                               {job.location_display && <p className="flex items-center gap-1 text-[10px] text-gray-400"><MapPin size={8} />{job.location_display}</p>}
                               {(job.salary_min || job.salary_max) && <p className="flex items-center gap-1 text-[10px] text-gray-400"><DollarSign size={8} />{job.salary_min && job.salary_max ? `${job.salary_min}–${job.salary_max}` : (job.salary_min ?? job.salary_max)}</p>}
-                              {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} />}
+                              {ms && <ScoreBadge ms={ms} colors={colors!} opened={expandedScore === job.id} onToggle={() => setExpandedScore(prev => prev === job.id ? null : job.id)} profile={selectedProfile} job={job} />}
                               <div className="flex items-center gap-1 pt-1 border-t border-gray-100 mt-auto">
                                 {job.apply_url && (
                                   <a href={job.apply_url} target="_blank" rel="noopener noreferrer" title="Apply"
@@ -4171,12 +4508,20 @@ export default function JobFinder() {
                                 )}
                                 <button onClick={() => { setPreviewedIds(p => { const n = new Set(p); n.add(job.id); return n; }); setPreviewJob({ source: 'monster', job }); }} title="Preview"
                                   className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"><Eye size={11} /></button>
-                                {!ms && (
-                                  <button onClick={() => getMonsterMatchScore(job)} disabled={!!scoringJobId} title="AI Match"
-                                    className="p-1 rounded-lg text-gray-500 hover:bg-green-50 hover:text-green-600 disabled:opacity-40 transition-colors">
-                                    {scoringJobId === job.id ? <LogoSpinner size={11} /> : <Sparkles size={11} />}
-                                  </button>
-                                )}
+                                <button
+                                  onClick={() => {
+                                    if (ms && !ms.queued) {
+                                      setExpandedScore(prev => prev === job.id ? null : job.id);
+                                      return;
+                                    }
+                                    getMonsterMatchScore(job);
+                                  }}
+                                  disabled={!!scoringJobId && scoringJobId !== job.id}
+                                  title={ms && !ms.queued ? 'Matched - view breakdown' : 'AI Match'}
+                                  className={`p-1 rounded-lg disabled:opacity-40 transition-colors ${ms && !ms.queued ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-gray-500 hover:bg-green-50 hover:text-green-600'}`}
+                                >
+                                  {scoringJobId === job.id ? <LogoSpinner size={11} /> : ms && !ms.queued ? <Check size={11} /> : <Sparkles size={11} />}
+                                </button>
                                 <button onClick={() => saveMonsterJob(job)} disabled={isSaved || isSaving} title={isSaved ? 'In Queue' : 'Add to Queue'}
                                   className={`p-1 rounded-lg transition-colors ${isSaved ? 'text-green-600 bg-green-50 cursor-default' : 'text-gray-500 hover:bg-green-50 hover:text-green-600'}`}>
                                   {isSaving ? <LogoSpinner size={11} /> : isSaved ? <BookmarkCheck size={11} /> : <Bookmark size={11} />}
@@ -4306,6 +4651,7 @@ export default function JobFinder() {
           onAddToQueue={selectedProfile ? () => addToResumeAIQueue(previewJob.job.id) : undefined}
           addingToQueue={rewritingJobId === previewJob.job.id}
           addedToQueue={rewriteStatus[previewJob.job.id] === 'done'}
+          profile={selectedProfile}
           onClose={() => setPreviewJob(null)}
         />
       )}
