@@ -19,6 +19,7 @@ import { triggerProfileEmbedding } from '../lib/embeddings';
 import { normalizeProfileLocationFields, splitPreferredLocations } from '../lib/location-normalization';
 import { getMatchHealthPercent } from '../lib/match-health';
 import { buildScoreBreakdownDisplayItems, getDisplayJobDescription, getDisplayJobTitle } from '../lib/radar-match-ui';
+import { normalizeRadarMatchResults } from '../lib/radar-results';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile, ResumeFile, ActivityLog, EducationEntry, ExperienceEntry } from '../types/database';
 
@@ -1006,60 +1007,12 @@ export default function RadarPage() {
   }
 
   async function loadResultsOnly() {
-    const [radarRes, matchScoresRes] = await Promise.all([
-      supabase.from('radar_match_results').select('*').order('created_at', { ascending: false }),
-      supabase.from('job_match_scores').select('*').order('created_at', { ascending: false }),
-    ]);
+    const { data } = await supabase
+      .from('radar_match_results')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-    const normalizedScores: RadarMatchResult[] = (matchScoresRes.data ?? []).map((s: Record<string, unknown>) => {
-      let job_id = '';
-      let job_source = '';
-      if (s.linkedin_job_id) { job_id = s.linkedin_job_id as string; job_source = 'linkedin'; }
-      else if (s.dice_job_id) { job_id = s.dice_job_id as string; job_source = 'dice'; }
-      else if (s.indeed_job_id) { job_id = s.indeed_job_id as string; job_source = 'indeed'; }
-      else if (s.monster_job_id) { job_id = s.monster_job_id as string; job_source = 'monster'; }
-      else if (s.careerbuilder_job_id) { job_id = s.careerbuilder_job_id as string; job_source = 'careerbuilder'; }
-      else if (s.external_job_post_id) { job_id = s.external_job_post_id as string; job_source = 'external'; }
-      else if (s.social_job_id) { job_id = s.social_job_id as string; job_source = 'social'; }
-
-      return {
-        id: s.id as string,
-        profile_id: s.profile_id as string,
-        job_source,
-        job_id,
-        final_average_score: (s.score as number) ?? 0,
-        score_breakdown: normalizeScoreBreakdownPayload(s.score_breakdown),
-        ai_notes: (s.summary as string) ?? '',
-        disqualified: false,
-        disqualify_reason: null,
-        created_at: s.created_at as string,
-      };
-    }).filter((r: RadarMatchResult) => r.job_id);
-
-    const radarResults: RadarMatchResult[] = radarRes.data ?? [];
-    const seen = new Set<string>();
-    const indexByKey = new Map<string, number>();
-    const combined: RadarMatchResult[] = [];
-    for (const r of radarResults) {
-      const key = `${r.profile_id}:${r.job_id}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        indexByKey.set(key, combined.length);
-        combined.push(r);
-      }
-    }
-    for (const r of normalizedScores) {
-      const key = `${r.profile_id}:${r.job_id}`;
-      const idx = indexByKey.get(key);
-      if (idx !== undefined) {
-        combined[idx] = mergeMatchRows(combined[idx], r);
-      } else if (!seen.has(key)) {
-        seen.add(key);
-        indexByKey.set(key, combined.length);
-        combined.push(r);
-      }
-    }
-
+    const combined = normalizeRadarMatchResults((data ?? []) as Array<Record<string, unknown>>) as RadarMatchResult[];
     setResults(combined);
     await loadJobDetails(combined);
   }
@@ -1067,66 +1020,14 @@ export default function RadarPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [profilesRes, radarRes, matchScoresRes] = await Promise.all([
+      const [profilesRes, radarRes] = await Promise.all([
         supabase.from('profiles').select('*').order('candidate_name'),
         supabase.from('radar_match_results').select('*').order('created_at', { ascending: false }),
-        supabase.from('job_match_scores').select('*').order('created_at', { ascending: false }),
       ]);
 
       if (profilesRes.data) setProfiles(profilesRes.data);
 
-      // Normalize job_match_scores into RadarMatchResult shape
-      const normalizedScores: RadarMatchResult[] = (matchScoresRes.data ?? []).map((s: Record<string, unknown>) => {
-        let job_id = '';
-        let job_source = '';
-        if (s.linkedin_job_id) { job_id = s.linkedin_job_id as string; job_source = 'linkedin'; }
-        else if (s.dice_job_id) { job_id = s.dice_job_id as string; job_source = 'dice'; }
-        else if (s.indeed_job_id) { job_id = s.indeed_job_id as string; job_source = 'indeed'; }
-        else if (s.monster_job_id) { job_id = s.monster_job_id as string; job_source = 'monster'; }
-        else if (s.careerbuilder_job_id) { job_id = s.careerbuilder_job_id as string; job_source = 'careerbuilder'; }
-        else if (s.external_job_post_id) { job_id = s.external_job_post_id as string; job_source = 'external'; }
-        else if (s.social_job_id) { job_id = s.social_job_id as string; job_source = 'social'; }
-
-        return {
-          id: s.id as string,
-          profile_id: s.profile_id as string,
-          job_source,
-          job_id,
-          final_average_score: (s.score as number) ?? 0,
-          score_breakdown: normalizeScoreBreakdownPayload(s.score_breakdown),
-          ai_notes: (s.summary as string) ?? '',
-          disqualified: false,
-          disqualify_reason: null,
-          created_at: s.created_at as string,
-        };
-      }).filter((r: RadarMatchResult) => r.job_id);
-
-      // Merge radar results + job_match_scores, deduplicating by job_id+profile_id
-      const radarResults: RadarMatchResult[] = radarRes.data ?? [];
-      const seen = new Set<string>();
-      const indexByKey = new Map<string, number>();
-      const combined: RadarMatchResult[] = [];
-
-      for (const r of radarResults) {
-        const key = `${r.profile_id}:${r.job_id}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          indexByKey.set(key, combined.length);
-          combined.push(r);
-        }
-      }
-      for (const r of normalizedScores) {
-        const key = `${r.profile_id}:${r.job_id}`;
-        const idx = indexByKey.get(key);
-        if (idx !== undefined) {
-          combined[idx] = mergeMatchRows(combined[idx], r);
-        } else if (!seen.has(key)) {
-          seen.add(key);
-          indexByKey.set(key, combined.length);
-          combined.push(r);
-        }
-      }
-
+      const combined = normalizeRadarMatchResults((radarRes.data ?? []) as Array<Record<string, unknown>>) as RadarMatchResult[];
       setResults(combined);
       await loadJobDetails(combined);
     } catch {

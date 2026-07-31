@@ -45,6 +45,28 @@ const BOARD_TO_COL: Record<string, string> = {
   CareerBuilder: 'careerbuilder_job_id',
 };
 
+const BOARD_TO_COL_NORMALIZED: Record<string, string> = {
+  linkedin: 'linkedin_job_id',
+  dice: 'dice_job_id',
+  indeed: 'indeed_job_id',
+  monster: 'monster_job_id',
+  careerbuilder: 'careerbuilder_job_id',
+};
+
+function normalizeBoard(value: string | null | undefined) {
+  return (value ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+}
+
+function resolveBoardColumn(board: string | null | undefined) {
+  return BOARD_TO_COL[board ?? ''] ?? BOARD_TO_COL_NORMALIZED[normalizeBoard(board)];
+}
+
+function shouldUseBenchMatch(board: string | null | undefined) {
+  const normalized = normalizeBoard(board);
+  if (normalized === 'external') return true;
+  return !resolveBoardColumn(board);
+}
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
@@ -155,7 +177,7 @@ export default function WishlistPage() {
     const scoreMap: Record<string, MatchScore> = {};
     for (const job of jobList) {
       if (!job.source_job_id) continue;
-      const colName = BOARD_TO_COL[job.board];
+      const colName = resolveBoardColumn(job.board);
       if (!colName) continue;
 
       const cached = scores.find((s: Record<string, unknown>) => s[colName] === job.source_job_id);
@@ -186,9 +208,9 @@ export default function WishlistPage() {
     if (!selectedProfile || scoringJobId) return;
     if (!job.source_job_id) return;
 
-    const isExternal = job.board === 'External';
-    const colName = BOARD_TO_COL[job.board];
-    if (!isExternal && !colName) return;
+    const useBenchMatch = shouldUseBenchMatch(job.board);
+    const colName = resolveBoardColumn(job.board);
+    if (!useBenchMatch && !colName) return;
 
     setScoringJobId(job.id);
 
@@ -197,7 +219,7 @@ export default function WishlistPage() {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 
       let res: Response;
-      if (isExternal) {
+      if (useBenchMatch) {
         res = await fetch(`${supabaseUrl}/functions/v1/bench-match`, {
           method: 'POST',
           headers: {
@@ -261,7 +283,7 @@ export default function WishlistPage() {
   async function regenerateScore(job: WishlistedJob) {
     if (!selectedProfile) return;
     if (!job.source_job_id) return;
-    const colName = BOARD_TO_COL[job.board];
+    const colName = resolveBoardColumn(job.board);
     if (colName) {
       await supabase.from('job_match_scores')
         .delete()
@@ -612,49 +634,52 @@ export default function WishlistPage() {
                   const isSelected = selectedJob?.id === job.id;
                   const isExpanded = expandedJobId === job.id;
                   const ms = matchScores[job.id];
-                  const canScore = !!job.source_job_id && (!!BOARD_TO_COL[job.board ?? ''] || job.board === 'External');
+                  const canScore = !!job.source_job_id;
                   const isScoring = scoringJobId === job.id;
                   const colors = ms ? scoreColor(ms.score) : null;
 
                   return (
-                    <div key={job.id} className={`rounded-xl border bg-white shadow-sm transition-all ${isSelected ? 'border-blue-200' : 'border-slate-200 hover:border-slate-300'}`}>
-                      <div onClick={() => selectJob(job)} className="w-full px-4 py-3 text-left">
-                        <div className="grid gap-3 lg:grid-cols-[1fr_0.8fr] items-start">
+                    <div key={job.id} className={`relative isolate overflow-hidden rounded-xl border bg-white shadow-sm transition-all ${isSelected ? 'border-blue-200' : 'border-slate-200 hover:border-slate-300'}`}>
+                      <div onClick={() => selectJob(job)} className="w-full px-5 py-4 text-left">
+                        <div className="grid gap-3 lg:grid-cols-[1fr_1.05fr] items-start">
                           <div className="min-w-0">
-                            <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                              <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${BOARD_COLORS[job.board] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                            <div className="mb-2 flex flex-wrap items-start gap-2">
+                              <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${BOARD_COLORS[job.board] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                                 {job.board}
                               </span>
-                              <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${job.status === 'Submitted' ? 'bg-emerald-100 text-emerald-700' : job.status === 'Submission Initiated' ? 'bg-amber-100 text-amber-700' : job.status === 'Matched' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                              <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${job.status === 'Submitted' ? 'bg-emerald-100 text-emerald-700' : job.status === 'Submission Initiated' ? 'bg-amber-100 text-amber-700' : job.status === 'Matched' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
                                 {job.status === 'Submitted' || job.status === 'Submission Initiated' || job.status === 'Matched' ? <CheckCircle2 size={8} /> : <Circle size={8} />}
                                 {job.status === 'Submission Initiated' ? 'Initiated' : job.status}
                               </span>
                               {job.rewrite_file_url && (
-                                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
                                   <FileText size={8} /> Resume
                                 </span>
                               )}
                             </div>
-                            <p className={`truncate text-[12px] font-semibold leading-tight ${isSelected ? 'text-blue-800' : 'text-slate-800'}`}>{job.job_title}</p>
-                            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+                            <p className={`break-words text-[13px] font-medium leading-tight ${isSelected ? 'text-blue-800' : 'text-slate-900'}`}>{job.job_title}</p>
+                            <div className="mt-2 flex flex-col gap-1.5 text-[11px] text-slate-500">
                               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
-                                <Building2 size={9} className="text-slate-300" />
+                                <Building2 size={11} className="text-slate-400" />
                                 {job.company}
                               </span>
                               {job.location && (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
-                                  <MapPin size={8} className="text-slate-300" />
+                                  <MapPin size={11} className="text-slate-400" />
                                   {job.location}
                                 </span>
                               )}
+                              <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
+                                Added {formatDate(job.created_at)}
+                              </span>
                             </div>
                           </div>
 
                           <div className="min-w-0">
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 shadow-sm">
                               {ms ? (
-                                <button onClick={e => { e.stopPropagation(); setExpandedJobId(isExpanded ? null : job.id); }} className={`flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-[11px] font-semibold transition-colors ${colors!.bg} ${colors!.border} ${colors!.text}`}>
-                                  <span className="flex items-center gap-1"><Sparkles size={10} /> {ms.score}</span>
+                                <button onClick={e => { e.stopPropagation(); setExpandedJobId(isExpanded ? null : job.id); }} className={`flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-[11px] font-semibold shadow-sm transition-colors ${colors!.bg} ${colors!.border} ${colors!.text}`}>
+                                  <span className="flex items-center gap-1"><Sparkles size={10} /> Match {ms.score}</span>
                                   {isExpanded ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
                                 </button>
                               ) : canScore ? (
@@ -671,18 +696,36 @@ export default function WishlistPage() {
                         </div>
                       </div>
 
-                      <div className="mx-4 mb-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
-                        <div className="flex items-center gap-1.5">
-                          {job.job_url && (
-                            <a href={job.job_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-400 transition-colors hover:text-blue-600">
-                              <ExternalLink size={11} />
-                            </a>
-                          )}
-                          <button onClick={e => { e.stopPropagation(); removeJob(job); }} className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-400 transition-colors hover:text-red-500">
-                            <Trash2 size={11} />
-                          </button>
-                        </div>
-                        <span className="text-[10px] font-medium text-slate-400">{formatDate(job.created_at)}</span>
+                      <div className="mx-4 mb-4 flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-100 pt-3">
+                        {job.job_url && (
+                          <a
+                            href={job.job_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            title="Apply Link"
+                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-500 shadow-sm transition-all hover:bg-slate-50"
+                          >
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
+
+                        <button
+                          onClick={e => { e.stopPropagation(); selectJob(job); }}
+                          title="Preview Job"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-all hover:bg-slate-100"
+                        >
+                          <Search size={13} />
+                          Full JD
+                        </button>
+
+                        <button
+                          onClick={e => { e.stopPropagation(); removeJob(job); }}
+                          title="Remove"
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
 
                       {isExpanded && ms && (

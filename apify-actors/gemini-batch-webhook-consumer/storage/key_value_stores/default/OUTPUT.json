@@ -1,0 +1,37 @@
+{
+  "dry_run": true,
+  "mode": "gemini_payload_consume",
+  "total_combinations": 3,
+  "selected_roles": [
+    "Cloud Architect"
+  ],
+  "selected_locations": [
+    "Austin, TX",
+    "Dallas, TX",
+    "Remote"
+  ],
+  "combinations": [
+    {
+      "role": "Cloud Architect",
+      "location": "Austin, TX",
+      "score": 1,
+      "observed_count": 1,
+      "rank": 1
+    },
+    {
+      "role": "Cloud Architect",
+      "location": "Dallas, TX",
+      "score": 1,
+      "observed_count": 1,
+      "rank": 2
+    },
+    {
+      "role": "Cloud Architect",
+      "location": "Remote",
+      "score": 1,
+      "observed_count": 1,
+      "rank": 3
+    }
+  ],
+  "total_searches_would_trigger": 15
+}

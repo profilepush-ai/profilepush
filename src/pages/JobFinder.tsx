@@ -15,6 +15,7 @@ import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import { firstPreferredLocation } from '../lib/location-normalization';
 import { loadRazorpay, TIERS, INR_PER_USD, fmtINR } from '../lib/billing-plan';
 import { buildScoreBreakdownDisplayItems, type RadarScoreBreakdownEntry } from '../lib/radar-match-ui';
+import { DEFAULT_AI_SCORING_MAX_ATTEMPTS, DEFAULT_AI_SCORING_POLL_MS, getAiScoringQueueState } from '../lib/ai-scoring-queue';
 import { supabase } from '../lib/supabase';
 import { throttled, throttledAll } from '../lib/query-throttle';
 import { buildProfileBoardStats } from '../lib/job-finder-stats';
@@ -2353,30 +2354,30 @@ export default function JobFinder() {
     setMatchScores(prev => ({ ...prev, [localJobId]: { queued: true, job_id: jobQueueId, score: 0, summary: '', strengths: [], gaps: [] } }));
     setScoringJobId(null);
     showToast('AI scoring queued — score will appear automatically when ready.', 'success');
+
     let attempts = 0;
-    const maxAttempts = 60;
-    const poll = setInterval(async () => {
-      attempts++;
-      if (attempts > maxAttempts) {
-        clearInterval(poll);
-        setMatchScores(prev => { const n = { ...prev }; delete n[localJobId]; return n; });
-        showToast('AI scoring timed out. Please try again later.', 'error');
-        return;
-      }
+    const maxAttempts = DEFAULT_AI_SCORING_MAX_ATTEMPTS;
+    const poll = window.setInterval(async () => {
+      attempts += 1;
       const { data: qj } = await supabase
         .from('llm_job_queue')
         .select('id, status, result, error')
         .eq('id', jobQueueId)
         .maybeSingle();
-      if (qj?.status === 'completed' && qj.result) {
+
+      const state = getAiScoringQueueState(qj?.status ?? null, attempts, maxAttempts);
+      if (state === 'completed' && qj?.result) {
         clearInterval(poll);
         setMatchScores(prev => ({ ...prev, [localJobId]: qj.result as MatchScore }));
-      } else if (qj?.status === 'dead') {
+        return;
+      }
+
+      if (state === 'failed') {
         clearInterval(poll);
         setMatchScores(prev => { const n = { ...prev }; delete n[localJobId]; return n; });
-        showToast('AI scoring failed after retries. Please try again later.', 'error');
+        showToast('AI scoring timed out or failed. Please try again later.', 'error');
       }
-    }, 3_000);
+    }, DEFAULT_AI_SCORING_POLL_MS);
   }
 
   async function getDiceMatchScore(job: DiceJob) {
