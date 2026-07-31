@@ -8,6 +8,7 @@ import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
 import { triggerProfileEmbedding } from '../lib/embeddings';
+import { normalizeProfileLocationFields } from '../lib/location-normalization';
 import type { EducationEntry, ExperienceEntry } from '../types/database';
 
 interface FormData {
@@ -143,34 +144,37 @@ export default function CandidateOnboarding() {
     setSubmitting(true);
 
     try {
+      const rawProfilePayload = {
+        account_id: accountId,
+        candidate_name: form.candidate_name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        target_role: form.target_role.trim(),
+        location: form.location.trim(),
+        city: form.city.trim(),
+        state: form.state.trim(),
+        country: form.country.trim(),
+        years_experience: form.years_experience ? Number(form.years_experience) : null,
+        visa_status: form.visa_status,
+        work_type: form.work_type,
+        linkedin_url: form.linkedin_url.trim(),
+        github_url: form.github_url.trim(),
+        portfolio_url: form.portfolio_url.trim(),
+        core_skills: form.core_skills.trim(),
+        priority_skills: form.priority_skills.trim(),
+        notice_period: form.notice_period,
+        availability: form.availability.trim(),
+        desired_salary_min: form.desired_salary_min ? Number(form.desired_salary_min) : null,
+        desired_salary_max: form.desired_salary_max ? Number(form.desired_salary_max) : null,
+        preferred_locations: form.preferred_locations.trim(),
+        education,
+        experience,
+      };
+      const normalizedProfilePayload = await normalizeProfileLocationFields(rawProfilePayload);
+
       const { data: profile, error } = await supabase
         .from('profiles')
-        .insert({
-          account_id:         accountId,
-          candidate_name:     form.candidate_name.trim(),
-          email:              form.email.trim(),
-          phone:              form.phone.trim(),
-          target_role:        form.target_role.trim(),
-          location:           form.location.trim(),
-          city:               form.city.trim(),
-          state:              form.state.trim(),
-          country:            form.country.trim(),
-          years_experience:   form.years_experience ? Number(form.years_experience) : null,
-          visa_status:        form.visa_status,
-          work_type:          form.work_type,
-          linkedin_url:       form.linkedin_url.trim(),
-          github_url:         form.github_url.trim(),
-          portfolio_url:      form.portfolio_url.trim(),
-          core_skills:        form.core_skills.trim(),
-          priority_skills:    form.priority_skills.trim(),
-          notice_period:      form.notice_period,
-          availability:       form.availability.trim(),
-          desired_salary_min: form.desired_salary_min ? Number(form.desired_salary_min) : null,
-          desired_salary_max: form.desired_salary_max ? Number(form.desired_salary_max) : null,
-          preferred_locations: form.preferred_locations.trim(),
-          education,
-          experience,
-        })
+        .insert(normalizedProfilePayload)
         .select()
         .single();
 

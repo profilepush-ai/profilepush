@@ -12,6 +12,12 @@ const corsHeaders = {
 };
 
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+const FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT = 5;
+const FREE_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const PAID_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS = 60 * 60 * 1000;
+const LIVE_MATCH_USAGE_SOURCE = "job-watch-ai";
+const LIVE_MATCH_ATTEMPT_FLAG = true;
+const FREE_PLAN_MATCH_UNLOCK_LIMIT = 5;
 
 async function chargeMatchCredits(
   supabase: ReturnType<typeof createClient>,
@@ -44,6 +50,55 @@ async function chargeMatchCredits(
   return !error;
 }
 
+async function countRecentLiveMatchAttempts(
+  supabase: ReturnType<typeof createClient>,
+  accountId: string,
+  profileId: string,
+  sinceIso: string,
+  scope: "account" | "profile",
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("api_usage_log")
+    .select("created_at, metadata")
+    .eq("account_id", accountId)
+    .eq("function_name", "radar-match")
+    .gte("created_at", sinceIso)
+    .order("created_at", { ascending: false })
+    .limit(scope === "account" ? FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT : 1);
+
+  if (error) throw error;
+
+  return (data ?? []).filter((row: { metadata?: Record<string, unknown> | null }) => {
+    const metadata = row.metadata ?? {};
+    if (metadata.source !== LIVE_MATCH_USAGE_SOURCE) return false;
+    if (metadata.attempt !== LIVE_MATCH_ATTEMPT_FLAG) return false;
+    if (scope === "profile" && metadata.profile_id !== profileId) return false;
+    return true;
+  }).length;
+}
+
+async function logLiveMatchAttempt(
+  supabase: ReturnType<typeof createClient>,
+  accountId: string,
+  profileId: string,
+  isPaidPlan: boolean,
+): Promise<void> {
+  const { error } = await supabase.from("api_usage_log").insert({
+    account_id: accountId,
+    function_name: "radar-match",
+    provider: "gemini",
+    cost_usd: 0,
+    metadata: {
+      profile_id: profileId,
+      source: LIVE_MATCH_USAGE_SOURCE,
+      attempt: LIVE_MATCH_ATTEMPT_FLAG,
+      plan: isPaidPlan ? "paid" : "free",
+    },
+  });
+
+  if (error) throw error;
+}
+
 interface ExtractedJob {
   job_id: string;
   source: string;
@@ -70,6 +125,57 @@ interface MatchResult {
   notes: string;
   disqualified: boolean;
   reason: string | null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeLocationPhrase(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitPreferredLocationPhrases(value: string): string[] {
+  const raw = value.trim();
+  if (!raw) return [];
+
+  const listDelimiter = raw.includes("|")
+    ? "|"
+    : raw.includes(";")
+      ? ";"
+      : raw.includes("\n")
+        ? "\n"
+        : null;
+
+  if (!listDelimiter) return [raw];
+
+  return raw
+    .split(listDelimiter)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function containsLocationToken(text: string, token: string): boolean {
+  const normalizedText = normalizeLocationPhrase(text);
+  const normalizedToken = normalizeLocationPhrase(token);
+  if (!normalizedToken) return false;
+
+  // Keep short state/country tokens permissive (e.g. "tx", "us")
+  // so we don't accidentally drop valid matches after normalization.
+  if (normalizedToken.length <= 2) {
+    return normalizedText.includes(normalizedToken);
+  }
+
+  if (normalizedToken.length >= 3) {
+    return normalizedText.includes(normalizedToken);
+  }
+
+  const pattern = new RegExp(`(^|[^a-z0-9])${escapeRegExp(normalizedToken)}($|[^a-z0-9])`);
+  return pattern.test(normalizedText);
 }
 
 async function ensureProfileEmbedding(
@@ -150,6 +256,19 @@ Deno.serve(async (req: Request) => {
   try {
     const { profile_id, account_id } = await req.json();
     if (!profile_id) throw new Error("profile_id is required");
+    if (!account_id) throw new Error("account_id is required");
+
+    let isPaidPlan = true;
+    if (account_id) {
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("status, plan_amount_usd")
+        .eq("account_id", account_id)
+        .maybeSingle();
+      const status = (sub?.status as string | undefined) ?? "";
+      const amount = Number((sub?.plan_amount_usd as number | null | undefined) ?? 0);
+      isPaidPlan = status === "active" && amount > 0;
+    }
 
     const { data: profile, error: profileErr } = await supabase
       .from("profiles")
@@ -159,6 +278,28 @@ Deno.serve(async (req: Request) => {
 
     if (profileErr || !profile) throw new Error("Profile not found");
 
+    const now = Date.now();
+    const accountWindowCutoff = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+    const profileWindowCutoff = new Date(now - (isPaidPlan ? PAID_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS : FREE_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS)).toISOString();
+
+    const profileAttempts = await countRecentLiveMatchAttempts(supabase, account_id, profile_id, profileWindowCutoff, "profile");
+    if (profileAttempts >= 1) {
+      return respond({
+        error: isPaidPlan
+          ? "You can refresh this candidate once every hour."
+          : "You can only try this candidate once every 24 hours.",
+      }, 429);
+    }
+
+    if (!isPaidPlan) {
+      const accountAttempts = await countRecentLiveMatchAttempts(supabase, account_id, profile_id, accountWindowCutoff, "account");
+      if (accountAttempts >= FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT) {
+        return respond({ error: `You have used all ${FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT} live matches in the last 24 hours.` }, 429);
+      }
+    }
+
+    await logLiveMatchAttempt(supabase, account_id, profile_id, isPaidPlan);
+
     // Filter out already-scored jobs early
     const { data: existingMatches } = await supabase
       .from("radar_match_results")
@@ -166,7 +307,7 @@ Deno.serve(async (req: Request) => {
       .eq("profile_id", profile_id);
 
     const existingJobIds = new Set((existingMatches ?? []).map((m: { job_id: string }) => m.job_id));
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const recentJobsCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -215,7 +356,7 @@ Deno.serve(async (req: Request) => {
               .from(config.table)
               .select(`id, job_title, job_description, ${config.locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type, created_at`)
               .in("id", batchIds)
-              .gte("created_at", sevenDaysAgo);
+              .gte("created_at", recentJobsCutoff);
 
             if (jobs) {
               for (const j of jobs) {
@@ -253,7 +394,7 @@ Deno.serve(async (req: Request) => {
         const query = supabase
           .from(table)
           .select(`id, job_title, job_description, ${locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type, created_at`)
-          .gte("created_at", sevenDaysAgo)
+          .gte("created_at", recentJobsCutoff)
           .order("created_at", { ascending: false })
           .limit(50);
 
@@ -285,7 +426,7 @@ Deno.serve(async (req: Request) => {
         const { data: socialJobsData } = await supabase
           .from("social_jobs")
           .select(socialSelect)
-          .gte("created_at", sevenDaysAgo)
+          .gte("created_at", recentJobsCutoff)
           .order("created_at", { ascending: false })
           .limit(50);
 
@@ -397,21 +538,33 @@ Deno.serve(async (req: Request) => {
       async start(controller) {
         const batchSize = 5;
         let totalMatched = 0;
+        let freePlanSavedCount = 0;
+        let freePlanChargedCount = 0;
 
-        for (let i = 0; i < relevantJobs.length; i += batchSize) {
-          const batch = relevantJobs.slice(i, i + batchSize);
+        for (let i = 0; i < effectiveJobs.length; i += batchSize) {
+          if (!isPaidPlan && freePlanSavedCount >= FREE_PLAN_MATCH_TOTAL_LIMIT) {
+            break;
+          }
+
+          const batch = effectiveJobs.slice(i, i + batchSize);
 
           const extractedJobs = await extractJobFields(batch, GEMINI_API_KEY);
           if (extractedJobs.length === 0) {
-            controller.enqueue(encoder.encode(JSON.stringify({ type: "batch", matched: 0, total_so_far: totalMatched, progress: Math.min(i + batchSize, relevantJobs.length), total_jobs: relevantJobs.length }) + "\n"));
+            controller.enqueue(encoder.encode(JSON.stringify({ type: "batch", matched: 0, total_so_far: totalMatched, progress: Math.min(i + batchSize, effectiveJobs.length), total_jobs: effectiveJobs.length }) + "\n"));
             continue;
           }
 
           const batchResults = scoreJobsAgainstProfile(extractedJobs, profile);
           const qualifyingResults = batchResults.filter(r => (r.score ?? 0) >= 70);
 
+          let persistableResults = qualifyingResults;
+          if (!isPaidPlan) {
+            const remaining = Math.max(0, FREE_PLAN_MATCH_TOTAL_LIMIT - freePlanSavedCount);
+            persistableResults = qualifyingResults.slice(0, remaining);
+          }
+
           // Save to DB immediately
-          if (qualifyingResults.length > 0) {
+          if (persistableResults.length > 0) {
             const rows = [] as Array<{
               profile_id: string;
               job_source: string;
@@ -423,13 +576,24 @@ Deno.serve(async (req: Request) => {
               disqualify_reason: string | null;
             }>;
 
-            for (const result of qualifyingResults) {
-              if (account_id) {
+            const freeChargeAllowance = !isPaidPlan
+              ? Math.max(0, FREE_PLAN_MATCH_UNLOCK_LIMIT - freePlanChargedCount)
+              : persistableResults.length;
+
+            for (let idx = 0; idx < persistableResults.length; idx += 1) {
+              const result = persistableResults[idx];
+
+              const shouldCharge = isPaidPlan || idx < freeChargeAllowance;
+              if (account_id && shouldCharge) {
                 const charged = await chargeMatchCredits(supabase, account_id, profile_id, result);
                 if (!charged) {
                   controller.enqueue(encoder.encode(JSON.stringify({ type: "error", error: "Insufficient credits. Please top up your account." }) + "\n"));
                   controller.close();
                   return;
+                }
+
+                if (!isPaidPlan) {
+                  freePlanChargedCount += 1;
                 }
               }
 
@@ -447,9 +611,12 @@ Deno.serve(async (req: Request) => {
 
             await supabase.from("radar_match_results").insert(rows);
             totalMatched += rows.length;
+            if (!isPaidPlan) {
+              freePlanSavedCount += rows.length;
+            }
           }
 
-          controller.enqueue(encoder.encode(JSON.stringify({ type: "batch", matched: qualifyingResults.length, total_so_far: totalMatched, progress: Math.min(i + batchSize, relevantJobs.length), total_jobs: relevantJobs.length }) + "\n"));
+          controller.enqueue(encoder.encode(JSON.stringify({ type: "batch", matched: persistableResults.length, total_so_far: totalMatched, progress: Math.min(i + batchSize, effectiveJobs.length), total_jobs: effectiveJobs.length }) + "\n"));
         }
 
         controller.enqueue(encoder.encode(JSON.stringify({ type: "done", matched: totalMatched, skipped: existingJobIds.size }) + "\n"));
@@ -588,7 +755,10 @@ function scoreJobsAgainstProfile(extractedJobs: ExtractedJob[], profile: Record<
   const candidateVisa = ((profile.visa_status as string) ?? "").toLowerCase();
   const candidateEmploymentType = ((profile.work_authorization as string) ?? "").toLowerCase();
   const candidateWorkType = ((profile.work_type as string) ?? "").toLowerCase();
-  const candidateLocations = ((profile.preferred_locations as string) ?? "").toLowerCase();
+  const candidateLocationsRaw = ((profile.preferred_locations as string) ?? "").trim();
+  const candidateLocationPhrases = splitPreferredLocationPhrases(candidateLocationsRaw)
+    .map((loc) => normalizeLocationPhrase(loc))
+    .filter(Boolean);
   const candidateRateMin = (profile.desired_salary_min as number) ?? 0;
   const candidateRateMax = (profile.desired_salary_max as number) ?? 0;
   const candidateRelocation = profile.relocation_open === true;
@@ -682,12 +852,22 @@ function scoreJobsAgainstProfile(extractedJobs: ExtractedJob[], profile: Record<
 
     // 7. Location Match (10%)
     let locationScore = 70;
-    if (candidateLocations && e.locations.length > 0) {
-      const jobLocLower = e.locations.map(l => l.toLowerCase()).join(" ");
-      const candidateLocWords = candidateLocations.split(/[,;|]+/).map(l => l.trim()).filter(Boolean);
-      const locMatch = candidateLocWords.some(cl => jobLocLower.includes(cl));
-      if (locMatch) {
+    if (candidateLocationPhrases.length > 0 && e.locations.length > 0) {
+      const normalizedJobLocations = e.locations
+        .map((loc) => normalizeLocationPhrase(loc))
+        .filter(Boolean);
+      const normalizedJobLocCombined = normalizedJobLocations.join(" ");
+
+      const exactPhraseMatch = candidateLocationPhrases.some((candidateLoc) => normalizedJobLocations.includes(candidateLoc));
+      const looseTokenMatch = !exactPhraseMatch && candidateLocationPhrases.some((candidateLoc) => {
+        const tokens = candidateLoc.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean);
+        return tokens.some((token) => containsLocationToken(normalizedJobLocCombined, token));
+      });
+
+      if (exactPhraseMatch) {
         locationScore = 100;
+      } else if (looseTokenMatch) {
+        locationScore = 85;
       } else if (e.work_type.toLowerCase() === "remote") {
         locationScore = 90;
       } else if (candidateRelocation) {
@@ -700,7 +880,7 @@ function scoreJobsAgainstProfile(extractedJobs: ExtractedJob[], profile: Record<
       score: locationScore,
       candidate_value: (profile.preferred_locations as string) ?? "Not specified",
       job_value: e.locations.join(", ") || "Not specified",
-      rule: "Full score if location overlaps. Remote jobs score high. Otherwise depends on relocation willingness.",
+      rule: "Exact location phrase match scores highest, then token overlap. Remote jobs score high; otherwise relocation willingness is used.",
     };
 
     // 8. Rate Match (5%)

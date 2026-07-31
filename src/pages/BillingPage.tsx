@@ -7,6 +7,7 @@ import {
   Search, Brain, FileText, Sparkles, Target, Users,
   Info, LayoutGrid, List, Cpu,
 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import { supabase } from '../lib/supabase';
@@ -215,6 +216,9 @@ function Tip({ text }: { text: string }) {
 
 export default function BillingPage() {
   const { account, subscription, membership, user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const autoOpenPlanRef = useRef(false);
 
   const [usageLogs, setUsageLogs] = useState<UsageRow[]>([]);
   const [visibleBalance, setVisibleBalance] = useState<number | null>(null);
@@ -258,6 +262,23 @@ export default function BillingPage() {
   }, [account?.id, timeframe]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (autoOpenPlanRef.current) return;
+    const params = new URLSearchParams(location.search);
+    if (params.get('openPlan') !== '1') return;
+
+    autoOpenPlanRef.current = true;
+    openUpgradeModal();
+    params.delete('openPlan');
+    navigate(
+      {
+        pathname: location.pathname,
+        search: params.toString() ? `?${params.toString()}` : '',
+      },
+      { replace: true },
+    );
+  }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
     if (typeof account?.credits_balance === 'number') {

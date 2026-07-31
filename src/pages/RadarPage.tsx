@@ -11,8 +11,12 @@ import {
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
+import { PlanModal } from '../components/PlanModal';
+import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
+import { loadRazorpay, TIERS, INR_PER_USD, fmtINR } from '../lib/billing-plan';
 import { supabase } from '../lib/supabase';
 import { triggerProfileEmbedding } from '../lib/embeddings';
+import { normalizeProfileLocationFields, splitPreferredLocations } from '../lib/location-normalization';
 import { getMatchHealthPercent } from '../lib/match-health';
 import { buildScoreBreakdownDisplayItems, getDisplayJobDescription, getDisplayJobTitle } from '../lib/radar-match-ui';
 import { useAuth } from '../contexts/AuthContext';
@@ -101,10 +105,17 @@ interface HotlistRow { profile_id: string; created_at: string | null; }
 
 const DEFAULT_WATCH_BOARDS = ['linkedin', 'dice', 'indeed', 'monster'];
 const HOTLIST_RETENTION_DAYS = 15;
-const FREE_PLAN_MATCH_LIMIT = 4;
+const FREE_PLAN_MATCH_LIMIT = 5;
+const FREE_PLAN_MATCH_TOTAL_LIMIT = 5;
+const FREE_PLAN_MATCH_CANDIDATE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT = 5;
+const FREE_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const PAID_PLAN_MATCH_CANDIDATE_WINDOW_MS = 60 * 60 * 1000;
+const LIVE_MATCH_ATTEMPT_LOG_KEY = 'radar_live_match_attempts';
+const LIVE_MATCH_TOTAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-export function shouldLockMatchCard({ isPaidPlan, resultIndex, freePlanMatchLimit = FREE_PLAN_MATCH_LIMIT }: { isPaidPlan: boolean; resultIndex: number; freePlanMatchLimit?: number }) {
-  return !isPaidPlan && resultIndex >= freePlanMatchLimit;
+export function shouldLockMatchCard({ isPaidPlan, streamRank, freePlanMatchLimit = FREE_PLAN_MATCH_LIMIT }: { isPaidPlan: boolean; streamRank: number; freePlanMatchLimit?: number }) {
+  return !isPaidPlan && streamRank >= freePlanMatchLimit;
 }
 
 function isHotlistEligible(profile: Profile): boolean {
@@ -215,6 +226,61 @@ function formatScoreLabel(key: string) {
 
 function shouldClampScoreValue(key: string) {
   return /skill/i.test(key);
+}
+
+function normalizeMatchText(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function normalizeMatchUrl(value: string | null | undefined): string {
+  const raw = (value ?? '').trim();
+  if (!raw) return '';
+  try {
+    const u = new URL(raw);
+    return `${u.origin}${u.pathname}`.replace(/\/+$/, '').toLowerCase();
+  } catch {
+    return raw.split('#')[0].split('?')[0].replace(/\/+$/, '').toLowerCase();
+  }
+}
+
+function getMatchDedupeKey(result: RadarMatchResult, job: JobInfo | undefined): string {
+  const titleKey = normalizeMatchText(job?.job_title);
+  const companyKey = normalizeMatchText(job?.company_name);
+  const locationKey = normalizeMatchText(job?.location);
+
+  // Prefer the same visible identity users see on cards.
+  // This collapses duplicate ingests from the same board even when URLs differ.
+  if (titleKey || companyKey || locationKey) {
+    return `${result.profile_id}|${result.job_source}|meta|${titleKey}|${companyKey}|${locationKey}`;
+  }
+
+  const urlKey = normalizeMatchUrl(job?.job_url);
+  if (urlKey) {
+    return `${result.profile_id}|${result.job_source}|url|${urlKey}`;
+  }
+
+  return `${result.profile_id}|${result.job_source}|fallback|${result.job_id}`;
+}
+
+function dedupeMatchResults(items: RadarMatchResult[], jobMap: Map<string, JobInfo>): RadarMatchResult[] {
+  const byKey = new Map<string, RadarMatchResult>();
+
+  for (const item of items) {
+    const key = getMatchDedupeKey(item, jobMap.get(item.job_id));
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, item);
+      continue;
+    }
+
+    const existingTime = new Date(existing.created_at).getTime();
+    const currentTime = new Date(item.created_at).getTime();
+    if (item.final_average_score > existing.final_average_score || (item.final_average_score === existing.final_average_score && currentTime > existingTime)) {
+      byKey.set(key, item);
+    }
+  }
+
+  return Array.from(byKey.values());
 }
 
 function ScoreBreakdownChart({ items, detailMap, compact = false, expandedKeys, onToggleExpand }: { items: Array<{ key: string; score: number }>; detailMap: Record<string, { candidate_value: string; job_value: string; rule: string } | undefined>; compact?: boolean; expandedKeys?: Set<string>; onToggleExpand?: (key: string) => void }) {
@@ -335,6 +401,7 @@ export default function RadarPage() {
   const [queuingJobId, setQueuingJobId] = useState<string | null>(null);
   const [disqualifyingJobId, setDisqualifyingJobId] = useState<string | null>(null);
   const [liveMatchCooldowns, setLiveMatchCooldowns] = useState<Record<string, number>>({});
+  const [liveMatchAttempts, setLiveMatchAttempts] = useState<Record<string, number[]>>({});
   const sortField: SortField = 'score';
   const sortDir: SortDir = 'desc';
 
@@ -342,6 +409,94 @@ export default function RadarPage() {
   const [globalWatch, setGlobalWatch] = useState<WatchSchedule | null>(null);
   const [savingWatch, setSavingWatch] = useState(false);
   const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [selectedNewTier, setSelectedNewTier] = useState<number>(25);
+  const [changingPlan, setChangingPlan] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
+  const hasActiveSub = isPaidPlan;
+  const pendingPeriodEnd = subscription?.current_period_end ?? null;
+
+  function openUpgradeModal() {
+    const idx = hasActiveSub ? TIERS.indexOf(subscription?.plan_amount_usd ?? 0) : -1;
+    setSelectedNewTier(idx >= 0 && idx < TIERS.length - 1 ? TIERS[idx + 1] : 25);
+    setShowPlanModal(true);
+  }
+
+  async function handleSubscribe() {
+    setSubscribing(true);
+    try {
+      await loadRazorpay();
+      const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
+        body: { plan_amount_usd: selectedNewTier },
+      });
+      if (error || !data?.subscription_id) throw new Error(error?.message ?? 'Failed to create subscription');
+      const rzp = new window.Razorpay({
+        key: data.key_id,
+        subscription_id: data.subscription_id,
+        name: 'ProfilePush',
+        description: `Pro Plan – ${fmtINR(selectedNewTier)}/month ($${selectedNewTier} AI credits)`,
+        image: '/favicon.svg',
+        handler: async () => {
+          showToast('Subscription activated! Credits will be added shortly.', 'success');
+          await refreshAccount();
+          setShowPlanModal(false);
+        },
+        prefill: { name: user?.user_metadata?.full_name ?? '', email: user?.email ?? '' },
+        theme: { color: '#2563eb' },
+        modal: { ondismiss: () => setSubscribing(false) },
+      });
+      rzp.open();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to start subscription';
+      showToast(msg, 'error');
+      setSubscribing(false);
+    }
+  }
+
+  async function handleChangePlan() {
+    if (!subscription || selectedNewTier === subscription.plan_amount_usd) return;
+    setChangingPlan(true);
+    try {
+      const isUpgrade = selectedNewTier > subscription.plan_amount_usd;
+      const { data, error } = await supabase.functions.invoke('razorpay-change-plan', {
+        body: { new_plan_amount_usd: selectedNewTier },
+      });
+      if (error || !data) throw new Error(error?.message ?? 'Failed to change plan');
+      if (isUpgrade && data.order_id) {
+        await loadRazorpay();
+        const rzp = new window.Razorpay({
+          key: data.key_id, order_id: data.order_id, amount: data.amount_inr_paise, currency: 'INR',
+          name: 'ProfilePush',
+          description: `Upgrade ₹${data.old_plan_usd * INR_PER_USD} → ₹${data.new_plan_usd * INR_PER_USD}`,
+          image: '/favicon.svg',
+          handler: async () => {
+            showToast(`Upgraded to ${fmtINR(selectedNewTier)}/mo! Extra credits added.`, 'success');
+            await refreshAccount();
+            setShowPlanModal(false);
+          },
+          prefill: { email: user?.email ?? '' },
+          theme: { color: '#2563eb' },
+        });
+        rzp.open();
+      } else {
+        showToast(`Downgrade to ${fmtINR(selectedNewTier)}/mo scheduled for next renewal.`, 'success');
+        await refreshAccount();
+        setShowPlanModal(false);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to change plan';
+      showToast(msg, 'error');
+      setChangingPlan(false);
+    }
+  }
+
+  async function handlePlanSubmit() {
+    if (hasActiveSub) {
+      await handleChangePlan();
+    } else {
+      await handleSubscribe();
+    }
+  }
 
   // Candidate details tabs
   const [detailTab, setDetailTab] = useState<'profile' | 'docs' | 'activity'>('profile');
@@ -367,6 +522,7 @@ export default function RadarPage() {
   const [profileExperience, setProfileExperience] = useState<ExperienceEntry[]>([]);
   const [profileEducation, setProfileEducation] = useState<EducationEntry[]>([]);
   const [prioritySkillInput, setPrioritySkillInput] = useState('');
+  const [preferredLocationInput, setPreferredLocationInput] = useState('');
   const [matchPage, setMatchPage] = useState(1);
 
   // Boards to scrape
@@ -412,6 +568,17 @@ export default function RadarPage() {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LIVE_MATCH_ATTEMPT_LOG_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, number[]>;
+      if (parsed && typeof parsed === 'object') setLiveMatchAttempts(parsed);
+    } catch {
+      setLiveMatchAttempts({});
+    }
+  }, []);
+
+  useEffect(() => {
     if (!selectedProfileId && profiles.length > 0) {
       const urlProfileId = searchParams.get('profileId');
       const match = urlProfileId ? profiles.find(p => p.id === urlProfileId) : null;
@@ -429,10 +596,12 @@ export default function RadarPage() {
       loadProfileActivity(selectedProfileId);
       setMatchPage(1);
       setIsEditingProfile(false);
+      setPreferredLocationInput('');
     } else {
       setProfileDocs([]);
       setProfileActivity([]);
       setIsEditingProfile(false);
+      setPreferredLocationInput('');
     }
   }, [selectedProfileId]);
 
@@ -506,6 +675,28 @@ export default function RadarPage() {
     setProfileForm(prev => ({ ...prev, priority_skills: next.join(', ') }));
   }
 
+  function joinPreferredLocationItems(items: string[]) {
+    return items.map(item => item.trim()).filter(Boolean).join(' | ');
+  }
+
+  function addPreferredLocation(value: string) {
+    const next = value.trim();
+    if (!next) return;
+    const current = splitPreferredLocations(profileForm.preferred_locations);
+    if (current.some(item => item.toLowerCase() === next.toLowerCase())) {
+      setPreferredLocationInput('');
+      return;
+    }
+    updateProfileField('preferred_locations', joinPreferredLocationItems([...current, next]));
+    setPreferredLocationInput('');
+  }
+
+  function removePreferredLocation(value: string) {
+    const next = splitPreferredLocations(profileForm.preferred_locations)
+      .filter(item => item.toLowerCase() !== value.toLowerCase());
+    updateProfileField('preferred_locations', joinPreferredLocationItems(next));
+  }
+
   function updateEducationField(index: number, field: keyof EducationEntry, value: string) {
     setProfileEducation(prev => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
   }
@@ -528,7 +719,7 @@ export default function RadarPage() {
 
   async function saveProfileForMatching(profileId: string) {
     setSavingProfileFields(true);
-    const updatePayload = {
+    const rawUpdatePayload = {
       target_role: profileForm.target_role.trim(),
       priority_skills: profileForm.priority_skills.trim(),
       core_skills: profileForm.core_skills.trim(),
@@ -543,10 +734,11 @@ export default function RadarPage() {
       experience: profileExperience,
       education: profileEducation,
     };
+    const normalizedUpdatePayload = await normalizeProfileLocationFields(rawUpdatePayload);
 
     const { data, error } = await supabase
       .from('profiles')
-      .update(updatePayload as unknown as Record<string, unknown>)
+      .update(normalizedUpdatePayload as unknown as Record<string, unknown>)
       .eq('id', profileId)
       .select('*')
       .single();
@@ -1058,9 +1250,68 @@ export default function RadarPage() {
     return `${hours}h ${minutes}m`;
   }
 
-  const selectedCooldownAt = selectedProfileId ? (liveMatchCooldowns[selectedProfileId] ?? 0) : 0;
-  const cooldownRemainingMs = Math.max(0, selectedCooldownAt + (24 * 60 * 60 * 1000) - Date.now());
-  const isLiveMatchCooldownActive = !isPaidPlan && cooldownRemainingMs > 0;
+  function getLiveMatchAccountScopeKey(): string {
+    return `account:${account?.id ?? 'anonymous'}`;
+  }
+
+  function getLiveMatchProfileScopeKey(profileId: string): string {
+    return `profile:${profileId}`;
+  }
+
+  function getRecentLiveMatchCount(scopeKey: string, windowMs: number): number {
+    const now = Date.now();
+    const timestamps = liveMatchAttempts[scopeKey] ?? [];
+    return timestamps.filter(ts => now - ts < windowMs).length;
+  }
+
+  function getLiveMatchAccountCount(): number {
+    return getRecentLiveMatchCount(getLiveMatchAccountScopeKey(), LIVE_MATCH_TOTAL_WINDOW_MS);
+  }
+
+  function getLiveMatchCandidateCooldownRemainingMs(profileId: string): number {
+    const now = Date.now();
+    const scopeKey = getLiveMatchProfileScopeKey(profileId);
+    const windowMs = isPaidPlan ? PAID_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS : FREE_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS;
+    const timestamps = (liveMatchAttempts[scopeKey] ?? [])
+      .filter(ts => now - ts < windowMs)
+      .sort((a, b) => a - b);
+    if (timestamps.length === 0) return 0;
+    return Math.max(0, timestamps[0] + windowMs - now);
+  }
+
+  function recordLiveMatchAttempt(profileId: string) {
+    const now = Date.now();
+    const accountScopeKey = getLiveMatchAccountScopeKey();
+    const profileScopeKey = getLiveMatchProfileScopeKey(profileId);
+
+    setLiveMatchAttempts(prev => {
+      const prune = (timestamps: number[]) => timestamps.filter(ts => now - ts < LIVE_MATCH_TOTAL_WINDOW_MS);
+      const next = {
+        ...prev,
+        [accountScopeKey]: [...prune(prev[accountScopeKey] ?? []), now],
+        [profileScopeKey]: [...prune(prev[profileScopeKey] ?? []), now],
+      };
+
+      try {
+        localStorage.setItem(LIVE_MATCH_ATTEMPT_LOG_KEY, JSON.stringify(next));
+      } catch {
+        // no-op if storage is unavailable
+      }
+
+      return next;
+    });
+  }
+
+  const cooldownRemainingMs = selectedProfileId
+    ? getLiveMatchCandidateCooldownRemainingMs(selectedProfileId)
+    : 0;
+  const liveMatchAccountCount = getLiveMatchAccountCount();
+  const isLiveMatchCooldownActive = !isPaidPlan
+    ? liveMatchAccountCount >= FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT || cooldownRemainingMs > 0
+    : cooldownRemainingMs > 0;
+  const selectedMatchCooldownStatus = cooldownRemainingMs > 0
+    ? `Next refresh available in ${formatCooldown(cooldownRemainingMs)}`
+    : null;
 
   function stampLiveMatchCooldown(profileId: string) {
     const next = { ...liveMatchCooldowns, [profileId]: Date.now() };
@@ -1078,8 +1329,21 @@ export default function RadarPage() {
       showToast('Select a candidate to run Live Match', 'error');
       return;
     }
-    if (isLiveMatchCooldownActive) {
-      showToast('Live Match is available once every 24 hours on free plans', 'error');
+    const candidateCooldownRemainingMs = getLiveMatchCandidateCooldownRemainingMs(selectedProfileId);
+    const accountAttemptCount = getLiveMatchAccountCount();
+
+    if (!isPaidPlan && accountAttemptCount >= FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT) {
+      showToast('You have used all 5 live matches in the last 24 hours.', 'error');
+      return;
+    }
+
+    if (candidateCooldownRemainingMs > 0) {
+      showToast(
+        isPaidPlan
+          ? 'You can refresh this candidate once every hour.'
+          : 'You can only try this candidate once every 24 hours.',
+        'error',
+      );
       return;
     }
 
@@ -1094,10 +1358,6 @@ export default function RadarPage() {
       setScanning(false);
       localStorage.removeItem(scanStateKey);
       return;
-    }
-
-    if (!isPaidPlan) {
-      stampLiveMatchCooldown(selectedProfileId);
     }
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
@@ -1138,11 +1398,19 @@ export default function RadarPage() {
           console.error(`Radar match failed for ${profile.candidate_name}:`, errData);
           if (response.status === 402) {
             showToast(errData.error || 'Insufficient credits. Please top up your account.', 'error');
+          } else if (response.status === 429) {
+            showToast(errData.error || 'Live Match quota reached. Please try again later.', 'error');
             cleanup();
             return;
           }
-          continue;
+          const message = errData?.error || errData?.message || `Live Match failed (${response.status}). Please try again.`;
+          showToast(message, 'error');
+          cleanup();
+          return;
         }
+
+        recordLiveMatchAttempt(selectedProfileId);
+        stampLiveMatchCooldown(selectedProfileId);
 
         const contentType = response.headers.get('content-type') ?? '';
 
@@ -1171,6 +1439,10 @@ export default function RadarPage() {
                   if (msg.matched > 0) {
                     await loadResultsOnly();
                   }
+                } else if (msg.type === 'error') {
+                  showToast(msg.error || 'Live Match failed. Please try again.', 'error');
+                  cleanup();
+                  return;
                 } else if (msg.type === 'done') {
                   // final message for this profile
                 }
@@ -1180,6 +1452,11 @@ export default function RadarPage() {
         } else {
           // Non-streaming fallback (e.g. "No jobs found" JSON responses)
           const matchData = await response.json();
+          if (matchData?.error) {
+            showToast(matchData.error, 'error');
+            cleanup();
+            return;
+          }
           totalNewMatches += (matchData.matched ?? 0);
           if (matchData.matched > 0) {
             await loadResultsOnly();
@@ -1307,11 +1584,44 @@ export default function RadarPage() {
 
   const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
-  const profileResults = results
-    .filter(r => !selectedProfileId || r.profile_id === selectedProfileId)
+  const recentQualifiedResults = dedupeMatchResults(results
     .filter(r => !hideDisqualified || !r.disqualified)
     .filter(r => r.final_average_score >= 70)
-    .filter(r => new Date(r.created_at).getTime() >= sevenDaysAgo);
+    .filter(r => new Date(r.created_at).getTime() >= sevenDaysAgo), jobMap);
+
+  const streamOrderedResults = [...recentQualifiedResults].sort((a, b) => {
+    const ta = new Date(a.created_at).getTime();
+    const tb = new Date(b.created_at).getTime();
+    return ta - tb;
+  });
+
+  const newestFirstResults = [...recentQualifiedResults].sort((a, b) => {
+    const ta = new Date(a.created_at).getTime();
+    const tb = new Date(b.created_at).getTime();
+    return tb - ta;
+  });
+
+  const freePlanVisibleIds = new Set(
+    (isPaidPlan
+      ? newestFirstResults.slice(0, PAID_PLAN_MATCH_TOTAL_LIMIT)
+      : streamOrderedResults.slice(0, FREE_PLAN_MATCH_TOTAL_LIMIT)
+    ).map(r => r.id),
+  );
+
+  const streamRankByResultId = new Map<string, number>();
+  streamOrderedResults.forEach((row, idx) => {
+    streamRankByResultId.set(row.id, idx);
+  });
+
+  const cappedRecentResults = recentQualifiedResults.filter(r => freePlanVisibleIds.has(r.id));
+
+  const matchCountByProfile = new Map<string, number>();
+  for (const row of cappedRecentResults) {
+    matchCountByProfile.set(row.profile_id, (matchCountByProfile.get(row.profile_id) ?? 0) + 1);
+  }
+
+  const profileResults = cappedRecentResults
+    .filter(r => !selectedProfileId || r.profile_id === selectedProfileId);
 
   const getSourceCategory = (r: { job_source: string; job_id: string }): SourceTab => {
     if (JOB_BOARD_SOURCES.has(r.job_source)) return 'job_boards';
@@ -1392,10 +1702,24 @@ export default function RadarPage() {
   return (
     <div className="h-screen flex flex-col bg-gray-100 font-sans overflow-hidden">
       <AppNav />
+      {showPlanModal && (
+        <PlanModal
+          hasActiveSub={hasActiveSub}
+          subscription={subscription}
+          selectedNewTier={selectedNewTier}
+          setSelectedNewTier={setSelectedNewTier}
+          pendingPeriodEnd={pendingPeriodEnd}
+          changingPlan={changingPlan}
+          subscribing={subscribing}
+          onClose={() => setShowPlanModal(false)}
+          onSubmit={handlePlanSubmit}
+          user={user}
+        />
+      )}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* Full-width Search Header */}
-      <div className="bg-white border-b border-gray-200 px-5 h-[44px] flex items-center gap-2.5 shrink-0">
+      <div className="bg-white border-b border-gray-200 px-5 h-[56px] flex items-center gap-3 shrink-0">
         <div className="flex-1 relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
@@ -1403,13 +1727,39 @@ export default function RadarPage() {
             placeholder="Search candidates or jobs by name, title, company, location..."
             value={jobSearchQuery}
             onChange={(e) => { setJobSearchQuery(e.target.value); setCandidateQuery(e.target.value); setMatchPage(1); }}
-            className="w-full pl-8 pr-8 py-2 text-xs border border-gray-200 rounded-xl bg-white focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 transition-shadow"
+            className="w-full pl-8 pr-8 py-2 text-xs border border-slate-200 rounded-2xl bg-slate-50 shadow-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 focus:bg-white transition-shadow"
           />
           {jobSearchQuery && (
             <button onClick={() => { setJobSearchQuery(''); setCandidateQuery(''); }} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
               <X size={12} />
             </button>
           )}
+        </div>
+        <div className="hidden sm:flex items-center gap-3 shrink-0">
+          <div className="flex h-[38px] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm whitespace-nowrap">
+            <div className="flex items-center gap-1 text-center">
+              {!isPaidPlan ? (
+                <>
+                  <span className="text-[12px] font-semibold leading-none text-slate-900">{Math.max(0, FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT - liveMatchAccountCount)}/{FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT}</span>
+                  <span className="text-[10px] font-medium leading-none text-slate-500 normal-case tracking-normal">matches left</span>
+                </>
+              ) : cooldownRemainingMs > 0 ? (
+                <span className="text-[10px] font-semibold text-amber-600">Refresh in {formatCooldown(cooldownRemainingMs)}</span>
+              ) : (
+                <span className="text-[10px] font-semibold text-gray-400">Hourly refreshes available per candidate</span>
+              )}
+            </div>
+          </div>
+          {!isPaidPlan ? (
+            <button
+              type="button"
+              onClick={openUpgradeModal}
+              className="flex h-[38px] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 shadow-sm whitespace-nowrap transition-colors hover:bg-blue-50"
+            >
+              <span className="text-[9px] font-normal leading-none text-slate-400">for unlimited hourly refreshes -</span>
+              <span className="text-[11px] font-semibold text-blue-700">Upgrade to Pro</span>
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -1447,7 +1797,7 @@ export default function RadarPage() {
               <>
                 {sidebarProfiles.map(profile => {
                   const isSelected = selectedProfileId === profile.id;
-                  const matchedCount = results.filter(r => r.profile_id === profile.id && !r.disqualified && r.final_average_score >= 70).length;
+                  const matchedCount = matchCountByProfile.get(profile.id) ?? 0;
                   const healthScore = getMatchHealthPercent(profile);
                   const healthTone = healthScore === 0
                     ? { chip: 'bg-gray-50 text-gray-500', label: 'Health' }
@@ -1508,7 +1858,7 @@ export default function RadarPage() {
             return (
               <div className="w-[340px] flex-shrink-0 border-r border-slate-200 overflow-hidden bg-slate-50/50 flex flex-col">
                 {/* Col 2 Header */}
-                <div className="sticky top-0 z-10 bg-white border-b border-slate-200">
+                <div className="sticky top-0 z-30 bg-white border-b border-slate-200">
                   <div className="px-3 h-[44px] flex items-center justify-between border-b border-slate-100">
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Details</h3>
                     {detailTab === 'profile' && (
@@ -1587,9 +1937,7 @@ export default function RadarPage() {
                       const daysSinceCreated = Number.isFinite(createdAt)
                         ? Math.max(0, Math.floor((Date.now() - createdAt) / (1000 * 60 * 60 * 24)))
                         : 0;
-                      const matches70Plus = results.filter(
-                        r => r.profile_id === profile.id && !r.disqualified && r.final_average_score >= 70,
-                      ).length;
+                      const matches70Plus = matchCountByProfile.get(profile.id) ?? 0;
 
                       const matchFieldRows = [
                         { label: 'Target Role', value: profileForm.target_role },
@@ -1765,12 +2113,41 @@ export default function RadarPage() {
 
                                 <div>
                                   <label className="block text-[11px] font-semibold text-slate-500 mb-1">Preferred Locations</label>
-                                  <input
-                                    value={profileForm.preferred_locations}
-                                    onChange={(e) => updateProfileField('preferred_locations', e.target.value)}
-                                    placeholder="Ex: Austin, Remote"
-                                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
-                                  />
+                                  <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+                                    <div className="mb-2 flex flex-wrap gap-1.5">
+                                      {splitPreferredLocations(profileForm.preferred_locations).map((loc) => (
+                                        <span key={loc} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700">
+                                          {loc}
+                                          <button
+                                            type="button"
+                                            onClick={() => removePreferredLocation(loc)}
+                                            className="text-blue-400 hover:text-red-500"
+                                            aria-label={`Remove ${loc}`}
+                                          >
+                                            <X size={10} />
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="flex gap-1.5 items-center">
+                                      <LocationAutosuggestInput
+                                        value={preferredLocationInput}
+                                        onChange={setPreferredLocationInput}
+                                        onSelectPlace={(place) => addPreferredLocation(place.formatted || preferredLocationInput)}
+                                        scope="any"
+                                        placeholder="Type city/state/country and pick"
+                                        className="flex-1"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => addPreferredLocation(preferredLocationInput)}
+                                        className="h-[30px] px-2.5 rounded-md border border-slate-200 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                                      >
+                                        Add
+                                      </button>
+                                    </div>
+                                    <p className="mt-1 text-[10px] text-slate-400">Use autosuggest to add one or more preferred locations.</p>
+                                  </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2">
@@ -1982,7 +2359,7 @@ export default function RadarPage() {
           {/* ── COL 3: Match Results ───────────────────────────────────────── */}
           <div className="flex-1 min-w-0 overflow-y-auto">
             {/* Filter Tabs - Sticky Column Header */}
-            <div className="sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
+            <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
               <div className="flex items-center h-[44px] px-3 gap-3 border-b border-slate-100">
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide shrink-0">Matches</h3>
                 <div className="hidden md:flex items-center gap-2.5">
@@ -2013,7 +2390,7 @@ export default function RadarPage() {
                           Free accounts are limited to only Daily matches. Upgrade your account to setup hourly match schedules
                         </p>
                         <button
-                          onClick={() => navigate('/billing')}
+                          onClick={openUpgradeModal}
                           className="pointer-events-auto mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white shadow-sm hover:opacity-90 transition-opacity"
                           style={{ background: 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)' }}
                         >
@@ -2026,16 +2403,10 @@ export default function RadarPage() {
                 </div>
                 <div className="flex-1" />
                 <div className="flex items-center gap-2 shrink-0">
-                  {isLiveMatchCooldownActive && (
-                    <p className="text-[10px] text-slate-500 whitespace-nowrap">
-                      Refresh in {formatCooldown(cooldownRemainingMs)}.{' '}
-                      <button
-                        onClick={() => navigate('/billing')}
-                        className="text-blue-600 hover:text-blue-700 font-semibold"
-                      >
-                        Upgrade for hourly refresh
-                      </button>
-                    </p>
+                  {selectedMatchCooldownStatus && (
+                    <span className="text-[10px] font-medium text-amber-600 whitespace-nowrap">
+                      {selectedMatchCooldownStatus}
+                    </span>
                   )}
                   <button
                     onClick={runRadarScan}
@@ -2066,9 +2437,7 @@ export default function RadarPage() {
                     >
                       {tab.label}
                       <span className={`text-[10px] min-w-[16px] px-1 rounded-full font-bold ${
-                        sourceTab === tab.key
-                          ? 'bg-slate-200 text-slate-700'
-                          : 'text-slate-400'
+                        sourceTab === tab.key ? 'bg-slate-100 text-slate-700' : 'bg-slate-200 text-slate-600'
                       }`}>
                         {tab.count}
                       </span>
@@ -2077,27 +2446,8 @@ export default function RadarPage() {
                 </div>
               </div>
 
-              {/* Pipeline Progress */}
-              {scanning && pipelineStep !== 'idle' && (
-                <div className="border-t border-sky-100 bg-sky-50/70 px-3 py-2">
-                  <div className="flex items-center gap-2 text-sky-700">
-                    <Target size={12} className="animate-pulse" />
-                    {pipelineDetail ? <span className="text-[11px] font-semibold">{pipelineDetail}</span> : <span className="text-[11px] font-semibold">Matching candidate name against jobs...</span>}
-                  </div>
-                  {pipelineProgress.total > 0 && (
-                    <div className="mt-1 flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-sky-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-sky-500 rounded-full transition-all duration-300" style={{ width: `${(pipelineProgress.current / pipelineProgress.total) * 100}%` }} />
-                      </div>
-                      <span className="text-[10px] text-sky-700 font-medium whitespace-nowrap">{pipelineProgress.current}/{pipelineProgress.total}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
             {/* Results List */}
-            <div className="p-4">
+            <div className="relative z-0 p-4">
             {filteredResults.length === 0 ? (
               <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
                 <Radar size={48} className="mx-auto text-slate-300 mb-4" />
@@ -2112,13 +2462,13 @@ export default function RadarPage() {
               const profile = profiles.find(p => p.id === result.profile_id);
               const job = jobMap.get(result.job_id);
               const isExpanded = expandedId === result.id;
-              const globalResultIndex = (matchPage - 1) * MATCH_PAGE_SIZE + index;
-              const isLocked = shouldLockMatchCard({ isPaidPlan, resultIndex: globalResultIndex });
+              const streamRank = streamRankByResultId.get(result.id) ?? Number.MAX_SAFE_INTEGER;
+              const isLocked = shouldLockMatchCard({ isPaidPlan, streamRank });
 
               return (
                 <div
                   key={result.id}
-                  className={`relative overflow-hidden rounded-xl border shadow-sm transition-all ${
+                  className={`relative isolate overflow-hidden rounded-xl border shadow-sm transition-all ${
                     result.disqualified ? 'border-red-200 bg-red-50/30' : 'border-slate-200 hover:border-slate-300'
                   } ${isLocked ? 'bg-slate-50/80' : 'bg-white'}`}
                 >
@@ -2131,7 +2481,7 @@ export default function RadarPage() {
                         <p className="text-[11px] font-semibold text-slate-700">Upgrade to unlock all Matched Jobs</p>
                         <button
                           type="button"
-                          onClick={() => navigate('/billing')}
+                          onClick={openUpgradeModal}
                           className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm"
                         >
                           <ArrowUpRight size={11} />
@@ -2415,6 +2765,8 @@ export default function RadarPage() {
         </div> {/* end flex wrapper for col2+col3 */}
         </div>
         </div>
+      </div>
+
       </div>
 
       {/* Preview Modal */}

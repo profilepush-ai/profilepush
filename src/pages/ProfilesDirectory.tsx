@@ -10,6 +10,7 @@ import {
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
+import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import { supabase } from '../lib/supabase';
 import { throttledAll } from '../lib/query-throttle';
 import { triggerProfileEmbedding } from '../lib/embeddings';
@@ -70,6 +71,17 @@ interface TeamMember { user_id: string | null; invited_email: string; role: stri
 interface HotlistRow { profile_id: string; created_at: string | null; }
 type DocCategory = 'resume' | 'rewritten' | 'experience' | 'education' | 'visa' | 'others';
 
+type PlacesSuggestion = { placeId: string };
+type PlacesDetails = {
+  placeId: string;
+  formatted: string;
+  city: string;
+  state: string;
+  stateCode: string;
+  country: string;
+  countryCode: string;
+};
+
 function memberName(m: TeamMember): string {
   return m.display_name?.trim() || m.invited_email.split('@')[0];
 }
@@ -109,6 +121,115 @@ const BENCH_DATE_PRESETS: { id: BenchDatePreset; label: string }[] = [
   { id: 'month', label: 'This month' },
   { id: 'all', label: 'All time' },
 ];
+
+function getPlacesFunctionUrl() {
+  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) || '';
+  return supabaseUrl ? `${supabaseUrl}/functions/v1/google-places` : '';
+}
+
+function buildLocationSeed(location?: string, city?: string, state?: string, country?: string) {
+  const loc = (location ?? '').trim();
+  if (loc) return loc;
+  const parts = [city, state, country].map(v => (v ?? '').trim()).filter(Boolean);
+  return parts.join(', ');
+}
+
+function looksLikeLocationList(text: string) {
+  return /[;|]/.test(text) || /\s+\+\s+/.test(text);
+}
+
+function splitPreferredLocations(value: string) {
+  const raw = value.trim();
+  if (!raw) return [] as string[];
+  const delimiter = raw.includes('|') ? '|' : raw.includes(';') ? ';' : raw.includes('\n') ? '\n' : null;
+  if (!delimiter) return [raw];
+  return raw.split(delimiter).map(item => item.trim()).filter(Boolean);
+}
+
+function joinPreferredLocations(items: string[]) {
+  return items.map(item => item.trim()).filter(Boolean).join(' | ');
+}
+
+function addUniquePreferredLocation(items: string[], value: string) {
+  const next = value.trim();
+  if (!next) return items;
+  if (items.some(item => item.toLowerCase() === next.toLowerCase())) return items;
+  return [...items, next];
+}
+
+async function normalizePlaceInput(
+  input: string,
+  scope: 'any' | 'city' | 'state' | 'country' = 'any',
+): Promise<PlacesDetails | null> {
+  const query = input.trim();
+  const endpoint = getPlacesFunctionUrl();
+  if (!query || !endpoint) return null;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token ?? '';
+  if (!accessToken) return null;
+
+  const supabaseAnon = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+  };
+  if (supabaseAnon) headers.Apikey = supabaseAnon;
+
+  const autocompleteRes = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ mode: 'autocomplete', input: query, scope }),
+  });
+  if (!autocompleteRes.ok) return null;
+
+  const autocompleteData = await autocompleteRes.json();
+  const suggestions = Array.isArray(autocompleteData?.suggestions)
+    ? (autocompleteData.suggestions as PlacesSuggestion[])
+    : [];
+  const first = suggestions[0];
+  if (!first?.placeId) return null;
+
+  const detailsRes = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ mode: 'details', placeId: first.placeId }),
+  });
+  if (!detailsRes.ok) return null;
+
+  const detailsData = await detailsRes.json();
+  return (detailsData?.place as PlacesDetails | undefined) ?? null;
+}
+
+async function normalizeProfileLocationFields<T extends Record<string, unknown>>(payload: T): Promise<T> {
+  const next = { ...payload } as Record<string, unknown>;
+
+  const rawLocation = String(next.location ?? '').trim();
+  const rawCity = String(next.city ?? '').trim();
+  const rawState = String(next.state ?? '').trim();
+  const rawCountry = String(next.country ?? '').trim();
+  const seed = buildLocationSeed(rawLocation, rawCity, rawState, rawCountry);
+
+  if (seed) {
+    const normalized = await normalizePlaceInput(seed, 'any');
+    if (normalized) {
+      next.location = normalized.formatted || seed;
+      next.city = normalized.city || rawCity;
+      next.state = normalized.stateCode || normalized.state || rawState;
+      next.country = normalized.countryCode || normalized.country || rawCountry;
+    }
+  }
+
+  const rawPreferred = String(next.preferred_locations ?? '').trim();
+  if (rawPreferred && !looksLikeLocationList(rawPreferred)) {
+    const normalizedPreferred = await normalizePlaceInput(rawPreferred, 'any');
+    if (normalizedPreferred?.formatted) {
+      next.preferred_locations = normalizedPreferred.formatted;
+    }
+  }
+
+  return next as T;
+}
 
 function getBenchDateStart(preset: BenchDatePreset): Date | null {
   const now = new Date();
@@ -334,6 +455,7 @@ export default function ProfilesDirectory() {
   const [aiGeneratingSkills, setAiGeneratingSkills]       = useState(false);
   const [editingMatchHealth, setEditingMatchHealth]       = useState(false);
   const [matchHealthDraft, setMatchHealthDraft]           = useState<Partial<Profile>>({});
+  const [matchHealthLocationInput, setMatchHealthLocationInput] = useState('');
   const [savingMatchHealth, setSavingMatchHealth]         = useState(false);
   const newSkillRef = useRef<HTMLInputElement>(null);
 
@@ -348,6 +470,7 @@ export default function ProfilesDirectory() {
   // Edit profile modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [editDraft, setEditDraft]         = useState<Partial<Profile>>({});
+  const [editPreferredLocationInput, setEditPreferredLocationInput] = useState('');
   const [editSaving, setEditSaving]       = useState(false);
   const [editingFullProfile, setEditingFullProfile] = useState(false);
   const [fullProfileDraft, setFullProfileDraft]     = useState<Partial<Profile>>({});
@@ -609,7 +732,8 @@ export default function ProfilesDirectory() {
     if ('priority_skills' in matchHealthDraft) {
       payload.priority_skills = matchHealthDraft.priority_skills ?? '';
     }
-    const { data, error } = await supabase.from('profiles').update(payload).eq('id', selectedProfileId).select().single();
+    const normalizedPayload = await normalizeProfileLocationFields(payload as Record<string, unknown>);
+    const { data, error } = await supabase.from('profiles').update(normalizedPayload).eq('id', selectedProfileId).select().single();
     if (error) {
       showToast('Failed to update match rules', 'error');
     } else {
@@ -659,10 +783,12 @@ export default function ProfilesDirectory() {
   async function saveEditProfile() {
     if (!selectedProfileId) return;
     setEditSaving(true);
-    const { data } = await supabase.from('profiles').update(editDraft).eq('id', selectedProfileId).select().single();
+    const normalizedDraft = await normalizeProfileLocationFields(editDraft as Record<string, unknown>);
+    const { data } = await supabase.from('profiles').update(normalizedDraft).eq('id', selectedProfileId).select().single();
     if (data) setProfiles(prev => prev.map(p => p.id === selectedProfileId ? { ...p, ...data } : p));
     setEditSaving(false);
     setShowEditModal(false);
+    setEditPreferredLocationInput('');
     showToast('Profile updated');
     triggerProfileEmbedding(selectedProfileId);
   }
@@ -670,7 +796,8 @@ export default function ProfilesDirectory() {
   async function saveFullProfileEdits() {
     if (!selectedProfileId) return;
     setSavingFullProfile(true);
-    const { data, error } = await supabase.from('profiles').update(fullProfileDraft).eq('id', selectedProfileId).select().single();
+    const normalizedDraft = await normalizeProfileLocationFields(fullProfileDraft as Record<string, unknown>);
+    const { data, error } = await supabase.from('profiles').update(normalizedDraft).eq('id', selectedProfileId).select().single();
     if (error) {
       showToast('Failed to update profile', 'error');
     } else {
@@ -814,15 +941,16 @@ export default function ProfilesDirectory() {
         work_authorization: preFill.work_authorization || null,
         core_skills: filledSkills.join(', '),
       };
+      const normalizedProfilePayload = await normalizeProfileLocationFields(profilePayload as Record<string, unknown>);
 
       let profileId = earlyProfileId;
 
       if (profileId) {
-        const { error } = await supabase.from('profiles').update(profilePayload).eq('id', profileId);
+        const { error } = await supabase.from('profiles').update(normalizedProfilePayload).eq('id', profileId);
         if (error) throw error;
       } else {
         const { data: profile, error } = await supabase.from('profiles').insert({
-          account_id: account.id, ...profilePayload,
+          account_id: account.id, ...normalizedProfilePayload,
         }).select('id').single();
         if (error || !profile) throw error || new Error('No profile returned');
         profileId = profile.id;
@@ -893,7 +1021,8 @@ export default function ProfilesDirectory() {
         if (Array.isArray(r.education) && r.education.length) updates.education = r.education;
         if (Array.isArray(r.experience) && r.experience.length) updates.experience = r.experience;
         if (Object.keys(updates).length > 0) {
-          await supabase.from('profiles').update(updates).eq('id', profileId);
+          const normalizedUpdates = await normalizeProfileLocationFields(updates);
+          await supabase.from('profiles').update(normalizedUpdates).eq('id', profileId);
           await fetchProfiles();
         }
         break;
@@ -1115,31 +1244,51 @@ export default function ProfilesDirectory() {
     const batchSize = 5;
     let created = 0;
 
+    const asLocationText = (value: unknown) => {
+      if (Array.isArray(value)) {
+        return value.map(item => String(item ?? '').trim()).filter(Boolean).join(' | ');
+      }
+      return String(value ?? '').trim();
+    };
+
     for (let i = 0; i < total; i += batchSize) {
       const batch = bulkParsedRows.slice(i, i + batchSize);
-      const inserts = batch.map((p: Record<string, unknown>) => ({
-        account_id: account!.id,
-        candidate_name: (p.candidate_name as string) || 'Unknown',
-        target_role: (p.target_role as string) || '',
-        location: (p.location as string) || '',
-        city: (p.city as string) || '',
-        state: (p.state as string) || '',
-        country: (p.country as string) || '',
-        core_skills: (p.core_skills as string) || '',
-        priority_skills: (p.priority_skills as string) || '',
-        phone: (p.phone as string) || '',
-        email: (p.email as string) || '',
-        linkedin_url: (p.linkedin_url as string) || '',
-        visa_status: (p.visa_status as string) || '',
-        work_type: (p.work_type as string) || '',
-        work_authorization: (p.work_authorization as string) || '',
-        preferred_locations: (p.preferred_locations as string) || '',
-        desired_salary_min: typeof p.desired_salary_min === 'number' && p.desired_salary_min > 0 ? p.desired_salary_min : null,
-        desired_salary_max: typeof p.desired_salary_max === 'number' && p.desired_salary_max > 0 ? p.desired_salary_max : null,
-        years_experience: typeof p.years_experience === 'number' && p.years_experience > 0 ? p.years_experience : null,
-        relocation_open: p.relocation_open === true,
-        availability: (p.availability as string) || '',
-        tax_terms: (p.tax_terms as string) || '',
+      const inserts = await Promise.all(batch.map(async (p: Record<string, unknown>) => {
+        const rawLocation = asLocationText(p.location);
+        const rawPreferred = asLocationText(p.preferred_locations);
+        const inferredPreferred = rawPreferred || (looksLikeLocationList(rawLocation) ? rawLocation : '');
+        const preferredItems = splitPreferredLocations(inferredPreferred);
+        const preferredLocations = joinPreferredLocations(preferredItems);
+        const primaryLocation = !looksLikeLocationList(rawLocation)
+          ? rawLocation
+          : (preferredItems[0] ?? '');
+
+        const rawInsert = {
+          account_id: account!.id,
+          candidate_name: (p.candidate_name as string) || 'Unknown',
+          target_role: (p.target_role as string) || '',
+          location: primaryLocation,
+          city: (p.city as string) || '',
+          state: (p.state as string) || '',
+          country: (p.country as string) || '',
+          core_skills: (p.core_skills as string) || '',
+          priority_skills: (p.priority_skills as string) || '',
+          phone: (p.phone as string) || '',
+          email: (p.email as string) || '',
+          linkedin_url: (p.linkedin_url as string) || '',
+          visa_status: (p.visa_status as string) || '',
+          work_type: (p.work_type as string) || '',
+          work_authorization: (p.work_authorization as string) || '',
+          preferred_locations: preferredLocations,
+          desired_salary_min: typeof p.desired_salary_min === 'number' && p.desired_salary_min > 0 ? p.desired_salary_min : null,
+          desired_salary_max: typeof p.desired_salary_max === 'number' && p.desired_salary_max > 0 ? p.desired_salary_max : null,
+          years_experience: typeof p.years_experience === 'number' && p.years_experience > 0 ? p.years_experience : null,
+          relocation_open: p.relocation_open === true,
+          availability: (p.availability as string) || '',
+          tax_terms: (p.tax_terms as string) || '',
+        };
+
+        return await normalizeProfileLocationFields(rawInsert as Record<string, unknown>);
       }));
 
       const { data: createdRows, error } = await supabase.from('profiles').insert(inserts).select('id');
@@ -1171,7 +1320,7 @@ export default function ProfilesDirectory() {
   async function handleSave() {
     if (!parsed.candidate_name.trim() || !parsed.target_role.trim()) return;
     setSaving(true);
-    const { data: profile, error: profileErr } = await supabase.from('profiles').insert({
+    const rawInsert = {
       account_id: account?.id, candidate_name: parsed.candidate_name.trim(),
       target_role: parsed.target_role.trim(), location: parsed.location.trim(),
       city: parsed.city.trim(), state: parsed.state.trim(), zip_code: parsed.zip_code.trim(),
@@ -1186,7 +1335,9 @@ export default function ProfilesDirectory() {
       desired_salary_max: parsed.desired_salary_max ? Number(parsed.desired_salary_max) : null,
       preferred_locations: parsed.preferred_locations.trim(),
       education: parsed.education, experience: parsed.experience,
-    }).select().single();
+    };
+    const normalizedInsert = await normalizeProfileLocationFields(rawInsert as Record<string, unknown>);
+    const { data: profile, error: profileErr } = await supabase.from('profiles').insert(normalizedInsert).select().single();
 
     if (profileErr || !profile) { showToast('Failed to create profile', 'error'); setSaving(false); return; }
 
@@ -1562,7 +1713,26 @@ export default function ProfilesDirectory() {
                                   <td className="px-3 py-2 text-gray-700 max-w-[180px] truncate">{(row as Record<string,unknown>).core_skills as string || '-'}</td>
                                   <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).visa_status as string || '-'}</td>
                                   <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).work_type as string || '-'}</td>
-                                  <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).preferred_locations as string || (row as Record<string,unknown>).location as string || '-'}</td>
+                                  <td className="px-3 py-2 text-gray-700 max-w-[220px]">
+                                    {(() => {
+                                      const rawPreferred = String((row as Record<string, unknown>).preferred_locations ?? '').trim();
+                                      const rawLocation = String((row as Record<string, unknown>).location ?? '').trim();
+                                      const inferredPreferred = rawPreferred || (looksLikeLocationList(rawLocation) ? rawLocation : '');
+                                      const preferredItems = splitPreferredLocations(inferredPreferred);
+                                      if (preferredItems.length > 0) {
+                                        return (
+                                          <div className="flex flex-wrap gap-1">
+                                            {preferredItems.map((loc, locIdx) => (
+                                              <span key={`${idx}-${loc}-${locIdx}`} className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                                                {loc}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        );
+                                      }
+                                      return <span className="whitespace-nowrap">{rawLocation || '-'}</span>;
+                                    })()}
+                                  </td>
                                   <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{(row as Record<string,unknown>).desired_salary_max ? `${(row as Record<string,unknown>).desired_salary_max}/hr` : '-'}</td>
                                 </tr>
                               ))}
@@ -1686,6 +1856,15 @@ export default function ProfilesDirectory() {
               value: string | number | null,
             ) => {
               setMatchHealthDraft(prev => ({ ...prev, [field]: value }));
+            };
+            const preferredLocationItems = splitPreferredLocations(String(matchHealthDraft.preferred_locations ?? ''));
+            const addMatchHealthPreferredLocation = (candidate: string) => {
+              const nextItems = addUniquePreferredLocation(preferredLocationItems, candidate);
+              updateMatchHealthField('preferred_locations', joinPreferredLocations(nextItems));
+            };
+            const removeMatchHealthPreferredLocation = (idx: number) => {
+              const nextItems = preferredLocationItems.filter((_, itemIndex) => itemIndex !== idx);
+              updateMatchHealthField('preferred_locations', joinPreferredLocations(nextItems));
             };
 
             const resumeFiles = detailFiles.filter(f => f.category === 'resume' || /resume/i.test(f.file_name));
@@ -1841,7 +2020,7 @@ export default function ProfilesDirectory() {
                                 <Check size={10} /> {savingMatchHealth ? 'Saving…' : 'Save'}
                               </button>
                               <button
-                                onClick={() => { setEditingMatchHealth(false); setMatchHealthDraft({}); }}
+                                onClick={() => { setEditingMatchHealth(false); setMatchHealthDraft({}); setMatchHealthLocationInput(''); }}
                                 className="text-[10px] font-semibold text-gray-600 hover:text-gray-900 bg-white hover:bg-gray-100 px-2 py-1 rounded-lg border border-gray-200 transition-colors"
                               >
                                 Cancel
@@ -1861,6 +2040,7 @@ export default function ProfilesDirectory() {
                                   desired_salary_min: p.desired_salary_min ?? null,
                                   desired_salary_max: p.desired_salary_max ?? null,
                                 });
+                                setMatchHealthLocationInput('');
                                 setEditingMatchHealth(true);
                               }}
                               title="Edit match rules"
@@ -1877,7 +2057,51 @@ export default function ProfilesDirectory() {
                               <div key={row.label} className="flex flex-col gap-1 rounded-lg bg-white/70 px-2 py-1.5 border border-gray-100">
                                 <p className="text-[10px] font-semibold text-gray-600">{row.label}</p>
                                 {editingMatchHealth ? (
-                                  row.type === 'select' ? (
+                                  row.field === 'preferred_locations' ? (
+                                    <div className="space-y-1.5">
+                                      {preferredLocationItems.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {preferredLocationItems.map((loc, idx) => (
+                                            <span key={`${loc}-${idx}`} className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                                              <span>{loc}</span>
+                                              <button
+                                                type="button"
+                                                onClick={() => removeMatchHealthPreferredLocation(idx)}
+                                                className="text-blue-400 hover:text-blue-700"
+                                                aria-label={`Remove ${loc}`}
+                                              >
+                                                <X size={9} />
+                                              </button>
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-1.5">
+                                        <LocationAutosuggestInput
+                                          value={matchHealthLocationInput}
+                                          onChange={setMatchHealthLocationInput}
+                                          onSelectPlace={(place) => {
+                                            const normalized = place.formatted
+                                              || [place.city, place.stateCode || place.state, place.countryCode || place.country].filter(Boolean).join(', ');
+                                            addMatchHealthPreferredLocation(normalized);
+                                            setMatchHealthLocationInput('');
+                                          }}
+                                          placeholder="Add city, state, or country"
+                                          className="flex-1"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            addMatchHealthPreferredLocation(matchHealthLocationInput);
+                                            setMatchHealthLocationInput('');
+                                          }}
+                                          className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                                        >
+                                          Add
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : row.type === 'select' ? (
                                     <select
                                       value={String((matchHealthDraft as Record<string, unknown>)[row.field] ?? '')}
                                       onChange={(e) => updateMatchHealthField(row.field, e.target.value)}
@@ -2868,7 +3092,23 @@ export default function ProfilesDirectory() {
                 <MField label="Target Role *"     value={editDraft.target_role ?? ''}    onChange={v => setEditDraft(d => ({ ...d, target_role: v }))}    placeholder="Senior React Developer" />
                 <MField label="Email"             value={editDraft.email ?? ''}           onChange={v => setEditDraft(d => ({ ...d, email: v }))}           placeholder="jane@example.com" />
                 <MField label="Phone"             value={editDraft.phone ?? ''}           onChange={v => setEditDraft(d => ({ ...d, phone: v }))}           placeholder="+1 (555) 000-0000" />
-                <MField label="Location"          value={editDraft.location ?? ''}        onChange={v => setEditDraft(d => ({ ...d, location: v }))}        placeholder="Austin, TX" />
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Location</label>
+                  <LocationAutosuggestInput
+                    value={editDraft.location ?? ''}
+                    onChange={v => setEditDraft(d => ({ ...d, location: v }))}
+                    onSelectPlace={(place) => {
+                      setEditDraft(d => ({
+                        ...d,
+                        location: place.formatted || d.location || '',
+                        city: place.city || d.city || '',
+                        state: place.stateCode || place.state || d.state || '',
+                        country: place.countryCode || place.country || d.country || '',
+                      }));
+                    }}
+                    placeholder="City, State, Country"
+                  />
+                </div>
                 <MField label="City"              value={editDraft.city ?? ''}            onChange={v => setEditDraft(d => ({ ...d, city: v }))}            placeholder="Austin" />
                 <MField label="State"             value={editDraft.state ?? ''}           onChange={v => setEditDraft(d => ({ ...d, state: v }))}           placeholder="TX" />
                 <MField label="Country"           value={editDraft.country ?? ''}         onChange={v => setEditDraft(d => ({ ...d, country: v }))}         placeholder="USA" />
@@ -2878,7 +3118,62 @@ export default function ProfilesDirectory() {
                 <MSelect label="Visa Status"   value={editDraft.visa_status ?? ''}    onChange={v => setEditDraft(d => ({ ...d, visa_status: v }))}    options={VISA_OPTIONS} />
                 <MSelect label="Work Type"     value={editDraft.work_type ?? ''}      onChange={v => setEditDraft(d => ({ ...d, work_type: v }))}      options={WORK_OPTIONS} />
                 <MSelect label="Employment Type" value={editDraft.work_authorization ?? ''} onChange={v => setEditDraft(d => ({ ...d, work_authorization: v }))} options={WORK_AUTH_OPTIONS} />
-                <MField label="Preferred Locations" value={editDraft.preferred_locations ?? ''} onChange={v => setEditDraft(d => ({ ...d, preferred_locations: v }))} placeholder="Remote, Austin, NYC" />
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Preferred Locations</label>
+                  {(() => {
+                    const preferredItems = splitPreferredLocations(String(editDraft.preferred_locations ?? ''));
+                    return (
+                      <div className="space-y-2">
+                        {preferredItems.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {preferredItems.map((loc, idx) => (
+                              <span key={`${loc}-${idx}`} className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                                <span>{loc}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextItems = preferredItems.filter((_, itemIndex) => itemIndex !== idx);
+                                    setEditDraft(d => ({ ...d, preferred_locations: joinPreferredLocations(nextItems) }));
+                                  }}
+                                  className="text-blue-400 hover:text-blue-700"
+                                  aria-label={`Remove ${loc}`}
+                                >
+                                  <X size={9} />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5">
+                          <LocationAutosuggestInput
+                            value={editPreferredLocationInput}
+                            onChange={setEditPreferredLocationInput}
+                            onSelectPlace={(place) => {
+                              const normalized = place.formatted
+                                || [place.city, place.stateCode || place.state, place.countryCode || place.country].filter(Boolean).join(', ');
+                              const nextItems = addUniquePreferredLocation(preferredItems, normalized);
+                              setEditDraft(d => ({ ...d, preferred_locations: joinPreferredLocations(nextItems) }));
+                              setEditPreferredLocationInput('');
+                            }}
+                            placeholder="Add city, state, or country"
+                            className="flex-1"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextItems = addUniquePreferredLocation(preferredItems, editPreferredLocationInput);
+                              setEditDraft(d => ({ ...d, preferred_locations: joinPreferredLocations(nextItems) }));
+                              setEditPreferredLocationInput('');
+                            }}
+                            className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
                 <MField label="Hourly Rate Min ($)" value={editDraft.desired_salary_min ?? ''} onChange={v => setEditDraft(d => ({ ...d, desired_salary_min: v }))} type="number" placeholder="45" />
                 <MField label="Hourly Rate Max ($)" value={editDraft.desired_salary_max ?? ''} onChange={v => setEditDraft(d => ({ ...d, desired_salary_max: v }))} type="number" placeholder="75" />
                 <MSelect label="Relocation Status" value={(editDraft as Record<string, unknown>).relocation_status as string ?? ''} onChange={v => setEditDraft(d => ({ ...d, relocation_status: v }))} options={['Yes', 'No']} />

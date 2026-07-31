@@ -10,6 +10,10 @@ import {
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
+import { PlanModal } from '../components/PlanModal';
+import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
+import { firstPreferredLocation } from '../lib/location-normalization';
+import { loadRazorpay, TIERS, INR_PER_USD, fmtINR } from '../lib/billing-plan';
 import { supabase } from '../lib/supabase';
 import { throttled, throttledAll } from '../lib/query-throttle';
 import { buildProfileBoardStats } from '../lib/job-finder-stats';
@@ -257,8 +261,8 @@ const MONSTER_PAGE_SIZE = 10;
 const HISTORY_PAGE_SIZE = 10;
 const JOB_FINDER_SEARCH_COOLDOWN_KEY = 'job_finder_search_cooldowns';
 const JOB_FINDER_REFRESH_TIMESTAMPS_KEY = 'job_finder_refresh_timestamps';
-const FREE_PLAN_DAILY_LIMIT = 1;
-const PAID_PLAN_DAILY_LIMIT = 5;
+const FREE_PLAN_DAILY_LIMIT = 5;
+const FREE_PLAN_PER_CANDIDATE_LIMIT = 1;
 const PAID_PLAN_COOLDOWN_MS = 60 * 60 * 1000;       // 1 hour between refreshes
 const PAID_PLAN_WINDOW_MS  = 24 * 60 * 60 * 1000;  // rolling 24-hour window
 
@@ -805,7 +809,7 @@ function JobPreviewModal({
 export default function JobFinder() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { account, user, subscription } = useAuth();
+  const { account, user, subscription, refreshAccount } = useAuth();
 
   const paramProfileId = searchParams.get('profileId');
   const paramRole = searchParams.get('role') ?? '';
@@ -836,6 +840,7 @@ export default function JobFinder() {
 
   const [keyword, setKeyword] = useState(paramRole);
   const [location, setLocation] = useState('');
+  const [locationScope, setLocationScope] = useState<'any' | 'city' | 'state' | 'country'>('any');
   const [activeTab, setActiveTab] = useState<PortalId>('LinkedIn');
   const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState('Last 24 hours');
@@ -843,6 +848,10 @@ export default function JobFinder() {
   const [maxResults, setMaxResults] = useState(25);
   const [, setFiltersFromProfile] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [selectedNewTier, setSelectedNewTier] = useState<number>(25);
+  const [changingPlan, setChangingPlan] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
 
   // Mock jobs state (Dice / Indeed / CareerBuilder)
   const [allJobs, setAllJobs] = useState<MockJob[]>([]);
@@ -972,6 +981,91 @@ export default function JobFinder() {
     setToast({ message, type });
   }, []);
 
+  const hasActiveSub = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+  const pendingPeriodEnd = subscription?.current_period_end ?? null;
+
+  function openUpgradeModal() {
+    const idx = hasActiveSub ? TIERS.indexOf(subscription?.plan_amount_usd ?? 0) : -1;
+    setSelectedNewTier(idx >= 0 && idx < TIERS.length - 1 ? TIERS[idx + 1] : 25);
+    setShowPlanModal(true);
+  }
+
+  async function handleSubscribe() {
+    setSubscribing(true);
+    try {
+      await loadRazorpay();
+      const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
+        body: { plan_amount_usd: selectedNewTier },
+      });
+      if (error || !data?.subscription_id) throw new Error(error?.message ?? 'Failed to create subscription');
+      const rzp = new window.Razorpay({
+        key: data.key_id,
+        subscription_id: data.subscription_id,
+        name: 'ProfilePush',
+        description: `Pro Plan – ${fmtINR(selectedNewTier)}/month ($${selectedNewTier} AI credits)`,
+        image: '/favicon.svg',
+        handler: async () => {
+          showToast('Subscription activated! Credits will be added shortly.', 'success');
+          await refreshAccount();
+          setShowPlanModal(false);
+        },
+        prefill: { name: user?.user_metadata?.full_name ?? '', email: user?.email ?? '' },
+        theme: { color: '#2563eb' },
+        modal: { ondismiss: () => setSubscribing(false) },
+      });
+      rzp.open();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to start subscription';
+      showToast(msg, 'error');
+      setSubscribing(false);
+    }
+  }
+
+  async function handleChangePlan() {
+    if (!subscription || selectedNewTier === subscription.plan_amount_usd) return;
+    setChangingPlan(true);
+    try {
+      const isUpgrade = selectedNewTier > subscription.plan_amount_usd;
+      const { data, error } = await supabase.functions.invoke('razorpay-change-plan', {
+        body: { new_plan_amount_usd: selectedNewTier },
+      });
+      if (error || !data) throw new Error(error?.message ?? 'Failed to change plan');
+      if (isUpgrade && data.order_id) {
+        await loadRazorpay();
+        const rzp = new window.Razorpay({
+          key: data.key_id, order_id: data.order_id, amount: data.amount_inr_paise, currency: 'INR',
+          name: 'ProfilePush',
+          description: `Upgrade ₹${data.old_plan_usd * INR_PER_USD} → ₹${data.new_plan_usd * INR_PER_USD}`,
+          image: '/favicon.svg',
+          handler: async () => {
+            showToast(`Upgraded to ${fmtINR(selectedNewTier)}/mo! Extra credits added.`, 'success');
+            await refreshAccount();
+            setShowPlanModal(false);
+          },
+          prefill: { email: user?.email ?? '' },
+          theme: { color: '#2563eb' },
+        });
+        rzp.open();
+      } else {
+        showToast(`Downgrade to ${fmtINR(selectedNewTier)}/mo scheduled for next renewal.`, 'success');
+        await refreshAccount();
+        setShowPlanModal(false);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to change plan';
+      showToast(msg, 'error');
+      setChangingPlan(false);
+    }
+  }
+
+  async function handlePlanSubmit() {
+    if (hasActiveSub) {
+      await handleChangePlan();
+    } else {
+      await handleSubscribe();
+    }
+  }
+
   const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
   const boardCooldownKeyByLabel: Record<string, string> = {
     LinkedIn: 'linkedin',
@@ -990,25 +1084,68 @@ export default function JobFinder() {
     return `${profileId}:${searchKey}`;
   }
 
+  function getFreeRefreshWindowKey(): string {
+    const scopeKey = account?.id ?? user?.id ?? 'anonymous';
+    return `free:${scopeKey}`;
+  }
+
+  function getFreeCandidateWindowKey(): string {
+    return `free-candidate:${selectedProfileSearchScope}`;
+  }
+
+  function getFreeRefreshCountInWindow(): number {
+    return getRefreshCountInWindow(getFreeRefreshWindowKey());
+  }
+
+  function getFreeCandidateRefreshCountInWindow(): number {
+    return getRefreshCountInWindow(getFreeCandidateWindowKey());
+  }
+
+  function getFreeWindowRemainingMs(): number {
+    const now = Date.now();
+    const timestamps = (refreshTimestamps[getFreeRefreshWindowKey()] ?? [])
+      .filter(t => now - t < PAID_PLAN_WINDOW_MS)
+      .sort((a, b) => a - b);
+    if (timestamps.length < FREE_PLAN_DAILY_LIMIT) return 0;
+    const oldestTsInWindow = timestamps[0];
+    return Math.max(0, oldestTsInWindow + PAID_PLAN_WINDOW_MS - now);
+  }
+
+  function getFreeCandidateWindowRemainingMs(): number {
+    const now = Date.now();
+    const timestamps = (refreshTimestamps[getFreeCandidateWindowKey()] ?? [])
+      .filter(t => now - t < PAID_PLAN_WINDOW_MS)
+      .sort((a, b) => a - b);
+    if (timestamps.length < FREE_PLAN_PER_CANDIDATE_LIMIT) return 0;
+    const oldestTsInWindow = timestamps[0];
+    return Math.max(0, oldestTsInWindow + PAID_PLAN_WINDOW_MS - now);
+  }
+
+  function recordFreeRefreshTimestamp(): void {
+    recordRefreshTimestamp(getFreeRefreshWindowKey());
+    recordRefreshTimestamp(getFreeCandidateWindowKey());
+  }
+
   function getCooldownRemainingMs(searchKey: string): number {
+    if (!isPaidPlan) return 0;
     const cooldownAt = searchCooldowns[searchKey] ?? 0;
-    const windowMs = isPaidPlan ? PAID_PLAN_COOLDOWN_MS : (24 * 60 * 60 * 1000);
+    const windowMs = PAID_PLAN_COOLDOWN_MS;
     return Math.max(0, cooldownAt + windowMs - Date.now());
   }
 
   function getBoardCooldownRemainingMs(boardKey: string): number {
+    if (!isPaidPlan) return getFreeWindowRemainingMs();
     return getCooldownRemainingMs(getScopedSearchKey(boardKey));
   }
 
   function isBoardCooldownActive(boardKey: string): boolean {
     if (isPaidPlan) {
       const scopedKey = getScopedSearchKey(boardKey);
-      return getRefreshCountInWindow(scopedKey) >= PAID_PLAN_DAILY_LIMIT || getCooldownRemainingMs(scopedKey) > 0;
+      return getCooldownRemainingMs(scopedKey) > 0;
     }
-    return getBoardCooldownRemainingMs(boardKey) > 0;
+    return getFreeRefreshCountInWindow() >= FREE_PLAN_DAILY_LIMIT;
   }
 
-  // Returns how many paid-plan refreshes happened in the last 24 hours
   function getRefreshCountInWindow(searchKey: string): number {
     const now = Date.now();
     const timestamps = refreshTimestamps[searchKey] ?? [];
@@ -1017,34 +1154,47 @@ export default function JobFinder() {
 
   // Adds current timestamp to the rolling window array (prunes old ones)
   function recordRefreshTimestamp(searchKey: string) {
-    const now = Date.now();
-    const prev = refreshTimestamps[searchKey] ?? [];
-    const pruned = prev.filter(t => now - t < PAID_PLAN_WINDOW_MS);
-    const next = { ...refreshTimestamps, [searchKey]: [...pruned, now] };
-    setRefreshTimestamps(next);
-    try {
-      localStorage.setItem(JOB_FINDER_REFRESH_TIMESTAMPS_KEY, JSON.stringify(next));
-    } catch { /* no-op */ }
+    setRefreshTimestamps(prevState => {
+      const now = Date.now();
+      const prev = prevState[searchKey] ?? [];
+      const pruned = prev.filter(t => now - t < PAID_PLAN_WINDOW_MS);
+      const next = { ...prevState, [searchKey]: [...pruned, now] };
+      try {
+        localStorage.setItem(JOB_FINDER_REFRESH_TIMESTAMPS_KEY, JSON.stringify(next));
+      } catch {
+        // no-op
+      }
+      return next;
+    });
   }
 
   const selectedBoardCooldownRemainingMs = selectedBoardCooldownKeys
     .map(getCooldownRemainingMs)
     .filter(ms => ms > 0);
+  const freeRefreshesUsedInWindow = getFreeRefreshCountInWindow();
+  const freeCandidateRefreshesUsedInWindow = getFreeCandidateRefreshCountInWindow();
+  const freeRefreshesRemainingInWindow = Math.max(0, FREE_PLAN_DAILY_LIMIT - freeRefreshesUsedInWindow);
+  const isFreeDailyLimitReached = !isPaidPlan && freeRefreshesUsedInWindow >= FREE_PLAN_DAILY_LIMIT;
+  const isFreeCandidateLimitReached = !isPaidPlan && freeCandidateRefreshesUsedInWindow >= FREE_PLAN_PER_CANDIDATE_LIMIT;
   const searchCooldownRemainingMs = selectedBoardCooldownRemainingMs.length > 0
     ? Math.min(...selectedBoardCooldownRemainingMs)
-    : 0;
+    : (!isPaidPlan
+      ? (isFreeCandidateLimitReached ? getFreeCandidateWindowRemainingMs() : getFreeWindowRemainingMs())
+      : 0);
   const hasSelectedBoardCooldown = isPaidPlan
-    ? selectedBoardCooldownKeys.some(k => {
-        const sk = getScopedSearchKey(k);
-        return getRefreshCountInWindow(sk) >= PAID_PLAN_DAILY_LIMIT || getCooldownRemainingMs(sk) > 0;
-      })
-    : selectedBoardCooldownRemainingMs.length > 0;
+    ? selectedBoardCooldownKeys.some(k => getCooldownRemainingMs(getScopedSearchKey(k)) > 0)
+    : isFreeDailyLimitReached || isFreeCandidateLimitReached;
   const isSearchCooldownActive = isPaidPlan
-    ? selectedBoardCooldownKeys.length > 0 && selectedBoardCooldownKeys.every(k => {
-        const sk = getScopedSearchKey(k);
-        return getRefreshCountInWindow(sk) >= PAID_PLAN_DAILY_LIMIT || getCooldownRemainingMs(sk) > 0;
-      })
-    : !isPaidPlan && selectedBoardCooldownKeys.length > 0 && selectedBoardCooldownKeys.every(boardKey => getCooldownRemainingMs(boardKey) > 0);
+    ? selectedBoardCooldownKeys.length > 0 && selectedBoardCooldownKeys.every(k => getCooldownRemainingMs(getScopedSearchKey(k)) > 0)
+    : isFreeDailyLimitReached || isFreeCandidateLimitReached;
+
+  const selectedCandidateCooldownStatus = isPaidPlan
+    ? (hasSelectedBoardCooldown && selectedBoardCooldownKeys.length > 0
+      ? `Next refresh available in ${formatCooldown(searchCooldownRemainingMs)}`
+      : null)
+    : (isFreeCandidateLimitReached
+      ? `Next refresh available in ${formatCooldown(getFreeCandidateWindowRemainingMs())}`
+      : null);
 
   function formatCooldown(ms: number): string {
     if (ms <= 0) return '0m';
@@ -1467,7 +1617,7 @@ export default function JobFinder() {
     if (p.target_role) setKeyword(p.target_role);
     const loc = p.location ||
       [p.city, p.state].filter(Boolean).join(', ') ||
-      (p.preferred_locations ? p.preferred_locations.split(',')[0].trim() : '');
+      (p.preferred_locations ? firstPreferredLocation(p.preferred_locations) : '');
     setLocation(loc);
 
     setDateFilter('Last 24 hours');
@@ -1650,30 +1800,45 @@ export default function JobFinder() {
   }
 
   function searchAll() {
+    if (!isPaidPlan && isFreeDailyLimitReached) {
+      showToast('You have used all your refreshes in the last 24 hours, please upgrade to get more.', 'error');
+      return;
+    }
+    if (!isPaidPlan && isFreeCandidateLimitReached) {
+      showToast('This candidate has already used 1 refresh in the last 24 hours.', 'error');
+      return;
+    }
+
+    if (!isPaidPlan && !beginDailySearch('all-candidates')) {
+      return;
+    }
+
     let hasAvailableBoard = false;
-    if (selectedBoards.has('LinkedIn') && (isPaidPlan ? (getRefreshCountInWindow(getScopedSearchKey('linkedin')) < PAID_PLAN_DAILY_LIMIT && getCooldownRemainingMs(getScopedSearchKey('linkedin')) <= 0) : getCooldownRemainingMs(getScopedSearchKey('linkedin')) <= 0)) {
+    if (selectedBoards.has('LinkedIn') && (isPaidPlan ? getCooldownRemainingMs(getScopedSearchKey('linkedin')) <= 0 : true)) {
       hasAvailableBoard = true;
-      triggerBoardSearch('linkedin');
+      triggerBoardSearch('linkedin', false, !isPaidPlan);
     }
-    if (selectedBoards.has('Dice') && (isPaidPlan ? (getRefreshCountInWindow(getScopedSearchKey('dice')) < PAID_PLAN_DAILY_LIMIT && getCooldownRemainingMs(getScopedSearchKey('dice')) <= 0) : getCooldownRemainingMs(getScopedSearchKey('dice')) <= 0)) {
+    if (selectedBoards.has('Dice') && (isPaidPlan ? getCooldownRemainingMs(getScopedSearchKey('dice')) <= 0 : true)) {
       hasAvailableBoard = true;
-      triggerBoardSearch('dice');
+      triggerBoardSearch('dice', false, !isPaidPlan);
     }
-    if (selectedBoards.has('Indeed') && (isPaidPlan ? (getRefreshCountInWindow(getScopedSearchKey('indeed')) < PAID_PLAN_DAILY_LIMIT && getCooldownRemainingMs(getScopedSearchKey('indeed')) <= 0) : getCooldownRemainingMs(getScopedSearchKey('indeed')) <= 0)) {
+    if (selectedBoards.has('Indeed') && (isPaidPlan ? getCooldownRemainingMs(getScopedSearchKey('indeed')) <= 0 : true)) {
       hasAvailableBoard = true;
-      triggerBoardSearch('indeed');
+      triggerBoardSearch('indeed', false, !isPaidPlan);
     }
-    if (selectedBoards.has('Monster') && (isPaidPlan ? (getRefreshCountInWindow(getScopedSearchKey('monster')) < PAID_PLAN_DAILY_LIMIT && getCooldownRemainingMs(getScopedSearchKey('monster')) <= 0) : getCooldownRemainingMs(getScopedSearchKey('monster')) <= 0)) {
+    if (selectedBoards.has('Monster') && (isPaidPlan ? getCooldownRemainingMs(getScopedSearchKey('monster')) <= 0 : true)) {
       hasAvailableBoard = true;
-      triggerBoardSearch('monster');
+      triggerBoardSearch('monster', false, !isPaidPlan);
     }
-    if (selectedBoards.has('CareerBuilder') && (isPaidPlan ? (getRefreshCountInWindow(getScopedSearchKey('careerbuilder')) < PAID_PLAN_DAILY_LIMIT && getCooldownRemainingMs(getScopedSearchKey('careerbuilder')) <= 0) : getCooldownRemainingMs(getScopedSearchKey('careerbuilder')) <= 0)) {
+    if (selectedBoards.has('CareerBuilder') && (isPaidPlan ? getCooldownRemainingMs(getScopedSearchKey('careerbuilder')) <= 0 : true)) {
       hasAvailableBoard = true;
-      triggerBoardSearch('careerbuilder');
+      triggerBoardSearch('careerbuilder', false, !isPaidPlan);
     }
 
     if (!hasAvailableBoard && !isPaidPlan) {
-      showToast('Job Finder search is available once every 24 hours on free plans', 'error');
+      showToast(isFreeCandidateLimitReached
+        ? 'This candidate has already used 1 refresh in the last 24 hours.'
+        : 'You have used all your refreshes in the last 24 hours, please upgrade to get more.', 'error');
     }
   }
 
@@ -1681,35 +1846,38 @@ export default function JobFinder() {
     const scopedSearchKey = getScopedSearchKey(searchKey);
 
     if (isPaidPlan) {
-      // Check rolling 24h limit (5 refreshes)
-      const count = getRefreshCountInWindow(scopedSearchKey);
-      if (count >= PAID_PLAN_DAILY_LIMIT) {
-        showToast(`You've used all ${PAID_PLAN_DAILY_LIMIT} refreshes in the last 24 hours. Try again later.`, 'error');
-        return false;
-      }
-      // Check 1-hour gap between refreshes
       const cooldownRemaining = getCooldownRemainingMs(scopedSearchKey);
       if (cooldownRemaining > 0) {
         showToast(`Please wait ${formatCooldown(cooldownRemaining)} before refreshing again.`, 'error');
         return false;
       }
       stampSearchCooldown(scopedSearchKey);
-      recordRefreshTimestamp(scopedSearchKey);
       return true;
     }
 
-    // Free plan: 1 search per 24 hours
-    const cooldownRemainingMs = getCooldownRemainingMs(scopedSearchKey);
-    if (cooldownRemainingMs > 0) {
-      showToast('Job Finder search is available once every 24 hours on free plans', 'error');
+    // Free plan: up to 5 refreshes in the last 24 hours
+    const usedInWindow = getFreeRefreshCountInWindow();
+    if (usedInWindow >= FREE_PLAN_DAILY_LIMIT) {
+      showToast('You have used all your refreshes in the last 24 hours, please upgrade to get more.', 'error');
       return false;
     }
-    stampSearchCooldown(scopedSearchKey);
+
+    const candidateUsedInWindow = getFreeCandidateRefreshCountInWindow();
+    if (candidateUsedInWindow >= FREE_PLAN_PER_CANDIDATE_LIMIT) {
+      showToast('This candidate has already used 1 refresh in the last 24 hours.', 'error');
+      return false;
+    }
+
+    recordFreeRefreshTimestamp();
     return true;
   }
 
-  function triggerBoardSearch(board: 'linkedin' | 'dice' | 'indeed' | 'monster' | 'careerbuilder', forceRefresh = false) {
-    if (!beginDailySearch(board)) return;
+  function triggerBoardSearch(
+    board: 'linkedin' | 'dice' | 'indeed' | 'monster' | 'careerbuilder',
+    forceRefresh = false,
+    skipQuotaCheck = false,
+  ) {
+    if (!skipQuotaCheck && !beginDailySearch(board)) return;
     if (board === 'linkedin') runLinkedInSearch(forceRefresh);
     else if (board === 'dice') runDiceSearch(forceRefresh);
     else if (board === 'indeed') runIndeedSearch(forceRefresh);
@@ -2200,8 +2368,11 @@ export default function JobFinder() {
     setRefreshPopupBoard(board);
   }
 
+  const refreshPopupScopedKey = refreshPopupBoard ? getScopedSearchKey(refreshPopupBoard) : null;
   const refreshPopupCooldownRemainingMs = refreshPopupBoard ? getBoardCooldownRemainingMs(refreshPopupBoard) : 0;
-  const refreshPopupCooldownActive = !isPaidPlan && refreshPopupCooldownRemainingMs > 0;
+  const refreshPopupCooldownActive = isPaidPlan
+    ? refreshPopupCooldownRemainingMs > 0
+    : isFreeDailyLimitReached || isFreeCandidateLimitReached;
 
   function executeRefresh() {
     if (!refreshPopupBoard) return;
@@ -2627,15 +2798,15 @@ export default function JobFinder() {
       )}
 
       <div className="shrink-0 border-b border-gray-200 bg-white px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 min-w-0">
             <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               type="text"
               value={globalSearch}
               onChange={e => setGlobalSearch(e.target.value)}
               placeholder="Filter visible jobs across all boards…"
-              className="w-full h-[38px] rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-10 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+              className="w-full h-[40px] rounded-2xl border border-slate-200 bg-slate-50 pl-9 pr-10 text-sm text-gray-700 placeholder:text-gray-400 shadow-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 focus:bg-white transition-shadow"
             />
             {globalSearch && (
               <button
@@ -2648,6 +2819,30 @@ export default function JobFinder() {
               </button>
             )}
           </div>
+          <div className="hidden sm:flex flex-col items-end justify-center leading-none whitespace-nowrap text-right shrink-0">
+            {!isPaidPlan ? (
+              <div className="flex h-[38px] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm whitespace-nowrap">
+                <div className="flex items-center gap-1 text-center">
+                  <span className="text-[12px] font-semibold leading-none text-slate-900">{freeRefreshesRemainingInWindow}/{FREE_PLAN_DAILY_LIMIT}</span>
+                  <span className="text-[10px] font-medium leading-none text-slate-500 normal-case tracking-normal">searches left</span>
+                </div>
+              </div>
+            ) : hasSelectedBoardCooldown && selectedBoardCooldownKeys.length > 0 ? (
+              <span className="text-[10px] font-semibold text-amber-600">Next refresh in {formatCooldown(searchCooldownRemainingMs)}</span>
+            ) : (
+              <span className="text-[10px] font-semibold text-gray-400">Hourly refreshes available for selected candidates</span>
+            )}
+          </div>
+          {!isPaidPlan ? (
+            <button
+              type="button"
+              onClick={openUpgradeModal}
+              className="flex h-[40px] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 shadow-sm whitespace-nowrap transition-colors hover:bg-blue-50"
+            >
+              <span className="text-[9px] font-normal leading-none text-slate-400">for unlimited hourly refreshes -</span>
+              <span className="text-[11px] font-semibold text-blue-700">Upgrade to Pro</span>
+            </button>
+          ) : null}
         </div>
       </div>
       {/* Board selector dropdown portal - outside overflow container */}
@@ -2848,14 +3043,28 @@ export default function JobFinder() {
                   </div>
                   <div className="min-w-0 flex items-center gap-1.5">
                     <label className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">Location</label>
-                    <div className="relative flex-1 min-w-0">
-                      <MapPin size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      <input
-                        type="text"
+                    <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                      <select
+                        value={locationScope}
+                        onChange={(e) => setLocationScope(e.target.value as 'any' | 'city' | 'state' | 'country')}
+                        className="h-[30px] text-[10px] border border-gray-200 rounded-lg px-2 text-gray-700 focus:outline-none focus:border-blue-400 bg-white"
+                        title="Location scope"
+                      >
+                        <option value="any">Any</option>
+                        <option value="city">City</option>
+                        <option value="state">State</option>
+                        <option value="country">Country</option>
+                      </select>
+                      <LocationAutosuggestInput
                         value={location}
-                        onChange={e => { setLocation(e.target.value); setFiltersFromProfile(false); }}
-                        placeholder="City or Remote"
-                        className="w-full pl-6 pr-2 h-[30px] text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300 bg-white"
+                        onChange={(v) => { setLocation(v); setFiltersFromProfile(false); }}
+                        onSelectPlace={(place) => {
+                          setLocation(place.formatted || place.city || location);
+                          setFiltersFromProfile(false);
+                        }}
+                        scope={locationScope}
+                        placeholder="City, State, Country"
+                        className="flex-1 min-w-0"
                       />
                     </div>
                   </div>
@@ -2987,45 +3196,12 @@ export default function JobFinder() {
                       <Eye size={12} />
                     </button>
                   )}
-                </div>
 
-                <div className="h-[30px] flex items-center justify-center">
-                  {hasSelectedBoardCooldown && (
-                    isPaidPlan ? (() => {
-                      const sk = getScopedSearchKey(selectedBoardCooldownKeys[0] ?? 'linkedin');
-                      const allUsed = getRefreshCountInWindow(sk) >= PAID_PLAN_DAILY_LIMIT;
-                      const remaining = getCooldownRemainingMs(sk);
-                      return allUsed ? (
-                        <span className="text-[10px] italic font-semibold text-amber-600 whitespace-nowrap">
-                          All 5 refreshes used in last 24h — oldest unlocks soon
-                        </span>
-                      ) : (
-                        <span className="text-[10px] italic font-semibold text-amber-600 whitespace-nowrap">
-                          Next refresh in {formatCooldown(remaining)}
-                        </span>
-                      );
-                    })() : (
-                      <button
-                        type="button"
-                        onClick={() => navigate('/billing')}
-                        className="text-[10px] italic font-semibold text-amber-700 hover:text-amber-800 underline decoration-amber-300 underline-offset-2 whitespace-nowrap"
-                      >
-                        Refreshes in {formatCooldown(searchCooldownRemainingMs)}, Upgrade
-                      </button>
-                    )
-                  )}
-                  {!hasSelectedBoardCooldown && !isPaidPlan && (
-                    <button
-                      type="button"
-                      onClick={() => navigate('/billing')}
-                      className="text-[10px] italic font-semibold text-blue-600 hover:text-blue-700 underline decoration-blue-300 underline-offset-2 whitespace-nowrap"
-                    >
-                      Upgrade to Get 5 Refreshes Daily
-                    </button>
-                  )}
-                  {!hasSelectedBoardCooldown && isPaidPlan && selectedBoardCooldownKeys.length > 0 && (
-                    <span className="text-[10px] italic font-semibold text-gray-400 whitespace-nowrap">
-                      {PAID_PLAN_DAILY_LIMIT - Math.max(...selectedBoardCooldownKeys.map(k => getRefreshCountInWindow(getScopedSearchKey(k))))} of {PAID_PLAN_DAILY_LIMIT} refreshes left (24h window)
+                </div>
+                <div className="h-[30px] flex items-center justify-end pr-1">
+                  {selectedCandidateCooldownStatus && (
+                    <span className="text-[10px] font-medium whitespace-nowrap text-amber-600">
+                      {selectedCandidateCooldownStatus}
                     </span>
                   )}
                 </div>
@@ -4221,11 +4397,13 @@ export default function JobFinder() {
               {refreshPopupCooldownActive ? (
                 <button
                   type="button"
-                  onClick={() => navigate('/billing')}
+                  onClick={openUpgradeModal}
                   className="px-4 py-1.5 text-xs font-bold bg-gray-200 text-gray-500 rounded-lg transition-colors flex items-center gap-1.5 cursor-not-allowed"
                 >
                   <RefreshCw size={11} />
-                  Refreshes in {formatCooldown(refreshPopupCooldownRemainingMs)}, Upgrade
+                  {!isPaidPlan
+                    ? 'Used all refreshes in last 24h, Upgrade'
+                    : `Refreshes in ${formatCooldown(refreshPopupCooldownRemainingMs)}, Upgrade`}
                 </button>
               ) : (
                 <button onClick={executeRefresh} className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-1.5">
@@ -4236,6 +4414,21 @@ export default function JobFinder() {
             </div>
           </div>
         </div>
+      )}
+
+      {showPlanModal && (
+        <PlanModal
+          hasActiveSub={hasActiveSub}
+          subscription={subscription}
+          selectedNewTier={selectedNewTier}
+          setSelectedNewTier={setSelectedNewTier}
+          pendingPeriodEnd={pendingPeriodEnd}
+          changingPlan={changingPlan}
+          subscribing={subscribing}
+          onClose={() => setShowPlanModal(false)}
+          onSubmit={handlePlanSubmit}
+          user={user}
+        />
       )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}

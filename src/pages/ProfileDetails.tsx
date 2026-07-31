@@ -12,6 +12,7 @@ import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
 import { throttledAll } from '../lib/query-throttle';
+import { normalizeProfileLocationFields } from '../lib/location-normalization';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile, ResumeFile, WishlistedJob, ActivityLog, EducationEntry, ExperienceEntry, ProfileAssignment } from '../types/database';
 
@@ -362,7 +363,7 @@ export default function ProfileDetails() {
   async function saveEdit() {
     if (!draft) return;
     setSaving(true);
-    const { error } = await supabase.from('profiles').update({
+    const rawUpdatePayload = {
       candidate_name: draft.candidate_name, target_role: draft.target_role,
       location: draft.location, core_skills: draft.core_skills,
       phone: draft.phone, email: draft.email,
@@ -373,7 +374,9 @@ export default function ProfileDetails() {
       notice_period: draft.notice_period, visa_status: draft.visa_status,
       years_experience: draft.years_experience || null, availability: draft.availability,
       education: draft.education, experience: draft.experience,
-    }).eq('id', id!);
+    };
+    const normalizedUpdatePayload = await normalizeProfileLocationFields(rawUpdatePayload);
+    const { error } = await supabase.from('profiles').update(normalizedUpdatePayload).eq('id', id!);
     setSaving(false);
     if (error) { showToast('Failed to save changes', 'error'); return; }
     setProfile(draft);

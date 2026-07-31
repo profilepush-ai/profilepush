@@ -5,13 +5,34 @@ export interface ScrapeFallbackRequest {
   body: Record<string, unknown>;
 }
 
+function firstPreferredLocation(value: string): string {
+  const raw = value.trim();
+  if (!raw) return "";
+  const delimiter = raw.includes("|") ? "|" : raw.includes(";") ? ";" : raw.includes("\n") ? "\n" : null;
+  if (!delimiter) return raw;
+  return raw.split(delimiter).map((item) => item.trim()).find(Boolean) ?? "";
+}
+
+function buildLocationSeed(profile: Record<string, unknown>): string {
+  const preferred = firstPreferredLocation(String(profile.preferred_locations ?? ""));
+  if (preferred) return preferred;
+
+  const location = String(profile.location ?? "").trim();
+  if (location) return location;
+
+  const city = String(profile.city ?? "").trim();
+  const state = String(profile.state ?? "").trim();
+  const country = String(profile.country ?? "").trim();
+  const parts = [city, state, country].filter(Boolean);
+  return parts.join(", ");
+}
+
 export function buildScrapeFallbackRequests(
   profile: Record<string, unknown>,
   accountId: string | null = null,
 ): ScrapeFallbackRequest[] {
   const targetRole = String(profile.target_role ?? "").trim();
-  const preferredLocations = String(profile.preferred_locations ?? "").trim();
-  const location = preferredLocations || "US";
+  const location = buildLocationSeed(profile) || "US";
   const keyword = targetRole || "software engineer";
 
   return [
