@@ -14,7 +14,7 @@ import LogoSpinner from '../components/LogoSpinner';
 import { PlanModal } from '../components/PlanModal';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import { loadRazorpay, TIERS, INR_PER_USD, fmtINR, getBillingErrorMessage } from '../lib/billing-plan';
-import { supabase } from '../lib/supabase';
+import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
 import { triggerProfileEmbedding } from '../lib/embeddings';
 import { normalizeProfileLocationFields, splitPreferredLocations } from '../lib/location-normalization';
 import { getMatchHealthPercent } from '../lib/match-health';
@@ -526,8 +526,10 @@ export default function RadarPage() {
     setSubscribing(true);
     try {
       await loadRazorpay();
+      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
         body: { plan_amount_usd: selectedNewTier },
+        headers,
       });
       if (error || !data?.subscription_id) {
         throw new Error(getBillingErrorMessage(error, 'Failed to create subscription'));
@@ -560,8 +562,10 @@ export default function RadarPage() {
     setChangingPlan(true);
     try {
       const isUpgrade = selectedNewTier > subscription.plan_amount_usd;
+      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-change-plan', {
         body: { new_plan_amount_usd: selectedNewTier },
+        headers,
       });
       if (error || !data) {
         throw new Error(getBillingErrorMessage(error, 'Failed to change plan'));

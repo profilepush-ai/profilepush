@@ -46,3 +46,7 @@ export const supabase = createClient<Database>(
   global: { fetch: fetchWithRetry },
   }
 );
+export async function buildSupabaseFunctionHeaders(getSession: () => Promise<{ data: { session: { access_token?: string | null } | null } }>) {
+  const { data: { session } } = await getSession();
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+}

@@ -10,7 +10,7 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
-import { supabase } from '../lib/supabase';
+import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
 import { getBillingErrorMessage } from '../lib/billing-plan';
@@ -439,8 +439,10 @@ export default function BillingPage() {
     setSubscribing(true);
     try {
       await loadRazorpay();
+      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
         body: { plan_amount_usd: selectedNewTier },
+        headers,
       });
       if (error || !data?.subscription_id) {
         throw new Error(getBillingErrorMessage(error, 'Failed to create subscription'));
@@ -478,8 +480,10 @@ export default function BillingPage() {
     setChangingPlan(true);
     try {
       const isUpgrade = selectedNewTier > subscription.plan_amount_usd;
+      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-change-plan', {
         body: { new_plan_amount_usd: selectedNewTier },
+        headers,
       });
       if (error || !data) {
         throw new Error(getBillingErrorMessage(error, 'Failed to change plan'));

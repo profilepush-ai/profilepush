@@ -16,7 +16,7 @@ import { firstPreferredLocation } from '../lib/location-normalization';
 import { loadRazorpay, TIERS, INR_PER_USD, fmtINR, getBillingErrorMessage } from '../lib/billing-plan';
 import { buildScoreBreakdownDisplayItems, type RadarScoreBreakdownEntry } from '../lib/radar-match-ui';
 import { DEFAULT_AI_SCORING_MAX_ATTEMPTS, DEFAULT_AI_SCORING_POLL_MS, getAiScoringQueueState } from '../lib/ai-scoring-queue';
-import { supabase } from '../lib/supabase';
+import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
 import { throttled, throttledAll } from '../lib/query-throttle';
 import { buildProfileBoardStats } from '../lib/job-finder-stats';
 import { useAuth } from '../contexts/AuthContext';
@@ -1237,8 +1237,10 @@ export default function JobFinder() {
     setSubscribing(true);
     try {
       await loadRazorpay();
+      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
         body: { plan_amount_usd: selectedNewTier },
+        headers,
       });
       if (error || !data?.subscription_id) {
         throw new Error(getBillingErrorMessage(error, 'Failed to create subscription'));
@@ -1271,8 +1273,10 @@ export default function JobFinder() {
     setChangingPlan(true);
     try {
       const isUpgrade = selectedNewTier > subscription.plan_amount_usd;
+      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-change-plan', {
         body: { new_plan_amount_usd: selectedNewTier },
+        headers,
       });
       if (error || !data) {
         throw new Error(getBillingErrorMessage(error, 'Failed to change plan'));
