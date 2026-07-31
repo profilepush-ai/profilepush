@@ -620,8 +620,8 @@ export default function AIBenchMatch() {
             <Target size={15} className="text-white" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-gray-900">Hotlist AI</h1>
-            <p className="text-[11px] text-gray-500">Paste external job descriptions to find matching bench candidates and use AI to instantly score and build your hotlist.</p>
+            <h1 className="text-sm font-bold text-gray-900">JD AI</h1>
+            <p className="text-[11px] text-gray-500">Paste external job descriptions to find matching bench candidates and use AI to instantly score and shortlist the best fits.</p>
           </div>
         </div>
       </div>

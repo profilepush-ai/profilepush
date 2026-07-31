@@ -17,7 +17,7 @@ const navItems = [
   { path: '/job-finder',    label: 'Job Finder',     icon: Search },
   { path: '/job-watch-ai',   label: 'Job Watch AI',   icon: Radar },
   { path: '/submission-queue', label: 'Submission Queue', icon: Bookmark },
-  { path: '/hotlist-ai', label: 'Hotlist AI',  icon: Target },
+  { path: '/jd-ai', label: 'JD AI',  icon: Target },
   { path: '/tracker',       label: 'Tracker',        icon: FileText },
   { path: '/resume-ai',     label: 'Resume AI',      icon: PenLine },
 ];

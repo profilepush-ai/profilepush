@@ -41,11 +41,11 @@ const FEATURES = [
   },
   {
     key: 'hotlist-ai',
-    headline: 'Paste a JD, Build your hotlist instantly.',
-    subline: "Stop reading 3-page JDs at 2:00 AM. Paste any prime vendor requirement and let AI cross-reference your entire database to score and build a highly targeted hotlist in seconds.",
+    headline: 'Paste a JD, Find your fit instantly.',
+    subline: "Stop reading 3-page JDs at 2:00 AM. Paste any prime vendor requirement and let AI cross-reference your entire database to score and build a highly targeted shortlist in seconds.",
     accent: 'from-blue-50 to-white',
     badge: 'bg-blue-100 text-blue-700',
-    badgeLabel: 'Hotlist AI',
+    badgeLabel: 'JD AI',
     topGlow: 'rgba(147,197,253,0.5)',
   },
   {

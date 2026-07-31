@@ -174,6 +174,7 @@ export default function App() {
             <Route path="/roadmap" element={<ProtectedRoute><ErrorBoundary><RoadmapPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/jd-ai" element={<ProtectedRoute><ErrorBoundary><AIBenchMatch /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/hotlist-ai" element={<ProtectedRoute><ErrorBoundary><AIBenchMatch /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/job-watch-ai" element={<ProtectedRoute><ErrorBoundary><RadarPage /></ErrorBoundary></ProtectedRoute>} />
           </Routes>

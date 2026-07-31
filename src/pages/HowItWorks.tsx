@@ -57,10 +57,10 @@ const phases = [
   },
   {
     number: '6',
-    title: 'Reverse Matching (Hotlist AI)',
-    tagline: 'Got a hot req from a vendor on LinkedIn? Find the candidate instantly.',
+    title: 'Reverse Matching (JD AI)',
+tagline: 'Got a hot req from a vendor on LinkedIn? Find the candidate instantly.',
     points: [
-      { label: 'Paste the JD', text: 'Copy any raw job description from LinkedIn, an email thread, or social media and paste it into Hotlist AI.' },
+      { label: 'Paste the JD', text: 'Copy any raw job description from LinkedIn, an email thread, or social media and paste it into JD AI.' },
       { label: 'Scan the Bench', text: 'The AI scans your entire Bench and Hotlist simultaneously.' },
       { label: 'Bulk Match', text: 'It automatically scores every available candidate against the JD, showing you exactly who to submit. Select the top matches and push them straight to the Submission Queue in one click.' },
     ],
