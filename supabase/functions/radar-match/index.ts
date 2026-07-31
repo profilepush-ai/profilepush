@@ -1,7 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { filterRelevantJobs } from "./relevance.ts";
-import { buildScrapeFallbackRequests } from "./scrape-fallback.ts";
 import { scoreEmploymentTypeMatch, scoreWorkTypeMatch } from "./match-utils.ts";
 import { hasMeaningfulJobContent } from "./content-utils.ts";
 
@@ -12,12 +11,14 @@ const corsHeaders = {
 };
 
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+const FREE_PLAN_MATCH_TOTAL_LIMIT = 5;
 const FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT = 5;
 const FREE_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PAID_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS = 60 * 60 * 1000;
 const LIVE_MATCH_USAGE_SOURCE = "job-watch-ai";
 const LIVE_MATCH_ATTEMPT_FLAG = true;
 const FREE_PLAN_MATCH_UNLOCK_LIMIT = 5;
+const ENABLE_LIVE_VECTOR_SEARCH = false;
 
 async function chargeMatchCredits(
   supabase: ReturnType<typeof createClient>,
@@ -300,327 +301,268 @@ Deno.serve(async (req: Request) => {
 
     await logLiveMatchAttempt(supabase, account_id, profile_id, isPaidPlan);
 
-    // Filter out already-scored jobs early
-    const { data: existingMatches } = await supabase
-      .from("radar_match_results")
-      .select("job_id")
-      .eq("profile_id", profile_id);
-
-    const existingJobIds = new Set((existingMatches ?? []).map((m: { job_id: string }) => m.job_id));
-    const recentJobsCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const profileEmbedding = await ensureProfileEmbedding(supabase, profile.id, supabaseUrl, serviceRoleKey);
-
-    // Load jobs — use vector similarity if the candidate profile has an embedding, else fallback to recent jobs from the last 7 days
-    const allJobs: Array<{ id: string; source: string; title: string; description: string; location: string; extracted_skills: string; extracted_experience_years: number | null; extracted_visa_types: string; extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null; employment_type: string | null }> = [];
-    let usedVectorSearch = false;
-
-    if (profileEmbedding) {
-      // Use vector similarity to find 70%+ matching jobs across all tables, but only from the last 7 days
-      const { data: vectorMatches, error: vecErr } = await supabase.rpc("match_jobs_by_embedding", {
-        query_embedding: profileEmbedding,
-        similarity_threshold: 0.70,
-        max_results: 200,
-      });
-
-      if (!vecErr && vectorMatches && vectorMatches.length > 0) {
-        usedVectorSearch = true;
-
-        // Group matched job IDs by source for batch fetching
-        const jobsBySource: Record<string, string[]> = {};
-        for (const m of vectorMatches) {
-          if (existingJobIds.has(m.job_id)) continue;
-          if (!jobsBySource[m.job_source]) jobsBySource[m.job_source] = [];
-          jobsBySource[m.job_source].push(m.job_id);
-        }
-
-        const sourceConfig: Record<string, { table: string; locationCol: string }> = {
-          linkedin: { table: "linkedin_jobs", locationCol: "location" },
-          dice: { table: "dice_jobs", locationCol: "location" },
-          indeed: { table: "indeed_jobs", locationCol: "location_display" },
-          monster: { table: "monster_jobs", locationCol: "location_display" },
-          careerbuilder: { table: "careerbuilder_jobs", locationCol: "location_display" },
-          social: { table: "social_jobs", locationCol: "location" },
-        };
-
-        for (const [source, ids] of Object.entries(jobsBySource)) {
-          const config = sourceConfig[source];
-          if (!config || ids.length === 0) continue;
-
-          // Fetch in batches of 50 to stay under query limits
-          for (let i = 0; i < ids.length; i += 50) {
-            const batchIds = ids.slice(i, i + 50);
-            const { data: jobs } = await supabase
-              .from(config.table)
-              .select(`id, job_title, job_description, ${config.locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type, created_at`)
-              .in("id", batchIds)
-              .gte("created_at", recentJobsCutoff);
-
-            if (jobs) {
-              for (const j of jobs) {
-                allJobs.push({
-                  id: j.id,
-                  source,
-                  title: j.job_title ?? "",
-                  description: (j.job_description ?? "").slice(0, 2000),
-                  location: j[config.locationCol] ?? "",
-                  extracted_skills: Array.isArray(j.extracted_skills) ? j.extracted_skills.join(", ") : (j.extracted_skills ?? ""),
-                  extracted_experience_years: j.extracted_experience_years,
-                  extracted_visa_types: Array.isArray(j.extracted_visa_types) ? j.extracted_visa_types.join(", ") : (j.extracted_visa_types ?? ""),
-                  extracted_hourly_rate_min: j.extracted_hourly_rate_min,
-                  extracted_hourly_rate_max: j.extracted_hourly_rate_max,
-                  employment_type: j.employment_type ?? null,
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Fallback: if no vector search results, use the old method (recent 50 from each board)
-    if (!usedVectorSearch || allJobs.length === 0) {
-      const sources = [
-        { table: "linkedin_jobs", source: "linkedin", locationCol: "location" },
-        { table: "dice_jobs", source: "dice", locationCol: "location" },
-        { table: "indeed_jobs", source: "indeed", locationCol: "location_display" },
-        { table: "monster_jobs", source: "monster", locationCol: "location_display" },
-        { table: "careerbuilder_jobs", source: "careerbuilder", locationCol: "location_display" },
-      ];
-
-      for (const { table, source, locationCol } of sources) {
-        const query = supabase
-          .from(table)
-          .select(`id, job_title, job_description, ${locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type, created_at`)
-          .gte("created_at", recentJobsCutoff)
-          .order("created_at", { ascending: false })
-          .limit(50);
-
-        const { data: jobs } = await query;
-
-        if (jobs) {
-          for (const j of jobs) {
-            allJobs.push({
-              id: j.id,
-              source,
-              title: j.job_title ?? "",
-              description: (j.job_description ?? "").slice(0, 2000),
-              location: j[locationCol] ?? "",
-              extracted_skills: Array.isArray(j.extracted_skills) ? j.extracted_skills.join(", ") : (j.extracted_skills ?? ""),
-              extracted_experience_years: j.extracted_experience_years,
-              extracted_visa_types: Array.isArray(j.extracted_visa_types) ? j.extracted_visa_types.join(", ") : (j.extracted_visa_types ?? ""),
-              extracted_hourly_rate_min: j.extracted_hourly_rate_min,
-              extracted_hourly_rate_max: j.extracted_hourly_rate_max,
-              employment_type: j.employment_type ?? null,
-            });
-          }
-        }
-      }
-
-      // Load social_jobs (fallback path)
-      {
-        const socialSelect = "id, job_title, job_description, location, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type";
-
-        const { data: socialJobsData } = await supabase
-          .from("social_jobs")
-          .select(socialSelect)
-          .gte("created_at", recentJobsCutoff)
-          .order("created_at", { ascending: false })
-          .limit(50);
-
-        const socialJobs = (socialJobsData ?? []) as Record<string, unknown>[];
-
-        for (const j of socialJobs) {
-          const skills = j.extracted_skills;
-          allJobs.push({
-            id: j.id as string,
-            source: "social",
-            title: (j.job_title as string) ?? "",
-            description: ((j.job_description as string) ?? "").slice(0, 2000),
-            location: (j.location as string) ?? "",
-            extracted_skills: Array.isArray(skills) ? skills.join(", ") : ((skills as string) ?? ""),
-            extracted_experience_years: j.extracted_experience_years as number | null,
-            extracted_visa_types: Array.isArray(j.extracted_visa_types) ? (j.extracted_visa_types as string[]).join(", ") : ((j.extracted_visa_types as string) ?? ""),
-            extracted_hourly_rate_min: j.extracted_hourly_rate_min as number | null,
-            extracted_hourly_rate_max: j.extracted_hourly_rate_max as number | null,
-            employment_type: (j.employment_type as string | null) ?? null,
-          });
-        }
-      }
-    }
-
-    if (allJobs.length === 0) {
-      return respond({ message: "No jobs found. Run a search first." });
-    }
-
-    let effectiveJobs = allJobs;
-
-    // Remove already-scored jobs (for fallback path; vector path already filters)
-    const newJobs = usedVectorSearch ? effectiveJobs : effectiveJobs.filter(j => !existingJobIds.has(j.id));
-
-    if (newJobs.length === 0) {
-      return respond({ message: "All jobs already scored", matched: 0, skipped: existingJobIds.size });
-    }
-
-    const contentFilteredJobs = newJobs.filter((job) => hasMeaningfulJobContent(job));
-
-    // Title relevance filter (skip for vector path since vector already filtered semantically)
-    const targetRole = ((profile.target_role as string) ?? "").toLowerCase();
-    const relevantJobs = usedVectorSearch
-      ? contentFilteredJobs
-      : filterRelevantJobs(contentFilteredJobs, targetRole, (profile.core_skills as string) ?? "");
-
-    if (relevantJobs.length === 0) {
-      let scrapedJobs: Array<{ id: string; source: string; title: string; description: string; location: string; extracted_skills: string; extracted_experience_years: number | null; extracted_visa_types: string; extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null; employment_type: string | null }> = [];
-
-      const scrapeRequests = buildScrapeFallbackRequests(profile, account_id ?? null);
-      for (const request of scrapeRequests) {
-        try {
-          const response = await fetch(`${supabaseUrl}/functions/v1/${request.endpoint}`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${serviceRoleKey}`,
-              "Apikey": serviceRoleKey,
-            },
-            body: JSON.stringify(request.body),
-          });
-
-          if (!response.ok) continue;
-
-          const payload = await response.json().catch(() => null);
-          const jobs = Array.isArray(payload?.jobs) ? payload.jobs : [];
-          for (const job of jobs) {
-            const id = job.id as string | undefined;
-            if (!id || existingJobIds.has(id)) continue;
-            scrapedJobs.push({
-              id,
-              source: request.source,
-              title: (job.job_title as string) ?? "",
-              description: ((job.job_description as string) ?? (job.summary as string) ?? "").slice(0, 2000),
-              location: (job.location as string) ?? (job.location_display as string) ?? "",
-              extracted_skills: (job.extracted_skills as string) ?? (job.skills as string) ?? "",
-              extracted_experience_years: (job.extracted_experience_years as number | null) ?? null,
-              extracted_visa_types: (job.extracted_visa_types as string) ?? "",
-              extracted_hourly_rate_min: (job.extracted_hourly_rate_min as number | null) ?? null,
-              extracted_hourly_rate_max: (job.extracted_hourly_rate_max as number | null) ?? null,
-              employment_type: (job.employment_type as string | null) ?? null,
-            });
-          }
-        } catch {
-          // Ignore individual scraper failures and continue.
-        }
-      }
-
-      effectiveJobs = [...effectiveJobs, ...scrapedJobs];
-      const scrapedNewJobs = effectiveJobs.filter(j => !existingJobIds.has(j.id));
-      const scrapedContentFilteredJobs = scrapedNewJobs.filter((job) => hasMeaningfulJobContent(job));
-      const scrapedRelevantJobs = filterRelevantJobs(scrapedContentFilteredJobs, targetRole, (profile.core_skills as string) ?? "");
-
-      if (scrapedRelevantJobs.length === 0) {
-        return respond({ message: "No relevant jobs found matching the target role", matched: 0, skipped: existingJobIds.size + scrapedNewJobs.length });
-      }
-
-      effectiveJobs = scrapedRelevantJobs;
-    } else {
-      effectiveJobs = relevantJobs;
-    }
-
     if (!GEMINI_API_KEY) {
       return respond({ error: "GEMINI_API_KEY not configured" }, 500);
     }
 
-    // Stream results in batches of 5
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const batchSize = 5;
-        let totalMatched = 0;
-        let freePlanSavedCount = 0;
-        let freePlanChargedCount = 0;
+        const emit = (payload: Record<string, unknown>) => {
+          controller.enqueue(encoder.encode(JSON.stringify(payload) + "\n"));
+        };
 
-        for (let i = 0; i < effectiveJobs.length; i += batchSize) {
-          if (!isPaidPlan && freePlanSavedCount >= FREE_PLAN_MATCH_TOTAL_LIMIT) {
-            break;
-          }
+        try {
+          emit({ type: "batch", matched: 0, total_so_far: 0, progress: 0, total_jobs: 0 });
 
-          const batch = effectiveJobs.slice(i, i + batchSize);
+          // Filter out already-scored jobs early
+          const { data: existingMatches } = await supabase
+            .from("radar_match_results")
+            .select("job_id")
+            .eq("profile_id", profile_id);
 
-          const extractedJobs = await extractJobFields(batch, GEMINI_API_KEY);
-          if (extractedJobs.length === 0) {
-            controller.enqueue(encoder.encode(JSON.stringify({ type: "batch", matched: 0, total_so_far: totalMatched, progress: Math.min(i + batchSize, effectiveJobs.length), total_jobs: effectiveJobs.length }) + "\n"));
-            continue;
-          }
+          const existingJobIds = new Set((existingMatches ?? []).map((m: { job_id: string }) => m.job_id));
+          const recentJobsCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-          const batchResults = scoreJobsAgainstProfile(extractedJobs, profile);
-          const qualifyingResults = batchResults.filter(r => (r.score ?? 0) >= 70);
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          const profileEmbedding = ENABLE_LIVE_VECTOR_SEARCH
+            ? await ensureProfileEmbedding(supabase, profile.id, supabaseUrl, serviceRoleKey)
+            : null;
 
-          let persistableResults = qualifyingResults;
-          if (!isPaidPlan) {
-            const remaining = Math.max(0, FREE_PLAN_MATCH_TOTAL_LIMIT - freePlanSavedCount);
-            persistableResults = qualifyingResults.slice(0, remaining);
-          }
+          // Load jobs — use vector similarity if enabled and embedding exists, else fallback to recent jobs.
+          const allJobs: Array<{ id: string; source: string; title: string; description: string; location: string; extracted_skills: string; extracted_experience_years: number | null; extracted_visa_types: string; extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null; employment_type: string | null }> = [];
+          let usedVectorSearch = false;
 
-          // Save to DB immediately
-          if (persistableResults.length > 0) {
-            const rows = [] as Array<{
-              profile_id: string;
-              job_source: string;
-              job_id: string;
-              final_average_score: number;
-              score_breakdown: Record<string, { score: number; candidate_value: string; job_value: string; rule: string }>;
-              ai_notes: string;
-              disqualified: boolean;
-              disqualify_reason: string | null;
-            }>;
+          if (ENABLE_LIVE_VECTOR_SEARCH && profileEmbedding) {
+            const { data: vectorMatches, error: vecErr } = await supabase.rpc("match_jobs_by_embedding", {
+              query_embedding: profileEmbedding,
+              similarity_threshold: 0.70,
+              max_results: 200,
+            });
 
-            const freeChargeAllowance = !isPaidPlan
-              ? Math.max(0, FREE_PLAN_MATCH_UNLOCK_LIMIT - freePlanChargedCount)
-              : persistableResults.length;
+            if (!vecErr && vectorMatches && vectorMatches.length > 0) {
+              usedVectorSearch = true;
 
-            for (let idx = 0; idx < persistableResults.length; idx += 1) {
-              const result = persistableResults[idx];
-
-              const shouldCharge = isPaidPlan || idx < freeChargeAllowance;
-              if (account_id && shouldCharge) {
-                const charged = await chargeMatchCredits(supabase, account_id, profile_id, result);
-                if (!charged) {
-                  controller.enqueue(encoder.encode(JSON.stringify({ type: "error", error: "Insufficient credits. Please top up your account." }) + "\n"));
-                  controller.close();
-                  return;
-                }
-
-                if (!isPaidPlan) {
-                  freePlanChargedCount += 1;
-                }
+              const jobsBySource: Record<string, string[]> = {};
+              for (const m of vectorMatches) {
+                if (existingJobIds.has(m.job_id)) continue;
+                if (!jobsBySource[m.job_source]) jobsBySource[m.job_source] = [];
+                jobsBySource[m.job_source].push(m.job_id);
               }
 
-              rows.push({
-                profile_id,
-                job_source: result.job_source,
-                job_id: result.job_id,
-                final_average_score: result.score,
-                score_breakdown: result.breakdown,
-                ai_notes: result.notes,
-                disqualified: result.disqualified,
-                disqualify_reason: result.reason,
-              });
-            }
+              const sourceConfig: Record<string, { table: string; locationCol: string }> = {
+                linkedin: { table: "linkedin_jobs", locationCol: "location" },
+                dice: { table: "dice_jobs", locationCol: "location" },
+                indeed: { table: "indeed_jobs", locationCol: "location_display" },
+                monster: { table: "monster_jobs", locationCol: "location_display" },
+                careerbuilder: { table: "careerbuilder_jobs", locationCol: "location_display" },
+                social: { table: "social_jobs", locationCol: "location" },
+              };
 
-            await supabase.from("radar_match_results").insert(rows);
-            totalMatched += rows.length;
-            if (!isPaidPlan) {
-              freePlanSavedCount += rows.length;
+              for (const [source, ids] of Object.entries(jobsBySource)) {
+                const config = sourceConfig[source];
+                if (!config || ids.length === 0) continue;
+
+                for (let i = 0; i < ids.length; i += 50) {
+                  const batchIds = ids.slice(i, i + 50);
+                  const { data: jobs } = await supabase
+                    .from(config.table)
+                    .select(`id, job_title, job_description, ${config.locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type, created_at`)
+                    .in("id", batchIds)
+                    .gte("created_at", recentJobsCutoff);
+
+                  if (jobs) {
+                    for (const j of jobs) {
+                      allJobs.push({
+                        id: j.id,
+                        source,
+                        title: j.job_title ?? "",
+                        description: (j.job_description ?? "").slice(0, 2000),
+                        location: j[config.locationCol] ?? "",
+                        extracted_skills: Array.isArray(j.extracted_skills) ? j.extracted_skills.join(", ") : (j.extracted_skills ?? ""),
+                        extracted_experience_years: j.extracted_experience_years,
+                        extracted_visa_types: Array.isArray(j.extracted_visa_types) ? j.extracted_visa_types.join(", ") : (j.extracted_visa_types ?? ""),
+                        extracted_hourly_rate_min: j.extracted_hourly_rate_min,
+                        extracted_hourly_rate_max: j.extracted_hourly_rate_max,
+                        employment_type: j.employment_type ?? null,
+                      });
+                    }
+                  }
+                }
+              }
             }
           }
 
-          controller.enqueue(encoder.encode(JSON.stringify({ type: "batch", matched: persistableResults.length, total_so_far: totalMatched, progress: Math.min(i + batchSize, effectiveJobs.length), total_jobs: effectiveJobs.length }) + "\n"));
-        }
+          if (!usedVectorSearch || allJobs.length === 0) {
+            const sources = [
+              { table: "linkedin_jobs", source: "linkedin", locationCol: "location" },
+              { table: "dice_jobs", source: "dice", locationCol: "location" },
+              { table: "indeed_jobs", source: "indeed", locationCol: "location_display" },
+              { table: "monster_jobs", source: "monster", locationCol: "location_display" },
+              { table: "careerbuilder_jobs", source: "careerbuilder", locationCol: "location_display" },
+            ];
 
-        controller.enqueue(encoder.encode(JSON.stringify({ type: "done", matched: totalMatched, skipped: existingJobIds.size }) + "\n"));
-        controller.close();
+            for (const { table, source, locationCol } of sources) {
+              const { data: jobs } = await supabase
+                .from(table)
+                .select(`id, job_title, job_description, ${locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type, created_at`)
+                .gte("created_at", recentJobsCutoff)
+                .order("created_at", { ascending: false })
+                .limit(50);
+
+              if (jobs) {
+                for (const j of jobs) {
+                  allJobs.push({
+                    id: j.id,
+                    source,
+                    title: j.job_title ?? "",
+                    description: (j.job_description ?? "").slice(0, 2000),
+                    location: j[locationCol] ?? "",
+                    extracted_skills: Array.isArray(j.extracted_skills) ? j.extracted_skills.join(", ") : (j.extracted_skills ?? ""),
+                    extracted_experience_years: j.extracted_experience_years,
+                    extracted_visa_types: Array.isArray(j.extracted_visa_types) ? j.extracted_visa_types.join(", ") : (j.extracted_visa_types ?? ""),
+                    extracted_hourly_rate_min: j.extracted_hourly_rate_min,
+                    extracted_hourly_rate_max: j.extracted_hourly_rate_max,
+                    employment_type: j.employment_type ?? null,
+                  });
+                }
+              }
+            }
+
+            const socialSelect = "id, job_title, job_description, location, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type";
+            const { data: socialJobsData } = await supabase
+              .from("social_jobs")
+              .select(socialSelect)
+              .gte("created_at", recentJobsCutoff)
+              .order("created_at", { ascending: false })
+              .limit(50);
+
+            const socialJobs = (socialJobsData ?? []) as Record<string, unknown>[];
+            for (const j of socialJobs) {
+              const skills = j.extracted_skills;
+              allJobs.push({
+                id: j.id as string,
+                source: "social",
+                title: (j.job_title as string) ?? "",
+                description: ((j.job_description as string) ?? "").slice(0, 2000),
+                location: (j.location as string) ?? "",
+                extracted_skills: Array.isArray(skills) ? skills.join(", ") : ((skills as string) ?? ""),
+                extracted_experience_years: j.extracted_experience_years as number | null,
+                extracted_visa_types: Array.isArray(j.extracted_visa_types) ? (j.extracted_visa_types as string[]).join(", ") : ((j.extracted_visa_types as string) ?? ""),
+                extracted_hourly_rate_min: j.extracted_hourly_rate_min as number | null,
+                extracted_hourly_rate_max: j.extracted_hourly_rate_max as number | null,
+                employment_type: (j.employment_type as string | null) ?? null,
+              });
+            }
+          }
+
+          if (allJobs.length === 0) {
+            emit({ type: "done", matched: 0, skipped: existingJobIds.size, message: "No jobs found. Run a search first." });
+            controller.close();
+            return;
+          }
+
+          const newJobs = usedVectorSearch ? allJobs : allJobs.filter(j => !existingJobIds.has(j.id));
+          if (newJobs.length === 0) {
+            emit({ type: "done", matched: 0, skipped: existingJobIds.size, message: "All jobs already scored" });
+            controller.close();
+            return;
+          }
+
+          const contentFilteredJobs = newJobs.filter((job) => hasMeaningfulJobContent(job));
+          const targetRole = ((profile.target_role as string) ?? "").toLowerCase();
+          const effectiveJobs = usedVectorSearch
+            ? contentFilteredJobs
+            : filterRelevantJobs(contentFilteredJobs, targetRole, (profile.core_skills as string) ?? "");
+
+          if (effectiveJobs.length === 0) {
+            emit({ type: "done", matched: 0, skipped: existingJobIds.size, message: "No relevant jobs found matching the target role" });
+            controller.close();
+            return;
+          }
+
+          const batchSize = 5;
+          let totalMatched = 0;
+          let freePlanSavedCount = 0;
+          let freePlanChargedCount = 0;
+
+          for (let i = 0; i < effectiveJobs.length; i += batchSize) {
+            if (!isPaidPlan && freePlanSavedCount >= FREE_PLAN_MATCH_TOTAL_LIMIT) break;
+
+            const batch = effectiveJobs.slice(i, i + batchSize);
+            const extractedJobs = await extractJobFields(batch, GEMINI_API_KEY);
+            if (extractedJobs.length === 0) {
+              emit({ type: "batch", matched: 0, total_so_far: totalMatched, progress: Math.min(i + batchSize, effectiveJobs.length), total_jobs: effectiveJobs.length });
+              continue;
+            }
+
+            const batchResults = scoreJobsAgainstProfile(extractedJobs, profile);
+            const qualifyingResults = batchResults.filter(r => (r.score ?? 0) >= 70);
+
+            let persistableResults = qualifyingResults;
+            if (!isPaidPlan) {
+              const remaining = Math.max(0, FREE_PLAN_MATCH_TOTAL_LIMIT - freePlanSavedCount);
+              persistableResults = qualifyingResults.slice(0, remaining);
+            }
+
+            if (persistableResults.length > 0) {
+              const rows = [] as Array<{
+                profile_id: string;
+                job_source: string;
+                job_id: string;
+                final_average_score: number;
+                score_breakdown: Record<string, { score: number; candidate_value: string; job_value: string; rule: string }>;
+                ai_notes: string;
+                disqualified: boolean;
+                disqualify_reason: string | null;
+              }>;
+
+              const freeChargeAllowance = !isPaidPlan
+                ? Math.max(0, FREE_PLAN_MATCH_UNLOCK_LIMIT - freePlanChargedCount)
+                : persistableResults.length;
+
+              for (let idx = 0; idx < persistableResults.length; idx += 1) {
+                const result = persistableResults[idx];
+                const shouldCharge = isPaidPlan || idx < freeChargeAllowance;
+
+                if (account_id && shouldCharge) {
+                  const charged = await chargeMatchCredits(supabase, account_id, profile_id, result);
+                  if (!charged) {
+                    emit({ type: "error", error: "Insufficient credits. Please top up your account." });
+                    controller.close();
+                    return;
+                  }
+
+                  if (!isPaidPlan) freePlanChargedCount += 1;
+                }
+
+                rows.push({
+                  profile_id,
+                  job_source: result.job_source,
+                  job_id: result.job_id,
+                  final_average_score: result.score,
+                  score_breakdown: result.breakdown,
+                  ai_notes: result.notes,
+                  disqualified: result.disqualified,
+                  disqualify_reason: result.reason,
+                });
+              }
+
+              await supabase.from("radar_match_results").insert(rows);
+              totalMatched += rows.length;
+              if (!isPaidPlan) freePlanSavedCount += rows.length;
+            }
+
+            emit({ type: "batch", matched: persistableResults.length, total_so_far: totalMatched, progress: Math.min(i + batchSize, effectiveJobs.length), total_jobs: effectiveJobs.length });
+          }
+
+          emit({ type: "done", matched: totalMatched, skipped: existingJobIds.size });
+          controller.close();
+        } catch (streamErr) {
+          emit({ type: "error", error: (streamErr as Error).message || "Live Match failed" });
+          controller.close();
+        }
       },
     });
 

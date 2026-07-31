@@ -107,6 +107,7 @@ const DEFAULT_WATCH_BOARDS = ['linkedin', 'dice', 'indeed', 'monster'];
 const HOTLIST_RETENTION_DAYS = 15;
 const FREE_PLAN_MATCH_LIMIT = 5;
 const FREE_PLAN_MATCH_TOTAL_LIMIT = 5;
+const PAID_PLAN_MATCH_TOTAL_LIMIT = Number.MAX_SAFE_INTEGER;
 const FREE_PLAN_MATCH_CANDIDATE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT = 5;
 const FREE_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -287,6 +288,99 @@ function dedupeMatchResults(items: RadarMatchResult[], jobMap: Map<string, JobIn
   return Array.from(byKey.values());
 }
 
+function normalizeScoreBreakdownPayload(raw: unknown): Record<string, { score: number; candidate_value: string; job_value: string; rule: string } | number> {
+  if (!raw) return {};
+
+  let value: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof value !== 'object' || value === null) return {};
+
+  const canonicalizeKey = (input: string) => {
+    const normalized = input.trim().toLowerCase().replace(/\s+/g, '_');
+    const aliases: Record<string, string> = {
+      role: 'role_match',
+      title: 'role_match',
+      name: 'role_match',
+      skills: 'skills_match',
+      experience: 'experience_match',
+      visa: 'visa_match',
+      employment_type: 'employment_type_match',
+      work_type: 'work_type_match',
+      location: 'location_match',
+      rate: 'rate_match',
+    };
+    if (aliases[normalized]) return aliases[normalized];
+    return normalized.endsWith('_match') ? normalized : `${normalized}_match`;
+  };
+
+  const normalized: Record<string, { score: number; candidate_value: string; job_value: string; rule: string } | number> = {};
+
+  const addEntry = (rawKey: string, entry: unknown) => {
+    const key = canonicalizeKey(rawKey);
+    if (typeof entry === 'number') {
+      normalized[key] = entry;
+      return;
+    }
+
+    if (typeof entry === 'object' && entry !== null) {
+      const detail = entry as Record<string, unknown>;
+      const score = Number(detail.score ?? detail.value ?? detail.match_score ?? detail.percentage);
+      normalized[key] = {
+        score: Number.isFinite(score) ? score : 0,
+        candidate_value: String(detail.candidate_value ?? detail.candidate ?? detail.profile_value ?? ''),
+        job_value: String(detail.job_value ?? detail.job ?? detail.requirement ?? ''),
+        rule: String(detail.rule ?? detail.reason ?? detail.explanation ?? ''),
+      };
+    }
+  };
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (!item || typeof item !== 'object') continue;
+      const detail = item as Record<string, unknown>;
+      const rawKey = String(detail.key ?? detail.rule_key ?? detail.name ?? detail.rule ?? '').trim();
+      if (!rawKey) continue;
+      addEntry(rawKey, detail);
+    }
+    return normalized;
+  }
+
+  const obj = value as Record<string, unknown>;
+  const nestedCandidate = obj.score_breakdown ?? obj.breakdown ?? obj.rules ?? obj.items;
+  if (nestedCandidate && nestedCandidate !== value) {
+    return normalizeScoreBreakdownPayload(nestedCandidate);
+  }
+
+  for (const [key, entry] of Object.entries(obj)) {
+    addEntry(key, entry);
+  }
+
+  return normalized;
+}
+
+function scoreBreakdownRuleCount(breakdown: RadarMatchResult['score_breakdown'] | undefined) {
+  return Object.keys(breakdown ?? {}).length;
+}
+
+function mergeMatchRows(primary: RadarMatchResult, secondary: RadarMatchResult): RadarMatchResult {
+  const primaryRules = scoreBreakdownRuleCount(primary.score_breakdown);
+  const secondaryRules = scoreBreakdownRuleCount(secondary.score_breakdown);
+
+  return {
+    ...primary,
+    final_average_score: primary.final_average_score || secondary.final_average_score,
+    score_breakdown: secondaryRules > primaryRules ? secondary.score_breakdown : primary.score_breakdown,
+    ai_notes: primary.ai_notes?.trim() ? primary.ai_notes : secondary.ai_notes,
+  };
+}
+
 function ScoreBreakdownChart({ items, detailMap, compact = false, expandedKeys, onToggleExpand }: { items: Array<{ key: string; score: number }>; detailMap: Record<string, { candidate_value: string; job_value: string; rule: string } | undefined>; compact?: boolean; expandedKeys?: Set<string>; onToggleExpand?: (key: string) => void }) {
   if (!items.length) return null;
 
@@ -406,6 +500,7 @@ export default function RadarPage() {
   const [disqualifyingJobId, setDisqualifyingJobId] = useState<string | null>(null);
   const [liveMatchCooldowns, setLiveMatchCooldowns] = useState<Record<string, number>>({});
   const [liveMatchAttempts, setLiveMatchAttempts] = useState<Record<string, number[]>>({});
+  const [serverLiveMatchRemaining, setServerLiveMatchRemaining] = useState<number | null>(null);
   const sortField: SortField = 'score';
   const sortDir: SortDir = 'desc';
 
@@ -581,6 +676,39 @@ export default function RadarPage() {
       setLiveMatchAttempts({});
     }
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadServerLiveMatchRemaining() {
+      if (!account?.id || isPaidPlan) {
+        setServerLiveMatchRemaining(null);
+        return;
+      }
+
+      const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from('api_usage_log')
+        .select('created_at')
+        .eq('account_id', account.id)
+        .eq('function_name', 'radar-match')
+        .gte('created_at', sinceIso);
+
+      if (!ignore) {
+        if (error) {
+          setServerLiveMatchRemaining(null);
+        } else {
+          const count = (data ?? []).length;
+          setServerLiveMatchRemaining(Math.max(0, FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT - count));
+        }
+      }
+    }
+
+    loadServerLiveMatchRemaining();
+    return () => {
+      ignore = true;
+    };
+  }, [account?.id, isPaidPlan]);
 
   useEffect(() => {
     if (!selectedProfileId && profiles.length > 0) {
@@ -900,7 +1028,7 @@ export default function RadarPage() {
         job_source,
         job_id,
         final_average_score: (s.score as number) ?? 0,
-        score_breakdown: {},
+        score_breakdown: normalizeScoreBreakdownPayload(s.score_breakdown),
         ai_notes: (s.summary as string) ?? '',
         disqualified: false,
         disqualify_reason: null,
@@ -910,14 +1038,26 @@ export default function RadarPage() {
 
     const radarResults: RadarMatchResult[] = radarRes.data ?? [];
     const seen = new Set<string>();
+    const indexByKey = new Map<string, number>();
     const combined: RadarMatchResult[] = [];
     for (const r of radarResults) {
       const key = `${r.profile_id}:${r.job_id}`;
-      if (!seen.has(key)) { seen.add(key); combined.push(r); }
+      if (!seen.has(key)) {
+        seen.add(key);
+        indexByKey.set(key, combined.length);
+        combined.push(r);
+      }
     }
     for (const r of normalizedScores) {
       const key = `${r.profile_id}:${r.job_id}`;
-      if (!seen.has(key)) { seen.add(key); combined.push(r); }
+      const idx = indexByKey.get(key);
+      if (idx !== undefined) {
+        combined[idx] = mergeMatchRows(combined[idx], r);
+      } else if (!seen.has(key)) {
+        seen.add(key);
+        indexByKey.set(key, combined.length);
+        combined.push(r);
+      }
     }
 
     setResults(combined);
@@ -953,7 +1093,7 @@ export default function RadarPage() {
           job_source,
           job_id,
           final_average_score: (s.score as number) ?? 0,
-          score_breakdown: {},
+          score_breakdown: normalizeScoreBreakdownPayload(s.score_breakdown),
           ai_notes: (s.summary as string) ?? '',
           disqualified: false,
           disqualify_reason: null,
@@ -964,15 +1104,27 @@ export default function RadarPage() {
       // Merge radar results + job_match_scores, deduplicating by job_id+profile_id
       const radarResults: RadarMatchResult[] = radarRes.data ?? [];
       const seen = new Set<string>();
+      const indexByKey = new Map<string, number>();
       const combined: RadarMatchResult[] = [];
 
       for (const r of radarResults) {
         const key = `${r.profile_id}:${r.job_id}`;
-        if (!seen.has(key)) { seen.add(key); combined.push(r); }
+        if (!seen.has(key)) {
+          seen.add(key);
+          indexByKey.set(key, combined.length);
+          combined.push(r);
+        }
       }
       for (const r of normalizedScores) {
         const key = `${r.profile_id}:${r.job_id}`;
-        if (!seen.has(key)) { seen.add(key); combined.push(r); }
+        const idx = indexByKey.get(key);
+        if (idx !== undefined) {
+          combined[idx] = mergeMatchRows(combined[idx], r);
+        } else if (!seen.has(key)) {
+          seen.add(key);
+          indexByKey.set(key, combined.length);
+          combined.push(r);
+        }
       }
 
       setResults(combined);
@@ -1310,6 +1462,9 @@ export default function RadarPage() {
     ? getLiveMatchCandidateCooldownRemainingMs(selectedProfileId)
     : 0;
   const liveMatchAccountCount = getLiveMatchAccountCount();
+  const liveMatchRemaining = serverLiveMatchRemaining === null
+    ? Math.max(0, FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT - liveMatchAccountCount)
+    : Math.max(0, serverLiveMatchRemaining);
   const isLiveMatchCooldownActive = !isPaidPlan
     ? liveMatchAccountCount >= FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT || cooldownRemainingMs > 0
     : cooldownRemainingMs > 0;
@@ -1388,14 +1543,18 @@ export default function RadarPage() {
       setPipelineDetail(`Matching ${profile.candidate_name} against jobs...`);
 
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 145000);
         const response = await fetch(
           `${supabaseUrl}/functions/v1/radar-match`,
           {
             method: 'POST',
             headers,
+            signal: controller.signal,
             body: JSON.stringify({ profile_id: profile.id, account_id: account.id }),
           }
         );
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
@@ -1450,7 +1609,13 @@ export default function RadarPage() {
                 } else if (msg.type === 'done') {
                   // final message for this profile
                 }
-              } catch { /* skip malformed lines */ }
+              } catch {
+                if (line.includes('Request idle timeout limit')) {
+                  showToast('Live Match timed out while waiting for updates. Please try again.', 'error');
+                  cleanup();
+                  return;
+                }
+              }
             }
           }
         } else {
@@ -1467,7 +1632,15 @@ export default function RadarPage() {
           }
         }
       } catch (err) {
+        const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+        if (isTimeout) {
+          showToast('Live Match timed out while starting. Please retry.', 'error');
+        } else {
+          showToast(`Live Match failed for ${profile.candidate_name}. Please retry.`, 'error');
+        }
         console.error(`Radar match error for ${profile.candidate_name}:`, err);
+        cleanup();
+        return;
       }
     }
 
@@ -1586,46 +1759,35 @@ export default function RadarPage() {
     setDisqualifyingJobId(null);
   }
 
-  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const allQualifiedResults = dedupeMatchResults(
+    results.filter(r => !hideDisqualified || !r.disqualified),
+    jobMap,
+  );
 
-  const recentQualifiedResults = dedupeMatchResults(results
-    .filter(r => !hideDisqualified || !r.disqualified)
-    .filter(r => r.final_average_score >= 70)
-    .filter(r => new Date(r.created_at).getTime() >= sevenDaysAgo), jobMap);
+  const matchCountByProfile = new Map<string, number>();
+  for (const row of allQualifiedResults) {
+    matchCountByProfile.set(row.profile_id, (matchCountByProfile.get(row.profile_id) ?? 0) + 1);
+  }
 
-  const streamOrderedResults = [...recentQualifiedResults].sort((a, b) => {
-    const ta = new Date(a.created_at).getTime();
-    const tb = new Date(b.created_at).getTime();
-    return ta - tb;
-  });
+  const profileResults = allQualifiedResults
+    .filter(r => !selectedProfileId || r.profile_id === selectedProfileId);
 
-  const newestFirstResults = [...recentQualifiedResults].sort((a, b) => {
+  const profileResultsNewestFirst = [...profileResults].sort((a, b) => {
     const ta = new Date(a.created_at).getTime();
     const tb = new Date(b.created_at).getTime();
     return tb - ta;
   });
 
-  const freePlanVisibleIds = new Set(
+  const unlockedResultIds = new Set(
     (isPaidPlan
-      ? newestFirstResults.slice(0, PAID_PLAN_MATCH_TOTAL_LIMIT)
-      : streamOrderedResults.slice(0, FREE_PLAN_MATCH_TOTAL_LIMIT)
+      ? profileResultsNewestFirst
+      : profileResultsNewestFirst.slice(0, FREE_PLAN_MATCH_LIMIT)
     ).map(r => r.id),
   );
 
-  const streamRankByResultId = new Map<string, number>();
-  streamOrderedResults.forEach((row, idx) => {
-    streamRankByResultId.set(row.id, idx);
-  });
-
-  const cappedRecentResults = recentQualifiedResults.filter(r => freePlanVisibleIds.has(r.id));
-
-  const matchCountByProfile = new Map<string, number>();
-  for (const row of cappedRecentResults) {
-    matchCountByProfile.set(row.profile_id, (matchCountByProfile.get(row.profile_id) ?? 0) + 1);
-  }
-
-  const profileResults = cappedRecentResults
-    .filter(r => !selectedProfileId || r.profile_id === selectedProfileId);
+  const progressPercent = pipelineProgress.total > 0
+    ? Math.max(0, Math.min(100, Math.round((pipelineProgress.current / pipelineProgress.total) * 100)))
+    : (scanning ? 12 : 0);
 
   const getSourceCategory = (r: { job_source: string; job_id: string }): SourceTab => {
     if (JOB_BOARD_SOURCES.has(r.job_source)) return 'job_boards';
@@ -1663,6 +1825,12 @@ export default function RadarPage() {
         || r.job_source.toLowerCase().includes(q);
     })
     .sort((a, b) => {
+      if (!isPaidPlan) {
+        const aUnlocked = unlockedResultIds.has(a.id);
+        const bUnlocked = unlockedResultIds.has(b.id);
+        if (aUnlocked !== bUnlocked) return aUnlocked ? -1 : 1;
+      }
+
       const dir = sortDir === 'asc' ? 1 : -1;
       switch (sortField) {
         case 'score': return (a.final_average_score - b.final_average_score) * dir;
@@ -1744,7 +1912,7 @@ export default function RadarPage() {
             <div className="flex items-center gap-1 text-center">
               {!isPaidPlan ? (
                 <>
-                  <span className="text-[12px] font-semibold leading-none text-slate-900">{Math.max(0, FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT - liveMatchAccountCount)}/{FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT}</span>
+                  <span className="text-[12px] font-semibold leading-none text-slate-900">{liveMatchRemaining}/{FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT}</span>
                   <span className="text-[10px] font-medium leading-none text-slate-500 normal-case tracking-normal">matches left</span>
                 </>
               ) : cooldownRemainingMs > 0 ? (
@@ -2450,6 +2618,27 @@ export default function RadarPage() {
                 </div>
               </div>
 
+              {(scanning || pipelineStep === 'matching') && (
+                <div className="px-3 pb-2">
+                  <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-2.5 py-2">
+                    <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-semibold text-blue-700">
+                        {pipelineDetail || 'Live Match in progress...'}
+                      </span>
+                      <span className="font-medium text-blue-600">
+                        {pipelineProgress.total > 0 ? `${pipelineProgress.current}/${pipelineProgress.total}` : 'starting'}
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-blue-100">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-blue-500 via-cyan-500 to-teal-500 transition-all duration-300"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
             {/* Results List */}
             <div className="relative z-0 p-4">
             {filteredResults.length === 0 ? (
@@ -2466,8 +2655,7 @@ export default function RadarPage() {
               const profile = profiles.find(p => p.id === result.profile_id);
               const job = jobMap.get(result.job_id);
               const isExpanded = expandedId === result.id;
-              const streamRank = streamRankByResultId.get(result.id) ?? Number.MAX_SAFE_INTEGER;
-              const isLocked = shouldLockMatchCard({ isPaidPlan, streamRank });
+              const isLocked = !isPaidPlan && !unlockedResultIds.has(result.id);
 
               return (
                 <div

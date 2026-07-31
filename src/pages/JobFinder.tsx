@@ -1186,7 +1186,8 @@ export default function JobFinder() {
   const [votingBoard, setVotingBoard] = useState<string | null>(null);
   const [searchCooldowns, setSearchCooldowns] = useState<Record<string, number>>({});
   // refreshTimestamps: { [scopedKey]: number[] } — timestamps of recent paid-plan refreshes
-  const [refreshTimestamps, setRefreshTimestamps] = useState<Record<string, number[]>>({});;
+  const [refreshTimestamps, setRefreshTimestamps] = useState<Record<string, number[]>>({});
+  const [serverUsageRemaining, setServerUsageRemaining] = useState<number | null>(null);
   const [linkedinColFilter, setLinkedinColFilter] = useState('');
   const [diceColFilter, setDiceColFilter] = useState('');
   const [indeedColFilter, setIndeedColFilter] = useState('');
@@ -1414,7 +1415,9 @@ export default function JobFinder() {
     .filter(ms => ms > 0);
   const freeRefreshesUsedInWindow = getFreeRefreshCountInWindow();
   const freeCandidateRefreshesUsedInWindow = getFreeCandidateRefreshCountInWindow();
-  const freeRefreshesRemainingInWindow = Math.max(0, FREE_PLAN_DAILY_LIMIT - freeRefreshesUsedInWindow);
+  const freeRefreshesRemainingInWindow = serverUsageRemaining === null
+    ? Math.max(0, FREE_PLAN_DAILY_LIMIT - freeRefreshesUsedInWindow)
+    : Math.max(0, serverUsageRemaining);
   const isFreeDailyLimitReached = !isPaidPlan && freeRefreshesUsedInWindow >= FREE_PLAN_DAILY_LIMIT;
   const isFreeCandidateLimitReached = !isPaidPlan && freeCandidateRefreshesUsedInWindow >= FREE_PLAN_PER_CANDIDATE_LIMIT;
   const searchCooldownRemainingMs = selectedBoardCooldownRemainingMs.length > 0
@@ -1482,6 +1485,39 @@ export default function JobFinder() {
       setRefreshTimestamps({});
     }
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadServerUsageRemaining() {
+      if (!account?.id || isPaidPlan) {
+        setServerUsageRemaining(null);
+        return;
+      }
+
+      const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from('api_usage_log')
+        .select('created_at')
+        .eq('account_id', account.id)
+        .in('function_name', ['linkedin-search', 'dice-search', 'indeed-search', 'monster-search', 'careerbuilder-search'])
+        .gte('created_at', sinceIso);
+
+      if (!ignore) {
+        if (error) {
+          setServerUsageRemaining(null);
+        } else {
+          const count = (data ?? []).length;
+          setServerUsageRemaining(Math.max(0, FREE_PLAN_DAILY_LIMIT - count));
+        }
+      }
+    }
+
+    loadServerUsageRemaining();
+    return () => {
+      ignore = true;
+    };
+  }, [account?.id, isPaidPlan]);
   useEffect(() => {
     if (profiles.length === 0) {
       setProfileBoardStats({});
@@ -2081,15 +2117,6 @@ export default function JobFinder() {
   }
 
   function searchAll() {
-    if (!isPaidPlan && isFreeDailyLimitReached) {
-      showToast('You have used all your refreshes in the last 24 hours, please upgrade to get more.', 'error');
-      return;
-    }
-    if (!isPaidPlan && isFreeCandidateLimitReached) {
-      showToast('This candidate has already used 1 refresh in the last 24 hours.', 'error');
-      return;
-    }
-
     if (!isPaidPlan && !beginDailySearch('all-candidates')) {
       return;
     }
@@ -2136,20 +2163,6 @@ export default function JobFinder() {
       return true;
     }
 
-    // Free plan: up to 5 refreshes in the last 24 hours
-    const usedInWindow = getFreeRefreshCountInWindow();
-    if (usedInWindow >= FREE_PLAN_DAILY_LIMIT) {
-      showToast('You have used all your refreshes in the last 24 hours, please upgrade to get more.', 'error');
-      return false;
-    }
-
-    const candidateUsedInWindow = getFreeCandidateRefreshCountInWindow();
-    if (candidateUsedInWindow >= FREE_PLAN_PER_CANDIDATE_LIMIT) {
-      showToast('This candidate has already used 1 refresh in the last 24 hours.', 'error');
-      return false;
-    }
-
-    recordFreeRefreshTimestamp();
     return true;
   }
 

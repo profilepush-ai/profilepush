@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { DAILY_USAGE_WINDOW_MS, FREE_PLAN_DAILY_SEARCH_LIMIT, buildUsageLimitError, getIsPaidPlan, isUsageAllowed } from "../_shared/usage-limits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

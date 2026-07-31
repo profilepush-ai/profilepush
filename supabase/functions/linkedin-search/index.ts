@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { DAILY_USAGE_WINDOW_MS, FREE_PLAN_DAILY_SEARCH_LIMIT, buildUsageLimitError, getIsPaidPlan, isUsageAllowed } from "../_shared/usage-limits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,6 +40,8 @@ Deno.serve(async (req: Request) => {
 
     const effectiveMax = Math.min(Math.max(Number(max_results) || MAX_JOBS, 1), 200);
 
+    const isPaidPlan = await getIsPaidPlan(supabase, account_id ?? null);
+
     if (account_id) {
       const { data: hasFunds } = await supabase.rpc("check_credit_balance", {
         p_account_id: account_id,
@@ -48,6 +51,25 @@ Deno.serve(async (req: Request) => {
         return new Response(JSON.stringify({ error: "Insufficient credits. Please top up your account." }), {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+
+      if (!isPaidPlan) {
+        const sinceIso = new Date(Date.now() - DAILY_USAGE_WINDOW_MS).toISOString();
+        const { data: usageRows, error: usageError } = await supabase
+          .from("api_usage_log")
+          .select("created_at")
+          .eq("account_id", account_id)
+          .eq("function_name", "linkedin-search")
+          .gte("created_at", sinceIso);
+
+        if (usageError) throw usageError;
+
+        const currentCount = (usageRows ?? []).length;
+        if (!isUsageAllowed(currentCount, FREE_PLAN_DAILY_SEARCH_LIMIT)) {
+          return new Response(JSON.stringify({ error: buildUsageLimitError(FREE_PLAN_DAILY_SEARCH_LIMIT, "job finder searches") }), {
+            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
     }
 
