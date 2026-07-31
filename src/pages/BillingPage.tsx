@@ -13,6 +13,7 @@ import Toast from '../components/Toast';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
+import { getBillingErrorMessage } from '../lib/billing-plan';
 
 declare global {
   interface Window {
@@ -441,7 +442,9 @@ export default function BillingPage() {
       const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
         body: { plan_amount_usd: selectedNewTier },
       });
-      if (error || !data?.subscription_id) throw new Error(error?.message ?? 'Failed to create subscription');
+      if (error || !data?.subscription_id) {
+        throw new Error(getBillingErrorMessage(error, 'Failed to create subscription'));
+      }
       const rzp = new window.Razorpay({
         key: data.key_id, subscription_id: data.subscription_id,
         name: 'ProfilePush',
@@ -463,7 +466,7 @@ export default function BillingPage() {
       });
       rzp.open();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to start subscription';
+      const msg = getBillingErrorMessage(err, 'Failed to start subscription');
       fireCrmEvent('subscription.checkout_failed', { plan_amount_usd: selectedNewTier, error: msg });
       showToast(msg, 'error');
       setSubscribing(false);
@@ -478,7 +481,9 @@ export default function BillingPage() {
       const { data, error } = await supabase.functions.invoke('razorpay-change-plan', {
         body: { new_plan_amount_usd: selectedNewTier },
       });
-      if (error || !data) throw new Error(error?.message ?? 'Failed to change plan');
+      if (error || !data) {
+        throw new Error(getBillingErrorMessage(error, 'Failed to change plan'));
+      }
       if (isUpgrade && data.order_id) {
         await loadRazorpay();
         const rzp = new window.Razorpay({
@@ -512,7 +517,7 @@ export default function BillingPage() {
         setShowPlanModal(false);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to change plan';
+      const msg = getBillingErrorMessage(err, 'Failed to change plan');
       fireCrmEvent('subscription.change_plan_failed', { selected_plan_usd: selectedNewTier, error: msg });
       showToast(msg, 'error');
     }

@@ -18,9 +18,15 @@ function fireCrmWebhook(supabaseUrl: string, serviceRoleKey: string, event: stri
   }).catch((err) => console.error("notify-crm-webhook call failed:", err));
 }
 
+function getRequiredEnv(name: string): string {
+  const value = Deno.env.get(name);
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  return value;
+}
+
 function razorpayAuth(): string {
-  const key = Deno.env.get("RAZORPAY_KEY_ID")!;
-  const secret = Deno.env.get("RAZORPAY_KEY_SECRET")!;
+  const key = getRequiredEnv("RAZORPAY_KEY_ID");
+  const secret = getRequiredEnv("RAZORPAY_KEY_SECRET");
   return "Basic " + btoa(`${key}:${secret}`);
 }
 
@@ -63,15 +69,16 @@ Deno.serve(async (req: Request) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
+    const supabaseUrl = getRequiredEnv("SUPABASE_URL");
+    const supabaseAnonKey = getRequiredEnv("SUPABASE_ANON_KEY");
+    const supabaseServiceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+
     const supabaseUser = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
+      supabaseUrl,
+      supabaseAnonKey,
       { global: { headers: { Authorization: authHeader } } }
     );
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
     const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
@@ -134,8 +141,8 @@ Deno.serve(async (req: Request) => {
     }, { onConflict: "account_id" });
 
     fireCrmWebhook(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      supabaseUrl,
+      supabaseServiceRoleKey,
       "subscription.checkout_initiated",
       member.account_id,
       {
@@ -152,13 +159,14 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         subscription_id: rzpSub.id,
-        key_id: Deno.env.get("RAZORPAY_KEY_ID"),
+        key_id: getRequiredEnv("RAZORPAY_KEY_ID"),
         plan_amount_usd,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
     console.error("razorpay-create-subscription error:", err);
-    return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: message }), { status: 500, headers: corsHeaders });
   }
 });

@@ -13,7 +13,7 @@ import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
 import { PlanModal } from '../components/PlanModal';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
-import { loadRazorpay, TIERS, INR_PER_USD, fmtINR } from '../lib/billing-plan';
+import { loadRazorpay, TIERS, INR_PER_USD, fmtINR, getBillingErrorMessage } from '../lib/billing-plan';
 import { supabase } from '../lib/supabase';
 import { triggerProfileEmbedding } from '../lib/embeddings';
 import { normalizeProfileLocationFields, splitPreferredLocations } from '../lib/location-normalization';
@@ -529,7 +529,9 @@ export default function RadarPage() {
       const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
         body: { plan_amount_usd: selectedNewTier },
       });
-      if (error || !data?.subscription_id) throw new Error(error?.message ?? 'Failed to create subscription');
+      if (error || !data?.subscription_id) {
+        throw new Error(getBillingErrorMessage(error, 'Failed to create subscription'));
+      }
       const rzp = new window.Razorpay({
         key: data.key_id,
         subscription_id: data.subscription_id,
@@ -547,7 +549,7 @@ export default function RadarPage() {
       });
       rzp.open();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to start subscription';
+      const msg = getBillingErrorMessage(err, 'Failed to start subscription');
       showToast(msg, 'error');
       setSubscribing(false);
     }
@@ -561,7 +563,9 @@ export default function RadarPage() {
       const { data, error } = await supabase.functions.invoke('razorpay-change-plan', {
         body: { new_plan_amount_usd: selectedNewTier },
       });
-      if (error || !data) throw new Error(error?.message ?? 'Failed to change plan');
+      if (error || !data) {
+        throw new Error(getBillingErrorMessage(error, 'Failed to change plan'));
+      }
       if (isUpgrade && data.order_id) {
         await loadRazorpay();
         const rzp = new window.Razorpay({
@@ -584,7 +588,7 @@ export default function RadarPage() {
         setShowPlanModal(false);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to change plan';
+      const msg = getBillingErrorMessage(err, 'Failed to change plan');
       showToast(msg, 'error');
       setChangingPlan(false);
     }
