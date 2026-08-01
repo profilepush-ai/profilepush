@@ -38,6 +38,7 @@ const BookDemo = lazy(() => import('./pages/BookDemo'));
 const WhyAICopilot = lazy(() => import('./pages/WhyAICopilot'));
 const HowItWorks = lazy(() => import('./pages/HowItWorks'));
 const RadarPage = lazy(() => import('./pages/RadarPage'));
+const PulsePage = lazy(() => import('./pages/PulsePage'));
 const OnboardingVideo = lazy(() => import('./pages/OnboardingVideo'));
 
 function PageLoader() {
@@ -175,8 +176,8 @@ export default function App() {
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/jd-ai" element={<ProtectedRoute><ErrorBoundary><AIBenchMatch /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/hotlist-ai" element={<ProtectedRoute><ErrorBoundary><AIBenchMatch /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/job-watch-ai" element={<ProtectedRoute><ErrorBoundary><RadarPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><PulsePage /></ErrorBoundary></ProtectedRoute>} />
           </Routes>
         </Suspense>
       </AuthProvider>

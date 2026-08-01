@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildScoreBreakdownDisplayItems, getDisplayJobTitle, getDisplayJobDescription } from './radar-match-ui';
+import { buildScoreBreakdownDisplayItems, getDisplayJobTitle, getDisplayJobDescription, getSourceBadgeDisplayName, getSourceCategoryLabel } from './radar-match-ui';
 
 describe('radar match UI helpers', () => {
   it('adds an employment type row when profile and job values are present', () => {
@@ -36,5 +36,13 @@ describe('radar match UI helpers', () => {
   it('falls back to post content when job description is missing', () => {
     const description = getDisplayJobDescription({ job_description: null, post_content: 'We are hiring a senior engineer.' });
     expect(description).toBe('We are hiring a senior engineer.');
+  });
+
+  it('labels watch-list matches as role-driven source category chips', () => {
+    expect(getSourceCategoryLabel('watch-list')).toBe('Role Match');
+  });
+
+  it('uses the shared badge name for watch-list matches', () => {
+    expect(getSourceBadgeDisplayName('watch-list')).toBe('Role Match');
   });
 });

@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Users, Search, LayoutDashboard, Bookmark, ChevronDown, LogOut, Settings,
+  Users, Bookmark, ChevronDown, LogOut, Settings,
   Building2, LifeBuoy, Map, CreditCard, AlertTriangle, PenLine, FileText,
-  Bell, BellRing, Check, ArrowRight, X, Target, Radar,
+  Bell, BellRing, Check, ArrowRight, X,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from './Logo';
@@ -12,12 +13,9 @@ import type { AppNotification, NotificationType } from '../lib/notifications';
 import { NOTIFICATION_TYPES } from '../lib/notifications';
 
 const navItems = [
-  { path: '/desk',          label: 'Desk',           icon: LayoutDashboard },
   { path: '/bench',      label: 'Bench',          icon: Users },
-  { path: '/job-finder',    label: 'Job Finder',     icon: Search },
-  { path: '/job-watch-ai',   label: 'Job Watch AI',   icon: Radar },
+  { path: '/pulse',          label: 'Pulse',          icon: Activity },
   { path: '/submission-queue', label: 'Submission Queue', icon: Bookmark },
-  { path: '/jd-ai', label: 'JD AI',  icon: Target },
   { path: '/tracker',       label: 'Tracker',        icon: FileText },
   { path: '/resume-ai',     label: 'Resume AI',      icon: PenLine },
 ];

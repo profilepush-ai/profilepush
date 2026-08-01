@@ -137,3 +137,34 @@ export function getDisplayJobDescription(job?: { job_description?: string | null
   if (postContent) return postContent;
   return 'No description available.';
 }
+
+export function getSourceBadgeDisplayName(source: string, platform?: string | null) {
+  if (source === 'watch-list') return 'Role Match';
+  if (source === 'social') {
+    const value = (platform ?? '').toLowerCase();
+    if (value.includes('facebook')) return 'Facebook';
+    if (value.includes('linkedin')) return 'LinkedIn';
+    if (value.includes('twitter') || value.includes('x')) return 'X';
+    if (value.includes('whatsapp')) return 'WhatsApp';
+    return 'Social';
+  }
+
+  if (source === 'linkedin') return 'LinkedIn';
+  if (source === 'dice') return 'Dice';
+  if (source === 'indeed') return 'Indeed';
+  if (source === 'monster') return 'Monster';
+  if (source === 'careerbuilder') return 'CareerBuilder';
+  if (source === 'external') return 'External';
+  return source.charAt(0).toUpperCase() + source.slice(1);
+}
+
+export function getSourceCategoryLabel(source: string) {
+  if (source === 'watch-list') return 'Role Match';
+  if (source === 'social') return 'Social';
+  if (source === 'linkedin') return 'Job Board';
+  if (source === 'dice') return 'Job Board';
+  if (source === 'indeed') return 'Job Board';
+  if (source === 'monster') return 'Job Board';
+  if (source === 'careerbuilder') return 'Job Board';
+  return 'Other';
+}

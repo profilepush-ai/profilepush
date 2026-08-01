@@ -18,7 +18,8 @@ import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
 import { triggerProfileEmbedding } from '../lib/embeddings';
 import { normalizeProfileLocationFields, splitPreferredLocations } from '../lib/location-normalization';
 import { getMatchHealthPercent } from '../lib/match-health';
-import { buildScoreBreakdownDisplayItems, getDisplayJobDescription, getDisplayJobTitle } from '../lib/radar-match-ui';
+import { buildDemoRolePayload, getCreatedAtTimestamp, getDemoRoleDisplayMatchCount, getLiveMatchActionLabel, getWatchListDisplayMatchCount } from '../lib/demo-role-utils';
+import { buildScoreBreakdownDisplayItems, getDisplayJobDescription, getDisplayJobTitle, getSourceBadgeDisplayName, getSourceCategoryLabel } from '../lib/radar-match-ui';
 import { normalizeRadarMatchResults } from '../lib/radar-results';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile, ResumeFile, ActivityLog, EducationEntry, ExperienceEntry } from '../types/database';
@@ -104,6 +105,37 @@ interface WatchSchedule {
 
 interface HotlistRow { profile_id: string; created_at: string | null; }
 
+interface DemoRoleRow {
+  id: string;
+  account_id: string;
+  target_role: string;
+  years_exp: number | null;
+  visa_status: string | null;
+  employment_type: string | null;
+  work_type: string | null;
+  preferred_locations: string | null;
+  min_rate_usd_per_hr: number | null;
+  max_rate_usd_per_hr: number | null;
+  relocation_open: boolean | null;
+  priority_skills: string | null;
+  schedule_frequency: 'disabled' | 'hourly' | 'daily' | 'twice_daily' | 'weekly';
+  is_active: boolean;
+  last_run_at: string | null;
+  last_result_summary: string | null;
+  created_at: string;
+  updated_at: string;
+  match_count?: number;
+}
+
+interface DemoRoleMatchRow {
+  id: string;
+  profile_id: string;
+  score: number;
+  ai_notes: string | null;
+  score_breakdown: Record<string, unknown> | null;
+  created_at: string;
+}
+
 const DEFAULT_WATCH_BOARDS = ['linkedin', 'dice', 'indeed', 'monster'];
 const HOTLIST_RETENTION_DAYS = 15;
 const FREE_PLAN_MATCH_LIMIT = 5;
@@ -146,25 +178,6 @@ function getScoreTextClass(score: number) {
   if (score >= 60) return 'text-sky-600';
   if (score >= 40) return 'text-amber-600';
   return 'text-red-600';
-}
-
-function getSourceBadgeDisplayName(source: string, platform?: string | null) {
-  if (source === 'social') {
-    const value = (platform ?? '').toLowerCase();
-    if (value.includes('facebook')) return 'Facebook';
-    if (value.includes('linkedin')) return 'LinkedIn';
-    if (value.includes('twitter') || value.includes('x')) return 'X';
-    if (value.includes('whatsapp')) return 'WhatsApp';
-    return 'Social';
-  }
-
-  if (source === 'linkedin') return 'LinkedIn';
-  if (source === 'dice') return 'Dice';
-  if (source === 'indeed') return 'Indeed';
-  if (source === 'monster') return 'Monster';
-  if (source === 'careerbuilder') return 'CareerBuilder';
-  if (source === 'external') return 'External';
-  return source.charAt(0).toUpperCase() + source.slice(1);
 }
 
 function getSourceLogoPath(source: string, platform?: string | null): string | null {
@@ -459,12 +472,16 @@ export default function RadarPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [hotlistRows, setHotlistRows] = useState<HotlistRow[]>([]);
   const [hotlistProfileIds, setHotlistProfileIds] = useState<Set<string>>(new Set());
-  const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'all'>('hotlist');
+  const [demoRoles, setDemoRoles] = useState<DemoRoleRow[]>([]);
+  const [demoRoleMatches, setDemoRoleMatches] = useState<DemoRoleMatchRow[]>([]);
+  const [sidebarTab, setSidebarTab] = useState<'hotlist' | 'all' | 'demo-roles'>('hotlist');
   const [candidateQuery, setCandidateQuery] = useState('');
+  const [watchListQuery, setWatchListQuery] = useState('');
   const [results, setResults] = useState<RadarMatchResult[]>([]);
   const [jobMap, setJobMap] = useState<Map<string, JobInfo>>(new Map());
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [runningDemoRoleMatch, setRunningDemoRoleMatch] = useState(false);
 
   const [pipelineStep, setPipelineStep] = useState<PipelineStep>('idle');
   const [pipelineDetail, setPipelineDetail] = useState('');
@@ -481,6 +498,7 @@ export default function RadarPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(searchParams.get('profileId'));
+  const [selectedDemoRoleId, setSelectedDemoRoleId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedScoreKeys, setExpandedScoreKeys] = useState<Set<string>>(new Set());
   const [insightOpenById, setInsightOpenById] = useState<Record<string, boolean>>({});
@@ -639,6 +657,7 @@ export default function RadarPage() {
     if (account?.id) {
       loadData();
       loadHotlist();
+      loadDemoRoles();
       loadGlobalWatchSchedule();
       // Recover from interrupted scan — results are already persisted by the edge function
       try {
@@ -720,7 +739,7 @@ export default function RadarPage() {
   }, [account?.id, isPaidPlan]);
 
   useEffect(() => {
-    if (!selectedProfileId && profiles.length > 0) {
+    if (!selectedProfileId && profiles.length > 0 && sidebarTab !== 'demo-roles') {
       const urlProfileId = searchParams.get('profileId');
       const match = urlProfileId ? profiles.find(p => p.id === urlProfileId) : null;
       const mostRecent = [...profiles].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
@@ -729,7 +748,16 @@ export default function RadarPage() {
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
       setSelectedProfileId(match ? match.id : hotlistMostRecent?.id ?? mostRecent?.id ?? profiles[0].id);
     }
-  }, [profiles, selectedProfileId, searchParams, hotlistProfileIds]);
+  }, [profiles, selectedProfileId, searchParams, hotlistProfileIds, sidebarTab]);
+
+  useEffect(() => {
+    if (sidebarTab === 'demo-roles') {
+      if (!selectedDemoRoleId && demoRoles.length > 0) {
+        setSelectedDemoRoleId(demoRoles[0].id);
+      }
+      setSelectedProfileId(null);
+    }
+  }, [sidebarTab, demoRoles, selectedDemoRoleId]);
 
   useEffect(() => {
     if (selectedProfileId) {
@@ -747,6 +775,45 @@ export default function RadarPage() {
   }, [selectedProfileId]);
 
   useEffect(() => {
+    if (selectedDemoRoleId && sidebarTab === 'demo-roles') {
+      const selected = demoRoles.find(role => role.id === selectedDemoRoleId);
+      if (!selected) {
+        setProfileForm({
+          target_role: '',
+          priority_skills: '',
+          core_skills: '',
+          years_experience: '',
+          visa_status: '',
+          work_authorization: '',
+          work_type: '',
+          preferred_locations: '',
+          desired_salary_min: '',
+          desired_salary_max: '',
+          relocation_open: false,
+        });
+        setProfileExperience([]);
+        setProfileEducation([]);
+        return;
+      }
+
+      setProfileForm({
+        target_role: selected.target_role ?? '',
+        priority_skills: selected.priority_skills ?? '',
+        core_skills: '',
+        years_experience: selected.years_exp != null ? String(selected.years_exp) : '',
+        visa_status: selected.visa_status ?? '',
+        work_authorization: selected.employment_type ?? '',
+        work_type: selected.work_type ?? '',
+        preferred_locations: selected.preferred_locations ?? '',
+        desired_salary_min: selected.min_rate_usd_per_hr != null ? String(selected.min_rate_usd_per_hr) : '',
+        desired_salary_max: selected.max_rate_usd_per_hr != null ? String(selected.max_rate_usd_per_hr) : '',
+        relocation_open: Boolean(selected.relocation_open),
+      });
+      setProfileExperience([]);
+      setProfileEducation([]);
+      return;
+    }
+
     const selected = profiles.find(p => p.id === selectedProfileId) as EditableMatchProfile | undefined;
     if (!selected) {
       setProfileForm({
@@ -782,7 +849,7 @@ export default function RadarPage() {
     });
     setProfileExperience(Array.isArray(selected.experience) ? selected.experience : []);
     setProfileEducation(Array.isArray(selected.education) ? selected.education : []);
-  }, [selectedProfileId, profiles]);
+  }, [selectedProfileId, profiles, selectedDemoRoleId, demoRoles, sidebarTab]);
 
   function updateProfileField(
     field: keyof typeof profileForm,
@@ -1012,6 +1079,128 @@ export default function RadarPage() {
     }
 
     setHotlistProfileIds(nextIds);
+  }
+
+  async function loadDemoRoles() {
+    try {
+      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
+      const { data, error } = await supabase.functions.invoke('watch-list-roles', {
+        headers,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const roles = ((data?.roles ?? []) as DemoRoleRow[]).map((role) => ({
+        ...role,
+        match_count: getWatchListDisplayMatchCount(role.match_count ?? 0, role.match_count ?? 0),
+      }));
+
+      setDemoRoles(roles);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to load watch list roles', 'error');
+      setDemoRoles([]);
+      setDemoRoleMatches([]);
+    }
+  }
+
+  async function loadDemoRoleMatches(roleId: string) {
+    if (!roleId) {
+      setDemoRoleMatches([]);
+      return;
+    }
+
+    try {
+      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
+      const { data, error } = await supabase.functions.invoke('watch-list-roles', {
+        body: { role_id: roleId },
+        headers,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const matches = ((data?.matches ?? []) as DemoRoleMatchRow[]).map((match) => ({
+        ...match,
+        score_breakdown: match.score_breakdown ?? {},
+      }));
+
+      setDemoRoleMatches(matches);
+    } catch (error) {
+      console.error('Failed to load watch-list matches:', error);
+      setDemoRoleMatches([]);
+    }
+  }
+
+  async function saveDemoRoleForMatching(roleId: string) {
+    if (!account?.id) return;
+    setSavingProfileFields(true);
+    try {
+      const payload = buildDemoRolePayload(account.id, {
+        target_role: profileForm.target_role,
+        years_experience: profileForm.years_experience,
+        visa_status: profileForm.visa_status,
+        work_authorization: profileForm.work_authorization,
+        work_type: profileForm.work_type,
+        preferred_locations: profileForm.preferred_locations,
+        desired_salary_min: profileForm.desired_salary_min,
+        desired_salary_max: profileForm.desired_salary_max,
+        relocation_open: profileForm.relocation_open,
+        priority_skills: profileForm.priority_skills,
+      });
+
+      const { data, error } = await supabase
+        .from('hotlist_ai_roles')
+        .update(payload as unknown as Record<string, unknown>)
+        .eq('id', roleId)
+        .select('*')
+        .single();
+
+      if (error || !data) throw error ?? new Error('Failed to save demo role');
+
+      setDemoRoles(prev => prev.map(role => (role.id === roleId ? (data as DemoRoleRow) : role)));
+      setIsEditingProfile(false);
+      showToast('Demo role updated and ready to match', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to update demo role', 'error');
+    } finally {
+      setSavingProfileFields(false);
+    }
+  }
+
+  async function runDemoRoleMatch(roleId: string) {
+    if (!account?.id || !user?.id) return;
+    setScanning(true);
+    setPipelineStep('matching');
+    setPipelineDetail('Generating watch-list matches...');
+    setPipelineProgress({ current: 0, total: 0 });
+    setRunningDemoRoleMatch(true);
+    try {
+      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
+      const { data, error } = await supabase.functions.invoke('hotlist-ai-match', {
+        body: { role_id: roleId, account_id: account.id },
+        headers,
+      });
+      if (error) {
+        const message = error.message || 'Role match failed';
+        throw new Error(message.includes('Failed to send a request to the Edge Function')
+          ? 'The matching service is currently unavailable. The edge function may not be deployed for this project yet.'
+          : message);
+      }
+      await loadDemoRoles();
+      await loadDemoRoleMatches(roleId);
+      showToast(data?.summary || 'Live Match completed.', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Role match failed', 'error');
+    } finally {
+      setRunningDemoRoleMatch(false);
+      setScanning(false);
+      setPipelineStep('done');
+      setPipelineDetail('');
+      setPipelineProgress({ current: 0, total: 0 });
+    }
   }
 
   async function loadResultsOnly() {
@@ -1583,8 +1772,48 @@ export default function RadarPage() {
     showToast('Aborting scan...', 'error');
   }
 
+  function getJobInfoForResult(result: RadarMatchResult): JobInfo | undefined {
+    const existing = jobMap.get(result.job_id);
+    if (existing) return existing;
+    if (result.job_source !== 'watch-list') return undefined;
+
+    const match = demoRoleMatches.find(item => item.id === result.job_id || item.id === result.id);
+    if (!match) return undefined;
+
+    const profile = profiles.find(item => item.id === match.profile_id);
+    const selectedDemoRole = demoRoles.find(role => role.id === selectedDemoRoleId) ?? null;
+    const roleDescription = selectedDemoRole
+      ? [
+          `Target Role: ${selectedDemoRole.target_role || 'Not specified'}`,
+          selectedDemoRole.years_exp != null ? `Years Experience: ${selectedDemoRole.years_exp}` : null,
+          selectedDemoRole.visa_status ? `Visa Status: ${selectedDemoRole.visa_status}` : null,
+          selectedDemoRole.employment_type ? `Employment Type: ${selectedDemoRole.employment_type}` : null,
+          selectedDemoRole.work_type ? `Work Type: ${selectedDemoRole.work_type}` : null,
+          selectedDemoRole.preferred_locations ? `Preferred Locations: ${selectedDemoRole.preferred_locations}` : null,
+          selectedDemoRole.min_rate_usd_per_hr != null ? `Min Rate ($/hr): ${selectedDemoRole.min_rate_usd_per_hr}` : null,
+          selectedDemoRole.max_rate_usd_per_hr != null ? `Max Rate ($/hr): ${selectedDemoRole.max_rate_usd_per_hr}` : null,
+          selectedDemoRole.relocation_open != null ? `Relocation Open: ${selectedDemoRole.relocation_open ? 'Yes' : 'No'}` : null,
+          selectedDemoRole.priority_skills ? `Priority Skills: ${selectedDemoRole.priority_skills}` : null,
+        ].filter(Boolean).join('\n')
+      : '';
+
+    return {
+      id: result.job_id,
+      job_title: selectedDemoRole?.target_role ?? 'Role Match',
+      company_name: profile?.candidate_name ?? 'Candidate',
+      location: profile?.preferred_locations ?? null,
+      job_url: null,
+      job_description: roleDescription || match.ai_notes || null,
+      post_content: match.ai_notes ?? (roleDescription || null),
+      platform: 'watch-list' as const,
+      posted_at: match.created_at,
+      employment_type: profile?.work_authorization ?? null,
+      work_type: profile?.work_type ?? null,
+    };
+  }
+
   async function addToSubmissionQueue(result: RadarMatchResult) {
-    const job = jobMap.get(result.job_id);
+    const job = getJobInfoForResult(result);
     if (!job || !result.profile_id) return;
     setSavingJobId(result.job_id);
     const boardMap: Record<string, string> = { linkedin: 'LinkedIn', dice: 'Dice', indeed: 'Indeed', monster: 'Monster', careerbuilder: 'CareerBuilder', external: 'External' };
@@ -1608,7 +1837,7 @@ export default function RadarPage() {
   }
 
   async function addToResumeAIQueue(result: RadarMatchResult) {
-    const job = jobMap.get(result.job_id);
+    const job = getJobInfoForResult(result);
     if (!job || !result.profile_id) return;
     setQueuingJobId(result.job_id);
     try {
@@ -1680,6 +1909,22 @@ export default function RadarPage() {
 
   const profileResults = allQualifiedResults
     .filter(r => !selectedProfileId || r.profile_id === selectedProfileId);
+
+  const demoRoleTabCounts = {
+    all: demoRoleMatches.length,
+    new: demoRoleMatches.length,
+    reviewed: 0,
+    queued: 0,
+  };
+
+  const profileTabCounts = {
+    all: profileResults.length,
+    new: profileResults.filter(r => !reviewedMap[r.id] && !queuedJobIds.has(r.job_id) && !savedJobIds.has(r.job_id)).length,
+    reviewed: profileResults.filter(r => Boolean(reviewedMap[r.id])).length,
+    queued: profileResults.filter(r => queuedJobIds.has(r.job_id) || savedJobIds.has(r.job_id)).length,
+  };
+
+  const activeTabCounts = sidebarTab === 'demo-roles' ? demoRoleTabCounts : profileTabCounts;
 
   const profileResultsNewestFirst = [...profileResults].sort((a, b) => {
     const ta = new Date(a.created_at).getTime();
@@ -1852,24 +2097,108 @@ export default function RadarPage() {
           </div>
           <div className="px-3 py-2 border-b border-gray-100 shrink-0">
             <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-              {(['hotlist', 'all'] as const).map(tab => (
+              {(['hotlist', 'all', 'demo-roles'] as const).map(tab => (
                 <button
                   key={tab}
-                  onClick={() => setSidebarTab(tab)}
+                  onClick={() => {
+                    setSidebarTab(tab);
+                    if (tab !== 'demo-roles') {
+                      setSelectedDemoRoleId(null);
+                    } else {
+                      setSelectedProfileId(null);
+                      if (!selectedDemoRoleId && demoRoles.length > 0) {
+                        setSelectedDemoRoleId(demoRoles[0].id);
+                      }
+                    }
+                  }}
                   className={`flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-all text-center ${
                     sidebarTab === tab
                       ? 'bg-white text-slate-900 shadow-sm'
                       : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
-                  {tab === 'hotlist' ? 'Hotlist' : 'All Bench'}
+                  {tab === 'hotlist' ? 'Hotlist' : tab === 'all' ? 'All Bench' : 'Watch List'}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto min-h-0">
-            {sidebarProfiles.length === 0 ? (
+            {sidebarTab === 'demo-roles' ? (
+              <>
+                <div className="border-b border-gray-100 px-3 py-2">
+                  <div className="relative">
+                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={watchListQuery}
+                      onChange={(e) => setWatchListQuery(e.target.value)}
+                      placeholder="Search watch list"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-2 text-[11px] text-slate-700 outline-none focus:border-blue-400 focus:bg-white"
+                    />
+                    {watchListQuery ? (
+                      <button
+                        type="button"
+                        onClick={() => setWatchListQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X size={11} />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {demoRoles.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-2">
+                  <Target size={18} className="text-gray-300" />
+                  <p className="text-xs text-gray-400">No watch list entries yet</p>
+                </div>
+              ) : (
+                <>
+                  {demoRoles
+                    .filter(role => {
+                      const query = watchListQuery.trim().toLowerCase();
+                      if (!query) return true;
+                      return [role.target_role, role.priority_skills, role.work_type, role.preferred_locations]
+                        .filter(Boolean)
+                        .some(value => String(value).toLowerCase().includes(query));
+                    })
+                    .map(role => {
+                      const isSelected = selectedDemoRoleId === role.id;
+                      return (
+                      <button
+                        key={role.id}
+                        onClick={() => {
+                          setSelectedDemoRoleId(isSelected ? null : role.id);
+                          setSelectedProfileId(null);
+                          void loadDemoRoleMatches(role.id);
+                        }}
+                        className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-all ${
+                          isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50 border-l-2 border-l-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                            <Target size={13} className={isSelected ? 'text-blue-600' : 'text-gray-400'} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-[12px] font-semibold truncate leading-tight ${isSelected ? 'text-blue-900' : 'text-gray-800'}`}>
+                              {role.target_role}
+                            </p>
+                            <p className="text-[10px] text-gray-400 truncate mt-0.5">{role.priority_skills || 'No priority skills yet'}</p>
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                                Matched <span className="ml-0.5 text-[10px] font-bold">{getWatchListDisplayMatchCount(role.match_count ?? 0, role.match_count ?? 0)}</span>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                    })}
+                </>
+              )}
+            </>
+          ) : sidebarProfiles.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-2">
                 <User size={18} className="text-gray-300" />
                 <p className="text-xs text-gray-400">{sidebarTab === 'hotlist' ? 'No hotlisted candidates' : 'No candidates found'}</p>
@@ -1893,7 +2222,10 @@ export default function RadarPage() {
                   return (
                     <button
                       key={profile.id}
-                      onClick={() => setSelectedProfileId(isSelected ? null : profile.id)}
+                      onClick={() => {
+                        setSelectedProfileId(isSelected ? null : profile.id);
+                        setSelectedDemoRoleId(null);
+                      }}
                       className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-all ${
                         isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50 border-l-2 border-l-transparent'
                       }`}
@@ -1933,9 +2265,10 @@ export default function RadarPage() {
 
         <div className="flex flex-1 overflow-hidden min-h-0">
           {/* ── COL 2: Candidate Details ───────────────────────────────────── */}
-          {selectedProfileId && (() => {
+          {(selectedProfileId || selectedDemoRoleId) && (() => {
             const profile = profiles.find(p => p.id === selectedProfileId);
-            if (!profile) return null;
+            const demoRole = sidebarTab === 'demo-roles' ? demoRoles.find(role => role.id === selectedDemoRoleId) : null;
+            if (!profile && !demoRole) return null;
             return (
               <div className="w-[340px] flex-shrink-0 border-r border-slate-200 overflow-hidden bg-slate-50/50 flex flex-col">
                 {/* Col 2 Header */}
@@ -1953,25 +2286,27 @@ export default function RadarPage() {
                       </button>
                     )}
                   </div>
-                  <div className="px-3 py-2">
-                    <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                      {(['profile', 'docs', 'activity'] as const).map(tab => (
-                        <button
-                          key={tab}
-                          onClick={() => setDetailTab(tab)}
-                          className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
-                            detailTab === tab
-                              ? 'bg-white text-slate-900 shadow-sm'
-                              : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                        >
-                          {tab === 'profile' && 'Profile'}
-                          {tab === 'docs' && 'Docs'}
-                          {tab === 'activity' && 'Activity'}
-                        </button>
-                      ))}
+                  {!sidebarTab.startsWith('demo') && (
+                    <div className="px-3 py-2">
+                      <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                        {(['profile', 'docs', 'activity'] as const).map(tab => (
+                          <button
+                            key={tab}
+                            onClick={() => setDetailTab(tab)}
+                            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
+                              detailTab === tab
+                                ? 'bg-white text-slate-900 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                          >
+                            {tab === 'profile' && 'Profile'}
+                            {tab === 'docs' && 'Docs'}
+                            {tab === 'activity' && 'Activity'}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Col 2 Body */}
@@ -1981,44 +2316,11 @@ export default function RadarPage() {
                   <div className={isEditingProfile ? 'space-y-2.5' : 'h-full flex flex-col gap-2'}>
                     {(() => {
                       const hasText = (value: string | null | undefined) => Boolean(value && value.trim().length > 0);
-                      const completionPct = getMatchHealthPercent({
-                        target_role: profileForm.target_role,
-                        years_experience: profileForm.years_experience,
-                        visa_status: profileForm.visa_status,
-                        work_authorization: profileForm.work_authorization,
-                        work_type: profileForm.work_type,
-                        preferred_locations: profileForm.preferred_locations,
-                        desired_salary_min: profileForm.desired_salary_min,
-                        desired_salary_max: profileForm.desired_salary_max,
-                      });
-                      const healthTone = completionPct < 60
-                        ? {
-                          wrap: 'border-red-200 bg-red-50',
-                          title: 'text-red-600',
-                          score: 'text-red-700',
-                          helper: 'text-red-600',
-                          message: 'This candidate is not getting the right matches. Get at least 80% for good matches.',
-                        }
-                        : completionPct < 80
-                        ? {
-                          wrap: 'border-amber-200 bg-amber-50',
-                          title: 'text-amber-700',
-                          score: 'text-amber-700',
-                          helper: 'text-amber-700',
-                          message: 'Matches can improve. Push this profile to 80%+ for stronger results.',
-                        }
-                        : {
-                          wrap: 'border-emerald-200 bg-emerald-50',
-                          title: 'text-emerald-700',
-                          score: 'text-emerald-700',
-                          helper: 'text-emerald-700',
-                          message: 'Great profile health. This candidate is set up for high quality matches.',
-                        };
-                      const createdAt = new Date(profile.created_at).getTime();
-                      const daysSinceCreated = Number.isFinite(createdAt)
+                      const createdAt = getCreatedAtTimestamp(profile?.created_at);
+                      const daysSinceCreated = createdAt != null
                         ? Math.max(0, Math.floor((Date.now() - createdAt) / (1000 * 60 * 60 * 24)))
                         : 0;
-                      const matches70Plus = matchCountByProfile.get(profile.id) ?? 0;
+                      const matches70Plus = profile ? (matchCountByProfile.get(profile.id) ?? 0) : 0;
 
                       const matchFieldRows = [
                         { label: 'Target Role', value: profileForm.target_role },
@@ -2035,13 +2337,6 @@ export default function RadarPage() {
 
                       return (
                         <>
-                          <div className={`rounded-xl border p-2.5 ${healthTone.wrap}`}>
-                            <p className={`text-sm font-bold ${healthTone.score}`}>{completionPct}% Match Health</p>
-                            <p className={`mt-1 text-[10px] leading-relaxed ${healthTone.helper}`}>
-                              {healthTone.message}
-                            </p>
-                          </div>
-
                           {!isEditingProfile ? (
                             <div className="bg-white rounded-xl border border-slate-200 p-2.5 flex-1 min-h-0 flex flex-col">
                               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Match Rules</p>
@@ -2340,12 +2635,12 @@ export default function RadarPage() {
                               </div>
 
                               <button
-                                onClick={() => saveProfileForMatching(profile.id)}
-                                disabled={savingProfileFields}
+                                onClick={() => (sidebarTab === 'demo-roles' && demoRole ? saveDemoRoleForMatching(demoRole.id) : saveProfileForMatching(profile?.id ?? ''))}
+                                disabled={savingProfileFields || (!profile && !demoRole)}
                                 className="w-full flex items-center justify-center gap-1.5 px-2.5 py-2 text-xs font-bold text-white rounded-lg bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-700 hover:to-sky-600 disabled:opacity-50 transition-colors"
                               >
                                 {savingProfileFields ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                                {savingProfileFields ? 'Saving...' : 'Save & Refresh Match Rules'}
+                                {savingProfileFields ? 'Saving...' : sidebarTab === 'demo-roles' ? 'Save Demo Role' : 'Save & Refresh Match Rules'}
                               </button>
                             </>
                           )}
@@ -2490,22 +2785,22 @@ export default function RadarPage() {
                     </span>
                   )}
                   <button
-                    onClick={runRadarScan}
-                    disabled={scanning || !selectedProfileId || isLiveMatchCooldownActive}
+                    onClick={() => (sidebarTab === 'demo-roles' && selectedDemoRoleId ? runDemoRoleMatch(selectedDemoRoleId) : runRadarScan())}
+                    disabled={scanning || runningDemoRoleMatch || (!selectedProfileId && !selectedDemoRoleId) || (sidebarTab !== 'demo-roles' && isLiveMatchCooldownActive)}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 hover:from-blue-700 hover:via-orange-600 hover:to-yellow-500 disabled:from-slate-300 disabled:via-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white text-[11px] font-bold rounded-lg transition-all shadow-sm"
                   >
-                    {scanning ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                    {scanning ? 'Scanning...' : 'Live Match'}
+                    {scanning || runningDemoRoleMatch ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    {getLiveMatchActionLabel({ isScanning: scanning, isMatching: runningDemoRoleMatch })}
                   </button>
                 </div>
               </div>
               <div className="px-3 py-2">
                 <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
                   {([
-                    { key: 'all' as const, label: 'All', count: profileResults.length },
-                    { key: 'new' as const, label: 'New', count: profileResults.filter(r => !reviewedMap[r.id] && !queuedJobIds.has(r.job_id) && !savedJobIds.has(r.job_id)).length },
-                    { key: 'reviewed' as const, label: 'Reviewed', count: profileResults.filter(r => Boolean(reviewedMap[r.id])).length },
-                    { key: 'queued' as const, label: 'Queued', count: profileResults.filter(r => queuedJobIds.has(r.job_id) || savedJobIds.has(r.job_id)).length },
+                    { key: 'all' as const, label: 'All', count: activeTabCounts.all },
+                    { key: 'new' as const, label: 'New', count: activeTabCounts.new },
+                    { key: 'reviewed' as const, label: 'Reviewed', count: activeTabCounts.reviewed },
+                    { key: 'queued' as const, label: 'Queued', count: activeTabCounts.queued },
                   ]).map(tab => (
                     <button
                       key={tab.key}
@@ -2550,7 +2845,232 @@ export default function RadarPage() {
 
             {/* Results List */}
             <div className="relative z-0 p-4">
-            {filteredResults.length === 0 ? (
+            {sidebarTab === 'demo-roles' ? (
+              demoRoleMatches.length === 0 ? (
+                <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
+                  <Radar size={48} className="mx-auto text-slate-300 mb-4" />
+                  <h3 className="text-lg font-medium text-slate-700 mb-2">No role matches yet</h3>
+                  <p className="text-slate-500 text-sm max-w-md mx-auto">
+                    Select a demo role and click “Run Role Match” to generate ranked candidate matches.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {demoRoleMatches.map((match) => {
+                    const profile = profiles.find((item) => item.id === match.profile_id);
+                    const selectedDemoRole = demoRoles.find((role) => role.id === selectedDemoRoleId) ?? null;
+                    const demoResult = {
+                      id: match.id,
+                      profile_id: match.profile_id,
+                      job_source: 'watch-list' as const,
+                      job_id: match.id,
+                      final_average_score: match.score,
+                      score_breakdown: (match.score_breakdown ?? {}) as Record<string, { score: number; candidate_value: string; job_value: string; rule: string } | number>,
+                      ai_notes: match.ai_notes ?? '',
+                      disqualified: false,
+                      disqualify_reason: null,
+                      created_at: match.created_at,
+                    };
+                    const demoJob = getJobInfoForResult(demoResult) ?? {
+                      id: match.id,
+                      job_title: selectedDemoRole?.target_role ?? 'Role Match',
+                      company_name: profile?.candidate_name ?? 'Candidate',
+                      location: profile?.preferred_locations ?? null,
+                      job_url: null,
+                      job_description: match.ai_notes ?? null,
+                      post_content: match.ai_notes ?? null,
+                      platform: 'watch-list' as const,
+                      posted_at: match.created_at,
+                      employment_type: profile?.work_authorization ?? null,
+                      work_type: profile?.work_type ?? null,
+                    };
+                    const isInsightOpen = insightOpenById[match.id] ?? Boolean(match.ai_notes);
+                    const isGenerating = insightGeneratingId === match.id;
+                    return (
+                      <div key={match.id} className="relative isolate overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:border-slate-300">
+                        <div className="w-full px-5 py-4 text-left">
+                          <div className="grid gap-3 lg:grid-cols-[1fr_1.15fr] items-start">
+                            <div className="min-w-0">
+                              <div className="mb-2 flex flex-wrap items-start gap-2">
+                                <span className="break-words font-medium text-slate-900">
+                                  {getDisplayJobTitle(demoJob ?? undefined)}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex flex-col gap-1.5 text-[11px] text-slate-500">
+                                {profile?.candidate_name && (
+                                  <span className="inline-flex w-fit items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                    <User size={11} />
+                                    {profile.candidate_name}
+                                  </span>
+                                )}
+                                {profile?.target_role && (
+                                  <span className="inline-flex w-fit items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                    <Briefcase size={11} />
+                                    {profile.target_role}
+                                  </span>
+                                )}
+                                {profile?.preferred_locations && (
+                                  <span className="inline-flex w-fit items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                    <MapPin size={11} />
+                                    {profile.preferred_locations}
+                                  </span>
+                                )}
+                                <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600">
+                                  {renderSourceBadgeIcon('watch-list', demoJob?.platform)}
+                                  <span>{getSourceCategoryLabel('watch-list')}</span>
+                                </span>
+                              </div>
+
+                              <div className="mt-2 w-fit max-w-[320px] min-w-[220px] rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50/80 via-white to-slate-50 p-2.5 shadow-sm">
+                                <div className="flex items-center justify-start gap-2">
+                                  {match.ai_notes && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); setInsightOpenById(prev => ({ ...prev, [match.id]: !isInsightOpen })); }}
+                                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700"
+                                      aria-label={isInsightOpen ? 'Hide insight' : 'Show insight'}
+                                    >
+                                      {isInsightOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); void generateInsight(demoResult as RadarMatchResult); }}
+                                    disabled={isGenerating}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700 shadow-sm transition-all hover:bg-blue-100 disabled:opacity-60"
+                                  >
+                                    {isGenerating ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                                    AI Insight
+                                  </button>
+                                </div>
+                                {isInsightOpen && (
+                                  <div className="mt-2 rounded-lg border border-slate-200/80 bg-white/90 p-2.5">
+                                    {match.ai_notes ? (
+                                      <p className="whitespace-pre-line break-words text-[11px] leading-5 text-slate-600">{match.ai_notes}</p>
+                                    ) : (
+                                      <p className="text-[11px] italic text-slate-400">Generate AI insight to see the summary here.</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+                                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 font-medium text-slate-500">
+                                  {getSourceCategoryLabel('watch-list')}
+                                </span>
+                                <span className="inline-flex items-center gap-1">
+                                  <Clock size={10} />
+                                  matched {formatTimeAgo(new Date(match.created_at).getTime())}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="min-w-0">
+                              <ScoreBreakdownChart
+                                items={buildScoreBreakdownDisplayItems(demoResult.score_breakdown, profile as Profile | undefined, demoJob as JobInfo | undefined).map(item => ({ key: item.key, score: item.score }))}
+                                detailMap={Object.fromEntries(
+                                  buildScoreBreakdownDisplayItems(demoResult.score_breakdown, profile as Profile | undefined, demoJob as JobInfo | undefined).map(item => [item.key, item.detail])
+                                )}
+                                compact
+                                expandedKeys={expandedScoreKeys}
+                                onToggleExpand={(key) => setExpandedScoreKeys(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(key)) next.delete(key);
+                                  else next.add(key);
+                                  return next;
+                                })}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mx-4 mb-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {savedJobIds.has(demoResult.job_id) ? (
+                              <span title="Added to Submission" className="inline-flex items-center justify-center rounded-lg bg-green-50 px-3 py-1.5 text-[11px] font-semibold text-green-600">
+                                <BookmarkCheck size={14} className="mr-1.5" />
+                                Saved
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); void addToSubmissionQueue(demoResult); }}
+                                disabled={savingJobId === demoResult.job_id}
+                                title="Submission Queue"
+                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-all hover:bg-slate-100 disabled:opacity-60"
+                              >
+                                {savingJobId === demoResult.job_id ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <Bookmark size={14} className="mr-1.5" />}
+                                + Queue
+                              </button>
+                            )}
+
+                            {queuedJobIds.has(demoResult.job_id) ? (
+                              <span title="Queued for Resume AI" className="inline-flex items-center justify-center rounded-lg bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-600">
+                                <CheckCircle2 size={14} className="mr-1.5" />
+                                Queued
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); void addToResumeAIQueue(demoResult); }}
+                                disabled={queuingJobId === demoResult.job_id}
+                                title="Resume AI Queue"
+                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-all hover:bg-slate-50 disabled:opacity-60"
+                              >
+                                {queuingJobId === demoResult.job_id ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <PenLine size={14} className="mr-1.5" />}
+                                + Rewrite
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); void generateInsight(demoResult); }}
+                              disabled={isGenerating}
+                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-all hover:bg-slate-100 disabled:opacity-60"
+                            >
+                              {isGenerating ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <Sparkles size={14} className="mr-1.5" />}
+                              AI Insight
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewResult(demoResult);
+                                setReviewedMap(prev => {
+                                  const next = { ...prev, [demoResult.id]: Date.now() };
+                                  try { localStorage.setItem('radar_reviewed', JSON.stringify(next)); } catch {}
+                                  return next;
+                                });
+                              }}
+                              title="Preview Job"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-all hover:bg-slate-100"
+                            >
+                              <Eye size={13} />
+                              Full JD
+                            </button>
+
+                            {!demoResult.disqualified && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); void disqualifyResult(demoResult); }}
+                                disabled={disqualifyingJobId === demoResult.job_id}
+                                title="Disqualify"
+                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                              >
+                                {disqualifyingJobId === demoResult.job_id ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14} />}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            ) : filteredResults.length === 0 ? (
               <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
                 <Radar size={48} className="mx-auto text-slate-300 mb-4" />
                 <h3 className="text-lg font-medium text-slate-700 mb-2">No match results yet</h3>
@@ -2704,13 +3224,7 @@ export default function RadarPage() {
 
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
                           <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 font-medium text-slate-500">
-                            {(() => {
-                              const category = getSourceCategory(result);
-                              if (category === 'job_boards') return 'Job Board';
-                              if (category === 'social_groups') return 'Social';
-                              if (category === 'chat_groups') return 'Chat';
-                              return 'Other';
-                            })()}
+                            {getSourceCategoryLabel(result.job_source)}
                           </span>
                           <span className="inline-flex items-center gap-1">
                             <Clock size={10} />
@@ -2872,7 +3386,7 @@ export default function RadarPage() {
 
       {/* Preview Modal */}
       {previewResult && (() => {
-        const previewJob = jobMap.get(previewResult.job_id);
+        const previewJob = getJobInfoForResult(previewResult);
         const desc = getDisplayJobDescription(previewJob);
         return (
           <div

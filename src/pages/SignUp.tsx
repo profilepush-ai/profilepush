@@ -88,7 +88,7 @@ function detectCountryCode(): string {
 }
 
 const DEFAULT_COUNTRY = COUNTRIES[0];
-const DEFAULT_SIGNUP_REDIRECT = '/welcome';
+const DEFAULT_SIGNUP_REDIRECT = '/pulse';
 const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
 
 type GoogleCredentialResponse = {
@@ -249,7 +249,7 @@ export default function SignUp() {
     );
   }
 
-  if (user) return <Navigate to="/desk" replace />;
+  if (user) return <Navigate to="/pulse" replace />;
 
   async function handleGoogleSignUp() {
     setOauthSubmitting(true);
@@ -460,7 +460,7 @@ export default function SignUp() {
     }));
 
     await refreshAccount();
-    navigate('/welcome');
+    navigate(DEFAULT_SIGNUP_REDIRECT, { replace: true });
   }
 
   if (confirmEmail) {

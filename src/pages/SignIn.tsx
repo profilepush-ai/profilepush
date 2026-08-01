@@ -8,7 +8,7 @@ import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
 import AuthSidePanel from '../components/AuthSidePanel';
 
-const DEFAULT_REDIRECT = '/job-finder';
+const DEFAULT_REDIRECT = '/pulse';
 const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
 
 type GoogleCredentialResponse = {
