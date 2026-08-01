@@ -125,6 +125,12 @@ type ProfileCategoryTab = {
 };
 
 type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'queued';
+type LeadActionType = 'revealed' | 'breakdown';
+
+type PulseLeadActionRow = {
+  lead_id: string;
+  action_type: LeadActionType;
+};
 
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
@@ -356,12 +362,6 @@ function formatAgo(dateIso: string) {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `Dropped ${hrs} hrs ago`;
   return `Dropped ${Math.floor(hrs / 24)} days ago`;
-}
-
-function formatRuleLabel(key: string) {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
 function maskPosterName(name: string) {
@@ -672,6 +672,34 @@ export default function PulsePage() {
     setWatchingRoles(active);
   }, [account?.id, showToast]);
 
+  const loadLeadActionState = useCallback(async () => {
+    if (!account?.id) {
+      setRevealedLeadIds(new Set());
+      setBreakdownChargedLeadIds(new Set());
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('pulse_lead_actions')
+      .select('lead_id, action_type')
+      .eq('account_id', account.id)
+      .in('action_type', ['revealed', 'breakdown']);
+
+    if (error) {
+      return;
+    }
+
+    const revealed = new Set<string>();
+    const breakdown = new Set<string>();
+    for (const row of (data ?? []) as PulseLeadActionRow[]) {
+      if (row.action_type === 'revealed') revealed.add(row.lead_id);
+      if (row.action_type === 'breakdown') breakdown.add(row.lead_id);
+    }
+
+    setRevealedLeadIds(revealed);
+    setBreakdownChargedLeadIds(breakdown);
+  }, [account?.id]);
+
   const loadLeaderboard = useCallback(async () => {
     const { data, error } = await supabase.rpc('get_pulse_persona_leaderboard', { limit_count: LEADERBOARD_RPC_LIMIT });
 
@@ -732,9 +760,9 @@ export default function PulsePage() {
 
   const loadInitial = useCallback(async () => {
     setLoading(true);
-    await Promise.all([loadLeaderboard(), loadWatchingRoles()]);
+    await Promise.all([loadLeaderboard(), loadWatchingRoles(), loadLeadActionState()]);
     setLoading(false);
-  }, [loadLeaderboard, loadWatchingRoles]);
+  }, [loadLeaderboard, loadWatchingRoles, loadLeadActionState]);
 
   useEffect(() => {
     void loadInitial();
@@ -1171,6 +1199,29 @@ export default function PulsePage() {
     return true;
   }, [account?.id, consumeCreditsLegacy, refreshAccount, showToast]);
 
+  const persistLeadAction = useCallback(async (leadId: string, actionType: LeadActionType) => {
+    if (!account?.id) return;
+
+    const { error } = await supabase
+      .from('pulse_lead_actions')
+      .upsert(
+        {
+          account_id: account.id,
+          user_id: user?.id ?? null,
+          lead_id: leadId,
+          action_type: actionType,
+        },
+        {
+          onConflict: 'account_id,lead_id,action_type',
+          ignoreDuplicates: true,
+        },
+      );
+
+    if (error) {
+      showToast('Could not sync action state', 'error');
+    }
+  }, [account?.id, showToast, user?.id]);
+
   const saveVendorToTracker = useCallback(async (lead: SocialLead) => {
     const email = lead.posterEmail.trim();
     const phone = lead.posterPhone.trim();
@@ -1269,6 +1320,7 @@ export default function PulsePage() {
           next.add(lead.id);
           return next;
         });
+        void persistLeadAction(lead.id, 'revealed');
         showToast(`$${REVEAL_CONTACT_COST.toFixed(2)} credits consumed for reveal`, 'success');
       }
 
@@ -1287,7 +1339,7 @@ export default function PulsePage() {
     } finally {
       setProcessingLeadId(null);
     }
-  }, [consumeCredits, revealedLeadIds, saveVendorToTracker, showToast, user]);
+  }, [consumeCredits, persistLeadAction, revealedLeadIds, saveVendorToTracker, showToast, user]);
 
   const handleOpenBreakdown = useCallback(async (lead: SocialLead) => {
     setProcessingBreakdownLeadId(lead.id);
@@ -1307,6 +1359,7 @@ export default function PulsePage() {
           next.add(lead.id);
           return next;
         });
+        void persistLeadAction(lead.id, 'breakdown');
         showToast(`$${BREAKDOWN_COST.toFixed(2)} credits consumed for breakdown`, 'success');
       }
 
@@ -1315,7 +1368,7 @@ export default function PulsePage() {
     } finally {
       setProcessingBreakdownLeadId(null);
     }
-  }, [breakdownChargedLeadIds, consumeCredits, showToast]);
+  }, [breakdownChargedLeadIds, consumeCredits, persistLeadAction, showToast]);
 
   return (
     <div className="h-screen overflow-hidden bg-white text-gray-900 flex flex-col">
@@ -1773,28 +1826,26 @@ export default function PulsePage() {
                   }
 
                   return (
-                    <table className="min-w-full border-collapse text-left text-[11px]">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                          <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Score</th>
-                          <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Candidate</th>
-                          <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Job</th>
-                          <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Rule Logic</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {breakdownItems.map((item) => (
-                          <tr key={item.key}>
-                            <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{formatRuleLabel(item.key)}</td>
-                            <td className="border-b border-gray-100 px-2 py-1.5 font-semibold text-gray-900">{Math.round(item.score)}%</td>
-                            <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{item.detail?.candidate_value || '-'}</td>
-                            <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{item.detail?.job_value || '-'}</td>
-                            <td className="border-b border-gray-100 px-2 py-1.5 text-gray-600">{item.detail?.rule || '-'}</td>
+                    <div className="max-h-52 overflow-y-auto">
+                      <table className="min-w-full border-collapse text-left text-[11px]">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Score</th>
+                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Candidate</th>
+                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Job</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {breakdownItems.map((item) => (
+                            <tr key={item.key}>
+                              <td className="border-b border-gray-100 px-2 py-1.5 font-semibold text-gray-900">{Math.round(item.score)}%</td>
+                              <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{item.detail?.candidate_value || '-'}</td>
+                              <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{item.detail?.job_value || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   );
                 })()}
               </div>
