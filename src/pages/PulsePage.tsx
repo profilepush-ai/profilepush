@@ -285,6 +285,20 @@ function isPersonaInCategory(persona: PulsePersona, categoryId: string) {
   return inferRoleCategoryId(persona.target_role) === categoryId;
 }
 
+// Tech stacks per category for second-level filtering
+const CATEGORY_TECH_STACKS: Record<string, string[]> = {
+  'front-end': ['React', 'Angular', 'Vue', 'TypeScript', 'Next.js', 'Tailwind', 'Svelte'],
+  'backend': ['Node.js', 'Python', 'Java', '.NET', 'Go', 'Ruby', 'Spring Boot', 'FastAPI'],
+  'data': ['SQL', 'Spark', 'Airflow', 'Snowflake', 'Databricks', 'Kafka', 'ETL', 'Power BI'],
+  'security': ['Cloud Security', 'IAM', 'SOC', 'Penetration Testing', 'SIEM', 'Zero Trust'],
+  'crm': ['Salesforce', 'HubSpot', 'Dynamics 365', 'Zoho', 'ServiceNow'],
+  'qa': ['Selenium', 'Playwright', 'Cypress', 'JUnit', 'TestNG', 'Appium', 'SDET'],
+  'biz-dev': ['Agile', 'Scrum', 'JIRA', 'Roadmapping', 'Analytics', 'Stakeholder Mgmt'],
+  'ai': ['LLM', 'GPT', 'NLP', 'Prompt Engineering', 'RAG', 'LangChain', 'OpenAI'],
+  'ml': ['PyTorch', 'TensorFlow', 'MLOps', 'Scikit-learn', 'Deep Learning', 'Computer Vision'],
+  'devops': ['AWS', 'Kubernetes', 'Terraform', 'Docker', 'CI/CD', 'Azure', 'GCP', 'Jenkins'],
+};
+
 function getDefaultPersonaAvatarUrl(role: string) {
   const key = normalize(role);
   return DEFAULT_PERSONA_AVATARS[key] ?? getStablePortraitUrl(`role-${key || 'unknown'}`);
@@ -618,6 +632,7 @@ export default function PulsePage() {
   const [view, setView] = useState<'board' | 'feed'>('board');
   const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('48h');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
+  const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
   const [visibleProfilesCount, setVisibleProfilesCount] = useState(TOP_PROFILES_PAGE_SIZE);
   const [profileStatsLoading, setProfileStatsLoading] = useState(false);
@@ -681,10 +696,17 @@ export default function PulsePage() {
   const filteredJobsRankedLeaderboard = useMemo(() => {
     const selectedCategory = PROFILE_CATEGORY_TABS.find((item) => item.id === selectedCategoryId) ?? PROFILE_CATEGORY_TABS[0];
     const categoryFiltered = jobsRankedLeaderboard.filter((persona) => isPersonaInCategory(persona, selectedCategory.id));
+    // Tech stack sub-filter
+    const techFiltered = selectedTechStacks.length > 0
+      ? categoryFiltered.filter((persona) => {
+          const text = normalize(`${persona.target_role} ${persona.summary} ${persona.priority_skills ?? ''}`);
+          return selectedTechStacks.some((tech) => text.includes(normalize(tech)));
+        })
+      : categoryFiltered;
     const query = normalize(profileSearchQuery);
-    if (!query) return categoryFiltered;
-    return categoryFiltered.filter((item) => normalize(item.target_role).includes(query) || normalize(item.summary).includes(query));
-  }, [jobsRankedLeaderboard, profileSearchQuery, selectedCategoryId]);
+    if (!query) return techFiltered;
+    return techFiltered.filter((item) => normalize(item.target_role).includes(query) || normalize(item.summary).includes(query));
+  }, [jobsRankedLeaderboard, profileSearchQuery, selectedCategoryId, selectedTechStacks]);
 
   const orderedJobsRankedLeaderboard = useMemo(() => {
     const watched: PulsePersona[] = [];
@@ -1515,26 +1537,19 @@ export default function PulsePage() {
             </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
-              <div className="hide-scrollbar w-full overflow-x-auto pb-1">
-                <div className="flex w-max min-w-full gap-2">
+              <div className="hide-scrollbar w-full overflow-x-auto">
+                <div className="flex w-max min-w-full gap-1.5">
                   {[...PROFILE_CATEGORY_TABS]
                     .map((category) => {
-                      const categoryProfiles = jobsRankedLeaderboard.filter((persona) => isPersonaInCategory(persona, category.id));
-                      const vendorsCount = categoryProfiles.reduce(
-                        (sum, persona) => sum + (profileStatsByRole[normalize(persona.target_role)]?.uniqueVendors ?? 0),
-                        0,
-                      );
-                      const jobsCount = categoryProfiles.reduce(
-                        (sum, persona) => sum + (profileStatsByRole[normalize(persona.target_role)]?.uniqueJobs ?? 0),
-                        0,
-                      );
-
+                      const categoryProfiles = jobsRankedLeaderboard.filter((p) => isPersonaInCategory(p, category.id));
+                      const vendorsCount = categoryProfiles.reduce((s, p) => s + (profileStatsByRole[normalize(p.target_role)]?.uniqueVendors ?? 0), 0);
+                      const jobsCount = categoryProfiles.reduce((s, p) => s + (profileStatsByRole[normalize(p.target_role)]?.uniqueJobs ?? 0), 0);
                       return { category, vendorsCount, jobsCount };
                     })
                     .sort((a, b) => {
                       if (a.category.id === 'all') return -1;
                       if (b.category.id === 'all') return 1;
-                      return b.jobsCount - a.jobsCount || b.vendorsCount - a.vendorsCount || a.category.label.localeCompare(b.category.label);
+                      return b.jobsCount - a.jobsCount || a.category.label.localeCompare(b.category.label);
                     })
                     .map(({ category, vendorsCount, jobsCount }) => {
                       const isSelected = selectedCategoryId === category.id;
@@ -1544,30 +1559,42 @@ export default function PulsePage() {
                       <button
                         key={category.id}
                         type="button"
-                        onClick={() => setSelectedCategoryId(category.id)}
-                        className="group flex w-[104px] shrink-0 flex-col items-center gap-1.5 px-1 py-1 text-center"
+                        onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); }}
+                        className={`inline-flex shrink-0 flex-col items-center gap-0.5 rounded-md border px-3 py-1.5 text-[11px] font-medium transition ${isSelected ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
                       >
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-full border transition ${isSelected ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500 group-hover:border-gray-300 group-hover:text-gray-700'}`}>
-                          <CategoryIcon size={20} />
-                        </div>
-                        <p className={`text-xs font-semibold leading-tight whitespace-normal break-words ${isSelected ? 'text-blue-700' : 'text-gray-900 group-hover:text-gray-700'}`}>
-                          {category.label}
-                        </p>
-                        <div className="flex items-center gap-2 text-[10px] text-gray-600">
-                          <span className="inline-flex items-center gap-1" title="Vendors">
-                            <Building2 size={11} className="text-gray-500" />
-                            <span>{vendorsCount}</span>
-                          </span>
-                          <span className="inline-flex items-center gap-1" title="Jobs">
-                            <Briefcase size={11} className="text-gray-500" />
-                            <span>{jobsCount}</span>
-                          </span>
-                        </div>
+                        <span className="inline-flex items-center gap-1.5">
+                          <CategoryIcon size={14} />
+                          <span>{category.label}</span>
+                        </span>
+                        <span className={`inline-flex items-center gap-1.5 text-[9px] ${isSelected ? 'text-blue-500' : 'text-gray-400'}`}>
+                          <span className="inline-flex items-center gap-0.5"><Building2 size={9} />{vendorsCount}</span>
+                          <span className="inline-flex items-center gap-0.5"><Briefcase size={9} />{jobsCount}</span>
+                        </span>
                       </button>
                       );
                     })}
                 </div>
               </div>
+
+              {selectedCategoryId !== 'all' && CATEGORY_TECH_STACKS[selectedCategoryId] && (
+                <div className="hide-scrollbar w-full overflow-x-auto">
+                  <div className="flex w-max min-w-full gap-1.5 pb-1">
+                    {CATEGORY_TECH_STACKS[selectedCategoryId].map((tech) => {
+                      const isActive = selectedTechStacks.includes(tech);
+                      return (
+                        <button
+                          key={tech}
+                          type="button"
+                          onClick={() => setSelectedTechStacks((prev) => isActive ? prev.filter((t) => t !== tech) : [...prev, tech])}
+                          className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${isActive ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
+                        >
+                          {tech}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center gap-2">
                   <div className="min-w-[240px] flex-1">
@@ -1805,11 +1832,7 @@ export default function PulsePage() {
               </section>
 
               <section className={`${view === 'feed' ? 'flex' : 'hidden'} min-h-0 flex-col overflow-hidden lg:flex`}>
-                <div className="mb-2 flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
-                  <p className="text-xs font-semibold text-gray-700">Matches</p>
-                </div>
-
-                <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <div className="mb-2 flex items-center gap-1.5 border-b border-gray-200">
                   {([
                     { id: 'all', label: 'All' },
                     { id: 'breakdown', label: 'Breakdown' },
@@ -1824,10 +1847,11 @@ export default function PulsePage() {
                         key={tab.id}
                         type="button"
                         onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold transition ${isSelected ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
+                        className={`relative inline-flex items-center gap-1 px-3 pb-2 pt-1 text-[11px] font-medium transition ${isSelected ? 'text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
                       >
                         <span>{tab.label}</span>
-                        <span className={`rounded px-1 py-0.5 text-[10px] ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{count}</span>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{count}</span>
+                        {isSelected && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-blue-600" />}
                       </button>
                     );
                   })}

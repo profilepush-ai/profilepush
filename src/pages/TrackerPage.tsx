@@ -581,7 +581,7 @@ export default function TrackerPage() {
       {/* ── Global toolbar ── */}
       <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm px-5 py-2.5 flex items-center gap-3">
         {/* Search */}
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative flex-1">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             type="text"
@@ -659,26 +659,14 @@ export default function TrackerPage() {
 
         {/* ════════════════ VENDORS TABLE ════════════════ */}
         <div className="border-r border-gray-200 bg-white flex flex-col overflow-hidden">
-          <div className="shrink-0 px-4 py-3 border-b border-gray-200 bg-white">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-amber-500 flex items-center justify-center">
-                  <Building2 size={12} className="text-white" />
-                </div>
-                <h2 className="text-sm font-bold text-gray-900">Vendors</h2>
-                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded ring-1 ring-amber-200">{filteredVendors.length}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {selVendor.size > 0 && (
-                  <button onClick={() => downloadVendors(selVendor)} className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Download selected">
-                    <Download size={13} />
-                  </button>
-                )}
-                <button onClick={openAddVendor} className="flex items-center gap-1 text-[10px] font-bold text-white bg-amber-500 hover:bg-amber-600 px-2.5 py-1.5 rounded-lg transition-colors">
-                  <Plus size={11} /> Add
-                </button>
-              </div>
-            </div>
+          <div className="shrink-0 h-[44px] flex items-center gap-2 px-4 border-b border-gray-200 bg-white">
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Contacts</span>
+            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded ring-1 ring-amber-200">{filteredVendors.length}</span>
+            {selVendor.size > 0 && (
+              <button onClick={() => downloadVendors(selVendor)} className="ml-auto p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Download selected">
+                <Download size={13} />
+              </button>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto">
             {filteredVendors.length === 0 ? (
@@ -767,23 +755,16 @@ export default function TrackerPage() {
 
         {/* ════════════════ VENDOR HISTORY COLUMN ════════════════ */}
         <div className="bg-white flex flex-col overflow-hidden">
-          <div className="shrink-0 px-4 py-3 border-b border-gray-200 bg-white">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-blue-600 flex items-center justify-center">
-                  <History size={12} className="text-white" />
-                </div>
-                <h2 className="text-sm font-bold text-gray-900">Revealed Jobs</h2>
-                {activeVendorId && (
-                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{vendorHistory.length}</span>
-                )}
-              </div>
-              {activeVendorId && (
-                <span className="text-[10px] text-gray-500 truncate max-w-[140px]">
-                  {vendors.find(v => v.id === activeVendorId)?.name}
-                </span>
-              )}
-            </div>
+          <div className="shrink-0 h-[44px] flex items-center gap-2 px-4 border-b border-gray-200 bg-white">
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
+            {activeVendorId && (
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{vendorHistory.length}</span>
+            )}
+            {activeVendorId && (
+              <span className="ml-auto text-[10px] text-gray-500 truncate max-w-[140px]">
+                {vendors.find(v => v.id === activeVendorId)?.name}
+              </span>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
             {!activeVendorId ? (
