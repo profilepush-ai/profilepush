@@ -1,17 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import {
   PenLine, Download, Sparkles, FileText,
-  User, Briefcase, ChevronDown, Search, X, Save,
-  RotateCcw, CheckCircle2, GraduationCap, Code2, Eye, Edit3,
-  Zap, AlertCircle, Clock, ExternalLink, LayoutTemplate,
+  Upload, Eye, Edit3, Save, RotateCcw, CheckCircle2,
+  ChevronDown, X, Zap, AlertCircle, LayoutTemplate,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import type { Profile, WishlistedJob, ResumeFile } from '../types/database';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -29,13 +26,22 @@ interface RewrittenField {
   summary: string; skills: string;
   experience: ExperienceEntry[]; education: EducationEntry[];
 }
-interface MatchScore {
-  score: number; summary: string; strengths: string[]; gaps: string[];
-  optimization_points: string[];
+interface ResumeScore {
+  overall: number;
+  categories: { label: string; score: number; feedback: string }[];
+  summary: string;
+  strengths: string[];
+  improvements: string[];
 }
 
-// idle → (job selected) → scoring → ready → rewriting → done
-type RewriteState = 'idle' | 'scoring' | 'ready' | 'rewriting' | 'done';
+type PageState = 'idle' | 'scoring' | 'ready' | 'rewriting' | 'done';
+
+interface UploadedResume {
+  id: string;
+  file_name: string;
+  file_url: string;
+  created_at: string;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -58,61 +64,8 @@ function parseBullets(raw: string): string[] {
 }
 
 function escHtml(s: string): string {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-
-function buildPromptText(profile: Profile, job: WishlistedJob, match?: MatchScore): string {
-  const header = `Rewrite ${profile.candidate_name}'s resume for the ${job.job_title} role at ${job.company}.`;
-  if (!match) {
-    return `${header}\n\nTailor the summary, skills, and experience bullets to this role. Use strong action verbs, quantify outcomes, and include keywords from the job description.`;
-  }
-  const points = match.optimization_points.length >= 3
-    ? match.optimization_points
-    : [`Strengthen the professional summary to target ${job.job_title} directly.`, `Lead with the most relevant skills matching this role's requirements.`, `Rewrite experience bullets with quantified impact and action verbs.`];
-  return `${header}
-
-Match Score: ${match.score}/100 — ${match.summary}
-
-Focus on these 3 improvements:
-1. ${points[0]}
-2. ${points[1]}
-3. ${points[2]}
-
-Keep all facts accurate. Maximize ATS relevance and recruiter impact.`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Change items (computed diff between original profile + rewritten output)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function buildChangeSummary(profile: Profile, rw: RewrittenField, job: WishlistedJob): string[] {
-  // Point 1 — summary
-  const p1 = rw.summary.trim()
-    ? `Summary rewritten to directly target ${job.job_title} at ${job.company}, leading with the most relevant experience.`
-    : `Resume repositioned for the ${job.job_title} role at ${job.company}.`;
-
-  // Point 2 — skills
-  const origSkills = parseSkills((profile as Profile & { core_skills?: string }).core_skills || '');
-  const newSkills  = parseSkills(rw.skills);
-  const origSet    = new Set(origSkills.map(s => s.toLowerCase().trim()));
-  const added      = newSkills.filter(s => !origSet.has(s.toLowerCase().trim()));
-  const p2 = added.length > 0
-    ? `${added.length} keyword${added.length > 1 ? 's' : ''} added (${added.slice(0, 3).join(', ')}${added.length > 3 ? '…' : ''}) and skills reordered for ATS relevance.`
-    : 'Skills section reordered to surface the most relevant technologies for this role first.';
-
-  // Point 3 — experience
-  const expCount = rw.experience.length;
-  const p3 = expCount > 0
-    ? `Bullet points across ${expCount} role${expCount > 1 ? 's' : ''} rewritten with strong action verbs and quantified impact.`
-    : 'Experience section rewritten with action-driven language matching the job description.';
-
-  return [p1, p2, p3];
-}
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Resume templates
@@ -151,13 +104,7 @@ li{margin-bottom:2.5px;font-size:10pt;color:#222;line-height:1.45}
 .edu-degree{font-weight:700;font-size:10.5pt}
 .edu-year{font-size:9.5pt;color:#666}
 .edu-school{font-size:10pt;color:#555;margin-top:2px}
-@media print{
-  html,body{background:#fff}
-  .page{width:100%;margin:0;padding:0;box-shadow:none}
-  .exp-item,.edu-item{break-inside:avoid}
-  @page{size:A4;margin:18mm 20mm}
-  @page{@top-left{content:''}@top-center{content:''}@top-right{content:''}@bottom-left{content:''}@bottom-center{content:''}@bottom-right{content:''}}
-}`,
+@media print{html,body{background:#fff}.page{width:100%;margin:0;padding:0;box-shadow:none}.exp-item,.edu-item{break-inside:avoid}@page{size:A4;margin:18mm 20mm}}`,
   },
   {
     id: 'modern',
@@ -189,13 +136,7 @@ li{margin-bottom:3px;font-size:10pt;color:#334155;line-height:1.45}
 .edu-degree{font-weight:700;font-size:10.5pt;color:#1e293b}
 .edu-year{font-size:9pt;color:#2563eb}
 .edu-school{font-size:10pt;color:#64748b;margin-top:2px}
-@media print{
-  html,body{background:#fff}
-  .page{width:100%;margin:0;padding:0;box-shadow:none}
-  .exp-item,.edu-item{break-inside:avoid}
-  @page{size:A4;margin:18mm 20mm}
-  @page{@top-left{content:''}@top-center{content:''}@top-right{content:''}@bottom-left{content:''}@bottom-center{content:''}@bottom-right{content:''}}
-}`,
+@media print{html,body{background:#fff}.page{width:100%;margin:0;padding:0;box-shadow:none}.exp-item,.edu-item{break-inside:avoid}@page{size:A4;margin:18mm 20mm}}`,
   },
   {
     id: 'executive',
@@ -227,13 +168,7 @@ li{margin-bottom:3px;font-size:10pt;color:#1e293b;line-height:1.45}
 .edu-degree{font-weight:700;font-size:11pt;color:#0f172a}
 .edu-year{font-size:9pt;color:#475569;font-weight:600}
 .edu-school{font-size:10pt;color:#64748b;margin-top:2px}
-@media print{
-  html,body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .page{width:100%;margin:0;padding:0;box-shadow:none;border-top:none}
-  .exp-item,.edu-item{break-inside:avoid}
-  @page{size:A4;margin:18mm 20mm}
-  @page{@top-left{content:''}@top-center{content:''}@top-right{content:''}@bottom-left{content:''}@bottom-center{content:''}@bottom-right{content:''}}
-}`,
+@media print{html,body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{width:100%;margin:0;padding:0;box-shadow:none;border-top:none}.exp-item,.edu-item{break-inside:avoid}@page{size:A4;margin:18mm 20mm}}`,
   },
   {
     id: 'minimal',
@@ -266,25 +201,16 @@ li::before{content:"–";position:absolute;left:0;color:#d1d5db}
 .edu-degree{font-weight:700;font-size:10.5pt;color:#111827}
 .edu-year{font-size:9pt;color:#9ca3af}
 .edu-school{font-size:10pt;color:#6b7280;margin-top:2px}
-@media print{
-  html,body{background:#fff}
-  .page{width:100%;margin:0;padding:0;box-shadow:none}
-  .exp-item{border-left:none;padding-left:0}
-  .exp-item,.edu-item{break-inside:avoid}
-  @page{size:A4;margin:20mm 22mm}
-  @page{@top-left{content:''}@top-center{content:''}@top-right{content:''}@bottom-left{content:''}@bottom-center{content:''}@bottom-right{content:''}}
-}`,
+@media print{html,body{background:#fff}.page{width:100%;margin:0;padding:0;box-shadow:none}.exp-item{border-left:none;padding-left:0}.exp-item,.edu-item{break-inside:avoid}@page{size:A4;margin:20mm 22mm}}`,
   },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Resume HTML builder (A4 preview + print)
+// Resume HTML builder
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildResumeHtml(profile: Profile, rw: RewrittenField, templateId = 'classic'): string {
-  const locParts = [profile.city, profile.state, profile.country].filter(Boolean);
-  const location = locParts.length ? locParts.join(', ') : profile.location || '';
-  const contactParts = [profile.email, profile.phone, location, profile.linkedin_url].filter(Boolean) as string[];
+function buildResumeHtml(name: string, email: string, phone: string, location: string, rw: RewrittenField, templateId = 'classic'): string {
+  const contactParts = [email, phone, location].filter(Boolean);
   const skills = parseSkills(rw.skills);
 
   const expHtml = rw.experience.map(exp => {
@@ -309,22 +235,17 @@ function buildResumeHtml(profile: Profile, rw: RewrittenField, templateId = 'cla
     skills.length ? `<div class="section"><div class="sec-title">Technical Skills</div><p class="skills-text">${skills.map(escHtml).join(' &middot; ')}</p></div>` : '',
     rw.experience.length ? `<div class="section"><div class="sec-title">Professional Experience</div>${expHtml}</div>` : '',
     rw.education.length ? `<div class="section"><div class="sec-title">Education</div>${eduHtml}</div>` : '',
-    profile.visa_status ? `<div class="section"><div class="sec-title">Work Authorization</div><p class="body-text">${escHtml(profile.visa_status)}</p></div>` : '',
   ].filter(Boolean).join('');
 
   const templateCss = (RESUME_TEMPLATES.find(t => t.id === templateId) ?? RESUME_TEMPLATES[0]).css;
 
   return `<!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<title></title>
-<style>${templateCss}</style>
-</head>
+<head><meta charset="UTF-8"><title></title><style>${templateCss}</style></head>
 <body>
 <div class="page">
   <div class="header">
-    <h1>${escHtml(profile.candidate_name)}</h1>
+    <h1>${escHtml(name || 'Your Name')}</h1>
     <div class="contact">${contactParts.map(p => `<span>${escHtml(p)}</span>`).join('')}</div>
   </div>
   ${sections}
@@ -334,32 +255,25 @@ function buildResumeHtml(profile: Profile, rw: RewrittenField, templateId = 'cla
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF builder (jsPDF — generates a real, searchable A4 PDF)
+// PDF builder (jsPDF)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function buildResumePdf(profile: Profile, rw: RewrittenField): Promise<Blob> {
+async function buildResumePdf(name: string, email: string, phone: string, location: string, rw: RewrittenField): Promise<Blob> {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  const PW = doc.internal.pageSize.getWidth();   // 595.28pt
-  const PH = doc.internal.pageSize.getHeight();  // 841.89pt
+  const PW = doc.internal.pageSize.getWidth();
+  const PH = doc.internal.pageSize.getHeight();
   const ML = 72, MR = 72, MT = 72, MB = 72;
   const CW = PW - ML - MR;
-  // Start y so the TOP of the first letter sits at MT from the page edge.
-  // jsPDF places text by baseline; cap-height of 18pt Helvetica ≈ 13pt.
   let y = MT + 13;
 
   const skills = parseSkills(rw.skills);
-  const locParts = [profile.city, profile.state, profile.country].filter(Boolean);
-  const location = locParts.length ? locParts.join(', ') : profile.location || '';
-  const contactParts = [profile.email, profile.phone, location].filter(Boolean) as string[];
+  const contactParts = [email, phone, location].filter(Boolean);
 
-  // Ensure we don't overflow the page; add a new page if needed.
-  // Use MT + 10 on new pages so text top aligns visually with page 1.
   function checkY(needed: number) {
     if (y + needed > PH - MB) { doc.addPage(); y = MT + 10; }
   }
 
-  // Section header with underline rule
   function sectionHeader(title: string) {
     checkY(20);
     doc.setFont('helvetica', 'bold');
@@ -373,7 +287,6 @@ async function buildResumePdf(profile: Profile, rw: RewrittenField): Promise<Blo
     y += 9;
   }
 
-  // Wrapped text block — returns new y
   function textBlock(text: string, x: number, maxWidth: number, fontSize: number, fontStyle: 'normal' | 'bold' | 'italic', color = 34) {
     doc.setFont('helvetica', fontStyle);
     doc.setFontSize(fontSize);
@@ -385,11 +298,11 @@ async function buildResumePdf(profile: Profile, rw: RewrittenField): Promise<Blo
     y += lines.length * lineH;
   }
 
-  // ── Header ──────────────────────────────────────────────────────────────────
+  // Header
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.setTextColor(17, 17, 17);
-  doc.text(profile.candidate_name.toUpperCase(), PW / 2, y, { align: 'center' });
+  doc.text((name || 'Your Name').toUpperCase(), PW / 2, y, { align: 'center' });
   y += 20;
 
   if (contactParts.length) {
@@ -399,40 +312,29 @@ async function buildResumePdf(profile: Profile, rw: RewrittenField): Promise<Blo
     doc.text(contactParts.join('  ·  '), PW / 2, y, { align: 'center' });
     y += 8;
   }
-  if (profile.linkedin_url) {
-    doc.setFontSize(9);
-    doc.text(profile.linkedin_url, PW / 2, y, { align: 'center' });
-    y += 8;
-  }
 
-  // Horizontal rule under header
   doc.setDrawColor(17, 17, 17);
   doc.setLineWidth(1.25);
   doc.line(ML, y, PW - MR, y);
   y += 14;
 
-  // ── Professional Summary ────────────────────────────────────────────────────
   if (rw.summary.trim()) {
     sectionHeader('Professional Summary');
     textBlock(rw.summary.trim(), ML, CW, 10, 'normal');
     y += 8;
   }
 
-  // ── Technical Skills ────────────────────────────────────────────────────────
   if (skills.length) {
     sectionHeader('Technical Skills');
     textBlock(skills.join('  ·  '), ML, CW, 10, 'normal');
     y += 8;
   }
 
-  // ── Professional Experience ─────────────────────────────────────────────────
   if (rw.experience.length) {
     sectionHeader('Professional Experience');
     for (const exp of rw.experience) {
       checkY(40);
       const dates = `${exp.start_date} – ${exp.current ? 'Present' : exp.end_date}`;
-
-      // Company + dates row
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10.5);
       doc.setTextColor(17, 17, 17);
@@ -442,8 +344,6 @@ async function buildResumePdf(profile: Profile, rw: RewrittenField): Promise<Blo
       doc.setTextColor(80, 80, 80);
       doc.text(dates, PW - MR, y, { align: 'right' });
       y += 14;
-
-      // Title + location row
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(10);
       doc.setTextColor(60, 60, 60);
@@ -455,8 +355,6 @@ async function buildResumePdf(profile: Profile, rw: RewrittenField): Promise<Blo
         doc.text(exp.location, PW - MR, y, { align: 'right' });
       }
       y += 12;
-
-      // Bullet points
       const bullets = parseBullets(exp.description);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
@@ -476,7 +374,6 @@ async function buildResumePdf(profile: Profile, rw: RewrittenField): Promise<Blo
     }
   }
 
-  // ── Education ───────────────────────────────────────────────────────────────
   if (rw.education.length) {
     sectionHeader('Education');
     for (const edu of rw.education) {
@@ -492,16 +389,9 @@ async function buildResumePdf(profile: Profile, rw: RewrittenField): Promise<Blo
       doc.text(yearRange, PW - MR, y, { align: 'right' });
       y += 13;
       doc.setFontSize(10);
-      doc.setTextColor(80, 80, 80);
       doc.text(edu.institution + (edu.gpa ? `  ·  GPA: ${edu.gpa}` : ''), ML, y);
       y += 14;
     }
-  }
-
-  // ── Work Authorization ──────────────────────────────────────────────────────
-  if (profile.visa_status) {
-    sectionHeader('Work Authorization');
-    textBlock(profile.visa_status, ML, CW, 10, 'normal');
   }
 
   return doc.output('blob');
@@ -518,7 +408,6 @@ function ResumePreviewFrame({ html }: { html: string }) {
   function handleLoad() {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    // Use a short delay so mm-based layout has time to settle
     setTimeout(() => {
       const doc = iframe.contentDocument;
       if (doc) {
@@ -589,460 +478,209 @@ function FieldBlock({ label, hint, children }: { label: string; hint?: string; c
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Candidate popup
-// ─────────────────────────────────────────────────────────────────────────────
-
-function CandidatePopup({ profiles, loading, query, onQuery, onSelect, onClose }: {
-  profiles: Profile[]; loading: boolean; query: string;
-  onQuery: (q: string) => void; onSelect: (p: Profile) => void; onClose: () => void;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { ref.current?.focus(); }, []);
-  const filtered = profiles.filter(p =>
-    p.candidate_name.toLowerCase().includes(query.toLowerCase()) ||
-    (p.target_role ?? '').toLowerCase().includes(query.toLowerCase())
-  );
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-          <Search size={14} className="text-gray-400 shrink-0" />
-          <input ref={ref} value={query} onChange={e => onQuery(e.target.value)} placeholder="Search candidates…" className="flex-1 text-sm text-gray-900 outline-none placeholder-gray-400" />
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
-        </div>
-        <div className="max-h-80 overflow-y-auto">
-          {loading ? <div className="flex justify-center py-8"><LogoSpinner size={16} /></div>
-            : filtered.map(p => (
-              <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-0">
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">{p.candidate_name[0]?.toUpperCase()}</div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{p.candidate_name}</p>
-                  <p className="text-xs text-gray-400 truncate">{p.target_role || 'No target role'}</p>
-                </div>
-              </button>
-            ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Job popup
-// ─────────────────────────────────────────────────────────────────────────────
-
-const BOARD_COLORS: Record<string, string> = {
-  LinkedIn: 'bg-blue-50 text-blue-700', Dice: 'bg-orange-50 text-orange-700',
-  Indeed: 'bg-violet-50 text-violet-700', Monster: 'bg-green-50 text-green-700',
-  CareerBuilder: 'bg-emerald-50 text-emerald-700',
-};
-
-function JobPopup({ jobs, loading, query, onQuery, onSelect, onClose }: {
-  jobs: WishlistedJob[]; loading: boolean; query: string;
-  onQuery: (q: string) => void; onSelect: (j: WishlistedJob) => void; onClose: () => void;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { ref.current?.focus(); }, []);
-  const filtered = jobs.filter(j =>
-    j.job_title.toLowerCase().includes(query.toLowerCase()) ||
-    j.company.toLowerCase().includes(query.toLowerCase())
-  );
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-          <Search size={14} className="text-gray-400 shrink-0" />
-          <input ref={ref} value={query} onChange={e => onQuery(e.target.value)} placeholder="Search saved jobs…" className="flex-1 text-sm text-gray-900 outline-none placeholder-gray-400" />
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
-        </div>
-        <div className="max-h-80 overflow-y-auto">
-          {loading ? <div className="flex justify-center py-8"><LogoSpinner size={16} /></div>
-            : filtered.length === 0 ? <div className="px-4 py-8 text-center text-xs text-gray-400">No saved jobs for this candidate</div>
-            : filtered.map(j => (
-              <button key={j.id} onClick={() => onSelect(j)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-0">
-                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0"><Briefcase size={13} className="text-gray-500" /></div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{j.job_title}</p>
-                  <p className="text-xs text-gray-400 truncate">{j.company}{j.location ? ` · ${j.location}` : ''}</p>
-                </div>
-                {j.board && <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md shrink-0 ${BOARD_COLORS[j.board] ?? 'bg-gray-50 text-gray-600'}`}>{j.board}</span>}
-              </button>
-            ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Original resume col (col 1)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function OriginalResumeCol({ file }: { file: ResumeFile | null }) {
-  const [text, setText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const fileName = file?.file_name?.toLowerCase() ?? '';
-  const fileUrl = file?.file_url ?? '';
-  const isPdf = !!(fileName.endsWith('.pdf') || fileUrl.toLowerCase().match(/\.pdf(\?|$)/));
-  const isDocx = !!(fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileUrl.toLowerCase().match(/\.docx?(\?|$)/));
-
-  useEffect(() => {
-    if (!file?.file_url || isPdf || isDocx) { setText(''); return; }
-    setLoading(true);
-    fetch(file.file_url).then(r => r.text()).then(setText).catch(() => setText('Could not load file.')).finally(() => setLoading(false));
-  }, [file?.file_url, isPdf, isDocx]);
-
-  if (!file) return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
-      <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center"><FileText size={20} className="text-gray-400" /></div>
-      <p className="text-sm font-semibold text-gray-600">No resume files</p>
-      <p className="text-xs text-gray-400">Upload a resume to the candidate profile first</p>
-    </div>
-  );
-
-  if (isPdf && fileUrl) {
-    return <div className="h-full overflow-hidden"><iframe src={`${fileUrl}#toolbar=0`} className="w-full h-full border-0" title="Original" /></div>;
-  }
-
-  if (isDocx && fileUrl) {
-    const viewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
-    return (
-      <div className="h-full overflow-hidden">
-        <iframe src={viewerUrl} className="w-full h-full border-0" title="Original" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full overflow-hidden">
-      {loading
-        ? <div className="flex justify-center items-center h-full"><LogoSpinner size={16} /></div>
-        : <pre className="h-full overflow-y-auto px-4 py-3 text-xs text-gray-700 leading-relaxed whitespace-pre-wrap font-mono bg-white">{text || 'No content.'}</pre>}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Rewriting animation (col 2 during rewrite)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function RewritingAnimation({ job }: { job: WishlistedJob | null }) {
-  const [visible, setVisible] = useState(0);
-  const insights = [
-    'Scanning experience and skills against the job description for keyword alignment.',
-    'Rewriting bullet points with action verbs and quantified impact statements.',
-    'Optimizing ATS keyword density and professional summary for this specific role.',
-  ];
-  useEffect(() => {
-    setVisible(0);
-    const id = setInterval(() => setVisible(v => Math.min(v + 1, insights.length - 1)), 2400);
-    return () => clearInterval(id);
-  }, []);
-  return (
-    <div className="flex flex-col h-full items-center justify-center px-8 bg-white">
-      <div className="w-full max-w-[260px]">
-        <div className="flex justify-center gap-1.5 mb-5">
-          {[0, 1, 2].map(i => (
-            <div key={i} className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: `${i * .15}s` }} />
-          ))}
-        </div>
-        <p className="text-center text-xs font-bold text-gray-800 mb-0.5">Rewriting for {job?.job_title ?? 'role'}</p>
-        <p className="text-center text-[10px] text-gray-400 mb-6">{job?.company ?? ''}</p>
-        <div className="space-y-4">
-          {insights.map((text, i) => (
-            <div key={i}
-              className={`flex items-start gap-3 transition-all duration-500 ${i <= visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
-            >
-              <span className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black leading-none mt-0.5 transition-colors duration-300
-                ${i < visible ? 'bg-emerald-100 text-emerald-700' : i === visible ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400'}`}>
-                {i + 1}
-              </span>
-              <p className="text-xs text-gray-600 leading-relaxed">{text}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ResumeAIPage() {
-  const [searchParams] = useSearchParams();
   const { account } = useAuth();
-  const [showCandidatePopup, setShowCandidatePopup] = useState(false);
-  const [candidateQuery, setCandidateQuery]         = useState('');
-  const [allProfiles, setAllProfiles]               = useState<Profile[]>([]);
-  const [loadingProfiles, setLoadingProfiles]       = useState(false);
-  const [selectedProfile, setSelectedProfile]       = useState<Profile | null>(null);
 
-  // Job
-  const [showJobPopup, setShowJobPopup] = useState(false);
-  const [jobQuery, setJobQuery]         = useState('');
-  const [savedJobs, setSavedJobs]       = useState<WishlistedJob[]>([]);
-  const [loadingJobs, setLoadingJobs]   = useState(false);
-  const [selectedJob, setSelectedJob]   = useState<WishlistedJob | null>(null);
+  // Upload & Resume state (session-only, in-memory)
+  const [uploadedResume, setUploadedResume] = useState<UploadedResume | null>(null);
+  const [resumeText, setResumeText] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [resumeFiles, setResumeFiles] = useState<UploadedResume[]>([]);
+  const [col1Mode, setCol1Mode] = useState<'history' | 'preview'>('history');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // State machine
-  const [rewriteState, setRewriteState] = useState<RewriteState>('idle');
-  const [matchScore, setMatchScore]     = useState<MatchScore | null>(null);
-  const [prompt, setPrompt]             = useState('');
-  const [jobDesc, setJobDesc]           = useState('');
+  // Page state machine
+  const [pageState, setPageState] = useState<PageState>('idle');
+
+  // Score
+  const [resumeScore, setResumeScore] = useState<ResumeScore | null>(null);
+  const [scoring, setScoring] = useState(false);
+
+  // Prompt
+  const [prompt, setPrompt] = useState('');
 
   // Rewrite result
-  const [rewritten, setRewritten]       = useState<RewrittenField>({ summary: '', skills: '', experience: [], education: [] });
-  const [changeItems, setChangeItems]   = useState<string[]>([]);
-  const [col2Mode, setCol2Mode]         = useState<'preview' | 'edit'>('preview');
-  const [resumeHtml, setResumeHtml]     = useState('');
+  const [rewritten, setRewritten] = useState<RewrittenField>({ summary: '', skills: '', experience: [], education: [] });
+  const [resumeHtml, setResumeHtml] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('classic');
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
-  // Original files
-  const [originalFiles, setOriginalFiles] = useState<ResumeFile[]>([]);
-  const [selectedOriginalFile, setSelectedOriginalFile] = useState<ResumeFile | null>(null);
-  const [showFileDropdown, setShowFileDropdown] = useState(false);
+  const [col3Mode, setCol3Mode] = useState<'preview' | 'edit'>('preview');
 
   // Save
-  const [savingToProfile, setSavingToProfile] = useState(false);
-  const [savedToProfile, setSavedToProfile]   = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  // History
-  const [showHistory, setShowHistory]               = useState(false);
-  const [historyFiles, setHistoryFiles]             = useState<ResumeFile[]>([]);
-  const [loadingHistory, setLoadingHistory]         = useState(false);
-
+  // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const showToast = (msg: string, type: 'success' | 'error') => setToast({ message: msg, type });
 
-  // Custom JD mode (paste job description instead of selecting from saved jobs)
-  const [customJdMode, setCustomJdMode] = useState(false);
-  const [customJdText, setCustomJdText] = useState('');
-  const [customJobTitle, setCustomJobTitle] = useState('');
-  const [customJobCompany, setCustomJobCompany] = useState('');
+  // ── Upload handler (in-memory only) ────────────────────────────────────
 
-  // ── Init ─────────────────────────────────────────────────────────────────
+  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  useEffect(() => {
-    loadProfiles();
-    const pid = searchParams.get('profileId');
-    const jid = searchParams.get('jobId');
-    if (pid) loadByParams(pid, jid ?? undefined);
-  }, []);
+    setUploading(true);
+    const objectUrl = URL.createObjectURL(file);
+    const uploaded: UploadedResume = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      file_name: file.name,
+      file_url: objectUrl,
+      created_at: new Date().toISOString(),
+    };
 
-  async function loadProfiles() {
-    setLoadingProfiles(true);
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (data) {
-      setAllProfiles(data as Profile[]);
-      await loadCandidateResumeStats(data as Profile[]);
-      const pid = searchParams.get('profileId');
-      if (!pid && data.length > 0) selectProfile(data[0] as Profile);
+    setUploadedResume(uploaded);
+    setResumeFiles(prev => [uploaded, ...prev]);
+    setCol1Mode('preview');
+
+    // Load text content for non-PDF/DOCX
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith('.pdf') && !lower.match(/\.docx?$/)) {
+      file.text().then(text => setResumeText(text)).catch(() => setResumeText('Could not read file.'));
+    } else {
+      setResumeText('');
     }
-    setLoadingProfiles(false);
-  }
 
-  async function loadByParams(profileId: string, jobId?: string) {
-    const { data: p } = await supabase.from('profiles').select('*').eq('id', profileId).maybeSingle();
-    if (!p) return;
-    await selectProfile(p as Profile);
-    if (jobId) {
-      const { data: j } = await supabase.from('wishlisted_jobs').select('*').eq('id', jobId).maybeSingle();
-      if (j) await selectJob(j as WishlistedJob);
-    }
-  }
-
-  // ── Select profile ────────────────────────────────────────────────────────
-
-  async function selectProfile(p: Profile) {
-    setSelectedProfile(p);
-    setSelectedJob(null);
-    setRewriteState('idle');
-    setMatchScore(null);
+    // Reset downstream state
+    setPageState('idle');
+    setResumeScore(null);
     setPrompt('');
-    setJobDesc('');
-    setSavedToProfile(false);
-    setCustomJdMode(false);
-    setCustomJdText('');
-    setCustomJobTitle('');
-    setCustomJobCompany('');
-    setRewritten({ summary: '', skills: p.core_skills || '', experience: Array.isArray(p.experience) ? [...p.experience] : [], education: Array.isArray(p.education) ? [...p.education] : [] });
+    setRewritten({ summary: '', skills: '', experience: [], education: [] });
+    setResumeHtml('');
+    setSaved(false);
+    setUploading(false);
 
-    setLoadingJobs(true);
-    const { data: jobs } = await supabase.from('wishlisted_jobs').select('*').eq('profile_id', p.id).order('created_at', { ascending: false });
-    if (jobs) setSavedJobs(jobs as WishlistedJob[]);
-    setLoadingJobs(false);
-
-    const { data: files } = await supabase.from('resume_files').select('*').eq('profile_id', p.id).eq('category', 'resume').order('created_at', { ascending: true });
-    if (files) {
-      setOriginalFiles(files as ResumeFile[]);
-      setSelectedOriginalFile((files as ResumeFile[])[0] ?? null);
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    showToast('Resume loaded', 'success');
   }
 
-  // ── Select job → go to idle (user triggers scoring manually) ────────────────
+  function selectResumeFile(file: UploadedResume) {
+    setUploadedResume(file);
+    setCol1Mode('preview');
 
-  const selectJob = useCallback(async (j: WishlistedJob) => {
-    setSelectedJob(j);
-    setRewriteState('idle');
-    setMatchScore(null);
+    // Load text content for non-PDF/DOCX
+    const lower = file.file_name.toLowerCase();
+    if (!lower.endsWith('.pdf') && !lower.match(/\.docx?$/)) {
+      fetch(file.file_url).then(r => r.text()).then(setResumeText).catch(() => setResumeText('Could not read file.'));
+    } else {
+      setResumeText('');
+    }
+
+    // Reset downstream state
+    setPageState('idle');
+    setResumeScore(null);
     setPrompt('');
-    setJobDesc('');
-    setSavedToProfile(false);
-
-    // Fetch job description from source table
-    const tableMap: Record<string, string> = { LinkedIn: 'linkedin_jobs', Dice: 'dice_jobs', Indeed: 'indeed_jobs', Monster: 'monster_jobs', CareerBuilder: 'careerbuilder_jobs' };
-    let desc = '';
-    if (j.source_job_id && j.board && tableMap[j.board]) {
-      const { data } = await supabase.from(tableMap[j.board]).select('job_description').eq('id', j.source_job_id).maybeSingle();
-      if (data?.job_description) desc = data.job_description as string;
-    }
-    if (!desc) desc = `${j.job_title} at ${j.company}${j.location ? ` (${j.location})` : ''}`;
-    setJobDesc(desc);
-  }, []);
-
-  // ── Custom JD: build prompt + insert wishlisted_job entry ────────────────
-
-  function buildCustomPromptText(profile: Profile, title: string, company: string, jd: string): string {
-    const snippet = jd.length > 900 ? jd.slice(0, 900) + '…' : jd;
-    return `Rewrite ${profile.candidate_name}'s resume for the ${title || 'open'} role at ${company || 'this company'}.
-
-Job Description (provided by recruiter):
-${snippet}
-
-Tailor the summary, skills, and experience bullets to match this role. Use strong action verbs, quantify outcomes, and include keywords from the job description.`;
+    setRewritten({ summary: '', skills: '', experience: [], education: [] });
+    setResumeHtml('');
+    setSaved(false);
   }
 
-  async function startCustomJdRewrite() {
-    if (!selectedProfile || !customJobTitle.trim() || !customJdText.trim()) return;
-    setRewriteState('scoring');
+  // ── Score resume ───────────────────────────────────────────────────────
 
-    const { data: newJob, error } = await supabase
-      .from('wishlisted_jobs')
-      .insert({
-        profile_id: selectedProfile.id,
-        job_title: customJobTitle.trim(),
-        company: customJobCompany.trim() || 'Client',
-        board: 'Custom',
-        status: 'saved',
-        location: '',
-      })
-      .select()
-      .single();
-
-    if (error || !newJob) {
-      showToast('Failed to save job — please try again', 'error');
-      setRewriteState('idle');
-      return;
-    }
-
-    const job = newJob as WishlistedJob;
-    void loadCandidateResumeStats();
-    setSelectedJob(job);
-    setJobDesc(customJdText);
-    setMatchScore(null);
-    setSavedToProfile(false);
-    setPrompt(buildCustomPromptText(selectedProfile, customJobTitle.trim(), customJobCompany.trim() || 'Client', customJdText));
-    setRewriteState('ready');
-  }
-
-  // ── Generate match score + prompt (user-triggered) ───────────────────────
-
-  const startMatchScore = useCallback(async () => {
-    const prof = selectedProfile;
-    const j = selectedJob;
-    if (!prof || !j) return;
-
-    setRewriteState('scoring');
-    setMatchScore(null);
-
-    let score: MatchScore | null = null;
-    if (j.source_job_id && j.board === 'LinkedIn') {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-        const res = await fetch(`${supabaseUrl}/functions/v1/score-job-match`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-          body: JSON.stringify({ profile_id: prof.id, linkedin_job_id: j.source_job_id, account_id: account?.id ?? null }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.score !== undefined) {
-            score = {
-              score: data.score, summary: data.summary ?? '',
-              strengths: data.strengths ?? [], gaps: data.gaps ?? [],
-              optimization_points: Array.isArray(data.optimization_points) ? data.optimization_points : [],
-            };
-          }
-        }
-      } catch { /* non-fatal */ }
-    }
-
-    setMatchScore(score);
-    setPrompt(buildPromptText(prof, j, score ?? undefined));
-    setRewriteState('ready');
-  }, [selectedProfile, selectedJob]);
-
-  // ── Rewrite ───────────────────────────────────────────────────────────────
-
-  async function rewriteResume() {
-    if (!selectedProfile || !selectedJob) return;
-    setRewriteState('rewriting');
-    setSavedToProfile(false);
+  const scoreResume = useCallback(async () => {
+    if (!uploadedResume || !account?.id) return;
+    setScoring(true);
+    setResumeScore(null);
 
     try {
+      // Read file content from blob URL to send to backend
+      const fileBlob = await fetch(uploadedResume.file_url).then(r => r.blob());
+      const fileBase64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1] ?? '');
+        reader.readAsDataURL(fileBlob);
+      });
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/score-resume`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          account_id: account.id,
+          resume_file_name: uploadedResume.file_name,
+          resume_content_base64: fileBase64,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setResumeScore({
+          overall: data.overall ?? data.score ?? 0,
+          categories: data.categories ?? [],
+          summary: data.summary ?? '',
+          strengths: data.strengths ?? [],
+          improvements: data.improvements ?? data.gaps ?? [],
+        });
+        setPageState('ready');
+      } else {
+        const err = await res.json().catch(() => null);
+        showToast(err?.error ?? 'Scoring failed', 'error');
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Scoring failed', 'error');
+    }
+    setScoring(false);
+  }, [uploadedResume, account?.id]);
+
+  // ── Rewrite resume ────────────────────────────────────────────────────
+
+  async function rewriteResume() {
+    if (!uploadedResume || !account?.id || !prompt.trim()) return;
+    setPageState('rewriting');
+    setSaved(false);
+
+    try {
+      // Read file content from blob URL
+      const fileBlob = await fetch(uploadedResume.file_url).then(r => r.blob());
+      const fileBase64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1] ?? '');
+        reader.readAsDataURL(fileBlob);
+      });
+
       const { data: { session } } = await supabase.auth.getSession();
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 
       const res = await fetch(`${supabaseUrl}/functions/v1/rewrite-resume`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({
-          profile_id: selectedProfile.id,
-          wishlisted_job_id: selectedJob.id,
-          account_id: account?.id ?? null,
-          ...(customJdMode && customJdText ? { custom_job_description: customJdText.slice(0, 3000) } : {}),
+          account_id: account.id,
+          resume_file_name: uploadedResume.file_name,
+          resume_content_base64: fileBase64,
+          custom_prompt: prompt,
         }),
       });
 
       const result = await res.json();
-      if (!res.ok && !result.queued) throw new Error(result.error ?? `Rewrite failed: ${res.status}`);
-      if (result.queued) { await pollForRewrite(result.job_id as string); return; }
-      const txt = result.file_url ? await fetch(result.file_url).then(r => r.text()).catch(() => '') : '';
+      if (!res.ok) throw new Error(result.error ?? `Rewrite failed: ${res.status}`);
+
+      const txt = result.file_url ? await fetch(result.file_url).then(r => r.text()).catch(() => '') : (result.content ?? '');
       applyRewriteResult(txt);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Rewrite failed', 'error');
-      setRewriteState('ready');
+      setPageState('ready');
     }
-  }
-
-  async function pollForRewrite(jobId: string) {
-    for (let i = 0; i < 40; i++) {
-      await new Promise(r => setTimeout(r, 3000));
-      const { data } = await supabase.from('llm_job_queue').select('status').eq('id', jobId).maybeSingle();
-      if (!data) continue;
-      if (data.status === 'completed') {
-        const { data: updated } = await supabase.from('wishlisted_jobs').select('*').eq('id', selectedJob!.id).maybeSingle();
-        const txt = updated?.rewrite_file_url ? await fetch(updated.rewrite_file_url as string).then(r => r.text()).catch(() => '') : '';
-        applyRewriteResult(txt);
-        return;
-      }
-      if (data.status === 'dead') throw new Error('Rewrite job failed after retries');
-    }
-    throw new Error('Rewrite timed out');
   }
 
   function applyRewriteResult(rawText: string) {
     const rw = parseResumeText(rawText);
     setRewritten(rw);
-    const html = buildResumeHtml(selectedProfile!, rw, selectedTemplate);
+    const html = buildResumeHtml('', '', '', '', rw, selectedTemplate);
     setResumeHtml(html);
-    setChangeItems(buildChangeSummary(selectedProfile!, rw, selectedJob!));
-    setRewriteState('done');
-    setCol2Mode('preview');
-    void loadCandidateResumeStats();
+    setPageState('done');
+    setCol3Mode('preview');
   }
 
   function parseResumeText(text: string): RewrittenField {
@@ -1059,27 +697,24 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
       else if (current === 'skills') skillLines.push(line);
     }
     return {
-      summary:   summaryLines.join('\n').trim() || `Experienced ${selectedProfile?.target_role ?? 'professional'} with ${selectedProfile?.years_experience ?? 'several'} years of experience.`,
-      skills:    skillLines.join('\n').trim() || selectedProfile?.core_skills || '',
-      experience: Array.isArray(selectedProfile?.experience) ? [...selectedProfile!.experience] : [],
-      education:  Array.isArray(selectedProfile?.education)  ? [...selectedProfile!.education]  : [],
+      summary: summaryLines.join('\n').trim() || '',
+      skills: skillLines.join('\n').trim() || '',
+      experience: [],
+      education: [],
     };
   }
 
-  // Keep html and change items in sync when rewritten changes in edit mode
+  // Keep html in sync when rewritten changes in edit mode
   useEffect(() => {
-    if (rewriteState === 'done' && selectedProfile && selectedJob) {
-      setResumeHtml(buildResumeHtml(selectedProfile, rewritten, selectedTemplate));
-      setChangeItems(buildChangeSummary(selectedProfile, rewritten, selectedJob));
+    if (pageState === 'done') {
+      setResumeHtml(buildResumeHtml('', '', '', '', rewritten, selectedTemplate));
     }
-  }, [rewritten, rewriteState, selectedProfile, selectedJob, matchScore, selectedTemplate]);
+  }, [rewritten, pageState, selectedTemplate]);
 
-  // ── Download PDF ──────────────────────────────────────────────────────────
+  // ── Download ──────────────────────────────────────────────────────────
 
   function downloadPdf() {
-    if (!selectedProfile) return;
-    const baseHtml = resumeHtml || buildResumeHtml(selectedProfile, rewritten, selectedTemplate);
-    // Inject auto-print script so the new tab opens straight into the print dialog
+    const baseHtml = resumeHtml || buildResumeHtml('', '', '', '', rewritten, selectedTemplate);
     const htmlWithPrint = baseHtml.replace(
       '</body>',
       `<script>window.addEventListener('load',function(){setTimeout(function(){window.print();},300);});<\/script></body>`
@@ -1088,134 +723,39 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
     const url = URL.createObjectURL(blob);
     const newWin = window.open(url, '_blank', 'noopener,noreferrer');
     if (!newWin) {
-      // Popup blocked — fall back to direct HTML download
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${selectedProfile.candidate_name.replace(/\s+/g, '_')}_resume.html`;
+      a.download = `resume_rewritten.html`;
       a.click();
     }
-    // Revoke after enough time for the tab to load
     setTimeout(() => URL.revokeObjectURL(url), 15000);
   }
 
-  // ── Save to profile ───────────────────────────────────────────────────────
+  // ── Save rewritten (download locally) ──────────────────────────────────
 
-  async function saveToProfile() {
-    if (!selectedProfile) return;
-    setSavingToProfile(true);
+  async function saveRewritten() {
+    setSaving(true);
     try {
-      const pdfBlob = await buildResumePdf(selectedProfile, rewritten);
-
-      // Determine next version: {FirstLast}_OGN_v1, _v2, ...
-      const { data: existingFiles } = await supabase
-        .from('resume_files')
-        .select('file_name')
-        .eq('profile_id', selectedProfile.id)
-        .like('file_name', '%_OGN_v%');
-      const maxV = (existingFiles ?? []).reduce((m: number, f: { file_name: string }) => {
-        const match = f.file_name.match(/_OGN_v(\d+)/i);
-        return match ? Math.max(m, parseInt(match[1])) : m;
-      }, 0);
-      const baseName = selectedProfile.candidate_name.trim().replace(/\s+/g, '') + `_OGN_v${maxV + 1}`;
-      const safeName = `${baseName}.pdf`;
-
-      const path = `${selectedProfile.id}/resume/${Date.now()}-${safeName}`;
-      const { error } = await supabase.storage.from('resumes').upload(path, pdfBlob, { contentType: 'application/pdf', upsert: true });
-      if (error) throw error;
-      const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(path);
-      await supabase.from('resume_files').insert({ profile_id: selectedProfile.id, file_name: safeName, file_url: urlData.publicUrl, category: 'resume' });
-      await supabase.from('activity_logs').insert({ profile_id: selectedProfile.id, event_type: 'resume_generated', description: `AI-tailored resume saved: ${safeName}` });
-
-      // Refresh original files so the new one appears in the Col 1 dropdown
-      const { data: refreshed } = await supabase.from('resume_files').select('*').eq('profile_id', selectedProfile.id).eq('category', 'resume').order('created_at', { ascending: false });
-      if (refreshed) {
-        setOriginalFiles(refreshed as ResumeFile[]);
-        setSelectedOriginalFile((refreshed as ResumeFile[])[0] ?? null);
-      }
-
-      setSavedToProfile(true);
-      showToast(`Saved as ${safeName}`, 'success');
+      const pdfBlob = await buildResumePdf('', '', '', '', rewritten);
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `resume_rewritten_${Date.now()}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setSaved(true);
+      showToast('Resume downloaded', 'success');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Save failed', 'error');
+      showToast(err instanceof Error ? err.message : 'Download failed', 'error');
     }
-    setSavingToProfile(false);
+    setSaving(false);
   }
 
-  async function openHistory() {
-    if (!selectedProfile) return;
-    setShowHistory(true);
-    setLoadingHistory(true);
-    const { data } = await supabase
-      .from('resume_files')
-      .select('*')
-      .eq('profile_id', selectedProfile.id)
-      .like('file_name', '%_rewritten%')
-      .order('created_at', { ascending: false });
-    setHistoryFiles((data as ResumeFile[]) ?? []);
-    setLoadingHistory(false);
-  }
+  // ── Render ─────────────────────────────────────────────────────────────
 
-  // ── Candidate sidebar ──────────────────────────────────────────────────
-  const [candidateTab, setCandidateTab] = useState<'hotlist' | 'all'>('hotlist');
-  const [hotlistProfileIds, setHotlistProfileIds] = useState<string[]>([]);
-  const [candidateResumeStats, setCandidateResumeStats] = useState<Record<string, { queued: number; rewritten: number }>>({});
-
-  async function loadCandidateResumeStats(profileList?: Profile[]) {
-    const sourceProfiles = profileList ?? allProfiles;
-    const profileIds = sourceProfiles.map(p => p.id);
-
-    if (profileIds.length === 0) {
-      setCandidateResumeStats({});
-      return;
-    }
-
-    const { data } = await supabase
-      .from('wishlisted_jobs')
-      .select('profile_id, resume_ai_queued, rewrite_file_url')
-      .in('profile_id', profileIds);
-
-    const stats: Record<string, { queued: number; rewritten: number }> = {};
-    profileIds.forEach(id => {
-      stats[id] = { queued: 0, rewritten: 0 };
-    });
-
-    (data ?? []).forEach((job: { profile_id: string; resume_ai_queued: boolean | null; rewrite_file_url: string | null }) => {
-      if (!stats[job.profile_id]) return;
-      if (job.resume_ai_queued) stats[job.profile_id].queued += 1;
-      if (job.rewrite_file_url) stats[job.profile_id].rewritten += 1;
-    });
-
-    setCandidateResumeStats(stats);
-  }
-
-  useEffect(() => {
-    supabase.from('hotlist').select('profile_id').then(({ data }) => {
-      if (data) setHotlistProfileIds(data.map((r: { profile_id: string }) => r.profile_id));
-    });
-  }, []);
-
-  const filteredCandidates = allProfiles
-    .filter(p => {
-      const q = candidateQuery.toLowerCase();
-      const matchQ = !q || p.candidate_name.toLowerCase().includes(q) || (p.target_role ?? '').toLowerCase().includes(q);
-      if (!matchQ) return false;
-      if (candidateTab === 'hotlist') return hotlistProfileIds.includes(p.id);
-      return true;
-    })
-    .sort((a, b) => {
-      const bCreatedAt = new Date(b.created_at || '').getTime();
-      const aCreatedAt = new Date(a.created_at || '').getTime();
-      return bCreatedAt - aCreatedAt;
-    });
-
-  // Queue jobs = wishlisted jobs with resume_ai_queued=true
-  const queueJobs = savedJobs.filter(j => j.resume_ai_queued);
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  const scoreColor = matchScore
-    ? matchScore.score >= 75 ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-    : matchScore.score >= 50 ? 'text-amber-700 bg-amber-50 border-amber-200'
+  const scoreColor = resumeScore
+    ? resumeScore.overall >= 75 ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+    : resumeScore.overall >= 50 ? 'text-amber-700 bg-amber-50 border-amber-200'
     : 'text-red-700 bg-red-50 border-red-200'
     : '';
 
@@ -1223,242 +763,278 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
     <div className="h-screen flex flex-col bg-gray-100 font-sans overflow-hidden">
       <AppNav />
 
-      <div className="flex-1 grid grid-cols-[288px_260px_1fr_1fr] overflow-hidden min-h-0">
+      <div className="flex-1 grid grid-cols-3 overflow-hidden min-h-0">
 
-        {/* ── COL 1: Candidates Sidebar ──────────────────────────────────── */}
-        <div className="w-72 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden min-h-0">
-          <div className="h-[44px] flex items-center px-3 border-b border-gray-200 shrink-0">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Candidates</h3>
+        {/* ═══════════════ COLUMN 1: Resume Upload & History/Preview ═══════════════ */}
+        <div className="flex flex-col overflow-hidden bg-white border-r border-gray-200 min-h-0">
+          {/* Header */}
+          <div className="relative flex items-center gap-2 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
+            <FileText size={14} className="text-blue-500 shrink-0" />
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Resume</span>
+            {col1Mode === 'preview' && uploadedResume && (
+              <button
+                onClick={() => setCol1Mode('history')}
+                className="ml-2 flex items-center gap-1 text-[10px] font-semibold text-gray-500 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md transition-colors"
+              >
+                <ChevronDown size={9} /> All Files
+              </button>
+            )}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="ml-auto flex items-center gap-1 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-2.5 py-1.5 rounded-lg transition-colors"
+            >
+              <Upload size={11} /> {uploading ? 'Uploading...' : 'Upload'}
+            </button>
+            <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.txt" onChange={handleUpload} className="hidden" />
           </div>
 
-          <div className="px-3 py-2 border-b border-gray-100 shrink-0">
-            <div className="flex items-center bg-slate-100 rounded-lg p-0.5 mb-2">
-              {(['hotlist', 'all'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setCandidateTab(tab)}
-                  className={`flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-all text-center ${
-                    candidateTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  {tab === 'hotlist' ? 'Hotlist' : 'All Bench'}
-                </button>
-              ))}
-            </div>
-            <div className="relative">
-              <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search candidates..."
-                value={candidateQuery}
-                onChange={e => setCandidateQuery(e.target.value)}
-                className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300"
-              />
-            </div>
+          {/* Content area */}
+          <div className="flex-1 overflow-hidden min-h-0">
+            {col1Mode === 'history' ? (
+              /* ── History list ── */
+              <div className="flex flex-col h-full">
+                {resumeFiles.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6">
+                    <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center">
+                      <Upload size={24} className="text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-700">Upload a Resume</p>
+                      <p className="text-xs text-gray-400 mt-1 max-w-[220px]">Upload a PDF, DOC, or DOCX file to get started with AI scoring and rewriting.</p>
+                    </div>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition-colors"
+                    >
+                      <Upload size={14} /> Choose File
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto">
+                    <div className="px-3 py-2 border-b border-gray-100">
+                      <span className="text-[10px] font-medium text-gray-400">{resumeFiles.length} resume{resumeFiles.length !== 1 ? 's' : ''} uploaded</span>
+                    </div>
+                    {resumeFiles.map(f => {
+                      const isActive = uploadedResume?.id === f.id;
+                      const date = new Date(f.created_at);
+                      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                      const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                      return (
+                        <button
+                          key={f.id}
+                          onClick={() => selectResumeFile(f)}
+                          className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-gray-50 transition-colors ${
+                            isActive ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50 border-l-2 border-l-transparent'
+                          }`}
+                        >
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isActive ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                            <FileText size={14} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-xs font-semibold truncate ${isActive ? 'text-blue-900' : 'text-gray-800'}`}>
+                              {f.file_name}
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">{dateStr} at {timeStr}</p>
+                          </div>
+                          {isActive && <CheckCircle2 size={12} className="text-blue-500 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ── Preview mode ── */
+              uploadedResume ? (
+                uploadedResume.file_name.toLowerCase().endsWith('.pdf') ? (
+                  <iframe src={`${uploadedResume.file_url}#toolbar=0`} className="w-full h-full border-0" title="Resume Preview" />
+                ) : uploadedResume.file_name.toLowerCase().match(/\.docx?$/) ? (
+                  <iframe src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(uploadedResume.file_url)}`} className="w-full h-full border-0" title="Resume Preview" />
+                ) : (
+                  <pre className="h-full overflow-y-auto px-4 py-3 text-xs text-gray-700 leading-relaxed whitespace-pre-wrap font-mono bg-white">
+                    {resumeText || 'No content.'}
+                  </pre>
+                )
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+                  <FileText size={20} className="text-gray-300" />
+                  <p className="text-xs text-gray-400">No resume selected</p>
+                </div>
+              )
+            )}
           </div>
+        </div>
 
-          <div className="px-3 py-1.5 shrink-0 flex items-center border-b border-gray-50">
-            <span className="text-[10px] text-gray-400 font-medium">{filteredCandidates.length} candidate{filteredCandidates.length !== 1 ? 's' : ''}</span>
+        {/* ═══════════════ COLUMN 2: Score Breakdown + Prompt ═══════════════ */}
+        <div className="flex flex-col overflow-hidden bg-gray-50 border-r border-gray-200 min-h-0">
+          {/* Header */}
+          <div className="flex items-center gap-2 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
+            <Zap size={14} className="text-amber-500 shrink-0" />
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Score & Prompt</span>
+            {resumeScore && (
+              <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-lg border shrink-0 ${scoreColor}`}>
+                {resumeScore.overall}/100
+              </span>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto min-h-0">
-            {loadingProfiles ? (
-              <div className="flex items-center justify-center py-10"><LogoSpinner size={18} /></div>
-            ) : filteredCandidates.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-2">
-                <User size={18} className="text-gray-300" />
-                <p className="text-xs text-gray-400">{candidateTab === 'hotlist' ? 'No hotlisted candidates' : 'No candidates match your search.'}</p>
+            {!uploadedResume ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+                <Zap size={20} className="text-gray-300" />
+                <p className="text-xs text-gray-400 max-w-[200px]">Upload a resume to generate a score breakdown and add your rewrite prompts.</p>
               </div>
-            ) : filteredCandidates.map(p => {
-              const isSelected = selectedProfile?.id === p.id;
-              const stats = candidateResumeStats[p.id] ?? { queued: 0, rewritten: 0 };
-              const queuedTone = stats.queued > 0 ? 'bg-amber-50 text-amber-700' : 'bg-gray-50 text-gray-500';
-              const rewrittenTone = stats.rewritten > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-500';
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => selectProfile(p)}
-                  className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-all ${
-                    isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'hover:bg-gray-50/70 border-l-2 border-l-transparent'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                      <User size={13} className={isSelected ? 'text-blue-600' : 'text-gray-400'} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-[12px] font-semibold truncate leading-tight ${isSelected ? 'text-blue-900' : 'text-gray-800'}`}>
-                        {p.candidate_name}
-                      </p>
-                      <p className="text-[10px] text-gray-400 truncate mt-0.5">{p.target_role || 'No target role'}</p>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${queuedTone}`}>
-                          Queued <span className="ml-0.5 text-[10px] font-bold">{stats.queued}</span>
-                        </span>
-                        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold ${rewrittenTone}`}>
-                          Rewritten <span className="ml-0.5 text-[10px] font-bold">{stats.rewritten}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── COL 2: Resume AI Queue ─────────────────────────────────────── */}
-        <div className="flex flex-col overflow-hidden bg-gray-50 border-r border-gray-200 min-h-0">
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0">
-            <PenLine size={13} className="text-violet-500 shrink-0" />
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Resume AI Queue</span>
-            {queueJobs.length > 0 && (
-              <span className="ml-auto text-[10px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">{queueJobs.length}</span>
-            )}
-          </div>
-
-          {/* Custom JD toggle */}
-          {selectedProfile && (
-            <div className="px-3 pt-2.5 pb-1 shrink-0">
-              <button
-                onClick={() => { setCustomJdMode(!customJdMode); if (customJdMode) { setCustomJdText(''); setCustomJobTitle(''); setCustomJobCompany(''); setSelectedJob(null); setRewriteState('idle'); setMatchScore(null); setPrompt(''); setSavedToProfile(false); } }}
-                className={`w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${customJdMode ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-600'}`}
-              >
-                <PenLine size={11} /> {customJdMode ? 'Custom JD Mode' : 'Paste JD'}
-              </button>
-            </div>
-          )}
-
-          {!selectedProfile ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
-              <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center">
-                <PenLine size={20} className="text-violet-400" />
-              </div>
-              <p className="text-xs text-gray-400 max-w-[180px] leading-relaxed">Select a candidate to view their Resume AI queue.</p>
-            </div>
-          ) : loadingJobs ? (
-            <div className="flex items-center justify-center py-10"><LogoSpinner size={18} /></div>
-          ) : queueJobs.length === 0 && !customJdMode ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-4">
-              <Briefcase size={18} className="text-gray-300" />
-              <p className="text-xs text-gray-400 leading-relaxed">No jobs in Resume AI queue. Add jobs from the Job Finder.</p>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1.5 min-h-0">
-              {queueJobs.map(job => {
-                const isSelected = selectedJob?.id === job.id;
-                return (
-                  <button
-                    key={job.id}
-                    onClick={() => { setCustomJdMode(false); selectJob(job); }}
-                    className={`w-full text-left rounded-xl p-3 transition-all border ${
-                      isSelected ? 'bg-white border-violet-200 shadow-sm' : 'bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className={`inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded border ${
-                        job.board === 'LinkedIn' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                        job.board === 'Dice' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                        job.board === 'Indeed' ? 'bg-violet-50 text-violet-700 border-violet-200' :
-                        'bg-gray-50 text-gray-600 border-gray-200'
-                      }`}>{job.board}</span>
-                      {job.rewrite_file_url && (
-                        <span className="flex items-center gap-0.5 text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                          <CheckCircle2 size={8} /> Done
-                        </span>
-                      )}
-                    </div>
-                    <p className={`text-[11px] font-bold leading-tight truncate ${isSelected ? 'text-violet-800' : 'text-gray-800'}`}>
-                      {job.job_title}
-                    </p>
-                    <p className="text-[10px] text-gray-400 truncate mt-0.5">{job.company}{job.location ? ` · ${job.location}` : ''}</p>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {selectedProfile && (
-            <div className="px-3 py-2.5 border-t border-gray-100 bg-white shrink-0">
-              <button onClick={openHistory}
-                className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-2 rounded-xl transition-colors">
-                <Clock size={11} /> Rewrite History
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ── COL 3: Original Resume ─────────────────────────────────────── */}
-        <div className="flex flex-col overflow-hidden bg-gray-50 min-h-0">
-          <div className="relative flex items-center gap-2 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0">
-            <FileText size={13} className="text-gray-500 shrink-0" />
-            <button
-              onClick={() => setShowFileDropdown(v => !v)}
-              className="flex items-center gap-1 text-xs font-bold text-gray-700 uppercase tracking-wider hover:text-blue-600 transition-colors"
-            >
-              Original Resume
-              <ChevronDown size={11} className={`transition-transform duration-150 ${showFileDropdown ? 'rotate-180' : ''}`} />
-            </button>
-            {selectedOriginalFile && (
-              <span className="ml-auto text-[10px] text-gray-400 truncate max-w-[110px]" title={selectedOriginalFile.file_name}>
-                {selectedOriginalFile.file_name}
-              </span>
-            )}
-            {showFileDropdown && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowFileDropdown(false)} />
-                <div className="absolute top-full left-0 right-0 z-50 mt-1 mx-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
-                  {originalFiles.length === 0 ? (
-                    <p className="px-4 py-3 text-xs text-gray-400">No resume files uploaded</p>
-                  ) : (
-                    originalFiles.map(f => (
-                      <button key={f.id}
-                        onClick={() => { setSelectedOriginalFile(f); setShowFileDropdown(false); }}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors ${selectedOriginalFile?.id === f.id ? 'bg-blue-50' : ''}`}
-                      >
-                        <FileText size={11} className={`shrink-0 ${selectedOriginalFile?.id === f.id ? 'text-blue-500' : 'text-gray-400'}`} />
-                        <span className={`text-xs truncate ${selectedOriginalFile?.id === f.id ? 'font-semibold text-blue-700' : 'text-gray-700'}`}>
-                          {f.file_name}
-                        </span>
-                      </button>
-                    ))
-                  )}
+            ) : !resumeScore && !scoring ? (
+              <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-6">
+                <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center">
+                  <Zap size={22} className="text-amber-400" />
                 </div>
-              </>
-            )}
-          </div>
-          <div className="flex-1 overflow-hidden min-h-0">
-            {selectedProfile ? (
-              <OriginalResumeCol file={selectedOriginalFile} />
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Score This Resume</p>
+                  <p className="text-xs text-gray-400 mt-1 max-w-[220px] leading-relaxed">
+                    Analyze the resume for ATS readiness, formatting, content quality, and keyword optimization.
+                  </p>
+                </div>
+                <button
+                  onClick={scoreResume}
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm px-5 py-3 rounded-xl transition-colors shadow-sm"
+                >
+                  <Zap size={15} /> Generate Score
+                </button>
+              </div>
+            ) : scoring ? (
+              <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
+                <LogoSpinner size={20} />
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Analyzing Resume...</p>
+                  <p className="text-xs text-gray-400 mt-1">Scoring content, formatting, and ATS readiness</p>
+                </div>
+              </div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 h-full text-center px-6">
-                <FileText size={20} className="text-gray-300" />
-                <p className="text-xs text-gray-400">Select a candidate to view their resume.</p>
+              <div className="flex flex-col h-full min-h-0">
+                {/* Score breakdown */}
+                <div className="px-4 pt-4 pb-3 border-b border-gray-200 shrink-0 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`text-3xl font-black tabular-nums leading-none ${
+                      resumeScore!.overall >= 75 ? 'text-emerald-600' :
+                      resumeScore!.overall >= 50 ? 'text-amber-500' : 'text-red-500'
+                    }`}>
+                      {resumeScore!.overall}<span className="text-sm font-bold text-gray-300">/100</span>
+                    </div>
+                    <p className="text-xs text-gray-500 leading-snug flex-1">{resumeScore!.summary}</p>
+                  </div>
+
+                  {/* Category scores */}
+                  {resumeScore!.categories.length > 0 && (
+                    <div className="space-y-2">
+                      {resumeScore!.categories.map((cat, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[10px] font-semibold text-gray-700">{cat.label}</span>
+                              <span className={`text-[10px] font-bold ${
+                                cat.score >= 75 ? 'text-emerald-600' :
+                                cat.score >= 50 ? 'text-amber-600' : 'text-red-600'
+                              }`}>{cat.score}</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  cat.score >= 75 ? 'bg-emerald-500' :
+                                  cat.score >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                                }`}
+                                style={{ width: `${cat.score}%` }}
+                              />
+                            </div>
+                            {cat.feedback && <p className="text-[9px] text-gray-400 mt-0.5">{cat.feedback}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Strengths */}
+                  {resumeScore!.strengths.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Strengths</p>
+                      <ul className="space-y-0.5">
+                        {resumeScore!.strengths.slice(0, 3).map((s, i) => (
+                          <li key={i} className="text-[11px] text-gray-600 flex items-start gap-1.5">
+                            <CheckCircle2 size={10} className="text-emerald-500 shrink-0 mt-0.5" />
+                            <span>{s}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Improvements */}
+                  {resumeScore!.improvements.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-1">Improvements</p>
+                      <ul className="space-y-0.5">
+                        {resumeScore!.improvements.slice(0, 3).map((s, i) => (
+                          <li key={i} className="text-[11px] text-gray-600 flex items-start gap-1.5">
+                            <AlertCircle size={10} className="text-amber-500 shrink-0 mt-0.5" />
+                            <span>{s}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={scoreResume}
+                    disabled={scoring}
+                    className="w-full flex items-center justify-center gap-1.5 text-[10px] font-semibold text-gray-500 hover:text-gray-700 bg-white border border-gray-200 hover:border-gray-300 px-2.5 py-1.5 rounded-lg transition-colors"
+                  >
+                    <RotateCcw size={10} /> Re-score
+                  </button>
+                </div>
+
+                {/* Prompt area */}
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="px-4 pt-3 pb-1 shrink-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Rewrite Prompt</p>
+                    <p className="text-[9px] text-gray-400 mt-0.5">Describe how you want the resume rewritten — style, focus areas, keywords, etc.</p>
+                  </div>
+                  <textarea
+                    value={prompt}
+                    onChange={e => setPrompt(e.target.value)}
+                    disabled={pageState === 'rewriting'}
+                    className="flex-1 resize-none px-4 py-2 text-xs text-gray-700 leading-relaxed outline-none bg-white disabled:opacity-60 font-mono border-t border-gray-100"
+                    placeholder="e.g., Rewrite this resume to emphasize cloud architecture skills. Add more quantified achievements. Make it ATS-friendly for a Senior DevOps Engineer role..."
+                    spellCheck={false}
+                  />
+                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
+                    <button
+                      onClick={rewriteResume}
+                      disabled={pageState === 'rewriting' || !prompt.trim()}
+                      className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm px-4 py-3 rounded-xl transition-colors shadow-sm"
+                    >
+                      {pageState === 'rewriting'
+                        ? <><LogoSpinner size={14} /> Rewriting...</>
+                        : <><Sparkles size={14} /> Rewrite Resume</>}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* ── COL 4: Rewritten Resume ────────────────────────────────────── */}
-        <div className="flex flex-col overflow-hidden bg-white border-l border-gray-200 min-h-0">
-          {!selectedProfile || (!selectedJob && !customJdMode) ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-6">
-              <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center">
-                <Sparkles size={24} className="text-blue-400" />
-              </div>
-              <div>
-                <p className="text-base font-bold text-gray-900">AI Resume Tailoring</p>
-                <p className="text-sm text-gray-400 mt-1 max-w-sm">Select a candidate and a job from the queue to generate a tailored resume.</p>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Header bar */}
-              <div className="relative flex items-center gap-2 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0">
-                <Sparkles size={13} className="text-blue-500 shrink-0" />
-                <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Rewritten Resume</span>
+        {/* ═══════════════ COLUMN 3: AI Rewritten Resume ═══════════════ */}
+        <div className="flex flex-col overflow-hidden bg-white min-h-0">
+          {/* Header */}
+          <div className="relative flex items-center gap-2 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
+            <Sparkles size={14} className="text-blue-500 shrink-0" />
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">AI Rewritten</span>
 
-                {/* Template picker */}
+            {/* Template picker */}
+            {pageState === 'done' && (
+              <>
                 <button
                   onClick={() => setShowTemplateDropdown(v => !v)}
                   className="ml-2 flex items-center gap-1 text-[10px] font-semibold text-gray-500 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md transition-colors"
@@ -1485,272 +1061,73 @@ Tailor the summary, skills, and experience bullets to match this role. Use stron
                   </>
                 )}
 
-                {matchScore && (
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border shrink-0 ml-auto ${scoreColor}`}>
-                    {matchScore.score}/100
-                  </span>
-                )}
+                <div className="flex items-center bg-gray-100 rounded-lg p-0.5 ml-auto">
+                  <button onClick={() => setCol3Mode('preview')} className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md transition-colors ${col3Mode === 'preview' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}>
+                    <Eye size={10} /> Preview
+                  </button>
+                  <button onClick={() => setCol3Mode('edit')} className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md transition-colors ${col3Mode === 'edit' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}>
+                    <Edit3 size={10} /> Edit
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
 
-                {rewriteState === 'done' && (
-                  <div className="flex items-center bg-gray-100 rounded-lg p-0.5 ml-2">
-                    <button onClick={() => setCol2Mode('preview')} className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md transition-colors ${col2Mode === 'preview' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}>
-                      <Eye size={10} /> Preview
-                    </button>
-                    <button onClick={() => setCol2Mode('edit')} className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md transition-colors ${col2Mode === 'edit' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}>
-                      <Edit3 size={10} /> Edit
-                    </button>
+          {/* Content area */}
+          {pageState !== 'done' ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-6">
+              {pageState === 'rewriting' ? (
+                <>
+                  <div className="flex justify-center gap-1.5 mb-2">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: `${i * .15}s` }} />
+                    ))}
+                  </div>
+                  <p className="text-sm font-bold text-gray-900">Rewriting Resume...</p>
+                  <p className="text-xs text-gray-400">Optimizing content based on your prompt</p>
+                </>
+              ) : (
+                <>
+                  <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center">
+                    <Sparkles size={24} className="text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-base font-bold text-gray-900">AI Rewritten Resume</p>
+                    <p className="text-sm text-gray-400 mt-1 max-w-sm">Score your resume and write a prompt to generate an AI-tailored version.</p>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-200 min-h-0">
+                {col3Mode === 'preview' ? (
+                  <ResumePreviewFrame html={resumeHtml} />
+                ) : (
+                  <div className="bg-white min-h-full">
+                    <ResumeEditor rw={rewritten} onChange={setRewritten} />
                   </div>
                 )}
               </div>
-
-              {/* Content area */}
-              {rewriteState === 'idle' ? (
-                customJdMode ? (
-                  <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Job Title</p>
-                        <input
-                          value={customJobTitle}
-                          onChange={e => setCustomJobTitle(e.target.value)}
-                          placeholder="e.g. Senior Java Developer"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                        />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Company / Client</p>
-                        <input
-                          value={customJobCompany}
-                          onChange={e => setCustomJobCompany(e.target.value)}
-                          placeholder="e.g. Acme Corp"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                        />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Job Description</p>
-                        <textarea
-                          value={customJdText}
-                          onChange={e => setCustomJdText(e.target.value)}
-                          placeholder="Paste the full job description here..."
-                          rows={10}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 placeholder-gray-400 leading-relaxed focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 resize-none font-mono"
-                        />
-                      </div>
-                    </div>
-                    <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
-                      <button
-                        onClick={startCustomJdRewrite}
-                        disabled={!customJobTitle.trim() || !customJdText.trim()}
-                        className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm px-5 py-3 rounded-xl transition-colors shadow-sm"
-                      >
-                        <Zap size={15} /> Generate Prompt & Rewrite
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 text-center">
-                    <div className="space-y-1.5">
-                      <p className="text-sm font-bold text-gray-900">Ready to analyze</p>
-                      <p className="text-xs text-gray-400 max-w-[220px] leading-relaxed">
-                        Generate a match score between <span className="font-semibold text-gray-600">{selectedProfile?.candidate_name}</span> and this job, then create a tailored rewrite.
-                      </p>
-                    </div>
-                    <button
-                      onClick={startMatchScore}
-                      className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm px-5 py-3 rounded-xl transition-colors shadow-sm"
-                    >
-                      <Zap size={15} /> Match Score & Create Prompt
-                    </button>
-                    {selectedJob && (
-                      <p className="text-[10px] text-gray-400">
-                        Job: <span className="font-semibold text-gray-600">{selectedJob.job_title} · {selectedJob.company}</span>
-                      </p>
-                    )}
-                  </div>
-                )
-              ) : rewriteState === 'scoring' ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center">
-                    <Zap size={20} className="text-amber-400 animate-pulse" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-900">Scoring Match...</p>
-                    <p className="text-xs text-gray-400 mt-1">Analyzing fit for <span className="font-semibold text-gray-600">{selectedJob?.job_title ?? customJobTitle ?? 'role'}</span></p>
-                  </div>
-                  <div className="flex gap-1.5">
-                    {[0, 1, 2].map(i => (<div key={i} className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: `${i * .15}s` }} />))}
-                  </div>
-                </div>
-              ) : rewriteState === 'ready' || rewriteState === 'rewriting' ? (
-                <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-                  {matchScore ? (
-                    <div className="px-5 pt-4 pb-3 border-b border-gray-100 shrink-0">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className={`text-2xl font-black tabular-nums leading-none ${matchScore.score >= 75 ? 'text-emerald-600' : matchScore.score >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
-                          {matchScore.score}<span className="text-sm font-bold text-gray-300">/100</span>
-                        </div>
-                        <p className="text-xs text-gray-500 leading-snug flex-1">{matchScore.summary}</p>
-                      </div>
-                      {matchScore.optimization_points.length > 0 && (
-                        <div className="space-y-2">
-                          {matchScore.optimization_points.slice(0, 3).map((point, i) => (
-                            <div key={i} className="flex items-start gap-2.5">
-                              <span className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black leading-none mt-0.5
-                                ${i === 0 ? 'bg-blue-100 text-blue-700' : i === 1 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                                {i + 1}
-                              </span>
-                              <p className="text-xs text-gray-700 leading-relaxed">{point}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="px-5 pt-3 pb-2 border-b border-gray-100 shrink-0 flex items-center gap-2 text-xs text-gray-400">
-                      <AlertCircle size={12} className="shrink-0" />
-                      Score unavailable — prompt below is pre-filled, edit and rewrite.
-                    </div>
-                  )}
-
-                  <div className="px-5 pt-3 pb-1 shrink-0">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">AI Prompt</p>
-                  </div>
-                  <textarea
-                    value={prompt}
-                    onChange={e => setPrompt(e.target.value)}
-                    disabled={rewriteState === 'rewriting'}
-                    className="flex-1 resize-none px-5 py-2 text-xs text-gray-600 leading-relaxed outline-none bg-white disabled:opacity-60 font-mono"
-                    placeholder="Describe how you want the resume rewritten..."
-                    spellCheck={false}
-                  />
-
-                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
-                    <button
-                      onClick={rewriteResume}
-                      disabled={rewriteState === 'rewriting'}
-                      className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-sm px-4 py-3 rounded-xl transition-colors shadow-sm"
-                    >
-                      {rewriteState === 'rewriting'
-                        ? <><LogoSpinner size={14} /> Rewriting...</>
-                        : <><Sparkles size={14} /> Rewrite Resume</>}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-                  <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-200">
-                    {col2Mode === 'preview' ? (
-                      <ResumePreviewFrame html={resumeHtml} />
-                    ) : (
-                      <div className="bg-white min-h-full">
-                        <ResumeEditor rw={rewritten} onChange={setRewritten} />
-                      </div>
-                    )}
-                  </div>
-                  <div className="shrink-0 px-4 py-3 border-t border-gray-100 flex items-center gap-2 bg-white">
-                    <button onClick={() => setRewriteState('ready')}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors">
-                      <RotateCcw size={11} /> Redo
-                    </button>
-                    <button onClick={downloadPdf}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-400 px-3 py-1.5 rounded-lg transition-colors">
-                      <Download size={11} /> Download PDF
-                    </button>
-                    <button onClick={saveToProfile} disabled={savingToProfile || savedToProfile}
-                      className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 ${savedToProfile ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
-                      {savingToProfile ? <><LogoSpinner size={11} /> Saving...</> : savedToProfile ? <><CheckCircle2 size={11} /> Saved</> : <><Save size={11} /> Save to Profile</>}
-                    </button>
-                  </div>
-                </div>
-              )}
+              <div className="shrink-0 px-4 py-3 border-t border-gray-100 flex items-center gap-2 bg-white">
+                <button onClick={() => setPageState('ready')}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors">
+                  <RotateCcw size={11} /> Redo
+                </button>
+                <button onClick={downloadPdf}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-400 px-3 py-1.5 rounded-lg transition-colors">
+                  <Download size={11} /> Download PDF
+                </button>
+                <button onClick={saveRewritten} disabled={saving || saved}
+                  className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 ${saved ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
+                  {saving ? <><LogoSpinner size={11} /> Saving...</> : saved ? <><CheckCircle2 size={11} /> Saved</> : <><Save size={11} /> Save</>}
+                </button>
+              </div>
             </>
           )}
         </div>
 
       </div>
-
-      {/* ── REWRITE HISTORY PANEL ──────────────────────────────────────────── */}
-      {showHistory && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowHistory(false)} />
-          <div className="relative ml-auto w-full max-w-2xl bg-white flex flex-col shadow-2xl h-full">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <Clock size={16} className="text-gray-500" />
-                <div>
-                  <p className="text-sm font-bold text-gray-900">Rewrite History</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{selectedProfile?.candidate_name}</p>
-                </div>
-              </div>
-              <button onClick={() => setShowHistory(false)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-                <X size={16} className="text-gray-500" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {loadingHistory ? (
-                <div className="flex items-center justify-center h-32 gap-2 text-gray-400 text-sm">
-                  <LogoSpinner size={16} /> Loading history...
-                </div>
-              ) : historyFiles.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-48 gap-3 text-center px-6">
-                  <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center">
-                    <FileText size={20} className="text-gray-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-700">No rewrites yet</p>
-                    <p className="text-xs text-gray-400 mt-1">Rewritten resumes saved to profile will appear here.</p>
-                  </div>
-                </div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-500 px-6 py-3">Date</th>
-                      <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-500 px-4 py-3">File</th>
-                      <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-500 px-4 py-3">Job / Company</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {historyFiles.map(file => {
-                      const date = file.created_at
-                        ? new Date(file.created_at as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                        : '';
-                      const nameParts = (file.file_name ?? '').replace(/_rewritten\.pdf$/, '').replace(/_rewritten\.html$/, '').split('_');
-                      const profileWordCount = (selectedProfile?.candidate_name ?? '').split(' ').length;
-                      const jobLabel = nameParts.slice(profileWordCount).join(' ') || file.file_name;
-                      return (
-                        <tr key={file.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-3.5 text-xs text-gray-500 whitespace-nowrap">{date}</td>
-                          <td className="px-4 py-3.5 text-xs text-gray-800 max-w-[180px]">
-                            <span className="truncate block" title={file.file_name ?? undefined}>{file.file_name}</span>
-                          </td>
-                          <td className="px-4 py-3.5 text-xs text-gray-600 max-w-[200px]">
-                            <span className="truncate block">{jobLabel}</span>
-                          </td>
-                          <td className="px-4 py-3.5 text-right">
-                            {file.file_url ? (
-                              <a href={file.file_url} target="_blank" rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-100 px-2.5 py-1 rounded-lg transition-colors">
-                                <Download size={11} /> Download
-                              </a>
-                            ) : (
-                              <span className="text-xs text-gray-300">No file</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <div className="shrink-0 px-6 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-400">
-              {historyFiles.length > 0 && `${historyFiles.length} rewrite${historyFiles.length > 1 ? 's' : ''} on record`}
-            </div>
-          </div>
-        </div>
-      )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
