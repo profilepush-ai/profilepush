@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  AtSign,
   Brain,
   Briefcase,
   Building2,
@@ -23,6 +24,7 @@ import {
   CheckSquare,
   Server,
   Sparkles,
+  TableProperties,
   GraduationCap,
   Flame,
   Workflow,
@@ -1717,7 +1719,7 @@ export default function PulsePage() {
                                       void activatePersona(persona);
                                     }}
                                     disabled={isActivating}
-                                    className={`rounded border px-2 py-0.5 text-[10px] font-semibold transition ${isWatching ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-blue-300 bg-blue-600 text-white hover:bg-blue-700'} ${isActivating ? 'opacity-70' : ''}`}
+                                    className={`rounded border px-2 py-0.5 text-[10px] font-semibold transition ${isWatching ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'} ${isActivating ? 'opacity-70' : ''}`}
                                   >
                                     {isActivating ? 'Loading' : isWatching ? 'Watching' : '+ Watch'}
                                   </button>
@@ -1795,7 +1797,7 @@ export default function PulsePage() {
                                       void activatePersona(persona);
                                     }}
                                     disabled={isActivating}
-                                    className={`rounded border px-2 py-0.5 text-[10px] font-semibold transition ${isWatching ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-blue-300 bg-blue-600 text-white hover:bg-blue-700'} ${isActivating ? 'opacity-70' : ''}`}
+                                    className={`rounded border px-2 py-0.5 text-[10px] font-semibold transition ${isWatching ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'} ${isActivating ? 'opacity-70' : ''}`}
                                   >
                                     {isActivating ? 'Loading' : isWatching ? 'Watching' : '+ Watch'}
                                   </button>
@@ -1896,22 +1898,22 @@ export default function PulsePage() {
                               <span>{lead.postedAgo}</span>
                             </div>
                             <div className="mt-2.5 border-t border-gray-100 pt-2">
-                              <div className="flex flex-wrap items-center gap-1.5">
+                              <div className="flex flex-wrap items-center justify-end gap-1.5">
                                 <button
                                   onClick={() => void handleOpenBreakdown(lead)}
                                   disabled={processingBreakdownLeadId === lead.id}
                                   className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  <Check size={11} />
+                                  <TableProperties size={11} />
                                   {processingBreakdownLeadId === lead.id ? 'Processing...' : 'Breakdown'}
                                 </button>
                                 <button
                                   onClick={() => void handleRevealContact(lead)}
                                   disabled={processingLeadId === lead.id}
-                                  className="inline-flex items-center gap-1.5 rounded border border-blue-300 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex items-center gap-1.5 rounded border border-blue-600 bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  <Eye size={11} />
-                                  {processingLeadId === lead.id ? 'Processing...' : 'Reveal Contact Details'}
+                                  <AtSign size={11} />
+                                  {processingLeadId === lead.id ? 'Processing...' : 'Reveal Email'}
                                 </button>
                               </div>
                             </div>
