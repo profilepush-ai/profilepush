@@ -46,6 +46,16 @@ type PulsePersona = {
   active_watchers: number;
   avatar_url: string | null;
   rank: number;
+  min_years_exp?: number | null;
+  max_years_exp?: number | null;
+  visa_status?: string | null;
+  employment_type?: string | null;
+  work_type?: string | null;
+  preferred_locations?: string | null;
+  min_rate_usd_per_hr?: number | null;
+  max_rate_usd_per_hr?: number | null;
+  priority_skills?: string | null;
+  relocation_open?: boolean | null;
 };
 
 type SocialLead = {
@@ -89,6 +99,16 @@ type FallbackRoleRow = {
   schedule_frequency: 'disabled' | 'hourly' | 'daily' | 'twice_daily' | 'weekly';
   avatar_url?: string | null;
   updated_at: string | null;
+  min_years_exp?: number | null;
+  max_years_exp?: number | null;
+  visa_status?: string | null;
+  employment_type?: string | null;
+  work_type?: string | null;
+  preferred_locations?: string | null;
+  min_rate_usd_per_hr?: number | null;
+  max_rate_usd_per_hr?: number | null;
+  priority_skills?: string | null;
+  relocation_open?: boolean | null;
 };
 
 type SocialJobRow = {
@@ -331,24 +351,27 @@ function getPersonaBucket(role: string) {
   };
 }
 
-function getPersonaDetailColumns(role: string) {
-  const suggestion = findSuggestionForRole(role);
+function getPersonaDetailColumns(persona: PulsePersona) {
+  const minYears = persona.min_years_exp;
+  const maxYears = persona.max_years_exp;
+  const minRate = persona.min_rate_usd_per_hr;
+  const maxRate = persona.max_rate_usd_per_hr;
 
-  const minRate = suggestion?.minRate;
-  const maxRate = suggestion?.maxRate;
   const rateRange = (minRate || maxRate)
     ? `$${minRate ?? '?'}-$${maxRate ?? '?'}`
     : '-';
 
   return {
-    experience: suggestion?.yearsExp ? `${suggestion.yearsExp} yrs` : '-',
-    visaStatus: suggestion?.visaStatus ?? '-',
-    employmentType: suggestion?.employmentType ?? '-',
-    workType: suggestion?.workType ?? '-',
-    location: suggestion?.locations ?? '-',
+    experience: (minYears != null && maxYears != null)
+      ? `${minYears}-${maxYears} yrs`
+      : '-',
+    visaStatus: persona.visa_status ?? '-',
+    employmentType: persona.employment_type ?? '-',
+    workType: persona.work_type ?? '-',
+    location: persona.preferred_locations ?? '-',
     rateRange,
-    relocation: suggestion?.relocationOpen ? 'Yes' : 'No',
-    skills: suggestion?.skills ?? '-',
+    relocation: persona.relocation_open ? 'Yes' : 'No',
+    skills: persona.priority_skills ?? '-',
   };
 }
 
@@ -415,10 +438,10 @@ function roleMatchesPersona(row: SocialJobRow, personaRole: string, personaSkill
   return skillHits >= 2;
 }
 
-function getPersonaSkillList(role: string) {
-  const suggestion = findSuggestionForRole(role);
-  if (!suggestion?.skills) return [];
-  return suggestion.skills.split(',').map((item) => item.trim()).filter(Boolean);
+function getPersonaSkillList(role: string, personaSkills?: string | null) {
+  const skillStr = personaSkills ?? findSuggestionForRole(role)?.skills;
+  if (!skillStr) return [];
+  return skillStr.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
 function buildSeedLeaderboard(): PulsePersona[] {
@@ -429,6 +452,16 @@ function buildSeedLeaderboard(): PulsePersona[] {
       active_watchers: 0,
       avatar_url: null,
       rank: idx + 1,
+      min_years_exp: item.minYearsExp,
+      max_years_exp: item.maxYearsExp,
+      visa_status: item.visaStatus,
+      employment_type: item.employmentType,
+      work_type: item.workType,
+      preferred_locations: item.locations,
+      min_rate_usd_per_hr: item.minRate,
+      max_rate_usd_per_hr: item.maxRate,
+      priority_skills: item.skills,
+      relocation_open: item.relocationOpen,
     }));
 }
 
@@ -439,6 +472,7 @@ function buildFallbackLeaderboardFromRoles(
   const avatarByRole = new Map<string, { url: string; updatedAt: number }>();
   const titleByKey = new Map<string, string>();
   const summaryByKey = new Map<string, string>();
+  const detailsByKey = new Map<string, Omit<FallbackRoleRow, 'target_role' | 'category' | 'is_active' | 'schedule_frequency' | 'avatar_url' | 'updated_at'>>();
 
   for (const row of rows ?? []) {
     const bucket = getPersonaBucket(row.target_role);
@@ -458,22 +492,66 @@ function buildFallbackLeaderboardFromRoles(
         avatarByRole.set(bucket.key, { url: avatar, updatedAt });
       }
     }
+
+    if (!detailsByKey.has(bucket.key) && (row.min_years_exp != null || row.visa_status != null || row.priority_skills != null)) {
+      detailsByKey.set(bucket.key, {
+        min_years_exp: row.min_years_exp,
+        max_years_exp: row.max_years_exp,
+        visa_status: row.visa_status,
+        employment_type: row.employment_type,
+        work_type: row.work_type,
+        preferred_locations: row.preferred_locations,
+        min_rate_usd_per_hr: row.min_rate_usd_per_hr,
+        max_rate_usd_per_hr: row.max_rate_usd_per_hr,
+        priority_skills: row.priority_skills,
+        relocation_open: row.relocation_open,
+      });
+    }
   }
 
-  const allRoleKeys = HOTLIST_AI_SUGGESTIONS.map((item) => normalize(item.title));
+  const seenKeys = new Set<string>();
+  const result: PulsePersona[] = [];
 
-  return Array.from(allRoleKeys)
-    .map((key) => {
-      const suggestion = HOTLIST_AI_SUGGESTIONS.find((item) => normalize(item.title) === key);
-      const title = titleByKey.get(key) ?? suggestion?.title ?? getPersonaDisplayTitle(key);
-      return {
-        target_role: title,
-        summary: summaryByKey.get(key) ?? PERSONA_SUMMARY_BY_ROLE.get(key) ?? suggestion?.summary ?? 'Profile-based social role matching and watcher analytics.',
-        active_watchers: counts.get(key) ?? 0,
-        avatar_url: avatarByRole.get(key)?.url ?? null,
-        rank: 0,
-      } satisfies PulsePersona;
-    })
+  for (const row of rows ?? []) {
+    const bucket = getPersonaBucket(row.target_role);
+    if (!bucket.key || seenKeys.has(bucket.key)) continue;
+    seenKeys.add(bucket.key);
+
+    const details = detailsByKey.get(bucket.key);
+    result.push({
+      target_role: bucket.title,
+      summary: summaryByKey.get(bucket.key) ?? PERSONA_SUMMARY_BY_ROLE.get(bucket.key) ?? bucket.summary,
+      active_watchers: counts.get(bucket.key) ?? 0,
+      avatar_url: avatarByRole.get(bucket.key)?.url ?? null,
+      rank: 0,
+      ...details,
+    });
+  }
+
+  for (const suggestion of HOTLIST_AI_SUGGESTIONS) {
+    const key = normalize(suggestion.title);
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    result.push({
+      target_role: suggestion.title,
+      summary: suggestion.summary,
+      active_watchers: 0,
+      avatar_url: null,
+      rank: 0,
+      min_years_exp: suggestion.minYearsExp,
+      max_years_exp: suggestion.maxYearsExp,
+      visa_status: suggestion.visaStatus,
+      employment_type: suggestion.employmentType,
+      work_type: suggestion.workType,
+      preferred_locations: suggestion.locations,
+      min_rate_usd_per_hr: suggestion.minRate,
+      max_rate_usd_per_hr: suggestion.maxRate,
+      priority_skills: suggestion.skills,
+      relocation_open: suggestion.relocationOpen,
+    });
+  }
+
+  return result
     .sort((a, b) => b.active_watchers - a.active_watchers || a.target_role.localeCompare(b.target_role))
     .map((item, idx) => ({ ...item, rank: idx + 1 }));
 }
@@ -487,7 +565,8 @@ function buildInsertPayload(accountId: string, targetRole: string, avatarUrl?: s
       account_id: accountId,
       target_role: suggestion.title,
       category,
-      years_exp: suggestion.yearsExp,
+      min_years_exp: suggestion.minYearsExp,
+      max_years_exp: suggestion.maxYearsExp,
       visa_status: suggestion.visaStatus,
       employment_type: suggestion.employmentType,
       work_type: suggestion.workType,
@@ -506,7 +585,8 @@ function buildInsertPayload(accountId: string, targetRole: string, avatarUrl?: s
     account_id: accountId,
     target_role: targetRole,
     category,
-    years_exp: null,
+    min_years_exp: null,
+    max_years_exp: null,
     visa_status: null,
     employment_type: null,
     work_type: null,
@@ -715,7 +795,7 @@ export default function PulsePage() {
 
       const { data: rolesData, error: rolesError } = await supabase
         .from('hotlist_ai_roles')
-        .select('target_role, is_active, schedule_frequency, avatar_url, updated_at');
+        .select('target_role, is_active, schedule_frequency, avatar_url, updated_at, min_years_exp, max_years_exp, visa_status, employment_type, work_type, preferred_locations, min_rate_usd_per_hr, max_rate_usd_per_hr, priority_skills, relocation_open');
 
       if (!rolesError) {
         const allRolesLeaderboard = buildFallbackLeaderboardFromRoles((rolesData ?? []) as FallbackRoleRow[]);
@@ -735,6 +815,16 @@ export default function PulsePage() {
             active_watchers: item.active_watchers,
             avatar_url: item.avatar_url || existing?.avatar_url || null,
             rank: 0,
+            min_years_exp: existing?.min_years_exp,
+            max_years_exp: existing?.max_years_exp,
+            visa_status: existing?.visa_status,
+            employment_type: existing?.employment_type,
+            work_type: existing?.work_type,
+            preferred_locations: existing?.preferred_locations,
+            min_rate_usd_per_hr: existing?.min_rate_usd_per_hr,
+            max_rate_usd_per_hr: existing?.max_rate_usd_per_hr,
+            priority_skills: existing?.priority_skills,
+            relocation_open: existing?.relocation_open,
           });
         }
 
@@ -747,7 +837,7 @@ export default function PulsePage() {
 
     const { data: rolesData, error: rolesError } = await supabase
       .from('hotlist_ai_roles')
-      .select('target_role, is_active, schedule_frequency, updated_at');
+      .select('target_role, is_active, schedule_frequency, updated_at, min_years_exp, max_years_exp, visa_status, employment_type, work_type, preferred_locations, min_rate_usd_per_hr, max_rate_usd_per_hr, priority_skills, relocation_open');
 
     if (!rolesError) {
       setLeaderboard(buildFallbackLeaderboardFromRoles((rolesData ?? []) as FallbackRoleRow[]));
@@ -829,7 +919,7 @@ export default function PulsePage() {
 
     for (const persona of sortedLeaderboard) {
       const roleKey = normalize(persona.target_role);
-      const skills = getPersonaSkillList(persona.target_role);
+      const skills = getPersonaSkillList(persona.target_role, persona.priority_skills);
       const companies = new Set<string>();
       const vendors = new Set<string>();
       const jobs = new Set<string>();
@@ -921,7 +1011,7 @@ export default function PulsePage() {
       }
     }
 
-    const skillList = getPersonaSkillList(persona.target_role);
+    const skillList = getPersonaSkillList(persona.target_role, persona.priority_skills);
 
     const dedupedRows = new Map<string, SocialJobRow>();
 
@@ -1052,7 +1142,7 @@ export default function PulsePage() {
       return;
     }
 
-    const skills = getPersonaSkillList(persona.target_role);
+    const skills = getPersonaSkillList(persona.target_role, persona.priority_skills);
 
     const { error: insertError } = await supabase.from('profiles').insert({
       account_id: account.id,
@@ -1538,7 +1628,7 @@ export default function PulsePage() {
                           const isActivating = activatingRole === persona.target_role;
                           const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
                           const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
-                          const details = getPersonaDetailColumns(persona.target_role);
+                          const details = getPersonaDetailColumns(persona);
 
                           return (
                             <tr
@@ -1616,7 +1706,7 @@ export default function PulsePage() {
                           const isActivating = activatingRole === persona.target_role;
                           const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
                           const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
-                          const details = getPersonaDetailColumns(persona.target_role);
+                          const details = getPersonaDetailColumns(persona);
 
                           return (
                             <tr

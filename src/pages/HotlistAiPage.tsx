@@ -13,6 +13,8 @@ interface HotlistRoleRow {
   target_role: string;
   category: string | null;
   years_exp: number | null;
+  min_years_exp: number | null;
+  max_years_exp: number | null;
   visa_status: string | null;
   employment_type: string | null;
   work_type: string | null;
@@ -40,7 +42,8 @@ interface HotlistMatchRow {
 
 interface RoleFormState {
   target_role: string;
-  years_exp: string;
+  min_years_exp: string;
+  max_years_exp: string;
   visa_status: string;
   employment_type: string;
   work_type: string;
@@ -55,7 +58,8 @@ interface RoleFormState {
 
 const EMPTY_FORM: RoleFormState = {
   target_role: '',
-  years_exp: '',
+  min_years_exp: '',
+  max_years_exp: '',
   visa_status: '',
   employment_type: '',
   work_type: '',
@@ -158,7 +162,9 @@ export default function HotlistAiPage() {
         account_id: account.id,
         target_role: suggestion.title,
         category: inferRoleCategoryId(suggestion.title, suggestion.summary),
-        years_exp: suggestion.yearsExp,
+        years_exp: suggestion.minYearsExp,
+        min_years_exp: suggestion.minYearsExp,
+        max_years_exp: suggestion.maxYearsExp,
         visa_status: suggestion.visaStatus,
         employment_type: suggestion.employmentType,
         work_type: suggestion.workType,
@@ -350,7 +356,7 @@ export default function HotlistAiPage() {
                       <div className="mt-3 space-y-2 text-sm text-slate-700">
                         <div className="flex items-start justify-between gap-2 rounded-lg bg-white px-2.5 py-2">
                           <span className="text-slate-500">Years exp</span>
-                          <span className="font-medium text-slate-900">{selectedRole.years_exp ?? '—'}</span>
+                          <span className="font-medium text-slate-900">{(selectedRole.min_years_exp != null && selectedRole.max_years_exp != null) ? `${selectedRole.min_years_exp}-${selectedRole.max_years_exp}` : selectedRole.years_exp ?? '—'}</span>
                         </div>
                         <div className="flex items-start justify-between gap-2 rounded-lg bg-white px-2.5 py-2">
                           <span className="text-slate-500">Visa</span>

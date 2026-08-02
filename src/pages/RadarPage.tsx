@@ -110,6 +110,8 @@ interface DemoRoleRow {
   account_id: string;
   target_role: string;
   years_exp: number | null;
+  min_years_exp: number | null;
+  max_years_exp: number | null;
   visa_status: string | null;
   employment_type: string | null;
   work_type: string | null;
@@ -800,7 +802,7 @@ export default function RadarPage() {
         target_role: selected.target_role ?? '',
         priority_skills: selected.priority_skills ?? '',
         core_skills: '',
-        years_experience: selected.years_exp != null ? String(selected.years_exp) : '',
+        years_experience: selected.min_years_exp != null ? String(selected.min_years_exp) : (selected.years_exp != null ? String(selected.years_exp) : ''),
         visa_status: selected.visa_status ?? '',
         work_authorization: selected.employment_type ?? '',
         work_type: selected.work_type ?? '',
@@ -1785,7 +1787,9 @@ export default function RadarPage() {
     const roleDescription = selectedDemoRole
       ? [
           `Target Role: ${selectedDemoRole.target_role || 'Not specified'}`,
-          selectedDemoRole.years_exp != null ? `Years Experience: ${selectedDemoRole.years_exp}` : null,
+          (selectedDemoRole.min_years_exp != null && selectedDemoRole.max_years_exp != null)
+            ? `Years Experience: ${selectedDemoRole.min_years_exp}-${selectedDemoRole.max_years_exp}`
+            : (selectedDemoRole.years_exp != null ? `Years Experience: ${selectedDemoRole.years_exp}` : null),
           selectedDemoRole.visa_status ? `Visa Status: ${selectedDemoRole.visa_status}` : null,
           selectedDemoRole.employment_type ? `Employment Type: ${selectedDemoRole.employment_type}` : null,
           selectedDemoRole.work_type ? `Work Type: ${selectedDemoRole.work_type}` : null,

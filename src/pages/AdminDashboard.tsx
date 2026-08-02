@@ -28,6 +28,8 @@ interface HotlistRoleRow {
   target_role: string;
   category: string | null;
   years_exp: number | null;
+  min_years_exp: number | null;
+  max_years_exp: number | null;
   visa_status: string | null;
   employment_type: string | null;
   work_type: string | null;
@@ -101,7 +103,8 @@ export default function AdminDashboard() {
   const [newRoleAccountId, setNewRoleAccountId] = useState('');
   const [newRoleTargetRole, setNewRoleTargetRole] = useState('');
   const [newRoleCategory, setNewRoleCategory] = useState('all');
-  const [newRoleYearsExp, setNewRoleYearsExp] = useState('');
+  const [newRoleMinYearsExp, setNewRoleMinYearsExp] = useState('');
+  const [newRoleMaxYearsExp, setNewRoleMaxYearsExp] = useState('');
   const [newRoleVisaStatus, setNewRoleVisaStatus] = useState('');
   const [newRoleEmploymentType, setNewRoleEmploymentType] = useState('');
   const [newRoleWorkType, setNewRoleWorkType] = useState('');
@@ -199,7 +202,8 @@ export default function AdminDashboard() {
   function resetNewRoleForm() {
     setNewRoleTargetRole('');
     setNewRoleCategory('all');
-    setNewRoleYearsExp('');
+    setNewRoleMinYearsExp('');
+    setNewRoleMaxYearsExp('');
     setNewRoleVisaStatus('');
     setNewRoleEmploymentType('');
     setNewRoleWorkType('');
@@ -239,7 +243,9 @@ export default function AdminDashboard() {
       account_id: accountId,
       target_role: newRoleTargetRole.trim(),
       category: newRoleCategory,
-      years_exp: toNumberOrNull(newRoleYearsExp),
+      years_exp: toNumberOrNull(newRoleMinYearsExp),
+      min_years_exp: toNumberOrNull(newRoleMinYearsExp),
+      max_years_exp: toNumberOrNull(newRoleMaxYearsExp),
       visa_status: newRoleVisaStatus.trim() || null,
       employment_type: newRoleEmploymentType.trim() || null,
       work_type: newRoleWorkType.trim() || null,
@@ -633,9 +639,15 @@ export default function AdminDashboard() {
                 ))}
               </select>
               <input
-                value={newRoleYearsExp}
-                onChange={(e) => setNewRoleYearsExp(e.target.value)}
-                placeholder="Years"
+                value={newRoleMinYearsExp}
+                onChange={(e) => setNewRoleMinYearsExp(e.target.value)}
+                placeholder="Min Yrs"
+                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+              />
+              <input
+                value={newRoleMaxYearsExp}
+                onChange={(e) => setNewRoleMaxYearsExp(e.target.value)}
+                placeholder="Max Yrs"
                 className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
               />
               <input
@@ -757,7 +769,7 @@ export default function AdminDashboard() {
                       <span className="rounded bg-gray-100 px-2 py-1 text-[11px] text-gray-700">{role.category || 'all'}</span>
                     </td>
                     <td className="px-3 py-2 min-w-[80px]">
-                      <span>{role.years_exp ?? '-'}</span>
+                      <span>{(role.min_years_exp != null && role.max_years_exp != null) ? `${role.min_years_exp}-${role.max_years_exp}` : role.years_exp ?? '-'}</span>
                     </td>
                     <td className="px-3 py-2 min-w-[120px]">
                       <span>{role.visa_status || '-'}</span>

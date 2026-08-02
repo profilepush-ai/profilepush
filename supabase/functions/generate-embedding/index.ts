@@ -153,7 +153,7 @@ async function processEmbeddingRequest(
     if (item.type === "role") {
       const { data: role } = await supabase
         .from("hotlist_ai_roles")
-        .select("target_role, category, years_exp, visa_status, employment_type, work_type, preferred_locations, min_rate_usd_per_hr, max_rate_usd_per_hr, relocation_open, priority_skills")
+        .select("target_role, category, min_years_exp, max_years_exp, visa_status, employment_type, work_type, preferred_locations, min_rate_usd_per_hr, max_rate_usd_per_hr, relocation_open, priority_skills")
         .eq("id", item.id)
         .maybeSingle();
 
@@ -264,7 +264,8 @@ function buildRoleText(role: Record<string, unknown>): string {
   if (role.target_role) parts.push(`Target Role: ${role.target_role}`);
   if (role.category) parts.push(`Category: ${role.category}`);
   if (role.priority_skills) parts.push(`Priority Skills: ${role.priority_skills}`);
-  if (role.years_exp != null) parts.push(`Experience: ${role.years_exp} years`);
+  if (role.min_years_exp != null && role.max_years_exp != null) parts.push(`Experience: ${role.min_years_exp}-${role.max_years_exp} years`);
+  else if (role.min_years_exp != null) parts.push(`Experience: ${role.min_years_exp}+ years`);
   if (role.visa_status) parts.push(`Visa Status: ${role.visa_status}`);
   if (role.employment_type) parts.push(`Employment Type: ${role.employment_type}`);
   if (role.work_type) parts.push(`Work Type: ${role.work_type}`);
