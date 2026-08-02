@@ -161,8 +161,24 @@ Routing source: src/App.tsx
   - Product roadmap interactions
 - /billing: BillingPage
   - Subscription and credit views
+- /pulse: PulsePage
+  - Two-column layout: leaderboard of talent profiles (left) and real-time social job feed with AI match scores (right)
+  - Category filter pills (Frontend, Backend, Data, Security, CRM, QA, Biz Dev, AI, ML, DevOps) and tech stack sub-filters
+  - Feed tabs: All, Breakdown (paid), Revealed, Queued
+  - Reveal functionality to expose poster contact info (name, email, phone)
+  - Time range selector (1h, 24h, 48h, 3 days)
+  - Data sources: leaderboard RPC, radar_social_matches, social_jobs
 - /tracker: TrackerPage
-  - Activity tracking and pipeline visibility
+  - Two-column layout: vendor/client contacts (left) and job history + submissions (right)
+  - CRUD for vendor and client contacts (name, contact person, email, phone, location)
+  - Submissions tracker with type badges (Client, Vendor, Candidate, C2C, W2, Direct)
+  - Date range filters (Today, Last 7/30 days, This month, Custom)
+  - Search/combobox filtering and CSV export
+  - Data sources: vendors, clients, social_jobs, submissions, profiles
+- /alerts: AlertsPage
+  - Coming Soon page for scheduled live job match alerts (paid feature)
+  - Join Waitlist button saves to feature_requests table
+  - Planned delivery window: 5 PM IST to 1 AM IST daily
 - /hotlist-ai: AIBenchMatch
   - AI bench matching
 - /job-match-ai: RadarPage
@@ -419,6 +435,8 @@ Protected routes:
 - /submission-queue
 - /support
 - /tracker
+- /pulse
+- /alerts
 
 ### 12.2 Frontend Environment Variables
 

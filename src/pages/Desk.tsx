@@ -1109,7 +1109,7 @@ export default function Dashboard() {
   // ── Loading state ─────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="h-screen flex flex-col bg-gray-50">
+      <div className="h-screen flex flex-col bg-gray-50 pb-14 sm:pb-0">
         <AppNav />
         <div className="flex-1 flex items-center justify-center"><LogoSpinner size={20} /></div>
       </div>
@@ -1118,13 +1118,13 @@ export default function Dashboard() {
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="h-screen flex flex-col bg-gray-50 font-sans overflow-hidden">
+    <div className="h-screen flex flex-col bg-gray-50 font-sans overflow-hidden pb-14 sm:pb-0">
       <AppNav />
 
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 min-h-0">
+      <div className="flex-1 overflow-y-auto p-2 sm:p-4 flex flex-col gap-3 min-h-0">
 
         {/* Filter bar */}
-        <div className="shrink-0 flex items-center gap-2.5">
+        <div className="shrink-0 flex flex-wrap items-center gap-2">
           <div className="flex-1 relative">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input type="text" placeholder="Search candidates or team members..."
@@ -1223,10 +1223,10 @@ export default function Dashboard() {
         </div>
 
         {/* ── Two-column layout: Widgets (left 60%) | Desk AI (right 40%) ── */}
-        <div className="flex-1 min-h-0 flex gap-3">
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-3">
 
           {/* ── Left: Widget Grid (2x2) ── */}
-          <div className="flex-1 min-w-0 grid grid-cols-2 grid-rows-2 gap-3 min-h-0">
+          <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 sm:grid-rows-2 gap-3 min-h-0">
             <WidgetCard
               title="Bench Pipeline" subtitle={`${totalBench} total · current state`}
               icon={<div className="w-7 h-7 bg-blue-100 rounded-xl flex items-center justify-center"><Users size={13} className="text-blue-600" /></div>}
@@ -1269,7 +1269,7 @@ export default function Dashboard() {
           </div>
 
           {/* ── Right: Desk AI Panel ── */}
-          <div className="w-[40%] shrink-0 bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col overflow-hidden">
+          <div className="w-full lg:w-[40%] shrink-0 bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-gray-100 bg-gradient-to-r from-amber-50 to-white shrink-0">
               <div className="w-7 h-7 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
@@ -1283,7 +1283,7 @@ export default function Dashboard() {
 
             {/* Quick Prompts — 3x2 grid */}
             <div className="shrink-0 px-4 py-3 border-b border-gray-100">
-              <div className="grid grid-cols-3 grid-rows-2 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 grid-rows-2 gap-2">
                 {QUICK_PROMPTS.map(({ icon: Icon, label, prompt }) => (
                   <button key={label} onClick={() => setAiPrompt(prompt)}
                     className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl border text-center transition-all ${

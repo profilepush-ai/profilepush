@@ -153,7 +153,7 @@ function PermCell({ val }: { val: boolean | 'own' }) {  if (val === true)  retur
 export default function AccountSettings() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, account, membership, subscription, refreshAccount } = useAuth();
+  const { user, account, membership, subscription, refreshAccount, signOut } = useAuth();
 
   const isOwner = membership?.role === 'owner';
   const isAdmin = membership?.role === 'admin';
@@ -519,16 +519,16 @@ export default function AccountSettings() {
   // Render
   // ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-14 sm:pb-0">
       <AppNav />
 
-      <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-8 flex gap-6 items-start">
+      <div className="flex-1 max-w-5xl mx-auto w-full px-3 sm:px-4 py-4 sm:py-8 flex flex-col sm:flex-row gap-4 sm:gap-6 items-start">
 
         {/* ── Sidebar ── */}
-        <aside className="w-52 shrink-0 sticky top-8">
+        <aside className="w-full sm:w-52 shrink-0 sm:sticky sm:top-8">
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-2">
             {/* User summary */}
-            <div className="flex items-center gap-2.5 px-3 py-3 mb-1 border-b border-gray-100">
+            <div className="hidden sm:flex items-center gap-2.5 px-3 py-3 mb-1 border-b border-gray-100">
               <div className={`w-8 h-8 rounded-full ${getAvatarColor(displayName)} flex items-center justify-center text-white text-sm font-bold shrink-0`}>
                 {initial}
               </div>
@@ -538,20 +538,20 @@ export default function AccountSettings() {
               </div>
             </div>
 
-            <nav className="space-y-0.5">
+            <nav className="flex sm:flex-col gap-1 sm:gap-0.5 overflow-x-auto hide-scrollbar">
               {NAV_ITEMS.map(item => {
                 const Icon = item.icon;
                 const active = section === item.id;
                 return (
                   <button key={item.id} onClick={() => setSection(item.id)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+                    className={`shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-medium transition-colors sm:w-full ${
                       active
                         ? item.danger ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-700'
                         : item.danger ? 'text-red-500 hover:bg-red-50' : 'text-gray-600 hover:bg-gray-100'
                     }`}>
                     <Icon size={13} className="shrink-0" />
-                    {item.label}
-                    {active && <ChevronRight size={10} className="ml-auto opacity-50" />}
+                    <span className="whitespace-nowrap">{item.label}</span>
+                    {active && <ChevronRight size={10} className="ml-auto opacity-50 hidden sm:block" />}
                   </button>
                 );
               })}
@@ -560,7 +560,7 @@ export default function AccountSettings() {
 
           {/* Account info pill */}
           {account && (
-            <div className="mt-3 px-3 py-2.5 bg-white rounded-xl border border-gray-200 text-[10px] text-gray-400 space-y-1">
+            <div className="hidden sm:block mt-3 px-3 py-2.5 bg-white rounded-xl border border-gray-200 text-[10px] text-gray-400 space-y-1">
               <div className="flex justify-between"><span>Plan</span><span className={`font-semibold px-1.5 py-0.5 rounded text-[9px] border ${planStyle}`}>{planLabel}</span></div>
               <div className="flex justify-between"><span>Members</span><span className="font-semibold text-gray-600">{activeMembers.length}</span></div>
               <div className="flex justify-between"><span>Your role</span><span className="font-semibold text-gray-600 capitalize">{membership?.role ?? '—'}</span></div>
@@ -641,6 +641,15 @@ export default function AccountSettings() {
                   })}
                 </div>
               </Card>
+
+              {/* Logout */}
+              <button
+                onClick={() => void signOut()}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <LogOut size={15} />
+                Logout
+              </button>
             </>
           )}
 

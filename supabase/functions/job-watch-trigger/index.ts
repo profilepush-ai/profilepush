@@ -36,8 +36,11 @@ Deno.serve(async (req: Request) => {
     const { data: schedules, error: schedErr } = await query;
 
     if (schedErr) throw new Error(`Failed to load schedules: ${schedErr.message}`);
+
+    // If no schedules exist, fall through to match all active hotlist_ai_roles directly
     if (!schedules || schedules.length === 0) {
-      return respond({ message: "No active schedules", triggered: 0 });
+      const result = await matchAllActiveRoles(supabase, supabaseUrl, serviceRoleKey);
+      return respond(result);
     }
 
     const now = new Date();
@@ -110,6 +113,7 @@ async function runFullPipeline(
   if (profileId) {
     targetProfileIds = [profileId];
   } else {
+    // Load profiles from hotlist table
     const { data: hotlistRows, error: hotlistErr } = await supabase
       .from("hotlist")
       .select("profile_id")
@@ -120,7 +124,29 @@ async function runFullPipeline(
       return { id: scheduleId, status: "error", jobs_matched: 0 };
     }
 
-    const candidateIds = Array.from(new Set((hotlistRows ?? []).map((row) => row.profile_id as string).filter(Boolean)));
+    const hotlistProfileIds = (hotlistRows ?? []).map((row) => row.profile_id as string).filter(Boolean);
+
+    // Also load profiles linked to active hotlist_ai_roles
+    const { data: aiRoles } = await supabase
+      .from("hotlist_ai_roles")
+      .select("target_role")
+      .eq("account_id", accountId)
+      .eq("is_active", true);
+
+    let aiRoleProfileIds: string[] = [];
+    if (aiRoles && aiRoles.length > 0) {
+      const roleNames = aiRoles.map((r) => r.target_role as string).filter(Boolean);
+      // Find matching profiles by target_role for this account
+      const { data: roleProfiles } = await supabase
+        .from("profiles")
+        .select("id, target_role")
+        .eq("account_id", accountId)
+        .in("target_role", roleNames);
+
+      aiRoleProfileIds = (roleProfiles ?? []).map((p) => p.id as string).filter(Boolean);
+    }
+
+    const candidateIds = Array.from(new Set([...hotlistProfileIds, ...aiRoleProfileIds]));
     targetProfileIds = candidateIds;
   }
 
@@ -273,6 +299,87 @@ function isScheduleDue(lastRun: Date | null, frequency: string, now: Date): bool
     case "weekly": return diffHours >= 168;
     default: return diffHours >= 24;
   }
+}
+
+async function matchAllActiveRoles(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<Record<string, unknown>> {
+  // Load all active hotlist_ai_roles across all accounts
+  const { data: roles, error: rolesErr } = await supabase
+    .from("hotlist_ai_roles")
+    .select("id, account_id, target_role")
+    .eq("is_active", true);
+
+  if (rolesErr || !roles || roles.length === 0) {
+    return { message: "No active hotlist_ai_roles found", triggered: 0 };
+  }
+
+  // Group roles by account_id
+  const rolesByAccount = new Map<string, Array<{ id: string; target_role: string }>>();
+  for (const role of roles) {
+    const acctId = role.account_id as string;
+    if (!acctId) continue;
+    if (!rolesByAccount.has(acctId)) rolesByAccount.set(acctId, []);
+    rolesByAccount.get(acctId)!.push({ id: role.id as string, target_role: role.target_role as string });
+  }
+
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${serviceRoleKey}`,
+  };
+
+  let totalMatched = 0;
+  let profilesProcessed = 0;
+
+  for (const [accountId, accountRoles] of rolesByAccount) {
+    const roleNames = accountRoles.map((r) => r.target_role).filter(Boolean);
+
+    // Find profiles matching these roles for this account
+    const { data: profileRows } = await supabase
+      .from("profiles")
+      .select("id, target_role")
+      .eq("account_id", accountId)
+      .in("target_role", roleNames);
+
+    if (!profileRows || profileRows.length === 0) continue;
+
+    for (const profile of profileRows) {
+      try {
+        const res = await fetch(`${supabaseUrl}/functions/v1/radar-match`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ profile_id: profile.id, account_id: accountId }),
+        });
+        const result = await res.json();
+        totalMatched += result.matched ?? 0;
+        profilesProcessed += 1;
+      } catch {
+        // Continue with other profiles
+      }
+    }
+
+    // Update last_run_at for processed roles
+    const processedRoleNames = new Set((profileRows ?? []).map((p) => p.target_role as string));
+    const processedRoleIds = accountRoles
+      .filter((r) => processedRoleNames.has(r.target_role))
+      .map((r) => r.id);
+
+    if (processedRoleIds.length > 0) {
+      await supabase
+        .from("hotlist_ai_roles")
+        .update({ last_run_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .in("id", processedRoleIds);
+    }
+  }
+
+  return {
+    message: "Direct role matching complete (no schedules)",
+    profiles_processed: profilesProcessed,
+    total_matched: totalMatched,
+    roles_found: roles.length,
+  };
 }
 
 function respond(data: Record<string, unknown>, status = 200) {

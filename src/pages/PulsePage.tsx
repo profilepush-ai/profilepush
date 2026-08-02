@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AtSign,
   Brain,
@@ -7,6 +7,7 @@ import {
   Building2,
   Cloud,
   Code2,
+  Copy,
   Database,
   BadgeCheck,
   Check,
@@ -74,6 +75,14 @@ type SocialLead = {
   matchScore: number | null;
   profileId: string | null;
   scoreBreakdown: Record<string, unknown> | null;
+  snippet: string;
+  employmentType: string;
+  seniority: string;
+  salaryRange: string;
+  skills: string[];
+  experienceYears: number | null;
+  visaTypes: string[];
+  hourlyRate: string;
 };
 
 type HotlistRoleRow = {
@@ -126,6 +135,14 @@ type SocialJobRow = {
   location: string;
   post_content: string;
   extracted_role_normalized: string | null;
+  employment_type: string;
+  seniority_level: string;
+  salary_range: string;
+  extracted_skills: string[] | null;
+  extracted_experience_years: number | null;
+  extracted_visa_types: string[] | null;
+  extracted_hourly_rate_min: number | null;
+  extracted_hourly_rate_max: number | null;
 };
 
 type RadarSocialMatchRow = {
@@ -166,7 +183,7 @@ type PulseLeadActionRow = {
 
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
-const TOP_PROFILES_PAGE_SIZE = 100;
+const TOP_PROFILES_PAGE_SIZE = 10;
 const MATCHES_PAGE_SIZE = 10;
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
@@ -364,7 +381,7 @@ function getPersonaBucket(role: string) {
   return {
     title: suggestion?.title ?? canonicalTitle,
     key: canonicalKey,
-    summary: suggestion?.summary ?? PERSONA_SUMMARY_BY_ROLE.get(canonicalKey) ?? 'Profile-based social role matching and watcher analytics.',
+    summary: suggestion?.summary ?? PERSONA_SUMMARY_BY_ROLE.get(canonicalKey) ?? '',
   };
 }
 
@@ -398,10 +415,10 @@ function formatAgo(dateIso: string) {
   const diffMs = Date.now() - ts;
   const mins = Math.max(0, Math.floor(diffMs / 60000));
   if (mins < 1) return 'just now';
-  if (mins < 60) return `Dropped ${mins} mins ago`;
+  if (mins < 60) return `${mins} mins ago`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `Dropped ${hrs} hrs ago`;
-  return `Dropped ${Math.floor(hrs / 24)} days ago`;
+  if (hrs < 24) return `${hrs} hrs ago`;
+  return `${Math.floor(hrs / 24)} days ago`;
 }
 
 function maskPosterName(name: string) {
@@ -428,13 +445,13 @@ function buildSocialLeadDedupKey(row: SocialJobRow) {
   const poster = dedupeText(row.posted_by_name);
   const email = dedupeText(row.poster_email);
   const phone = dedupeText(row.poster_phone);
-  const contentSnippet = dedupeText(row.post_content).slice(0, 180);
+  const location = dedupeText(row.location);
 
   if (email || phone) {
     return [title, company, email || '-', phone || '-'].join('|');
   }
 
-  return [title, company, poster || '-', contentSnippet || '-'].join('|');
+  return [title, company, location || '-', poster || '-'].join('|');
 }
 
 function roleMatchesPersona(row: SocialJobRow, personaRole: string, personaSkills: string[]) {
@@ -631,12 +648,21 @@ export default function PulsePage() {
   const [activePersona, setActivePersona] = useState<PulsePersona | null>(null);
   const [feed, setFeed] = useState<SocialLead[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
-  const [view, setView] = useState<'board' | 'feed'>('board');
-  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('48h');
+  const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [view, setView] = useState<'board' | 'feed'>((searchParams.get('view') === 'feed') ? 'feed' : 'board');
+
+  // Sync view state when URL search params change (e.g. bottom nav tap)
+  useEffect(() => {
+    setView(searchParams.get('view') === 'feed' ? 'feed' : 'board');
+  }, [searchParams]);
+
+  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('3d');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
-  const [visibleProfilesCount, setVisibleProfilesCount] = useState(TOP_PROFILES_PAGE_SIZE);
+  const [profilePage, setProfilePage] = useState(1);
+  const visibleProfilesCount = profilePage * TOP_PROFILES_PAGE_SIZE;
   const [profileStatsLoading, setProfileStatsLoading] = useState(false);
   const [profileStatsByRole, setProfileStatsByRole] = useState<Record<string, ProfileStats>>({});
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
@@ -707,7 +733,18 @@ export default function PulsePage() {
       : categoryFiltered;
     const query = normalize(profileSearchQuery);
     if (!query) return techFiltered;
-    return techFiltered.filter((item) => normalize(item.target_role).includes(query) || normalize(item.summary).includes(query));
+    return techFiltered.filter((item) => {
+      const d = getPersonaDetailColumns(item);
+      return normalize(item.target_role).includes(query)
+        || normalize(item.summary).includes(query)
+        || normalize(d.skills).includes(query)
+        || normalize(d.location).includes(query)
+        || normalize(d.visaStatus).includes(query)
+        || normalize(d.employmentType).includes(query)
+        || normalize(d.workType).includes(query)
+        || normalize(d.experience).includes(query)
+        || normalize(d.rateRange).includes(query);
+    });
   }, [jobsRankedLeaderboard, profileSearchQuery, selectedCategoryId, selectedTechStacks]);
 
   const orderedJobsRankedLeaderboard = useMemo(() => {
@@ -726,18 +763,19 @@ export default function PulsePage() {
   }, [filteredJobsRankedLeaderboard, watchingRoles]);
 
   const visibleJobsRankedLeaderboard = useMemo(
-    () => orderedJobsRankedLeaderboard.slice(0, visibleProfilesCount),
-    [orderedJobsRankedLeaderboard, visibleProfilesCount],
+    () => orderedJobsRankedLeaderboard.slice((profilePage - 1) * TOP_PROFILES_PAGE_SIZE, profilePage * TOP_PROFILES_PAGE_SIZE),
+    [orderedJobsRankedLeaderboard, profilePage],
   );
 
-  const canLoadMoreProfiles = visibleProfilesCount < orderedJobsRankedLeaderboard.length;
+  const totalProfilePages = Math.max(1, Math.ceil(orderedJobsRankedLeaderboard.length / TOP_PROFILES_PAGE_SIZE));
+  const canLoadMoreProfiles = profilePage < totalProfilePages;
 
   const matchesTabCounts = useMemo(() => ({
     all: feed.length,
     breakdown: feed.filter((lead) => breakdownChargedLeadIds.has(lead.id)).length,
     revealed: feed.filter((lead) => revealedLeadIds.has(lead.id)).length,
-    queued: feed.filter((lead) => queuedLeadIds.has(lead.id)).length,
-  }), [breakdownChargedLeadIds, feed, queuedLeadIds, revealedLeadIds]);
+    queued: feed.filter((lead) => !revealedLeadIds.has(lead.id) && !breakdownChargedLeadIds.has(lead.id)).length,
+  }), [breakdownChargedLeadIds, feed, revealedLeadIds]);
 
   const filteredFeed = useMemo(() => {
     if (selectedMatchesTab === 'breakdown') {
@@ -747,16 +785,16 @@ export default function PulsePage() {
       return feed.filter((lead) => revealedLeadIds.has(lead.id));
     }
     if (selectedMatchesTab === 'queued') {
-      return feed.filter((lead) => queuedLeadIds.has(lead.id));
+      return feed.filter((lead) => !revealedLeadIds.has(lead.id) && !breakdownChargedLeadIds.has(lead.id));
     }
     return feed;
-  }, [breakdownChargedLeadIds, feed, queuedLeadIds, revealedLeadIds, selectedMatchesTab]);
+  }, [breakdownChargedLeadIds, feed, revealedLeadIds, selectedMatchesTab]);
 
   const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
 
   useEffect(() => {
-    setVisibleProfilesCount(TOP_PROFILES_PAGE_SIZE);
+    setProfilePage(1);
   }, [profileRangeId, profileSearchQuery, selectedCategoryId]);
 
   const loadWatchingRoles = useCallback(async () => {
@@ -880,6 +918,14 @@ export default function PulsePage() {
   const loadInitial = useCallback(async () => {
     setLoading(true);
     await Promise.all([loadLeaderboard(), loadWatchingRoles(), loadLeadActionState()]);
+    // Fetch latest match timestamp
+    const { data: latestMatch } = await supabase
+      .from('radar_match_results')
+      .select('created_at')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestMatch?.created_at) setLastMatchAt(latestMatch.created_at);
     setLoading(false);
   }, [loadLeaderboard, loadWatchingRoles, loadLeadActionState]);
 
@@ -984,27 +1030,15 @@ export default function PulsePage() {
 
   const loadFeed = useCallback(async (persona: PulsePersona) => {
     setFeedLoading(true);
-    const threshold = new Date(Date.now() - FEED_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+    const threshold = new Date(Date.now() - selectedProfileRange.hours * 60 * 60 * 1000).toISOString();
 
-    let { data: matchData, error: matchError } = await supabase
+    const { data: matchData, error: matchError } = await supabase
       .from('radar_match_results')
       .select('id, profile_id, job_source, job_id, created_at, final_average_score, score_breakdown')
       .eq('job_source', 'social')
       .gte('created_at', threshold)
       .order('created_at', { ascending: false })
       .limit(400);
-
-    if (!matchError && (!matchData || matchData.length === 0)) {
-      const fallback = await supabase
-        .from('radar_match_results')
-        .select('id, profile_id, job_source, job_id, created_at, final_average_score, score_breakdown')
-        .eq('job_source', 'social')
-        .order('created_at', { ascending: false })
-        .limit(400);
-
-      matchData = fallback.data;
-      matchError = fallback.error;
-    }
 
     if (matchError) {
       showToast('Failed to load social matches', 'error');
@@ -1023,7 +1057,7 @@ export default function PulsePage() {
 
     const { data: socialData, error: socialError } = await supabase
       .from('social_jobs')
-      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized')
+      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max')
       .in('id', socialJobIds);
 
     if (socialError) {
@@ -1065,7 +1099,22 @@ export default function PulsePage() {
     }
 
     const filtered = Array.from(dedupedRows.values())
-      .filter((row) => newestMatchByJobId.has(row.id))
+      .filter((row) => newestMatchByJobId.has(row.id));
+
+    // Vector-based dedup pass using pgvector cosine similarity
+    const textDedupedIds = filtered.map((r) => r.id);
+    let vectorDedupedIds: Set<string> | null = null;
+    if (textDedupedIds.length > 1) {
+      const { data: uniqueIds } = await supabase.rpc('dedup_social_job_ids', {
+        job_ids: textDedupedIds,
+        similarity_threshold: 0.92,
+      });
+      if (uniqueIds && Array.isArray(uniqueIds)) {
+        vectorDedupedIds = new Set(uniqueIds as string[]);
+      }
+    }
+
+    const finalFiltered = (vectorDedupedIds ? filtered.filter((r) => vectorDedupedIds!.has(r.id)) : filtered)
       .sort((a, b) => {
         const aMatchTs = new Date(newestMatchByJobId.get(a.id)?.created_at ?? 0).getTime();
         const bMatchTs = new Date(newestMatchByJobId.get(b.id)?.created_at ?? 0).getTime();
@@ -1074,28 +1123,38 @@ export default function PulsePage() {
       .slice(0, 120)
       .map((row) => {
         const matchedAt = newestMatchByJobId.get(row.id)?.created_at;
-        const eventTime = row.posted_at || matchedAt || row.created_at;
+        const eventTime = matchedAt || row.posted_at || row.created_at;
         return {
           id: row.id,
-          title: row.job_title?.trim() || persona.target_role,
+          title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || persona.target_role || 'Untitled Job',
           location: row.location?.trim() || 'Location not specified',
-          company: row.company_name?.trim() || row.platform?.toUpperCase() || 'Social source',
+          company: row.company_name?.trim() || '',
           posterName: row.posted_by_name?.trim() || 'Vendor contact',
           posterEmail: row.poster_email?.trim() || '',
           posterPhone: row.poster_phone?.trim() || '',
           postedAt: eventTime,
           postedAgo: formatAgo(eventTime),
           platform: row.platform,
-          matchScore: newestMatchByJobId.get(row.id)?.final_average_score ?? null,
+          matchScore: (() => { const s = newestMatchByJobId.get(row.id)?.final_average_score; return (typeof s === 'number' && Number.isFinite(s) && s > 0) ? s : null; })(),
           profileId: newestMatchByJobId.get(row.id)?.profile_id ?? null,
           scoreBreakdown: newestMatchByJobId.get(row.id)?.score_breakdown ?? null,
+          snippet: row.post_content?.trim().slice(0, 150) || '',
+          employmentType: row.employment_type?.trim() || '',
+          seniority: row.seniority_level?.trim() || '',
+          salaryRange: row.salary_range?.trim() || '',
+          skills: Array.isArray(row.extracted_skills) ? row.extracted_skills : [],
+          experienceYears: row.extracted_experience_years ?? null,
+          visaTypes: Array.isArray(row.extracted_visa_types) ? row.extracted_visa_types : [],
+          hourlyRate: (row.extracted_hourly_rate_min || row.extracted_hourly_rate_max)
+            ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
+            : '',
         } as SocialLead;
       });
 
-    setFeed(filtered);
+    setFeed(finalFiltered);
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
     setFeedLoading(false);
-  }, [showToast]);
+  }, [selectedProfileRange.hours, showToast]);
 
   useEffect(() => {
     if (visibleJobsRankedLeaderboard.length === 0) {
@@ -1117,6 +1176,13 @@ export default function PulsePage() {
     setActivePersona(firstPersona);
     void loadFeed(firstPersona);
   }, [activePersona, loadFeed, visibleJobsRankedLeaderboard]);
+
+  // Re-fetch matches when date range changes
+  useEffect(() => {
+    if (activePersona) {
+      void loadFeed(activePersona);
+    }
+  }, [selectedProfileRange.hours]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ensureRoleActive = useCallback(async (persona: PulsePersona, avatarUrl?: string | null) => {
     if (!account?.id) throw new Error('No account found');
@@ -1222,6 +1288,13 @@ export default function PulsePage() {
     if (!activePersona) return;
     setRefreshing(true);
     await loadFeed(activePersona);
+    const { data: latestMatch } = await supabase
+      .from('radar_match_results')
+      .select('created_at')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestMatch?.created_at) setLastMatchAt(latestMatch.created_at);
     setRefreshing(false);
   }, [activePersona, loadFeed]);
 
@@ -1512,34 +1585,24 @@ export default function PulsePage() {
     }
   }, [breakdownChargedLeadIds, consumeCredits, persistLeadAction, showToast]);
 
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+
   return (
-    <div className="h-screen overflow-hidden bg-white text-gray-900 flex flex-col">
+    <div className="h-screen overflow-hidden bg-white text-gray-900 flex flex-col pb-14 sm:pb-0">
       <AppNav />
 
       <main className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full w-full overflow-hidden px-4 py-4 sm:px-6 lg:px-8">
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1 lg:hidden">
-            <button
-              onClick={() => setView('board')}
-              className={`flex-1 rounded-md px-2 py-1.5 text-xs font-semibold ${view === 'board' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'}`}
-            >
-              Profiles
-            </button>
-            <button
-              onClick={() => setView('feed')}
-              className={`flex-1 rounded-md px-2 py-1.5 text-xs font-semibold ${view === 'feed' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'}`}
-            >
-              Feed
-            </button>
-          </div>
+        <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2 sm:px-6 sm:py-4 lg:px-8">
+
 
           {loading ? (
             <div className="flex h-64 items-center justify-center rounded-xl border border-gray-200 bg-white">
               <LogoSpinner size={24} />
             </div>
           ) : (
-            <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
-              <div className="hide-scrollbar w-full overflow-x-auto">
+            <div className="flex h-full min-h-0 flex-col gap-2 sm:gap-3 overflow-hidden">
+              {/* Category Pills (horizontal scroll) */}
+              <div className="shrink-0 hide-scrollbar w-full overflow-x-auto">
                 <div className="flex w-max min-w-full gap-1.5">
                   {[...PROFILE_CATEGORY_TABS]
                     .map((category) => {
@@ -1579,7 +1642,7 @@ export default function PulsePage() {
               </div>
 
               {selectedCategoryId !== 'all' && CATEGORY_TECH_STACKS[selectedCategoryId] && (
-                <div className="hide-scrollbar w-full overflow-x-auto">
+                <div className="shrink-0 hide-scrollbar w-full overflow-x-auto">
                   <div className="flex w-max min-w-full gap-1.5 pb-1">
                     {CATEGORY_TECH_STACKS[selectedCategoryId].map((tech) => {
                       const isActive = selectedTechStacks.includes(tech);
@@ -1598,7 +1661,8 @@ export default function PulsePage() {
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-2">
+              {/* Search & Filter: collapsed pill on mobile, inline bar on desktop */}
+              <div className="hidden sm:flex flex-wrap items-center gap-2">
                   <div className="min-w-[240px] flex-1">
                     <label htmlFor="profile-search" className="sr-only">Search profiles</label>
                     <div className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
@@ -1624,6 +1688,9 @@ export default function PulsePage() {
                       <option key={option.id} value={option.id}>{option.label}</option>
                     ))}
                   </select>
+                  {lastMatchAt && (
+                    <span className="text-[10px] italic text-gray-400">Last refreshed {formatAgo(lastMatchAt)}</span>
+                  )}
                   <button
                     onClick={() => {
                       void loadProfileStats();
@@ -1639,202 +1706,131 @@ export default function PulsePage() {
                   </button>
                 </div>
 
-              <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,70%)_minmax(0,30%)]">
-              <section className={`${view === 'board' ? 'flex' : 'hidden'} min-h-0 flex-col overflow-hidden lg:flex`}>
-                <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-200">
-                  <div className="h-full overflow-y-auto overflow-x-hidden">
-                    <table className="w-full table-auto border-collapse text-left">
-                      <thead className="sticky top-0 z-10 bg-gray-50">
-                        <tr>
-                          <th title="Rank" aria-label="Rank" className="w-[4%] cursor-help border-b border-gray-200 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Rank" className="inline-flex items-center"><Hash size={11} /></span></th>
-                          <th title="Name" aria-label="Name" className="w-[18%] cursor-help border-b border-gray-200 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Name" className="inline-flex items-center"><User size={11} /></span></th>
-                          <th title="Years" aria-label="Years" className="w-[7%] cursor-help border-b border-gray-200 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Years" className="inline-flex items-center"><GraduationCap size={11} /></span></th>
-                          <th title="Rate (/hr)" aria-label="Rate (/hr)" className="w-[8%] cursor-help border-b border-gray-200 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Rate (/hr)" className="inline-flex items-center gap-1"><DollarSign size={11} /><span className="text-[9px] font-semibold normal-case tracking-normal text-gray-500">/hr</span></span></th>
-                          <th title="Visa / Employment / Work Type" aria-label="Visa / Employment / Work Type" className="w-[16%] cursor-help border-b border-gray-200 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Visa / Employment / Work Type" className="inline-flex items-center"><Check size={11} /></span></th>
-                          <th title="Location" aria-label="Location" className="w-[12%] cursor-help border-b border-gray-200 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Location" className="inline-flex items-center"><Building2 size={11} /></span></th>
-                          <th title="Skills" aria-label="Skills" className="w-[20%] cursor-help border-b border-gray-200 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Skills" className="inline-flex items-center"><Search size={11} /></span></th>
-                          <th title="Watchers" aria-label="Watchers" className="w-[5%] cursor-help border-b border-gray-200 px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Watchers" className="inline-flex items-center"><Eye size={11} /></span></th>
-                          <th title="Companies" aria-label="Companies" className="w-[5%] cursor-help border-b border-gray-200 px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Companies" className="inline-flex items-center"><Building2 size={11} /></span></th>
-                          <th title="Vendors" aria-label="Vendors" className="w-[5%] cursor-help border-b border-gray-200 px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Vendors" className="inline-flex items-center"><Users size={11} /></span></th>
-                          <th title="Jobs" aria-label="Jobs" className="w-[5%] cursor-help border-b border-gray-200 px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Jobs" className="inline-flex items-center"><Briefcase size={11} /></span></th>
-                          <th title="Actions" aria-label="Actions" className="w-[8%] cursor-help border-b border-gray-200 px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500"><span title="Actions" className="inline-flex items-center"><Wrench size={11} /></span></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {visibleJobsRankedLeaderboard.filter((persona) => watchingRoles.has(normalize(persona.target_role))).map((persona, index) => {
-                          const isWatching = true;
-                          const isActivating = activatingRole === persona.target_role;
-                          const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
-                          const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
-                          const details = getPersonaDetailColumns(persona);
+              {/* Mobile search/filter row */}
+              <div className="flex sm:hidden items-center gap-2">
+                <button
+                  onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
+                  className="flex-1 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-medium text-gray-600"
+                >
+                  <Search size={11} />
+                  {profileSearchQuery || 'Search & Filter'}
+                </button>
+                <select
+                  aria-label="Date range"
+                  value={profileRangeId}
+                  onChange={(e) => setProfileRangeId(e.target.value as ProfileRangeOption['id'])}
+                  className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium text-gray-600"
+                >
+                  {PROFILE_RANGE_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => {
+                    void loadProfileStats();
+                    void refreshFeed();
+                  }}
+                  disabled={profileStatsLoading || refreshing || feedLoading}
+                  className="rounded-full border border-gray-200 bg-gray-50 p-1.5 text-gray-600 disabled:opacity-50"
+                >
+                  <RefreshCw size={13} className={refreshing || profileStatsLoading ? 'animate-spin' : ''} />
+                </button>
+              </div>
+              {mobileSearchOpen && (
+                <div className="flex sm:hidden items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
+                  <Search size={12} className="text-gray-400" />
+                  <input
+                    type="text"
+                    autoFocus
+                    value={profileSearchQuery}
+                    onChange={(e) => setProfileSearchQuery(e.target.value)}
+                    placeholder="Search by role, skills, location, visa..."
+                    className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                  />
+                  <button onClick={() => { setProfileSearchQuery(''); setMobileSearchOpen(false); }} className="text-gray-400">
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
 
-                          return (
-                            <tr
-                              key={persona.target_role}
-                              onClick={() => void selectPersona(persona)}
-                              className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'} cursor-pointer hover:bg-blue-50/50 ${isSelected ? 'bg-blue-50' : ''}`}
-                            >
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-xs font-semibold text-gray-700 whitespace-nowrap">#{persona.rank}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded border border-gray-200 bg-white">
-                                    <img
-                                      src={persona.avatar_url || getDefaultPersonaAvatarUrl(persona.target_role)}
-                                      alt={persona.target_role}
-                                      className="h-full w-full object-cover"
-                                      onError={(e) => {
-                                        const img = e.currentTarget;
-                                        const roleFallback = getRoleFallbackAvatarUrl(persona.target_role);
-                                        if (img.dataset.fallbackApplied !== 'role') {
-                                          img.src = roleFallback;
-                                          img.dataset.fallbackApplied = 'role';
-                                          return;
-                                        }
-                                        if (img.dataset.fallbackApplied !== 'default') {
-                                          img.src = PROFESSIONAL_AVATAR_FALLBACK_URL;
-                                          img.dataset.fallbackApplied = 'default';
-                                        }
-                                      }}
-                                    />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-medium leading-tight text-gray-900 whitespace-normal break-words">{persona.target_role}</p>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-700 whitespace-nowrap">{details.experience}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-700 whitespace-nowrap">{details.rateRange}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-[10px] leading-tight text-gray-600 whitespace-normal break-words">{details.visaStatus} • {details.employmentType} • {details.workType}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-xs leading-tight text-gray-700 whitespace-normal break-words">{details.location}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-xs leading-tight text-gray-700 whitespace-normal break-words">{details.skills}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-center text-xs text-gray-700">{persona.active_watchers}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-center text-xs text-gray-700">{profileStatsLoading ? '...' : stats.uniqueCompanies}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-center text-xs text-gray-700">{profileStatsLoading ? '...' : stats.uniqueVendors}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-center text-xs text-gray-700">{profileStatsLoading ? '...' : stats.uniqueJobs}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-center">
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void activatePersona(persona);
-                                    }}
-                                    disabled={isActivating}
-                                    className={`rounded border px-2 py-0.5 text-[10px] font-semibold transition ${isWatching ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'} ${isActivating ? 'opacity-70' : ''}`}
-                                  >
-                                    {isActivating ? 'Loading' : isWatching ? 'Watching' : '+ Watch'}
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {visibleJobsRankedLeaderboard.some((persona) => watchingRoles.has(normalize(persona.target_role))) && visibleJobsRankedLeaderboard.some((persona) => !watchingRoles.has(normalize(persona.target_role))) && (
-                          <tr aria-hidden="true">
-                            <td colSpan={12} className="px-3 py-2">
-                              <div className="flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                                <span className="h-px flex-1 bg-gray-200" />
-                                <span>Top Profiles</span>
-                                <span className="h-px flex-1 bg-gray-200" />
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                        {visibleJobsRankedLeaderboard.filter((persona) => !watchingRoles.has(normalize(persona.target_role))).map((persona, index) => {
-                          const isWatching = false;
-                          const isActivating = activatingRole === persona.target_role;
-                          const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
-                          const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
-                          const details = getPersonaDetailColumns(persona);
+              <div className="grid min-h-0 flex-1 grid-cols-[200px_1fr] sm:grid-cols-[280px_1fr] gap-0 overflow-hidden border border-gray-200 rounded-lg">
+              <section className="flex min-h-0 flex-col overflow-hidden border-r border-gray-200">
+                <div className="shrink-0 h-[36px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
+                  <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
+                  <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{orderedJobsRankedLeaderboard.length}</span>
+                </div>
+                {/* Profile list */}
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <div className="divide-y divide-gray-100">
+                    {visibleJobsRankedLeaderboard.length === 0 && (
+                      <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
+                    )}
+                    {visibleJobsRankedLeaderboard.map((persona) => {
+                      const isWatching = watchingRoles.has(normalize(persona.target_role));
+                      const isActivating = activatingRole === persona.target_role;
+                      const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
+                      const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
+                      const details = getPersonaDetailColumns(persona);
 
-                          return (
-                            <tr
-                              key={persona.target_role}
-                              onClick={() => void selectPersona(persona)}
-                              className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'} cursor-pointer hover:bg-blue-50/50 ${isSelected ? 'bg-blue-50' : ''}`}
+                      return (
+                        <div
+                          key={persona.target_role}
+                          onClick={() => void selectPersona(persona)}
+                          className={`px-3 py-2.5 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                        >
+                          <div className="flex items-center justify-between gap-1.5">
+                            <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                          </div>
+                          {details.experience !== '-' && (
+                            <div className="mt-0.5 text-[10px] text-gray-500">{details.experience} exp</div>
+                          )}
+                          {details.location !== '-' && (
+                            <div className="mt-0.5 text-[10px] text-gray-500 truncate">{details.location}</div>
+                          )}
+                          <div className="mt-0.5 text-[10px] text-gray-500">{details.rateRange}</div>
+                          {details.visaStatus !== '-' && (
+                            <div className="mt-0.5 text-[10px] text-gray-400">{details.visaStatus}</div>
+                          )}
+                          <div className="mt-1 flex items-center justify-end gap-1.5">
+                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
+                              disabled={isActivating}
+                              className={`rounded-full px-2 py-0.5 text-[9px] font-semibold transition ${isWatching ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}
                             >
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-xs font-semibold text-gray-700 whitespace-nowrap">#{persona.rank}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded border border-gray-200 bg-white">
-                                    <img
-                                      src={persona.avatar_url || getDefaultPersonaAvatarUrl(persona.target_role)}
-                                      alt={persona.target_role}
-                                      className="h-full w-full object-cover"
-                                      onError={(e) => {
-                                        const img = e.currentTarget;
-                                        const roleFallback = getRoleFallbackAvatarUrl(persona.target_role);
-                                        if (img.dataset.fallbackApplied !== 'role') {
-                                          img.src = roleFallback;
-                                          img.dataset.fallbackApplied = 'role';
-                                          return;
-                                        }
-                                        if (img.dataset.fallbackApplied !== 'default') {
-                                          img.src = PROFESSIONAL_AVATAR_FALLBACK_URL;
-                                          img.dataset.fallbackApplied = 'default';
-                                        }
-                                      }}
-                                    />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-medium leading-tight text-gray-900 whitespace-normal break-words">{persona.target_role}</p>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-700 whitespace-nowrap">{details.experience}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-xs text-gray-700 whitespace-nowrap">{details.rateRange}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-[10px] leading-tight text-gray-600 whitespace-normal break-words">{details.visaStatus} • {details.employmentType} • {details.workType}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-xs leading-tight text-gray-700 whitespace-normal break-words">{details.location}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-xs leading-tight text-gray-700 whitespace-normal break-words">{details.skills}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-center text-xs text-gray-700">{persona.active_watchers}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-center text-xs text-gray-700">{profileStatsLoading ? '...' : stats.uniqueCompanies}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-center text-xs text-gray-700">{profileStatsLoading ? '...' : stats.uniqueVendors}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-center text-xs text-gray-700">{profileStatsLoading ? '...' : stats.uniqueJobs}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-center">
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void activatePersona(persona);
-                                    }}
-                                    disabled={isActivating}
-                                    className={`rounded border px-2 py-0.5 text-[10px] font-semibold transition ${isWatching ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'} ${isActivating ? 'opacity-70' : ''}`}
-                                  >
-                                    {isActivating ? 'Loading' : isWatching ? 'Watching' : '+ Watch'}
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {visibleJobsRankedLeaderboard.length === 0 && (
-                          <tr>
-                            <td colSpan={12} className="px-3 py-8 text-center text-xs text-gray-500">
-                              No profiles found for this time range.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                              {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-
-                {canLoadMoreProfiles && (
-                  <div className="mt-2 flex items-center justify-between gap-2 border-t border-gray-100 pt-2">
-                    <p className="text-[11px] text-gray-500">
-                      Showing top {visibleJobsRankedLeaderboard.length} of {filteredJobsRankedLeaderboard.length} profiles by jobs.
-                    </p>
+                <div className="shrink-0 flex items-center justify-between gap-2 border-t border-gray-200 bg-white px-2 py-1.5">
+                  <p className="text-[10px] text-gray-500">
+                    {profilePage}/{totalProfilePages}
+                  </p>
+                  <div className="flex items-center gap-1">
                     <button
-                      onClick={() => setVisibleProfilesCount((prev) => prev + TOP_PROFILES_PAGE_SIZE)}
-                      className="rounded border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+                      onClick={() => setProfilePage((p) => Math.max(1, p - 1))}
+                      disabled={profilePage <= 1}
+                      className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                     >
-                      Load more
+                      ‹
+                    </button>
+                    <button
+                      onClick={() => setProfilePage((p) => Math.min(totalProfilePages, p + 1))}
+                      disabled={profilePage >= totalProfilePages}
+                      className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                    >
+                      ›
                     </button>
                   </div>
-                )}
+                </div>
               </section>
 
-              <section className={`${view === 'feed' ? 'flex' : 'hidden'} min-h-0 flex-col overflow-hidden lg:flex`}>
-                <div className="mb-2 flex items-center gap-1.5 border-b border-gray-200">
+              <section className="flex min-h-0 flex-col overflow-hidden">
+                <div className="shrink-0 h-[36px] flex items-center gap-1.5 px-3 border-b border-gray-200 bg-white overflow-x-auto hide-scrollbar">
                   {([
                     { id: 'all', label: 'All' },
                     { id: 'breakdown', label: 'Breakdown' },
@@ -1843,91 +1839,92 @@ export default function PulsePage() {
                   ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
                     const isSelected = selectedMatchesTab === tab.id;
                     const count = matchesTabCounts[tab.id];
-
                     return (
                       <button
                         key={tab.id}
                         type="button"
                         onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                        className={`relative inline-flex items-center gap-1 px-3 pb-2 pt-1 text-[11px] font-medium transition ${isSelected ? 'text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
+                        className={`inline-flex items-center gap-0.5 px-2 py-1 rounded text-[10px] font-medium transition ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
                       >
                         <span>{tab.label}</span>
-                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{count}</span>
-                        {isSelected && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-blue-600" />}
+                        <span className={`text-[8px] font-bold ${isSelected ? 'text-blue-600' : 'text-gray-400'}`}>{count}</span>
                       </button>
                     );
                   })}
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-hidden">
+                <div className="min-h-0 flex-1 overflow-y-auto">
                   {feedLoading ? (
-                    <div className="flex h-full items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+                    <div className="flex h-full items-center justify-center">
                       <LogoSpinner size={20} />
                     </div>
                   ) : filteredFeed.length === 0 ? (
-                    <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
+                    <div className="flex h-full items-center justify-center p-4 text-center">
                       <div>
-                        <Radar size={18} className="mx-auto text-gray-400" />
-                        <p className="mt-2 text-sm font-medium text-gray-700">No matches in this tab yet</p>
-                        <p className="mt-1 text-[11px] text-gray-500">Switch tabs or refresh to pull matching social jobs.</p>
+                        <Radar size={16} className="mx-auto text-gray-300" />
+                        <p className="mt-1.5 text-[11px] text-gray-500">No matches yet</p>
                       </div>
                     </div>
                   ) : (
-                    <div className="h-full overflow-y-auto overflow-x-hidden pr-1">
-                      <div className="space-y-2">
-                        {visibleFeed.map((lead) => (
-                          <div
-                            key={lead.id}
-                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-gray-900">{lead.title}</p>
-                                <p className="mt-0.5 text-[12px] text-gray-600">{lead.company} • {lead.location}</p>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                  {lead.matchScore !== null ? `${Math.round(lead.matchScore)}%` : 'N/A'}
-                                </span>
-                                <span className="rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">{lead.platform}</span>
-                              </div>
-                            </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500">
-                              <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
-                              <span>•</span>
-                              <span>{lead.postedAgo}</span>
-                            </div>
-                            <div className="mt-2.5 border-t border-gray-100 pt-2">
-                              <div className="flex flex-wrap items-center justify-end gap-1.5">
-                                <button
-                                  onClick={() => void handleOpenBreakdown(lead)}
-                                  disabled={processingBreakdownLeadId === lead.id}
-                                  className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  <TableProperties size={11} />
-                                  {processingBreakdownLeadId === lead.id ? 'Processing...' : 'Breakdown'}
-                                </button>
-                                <button
-                                  onClick={() => void handleRevealContact(lead)}
-                                  disabled={processingLeadId === lead.id}
-                                  className="inline-flex items-center gap-1.5 rounded border border-blue-600 bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  <AtSign size={11} />
-                                  {processingLeadId === lead.id ? 'Processing...' : 'Reveal Email'}
-                                </button>
-                              </div>
+                    <div className="divide-y divide-gray-100">
+                      {visibleFeed.map((lead) => (
+                        <div key={lead.id} className="px-3 py-2.5">
+                          <div className="flex items-center justify-between gap-1.5">
+                            <p className="text-[11px] font-semibold text-gray-900 leading-snug">{lead.title || 'Job Opportunity'}</p>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {(lead.matchScore !== null && Number.isFinite(lead.matchScore) && lead.matchScore > 0) && (
+                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{Math.round(lead.matchScore)}%</span>
+                              )}
+                              <span className="text-[9px] font-bold uppercase text-gray-400">{lead.platform}</span>
                             </div>
                           </div>
-                        ))}
-                        {canLoadMoreMatches && (
+                          {([lead.company, lead.location].filter(Boolean).length > 0) && (
+                            <div className="mt-0.5 text-[10px] text-gray-600">{[lead.company, lead.location].filter(Boolean).join(' • ')}</div>
+                          )}
+                          <div className="mt-0.5 text-[10px] text-gray-500">
+                            <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
+                            <span> • </span>
+                            <span>{lead.postedAgo}</span>
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <button
+                              onClick={() => void handleOpenBreakdown(lead)}
+                              disabled={processingBreakdownLeadId === lead.id}
+                              className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'border-gray-200 text-gray-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                            >
+                              {breakdownChargedLeadIds.has(lead.id) && <Check size={9} className="text-emerald-600" />}
+                              {processingBreakdownLeadId === lead.id ? '...' : 'Breakdown'}
+                            </button>
+                            {revealedLeadIds.has(lead.id) ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
+                                className="inline-flex items-center gap-1 rounded border border-gray-200 bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500"
+                              >
+                                <Copy size={9} /> Email <AtSign size={9} />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => void handleRevealContact(lead)}
+                                disabled={processingLeadId === lead.id}
+                                className="inline-flex items-center gap-1 rounded border border-blue-600 bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                              >
+                                <AtSign size={9} />
+                                {processingLeadId === lead.id ? '...' : 'Reveal'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {canLoadMoreMatches && (
+                        <div className="px-3 py-2">
                           <button
                             onClick={() => setVisibleMatchesCount((prev) => prev + MATCHES_PAGE_SIZE)}
-                            className="mt-2 w-full rounded-lg border border-gray-300 bg-white py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                            className="w-full rounded border border-gray-300 bg-white py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-50"
                           >
-                            Load More ({filteredFeed.length - visibleMatchesCount} remaining)
+                            Load More ({filteredFeed.length - visibleMatchesCount})
                           </button>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1939,16 +1936,23 @@ export default function PulsePage() {
       </main>
 
       {selectedLead && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/25 p-3">
-          <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-3 shadow-xl">
-            <div className="mb-2 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{selectedLead.company}</p>
-                <p className="text-[11px] text-gray-500">{revealedLeadIds.has(selectedLead.id) ? selectedLead.posterName : 'Posted by hidden'} • {selectedLead.postedAgo}</p>
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/25 sm:p-3" onClick={() => setSelectedLead(null)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-lg rounded-t-2xl sm:rounded-xl border border-gray-200 bg-white p-4 sm:p-3 shadow-xl animate-[slideUp_0.2s_ease-out] sm:animate-none max-h-[80vh] overflow-y-auto"
+          >
+            {/* Drag handle (mobile) */}
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-300 sm:hidden" />
+
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-900">{selectedLead.title}</p>
+                {selectedLead.company && <p className="text-[12px] text-gray-600">{[selectedLead.company, selectedLead.location].filter(Boolean).join(' • ')}</p>}
+                <p className="mt-0.5 text-[11px] text-gray-500">{revealedLeadIds.has(selectedLead.id) ? selectedLead.posterName : 'Posted by hidden'}{selectedLead.postedAgo ? ` • ${selectedLead.postedAgo}` : ''}</p>
               </div>
               <button
                 onClick={() => setSelectedLead(null)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
                 aria-label="Close"
               >
                 <X size={14} />
@@ -1956,7 +1960,7 @@ export default function PulsePage() {
             </div>
 
             {showBreakdown && (
-              <div className="mb-2 overflow-hidden rounded-md border border-gray-200">
+              <div className="mb-3 overflow-hidden rounded-md border border-gray-200">
                 {(() => {
                   const breakdownItems = buildScoreBreakdownDisplayItems(
                     selectedLead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
@@ -1996,6 +2000,7 @@ export default function PulsePage() {
               </div>
             )}
 
+            {/* Action buttons — thumb-zone friendly on mobile */}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <button
                 onClick={() => {
@@ -2003,7 +2008,7 @@ export default function PulsePage() {
                   navigate(`/profile-details/${selectedLead.profileId}`);
                 }}
                 disabled={!selectedLead.profileId}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-3 sm:py-2.5 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500"
               >
                 Visit Profile
               </button>
@@ -2011,17 +2016,28 @@ export default function PulsePage() {
               <button
                 onClick={() => void copyText(selectedLead.posterEmail, 'Vendor email')}
                 disabled={!revealedLeadIds.has(selectedLead.id) || !selectedLead.posterEmail}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-300 bg-blue-600 px-3 py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-300 bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
               >
                 <Mail size={14} />
                 Copy Email
               </button>
 
+              {/* Mobile: mailto launcher */}
+              {revealedLeadIds.has(selectedLead.id) && selectedLead.posterEmail && (
+                <a
+                  href={`mailto:${selectedLead.posterEmail}?subject=${encodeURIComponent(selectedLead.title + ' - ProfilePush')}&body=${encodeURIComponent(`Hi ${selectedLead.posterName},\n\nI saw your posting for "${selectedLead.title}" and would like to discuss a potential candidate match.\n\nBest regards`)}`}
+                  className="inline-flex sm:hidden items-center justify-center gap-2 rounded-md border border-indigo-300 bg-indigo-600 px-3 py-3 text-xs font-semibold text-white"
+                >
+                  <Sparkles size={14} />
+                  Launch Mail App
+                </a>
+              )}
+
               {selectedLead.posterPhone && (
                 <button
                   onClick={() => void copyText(selectedLead.posterPhone, 'WhatsApp number')}
                   disabled={!revealedLeadIds.has(selectedLead.id)}
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500"
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-3 sm:py-2.5 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500"
                 >
                   <Phone size={14} />
                   Copy Phone

@@ -4,7 +4,7 @@ import {
   Users, Bookmark, ChevronDown, LogOut, Settings,
   Building2, LifeBuoy, Map, CreditCard, AlertTriangle, PenLine, FileText,
   Bell, BellRing, Check, ArrowRight, X,
-  Activity,
+  Activity, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from './Logo';
@@ -13,9 +13,9 @@ import type { AppNotification, NotificationType } from '../lib/notifications';
 import { NOTIFICATION_TYPES } from '../lib/notifications';
 
 const navItems = [
-  { path: '/pulse',          label: 'Pulse',          icon: Activity },
-  { path: '/tracker',       label: 'Tracker',        icon: FileText },
-  { path: '/resume-ai',     label: 'Resume AI',      icon: PenLine },
+  { path: '/pulse',          label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
+  { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
+  { path: '/resume-ai',     label: 'Resume AI',      mobileLabel: 'AI',      icon: PenLine,   hideOnMobile: true },
 ];
 
 function CreditsChip({ balance }: { balance: number }) {
@@ -257,33 +257,55 @@ export default function AppNav() {
     : user?.email?.[0]?.toUpperCase() ?? '?';
 
   return (
-    <header className="h-10 bg-white border-b border-gray-200 flex items-center px-4 gap-6 shrink-0 z-50">
-      <Link to="/" className="flex items-center shrink-0">
-        <Logo size="sm" />
-      </Link>
+    <>
+    <header className="h-10 bg-white border-b border-gray-200 flex items-center px-2 sm:px-4 gap-2 sm:gap-6 shrink-0 z-50">
+      {user ? (
+        <span className="flex items-center shrink-0">
+          <Logo size="sm" />
+        </span>
+      ) : (
+        <Link to="/" className="flex items-center shrink-0">
+          <Logo size="sm" />
+        </Link>
+      )}
 
-      <nav className="flex items-center gap-1 flex-1">
-        {navItems.map(({ path, label, icon: Icon }) => {
+      {/* Mobile: credits chip next to logo */}
+      {user && account != null && (
+        <span className="sm:hidden ml-auto">
+          <CreditsChip balance={account.credits_balance} />
+        </span>
+      )}
+
+      <nav className="hidden sm:flex items-center gap-1 flex-1">
+        {navItems.map(({ path, label, mobileLabel, icon: Icon, hideOnMobile }) => {
           const active = location.pathname === path || location.pathname.startsWith(path + '/');
           return (
             <Link
               key={path}
               to={path}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${hideOnMobile ? 'hidden sm:flex' : ''} ${
                 active ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}
             >
               <Icon size={12} />
-              {label}
+              <span className="hidden sm:inline">{label}</span>
+              {!hideOnMobile && <span className="sm:hidden">{mobileLabel}</span>}
             </Link>
           );
         })}
 
-        <span className="w-px h-4 bg-gray-200 mx-1" />
+        {/* Credits chip shown inline on mobile */}
+        {user && account != null && (
+          <span className="sm:hidden flex items-center">
+            <CreditsChip balance={account.credits_balance} />
+          </span>
+        )}
+
+        <span className="hidden sm:block w-px h-4 bg-gray-200 mx-1" />
 
         <Link
           to="/support"
-          className={`flex items-center px-3 py-1 rounded text-xs font-medium transition-colors ${
+          className={`hidden sm:flex items-center px-3 py-1 rounded text-xs font-medium transition-colors ${
             location.pathname === '/support' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
           }`}
         >
@@ -292,7 +314,7 @@ export default function AppNav() {
 
         <Link
           to="/roadmap"
-          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+          className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
             location.pathname === '/roadmap' ? 'bg-amber-50 text-amber-700' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
           }`}
           title="Roadmap"
@@ -305,14 +327,18 @@ export default function AppNav() {
       {user && (
         <div className="flex items-center gap-2 shrink-0">
           {account != null && (
-            <CreditsChip balance={account.credits_balance} />
+            <span className="hidden sm:block">
+              <CreditsChip balance={account.credits_balance} />
+            </span>
           )}
 
           {/* Notification bell */}
-          <NotificationBell userId={user.id} accountId={account?.id ?? null} />
+          <span className="hidden sm:block">
+            <NotificationBell userId={user.id} accountId={account?.id ?? null} />
+          </span>
 
           {/* Profile avatar menu */}
-          <div className="relative" ref={menuRef}>
+          <div className="hidden sm:block relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(v => !v)}
               className="flex items-center gap-1 pl-1 pr-1 py-1 rounded-lg hover:bg-gray-100 transition-colors group"
@@ -373,5 +399,49 @@ export default function AppNav() {
         </div>
       )}
     </header>
+
+      {/* Mobile Bottom Navigation */}
+      {user && (
+        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
+          <Link
+            to="/pulse"
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <Activity size={18} />
+            <span>Pulse</span>
+          </Link>
+          <Link
+            to="/tracker"
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/tracker' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <ShieldCheck size={18} />
+            <span>Tracker</span>
+          </Link>
+          <Link
+            to="/alerts"
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/alerts' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <Bell size={18} />
+            <span>Alerts</span>
+          </Link>
+          <Link
+            to="/billing"
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/billing' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <CreditCard size={18} />
+            <span>Billing</span>
+          </Link>
+          <Link
+            to="/account"
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/account' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white">
+              {initials}
+            </div>
+            <span>Profile</span>
+          </Link>
+        </nav>
+      )}
+    </>
   );
 }

@@ -529,13 +529,13 @@ export default function BillingPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50 pb-14 sm:pb-0">
       <AppNav />
 
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
         {/* Header */}
-        <div className="px-6 py-3.5 border-b border-gray-200 bg-white shrink-0">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="px-3 sm:px-6 py-3 border-b border-gray-200 bg-white shrink-0">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
                 <CreditCard size={15} className="text-blue-600" />
@@ -567,13 +567,13 @@ export default function BillingPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-7xl mx-auto px-6 py-5 flex gap-5">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-5 flex flex-col lg:flex-row gap-4 sm:gap-5">
 
             {/* ── LEFT: Usage Intelligence ─────────────────────────────── */}
             <div className="flex-1 flex flex-col gap-4 min-w-0">
 
               {/* KPI row */}
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                 {[
                   {
                     label: 'Credits Balance',
@@ -620,8 +620,8 @@ export default function BillingPage() {
               </div>
 
               {/* Tab switcher */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-0.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-0.5 overflow-x-auto hide-scrollbar">
                   {([{ id: 'team', label: 'Team Usage', icon: Users }, { id: 'visual', label: 'Visual Analytics', icon: BarChart2 }, { id: 'log', label: 'Usage Log', icon: List }] as const).map(tab => (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -677,7 +677,7 @@ export default function BillingPage() {
             </div>
 
             {/* ── RIGHT: Subscription panel ───────────────────────────── */}
-            <div className="w-72 shrink-0 flex flex-col gap-3">
+            <div className="w-full lg:w-72 shrink-0 flex flex-col gap-3">
 
               {/* Plan card */}
               <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -1280,7 +1280,7 @@ function PlanModal({
           <X size={16} />
         </button>
 
-        <div className="grid grid-cols-[1fr_1fr]">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr]">
           {/* Left: pricing */}
           <div className="px-6 py-7 flex flex-col" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 50%, #1e40af 100%)' }}>
             <p className="text-[10px] font-extrabold uppercase tracking-widest text-white/80 mb-5">

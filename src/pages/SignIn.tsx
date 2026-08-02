@@ -224,7 +224,7 @@ export default function SignIn() {
         text: 'continue_with',
         shape: 'pill',
         logo_alignment: 'left',
-        width: 380,
+        width: Math.min(380, googleButtonRef.current.offsetWidth),
       });
 
       window.google.accounts.id.prompt();
@@ -277,14 +277,14 @@ export default function SignIn() {
       <AuthSidePanel />
 
       {/* Right panel — form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
+      <div className="flex-1 flex items-center justify-center px-4 py-6 sm:px-6 sm:py-12">
         <div className="w-full max-w-sm">
           <Link to="/" className="flex items-center gap-2 text-blue-600 font-bold text-base mb-10 lg:hidden">
             <Logo size="md" />
           </Link>
 
-          <h1 className="text-2xl font-extrabold text-gray-900 mb-1">Welcome back</h1>
-          <p className="text-gray-500 text-sm mb-8">Start with Google or enter your work email to continue.</p>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 mb-1">Welcome back</h1>
+          <p className="text-gray-500 text-sm mb-6 sm:mb-8">Start with Google or enter your work email to continue.</p>
 
           {error && (
             <div id="sign-in-error" role="alert" aria-live="assertive" className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-6">

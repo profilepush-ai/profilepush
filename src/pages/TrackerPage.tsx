@@ -575,7 +575,7 @@ export default function TrackerPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden pb-14 sm:pb-0">
       <AppNav />
 
       {/* ── Global toolbar ── */}
@@ -654,12 +654,12 @@ export default function TrackerPage() {
         )}
       </div>
 
-      {/* ── Page content: 2 columns – Vendors table + Submissions ── */}
-      <div className="flex-1 grid grid-cols-[2fr_1fr] gap-0 overflow-hidden">
+      {/* ── Page content: 2 columns – Contacts (narrow) + Jobs History (wide) ── */}
+      <div className="flex-1 grid grid-cols-[200px_1fr] sm:grid-cols-[280px_1fr] gap-0 overflow-hidden">
 
-        {/* ════════════════ VENDORS TABLE ════════════════ */}
+        {/* ════════════════ CONTACTS LIST (narrow) ════════════════ */}
         <div className="border-r border-gray-200 bg-white flex flex-col overflow-hidden">
-          <div className="shrink-0 h-[44px] flex items-center gap-2 px-4 border-b border-gray-200 bg-white">
+          <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
             <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Contacts</span>
             <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded ring-1 ring-amber-200">{filteredVendors.length}</span>
             {selVendor.size > 0 && (
@@ -674,88 +674,84 @@ export default function TrackerPage() {
                 {isSearching ? 'No vendors match your search.' : `No vendors in ${dateLabel}.`}
               </div>
             ) : (
-              <table className="w-full text-left">
-                <thead className="sticky top-0 bg-gray-50 z-10">
-                  <tr className="border-b border-gray-200">
-                    <th className="w-8 px-3 py-2"><input type="checkbox" checked={selVendor.size === filteredVendors.length && filteredVendors.length > 0} onChange={() => { if (selVendor.size === filteredVendors.length) { setSelVendor(new Set()); } else { setSelVendor(new Set(filteredVendors.map(v => v.id))); } }} className="w-3 h-3 accent-amber-500 cursor-pointer" /></th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Name</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Contact Person</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Email</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Phone</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Location</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500 text-center">Subs</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Added</th>
-                    <th className="w-16 px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredVendors.map((v, idx) => {
-                    const subCount = submissions.filter(s => s.vendor_name === v.name).length;
-                    const isActive = activeVendorId === v.id;
-                    return (
-                      <tr key={v.id} onClick={() => handleVendorRowClick(v)} className={`border-b border-gray-100 cursor-pointer transition-colors ${isActive ? 'bg-amber-100/60' : selVendor.has(v.id) ? 'bg-amber-50/40' : idx % 2 === 0 ? 'bg-white hover:bg-amber-50/30' : 'bg-gray-50/30 hover:bg-amber-50/30'}`}>
-                        <td className="px-3 py-2"><input type="checkbox" checked={selVendor.has(v.id)} onChange={(e) => { e.stopPropagation(); toggleSel(selVendor, v.id, setSelVendor); }} className="w-3 h-3 accent-amber-500 cursor-pointer" /></td>
-                        <td className="px-3 py-2 text-xs font-semibold text-gray-900 truncate max-w-[160px]">{v.name}</td>
-                        <td className="px-3 py-2 text-[11px] text-gray-600 max-w-[120px]">{v.contact_person ? (
-                          <span className="flex items-center gap-1">
-                            {revealedFields.has(`cp-${v.id}`) ? (
-                              <span className="truncate">{v.contact_person}</span>
-                            ) : (
-                              <span className="text-gray-400 truncate">{v.contact_person.slice(0, 3)}•••</span>
-                            )}
-                            <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `cp-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0" title={revealedFields.has(`cp-${v.id}`) ? 'Hide' : 'Show'}>
-                              {revealedFields.has(`cp-${v.id}`) ? <EyeOff size={11} /> : <Eye size={11} />}
-                            </button>
-                          </span>
-                        ) : '—'}</td>
-                        <td className="px-3 py-2 text-[11px] max-w-[160px]">{v.email ? (
-                          <span className="flex items-center gap-1">
-                            {revealedFields.has(`email-${v.id}`) ? (
-                              <a href={`mailto:${v.email}`} className="text-blue-600 hover:underline truncate">{v.email}</a>
-                            ) : (
-                              <span className="text-gray-400 truncate">{v.email.slice(0, 3)}@•••</span>
-                            )}
-                            <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `email-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0" title={revealedFields.has(`email-${v.id}`) ? 'Hide' : 'Show'}>
-                              {revealedFields.has(`email-${v.id}`) ? <EyeOff size={11} /> : <Eye size={11} />}
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(v.email); setCopiedField(`email-${v.id}`); setTimeout(() => setCopiedField(null), 1500); }} className="p-0.5 rounded text-gray-400 hover:text-green-600 transition-colors shrink-0" title="Copy email">
-                              {copiedField === `email-${v.id}` ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
-                            </button>
-                          </span>
-                        ) : '—'}</td>
-                        <td className="px-3 py-2 text-[11px] text-gray-600 max-w-[100px]">{v.contact ? (
-                          <span className="flex items-center gap-1">
-                            {revealedFields.has(`phone-${v.id}`) ? (
-                              <span className="truncate">{v.contact}</span>
-                            ) : (
-                              <span className="text-gray-400 truncate">{v.contact.slice(0, 3)}•••</span>
-                            )}
-                            <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `phone-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0" title={revealedFields.has(`phone-${v.id}`) ? 'Hide' : 'Show'}>
-                              {revealedFields.has(`phone-${v.id}`) ? <EyeOff size={11} /> : <Eye size={11} />}
-                            </button>
-                          </span>
-                        ) : '—'}</td>
-                        <td className="px-3 py-2 text-[11px] text-gray-600 truncate max-w-[120px]">{v.location || '—'}</td>
-                        <td className="px-3 py-2 text-center">{subCount > 0 ? <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{subCount}</span> : <span className="text-[10px] text-gray-300">0</span>}</td>
-                        <td className="px-3 py-2 text-[10px] text-gray-400 whitespace-nowrap">{fmtIso(v.created_at)}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-1">
-                            <button onClick={(e) => { e.stopPropagation(); openEditVendor(v); }} className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit"><Pencil size={11} /></button>
-                            <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vendor', id: v.id }); }} className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete"><Trash2 size={11} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="divide-y divide-gray-100">
+                {filteredVendors.map((v) => {
+                  const subCount = submissions.filter(s => s.vendor_name === v.name).length;
+                  const isActive = activeVendorId === v.id;
+                  return (
+                    <div
+                      key={v.id}
+                      onClick={() => handleVendorRowClick(v)}
+                      className={`px-3 py-2.5 cursor-pointer transition-colors ${isActive ? 'bg-amber-100/60' : 'hover:bg-amber-50/30'}`}
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <p className="text-xs font-semibold text-gray-900 truncate">{v.name}</p>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {subCount > 0 && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{subCount}</span>}
+                          <button onClick={(e) => { e.stopPropagation(); openEditVendor(v); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors" title="Edit"><Pencil size={10} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vendor', id: v.id }); }} className="p-0.5 rounded text-gray-400 hover:text-red-600 transition-colors" title="Delete"><Trash2 size={10} /></button>
+                        </div>
+                      </div>
+                      {v.contact_person && (
+                        <div className="flex items-center gap-1 mt-1 text-[11px] text-gray-600">
+                          <User size={10} className="text-gray-400 shrink-0" />
+                          {revealedFields.has(`cp-${v.id}`) ? (
+                            <span className="truncate">{v.contact_person}</span>
+                          ) : (
+                            <span className="text-gray-400 truncate">{v.contact_person.slice(0, 3)}•••</span>
+                          )}
+                          <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `cp-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0">
+                            {revealedFields.has(`cp-${v.id}`) ? <EyeOff size={9} /> : <Eye size={9} />}
+                          </button>
+                        </div>
+                      )}
+                      {v.email && (
+                        <div className="flex items-center gap-1 mt-0.5 text-[11px]">
+                          <Mail size={10} className="text-gray-400 shrink-0" />
+                          {revealedFields.has(`email-${v.id}`) ? (
+                            <a href={`mailto:${v.email}`} onClick={e => e.stopPropagation()} className="text-blue-600 hover:underline truncate">{v.email}</a>
+                          ) : (
+                            <span className="text-gray-400 truncate">{v.email.slice(0, 3)}@•••</span>
+                          )}
+                          <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `email-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0">
+                            {revealedFields.has(`email-${v.id}`) ? <EyeOff size={9} /> : <Eye size={9} />}
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(v.email); setCopiedField(`email-${v.id}`); setTimeout(() => setCopiedField(null), 1500); }} className="p-0.5 rounded text-gray-400 hover:text-green-600 transition-colors shrink-0">
+                            {copiedField === `email-${v.id}` ? <Check size={9} className="text-green-500" /> : <Copy size={9} />}
+                          </button>
+                        </div>
+                      )}
+                      {v.contact && (
+                        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-600">
+                          <Phone size={10} className="text-gray-400 shrink-0" />
+                          {revealedFields.has(`phone-${v.id}`) ? (
+                            <span className="truncate">{v.contact}</span>
+                          ) : (
+                            <span className="text-gray-400 truncate">{v.contact.slice(0, 3)}•••</span>
+                          )}
+                          <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `phone-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0">
+                            {revealedFields.has(`phone-${v.id}`) ? <EyeOff size={9} /> : <Eye size={9} />}
+                          </button>
+                        </div>
+                      )}
+                      {v.location && (
+                        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-500">
+                          <MapPin size={10} className="text-gray-400 shrink-0" />
+                          <span className="truncate">{v.location}</span>
+                        </div>
+                      )}
+                      <div className="mt-1 text-[10px] text-gray-400">{fmtIso(v.created_at)}</div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
 
         {/* ════════════════ VENDOR HISTORY COLUMN ════════════════ */}
         <div className="bg-white flex flex-col overflow-hidden">
-          <div className="shrink-0 h-[44px] flex items-center gap-2 px-4 border-b border-gray-200 bg-white">
+          <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
             <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
             {activeVendorId && (
               <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{vendorHistory.length}</span>
@@ -766,7 +762,7 @@ export default function TrackerPage() {
               </span>
             )}
           </div>
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+          <div className="flex-1 overflow-y-auto">
             {!activeVendorId ? (
               <div className="py-16 text-center text-xs text-gray-400">
                 <History size={18} className="mx-auto text-gray-300 mb-2" />
@@ -784,27 +780,31 @@ export default function TrackerPage() {
                 <p className="mt-1">No contact reveals found for this vendor yet.</p>
               </div>
             ) : (
-              vendorHistory.map(job => (
-                <div
-                  key={job.id}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-gray-900">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
-                      <p className="mt-0.5 text-[12px] text-gray-600">{job.company_name || '—'} • {job.location || '—'}</p>
+              <div className="divide-y divide-gray-100">
+                {vendorHistory.map(job => (
+                  <div key={job.id} className="px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-1.5">
+                      <p className="text-[11px] font-semibold text-gray-900 leading-snug">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600 shrink-0">{job.platform}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">{job.platform}</span>
+                    <div className="flex items-center gap-1 mt-1 text-[11px] text-gray-600">
+                      <Building2 size={10} className="text-gray-400 shrink-0" />
+                      <span className="truncate">{job.company_name || '—'}</span>
                     </div>
+                    {job.location && (
+                      <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-500">
+                        <MapPin size={10} className="text-gray-400 shrink-0" />
+                        <span className="truncate">{job.location}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-500">
+                      <User size={10} className="text-gray-400 shrink-0" />
+                      <span className="truncate">{job.posted_by_name || '—'}</span>
+                    </div>
+                    <div className="mt-1 text-[10px] text-gray-400">{formatAgo(job.created_at)}</div>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500">
-                    <span>{job.posted_by_name || '—'}</span>
-                    <span>•</span>
-                    <span>{formatAgo(job.created_at)}</span>
-                  </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         </div>

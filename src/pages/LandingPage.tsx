@@ -13,107 +13,41 @@ import { useAuth } from '../contexts/AuthContext';
 // ── Feature definitions ────────────────────────────────────────────────────────
 const FEATURES = [
   {
-    key: 'resume-parsing',
-    headline: 'Your hotlist, ready in 30 seconds.',
-    subline: 'Paste Google Sheet or Excel rows of your hotlist to upload multiple candidates in one go.',
+    key: 'pulse',
+    headline: 'AI-matched jobs from social platforms.',
+    subline: 'Pulse scans LinkedIn, Reddit, and other social platforms in real-time, matching jobs to your tech stacks with AI scores. Filter by category, reveal poster contact info, and act on the best matches instantly.',
     accent: 'from-blue-100 to-white',
     badge: 'bg-blue-100 text-blue-700',
-    badgeLabel: 'Bulk Import Profiles',
+    badgeLabel: 'Pulse',
     topGlow: 'rgba(147,197,253,0.6)',
-  },
-  {
-    key: 'omni-search',
-    headline: '4 job boards. One search. Done.',
-    subline: 'LinkedIn, Dice, Indeed, and Monster — all responding at once. Stop switching tabs and start closing roles.',
-    accent: 'from-orange-50 to-white',
-    badge: 'bg-orange-100 text-orange-700',
-    badgeLabel: 'Omni-Board Search',
-    topGlow: 'rgba(253,186,116,0.5)',
-  },
-  {
-    key: 'bench',
-    headline: 'Your entire bench, perfectly organized.',
-    subline: 'Manage all your active consultants in one centralized hub. Stop digging through local desktop folders to find the right profile. Everything is parsed, structured, and instantly searchable.',
-    accent: 'from-yellow-50 to-white',
-    badge: 'bg-yellow-100 text-yellow-700',
-    badgeLabel: 'Bench',
-    topGlow: 'rgba(253,224,71,0.5)',
-  },
-  {
-    key: 'hotlist-ai',
-    headline: 'Paste a JD, Find your fit instantly.',
-    subline: "Stop reading 3-page JDs at 2:00 AM. Paste any prime vendor requirement and let AI cross-reference your entire database to score and build a highly targeted shortlist in seconds.",
-    accent: 'from-blue-50 to-white',
-    badge: 'bg-blue-100 text-blue-700',
-    badgeLabel: 'JD AI',
-    topGlow: 'rgba(147,197,253,0.5)',
-  },
-  {
-    key: 'submission-queue',
-    headline: 'Stop saving jobs. Start submitting them.',
-    subline: 'Your active execution hub. Queue up prime requirements for your candidate, verify AI match scores, and fire off tailored pitch emails. Hit submit and watch your daily targets clear out.',
-    accent: 'from-yellow-50 to-white',
-    badge: 'bg-yellow-100 text-yellow-700',
-    badgeLabel: 'Submission Queue',
-    topGlow: 'rgba(253,224,71,0.5)',
-  },
-  {
-    key: 'resume-rewrite',
-    headline: 'Tailored AI resumes, generated instantly.',
-    subline: 'Stop wasting 20 minutes manually formatting every profile. Let AI automatically rewrite candidate resumes based on match gap suggestions so you can hit the vendor\'s inbox first.',
-    accent: 'from-blue-50 to-white',
-    badge: 'bg-blue-100 text-blue-700',
-    badgeLabel: 'Resume Rewrite',
-    topGlow: 'rgba(147,197,253,0.5)',
   },
   {
     key: 'tracker',
     headline: 'Throw away your messy Excel sheets.',
-    subline: 'Every submission is logged automatically. The system actively builds a live CRM of your prime vendors, clients, and rates on autopilot, so you never risk a double-submittal again.',
+    subline: 'Manage every vendor and client contact in one place. Log submissions with type badges (C2C, W2, Direct), filter by date range, and export to CSV. Never risk a double-submittal again.',
     accent: 'from-emerald-50 to-white',
     badge: 'bg-emerald-100 text-emerald-700',
     badgeLabel: 'Tracker',
     topGlow: 'rgba(110,231,183,0.5)',
-  },
-  {
-    key: 'desk',
-    headline: 'Your daily metrics, analyzed automatically.',
-    subline: 'AI analyzes your daily activity to reveal exactly which job boards are converting and where your candidates are stalled. No spreadsheets, just actionable insights.',
-    accent: 'from-orange-50 to-white',
-    badge: 'bg-orange-100 text-orange-700',
-    badgeLabel: 'Desk',
-    topGlow: 'rgba(253,186,116,0.5)',
   },
 ];
 
 const FAQS = [
   {
     q: 'What is ProfilePush?',
-    a: 'ProfilePush is an AI copilot purpose-built for Bench Sales recruiters and staffing firms. It automates the full sourcing-to-placement workflow — resume parsing, multi-board job search across LinkedIn, Dice, Indeed, Monster, and CareerBuilder, AI job match scoring, resume rewriting, and candidate outreach — all in one platform.',
+    a: 'ProfilePush is an AI-powered platform built for Bench Sales recruiters. It surfaces matched jobs from social platforms like LinkedIn and Reddit in real-time and gives you a built-in vendor CRM to track every contact, submission, and rate — all in one place.',
   },
   {
-    q: 'Who is ProfilePush designed for?',
-    a: 'ProfilePush is built for Bench Sales recruiters, offshore recruiting pods, independent recruiters, and staffing desks that place candidates in contract (C2C, W2, 1099) and permanent technology roles across the United States.',
+    q: 'What is Pulse?',
+    a: 'Pulse is a real-time social job feed powered by AI. It scans LinkedIn, Reddit, and other platforms, scores each job against tech stack categories, and lets you reveal poster contact info (email, phone) to reach out directly. Score breakdowns cost $0.10 and contact reveals cost $0.25 in AI credits.',
   },
   {
-    q: 'Which job boards does ProfilePush search?',
-    a: 'ProfilePush simultaneously searches LinkedIn, Dice, Indeed, Monster, and CareerBuilder — five of the most important platforms for Bench Sales placements — from a single query. No tab switching required.',
-  },
-  {
-    q: 'How does AI job matching work in ProfilePush?',
-    a: "ProfilePush AI scores each job against the candidate's profile, returning a percentage match with specific skill strengths, gap analysis, and keyword alignment recommendations. Recruiters know the quality of every submission before making a single call.",
+    q: 'What is Tracker?',
+    a: 'Tracker is your vendor and client CRM. Add contacts, log submissions with type badges (C2C, W2, Direct, Client, Vendor), filter by date range, and export everything to CSV. It keeps your pipeline organized so you never double-submit.',
   },
   {
     q: 'How much does ProfilePush cost?',
-    a: 'Plans start at $29/month (Starter — up to 3 users), $59/month (Power — up to 5 users), and $99/month (Business — unlimited users). Every plan includes a matching AI credit wallet. A free account with $5 AI credits monthly is available to everyone — no credit card required.',
-  },
-  {
-    q: 'Can ProfilePush automatically rewrite resumes?',
-    a: 'Yes. The AI rewrites candidate resumes tailored to a specific job — aligning keywords, addressing skill gaps identified during match scoring, and producing a submission-ready document in seconds.',
-  },
-  {
-    q: 'Is ProfilePush suitable for offshore Bench Sales teams?',
-    a: 'Absolutely. ProfilePush is designed with offshore Bench Sales recruiting pods in mind. Every search, match, and submission is logged and timestamped. Team output is fully visible and measurable regardless of geography or time zone.',
+    a: 'ProfilePush is free to start with $5 in monthly AI credits — no credit card required. The Pro plan at ₹2,500/month includes $25 in AI credits, unlimited users, and Live Job Alerts. Score breakdowns cost $0.10 and contact reveals cost $0.25 per action.',
   },
 ];
 
@@ -318,8 +252,8 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
       <main>
       <SEO
-        title="ProfilePush — AI Copilot for Bench Sales Recruiters"
-        description="ProfilePush is the AI copilot built for Bench Sales recruiters. Parse resumes in 30 seconds, search LinkedIn, Dice, Indeed & Monster simultaneously, score AI job matches, and rewrite resumes — all in one platform."
+        title="ProfilePush — AI Job Radar & Vendor Tracker for Bench Sales"
+        description="ProfilePush surfaces AI-matched jobs from LinkedIn, Reddit, and social platforms in real-time. Track vendors, log submissions, and never double-submit — built for Bench Sales recruiters."
         canonical="https://profilepush.ai/"
         jsonLd={LANDING_FAQ_JSONLD}
       />
@@ -333,8 +267,6 @@ export default function LandingPage() {
           <div className="hidden md:flex items-center gap-8 text-sm text-gray-500">
             <a href="#features" className="hover:text-gray-900 transition-colors">Features</a>
             <a href="#pricing" className="hover:text-gray-900 transition-colors">Pricing</a>
-            <Link to="/why-ai-copilot" className="hover:text-gray-900 transition-colors">Why AI Co-pilot</Link>
-            <Link to="/how-it-works" className="hover:text-gray-900 transition-colors">How it Works</Link>
           </div>
           <div className="flex items-center gap-3">
             <Link to="/signin" className="hidden sm:block text-sm text-gray-500 hover:text-gray-900 transition-colors">
@@ -362,7 +294,7 @@ export default function LandingPage() {
         <div className="relative max-w-3xl mx-auto">
 
           <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
-            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for Bench Sales Recruiters to Hit 10X Submissions</span>
+            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for Bench Sales Teams to Hit 10X Submissions</span>
           </h1>
 
           {/* Mobile-only hero video — between headline and subline */}
@@ -380,7 +312,7 @@ export default function LandingPage() {
           </div>
 
           <p className="text-base md:text-lg text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
-            Stop spending 8 hours a day acting like a data-entry clerk fighting with MS Word and 15 open browser tabs. use AI copilot to hit your submission goals 10X faster.
+            Our AI watches LinkedIn groups, Facebook communities, WhatsApp channels, email lists, and job boards 24/7 — pulling matched jobs so you don't have to scroll through thousands of posts manually.
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4">
@@ -428,13 +360,13 @@ export default function LandingPage() {
           <div className="text-center mb-12">
             <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1 rounded-full mb-4">
               <Zap size={11} />
-              All in one platform
+              Two powerful tools
             </span>
             <h2 className="text-4xl md:text-5xl font-extrabold text-gray-900 tracking-tight leading-tight mb-4">
-              Powers of ProfilePush
+              Pulse + Tracker
             </h2>
             <p className="text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed">
-              ProfilePush packs an entire recruiting workflow into a single platform — built specifically for the speed and precision of Bench Sales recruiting.
+              AI-matched social jobs and a built-in vendor CRM — everything a Bench Sales recruiter needs to find and close roles faster.
             </p>
           </div>
 
@@ -492,7 +424,7 @@ export default function LandingPage() {
           <div className="text-center mb-16">
             <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">The workflow</p>
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-              From raw resume to placed candidate
+              From social post to submission
             </h2>
           </div>
 
@@ -502,12 +434,9 @@ export default function LandingPage() {
 
             <div className="space-y-0">
               {[
-                { n: '1', t: 'Upload the resume', d: 'Drop a PDF — every skill, role, and date extracted instantly into a structured profile.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
-                { n: '2', t: 'Review the profile', d: 'Confirm the parsed details are accurate before moving to search.', dot: 'bg-orange-500', num: 'text-orange-500', ring: 'ring-orange-100' },
-                { n: '3', t: 'Search 4 boards at once', d: 'One query hits LinkedIn, Dice, Indeed, and Monster simultaneously.', dot: 'bg-yellow-500', num: 'text-yellow-500', ring: 'ring-yellow-100' },
-                { n: '4', t: 'Score the matches', d: 'AI ranks every job by fit — strengths, gaps, and a percentage match shown clearly.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
-                { n: '5', t: 'Rewrite the resume', d: 'Tailored to the role in seconds, with keywords aligned to close the gap.', dot: 'bg-orange-500', num: 'text-orange-500', ring: 'ring-orange-100' },
-                { n: '6', t: 'Send the outreach', d: 'A pre-drafted email with the rewritten resume attached. One click to send.', dot: 'bg-yellow-500', num: 'text-yellow-500', ring: 'ring-yellow-100' },
+                { n: '1', t: 'Browse the Pulse feed', d: 'AI scans LinkedIn, Reddit, and other social platforms — surfacing matched jobs with scores in real-time.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
+                { n: '2', t: 'Reveal contacts', d: 'Unlock poster emails and phone numbers to reach out directly. Each reveal costs $0.25 in AI credits.', dot: 'bg-orange-500', num: 'text-orange-500', ring: 'ring-orange-100' },
+                { n: '3', t: 'Track in Tracker', d: 'Log vendor contacts, submissions, and rates. Filter by date, export to CSV, and never double-submit.', dot: 'bg-yellow-500', num: 'text-yellow-500', ring: 'ring-yellow-100' },
               ].map((step, i, arr) => (
                 <div key={step.n} className="relative flex gap-8 pb-10 last:pb-0">
                   {/* Circle */}
@@ -536,8 +465,15 @@ export default function LandingPage() {
               Simple, transparent pricing.
             </h2>
             <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">
-              Start free, upgrade when you're ready. Every plan unlocks all AI features.
+              Start free, upgrade when you're ready. Every plan unlocks all features.
             </p>
+
+            {/* Credit costs */}
+            <div className="flex items-center justify-center gap-6 mt-4 text-sm text-gray-500">
+              <span>Score Breakdown — <strong className="text-gray-700">$0.10</strong></span>
+              <span className="text-gray-300">|</span>
+              <span>Reveal Contacts — <strong className="text-gray-700">$0.25</strong></span>
+            </div>
           </div>
 
           {/* 2-column plan cards */}
@@ -560,9 +496,8 @@ export default function LandingPage() {
 
               <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
                 {[
-                  'All AI features unlocked',
+                  'All features unlocked',
                   'Up to 2 users',
-                  'Up to 5 profiles',
                   '$5 AI credits reset each month',
                 ].map(item => (
                   <li key={item} className="flex items-center gap-2.5">
@@ -597,12 +532,10 @@ export default function LandingPage() {
 
               <ul className="space-y-3 text-sm text-white flex-1 mb-8">
                 {[
-                  'All AI features unlocked',
+                  'All features unlocked',
                   'Unlimited users',
-                  'Unlimited profiles & storage',
-                  'Multi-board job search',
-                  'Vendor & client directory',
-                  'Usage analytics & audit log',
+                  'Full Tracker with CSV export',
+                  'Live Job Alerts',
                 ].map(item => (
                   <li key={item} className="flex items-center gap-2.5">
                     <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
@@ -648,12 +581,12 @@ export default function LandingPage() {
             <span className="h-1 w-2 rounded-full bg-yellow-400" />
           </div>
           <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 mb-4">
-            Ready to close
+            Ready to find
             <br />
-            <span className="text-blue-600">your next role?</span>
+            <span className="text-blue-600">your next match?</span>
           </h2>
           <p className="text-gray-500 mb-10">
-            Stop juggling tabs. Start placing candidates.
+            Stop scrolling job boards. Start closing roles.
           </p>
           <Link
             to="/signup"
