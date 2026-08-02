@@ -20,6 +20,8 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const forcedScheduleId = body.schedule_id ?? null;
     const frequencyFilter = body.frequency_filter ?? null;
+    const boardFilter = typeof body.board_filter === "string" ? body.board_filter : null;
+    const forceRun = body.force_run === true;
 
     let query = supabase.from("watch_schedules").select("*").eq("is_active", true);
     if (forcedScheduleId) {
@@ -27,6 +29,9 @@ Deno.serve(async (req: Request) => {
     }
     if (frequencyFilter) {
       query = query.eq("frequency", frequencyFilter);
+    }
+    if (boardFilter) {
+      query = query.contains("boards", [boardFilter]);
     }
     const { data: schedules, error: schedErr } = await query;
 
@@ -39,7 +44,7 @@ Deno.serve(async (req: Request) => {
     const results: Array<{ id: string; status: string; jobs_matched: number }> = [];
 
     for (const schedule of schedules) {
-      const isDue = forcedScheduleId || isScheduleDue(
+      const isDue = forcedScheduleId || forceRun || isScheduleDue(
         schedule.last_run_at ? new Date(schedule.last_run_at) : null,
         schedule.frequency,
         now,

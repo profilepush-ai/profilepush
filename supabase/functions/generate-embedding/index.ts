@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 interface EmbeddingRequest {
-  type: "profile" | "job";
+  type: "profile" | "job" | "role";
   id: string;
   table?: string;
 }
@@ -150,6 +150,34 @@ async function processEmbeddingRequest(
         : { id: item.id, success: true };
     }
 
+    if (item.type === "role") {
+      const { data: role } = await supabase
+        .from("hotlist_ai_roles")
+        .select("target_role, category, years_exp, visa_status, employment_type, work_type, preferred_locations, min_rate_usd_per_hr, max_rate_usd_per_hr, relocation_open, priority_skills")
+        .eq("id", item.id)
+        .maybeSingle();
+
+      if (!role) {
+        return { id: item.id, success: false, error: "Role not found" };
+      }
+
+      text = buildRoleText(role);
+
+      const embeddingResult = await generateOpenAIEmbedding(text, apiKey, model);
+      if (!embeddingResult.embedding) {
+        return { id: item.id, success: false, error: embeddingResult.error ?? "OpenAI embedding generation failed" };
+      }
+
+      const { error } = await supabase
+        .from("hotlist_ai_roles")
+        .update({ role_embedding: JSON.stringify(embeddingResult.embedding) })
+        .eq("id", item.id);
+
+      return error
+        ? { id: item.id, success: false, error: error.message }
+        : { id: item.id, success: true };
+    }
+
     return { id: item.id, success: false, error: `Unsupported embedding request type: ${String((item as { type?: string }).type)}` };
   } catch (err) {
     return { id: item.id, success: false, error: (err as Error).message };
@@ -226,6 +254,25 @@ function buildJobText(job: Record<string, unknown>, locationCol: string): string
 
   const desc = (job.job_description as string) ?? "";
   if (desc) parts.push(`Description: ${desc.slice(0, 1500)}`);
+
+  return parts.join(". ");
+}
+
+function buildRoleText(role: Record<string, unknown>): string {
+  const parts: string[] = [];
+
+  if (role.target_role) parts.push(`Target Role: ${role.target_role}`);
+  if (role.category) parts.push(`Category: ${role.category}`);
+  if (role.priority_skills) parts.push(`Priority Skills: ${role.priority_skills}`);
+  if (role.years_exp != null) parts.push(`Experience: ${role.years_exp} years`);
+  if (role.visa_status) parts.push(`Visa Status: ${role.visa_status}`);
+  if (role.employment_type) parts.push(`Employment Type: ${role.employment_type}`);
+  if (role.work_type) parts.push(`Work Type: ${role.work_type}`);
+  if (role.preferred_locations) parts.push(`Preferred Locations: ${role.preferred_locations}`);
+  if (role.min_rate_usd_per_hr || role.max_rate_usd_per_hr) {
+    parts.push(`Rate: $${role.min_rate_usd_per_hr ?? '?'}-$${role.max_rate_usd_per_hr ?? '?'}/hr`);
+  }
+  if (role.relocation_open === true) parts.push("Relocation Open: Yes");
 
   return parts.join(". ");
 }

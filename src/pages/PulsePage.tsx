@@ -1,25 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Brain,
   Briefcase,
   Building2,
+  Cloud,
+  Code2,
+  Database,
   BadgeCheck,
   Check,
   Clock3,
   DollarSign,
   Eye,
+  Handshake,
   Hash,
   Mail,
   Phone,
   Radar,
   RefreshCw,
   Search,
+  Shield,
+  CheckSquare,
+  Server,
+  Sparkles,
   GraduationCap,
   Flame,
+  Workflow,
   User,
   Users,
   Wrench,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -120,8 +131,7 @@ type ProfileRangeOption = {
 type ProfileCategoryTab = {
   id: string;
   label: string;
-  photoUrl: string;
-  matcher: (persona: PulsePersona) => boolean;
+  icon: LucideIcon;
 };
 
 type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'queued';
@@ -194,71 +204,65 @@ const PROFESSIONAL_AVATAR_FALLBACK_URL = getStablePortraitUrl('profilepush-defau
 const PROFILE_CATEGORY_TABS: ProfileCategoryTab[] = [
   {
     id: 'all',
-    label: 'All',
-    photoUrl: getStablePortraitUrl('category-all'),
-    matcher: () => true,
+    label: 'All Categories',
+    icon: Radar,
   },
   {
     id: 'front-end',
     label: 'Front-End',
-    photoUrl: '/category-front-end.jpg',
-    matcher: (persona) => /front\s*end|frontend|react|ui|angular|vue/.test(normalize(`${persona.target_role} ${persona.summary}`)),
+    icon: Code2,
   },
   {
     id: 'backend',
-    label: 'backend',
-    photoUrl: DEFAULT_PERSONA_AVATARS['backend python engineer'],
-    matcher: (persona) => /backend|api|node|python|fastapi|django/.test(normalize(`${persona.target_role} ${persona.summary}`)),
+    label: 'Backend',
+    icon: Server,
   },
   {
     id: 'data',
     label: 'Data',
-    photoUrl: DEFAULT_PERSONA_AVATARS['data engineer'],
-    matcher: (persona) => /data|spark|airflow|etl|analytics|sql/.test(normalize(`${persona.target_role} ${persona.summary}`)),
+    icon: Database,
   },
   {
     id: 'security',
     label: 'Security',
-    photoUrl: DEFAULT_PERSONA_AVATARS['security engineer'],
-    matcher: (persona) => /security|iam|soc|cloud security/.test(normalize(`${persona.target_role} ${persona.summary}`)),
+    icon: Shield,
   },
   {
     id: 'crm',
     label: 'CRM',
-    photoUrl: 'https://images.unsplash.com/photo-1553484771-cc0d9b8c0e17?auto=format&fit=crop&w=120&h=120&q=80',
-    matcher: (persona) => /crm|salesforce|hubspot|zoho|customer relationship/.test(normalize(`${persona.target_role} ${persona.summary}`)),
+    icon: Handshake,
   },
   {
     id: 'qa',
     label: 'QA',
-    photoUrl: DEFAULT_PERSONA_AVATARS['qa automation engineer'],
-    matcher: (persona) => /qa|automation|selenium|playwright|cypress/.test(normalize(`${persona.target_role} ${persona.summary}`)),
+    icon: CheckSquare,
   },
   {
     id: 'biz-dev',
     label: 'Biz Dev',
-    photoUrl: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=120&h=120&q=80',
-    matcher: (persona) => /business development|biz dev|partnership|sales|account executive|revenue/.test(normalize(`${persona.target_role} ${persona.summary}`)),
+    icon: Workflow,
   },
   {
     id: 'ai',
     label: 'AI',
-    photoUrl: getStablePortraitUrl('category-ai'),
-    matcher: (persona) => /\bai\b|machine learning|llm|nlp|prompt/.test(normalize(`${persona.target_role} ${persona.summary}`)),
+    icon: Sparkles,
   },
   {
     id: 'ml',
     label: 'ML',
-    photoUrl: getStablePortraitUrl('category-ml'),
-    matcher: (persona) => /machine learning|mlops|pytorch|tensorflow|model/.test(normalize(`${persona.target_role} ${persona.summary}`)),
+    icon: Brain,
   },
   {
     id: 'devops',
     label: 'DevOps',
-    photoUrl: DEFAULT_PERSONA_AVATARS['devops engineer'],
-    matcher: (persona) => /devops|sre|kubernetes|terraform|aws|cloud/.test(normalize(`${persona.target_role} ${persona.summary}`)),
+    icon: Cloud,
   },
 ];
+
+function isPersonaInCategory(persona: PulsePersona, categoryId: string) {
+  if (categoryId === 'all') return true;
+  return inferRoleCategoryId(persona.target_role) === categoryId;
+}
 
 function getDefaultPersonaAvatarUrl(role: string) {
   const key = normalize(role);
@@ -267,10 +271,6 @@ function getDefaultPersonaAvatarUrl(role: string) {
 
 function getRoleFallbackAvatarUrl(role: string) {
   return getStablePortraitUrl(`role-fallback-${normalize(role) || 'unknown'}`);
-}
-
-function getCategoryFallbackAvatarUrl(categoryId: string, label: string) {
-  return getStablePortraitUrl(`category-${categoryId || normalize(label) || 'unknown'}`);
 }
 
 function inferRoleCategoryId(role: string, summary?: string | null) {
@@ -598,7 +598,7 @@ export default function PulsePage() {
 
   const filteredJobsRankedLeaderboard = useMemo(() => {
     const selectedCategory = PROFILE_CATEGORY_TABS.find((item) => item.id === selectedCategoryId) ?? PROFILE_CATEGORY_TABS[0];
-    const categoryFiltered = jobsRankedLeaderboard.filter((persona) => selectedCategory.matcher(persona));
+    const categoryFiltered = jobsRankedLeaderboard.filter((persona) => isPersonaInCategory(persona, selectedCategory.id));
     const query = normalize(profileSearchQuery);
     if (!query) return categoryFiltered;
     return categoryFiltered.filter((item) => normalize(item.target_role).includes(query) || normalize(item.summary).includes(query));
@@ -777,13 +777,25 @@ export default function PulsePage() {
     setProfileStatsLoading(true);
     const threshold = new Date(Date.now() - selectedProfileRange.hours * 60 * 60 * 1000).toISOString();
 
-    const { data: matchData, error: matchError } = await supabase
+    let { data: matchData, error: matchError } = await supabase
       .from('radar_match_results')
       .select('job_id, created_at')
       .eq('job_source', 'social')
       .gte('created_at', threshold)
       .order('created_at', { ascending: false })
       .limit(5000);
+
+    if (!matchError && (!matchData || matchData.length === 0)) {
+      const fallback = await supabase
+        .from('radar_match_results')
+        .select('job_id, created_at')
+        .eq('job_source', 'social')
+        .order('created_at', { ascending: false })
+        .limit(5000);
+
+      matchData = fallback.data;
+      matchError = fallback.error;
+    }
 
     if (matchError) {
       showToast('Could not load profile stats', 'error');
@@ -823,7 +835,6 @@ export default function PulsePage() {
       const jobs = new Set<string>();
 
       for (const row of rows) {
-        if (!hasDirectContact(row as SocialJobRow)) continue;
         if (!roleMatchesPersona(row as SocialJobRow, persona.target_role, skills)) continue;
 
         jobs.add(row.id);
@@ -856,13 +867,25 @@ export default function PulsePage() {
     setFeedLoading(true);
     const threshold = new Date(Date.now() - FEED_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
 
-    const { data: matchData, error: matchError } = await supabase
+    let { data: matchData, error: matchError } = await supabase
       .from('radar_match_results')
       .select('id, profile_id, job_source, job_id, created_at, final_average_score, score_breakdown')
       .eq('job_source', 'social')
       .gte('created_at', threshold)
       .order('created_at', { ascending: false })
       .limit(400);
+
+    if (!matchError && (!matchData || matchData.length === 0)) {
+      const fallback = await supabase
+        .from('radar_match_results')
+        .select('id, profile_id, job_source, job_id, created_at, final_average_score, score_breakdown')
+        .eq('job_source', 'social')
+        .order('created_at', { ascending: false })
+        .limit(400);
+
+      matchData = fallback.data;
+      matchError = fallback.error;
+    }
 
     if (matchError) {
       showToast('Failed to load social matches', 'error');
@@ -904,7 +927,6 @@ export default function PulsePage() {
 
     for (const row of (socialData as SocialJobRow[])) {
       if (!newestMatchByJobId.has(row.id)) continue;
-      if (!hasDirectContact(row)) continue;
       if (!roleMatchesPersona(row, persona.target_role, skillList)) continue;
 
       const dedupKey = buildSocialLeadDedupKey(row);
@@ -1401,7 +1423,7 @@ export default function PulsePage() {
                 <div className="flex w-max min-w-full gap-2">
                   {[...PROFILE_CATEGORY_TABS]
                     .map((category) => {
-                      const categoryProfiles = jobsRankedLeaderboard.filter((persona) => category.matcher(persona));
+                      const categoryProfiles = jobsRankedLeaderboard.filter((persona) => isPersonaInCategory(persona, category.id));
                       const watchersCount = categoryProfiles.reduce((sum, persona) => sum + (persona.active_watchers ?? 0), 0);
                       const jobsCount = categoryProfiles.reduce(
                         (sum, persona) => sum + (profileStatsByRole[normalize(persona.target_role)]?.uniqueJobs ?? 0),
@@ -1410,47 +1432,37 @@ export default function PulsePage() {
 
                       return { category, watchersCount, jobsCount };
                     })
-                    .sort((a, b) => b.jobsCount - a.jobsCount || b.watchersCount - a.watchersCount || a.category.label.localeCompare(b.category.label))
+                    .sort((a, b) => {
+                      if (a.category.id === 'all') return -1;
+                      if (b.category.id === 'all') return 1;
+                      return b.jobsCount - a.jobsCount || b.watchersCount - a.watchersCount || a.category.label.localeCompare(b.category.label);
+                    })
                     .map(({ category, watchersCount, jobsCount }) => {
                       const isSelected = selectedCategoryId === category.id;
+                      const CategoryIcon = category.icon;
 
                       return (
                       <button
                         key={category.id}
                         type="button"
                         onClick={() => setSelectedCategoryId(category.id)}
-                        className={`flex w-[160px] shrink-0 flex-col rounded-lg border text-left transition ${isSelected ? 'border-blue-300 bg-blue-50 shadow-sm' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                        className="group flex w-[104px] shrink-0 flex-col items-center gap-1.5 px-1 py-1 text-center"
                       >
-                        <img
-                          src={category.photoUrl}
-                          alt={category.label}
-                          className="mx-auto mt-2 h-24 w-24 rounded-full object-cover"
-                          onError={(e) => {
-                            const img = e.currentTarget;
-                            const categoryFallback = getCategoryFallbackAvatarUrl(category.id, category.label);
-                            if (img.dataset.fallbackApplied !== 'category') {
-                              img.src = categoryFallback;
-                              img.dataset.fallbackApplied = 'category';
-                              return;
-                            }
-                            if (img.dataset.fallbackApplied !== 'default') {
-                              img.src = PROFESSIONAL_AVATAR_FALLBACK_URL;
-                              img.dataset.fallbackApplied = 'default';
-                            }
-                          }}
-                        />
-                        <div className="flex w-full items-center justify-between gap-2 p-2">
-                          <p className="text-xs font-semibold leading-tight text-gray-900 whitespace-normal break-words">{category.label}</p>
-                          <div className="flex items-center gap-2 text-[10px] text-gray-600">
-                            <span className="inline-flex items-center gap-1" title="Watches">
-                              <Eye size={11} className="text-gray-500" />
-                              <span>{watchersCount}</span>
-                            </span>
-                            <span className="inline-flex items-center gap-1" title="Jobs">
-                              <Briefcase size={11} className="text-gray-500" />
-                              <span>{jobsCount}</span>
-                            </span>
-                          </div>
+                        <div className={`flex h-12 w-12 items-center justify-center rounded-full border transition ${isSelected ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500 group-hover:border-gray-300 group-hover:text-gray-700'}`}>
+                          <CategoryIcon size={20} />
+                        </div>
+                        <p className={`text-xs font-semibold leading-tight whitespace-normal break-words ${isSelected ? 'text-blue-700' : 'text-gray-900 group-hover:text-gray-700'}`}>
+                          {category.label}
+                        </p>
+                        <div className="flex items-center gap-2 text-[10px] text-gray-600">
+                          <span className="inline-flex items-center gap-1" title="Watches">
+                            <Eye size={11} className="text-gray-500" />
+                            <span>{watchersCount}</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1" title="Jobs">
+                            <Briefcase size={11} className="text-gray-500" />
+                            <span>{jobsCount}</span>
+                          </span>
                         </div>
                       </button>
                       );
