@@ -13,9 +13,7 @@ import type { AppNotification, NotificationType } from '../lib/notifications';
 import { NOTIFICATION_TYPES } from '../lib/notifications';
 
 const navItems = [
-  { path: '/bench',      label: 'Bench',          icon: Users },
   { path: '/pulse',          label: 'Pulse',          icon: Activity },
-  { path: '/submission-queue', label: 'Submission Queue', icon: Bookmark },
   { path: '/tracker',       label: 'Tracker',        icon: FileText },
   { path: '/resume-ai',     label: 'Resume AI',      icon: PenLine },
 ];

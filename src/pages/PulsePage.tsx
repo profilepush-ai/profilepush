@@ -165,6 +165,7 @@ type PulseLeadActionRow = {
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
 const TOP_PROFILES_PAGE_SIZE = 100;
+const MATCHES_PAGE_SIZE = 10;
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
   { id: '1h', label: 'Last 1 hour', hours: 1 },
@@ -623,6 +624,7 @@ export default function PulsePage() {
   const [profileStatsByRole, setProfileStatsByRole] = useState<Record<string, ProfileStats>>({});
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('all');
+  const [visibleMatchesCount, setVisibleMatchesCount] = useState(MATCHES_PAGE_SIZE);
   const [revealedLeadIds, setRevealedLeadIds] = useState<Set<string>>(new Set());
   const [breakdownChargedLeadIds, setBreakdownChargedLeadIds] = useState<Set<string>>(new Set());
   const [queuedLeadIds, setQueuedLeadIds] = useState<Set<string>>(new Set());
@@ -725,6 +727,9 @@ export default function PulsePage() {
     }
     return feed;
   }, [breakdownChargedLeadIds, feed, queuedLeadIds, revealedLeadIds, selectedMatchesTab]);
+
+  const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
+  const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
 
   useEffect(() => {
     setVisibleProfilesCount(TOP_PROFILES_PAGE_SIZE);
@@ -1064,6 +1069,7 @@ export default function PulsePage() {
       });
 
     setFeed(filtered);
+    setVisibleMatchesCount(MATCHES_PAGE_SIZE);
     setFeedLoading(false);
   }, [showToast]);
 
@@ -1514,20 +1520,23 @@ export default function PulsePage() {
                   {[...PROFILE_CATEGORY_TABS]
                     .map((category) => {
                       const categoryProfiles = jobsRankedLeaderboard.filter((persona) => isPersonaInCategory(persona, category.id));
-                      const watchersCount = categoryProfiles.reduce((sum, persona) => sum + (persona.active_watchers ?? 0), 0);
+                      const vendorsCount = categoryProfiles.reduce(
+                        (sum, persona) => sum + (profileStatsByRole[normalize(persona.target_role)]?.uniqueVendors ?? 0),
+                        0,
+                      );
                       const jobsCount = categoryProfiles.reduce(
                         (sum, persona) => sum + (profileStatsByRole[normalize(persona.target_role)]?.uniqueJobs ?? 0),
                         0,
                       );
 
-                      return { category, watchersCount, jobsCount };
+                      return { category, vendorsCount, jobsCount };
                     })
                     .sort((a, b) => {
                       if (a.category.id === 'all') return -1;
                       if (b.category.id === 'all') return 1;
-                      return b.jobsCount - a.jobsCount || b.watchersCount - a.watchersCount || a.category.label.localeCompare(b.category.label);
+                      return b.jobsCount - a.jobsCount || b.vendorsCount - a.vendorsCount || a.category.label.localeCompare(b.category.label);
                     })
-                    .map(({ category, watchersCount, jobsCount }) => {
+                    .map(({ category, vendorsCount, jobsCount }) => {
                       const isSelected = selectedCategoryId === category.id;
                       const CategoryIcon = category.icon;
 
@@ -1545,9 +1554,9 @@ export default function PulsePage() {
                           {category.label}
                         </p>
                         <div className="flex items-center gap-2 text-[10px] text-gray-600">
-                          <span className="inline-flex items-center gap-1" title="Watches">
-                            <Eye size={11} className="text-gray-500" />
-                            <span>{watchersCount}</span>
+                          <span className="inline-flex items-center gap-1" title="Vendors">
+                            <Building2 size={11} className="text-gray-500" />
+                            <span>{vendorsCount}</span>
                           </span>
                           <span className="inline-flex items-center gap-1" title="Jobs">
                             <Briefcase size={11} className="text-gray-500" />
@@ -1814,7 +1823,7 @@ export default function PulsePage() {
                       <button
                         key={tab.id}
                         type="button"
-                        onClick={() => setSelectedMatchesTab(tab.id)}
+                        onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
                         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold transition ${isSelected ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
                       >
                         <span>{tab.label}</span>
@@ -1840,7 +1849,7 @@ export default function PulsePage() {
                   ) : (
                     <div className="h-full overflow-y-auto overflow-x-hidden pr-1">
                       <div className="space-y-2">
-                        {filteredFeed.map((lead) => (
+                        {visibleFeed.map((lead) => (
                           <div
                             key={lead.id}
                             className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left"
@@ -1884,6 +1893,14 @@ export default function PulsePage() {
                             </div>
                           </div>
                         ))}
+                        {canLoadMoreMatches && (
+                          <button
+                            onClick={() => setVisibleMatchesCount((prev) => prev + MATCHES_PAGE_SIZE)}
+                            className="mt-2 w-full rounded-lg border border-gray-300 bg-white py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                          >
+                            Load More ({filteredFeed.length - visibleMatchesCount} remaining)
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

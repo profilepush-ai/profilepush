@@ -3,7 +3,7 @@ import {
   Plus, Search, Trash2, Pencil, X, Save, User, Briefcase,
   Building2, Mail, Phone, MapPin, DollarSign, Calendar,
   UserCheck, ChevronDown, ChevronUp, FileText, Tag, Clock, Users, Download,
-  AlertTriangle,
+  AlertTriangle, History, Eye, EyeOff, Copy, Check,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -16,6 +16,16 @@ import type { Profile } from '../types/database';
 
 interface Vendor { id: string; name: string; contact_person: string; email: string; contact: string; location: string; created_at: string; }
 interface Client { id: string; name: string; contact_person: string; email: string; phone: string; location: string; created_at: string; }
+interface VendorHistoryJob {
+  id: string;
+  job_title: string;
+  company_name: string;
+  location: string;
+  posted_by_name: string;
+  platform: string;
+  created_at: string;
+  extracted_role_normalized: string | null;
+}
 interface Submission {
   id: string; candidate_name: string; skill_set: string; vendor_name: string;
   vendor_email: string; vendor_contact: string; client_name: string; job_location: string;
@@ -228,6 +238,13 @@ export default function TrackerPage() {
   const [expandedVendors, setExpandedVendors] = useState<Set<string>>(new Set());
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
   const [expandedSubs, setExpandedSubs] = useState<Set<string>>(new Set());
+
+  // Vendor history
+  const [activeVendorId, setActiveVendorId] = useState<string | null>(null);
+  const [vendorHistory, setVendorHistory] = useState<VendorHistoryJob[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [revealedFields, setRevealedFields] = useState<Set<string>>(new Set());
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<{ existing: Submission[]; } | null>(null);
 
@@ -451,6 +468,75 @@ export default function TrackerPage() {
     const next = new Set(set); next.has(id) ? next.delete(id) : next.add(id); setter(next);
   }
 
+  // ── Vendor history ────────────────────────────────────────────────────────
+
+  function formatAgo(dateIso: string) {
+    const ts = new Date(dateIso).getTime();
+    if (Number.isNaN(ts)) return 'just now';
+    const diffMs = Date.now() - ts;
+    const mins = Math.floor(diffMs / 60_000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  }
+
+  const loadVendorHistory = useCallback(async (vendor: Vendor) => {
+    setHistoryLoading(true);
+    setVendorHistory([]);
+
+    // Get revealed lead IDs for this account
+    const { data: actions, error: actionsErr } = await supabase
+      .from('pulse_lead_actions')
+      .select('lead_id')
+      .eq('action_type', 'revealed');
+
+    if (actionsErr || !actions?.length) {
+      setHistoryLoading(false);
+      return;
+    }
+
+    const revealedIds = (actions as Array<{ lead_id: string }>).map(a => a.lead_id);
+
+    // Query social_jobs matching this vendor by name or email, filtered to revealed IDs
+    let query = supabase
+      .from('social_jobs')
+      .select('id, job_title, company_name, location, posted_by_name, platform, created_at, extracted_role_normalized')
+      .in('id', revealedIds)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    // Match by vendor name, email, or contact person
+    const conditions: string[] = [];
+    if (vendor.name) conditions.push(`posted_by_name.ilike.%${vendor.name}%`);
+    if (vendor.email) conditions.push(`poster_email.eq.${vendor.email}`);
+    if (vendor.contact_person) conditions.push(`posted_by_name.ilike.%${vendor.contact_person}%`);
+    if (vendor.name) conditions.push(`company_name.ilike.%${vendor.name}%`);
+
+    if (conditions.length > 0) {
+      query = query.or(conditions.join(','));
+    }
+
+    const { data: jobs, error: jobsErr } = await query;
+
+    if (!jobsErr && jobs) {
+      setVendorHistory(jobs as VendorHistoryJob[]);
+    }
+    setHistoryLoading(false);
+  }, []);
+
+  function handleVendorRowClick(vendor: Vendor) {
+    if (activeVendorId === vendor.id) {
+      setActiveVendorId(null);
+      setVendorHistory([]);
+    } else {
+      setActiveVendorId(vendor.id);
+      void loadVendorHistory(vendor);
+    }
+  }
+
   // ── CSV download helpers ──────────────────────────────────────────────────
 
   function downloadSubs(ids: Set<string>) {
@@ -563,15 +649,15 @@ export default function TrackerPage() {
 
         {isSearching && (
           <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-1 rounded-lg">
-            {filteredSubs.length + filteredVendors.length + filteredClients.length} results across all data
+            {filteredSubs.length + filteredVendors.length} results across all data
           </span>
         )}
       </div>
 
-      {/* ── Page content: 3 equal full-height columns ── */}
-      <div className="flex-1 grid grid-cols-3 gap-0 overflow-hidden">
+      {/* ── Page content: 2 columns – Vendors table + Submissions ── */}
+      <div className="flex-1 grid grid-cols-[2fr_1fr] gap-0 overflow-hidden">
 
-        {/* ════════════════ VENDORS COLUMN ════════════════ */}
+        {/* ════════════════ VENDORS TABLE ════════════════ */}
         <div className="border-r border-gray-200 bg-white flex flex-col overflow-hidden">
           <div className="shrink-0 px-4 py-3 border-b border-gray-200 bg-white">
             <div className="flex items-center justify-between">
@@ -594,247 +680,150 @@ export default function TrackerPage() {
               </div>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+          <div className="flex-1 overflow-y-auto">
             {filteredVendors.length === 0 ? (
               <div className="py-16 text-center text-xs text-gray-400">
                 {isSearching ? 'No vendors match your search.' : `No vendors in ${dateLabel}.`}
               </div>
             ) : (
-              filteredVendors.map(v => {
-                const isExpanded = expandedVendors.has(v.id);
-                const subCount = submissions.filter(s => s.vendor_name === v.name).length;
-                return (
-                  <div key={v.id} className={`rounded-lg border transition-all ${selVendor.has(v.id) ? 'border-amber-300 bg-amber-50/40' : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm'}`}>
-                    <div className="flex items-center gap-2 px-3 py-2.5 cursor-pointer" onClick={() => toggleExpand(expandedVendors, v.id, setExpandedVendors)}>
-                      <input type="checkbox" checked={selVendor.has(v.id)} onChange={e => { e.stopPropagation(); toggleSel(selVendor, v.id, setSelVendor); }} className="w-3 h-3 accent-amber-500 cursor-pointer shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-xs font-semibold text-gray-900 truncate block">{v.name}</span>
-                        {v.contact_person && <span className="text-[10px] text-gray-400 truncate block">{v.contact_person}</span>}
-                      </div>
-                      {subCount > 0 && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{subCount}</span>}
-                      {isExpanded ? <ChevronUp size={12} className="text-gray-400 shrink-0" /> : <ChevronDown size={12} className="text-gray-400 shrink-0" />}
-                    </div>
-                    {isExpanded && (
-                      <div className="px-3 pb-3 pt-0 space-y-2 border-t border-gray-100">
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                          {v.email && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              <Mail size={9} className="text-gray-400" />
+              <table className="w-full text-left">
+                <thead className="sticky top-0 bg-gray-50 z-10">
+                  <tr className="border-b border-gray-200">
+                    <th className="w-8 px-3 py-2"><input type="checkbox" checked={selVendor.size === filteredVendors.length && filteredVendors.length > 0} onChange={() => { if (selVendor.size === filteredVendors.length) { setSelVendor(new Set()); } else { setSelVendor(new Set(filteredVendors.map(v => v.id))); } }} className="w-3 h-3 accent-amber-500 cursor-pointer" /></th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Name</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Contact Person</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Email</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Phone</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Location</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500 text-center">Subs</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">Added</th>
+                    <th className="w-16 px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredVendors.map((v, idx) => {
+                    const subCount = submissions.filter(s => s.vendor_name === v.name).length;
+                    const isActive = activeVendorId === v.id;
+                    return (
+                      <tr key={v.id} onClick={() => handleVendorRowClick(v)} className={`border-b border-gray-100 cursor-pointer transition-colors ${isActive ? 'bg-amber-100/60' : selVendor.has(v.id) ? 'bg-amber-50/40' : idx % 2 === 0 ? 'bg-white hover:bg-amber-50/30' : 'bg-gray-50/30 hover:bg-amber-50/30'}`}>
+                        <td className="px-3 py-2"><input type="checkbox" checked={selVendor.has(v.id)} onChange={(e) => { e.stopPropagation(); toggleSel(selVendor, v.id, setSelVendor); }} className="w-3 h-3 accent-amber-500 cursor-pointer" /></td>
+                        <td className="px-3 py-2 text-xs font-semibold text-gray-900 truncate max-w-[160px]">{v.name}</td>
+                        <td className="px-3 py-2 text-[11px] text-gray-600 max-w-[120px]">{v.contact_person ? (
+                          <span className="flex items-center gap-1">
+                            {revealedFields.has(`cp-${v.id}`) ? (
+                              <span className="truncate">{v.contact_person}</span>
+                            ) : (
+                              <span className="text-gray-400 truncate">{v.contact_person.slice(0, 3)}•••</span>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `cp-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0" title={revealedFields.has(`cp-${v.id}`) ? 'Hide' : 'Show'}>
+                              {revealedFields.has(`cp-${v.id}`) ? <EyeOff size={11} /> : <Eye size={11} />}
+                            </button>
+                          </span>
+                        ) : '—'}</td>
+                        <td className="px-3 py-2 text-[11px] max-w-[160px]">{v.email ? (
+                          <span className="flex items-center gap-1">
+                            {revealedFields.has(`email-${v.id}`) ? (
                               <a href={`mailto:${v.email}`} className="text-blue-600 hover:underline truncate">{v.email}</a>
-                            </div>
-                          )}
-                          {v.contact && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              <Phone size={9} className="text-gray-400" />
+                            ) : (
+                              <span className="text-gray-400 truncate">{v.email.slice(0, 3)}@•••</span>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `email-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0" title={revealedFields.has(`email-${v.id}`) ? 'Hide' : 'Show'}>
+                              {revealedFields.has(`email-${v.id}`) ? <EyeOff size={11} /> : <Eye size={11} />}
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(v.email); setCopiedField(`email-${v.id}`); setTimeout(() => setCopiedField(null), 1500); }} className="p-0.5 rounded text-gray-400 hover:text-green-600 transition-colors shrink-0" title="Copy email">
+                              {copiedField === `email-${v.id}` ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
+                            </button>
+                          </span>
+                        ) : '—'}</td>
+                        <td className="px-3 py-2 text-[11px] text-gray-600 max-w-[100px]">{v.contact ? (
+                          <span className="flex items-center gap-1">
+                            {revealedFields.has(`phone-${v.id}`) ? (
                               <span className="truncate">{v.contact}</span>
-                            </div>
-                          )}
-                          {v.location && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              <MapPin size={9} className="text-gray-400" />
-                              <span className="truncate">{v.location}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                            <Calendar size={9} />
-                            <span>{fmtIso(v.created_at)}</span>
+                            ) : (
+                              <span className="text-gray-400 truncate">{v.contact.slice(0, 3)}•••</span>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `phone-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0" title={revealedFields.has(`phone-${v.id}`) ? 'Hide' : 'Show'}>
+                              {revealedFields.has(`phone-${v.id}`) ? <EyeOff size={11} /> : <Eye size={11} />}
+                            </button>
+                          </span>
+                        ) : '—'}</td>
+                        <td className="px-3 py-2 text-[11px] text-gray-600 truncate max-w-[120px]">{v.location || '—'}</td>
+                        <td className="px-3 py-2 text-center">{subCount > 0 ? <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{subCount}</span> : <span className="text-[10px] text-gray-300">0</span>}</td>
+                        <td className="px-3 py-2 text-[10px] text-gray-400 whitespace-nowrap">{fmtIso(v.created_at)}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            <button onClick={(e) => { e.stopPropagation(); openEditVendor(v); }} className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit"><Pencil size={11} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vendor', id: v.id }); }} className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete"><Trash2 size={11} /></button>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 pt-1">
-                          <button onClick={() => openEditVendor(v)} className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 px-2 py-1 rounded-md transition-colors">
-                            <Pencil size={10} /> Edit
-                          </button>
-                          <button onClick={() => setDeleteTarget({ type: 'vendor', id: v.id })} className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 px-2 py-1 rounded-md transition-colors">
-                            <Trash2 size={10} /> Delete
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
 
-        {/* ════════════════ CLIENTS COLUMN ════════════════ */}
-        <div className="border-r border-gray-200 bg-white flex flex-col overflow-hidden">
-          <div className="shrink-0 px-4 py-3 border-b border-gray-200 bg-white">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-teal-600 flex items-center justify-center">
-                  <Users size={12} className="text-white" />
-                </div>
-                <h2 className="text-sm font-bold text-gray-900">Clients</h2>
-                <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded ring-1 ring-teal-200">{filteredClients.length}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {selClient.size > 0 && (
-                  <button onClick={() => downloadClients(selClient)} className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors" title="Download selected">
-                    <Download size={13} />
-                  </button>
-                )}
-                <button onClick={openAddClient} className="flex items-center gap-1 text-[10px] font-bold text-white bg-teal-600 hover:bg-teal-700 px-2.5 py-1.5 rounded-lg transition-colors">
-                  <Plus size={11} /> Add
-                </button>
-              </div>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-            {filteredClients.length === 0 ? (
-              <div className="py-16 text-center text-xs text-gray-400">
-                {isSearching ? 'No clients match your search.' : `No clients in ${dateLabel}.`}
-              </div>
-            ) : (
-              filteredClients.map(c => {
-                const isExpanded = expandedClients.has(c.id);
-                const subCount = submissions.filter(s => s.client_name === c.name).length;
-                return (
-                  <div key={c.id} className={`rounded-lg border transition-all ${selClient.has(c.id) ? 'border-teal-300 bg-teal-50/40' : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm'}`}>
-                    <div className="flex items-center gap-2 px-3 py-2.5 cursor-pointer" onClick={() => toggleExpand(expandedClients, c.id, setExpandedClients)}>
-                      <input type="checkbox" checked={selClient.has(c.id)} onChange={e => { e.stopPropagation(); toggleSel(selClient, c.id, setSelClient); }} className="w-3 h-3 accent-teal-600 cursor-pointer shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-xs font-semibold text-gray-900 truncate block">{c.name}</span>
-                        {c.contact_person && <span className="text-[10px] text-gray-400 truncate block">{c.contact_person}</span>}
-                      </div>
-                      {subCount > 0 && <span className="text-[9px] font-bold text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded">{subCount}</span>}
-                      {isExpanded ? <ChevronUp size={12} className="text-gray-400 shrink-0" /> : <ChevronDown size={12} className="text-gray-400 shrink-0" />}
-                    </div>
-                    {isExpanded && (
-                      <div className="px-3 pb-3 pt-0 space-y-2 border-t border-gray-100">
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                          {c.email && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              <Mail size={9} className="text-gray-400" />
-                              <a href={`mailto:${c.email}`} className="text-blue-600 hover:underline truncate">{c.email}</a>
-                            </div>
-                          )}
-                          {c.phone && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              <Phone size={9} className="text-gray-400" />
-                              <span className="truncate">{c.phone}</span>
-                            </div>
-                          )}
-                          {c.location && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              <MapPin size={9} className="text-gray-400" />
-                              <span className="truncate">{c.location}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                            <Calendar size={9} />
-                            <span>{fmtIso(c.created_at)}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 pt-1">
-                          <button onClick={() => openEditClient(c)} className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 px-2 py-1 rounded-md transition-colors">
-                            <Pencil size={10} /> Edit
-                          </button>
-                          <button onClick={() => setDeleteTarget({ type: 'client', id: c.id })} className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 px-2 py-1 rounded-md transition-colors">
-                            <Trash2 size={10} /> Delete
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* ════════════════ SUBMISSIONS COLUMN ════════════════ */}
+        {/* ════════════════ VENDOR HISTORY COLUMN ════════════════ */}
         <div className="bg-white flex flex-col overflow-hidden">
           <div className="shrink-0 px-4 py-3 border-b border-gray-200 bg-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-md bg-blue-600 flex items-center justify-center">
-                  <FileText size={12} className="text-white" />
+                  <History size={12} className="text-white" />
                 </div>
-                <h2 className="text-sm font-bold text-gray-900">Submissions</h2>
-                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{filteredSubs.length}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {selSub.size > 0 && (
-                  <button onClick={() => downloadSubs(selSub)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Download selected">
-                    <Download size={13} />
-                  </button>
+                <h2 className="text-sm font-bold text-gray-900">Revealed Jobs</h2>
+                {activeVendorId && (
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{vendorHistory.length}</span>
                 )}
-                <button onClick={openAddSubmission} className="flex items-center gap-1 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1.5 rounded-lg transition-colors">
-                  <Plus size={11} /> Add
-                </button>
               </div>
+              {activeVendorId && (
+                <span className="text-[10px] text-gray-500 truncate max-w-[140px]">
+                  {vendors.find(v => v.id === activeVendorId)?.name}
+                </span>
+              )}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-            {filteredSubs.length === 0 ? (
+          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+            {!activeVendorId ? (
               <div className="py-16 text-center text-xs text-gray-400">
-                {isSearching ? 'No submissions match your search.' : `No submissions in ${dateLabel}.`}
+                <History size={18} className="mx-auto text-gray-300 mb-2" />
+                <p className="font-medium text-gray-500">Select a vendor</p>
+                <p className="mt-1">Click a vendor row to view their revealed job history.</p>
+              </div>
+            ) : historyLoading ? (
+              <div className="flex h-full items-center justify-center py-16">
+                <LogoSpinner size={20} />
+              </div>
+            ) : vendorHistory.length === 0 ? (
+              <div className="py-16 text-center text-xs text-gray-400">
+                <History size={18} className="mx-auto text-gray-300 mb-2" />
+                <p className="font-medium text-gray-500">No revealed jobs</p>
+                <p className="mt-1">No contact reveals found for this vendor yet.</p>
               </div>
             ) : (
-              filteredSubs.map(s => {
-                const isExpanded = expandedSubs.has(s.id);
-                return (
-                  <div key={s.id} className={`rounded-lg border transition-all ${selSub.has(s.id) ? 'border-blue-300 bg-blue-50/40' : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm'}`}>
-                    <div className="flex items-center gap-2 px-3 py-2.5 cursor-pointer" onClick={() => toggleExpand(expandedSubs, s.id, setExpandedSubs)}>
-                      <input type="checkbox" checked={selSub.has(s.id)} onChange={e => { e.stopPropagation(); toggleSel(selSub, s.id, setSelSub); }} className="w-3 h-3 accent-blue-600 cursor-pointer shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-xs font-semibold text-gray-900 truncate block">{s.candidate_name || '—'}</span>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {s.client_name && <span className="text-[10px] text-gray-400 truncate">{s.client_name}</span>}
-                          {s.rate && <span className="text-[10px] font-semibold text-emerald-600">{s.rate}</span>}
-                        </div>
-                      </div>
-                      <span className="text-[9px] font-mono text-gray-400 shrink-0">{formatDate(s.submission_date)}</span>
-                      {isExpanded ? <ChevronUp size={12} className="text-gray-400 shrink-0" /> : <ChevronDown size={12} className="text-gray-400 shrink-0" />}
+              vendorHistory.map(job => (
+                <div
+                  key={job.id}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gray-900">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
+                      <p className="mt-0.5 text-[12px] text-gray-600">{job.company_name || '—'} • {job.location || '—'}</p>
                     </div>
-                    {isExpanded && (
-                      <div className="px-3 pb-3 pt-0 space-y-2 border-t border-gray-100">
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                          {s.vendor_name && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              <Building2 size={9} className="text-gray-400" />
-                              <span className="truncate">{s.vendor_name}</span>
-                            </div>
-                          )}
-                          {s.submission_type && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              <Tag size={9} className="text-gray-400" />
-                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold ${TYPE_BADGE[s.submission_type] ?? 'bg-gray-100 text-gray-500'}`}>{s.submission_type}</span>
-                            </div>
-                          )}
-                          {s.job_location && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              <MapPin size={9} className="text-gray-400" />
-                              <span className="truncate">{s.job_location}</span>
-                            </div>
-                          )}
-                          {s.submitted_by && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                              <UserCheck size={9} className="text-gray-400" />
-                              <span className="truncate">{s.submitted_by}</span>
-                            </div>
-                          )}
-                        </div>
-                        {s.skill_set && (
-                          <div className="flex items-start gap-1 text-[10px] text-gray-500 pt-0.5">
-                            <Briefcase size={9} className="text-gray-400 mt-0.5 shrink-0" />
-                            <span className="line-clamp-2">{s.skill_set}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-1.5 pt-1">
-                          <button onClick={() => openEditSubmission(s)} className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 px-2 py-1 rounded-md transition-colors">
-                            <Pencil size={10} /> Edit
-                          </button>
-                          <button onClick={() => setDeleteTarget({ type: 'submission', id: s.id })} className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 px-2 py-1 rounded-md transition-colors">
-                            <Trash2 size={10} /> Delete
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">{job.platform}</span>
+                    </div>
                   </div>
-                );
-              })
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500">
+                    <span>{job.posted_by_name || '—'}</span>
+                    <span>•</span>
+                    <span>{formatAgo(job.created_at)}</span>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
