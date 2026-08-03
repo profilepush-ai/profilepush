@@ -90,6 +90,45 @@ const EMPTY_FORM: WatchlistFormState = {
   notes: '',
 };
 
+type SelectOption = { value: string; label: string };
+
+const VISA_OPTIONS: SelectOption[] = [
+  { value: 'US Citizen', label: 'US Citizen' },
+  { value: 'Green Card', label: 'Green Card' },
+  { value: 'H1B', label: 'H1B' },
+  { value: 'H4 EAD', label: 'H4 EAD' },
+  { value: 'OPT/CPT', label: 'OPT/CPT' },
+  { value: 'TN', label: 'TN' },
+  { value: 'Other', label: 'Other' },
+];
+
+const EMPLOYMENT_OPTIONS: SelectOption[] = [
+  { value: 'C2C', label: 'C2C' },
+  { value: 'W2', label: 'W2' },
+  { value: '1099', label: '1099' },
+  { value: 'C2C or W2', label: 'C2C or W2' },
+  { value: 'Any', label: 'Any' },
+];
+
+const WORK_OPTIONS: SelectOption[] = [
+  { value: 'Remote', label: 'Remote' },
+  { value: 'On-site', label: 'On-site' },
+  { value: 'Hybrid', label: 'Hybrid' },
+  { value: 'Any', label: 'Any' },
+];
+
+function renderSelectOptions(options: SelectOption[], currentValue?: string) {
+  const normalized = currentValue?.trim();
+  const merged = normalized && !options.some((option) => option.value === normalized)
+    ? [...options, { value: normalized, label: normalized }]
+    : options;
+  return merged.map((option) => (
+    <option key={option.value} value={option.value}>
+      {option.label}
+    </option>
+  ));
+}
+
 export default function WatchlistProfilesPage() {
   const { account } = useAuth();
 
@@ -119,7 +158,6 @@ export default function WatchlistProfilesPage() {
       .from('watchlist_profiles' as never)
       .select('*')
       .eq('account_id', account.id)
-      .eq('is_watching', true)
       .order('updated_at', { ascending: false });
 
     if (error) {
@@ -169,6 +207,10 @@ export default function WatchlistProfilesPage() {
     () => filteredProfiles.find((item) => item.id === selectedProfileId) ?? null,
     [filteredProfiles, selectedProfileId],
   );
+
+  const sortedProfiles = useMemo(() => {
+    return [...filteredProfiles].sort((a, b) => Number(b.is_watching) - Number(a.is_watching) || b.updated_at.localeCompare(a.updated_at));
+  }, [filteredProfiles]);
 
   useEffect(() => {
     if (filteredProfiles.length === 0) {
@@ -325,7 +367,7 @@ export default function WatchlistProfilesPage() {
               <div className="py-16 text-center text-xs text-gray-400">No watchlist profiles found.</div>
             ) : (
               <div className="divide-y divide-gray-100">
-                {filteredProfiles.map((profile) => {
+                {sortedProfiles.map((profile) => {
                   const isSelected = profile.id === selectedProfileId;
                   const busy = savingId === profile.id;
                   return (
@@ -334,32 +376,16 @@ export default function WatchlistProfilesPage() {
                       onClick={() => { setSelectedProfileId(profile.id); setEditingProfile(null); }}
                       className={`px-3 py-2.5 cursor-pointer transition-colors ${isSelected ? 'bg-blue-100/60' : 'hover:bg-blue-50/30'}`}
                     >
-                      <div className="flex items-center justify-between gap-1.5">
-                        <p className="text-xs font-semibold text-gray-900 break-words whitespace-normal leading-snug">{profile.target_role}</p>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={(event) => { event.stopPropagation(); startEditing(profile); }}
-                            className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-60"
-                            title="Edit"
-                          >
-                            <Pencil size={10} />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={(event) => { event.stopPropagation(); void handleToggleWatch(profile); }}
-                            className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
-                            title="Unwatch"
-                          >
-                            <BookmarkCheck size={10} /> Unwatch
-                          </button>
+                      <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-1.5">
+                        <p className="text-xs font-semibold text-gray-900 break-words whitespace-normal leading-snug">
+                          {profile.target_role}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1 shrink-0">
+                          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold ${profile.is_watching ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-gray-200 bg-gray-50 text-gray-500'}`} title="Watching status">
+                            <BookmarkCheck size={10} /> {profile.is_watching ? 'Watching' : 'Not Watching'}
+                          </span>
                         </div>
                       </div>
-                      <div className="mt-1 text-[11px] text-gray-600">{profile.category || 'uncategorized'} • {profile.schedule_frequency}</div>
-                      <div className="mt-0.5 text-[11px] text-gray-500 truncate">{profile.priority_skills || 'No skills added'}</div>
-                      <div className="mt-1 text-[10px] text-gray-400">Updated {formatDateTime(profile.updated_at)}</div>
                     </div>
                   );
                 })}
@@ -370,7 +396,7 @@ export default function WatchlistProfilesPage() {
 
         <div className="min-w-0 bg-white flex flex-col overflow-hidden">
           <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Profile Details</span>
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Details</span>
             {selectedProfile && (
               <span className="ml-auto text-[10px] text-gray-500 truncate max-w-[220px]">{selectedProfile.target_role}</span>
             )}
@@ -380,88 +406,131 @@ export default function WatchlistProfilesPage() {
             {!selectedProfile ? (
               <div className="py-16 text-center text-xs text-gray-400">Select a profile to view details.</div>
             ) : editingProfile?.id === selectedProfile.id ? (
-              <div className="rounded-lg border border-gray-200 overflow-hidden">
-                <table className="w-full border-collapse text-left text-[11px]">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="border-b border-gray-200 px-3 py-2 font-semibold uppercase tracking-wide text-gray-500 w-[220px]">Field</th>
-                      <th className="border-b border-gray-200 px-3 py-2 font-semibold uppercase tracking-wide text-gray-500">Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Target Role</td>
-                      <td className="border-b border-gray-100 px-3 py-2"><input value={form.target_role} onChange={(e) => setForm((prev) => ({ ...prev, target_role: e.target.value }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" /></td>
-                    </tr>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Category</td>
-                      <td className="border-b border-gray-100 px-3 py-2"><input value={form.category} onChange={(e) => setForm((prev) => ({ ...prev, category: e.target.value }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" /></td>
-                    </tr>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Priority Skills</td>
-                      <td className="border-b border-gray-100 px-3 py-2"><textarea value={form.priority_skills} onChange={(e) => setForm((prev) => ({ ...prev, priority_skills: e.target.value }))} rows={2} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" /></td>
-                    </tr>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Preferred Locations</td>
-                      <td className="border-b border-gray-100 px-3 py-2"><input value={form.preferred_locations} onChange={(e) => setForm((prev) => ({ ...prev, preferred_locations: e.target.value }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" /></td>
-                    </tr>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Visa Status</td>
-                      <td className="border-b border-gray-100 px-3 py-2"><input value={form.visa_status} onChange={(e) => setForm((prev) => ({ ...prev, visa_status: e.target.value }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" /></td>
-                    </tr>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Employment Type</td>
-                      <td className="border-b border-gray-100 px-3 py-2"><input value={form.employment_type} onChange={(e) => setForm((prev) => ({ ...prev, employment_type: e.target.value }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" /></td>
-                    </tr>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Work Type</td>
-                      <td className="border-b border-gray-100 px-3 py-2"><input value={form.work_type} onChange={(e) => setForm((prev) => ({ ...prev, work_type: e.target.value }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" /></td>
-                    </tr>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Experience (Min / Max)</td>
-                      <td className="border-b border-gray-100 px-3 py-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <input value={form.min_years_exp} onChange={(e) => setForm((prev) => ({ ...prev, min_years_exp: e.target.value }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
-                          <input value={form.max_years_exp} onChange={(e) => setForm((prev) => ({ ...prev, max_years_exp: e.target.value }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Rate (Min / Max)</td>
-                      <td className="border-b border-gray-100 px-3 py-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <input value={form.min_rate_usd_per_hr} onChange={(e) => setForm((prev) => ({ ...prev, min_rate_usd_per_hr: e.target.value }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
-                          <input value={form.max_rate_usd_per_hr} onChange={(e) => setForm((prev) => ({ ...prev, max_rate_usd_per_hr: e.target.value }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Schedule</td>
-                      <td className="border-b border-gray-100 px-3 py-2">
-                        <select value={form.schedule_frequency} onChange={(e) => setForm((prev) => ({ ...prev, schedule_frequency: e.target.value as WatchlistProfile['schedule_frequency'] }))} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200">
-                          <option value="disabled">disabled</option>
-                          <option value="hourly">hourly</option>
-                          <option value="daily">daily</option>
-                          <option value="twice_daily">twice_daily</option>
-                          <option value="weekly">weekly</option>
-                        </select>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="border-b border-gray-100 px-3 py-2 font-semibold text-gray-700">Notes</td>
-                      <td className="border-b border-gray-100 px-3 py-2"><textarea value={form.notes} onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))} rows={2} className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200" /></td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 font-semibold text-gray-700">Open To Relocation</td>
-                      <td className="px-3 py-2">
-                        <label className="inline-flex items-center gap-2 text-xs text-gray-700">
-                          <input type="checkbox" checked={form.relocation_open} onChange={(e) => setForm((prev) => ({ ...prev, relocation_open: e.target.checked }))} className="h-3.5 w-3.5 rounded border-gray-300" />
-                          Enabled
-                        </label>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+              <div className="rounded-lg border border-gray-200 overflow-hidden bg-white">
+                <div className="grid gap-3 p-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Target Role</label>
+                    <input
+                      value={form.target_role}
+                      onChange={(event) => setForm((prev) => ({ ...prev, target_role: event.target.value }))}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Visa Status</label>
+                    <select
+                      value={form.visa_status}
+                      onChange={(event) => setForm((prev) => ({ ...prev, visa_status: event.target.value }))}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    >
+                      <option value="">Select visa status</option>
+                      {renderSelectOptions(VISA_OPTIONS, form.visa_status)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Employment Type</label>
+                    <select
+                      value={form.employment_type}
+                      onChange={(event) => setForm((prev) => ({ ...prev, employment_type: event.target.value }))}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    >
+                      <option value="">Select employment type</option>
+                      {renderSelectOptions(EMPLOYMENT_OPTIONS, form.employment_type)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Work Type</label>
+                    <select
+                      value={form.work_type}
+                      onChange={(event) => setForm((prev) => ({ ...prev, work_type: event.target.value }))}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    >
+                      <option value="">Select work type</option>
+                      {renderSelectOptions(WORK_OPTIONS, form.work_type)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Open To Relocation</label>
+                    <label className="mt-2 inline-flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={form.relocation_open}
+                        onChange={(event) => setForm((prev) => ({ ...prev, relocation_open: event.target.checked }))}
+                        className="h-3.5 w-3.5 rounded border-gray-300"
+                      />
+                      Enabled
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Experience Min</label>
+                    <input
+                      value={form.min_years_exp}
+                      onChange={(event) => setForm((prev) => ({ ...prev, min_years_exp: event.target.value }))}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Experience Max</label>
+                    <input
+                      value={form.max_years_exp}
+                      onChange={(event) => setForm((prev) => ({ ...prev, max_years_exp: event.target.value }))}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Rate Min</label>
+                    <input
+                      value={form.min_rate_usd_per_hr}
+                      onChange={(event) => setForm((prev) => ({ ...prev, min_rate_usd_per_hr: event.target.value }))}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Rate Max</label>
+                    <input
+                      value={form.max_rate_usd_per_hr}
+                      onChange={(event) => setForm((prev) => ({ ...prev, max_rate_usd_per_hr: event.target.value }))}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Preferred Locations</label>
+                    <input
+                      value={form.preferred_locations}
+                      onChange={(event) => setForm((prev) => ({ ...prev, preferred_locations: event.target.value }))}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Priority Skills</label>
+                    <textarea
+                      value={form.priority_skills}
+                      onChange={(event) => setForm((prev) => ({ ...prev, priority_skills: event.target.value }))}
+                      rows={2}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Notes</label>
+                    <textarea
+                      value={form.notes}
+                      onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                      rows={3}
+                      className="mt-2 w-full rounded border border-gray-200 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+                </div>
 
                 <div className="sticky bottom-0 z-10 flex items-center justify-end gap-2 border-t border-gray-200 p-3 bg-gray-50">
                   <button type="button" onClick={closeEditor} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white">
@@ -476,31 +545,25 @@ export default function WatchlistProfilesPage() {
               <div className="rounded-lg border border-gray-200 overflow-hidden">
                 {(() => {
                   const detailRows = [
-                    ['Target Role', selectedProfile.target_role],
-                    ['Category', selectedProfile.category || '-'],
-                    ['Priority Skills', selectedProfile.priority_skills || '-'],
-                    ['Preferred Locations', selectedProfile.preferred_locations || '-'],
-                    ['Visa Status', selectedProfile.visa_status || '-'],
-                    ['Employment Type', selectedProfile.employment_type || '-'],
+                    ['Role', selectedProfile.target_role],
+                    ['Exp', `${selectedProfile.min_years_exp ?? '-'} / ${selectedProfile.max_years_exp ?? '-'}`],
+                    ['Rate ($)', `${selectedProfile.min_rate_usd_per_hr ?? '-'} / ${selectedProfile.max_rate_usd_per_hr ?? '-'}`],
+                    ['Visa', selectedProfile.visa_status || '-'],
+                    ['Locations', selectedProfile.preferred_locations || '-'],
+                    ['Emp Type', selectedProfile.employment_type || '-'],
                     ['Work Type', selectedProfile.work_type || '-'],
-                    ['Experience', `${selectedProfile.min_years_exp ?? '-'} / ${selectedProfile.max_years_exp ?? '-'}`],
-                    ['Rate (USD/hr)', `${selectedProfile.min_rate_usd_per_hr ?? '-'} / ${selectedProfile.max_rate_usd_per_hr ?? '-'}`],
-                    ['Schedule', selectedProfile.schedule_frequency],
-                    ['Relocation', selectedProfile.relocation_open ? 'Yes' : 'No'],
-                    ['Notes', selectedProfile.notes || '-'],
-                    ['Created', formatDateTime(selectedProfile.created_at)],
-                    ['Updated', formatDateTime(selectedProfile.updated_at)],
+                    ['Skills', selectedProfile.priority_skills || '-'],
                   ] as Array<[string, string]>;
 
-                  const visibleRows = detailsExpanded ? detailRows : detailRows.slice(0, 2);
+                  const visibleRows = detailRows;
 
                   return (
                     <>
-                <table className="w-full border-collapse text-left text-[11px]">
+                <table className="w-full table-fixed border-collapse text-left text-[11px]">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="border-b border-gray-200 px-3 py-2 font-semibold uppercase tracking-wide text-gray-500 w-[220px]">Field</th>
-                      <th className="border-b border-gray-200 px-3 py-2 font-semibold uppercase tracking-wide text-gray-500">Value</th>
+                      <th className="border-b border-gray-200 px-3 py-2 font-semibold uppercase tracking-wide text-gray-500 w-[132px]">Field</th>
+                      <th className="border-b border-gray-200 px-3 py-2 font-semibold uppercase tracking-wide text-gray-500 w-[calc(100%-132px)]">Value</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -515,19 +578,6 @@ export default function WatchlistProfilesPage() {
                     })}
                   </tbody>
                 </table>
-
-                {detailRows.length > 2 && (
-                  <div className="border-t border-gray-200 px-3 py-2 bg-white">
-                    <button
-                      type="button"
-                      onClick={() => setDetailsExpanded((prev) => !prev)}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700"
-                    >
-                      {detailsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                      {detailsExpanded ? 'Collapse Details' : 'Expand Details'}
-                    </button>
-                  </div>
-                )}
 
                 <div className="sticky bottom-0 z-10 flex items-center justify-end gap-2 border-t border-gray-200 p-3 bg-gray-50">
                   <button type="button" onClick={() => startEditing(selectedProfile)} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white">

@@ -23,6 +23,8 @@ import {
   Search,
   Shield,
   CheckSquare,
+  ChevronDown,
+  ChevronUp,
   Server,
   Sparkles,
   TableProperties,
@@ -767,6 +769,7 @@ export default function PulsePage() {
   const mobileProfilesLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const [profileStatsLoading, setProfileStatsLoading] = useState(false);
   const [profileStatsByRole, setProfileStatsByRole] = useState<Record<string, ProfileStats>>({});
+  const [expandedMobileProfileCardIds, setExpandedMobileProfileCardIds] = useState<Set<string>>(new Set());
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
   const [generatedEmailDraft, setGeneratedEmailDraft] = useState('');
   const [showGeneratedEmailDraft, setShowGeneratedEmailDraft] = useState(false);
@@ -2296,8 +2299,8 @@ export default function PulsePage() {
                 </div>
               )}
 
-              <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[20%_80%]' : 'grid-cols-[15%_85%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
-                <aside className="sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar border-r border-gray-200 bg-gray-50 px-1.5 py-2">
+              <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[15%_85%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
+                <aside className={`sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar ${isMobileViewport ? 'border-r-0 bg-transparent px-0 py-0' : 'border-r border-gray-200 bg-gray-50 px-1.5 py-2'}`}>
                   <div className="space-y-1">
                     {[...PROFILE_CATEGORY_TABS]
                       .map((category) => {
@@ -2413,6 +2416,19 @@ export default function PulsePage() {
                         const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
                         const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
                         const details = getPersonaDetailColumns(persona);
+                        const isExpanded = expandedMobileProfileCardIds.has(persona.target_role);
+                        const collapsedDetails = [
+                          { key: 'experience', value: details.experience !== '-' ? details.experience : '—' },
+                          { key: 'rate', value: details.rateRange !== '-' ? details.rateRange : '—' },
+                          { key: 'visa', value: details.visaStatus !== '-' ? details.visaStatus : '—' },
+                        ];
+                        const expandedDetails = [
+                          ...collapsedDetails,
+                          { key: 'location', value: details.location !== '-' ? details.location : '—' },
+                          { key: 'employment', value: details.employmentType !== '-' ? details.employmentType : '—' },
+                          { key: 'work', value: details.workType !== '-' ? details.workType : '—' },
+                        ];
+                        const mobileDetails = isExpanded ? expandedDetails : collapsedDetails;
 
                         return (
                           <div
@@ -2420,16 +2436,29 @@ export default function PulsePage() {
                             onClick={() => void selectPersona(persona)}
                             className={`snap-start shrink-0 w-[84%] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
                           >
-                            <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-start justify-between gap-1.5">
                               <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedMobileProfileCardIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(persona.target_role)) next.delete(persona.target_role);
+                                    else next.add(persona.target_role);
+                                    return next;
+                                  });
+                                }}
+                                className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-blue-600"
+                                aria-label={isExpanded ? 'Collapse profile details' : 'Expand profile details'}
+                              >
+                                {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                              </button>
                             </div>
-                            <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
-                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.experience !== '-' ? details.experience : '—'}</div>
-                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.location !== '-' ? details.location : '—'}</div>
-                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
-                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
-                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.workType !== '-' ? details.workType : '—'}</div>
-                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-500 truncate">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
+                            <div className={`mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight ${isExpanded ? '' : ''}`}>
+                              {mobileDetails.map((item) => (
+                                <div key={item.key} className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{item.value}</div>
+                              ))}
                             </div>
                             <div className="mt-1 flex items-center gap-1.5">
                               <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>

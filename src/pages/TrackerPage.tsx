@@ -26,6 +26,7 @@ interface VendorHistoryJob {
   poster_email: string;
   platform: string;
   created_at: string;
+  revealed_at: string | null;
   extracted_role_normalized: string | null;
   match_score: number | null;
   score_breakdown: Record<string, unknown> | null;
@@ -231,7 +232,7 @@ export default function TrackerPage() {
   // Pages
 
   // Modals
-  type ModalType = 'vendor' | 'client' | 'submission' | null;
+  type ModalType = 'vendor' | 'client' | 'submission' | 'email' | null;
   const [modal, setModal]         = useState<ModalType>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving]       = useState(false);
@@ -263,6 +264,7 @@ export default function TrackerPage() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<{ existing: Submission[]; } | null>(null);
+  const [emailDraft, setEmailDraft] = useState<{ subject: string; body: string } | null>(null);
 
   // Close date picker on outside click
   useEffect(() => {
@@ -476,6 +478,8 @@ export default function TrackerPage() {
     return inRange(c.created_at, dateRange.start, dateRange.end);
   });
 
+  const filteredVendorIdsKey = filteredVendors.map((vendor) => vendor.id).join(',');
+
   // Paginated slices
 
   // ── Selection helpers ──────────────────────────────────────────────────────
@@ -499,14 +503,19 @@ export default function TrackerPage() {
     return `${days}d ago`;
   }
 
-  const loadVendorHistory = useCallback(async (vendor: Vendor) => {
+  const loadVendorHistoryForVendors = useCallback(async (vendorsToMatch: Vendor[]) => {
     setHistoryLoading(true);
     setVendorHistory([]);
+
+    if (vendorsToMatch.length === 0) {
+      setHistoryLoading(false);
+      return;
+    }
 
     // Get revealed lead IDs for this account
     const { data: actions, error: actionsErr } = await supabase
       .from('pulse_lead_actions')
-      .select('lead_id')
+      .select('lead_id, created_at')
       .eq('action_type', 'revealed');
 
     if (actionsErr || !actions?.length) {
@@ -514,32 +523,37 @@ export default function TrackerPage() {
       return;
     }
 
-    const revealedIds = (actions as Array<{ lead_id: string }>).map(a => a.lead_id);
-
-    // Query social_jobs matching this vendor by name or email, filtered to revealed IDs
-    let query = supabase
-      .from('social_jobs')
-      .select('id, job_title, company_name, location, posted_by_name, poster_email, platform, created_at, extracted_role_normalized')
-      .in('id', revealedIds)
-      .order('created_at', { ascending: false })
-      .limit(100);
-
-    // Match by vendor name, email, or contact person
-    const conditions: string[] = [];
-    if (vendor.name) conditions.push(`posted_by_name.ilike.%${vendor.name}%`);
-    if (vendor.email) conditions.push(`poster_email.eq.${vendor.email}`);
-    if (vendor.contact_person) conditions.push(`posted_by_name.ilike.%${vendor.contact_person}%`);
-    if (vendor.name) conditions.push(`company_name.ilike.%${vendor.name}%`);
-
-    if (conditions.length > 0) {
-      query = query.or(conditions.join(','));
+    const revealedIds = (actions as Array<{ lead_id: string; created_at: string }>).map(a => a.lead_id);
+    const revealDateByLeadId = new Map<string, string>();
+    for (const action of actions as Array<{ lead_id: string; created_at: string }>) {
+      if (!revealDateByLeadId.has(action.lead_id)) {
+        revealDateByLeadId.set(action.lead_id, action.created_at);
+      }
     }
 
-    const { data: jobs, error: jobsErr } = await query;
+    const fetchJobsForVendor = async (vendor: Vendor) => {
+      // Query social_jobs matching this vendor by name or email, filtered to revealed IDs
+      let query = supabase
+        .from('social_jobs')
+        .select('id, job_title, company_name, location, posted_by_name, poster_email, platform, created_at, extracted_role_normalized')
+        .in('id', revealedIds)
+        .order('created_at', { ascending: false })
+        .limit(100);
 
-    if (!jobsErr && jobs) {
+      // Match by vendor name, email, or contact person
+      const conditions: string[] = [];
+      if (vendor.name) conditions.push(`posted_by_name.ilike.%${vendor.name}%`);
+      if (vendor.email) conditions.push(`poster_email.eq.${vendor.email}`);
+      if (vendor.contact_person) conditions.push(`posted_by_name.ilike.%${vendor.contact_person}%`);
+      if (vendor.name) conditions.push(`company_name.ilike.%${vendor.name}%`);
+
+      if (conditions.length === 0) return [] as VendorHistoryJob[];
+
+      const { data: jobs, error: jobsErr } = await query.or(conditions.join(','));
+      if (jobsErr || !jobs) return [] as VendorHistoryJob[];
+
       const jobIds = (jobs as Array<{ id: string }>).map((job) => job.id);
-      let matchByJobId = new Map<string, { final_average_score: number | null; score_breakdown: Record<string, unknown> | null }>();
+      const matchByJobId = new Map<string, { final_average_score: number | null; score_breakdown: Record<string, unknown> | null }>();
 
       if (jobIds.length > 0) {
         const { data: matches } = await supabase
@@ -558,39 +572,68 @@ export default function TrackerPage() {
         }
       }
 
-      const hydratedJobs = (jobs as Array<Omit<VendorHistoryJob, 'match_score' | 'score_breakdown'>>).map((job) => {
+      return (jobs as Array<Omit<VendorHistoryJob, 'match_score' | 'score_breakdown'>>).map((job) => {
         const match = matchByJobId.get(job.id);
         return {
           ...job,
           match_score: match?.final_average_score ?? null,
           score_breakdown: match?.score_breakdown ?? null,
+          revealed_at: revealDateByLeadId.get(job.id) ?? null,
         };
       });
+    };
 
-      setVendorHistory(hydratedJobs);
-    }
+    const allJobs = (await Promise.all(vendorsToMatch.map(fetchJobsForVendor))).flat();
+    setVendorHistory(Array.from(new Map(allJobs.map((job) => [job.id, job])).values()));
     setHistoryLoading(false);
   }, []);
 
-  const generateTrackerEmailDraft = useCallback(async (job: VendorHistoryJob) => {
-    const draft = [
+  const loadVendorHistory = useCallback(async (vendor: Vendor) => {
+    await loadVendorHistoryForVendors([vendor]);
+  }, [loadVendorHistoryForVendors]);
+
+  useEffect(() => {
+    if (activeVendorId) return;
+    void loadVendorHistoryForVendors(filteredVendors);
+  }, [activeVendorId, filteredVendorIdsKey, loadVendorHistoryForVendors]);
+
+  const generateTrackerEmailDraft = useCallback((job: VendorHistoryJob) => {
+    const breakdownItems = buildScoreBreakdownDisplayItems(
+      job.score_breakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+    );
+
+    const pickDetail = (patterns: RegExp[]) => {
+      const item = breakdownItems.find((entry) => patterns.some((pattern) => pattern.test(entry.key)));
+      return item?.detail?.candidate_value?.trim() || '-';
+    };
+
+    const subject = `Re: ${job.job_title || job.extracted_role_normalized || 'Requirement'}${job.company_name ? ` at ${job.company_name}` : ''}`;
+    const profileHighlights = [
+      `- Role: ${pickDetail([/role/i, /title/i, /position/i])}`,
+      `- Exp: ${pickDetail([/experience/i, /years?_?exp/i, /exp/i])}`,
+      `- Location: ${pickDetail([/location/i, /preferred_location/i, /preferred_locations/i])}`,
+      `- Visa: ${pickDetail([/visa/i, /work_authorization/i, /authorization/i])}`,
+      `- Rate: ${pickDetail([/rate/i, /salary/i, /bill_rate/i])}`,
+      `- Skills: ${pickDetail([/skill/i])}`,
+    ];
+
+    const body = [
       `Hi ${job.posted_by_name || 'there'},`,
       '',
-      `Saw your post about the ${job.job_title || job.extracted_role_normalized || 'requirement'}${job.company_name ? ` at ${job.company_name}` : ''}.`,
-      'I have a profile that looks highly relevant to this requirement and can share details right away.',
+      `I saw your post for the ${job.job_title || job.extracted_role_normalized || 'requirement'}${job.company_name ? ` at ${job.company_name}` : ''}.`,
+      'I have a profile that looks highly relevant and can share it right away.',
       '',
-      'Please let me know if you want me to send the profile and availability.',
+      'Profile Highlights:',
+      ...profileHighlights,
+      '',
+      'Please let me know if you would like me to send the profile and availability.',
       '',
       'Thanks,',
       defaultSubmittedBy || (user?.email?.split('@')[0] ?? 'ProfilePush User'),
     ].join('\n');
 
-    try {
-      await navigator.clipboard.writeText(draft);
-      setToast({ message: 'Email draft copied.', type: 'success' });
-    } catch {
-      setToast({ message: 'Could not copy email draft.', type: 'error' });
-    }
+    setEmailDraft({ subject, body });
+    setModal('email');
   }, [defaultSubmittedBy, user?.email]);
 
   function handleVendorRowClick(vendor: Vendor) {
@@ -790,7 +833,6 @@ export default function TrackerPage() {
                           <span className="truncate">{v.location}</span>
                         </div>
                       )}
-                      <div className="mt-1 text-[10px] text-gray-400">{fmtIso(v.created_at)}</div>
                       {v.email && (
                         <div className="mt-1">
                           <button
@@ -819,23 +861,17 @@ export default function TrackerPage() {
         <div className="min-w-0 bg-white flex flex-col overflow-hidden">
           <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
             <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
-            {activeVendorId && (
-              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{vendorHistory.length}</span>
-            )}
-            {activeVendorId && (
+            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{vendorHistory.length}</span>
+            {activeVendorId ? (
               <span className="ml-auto text-[10px] text-gray-500 truncate max-w-[140px]">
                 {vendors.find(v => v.id === activeVendorId)?.name}
               </span>
+            ) : (
+              <span className="ml-auto text-[10px] text-gray-500 truncate max-w-[140px]">All contacts</span>
             )}
           </div>
           <div className="flex-1 overflow-y-auto">
-            {!activeVendorId ? (
-              <div className="py-16 text-center text-xs text-gray-400">
-                <History size={18} className="mx-auto text-gray-300 mb-2" />
-                <p className="font-medium text-gray-500">Select a vendor</p>
-                <p className="mt-1">Click a vendor row to view their revealed job history.</p>
-              </div>
-            ) : historyLoading ? (
+            {historyLoading ? (
               <div className="flex h-full items-center justify-center py-16">
                 <LogoSpinner size={20} />
               </div>
@@ -843,38 +879,54 @@ export default function TrackerPage() {
               <div className="py-16 text-center text-xs text-gray-400">
                 <History size={18} className="mx-auto text-gray-300 mb-2" />
                 <p className="font-medium text-gray-500">No revealed jobs</p>
-                <p className="mt-1">No contact reveals found for this vendor yet.</p>
+                <p className="mt-1">{activeVendorId ? 'No contact reveals found for this vendor yet.' : 'No contact reveals found across these contacts yet.'}</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
-                {vendorHistory.map(job => {
+                {vendorHistory.map((job, index) => {
                   const breakdownItems = buildScoreBreakdownDisplayItems(
                     job.score_breakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
                   );
                   const isExpanded = expandedHistoryBreakdownIds.has(job.id);
-                  const visibleBreakdownItems = isExpanded ? breakdownItems : breakdownItems.slice(0, 2);
+                  const prioritizedBreakdownItems = [...breakdownItems].sort((a, b) => {
+                    const getPriority = (key: string) => {
+                      if (/exp|experience|years?_?exp/i.test(key)) return 0;
+                      if (/visa|work_authorization|authorization/i.test(key)) return 1;
+                      return 2;
+                    };
+
+                    return getPriority(a.key) - getPriority(b.key);
+                  });
+                  const visibleBreakdownItems = isExpanded ? prioritizedBreakdownItems : prioritizedBreakdownItems.slice(0, 2);
+                  const cardToneClass = [
+                    'border-blue-100 bg-blue-50/35',
+                    'border-emerald-100 bg-emerald-50/35',
+                    'border-amber-100 bg-amber-50/40',
+                    'border-slate-200 bg-slate-50/75',
+                  ][index % 4];
 
                   return (
-                    <div key={job.id} className="px-3 py-2.5">
-                      <div className="flex items-center justify-between gap-1.5">
-                        <p className="text-[11px] font-semibold text-gray-900 leading-snug">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
+                    <div key={job.id} className={`px-3 py-2.5 rounded-lg border ${cardToneClass}`}> 
+                      <div className="flex items-start justify-between gap-1.5">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <p className="text-[11px] font-semibold text-gray-900 leading-snug">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600">{job.platform}</span>
+                        </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           {(job.match_score !== null && Number.isFinite(job.match_score) && job.match_score > 0) && (
                             <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{Math.round(job.match_score)}%</span>
                           )}
-                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600">{job.platform}</span>
                         </div>
                       </div>
                       {job.company_name && (
                         <div className="mt-0.5 text-[10px] text-gray-600">{job.company_name}</div>
                       )}
-                      {job.location && (
-                        <div className="mt-0.5 text-[10px] text-gray-600">{job.location}</div>
-                      )}
                       <div className="mt-0.5 text-[10px] text-gray-500">
                         <span>{job.posted_by_name || '—'}</span>
-                        <span> • </span>
-                        <span>{formatAgo(job.created_at)}</span>
+                      </div>
+                      <div className="mt-0.5 space-y-0.5 text-[10px] text-gray-400">
+                        <div>- {formatAgo(job.created_at)} posted</div>
+                        <div>- {job.revealed_at ? `${formatAgo(job.revealed_at)} revealed` : '— revealed'}</div>
                       </div>
 
                       {breakdownItems.length > 0 && (
@@ -897,6 +949,11 @@ export default function TrackerPage() {
                               ))}
                             </tbody>
                           </table>
+                        </div>
+                      )}
+
+                      <div className="mt-2">
+                        <div className="flex flex-col gap-1.5">
                           {breakdownItems.length > 2 && (
                             <button
                               type="button"
@@ -911,22 +968,19 @@ export default function TrackerPage() {
                                   return next;
                                 });
                               }}
-                              className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+                              className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
                             >
-                              {isExpanded ? 'Hide Details' : 'See Details'}
+                              {isExpanded ? 'Hide Details' : 'Details'}
                             </button>
                           )}
+                          <button
+                            onClick={() => void generateTrackerEmailDraft(job)}
+                            className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                          >
+                            <Mail size={10} />
+                            Generate Email
+                          </button>
                         </div>
-                      )}
-
-                      <div className="mt-1.5">
-                        <button
-                          onClick={() => void generateTrackerEmailDraft(job)}
-                          className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700"
-                        >
-                          <Mail size={10} />
-                          Generate Email
-                        </button>
                       </div>
                     </div>
                   );
@@ -1119,6 +1173,60 @@ export default function TrackerPage() {
               <button onClick={saveSubmission} disabled={saving} className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
                 <Save size={13} />{saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Submission'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EMAIL DRAFT MODAL ── */}
+      {modal === 'email' && emailDraft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setModal(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Email Draft</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Review and copy the generated outreach email</p>
+              </div>
+              <button onClick={() => setModal(null)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"><X size={16} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Subject</label>
+                <input
+                  value={emailDraft.subject}
+                  readOnly
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Message</label>
+                <textarea
+                  value={emailDraft.body}
+                  readOnly
+                  rows={12}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none whitespace-pre-wrap"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-gray-100">
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText([`Subject: ${emailDraft.subject}`, '', emailDraft.body].join('\n'));
+                    setCopiedField('email-draft');
+                    setTimeout(() => setCopiedField(null), 1500);
+                    setToast({ message: 'Email draft copied.', type: 'success' });
+                  } catch {
+                    setToast({ message: 'Could not copy email draft.', type: 'error' });
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                {copiedField === 'email-draft' ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
+                {copiedField === 'email-draft' ? 'Copied' : 'Copy Email'}
+              </button>
+              <button onClick={() => setModal(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Close</button>
             </div>
           </div>
         </div>

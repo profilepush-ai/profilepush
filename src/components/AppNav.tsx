@@ -423,7 +423,7 @@ export default function AppNav() {
             className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/watchlist-profiles' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Bookmark size={18} />
-            <span>Watch</span>
+            <span>My Watchlist</span>
           </Link>
           <Link
             to="/alerts"
