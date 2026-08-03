@@ -1962,7 +1962,7 @@ export default function PulsePage() {
               <div className="col-start-2 row-span-2 min-w-0 h-full flex min-h-0 flex-col overflow-hidden sm:contents">
 
               <section className="min-w-0 shrink-0 overflow-hidden border-b border-gray-200 sm:col-start-1 sm:row-start-1 sm:flex sm:min-h-0 sm:flex-col sm:border-b-0 sm:border-r">
-                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-white">
+                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50">
                   <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
                     <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
                   </div>
@@ -2060,7 +2060,7 @@ export default function PulsePage() {
               </section>
 
               <section className="min-w-0 flex flex-1 min-h-0 flex-col overflow-hidden sm:col-start-2 sm:row-start-1">
-                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-white">
+                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50">
                   <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
                     <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
                   </div>
