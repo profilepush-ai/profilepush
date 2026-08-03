@@ -255,7 +255,7 @@ const PROFESSIONAL_AVATAR_FALLBACK_URL = getStablePortraitUrl('profilepush-defau
 const PROFILE_CATEGORY_TABS: ProfileCategoryTab[] = [
   {
     id: 'all',
-    label: 'All Categories',
+    label: 'All',
     icon: Radar,
   },
   {
@@ -687,7 +687,7 @@ export default function PulsePage() {
   const [generatedEmailDraft, setGeneratedEmailDraft] = useState('');
   const [showGeneratedEmailDraft, setShowGeneratedEmailDraft] = useState(false);
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
-  const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('all');
+  const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
   const [visibleMatchesCount, setVisibleMatchesCount] = useState(MATCHES_PAGE_SIZE);
   const [revealedLeadIds, setRevealedLeadIds] = useState<Set<string>>(new Set());
   const [breakdownChargedLeadIds, setBreakdownChargedLeadIds] = useState<Set<string>>(new Set());
@@ -768,6 +768,17 @@ export default function PulsePage() {
     });
   }, [jobsRankedLeaderboard, profileSearchQuery, selectedCategoryId, selectedTechStacks]);
 
+  const categoryFeedPersonas = useMemo(() => {
+    if (selectedCategoryId === 'all') return [] as PulsePersona[];
+    const selectedCategory = PROFILE_CATEGORY_TABS.find((item) => item.id === selectedCategoryId) ?? PROFILE_CATEGORY_TABS[0];
+    const categoryFiltered = jobsRankedLeaderboard.filter((persona) => isPersonaInCategory(persona, selectedCategory.id));
+    if (selectedTechStacks.length === 0) return categoryFiltered;
+    return categoryFiltered.filter((persona) => {
+      const text = normalize(`${persona.target_role} ${persona.summary} ${persona.priority_skills ?? ''}`);
+      return selectedTechStacks.some((tech) => text.includes(normalize(tech)));
+    });
+  }, [jobsRankedLeaderboard, selectedCategoryId, selectedTechStacks]);
+
   const orderedJobsRankedLeaderboard = useMemo(() => {
     const watched: PulsePersona[] = [];
     const unwatched: PulsePersona[] = [];
@@ -809,6 +820,11 @@ export default function PulsePage() {
     revealed: feed.filter((lead) => revealedLeadIds.has(lead.id)).length,
     queued: feed.filter((lead) => !revealedLeadIds.has(lead.id) && !breakdownChargedLeadIds.has(lead.id)).length,
   }), [breakdownChargedLeadIds, feed, revealedLeadIds]);
+
+  const profileViewCounts = useMemo(() => ({
+    all: orderedJobsRankedLeaderboard.length,
+    watching: orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length,
+  }), [orderedJobsRankedLeaderboard, watchingRoles]);
 
   const filteredFeed = useMemo(() => {
     if (selectedMatchesTab === 'breakdown') {
@@ -1096,7 +1112,7 @@ export default function PulsePage() {
     void loadProfileStats();
   }, [loadProfileStats]);
 
-  const loadFeed = useCallback(async (persona: PulsePersona) => {
+  const loadFeed = useCallback(async (persona: PulsePersona | null, personaFilters: PulsePersona[] = []) => {
     setFeedLoading(true);
     const threshold = new Date(Date.now() - selectedProfileRange.hours * 60 * 60 * 1000).toISOString();
 
@@ -1142,13 +1158,20 @@ export default function PulsePage() {
       }
     }
 
-    const skillList = getPersonaSkillList(persona.target_role, persona.priority_skills);
+    const roleFilters = persona ? [persona] : personaFilters;
+    const compiledRoleFilters = roleFilters.map((item) => ({
+      targetRole: item.target_role,
+      skillList: getPersonaSkillList(item.target_role, item.priority_skills),
+    }));
 
     const dedupedRows = new Map<string, SocialJobRow>();
 
     for (const row of (socialData as SocialJobRow[])) {
       if (!newestMatchByJobId.has(row.id)) continue;
-      if (!roleMatchesPersona(row, persona.target_role, skillList)) continue;
+      if (compiledRoleFilters.length > 0) {
+        const matchesAnyRole = compiledRoleFilters.some((item) => roleMatchesPersona(row, item.targetRole, item.skillList));
+        if (!matchesAnyRole) continue;
+      }
 
       const dedupKey = buildSocialLeadDedupKey(row);
       if (!dedupKey) continue;
@@ -1194,7 +1217,7 @@ export default function PulsePage() {
         const eventTime = matchedAt || row.posted_at || row.created_at;
         return {
           id: row.id,
-          title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || persona.target_role || 'Untitled Job',
+          title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || persona?.target_role || 'Untitled Job',
           location: row.location?.trim() || 'Location not specified',
           company: row.company_name?.trim() || '',
           posterName: row.posted_by_name?.trim() || 'Vendor contact',
@@ -1225,32 +1248,53 @@ export default function PulsePage() {
   }, [selectedProfileRange.hours, showToast]);
 
   useEffect(() => {
-    if (visibleJobsRankedLeaderboard.length === 0) {
+    if (selectedCategoryId === 'all') {
       if (activePersona) {
-        setActivePersona(null);
+        void loadFeed(activePersona);
+      } else {
+        void loadFeed(null);
       }
+      return;
+    }
+
+    if (activePersona) {
+      const activeRoleKey = normalize(activePersona.target_role);
+      const isActiveInCategory = categoryFeedPersonas.some((persona) => normalize(persona.target_role) === activeRoleKey);
+      if (isActiveInCategory) {
+        void loadFeed(activePersona);
+        return;
+      }
+      setActivePersona(null);
+    }
+
+    if (categoryFeedPersonas.length === 0) {
       setFeed([]);
       return;
     }
 
-    const activeRoleKey = activePersona ? normalize(activePersona.target_role) : '';
-    const hasActiveInVisibleList = activeRoleKey
-      ? visibleJobsRankedLeaderboard.some((persona) => normalize(persona.target_role) === activeRoleKey)
-      : false;
-
-    if (hasActiveInVisibleList) return;
-
-    const firstPersona = visibleJobsRankedLeaderboard[0];
-    setActivePersona(firstPersona);
-    void loadFeed(firstPersona);
-  }, [activePersona, loadFeed, visibleJobsRankedLeaderboard]);
+    void loadFeed(null, categoryFeedPersonas);
+  }, [activePersona, categoryFeedPersonas, loadFeed, selectedCategoryId]);
 
   // Re-fetch matches when date range changes
   useEffect(() => {
+    if (selectedCategoryId === 'all') {
+      if (activePersona) {
+        void loadFeed(activePersona);
+      } else {
+        void loadFeed(null);
+      }
+      return;
+    }
     if (activePersona) {
       void loadFeed(activePersona);
+      return;
     }
-  }, [selectedProfileRange.hours]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (categoryFeedPersonas.length === 0) {
+      setFeed([]);
+      return;
+    }
+    void loadFeed(null, categoryFeedPersonas);
+  }, [categoryFeedPersonas, loadFeed, selectedCategoryId, selectedProfileRange.hours]);
 
   const ensureRoleActive = useCallback(async (persona: PulsePersona, avatarUrl?: string | null) => {
     if (!account?.id) throw new Error('No account found');
@@ -1710,8 +1754,8 @@ export default function PulsePage() {
             </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col gap-2 sm:gap-3 overflow-hidden">
-              {/* Category Pills (horizontal scroll) */}
-              <div className="shrink-0 hide-scrollbar w-full overflow-x-auto">
+              {/* Category Pills (desktop horizontal scroll) */}
+              <div className="hidden sm:block shrink-0 hide-scrollbar w-full overflow-x-auto">
                 <div className="flex w-max min-w-full gap-1.5">
                   {[...PROFILE_CATEGORY_TABS]
                     .map((category) => {
@@ -1733,7 +1777,7 @@ export default function PulsePage() {
                       <button
                         key={category.id}
                         type="button"
-                        onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); }}
+                        onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
                         className={`inline-flex shrink-0 flex-col items-center gap-0.5 rounded-md border px-3 py-1.5 text-[11px] font-medium transition ${isSelected ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
                       >
                         <span className="inline-flex items-center gap-1.5">
@@ -1751,7 +1795,7 @@ export default function PulsePage() {
               </div>
 
               {selectedCategoryId !== 'all' && CATEGORY_TECH_STACKS[selectedCategoryId] && (
-                <div className="shrink-0 hide-scrollbar w-full overflow-x-auto">
+                <div className="hidden sm:block shrink-0 hide-scrollbar w-full overflow-x-auto">
                   <div className="flex w-max min-w-full gap-1.5 pb-1">
                     {CATEGORY_TECH_STACKS[selectedCategoryId].map((tech) => {
                       const isActive = selectedTechStacks.includes(tech);
@@ -1862,33 +1906,96 @@ export default function PulsePage() {
                 </div>
               )}
 
-              <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,40%)_minmax(0,60%)] sm:grid-cols-[minmax(0,40%)_minmax(0,60%)] gap-0 overflow-hidden border border-gray-200 rounded-lg">
-              <section className="min-w-0 flex min-h-0 flex-col overflow-hidden border-r border-gray-200">
-                <div className="shrink-0 h-[36px] flex items-center justify-between gap-2 px-2 border-b border-gray-200 bg-white">
-                  <div className="inline-flex items-center gap-2 min-w-0">
-                    <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
-                    <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{profilesForActiveView.length}</span>
+              <div className="grid min-h-0 flex-1 grid-cols-[20%_80%] sm:grid-cols-[minmax(0,40%)_minmax(0,60%)] sm:grid-rows-none gap-0 overflow-hidden border border-gray-200 rounded-lg">
+                <aside className="sm:hidden sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar border-r border-gray-200 bg-gray-50 px-1.5 py-2">
+                  <div className="space-y-1">
+                    {[...PROFILE_CATEGORY_TABS]
+                      .map((category) => {
+                        const categoryProfiles = jobsRankedLeaderboard.filter((p) => isPersonaInCategory(p, category.id));
+                        const vendorsCount = categoryProfiles.reduce((s, p) => s + (profileStatsByRole[normalize(p.target_role)]?.uniqueVendors ?? 0), 0);
+                        const jobsCount = categoryProfiles.reduce((s, p) => s + (profileStatsByRole[normalize(p.target_role)]?.uniqueJobs ?? 0), 0);
+                        return { category, vendorsCount, jobsCount };
+                      })
+                      .sort((a, b) => {
+                        if (a.category.id === 'all') return -1;
+                        if (b.category.id === 'all') return 1;
+                        return b.jobsCount - a.jobsCount || a.category.label.localeCompare(b.category.label);
+                      })
+                      .map(({ category, vendorsCount, jobsCount }) => {
+                        const isSelected = selectedCategoryId === category.id;
+                        const CategoryIcon = category.icon;
+
+                        return (
+                          <button
+                            key={category.id}
+                            type="button"
+                            onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
+                            className={`w-full rounded-md border px-1.5 py-2 text-center transition ${isSelected ? 'border-blue-300 bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
+                          >
+                            <div className="flex flex-col items-center gap-1">
+                              <CategoryIcon size={12} />
+                              <span className="text-[8px] font-semibold leading-tight">{category.label}</span>
+                            </div>
+                            <div className={`mt-1 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-blue-500' : 'text-gray-400'}`}>
+                              <span className="inline-flex items-center gap-0.5"><Building2 size={8} />{vendorsCount}</span>
+                              <span className="inline-flex items-center gap-0.5"><Briefcase size={8} />{jobsCount}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
                   </div>
-                </div>
-                <div className="shrink-0 h-[36px] grid grid-cols-2 gap-1 border-b border-gray-200 bg-gray-50 px-2 py-1">
+
+                  {selectedCategoryId !== 'all' && CATEGORY_TECH_STACKS[selectedCategoryId] && (
+                    <div className="mt-3 border-t border-gray-200 pt-2">
+                      <div className="mb-1 px-1 text-[8px] font-bold uppercase tracking-[0.18em] text-gray-400">Tech</div>
+                      <div className="space-y-1">
+                        {CATEGORY_TECH_STACKS[selectedCategoryId].map((tech) => {
+                          const isActive = selectedTechStacks.includes(tech);
+                          return (
+                            <button
+                              key={tech}
+                              type="button"
+                              onClick={() => setSelectedTechStacks((prev) => isActive ? prev.filter((t) => t !== tech) : [...prev, tech])}
+                              className={`w-full rounded-md border px-1.5 py-1 text-[8px] font-semibold transition ${isActive ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
+                            >
+                              {tech}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </aside>
+
+              <div className="col-start-2 row-span-2 min-w-0 h-full flex min-h-0 flex-col overflow-hidden sm:contents">
+
+              <section className="min-w-0 shrink-0 overflow-hidden border-b border-gray-200 sm:col-start-1 sm:row-start-1 sm:flex sm:min-h-0 sm:flex-col sm:border-b-0 sm:border-r">
+                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-white">
+                  <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
+                    <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
+                  </div>
+                  <div className="ml-auto grid grid-cols-2 gap-1">
                     <button
                       type="button"
                       onClick={() => setSelectedProfilesView('all')}
-                      className={`rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                      className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
                     >
-                      All
+                      <span>All</span>
+                      <span className={`text-[9px] font-bold ${selectedProfilesView === 'all' ? 'text-blue-500' : 'text-gray-500'}`}>{profileViewCounts.all}</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setSelectedProfilesView('watching')}
-                      className={`rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                      className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
                     >
-                      Watching
+                      <span>Watching</span>
+                      <span className={`text-[9px] font-bold ${selectedProfilesView === 'watching' ? 'text-blue-500' : 'text-gray-500'}`}>{profileViewCounts.watching}</span>
                     </button>
+                  </div>
                 </div>
                 {/* Profile list */}
-                <div ref={profileListScrollRef} className="min-h-0 flex-1 overflow-y-auto slim-scrollbar">
-                  <div className="divide-y divide-gray-100">
+                <div ref={profileListScrollRef} className="overflow-x-auto overflow-y-hidden pb-1 sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:overflow-x-hidden sm:pb-0 slim-scrollbar">
+                  <div className="flex gap-2 px-2 py-2 sm:block sm:px-0 sm:py-0 sm:divide-y sm:divide-gray-100 snap-x snap-mandatory">
                     {visibleJobsRankedLeaderboard.length === 0 && (
                       <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
                     )}
@@ -1903,30 +2010,26 @@ export default function PulsePage() {
                         <div
                           key={persona.target_role}
                           onClick={() => void selectPersona(persona)}
-                          className={`px-3 py-2.5 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                          className={`snap-start shrink-0 w-[84%] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors sm:w-auto sm:rounded-none sm:border-0 sm:px-3 sm:py-2.5 ${isSelected ? 'bg-blue-50 border-blue-200 sm:border-0' : 'bg-white border-gray-200 hover:bg-gray-50 sm:bg-transparent sm:border-0'}`}
                         >
                           <div className="flex items-center justify-between gap-1.5">
                             <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
                           </div>
-                          {details.experience !== '-' && (
-                            <div className="mt-0.5 text-[10px] text-gray-500">{details.experience} exp</div>
-                          )}
-                          {details.location !== '-' && (
-                            <div className="mt-0.5 text-[10px] text-gray-500 truncate">{details.location}</div>
-                          )}
-                          <div className="mt-0.5 text-[10px] text-gray-500">{details.rateRange}</div>
-                          {details.visaStatus !== '-' && (
-                            <div className="mt-0.5 text-[10px] text-gray-400">{details.visaStatus}</div>
-                          )}
-                          <div className="mt-1 flex items-center justify-start gap-1.5">
+                          <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight sm:block sm:mt-0.5">
+                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.experience !== '-' ? details.experience : '—'}</div>
+                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.location !== '-' ? details.location : '—'}</div>
+                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
+                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
+                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.workType !== '-' ? details.workType : '—'}</div>
+                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-500 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1.5">
                             <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>
                             <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{stats.uniqueVendors} Vendors</span>
-                          </div>
-                          <div className="mt-1">
                             <button
                               onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
                               disabled={isActivating}
-                              className={`w-full rounded-md border px-2 py-1 text-[10px] font-semibold transition ${isWatching ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                              className={`ml-auto inline-flex min-w-[64px] shrink-0 items-center justify-center rounded-md border px-2 py-0.5 text-[9px] font-semibold transition ${isWatching ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                             >
                               {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
                             </button>
@@ -1935,7 +2038,7 @@ export default function PulsePage() {
                       );
                     })}
                     {isMobileViewport && canLoadMoreProfiles && (
-                      <div ref={mobileProfilesLoadMoreRef} className="px-3 py-2 text-[10px] text-gray-400">
+                      <div ref={mobileProfilesLoadMoreRef} className="flex w-[84%] shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-[10px] text-gray-400 snap-start">
                         Loading more profiles...
                       </div>
                     )}
@@ -1964,34 +2067,31 @@ export default function PulsePage() {
                 </div>
               </section>
 
-              <section className="min-w-0 flex min-h-0 flex-col overflow-hidden">
-                <div className="shrink-0 h-[36px] flex items-center justify-between gap-2 px-2 border-b border-gray-200 bg-white">
-                  <div className="inline-flex items-center gap-2 min-w-0">
+              <section className="min-w-0 flex flex-1 min-h-0 flex-col overflow-hidden sm:col-start-2 sm:row-start-1">
+                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-white">
+                  <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
                     <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
-                    <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{filteredFeed.length}</span>
                   </div>
-                </div>
-
-                <div className="shrink-0 h-[36px] grid grid-cols-3 gap-1 border-b border-gray-200 bg-gray-50 px-2 py-1">
-                  {([
-                    { id: 'queued', label: 'New' },
-                    { id: 'revealed', label: 'Revealed' },
-                    { id: 'all', label: 'All' },
-                  ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
-                    const isSelected = selectedMatchesTab === tab.id;
-                    const count = matchesTabCounts[tab.id];
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                        className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
-                      >
-                        <span>{tab.label}</span>
-                        <span className={`text-[9px] font-bold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>{count}</span>
-                      </button>
-                    );
-                  })}
+                  <div className="ml-auto grid w-full max-w-[220px] grid-cols-2 gap-1">
+                    {([
+                      { id: 'queued', label: 'Recent' },
+                      { id: 'revealed', label: 'Revealed' },
+                    ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
+                      const isSelected = selectedMatchesTab === tab.id;
+                      const count = matchesTabCounts[tab.id];
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
+                          className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                        >
+                          <span>{tab.label}</span>
+                          <span className={`text-[9px] font-bold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto slim-scrollbar">
@@ -2031,9 +2131,6 @@ export default function PulsePage() {
                           {lead.company && (
                             <div className="mt-0.5 text-[10px] text-gray-600">{lead.company}</div>
                           )}
-                          {lead.location && (
-                            <div className="mt-0.5 text-[10px] text-gray-600">{lead.location}</div>
-                          )}
                           <div className="mt-0.5 text-[10px] text-gray-500">
                             <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
                             <span> • </span>
@@ -2061,28 +2158,28 @@ export default function PulsePage() {
                                   </tbody>
                                 </table>
                               </div>
-                              {inlineBreakdownItems.length > 2 && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setExpandedInlineBreakdownLeadIds((prev) => {
-                                      const next = new Set(prev);
-                                      if (next.has(lead.id)) {
-                                        next.delete(lead.id);
-                                      } else {
-                                        next.add(lead.id);
-                                      }
-                                      return next;
-                                    });
-                                  }}
-                                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
-                                >
-                                  {isInlineBreakdownExpanded ? 'Hide Details' : 'See Details'}
-                                </button>
-                              )}
                             </div>
                           )}
                           <div className="mt-1.5 flex items-center gap-1.5">
+                            {inlineBreakdownItems.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedInlineBreakdownLeadIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(lead.id)) {
+                                      next.delete(lead.id);
+                                    } else {
+                                      next.add(lead.id);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className="inline-flex flex-1 items-center justify-center rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50 sm:w-auto sm:flex-none"
+                              >
+                                {isInlineBreakdownExpanded ? 'Hide Details' : 'See Details'}
+                              </button>
+                            )}
                             <button
                               onClick={() => void handleOpenBreakdown(lead)}
                               disabled={processingBreakdownLeadId === lead.id}
@@ -2094,7 +2191,7 @@ export default function PulsePage() {
                             {revealedLeadIds.has(lead.id) ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
-                                className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200 sm:w-auto"
+                                className="inline-flex flex-1 justify-center items-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200 sm:w-auto sm:flex-none"
                               >
                                 <Copy size={9} /> Email <AtSign size={9} />
                               </button>
@@ -2102,7 +2199,7 @@ export default function PulsePage() {
                               <button
                                 onClick={() => void handleRevealContact(lead)}
                                 disabled={processingLeadId === lead.id}
-                                className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
+                                className="inline-flex flex-1 justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60 sm:w-auto sm:flex-none"
                               >
                                 <AtSign size={9} />
                                 {processingLeadId === lead.id ? '...' : 'Reveal'}
@@ -2126,6 +2223,8 @@ export default function PulsePage() {
                   )}
                 </div>
               </section>
+
+              </div>
               </div>
             </div>
           )}
