@@ -2161,6 +2161,7 @@ export default function PulsePage() {
                                   <thead className="bg-gray-50">
                                     <tr>
                                       <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
+                                      <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
                                       <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
                                     </tr>
                                   </thead>
@@ -2168,6 +2169,7 @@ export default function PulsePage() {
                                     {visibleInlineBreakdownItems.map((item) => (
                                       <tr key={item.key}>
                                         <td className="border-b border-gray-100 px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
+                                        <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
                                         <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
                                       </tr>
                                     ))}
@@ -2289,6 +2291,7 @@ export default function PulsePage() {
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
+                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
                             <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Job</th>
                           </tr>
                         </thead>
@@ -2296,6 +2299,7 @@ export default function PulsePage() {
                           {breakdownItems.map((item) => (
                             <tr key={item.key}>
                               <td className="border-b border-gray-100 px-2 py-1.5 font-semibold text-gray-900">{formatBreakdownFieldName(item.key)}</td>
+                              <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{item.detail?.candidate_value || '-'}</td>
                               <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{item.detail?.job_value || '-'}</td>
                             </tr>
                           ))}
