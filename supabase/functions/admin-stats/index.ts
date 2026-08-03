@@ -31,7 +31,7 @@ Deno.serve(async (req: Request) => {
     // Fetch all accounts
     const { data: accounts } = await supabase
       .from("accounts")
-      .select("id, name, credits_balance, is_trial, created_at")
+      .select("id, name, owner_id, credits_balance, is_trial, created_at")
       .order("created_at", { ascending: false });
 
     if (!accounts || accounts.length === 0) {
@@ -50,40 +50,32 @@ Deno.serve(async (req: Request) => {
       return query;
     }
 
-    // Parallel queries — members/profiles/vendors/clients are totals (not date-filtered)
-    // Time-based stats (searches, credits, API calls, etc.) are date-filtered
     const [
       membersRes,
-      profilesRes,
+      watchingRes,
       vendorsRes,
       clientsRes,
-      submissionsRes,
-      linkedinSearchRes,
-      diceSearchRes,
-      indeedSearchRes,
-      monsterSearchRes,
-      cbSearchRes,
-      creditsUsedRes,
-      apiUsageRes,
-      rewriteRes,
-      scoreRes,
+      revealsRes,
     ] = await Promise.all([
-      // Totals (not date-filtered)
-      supabase.from("account_members").select("account_id").in("account_id", accountIds),
-      supabase.from("profiles").select("account_id").in("account_id", accountIds),
+      supabase
+        .from("account_members")
+        .select("account_id, user_id, invited_email, display_name, role, status, created_at")
+        .in("account_id", accountIds)
+        .eq("status", "active"),
+      supabase
+        .from("watchlist_profiles")
+        .select("account_id")
+        .in("account_id", accountIds)
+        .eq("is_watching", true),
       supabase.from("vendors").select("account_id").in("account_id", accountIds),
       supabase.from("clients").select("account_id").in("account_id", accountIds),
-      // Date-filtered
-      withDateRange(supabase.from("submissions").select("account_id").in("account_id", accountIds)),
-      withDateRange(supabase.from("linkedin_job_searches").select("account_id").in("account_id", accountIds)),
-      withDateRange(supabase.from("dice_job_searches").select("account_id").in("account_id", accountIds)),
-      withDateRange(supabase.from("indeed_job_searches").select("account_id").in("account_id", accountIds)),
-      withDateRange(supabase.from("monster_job_searches").select("account_id").in("account_id", accountIds)),
-      withDateRange(supabase.from("careerbuilder_job_searches").select("account_id").in("account_id", accountIds)),
-      withDateRange(supabase.from("credit_transactions").select("account_id, amount").in("account_id", accountIds).lt("amount", 0)),
-      withDateRange(supabase.from("api_usage_log").select("account_id, function_name").in("account_id", accountIds)),
-      withDateRange(supabase.from("api_usage_log").select("account_id").in("account_id", accountIds).eq("function_name", "rewrite-resume")),
-      withDateRange(supabase.from("api_usage_log").select("account_id").in("account_id", accountIds).eq("function_name", "score-job-match")),
+      withDateRange(
+        supabase
+          .from("pulse_lead_actions")
+          .select("account_id")
+          .in("account_id", accountIds)
+          .eq("action_type", "revealed")
+      ),
     ]);
 
     function countBy(rows: any[] | null): Record<string, number> {
@@ -96,74 +88,69 @@ Deno.serve(async (req: Request) => {
       return map;
     }
 
-    function sumBy(rows: any[] | null, field: string): Record<string, number> {
-      const map: Record<string, number> = {};
-      if (!rows) return map;
-      for (const r of rows) {
-        const key = r.account_id;
-        if (key) map[key] = (map[key] || 0) + Math.abs(r[field] || 0);
-      }
-      return map;
-    }
-
-    const memberCounts = countBy(membersRes.data);
-    const profileCounts = countBy(profilesRes.data);
-    const submissionCounts = countBy(submissionsRes.data);
+    const watchingCounts = countBy(watchingRes.data);
     const vendorCounts = countBy(vendorsRes.data);
     const clientCounts = countBy(clientsRes.data);
-    const linkedinCounts = countBy(linkedinSearchRes.data);
-    const diceCounts = countBy(diceSearchRes.data);
-    const indeedCounts = countBy(indeedSearchRes.data);
-    const monsterCounts = countBy(monsterSearchRes.data);
-    const cbCounts = countBy(cbSearchRes.data);
-    const creditsUsed = sumBy(creditsUsedRes.data, "amount");
-    const apiCounts = countBy(apiUsageRes.data);
-    const rewriteCounts = countBy(rewriteRes.data);
-    const scoreCounts = countBy(scoreRes.data);
+    const revealsCounts = countBy(revealsRes.data);
 
-    // Wishlisted jobs via profile_id -> profiles.account_id
-    const { data: fullProfiles } = await supabase
-      .from("profiles")
-      .select("id, account_id")
-      .in("account_id", accountIds);
+    const primaryMemberByAccount: Record<string, any> = {};
+    for (const member of membersRes.data ?? []) {
+      const priority = member.role === "owner" ? 0 : member.role === "admin" ? 1 : 2;
+      const existing = primaryMemberByAccount[member.account_id];
+      if (!existing) {
+        primaryMemberByAccount[member.account_id] = { ...member, priority };
+        continue;
+      }
 
-    const profileToAccount: Record<string, string> = {};
-    if (fullProfiles) {
-      for (const p of fullProfiles) {
-        profileToAccount[p.id] = p.account_id;
+      const existingPriority = existing.priority ?? 99;
+      const existingCreatedAt = existing.created_at ? Date.parse(existing.created_at) : Number.POSITIVE_INFINITY;
+      const memberCreatedAt = member.created_at ? Date.parse(member.created_at) : Number.POSITIVE_INFINITY;
+      if (priority < existingPriority || (priority === existingPriority && memberCreatedAt < existingCreatedAt)) {
+        primaryMemberByAccount[member.account_id] = { ...member, priority };
       }
     }
 
-    let wjQuery = supabase.from("wishlisted_jobs").select("profile_id");
-    wjQuery = withDateRange(wjQuery);
-    const { data: wjData } = await wjQuery;
+    const userIds = Array.from(new Set(
+      Object.values(primaryMemberByAccount)
+        .map((member: any) => member.user_id)
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+    ));
 
-    const wishlistCounts: Record<string, number> = {};
-    if (wjData) {
-      for (const w of wjData) {
-        const acctId = profileToAccount[w.profile_id];
-        if (acctId) wishlistCounts[acctId] = (wishlistCounts[acctId] || 0) + 1;
-      }
-    }
+    const authUsersById: Record<string, { email: string; last_sign_in_at: string | null; full_name: string }> = {};
+    await Promise.all(userIds.map(async (userId) => {
+      const { data, error } = await supabase.auth.admin.getUserById(userId);
+      if (error || !data.user) return;
 
-    const stats = accounts.map((a: any) => ({
-      id: a.id,
-      name: a.name,
-      created_at: a.created_at,
-      credits_balance: a.credits_balance ?? 0,
-      is_trial: a.is_trial,
-      users: memberCounts[a.id] || 0,
-      candidates: profileCounts[a.id] || 0,
-      submissions: submissionCounts[a.id] || 0,
-      vendors: vendorCounts[a.id] || 0,
-      clients: clientCounts[a.id] || 0,
-      job_searches: (linkedinCounts[a.id] || 0) + (diceCounts[a.id] || 0) + (indeedCounts[a.id] || 0) + (monsterCounts[a.id] || 0) + (cbCounts[a.id] || 0),
-      credits_used: creditsUsed[a.id] || 0,
-      api_calls: apiCounts[a.id] || 0,
-      resume_rewrites: rewriteCounts[a.id] || 0,
-      match_scores: scoreCounts[a.id] || 0,
-      wishlisted_jobs: wishlistCounts[a.id] || 0,
+      const metadata = data.user.user_metadata ?? {};
+      authUsersById[userId] = {
+        email: data.user.email ?? "",
+        last_sign_in_at: data.user.last_sign_in_at ?? null,
+        full_name: typeof metadata.full_name === "string"
+          ? metadata.full_name
+          : typeof metadata.name === "string"
+            ? metadata.name
+            : "",
+      };
     }));
+
+    const stats = accounts.map((a: any) => {
+      const primaryMember = primaryMemberByAccount[a.id] ?? null;
+      const authUser = primaryMember?.user_id ? authUsersById[primaryMember.user_id] : null;
+
+      return {
+        id: a.id,
+        name: a.name,
+        created_at: a.created_at,
+        user_name: primaryMember?.display_name || authUser?.full_name || a.name || "-",
+        user_email: authUser?.email || primaryMember?.invited_email || "-",
+        watching_count: watchingCounts[a.id] || 0,
+        credits_balance: a.credits_balance ?? 0,
+        reveals_count: revealsCounts[a.id] || 0,
+        contacts_count: (vendorCounts[a.id] || 0) + (clientCounts[a.id] || 0),
+        last_logged_in: authUser?.last_sign_in_at ?? null,
+        is_trial: a.is_trial,
+      };
+    });
 
     return new Response(
       JSON.stringify({ stats }),

@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Users, Briefcase, FileText, Zap, Search, Building2, UserCheck, Star, Database, Calendar, ChevronDown, X, Plus } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
 import { triggerRoleEmbedding } from '../lib/embeddings';
@@ -8,19 +8,14 @@ interface AccountStats {
   id: string;
   name: string;
   created_at: string;
+  user_name: string;
+  user_email: string;
+  watching_count: number;
   credits_balance: number;
+  reveals_count: number;
+  contacts_count: number;
+  last_logged_in: string | null;
   is_trial: boolean;
-  users: number;
-  candidates: number;
-  submissions: number;
-  vendors: number;
-  clients: number;
-  job_searches: number;
-  credits_used: number;
-  api_calls: number;
-  resume_rewrites: number;
-  match_scores: number;
-  wishlisted_jobs: number;
 }
 
 interface HotlistRoleRow {
@@ -98,20 +93,26 @@ function getDateRange(preset: DatePreset, customStart: string, customEnd: string
   return { start_date: d.toISOString(), end_date: null };
 }
 
-const COLUMNS: { key: keyof AccountStats; label: string; icon: React.ReactNode }[] = [
-  { key: 'users', label: 'Users', icon: <Users size={12} /> },
-  { key: 'candidates', label: 'Candidates', icon: <UserCheck size={12} /> },
-  { key: 'credits_balance', label: 'Credits Bal.', icon: <Database size={12} /> },
-  { key: 'credits_used', label: 'Credits Used', icon: <Zap size={12} /> },
-  { key: 'job_searches', label: 'Job Searches', icon: <Search size={12} /> },
-  { key: 'wishlisted_jobs', label: 'Saved Jobs', icon: <Star size={12} /> },
-  { key: 'resume_rewrites', label: 'Resume Rewrites', icon: <FileText size={12} /> },
-  { key: 'match_scores', label: 'Match Scores', icon: <TrendingUp size={12} /> },
-  { key: 'submissions', label: 'Submissions', icon: <Briefcase size={12} /> },
-  { key: 'vendors', label: 'Vendors', icon: <Building2 size={12} /> },
-  { key: 'clients', label: 'Clients', icon: <Building2 size={12} /> },
-  { key: 'api_calls', label: 'Total API Calls', icon: <Zap size={12} /> },
+const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.ReactNode; kind: 'text' | 'number' | 'date'; widthClass: string }> = [
+  { key: 'user_name', label: 'User Name', icon: <UserCheck size={12} />, kind: 'text', widthClass: 'w-[140px]' },
+  { key: 'user_email', label: 'User Email', icon: <Mail size={12} />, kind: 'text', widthClass: 'w-[210px]' },
+  { key: 'watching_count', label: 'Watching', icon: <Users size={12} />, kind: 'number', widthClass: 'w-[95px]' },
+  { key: 'credits_balance', label: 'Credits', icon: <Database size={12} />, kind: 'number', widthClass: 'w-[110px]' },
+  { key: 'reveals_count', label: 'Reveals', icon: <Eye size={12} />, kind: 'number', widthClass: 'w-[90px]' },
+  { key: 'contacts_count', label: 'Contacts', icon: <Phone size={12} />, kind: 'number', widthClass: 'w-[95px]' },
+  { key: 'last_logged_in', label: 'Last Logged In', icon: <Calendar size={12} />, kind: 'date', widthClass: 'w-[155px]' },
 ];
+
+function formatCompactDateTime(value: string | null) {
+  if (!value) return '-';
+  return new Date(value).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
 
 export default function AdminDashboard() {
   const [authed, setAuthed] = useState(!!sessionStorage.getItem('admin_authed'));
@@ -498,7 +499,7 @@ export default function AdminDashboard() {
   const filteredStats = useMemo(() => {
     if (!searchQuery.trim()) return stats;
     const q = searchQuery.toLowerCase();
-    return stats.filter(s => (s.name || '').toLowerCase().includes(q));
+    return stats.filter((s) => [s.name, s.user_name, s.user_email].some((value) => (value || '').toLowerCase().includes(q)));
   }, [stats, searchQuery]);
 
   const filteredRoles = useMemo(() => {
@@ -529,7 +530,9 @@ export default function AdminDashboard() {
   // Totals row
   const totals: Record<string, number> = {};
   for (const col of COLUMNS) {
-    totals[col.key] = filteredStats.reduce((sum, s) => sum + ((s[col.key] as number) || 0), 0);
+    totals[col.key] = col.kind === 'number'
+      ? filteredStats.reduce((sum, s) => sum + ((s[col.key] as number) || 0), 0)
+      : 0;
   }
 
   const currentPresetLabel = DATE_PRESETS.find(p => p.key === datePreset)?.label ?? 'Last 7 days';
@@ -737,7 +740,7 @@ export default function AdminDashboard() {
       )}
 
       {/* Stats Table */}
-      <div className="max-w-[1600px] mx-auto flex-1 min-h-0 px-4 pb-4 sm:px-6 sm:pb-6">
+      <div className="max-w-[1600px] mx-auto flex-1 min-h-0 min-w-0 px-4 pb-4 sm:px-6 sm:pb-6">
         {adminView === 'stats' && (
           loading && stats.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 gap-4">
@@ -745,16 +748,17 @@ export default function AdminDashboard() {
               <p className="text-sm text-gray-500">Loading account data...</p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-              <table className="w-full text-left">
-                <thead>
+            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <div className="min-h-0 flex-1 overflow-auto">
+              <table className="min-w-[1080px] w-full table-fixed text-left">
+                <thead className="sticky top-0 z-[4]">
                   <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="sticky left-0 z-[5] bg-gray-50 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-600 min-w-[200px]">
+                    <th className="w-[170px] bg-gray-50 px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-600">
                       Account
                     </th>
                     {COLUMNS.map(col => (
-                      <th key={col.key} className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-600 text-right whitespace-nowrap">
-                        <span className="flex items-center justify-end gap-1.5">
+                      <th key={col.key} className={`${col.widthClass} px-3 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap ${col.kind === 'number' ? 'text-right' : 'text-left'}`}>
+                        <span className={`flex items-center gap-1.5 ${col.kind === 'number' ? 'justify-end' : 'justify-start'}`}>
                           {col.icon} {col.label}
                         </span>
                       </th>
@@ -763,13 +767,13 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody>
                   <tr className="border-b border-gray-200 bg-blue-50">
-                    <td className="sticky left-0 z-[5] bg-blue-50 px-5 py-3">
+                    <td className="bg-blue-50 px-4 py-3">
                       <span className="text-sm font-semibold text-blue-700">ALL TOTALS</span>
                     </td>
                     {COLUMNS.map(col => (
-                      <td key={col.key} className="px-4 py-3 text-right">
-                        <span className="text-sm font-semibold text-blue-700 tabular-nums">
-                          {(totals[col.key] ?? 0).toLocaleString()}
+                      <td key={col.key} className={`px-4 py-3 ${col.kind === 'number' ? 'text-right' : 'text-left'}`}>
+                        <span className={`text-sm font-semibold text-blue-700 ${col.kind === 'number' ? 'tabular-nums' : ''}`}>
+                          {col.kind === 'number' ? (totals[col.key] ?? 0).toLocaleString() : '-'}
                         </span>
                       </td>
                     ))}
@@ -790,9 +794,9 @@ export default function AdminDashboard() {
                         idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
                       }`}
                     >
-                      <td className={`sticky left-0 z-[5] px-5 py-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                      <td className={`px-4 py-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
                         <div>
-                          <p className="text-sm font-medium text-gray-900 truncate max-w-[180px]">
+                          <p className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
                             {account.name || 'Unnamed'}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
@@ -808,12 +812,22 @@ export default function AdminDashboard() {
                         </div>
                       </td>
                       {COLUMNS.map(col => {
-                        const val = (account[col.key] as number) || 0;
+                        const value = account[col.key];
                         return (
-                          <td key={col.key} className="px-4 py-3 text-right">
-                            <span className={`text-sm tabular-nums font-medium ${val > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                              {val.toLocaleString()}
-                            </span>
+                          <td key={col.key} className={`px-3 py-3 ${col.kind === 'number' ? 'text-right' : 'text-left'}`}>
+                            {col.kind === 'number' ? (
+                              <span className={`text-sm tabular-nums font-medium ${((value as number) || 0) > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                                {((value as number) || 0).toLocaleString()}
+                              </span>
+                            ) : col.kind === 'date' ? (
+                              <span className="block truncate text-sm font-medium text-gray-700 whitespace-nowrap">
+                                {typeof value === 'string' ? formatCompactDateTime(value) : '-'}
+                              </span>
+                            ) : (
+                              <span className="block truncate text-sm font-medium text-gray-900">
+                                {typeof value === 'string' && value ? value : '-'}
+                              </span>
+                            )}
                           </td>
                         );
                       })}
@@ -821,6 +835,7 @@ export default function AdminDashboard() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )
         )}
