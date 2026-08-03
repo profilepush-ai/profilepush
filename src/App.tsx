@@ -40,6 +40,7 @@ const HowItWorks = lazy(() => import('./pages/HowItWorks'));
 const RadarPage = lazy(() => import('./pages/RadarPage'));
 const PulsePage = lazy(() => import('./pages/PulsePage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const WatchlistProfilesPage = lazy(() => import('./pages/WatchlistProfilesPage'));
 const OnboardingVideo = lazy(() => import('./pages/OnboardingVideo'));
 
 function PageLoader() {
@@ -180,6 +181,7 @@ export default function App() {
             <Route path="/jd-ai" element={<ProtectedRoute><ErrorBoundary><AIBenchMatch /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/job-watch-ai" element={<ProtectedRoute><ErrorBoundary><RadarPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><PulsePage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />
           </Routes>
         </Suspense>
       </AuthProvider>

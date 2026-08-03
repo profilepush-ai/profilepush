@@ -14,6 +14,7 @@ import { NOTIFICATION_TYPES } from '../lib/notifications';
 
 const navItems = [
   { path: '/pulse',          label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
+  { path: '/watchlist-profiles', label: 'Watchlist', mobileLabel: 'Watch',   icon: Bookmark, hideOnMobile: false },
   { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
   { path: '/resume-ai',     label: 'Resume AI',      mobileLabel: 'AI',      icon: PenLine,   hideOnMobile: true },
 ];
@@ -418,18 +419,18 @@ export default function AppNav() {
             <span>Tracker</span>
           </Link>
           <Link
+            to="/watchlist-profiles"
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/watchlist-profiles' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <Bookmark size={18} />
+            <span>Watch</span>
+          </Link>
+          <Link
             to="/alerts"
             className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/alerts' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Bell size={18} />
             <span>Alerts</span>
-          </Link>
-          <Link
-            to="/billing"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/billing' ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <CreditCard size={18} />
-            <span>Billing</span>
           </Link>
           <Link
             to="/account"
