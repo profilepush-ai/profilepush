@@ -155,6 +155,33 @@ type RadarSocialMatchRow = {
   score_breakdown: Record<string, unknown> | null;
 };
 
+type PulseSocialFeedRpcRow = {
+  lead_id: string;
+  profile_id: string | null;
+  match_created_at: string;
+  final_average_score: number | null;
+  score_breakdown: Record<string, unknown> | null;
+  platform: string;
+  posted_by_name: string;
+  poster_email: string;
+  poster_phone: string;
+  social_created_at: string;
+  posted_at: string | null;
+  job_title: string;
+  company_name: string;
+  location: string;
+  post_content: string;
+  extracted_role_normalized: string | null;
+  employment_type: string;
+  seniority_level: string;
+  salary_range: string;
+  extracted_skills: string[] | null;
+  extracted_experience_years: number | null;
+  extracted_visa_types: string[] | null;
+  extracted_hourly_rate_min: number | null;
+  extracted_hourly_rate_max: number | null;
+};
+
 type ProfileStats = {
   uniqueCompanies: number;
   uniqueVendors: number;
@@ -184,13 +211,13 @@ type PulseLeadActionRow = {
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
 const TOP_PROFILES_PAGE_SIZE = 10;
-const MATCHES_PAGE_SIZE = 10;
+const MATCHES_PAGE_SIZE = 5;
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
-  { id: '1h', label: 'Last 1 hour', hours: 1 },
   { id: '24h', label: 'Last 24 hours', hours: 24 },
-  { id: '48h', label: 'Last 48 hours', hours: 48 },
   { id: '3d', label: 'Last 3 days', hours: 72 },
+  { id: '7d', label: 'Last 7 days', hours: 168 },
+  { id: 'all', label: 'All time', hours: 24 * 365 * 100 },
 ];
 
 const PERSONA_SUMMARY_BY_ROLE = new Map(
@@ -465,21 +492,41 @@ function buildSocialLeadDedupKey(row: SocialJobRow) {
   return [title, company, location || '-', poster || '-'].join('|');
 }
 
+function buildPulseLeadDedupKey(lead: SocialLead) {
+  const title = dedupeText(lead.title);
+  const company = dedupeText(lead.company);
+  const location = dedupeText(lead.location);
+  const platform = dedupeText(lead.platform);
+
+  return [title, company, location || '-', platform || '-'].join('|');
+}
+
 function roleMatchesPersona(row: SocialJobRow, personaRole: string, personaSkills: string[]) {
   const roleText = normalize(personaRole);
-  const text = normalize(`${row.extracted_role_normalized ?? ''} ${row.job_title} ${row.post_content}`);
-  if (!text) return false;
+  const titleText = normalize(`${row.extracted_role_normalized ?? ''} ${row.job_title ?? ''}`);
+  const fullText = normalize(`${titleText} ${row.post_content ?? ''}`);
+  if (!fullText) return false;
 
-  if (text.includes(roleText)) return true;
+  if (fullText.includes(roleText)) return true;
 
-  const roleTokens = roleText
+  const personaBucketKey = getPersonaBucket(personaRole).key;
+  const rowBucketKey = getPersonaBucket(`${row.extracted_role_normalized ?? ''} ${row.job_title ?? ''}`).key;
+  if (personaBucketKey && rowBucketKey && personaBucketKey === rowBucketKey) return true;
+
+  const roleTokens = canonicalizeRoleForUniqueness(personaRole)
     .split(' ')
-    .filter((token) => token.length >= 4 && !['engineer', 'developer', 'senior', 'lead'].includes(token));
+    .filter((token) => token.length >= 3 && !['engineer', 'developer', 'senior', 'lead', 'staff', 'principal'].includes(token));
 
-  const roleHitCount = roleTokens.reduce((count, token) => count + (text.includes(token) ? 1 : 0), 0);
-  if (roleTokens.length > 0 && roleHitCount >= Math.min(2, roleTokens.length)) return true;
+  const titleRoleHits = roleTokens.reduce((count, token) => count + (titleText.includes(token) ? 1 : 0), 0);
+  const fullRoleHits = roleTokens.reduce((count, token) => count + (fullText.includes(token) ? 1 : 0), 0);
+  const skillHits = personaSkills.reduce((count, skill) => count + (fullText.includes(normalize(skill)) ? 1 : 0), 0);
 
-  const skillHits = personaSkills.reduce((count, skill) => count + (text.includes(normalize(skill)) ? 1 : 0), 0);
+  if (roleTokens.length > 0) {
+    if (titleRoleHits >= Math.min(2, roleTokens.length)) return true;
+    if (fullRoleHits >= Math.min(2, roleTokens.length) && skillHits >= 1) return true;
+    return false;
+  }
+
   return skillHits >= 2;
 }
 
@@ -668,7 +715,7 @@ export default function PulsePage() {
     setView(searchParams.get('view') === 'feed' ? 'feed' : 'board');
   }, [searchParams]);
 
-  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('3d');
+  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('7d');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
@@ -689,6 +736,8 @@ export default function PulsePage() {
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
   const [visibleMatchesCount, setVisibleMatchesCount] = useState(MATCHES_PAGE_SIZE);
+  const [desktopRecentVisibleCount, setDesktopRecentVisibleCount] = useState(MATCHES_PAGE_SIZE);
+  const [desktopRevealedVisibleCount, setDesktopRevealedVisibleCount] = useState(MATCHES_PAGE_SIZE);
   const [revealedLeadIds, setRevealedLeadIds] = useState<Set<string>>(new Set());
   const [breakdownChargedLeadIds, setBreakdownChargedLeadIds] = useState<Set<string>>(new Set());
   const [queuedLeadIds, setQueuedLeadIds] = useState<Set<string>>(new Set());
@@ -772,19 +821,6 @@ export default function PulsePage() {
     });
   }, [jobsRankedLeaderboard, profileSearchQuery, profileStatsByRole, selectedCategoryId, selectedTechStacks]);
 
-  const categoryFeedPersonas = useMemo(() => {
-    if (selectedCategoryId === 'all') return [] as PulsePersona[];
-    const selectedCategory = PROFILE_CATEGORY_TABS.find((item) => item.id === selectedCategoryId) ?? PROFILE_CATEGORY_TABS[0];
-    const categoryFiltered = jobsRankedLeaderboard
-      .filter((persona) => isPersonaInCategory(persona, selectedCategory.id))
-      .filter((persona) => (profileStatsByRole[normalize(persona.target_role)]?.uniqueJobs ?? 0) > 0);
-    if (selectedTechStacks.length === 0) return categoryFiltered;
-    return categoryFiltered.filter((persona) => {
-      const text = normalize(`${persona.target_role} ${persona.summary} ${persona.priority_skills ?? ''}`);
-      return selectedTechStacks.some((tech) => text.includes(normalize(tech)));
-    });
-  }, [jobsRankedLeaderboard, profileStatsByRole, selectedCategoryId, selectedTechStacks]);
-
   const orderedJobsRankedLeaderboard = useMemo(() => {
     const watched: PulsePersona[] = [];
     const unwatched: PulsePersona[] = [];
@@ -820,12 +856,90 @@ export default function PulsePage() {
   const totalProfilePages = Math.max(1, Math.ceil(profilesForActiveView.length / TOP_PROFILES_PAGE_SIZE));
   const canLoadMoreProfiles = profilePage < totalProfilePages;
 
+  const scopedFeed = useMemo(() => {
+    let next = feed;
+
+    if (selectedCategoryId !== 'all') {
+      next = next.filter((lead) => {
+        const category = inferRoleCategoryId(`${lead.title} ${lead.snippet}`);
+        if (category !== selectedCategoryId) return false;
+
+        if (selectedTechStacks.length === 0) return true;
+        const haystack = normalize(`${lead.title} ${lead.snippet} ${lead.skills.join(' ')}`);
+        return selectedTechStacks.some((tech) => haystack.includes(normalize(tech)));
+      });
+    }
+
+    if (activePersona) {
+      const personaSkills = getPersonaSkillList(activePersona.target_role, activePersona.priority_skills);
+      next = next.filter((lead) => {
+        const row = {
+          id: lead.id,
+          platform: lead.platform,
+          posted_by_name: lead.posterName,
+          poster_email: lead.posterEmail,
+          poster_phone: lead.posterPhone,
+          created_at: lead.postedAt,
+          posted_at: lead.postedAt,
+          job_title: lead.title,
+          company_name: lead.company,
+          location: lead.location,
+          post_content: lead.snippet,
+          extracted_role_normalized: lead.title,
+          employment_type: lead.employmentType,
+          seniority_level: lead.seniority,
+          salary_range: lead.salaryRange,
+          extracted_skills: lead.skills,
+          extracted_experience_years: lead.experienceYears,
+          extracted_visa_types: lead.visaTypes,
+          extracted_hourly_rate_min: null,
+          extracted_hourly_rate_max: null,
+        } as SocialJobRow;
+
+        return roleMatchesPersona(row, activePersona.target_role, personaSkills);
+      });
+    }
+
+    return next;
+  }, [activePersona, feed, selectedCategoryId, selectedTechStacks]);
+
+  const dedupedScopedFeed = useMemo(() => {
+    const byKey = new Map<string, SocialLead>();
+
+    for (const lead of scopedFeed) {
+      const key = buildPulseLeadDedupKey(lead);
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, lead);
+        continue;
+      }
+
+      const existingTs = new Date(existing.postedAt).getTime();
+      const nextTs = new Date(lead.postedAt).getTime();
+      if (nextTs > existingTs) {
+        byKey.set(key, lead);
+      }
+    }
+
+    return Array.from(byKey.values());
+  }, [scopedFeed]);
+
+  const recentVisibleFeed = useMemo(
+    () => dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id)),
+    [dedupedScopedFeed, revealedLeadIds],
+  );
+
+  const revealedVisibleFeed = useMemo(
+    () => dedupedScopedFeed.filter((lead) => revealedLeadIds.has(lead.id)),
+    [dedupedScopedFeed, revealedLeadIds],
+  );
+
   const matchesTabCounts = useMemo(() => ({
-    all: feed.length,
-    breakdown: feed.filter((lead) => breakdownChargedLeadIds.has(lead.id)).length,
-    revealed: feed.filter((lead) => revealedLeadIds.has(lead.id)).length,
-    queued: feed.filter((lead) => !revealedLeadIds.has(lead.id) && !breakdownChargedLeadIds.has(lead.id)).length,
-  }), [breakdownChargedLeadIds, feed, revealedLeadIds]);
+    all: dedupedScopedFeed.length,
+    breakdown: dedupedScopedFeed.filter((lead) => breakdownChargedLeadIds.has(lead.id)).length,
+    revealed: revealedVisibleFeed.length,
+    queued: recentVisibleFeed.length,
+  }), [breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed.length, revealedVisibleFeed.length]);
 
   const profileViewCounts = useMemo(() => ({
     all: filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).length,
@@ -834,19 +948,182 @@ export default function PulsePage() {
 
   const filteredFeed = useMemo(() => {
     if (selectedMatchesTab === 'breakdown') {
-      return feed.filter((lead) => breakdownChargedLeadIds.has(lead.id));
+      return dedupedScopedFeed.filter((lead) => breakdownChargedLeadIds.has(lead.id));
     }
     if (selectedMatchesTab === 'revealed') {
-      return feed.filter((lead) => revealedLeadIds.has(lead.id));
+      return revealedVisibleFeed;
     }
     if (selectedMatchesTab === 'queued') {
-      return feed.filter((lead) => !revealedLeadIds.has(lead.id) && !breakdownChargedLeadIds.has(lead.id));
+      return recentVisibleFeed;
     }
-    return feed;
-  }, [breakdownChargedLeadIds, feed, revealedLeadIds, selectedMatchesTab]);
+    return dedupedScopedFeed;
+  }, [breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed, revealedVisibleFeed, selectedMatchesTab]);
 
   const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
+
+  const visibleDesktopRecentFeed = useMemo(
+    () => recentVisibleFeed.slice(0, desktopRecentVisibleCount),
+    [desktopRecentVisibleCount, recentVisibleFeed],
+  );
+  const visibleDesktopRevealedFeed = useMemo(
+    () => revealedVisibleFeed.slice(0, desktopRevealedVisibleCount),
+    [desktopRevealedVisibleCount, revealedVisibleFeed],
+  );
+  const canLoadMoreDesktopRecent = desktopRecentVisibleCount < recentVisibleFeed.length;
+  const canLoadMoreDesktopRevealed = desktopRevealedVisibleCount < revealedVisibleFeed.length;
+
+  const maybeLoadMoreMatches = useCallback((container: HTMLDivElement, canLoadMore: boolean, onLoadMore: () => void) => {
+    if (!canLoadMore) return;
+    const nearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 96;
+    if (nearBottom) onLoadMore();
+  }, []);
+
+  const handleMobileMatchesScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    maybeLoadMoreMatches(event.currentTarget, canLoadMoreMatches, () => {
+      setVisibleMatchesCount((prev) => Math.min(filteredFeed.length, prev + MATCHES_PAGE_SIZE));
+    });
+  }, [canLoadMoreMatches, filteredFeed.length, maybeLoadMoreMatches]);
+
+  const handleDesktopRecentScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopRecent, () => {
+      setDesktopRecentVisibleCount((prev) => Math.min(recentVisibleFeed.length, prev + MATCHES_PAGE_SIZE));
+    });
+  }, [canLoadMoreDesktopRecent, maybeLoadMoreMatches, recentVisibleFeed.length]);
+
+  const handleDesktopRevealedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopRevealed, () => {
+      setDesktopRevealedVisibleCount((prev) => Math.min(revealedVisibleFeed.length, prev + MATCHES_PAGE_SIZE));
+    });
+  }, [canLoadMoreDesktopRevealed, maybeLoadMoreMatches, revealedVisibleFeed.length]);
+
+  const renderLeadCards = (leads: SocialLead[]) => leads.map((lead, index) => {
+    const cardToneClass = [
+      'border-blue-100 bg-blue-50/35',
+      'border-emerald-100 bg-emerald-50/35',
+      'border-amber-100 bg-amber-50/40',
+      'border-slate-200 bg-slate-50/75',
+    ][index % 4];
+    const inlineBreakdownItems = buildScoreBreakdownDisplayItems(
+      lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+    );
+    const isInlineBreakdownExpanded = expandedInlineBreakdownLeadIds.has(lead.id);
+    const experienceInlineItem = inlineBreakdownItems.find((item) => {
+      const key = item.key.toLowerCase();
+      return key.includes('experience') || key.includes('exp');
+    });
+    const visaInlineItem = inlineBreakdownItems.find((item) => {
+      const key = item.key.toLowerCase();
+      return key.includes('visa') || key.includes('authorization') || key.includes('work_auth');
+    });
+    const collapsedInlineBreakdownItems = [experienceInlineItem, visaInlineItem]
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .filter((item, idx, arr) => arr.findIndex((other) => other.key === item.key) === idx);
+
+    if (collapsedInlineBreakdownItems.length < 2) {
+      for (const item of inlineBreakdownItems) {
+        if (collapsedInlineBreakdownItems.some((existing) => existing.key === item.key)) continue;
+        collapsedInlineBreakdownItems.push(item);
+        if (collapsedInlineBreakdownItems.length >= 2) break;
+      }
+    }
+
+    const visibleInlineBreakdownItems = isInlineBreakdownExpanded
+      ? inlineBreakdownItems
+      : collapsedInlineBreakdownItems;
+
+    return (
+      <div key={lead.id} className={`rounded-lg border px-3 py-2.5 ${cardToneClass}`}>
+        <div className="flex items-center justify-between gap-1.5">
+          <p className="text-[11px] font-semibold text-gray-900 leading-snug">{lead.title || 'Job Opportunity'}</p>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {(lead.matchScore !== null && Number.isFinite(lead.matchScore) && lead.matchScore > 0) && (
+              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{Math.round(lead.matchScore)}%</span>
+            )}
+            <span className="text-[9px] font-bold uppercase text-gray-400">{lead.platform}</span>
+          </div>
+        </div>
+        {lead.company && (
+          <div className="mt-0.5 text-[10px] text-gray-600">{lead.company}</div>
+        )}
+        <div className="mt-0.5 text-[10px] text-gray-500">
+          <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
+          <span> • </span>
+          <span>{lead.postedAgo}</span>
+        </div>
+        {inlineBreakdownItems.length > 0 && (
+          <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200">
+            <div>
+              <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
+                    <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
+                    <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleInlineBreakdownItems.map((item) => (
+                    <tr key={item.key}>
+                      <td className="border-b border-gray-100 px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
+                      <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
+                      <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        <div className="mt-1.5 flex items-center gap-1.5">
+          {inlineBreakdownItems.length > 2 && (
+            <button
+              type="button"
+              onClick={() => {
+                setExpandedInlineBreakdownLeadIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(lead.id)) {
+                    next.delete(lead.id);
+                  } else {
+                    next.add(lead.id);
+                  }
+                  return next;
+                });
+              }}
+              className="inline-flex flex-1 items-center justify-center rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+            >
+              {isInlineBreakdownExpanded ? 'Hide Details' : 'Details'}
+            </button>
+          )}
+          <button
+            onClick={() => void handleOpenBreakdown(lead)}
+            disabled={processingBreakdownLeadId === lead.id}
+            className={`hidden items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'border-gray-200 text-gray-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          >
+            {breakdownChargedLeadIds.has(lead.id) && <Check size={9} className="text-emerald-600" />}
+            {processingBreakdownLeadId === lead.id ? '...' : 'Breakdown'}
+          </button>
+          {revealedLeadIds.has(lead.id) ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
+              className="inline-flex flex-1 justify-center items-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200"
+            >
+              <Copy size={9} /> Email <AtSign size={9} />
+            </button>
+          ) : (
+            <button
+              onClick={() => void handleRevealContact(lead)}
+              disabled={processingLeadId === lead.id}
+              className="inline-flex flex-1 justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+            >
+              <AtSign size={9} />
+              {processingLeadId === lead.id ? '...' : 'Reveal Email'}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  });
 
   useEffect(() => {
     setProfilePage(1);
@@ -910,16 +1187,9 @@ export default function PulsePage() {
   }, [account?.id, showToast]);
 
   const loadLeadActionState = useCallback(async () => {
-    if (!account?.id) {
-      setRevealedLeadIds(new Set());
-      setBreakdownChargedLeadIds(new Set());
-      return;
-    }
-
     const { data, error } = await supabase
       .from('pulse_lead_actions')
       .select('lead_id, action_type')
-      .eq('account_id', account.id)
       .in('action_type', ['revealed', 'breakdown']);
 
     if (error) {
@@ -935,7 +1205,7 @@ export default function PulsePage() {
 
     setRevealedLeadIds(revealed);
     setBreakdownChargedLeadIds(breakdown);
-  }, [account?.id]);
+  }, []);
 
   const loadLeaderboard = useCallback(async () => {
     const { data, error } = await supabase.rpc('get_pulse_persona_leaderboard', { limit_count: LEADERBOARD_RPC_LIMIT });
@@ -1008,20 +1278,137 @@ export default function PulsePage() {
   const loadInitial = useCallback(async () => {
     setLoading(true);
     await Promise.all([loadLeaderboard(), loadWatchingRoles(), loadLeadActionState()]);
-    // Fetch latest match timestamp
-    const { data: latestMatch } = await supabase
-      .from('radar_match_results')
-      .select('created_at')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (latestMatch?.created_at) setLastMatchAt(latestMatch.created_at);
+
+    try {
+      const { data: latestRows } = await supabase.rpc('get_pulse_social_feed', {
+        p_since: '1970-01-01T00:00:00.000Z',
+        p_limit: 1,
+      } as never);
+      const latest = (latestRows?.[0] as PulseSocialFeedRpcRow | undefined)?.match_created_at;
+      if (latest) setLastMatchAt(latest);
+    } catch {
+      // Leave lastMatchAt unchanged on failure.
+    }
+
     setLoading(false);
   }, [loadLeaderboard, loadWatchingRoles, loadLeadActionState]);
 
   useEffect(() => {
     void loadInitial();
   }, [loadInitial]);
+
+  const loadGlobalPulseRows = useCallback(async () => {
+    const since = '1970-01-01T00:00:00.000Z';
+
+    // Preferred path: global SECURITY DEFINER RPC (all-account feed).
+    const rpcResult = await supabase.rpc('get_pulse_social_feed', {
+      p_since: since,
+      p_limit: 5000,
+    } as never);
+    if (!rpcResult.error) {
+      return (rpcResult.data ?? []) as PulseSocialFeedRpcRow[];
+    }
+
+    // Fallback path: direct table reads (subject to project RLS).
+    const { data: matchData, error: matchError } = await supabase
+      .from('radar_match_results')
+      .select('profile_id, job_source, job_id, created_at, final_average_score, score_breakdown')
+      .eq('job_source', 'social')
+      .order('created_at', { ascending: false })
+      .limit(5000);
+
+    if (matchError) {
+      throw rpcResult.error;
+    }
+
+    const latestByJobKey = new Map<string, {
+      profile_id: string | null;
+      job_source: string;
+      job_id: string;
+      created_at: string;
+      final_average_score: number | null;
+      score_breakdown: Record<string, unknown> | null;
+    }>();
+
+    for (const row of (matchData ?? []) as Array<{
+      profile_id: string | null;
+      job_source: string;
+      job_id: string;
+      created_at: string;
+      final_average_score: number | null;
+      score_breakdown: Record<string, unknown> | null;
+    }>) {
+      const source = (row.job_source ?? '').trim() || 'unknown';
+      if (!row.job_id) continue;
+      const jobKey = `${source}:${row.job_id}`;
+      const prev = latestByJobKey.get(jobKey);
+      if (!prev || new Date(row.created_at).getTime() > new Date(prev.created_at).getTime()) {
+        latestByJobKey.set(jobKey, {
+          profile_id: row.profile_id,
+          job_source: source,
+          job_id: row.job_id,
+          created_at: row.created_at,
+          final_average_score: row.final_average_score,
+          score_breakdown: row.score_breakdown,
+        });
+      }
+    }
+
+    const latestMatches = Array.from(latestByJobKey.values());
+    if (latestMatches.length === 0) return [];
+
+    const socialJobIds = latestMatches
+      .filter((row) => row.job_source === 'social')
+      .map((row) => row.job_id);
+
+    const socialById = new Map<string, SocialJobRow>();
+    if (socialJobIds.length > 0) {
+      const { data: socialData, error: socialError } = await supabase
+        .from('social_jobs')
+        .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max')
+        .in('id', socialJobIds);
+
+      if (socialError) {
+        throw rpcResult.error;
+      }
+
+      for (const row of (socialData ?? []) as SocialJobRow[]) {
+        socialById.set(row.id, row);
+      }
+    }
+
+    return latestMatches.map((match) => {
+      const social = match.job_source === 'social' ? socialById.get(match.job_id) : null;
+      const leadId = social ? social.id : `${match.job_source}:${match.job_id}`;
+
+      return {
+        lead_id: leadId,
+        profile_id: match.profile_id,
+        match_created_at: match.created_at,
+        final_average_score: match.final_average_score,
+        score_breakdown: match.score_breakdown,
+        platform: social?.platform ?? match.job_source,
+        posted_by_name: social?.posted_by_name ?? 'Unknown poster',
+        poster_email: social?.poster_email ?? '',
+        poster_phone: social?.poster_phone ?? '',
+        social_created_at: social?.created_at ?? match.created_at,
+        posted_at: social?.posted_at ?? null,
+        job_title: social?.job_title ?? `${match.job_source.toUpperCase()} Job`,
+        company_name: social?.company_name ?? '',
+        location: social?.location ?? 'Location not specified',
+        post_content: social?.post_content ?? '',
+        extracted_role_normalized: social?.extracted_role_normalized ?? null,
+        employment_type: social?.employment_type ?? '',
+        seniority_level: social?.seniority_level ?? '',
+        salary_range: social?.salary_range ?? '',
+        extracted_skills: social?.extracted_skills ?? [],
+        extracted_experience_years: social?.extracted_experience_years ?? null,
+        extracted_visa_types: social?.extracted_visa_types ?? [],
+        extracted_hourly_rate_min: social?.extracted_hourly_rate_min ?? null,
+        extracted_hourly_rate_max: social?.extracted_hourly_rate_max ?? null,
+      } as PulseSocialFeedRpcRow;
+    });
+  }, []);
 
   const loadProfileStats = useCallback(async () => {
     if (sortedLeaderboard.length === 0) {
@@ -1030,24 +1417,16 @@ export default function PulsePage() {
     }
 
     setProfileStatsLoading(true);
-    const threshold = new Date(Date.now() - selectedProfileRange.hours * 60 * 60 * 1000).toISOString();
-
-    let { data: matchData, error: matchError } = await supabase
-      .from('radar_match_results')
-      .select('job_id, created_at')
-      .eq('job_source', 'social')
-      .gte('created_at', threshold)
-      .order('created_at', { ascending: false })
-      .limit(5000);
-
-    if (matchError) {
+    let rpcRows: PulseSocialFeedRpcRow[] = [];
+    try {
+      rpcRows = await loadGlobalPulseRows();
+    } catch {
       showToast('Could not load profile stats', 'error');
       setProfileStatsLoading(false);
       return;
     }
 
-    const jobIds = Array.from(new Set((matchData ?? []).map((row) => String(row.job_id ?? '')).filter(Boolean)));
-    if (jobIds.length === 0) {
+    if (rpcRows.length === 0) {
       const emptyStats = Object.fromEntries(
         sortedLeaderboard.map((item) => [normalize(item.target_role), { ...zeroStats }]),
       ) as Record<string, ProfileStats>;
@@ -1056,18 +1435,16 @@ export default function PulsePage() {
       return;
     }
 
-    const { data: socialData, error: socialError } = await supabase
-      .from('social_jobs')
-      .select('id, company_name, posted_by_name, poster_email, poster_phone, job_title, post_content, extracted_role_normalized')
-      .in('id', jobIds);
-
-    if (socialError) {
-      showToast('Could not hydrate profile stats', 'error');
-      setProfileStatsLoading(false);
-      return;
-    }
-
-    const rows = (socialData ?? []) as Array<Pick<SocialJobRow, 'id' | 'company_name' | 'posted_by_name' | 'poster_email' | 'poster_phone' | 'job_title' | 'post_content' | 'extracted_role_normalized'>>;
+    const rows = rpcRows.map((row) => ({
+      id: row.lead_id,
+      company_name: row.company_name,
+      posted_by_name: row.posted_by_name,
+      poster_email: row.poster_email,
+      poster_phone: row.poster_phone,
+      job_title: row.job_title,
+      post_content: row.post_content,
+      extracted_role_normalized: row.extracted_role_normalized,
+    })) as Array<Pick<SocialJobRow, 'id' | 'company_name' | 'posted_by_name' | 'poster_email' | 'poster_phone' | 'job_title' | 'post_content' | 'extracted_role_normalized'>>;
     const stats: Record<string, ProfileStats> = {};
 
     for (const persona of sortedLeaderboard) {
@@ -1100,118 +1477,78 @@ export default function PulsePage() {
 
     setProfileStatsByRole(stats);
     setProfileStatsLoading(false);
-  }, [selectedProfileRange.hours, showToast, sortedLeaderboard, zeroStats]);
+  }, [loadGlobalPulseRows, showToast, sortedLeaderboard, zeroStats]);
 
   useEffect(() => {
     void loadProfileStats();
   }, [loadProfileStats]);
 
-  const loadFeed = useCallback(async (persona: PulsePersona | null, personaFilters: PulsePersona[] = []) => {
+  const loadFeed = useCallback(async (_persona: PulsePersona | null, _personaFilters: PulsePersona[] = []) => {
     setFeedLoading(true);
-    const threshold = new Date(Date.now() - selectedProfileRange.hours * 60 * 60 * 1000).toISOString();
-
-    const { data: matchData, error: matchError } = await supabase
-      .from('radar_match_results')
-      .select('id, profile_id, job_source, job_id, created_at, final_average_score, score_breakdown')
-      .eq('job_source', 'social')
-      .gte('created_at', threshold)
-      .order('created_at', { ascending: false })
-      .limit(5000);
-
-    if (matchError) {
+    let rpcRows: PulseSocialFeedRpcRow[] = [];
+    try {
+      rpcRows = await loadGlobalPulseRows();
+    } catch {
       showToast('Failed to load social matches', 'error');
       setFeedLoading(false);
       return;
     }
 
-    const radarRows = (matchData ?? []) as RadarSocialMatchRow[];
-    const socialJobIds = Array.from(new Set(radarRows.map((row) => row.job_id).filter(Boolean)));
-
-    if (socialJobIds.length === 0) {
+    if (rpcRows.length === 0) {
       setFeed([]);
       setFeedLoading(false);
       return;
     }
 
-    const { data: socialData, error: socialError } = await supabase
-      .from('social_jobs')
-      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max')
-      .in('id', socialJobIds);
-
-    if (socialError) {
-      showToast('Failed to hydrate social contacts', 'error');
-      setFeedLoading(false);
-      return;
-    }
-
-    const newestMatchByJobId = new Map<string, RadarSocialMatchRow>();
-    for (const row of radarRows) {
-      const prev = newestMatchByJobId.get(row.job_id);
-      if (!prev || new Date(row.created_at).getTime() > new Date(prev.created_at).getTime()) {
-        newestMatchByJobId.set(row.job_id, row);
-      }
-    }
-
-    const roleFilters = persona ? [persona] : personaFilters;
-    const compiledRoleFilters = roleFilters.map((item) => ({
-      targetRole: item.target_role,
-      skillList: getPersonaSkillList(item.target_role, item.priority_skills),
+    const socialData: SocialJobRow[] = rpcRows.map((row) => ({
+      id: row.lead_id,
+      platform: row.platform,
+      posted_by_name: row.posted_by_name,
+      poster_email: row.poster_email,
+      poster_phone: row.poster_phone,
+      created_at: row.social_created_at,
+      posted_at: row.posted_at,
+      job_title: row.job_title,
+      company_name: row.company_name,
+      location: row.location,
+      post_content: row.post_content,
+      extracted_role_normalized: row.extracted_role_normalized,
+      employment_type: row.employment_type,
+      seniority_level: row.seniority_level,
+      salary_range: row.salary_range,
+      extracted_skills: row.extracted_skills,
+      extracted_experience_years: row.extracted_experience_years,
+      extracted_visa_types: row.extracted_visa_types,
+      extracted_hourly_rate_min: row.extracted_hourly_rate_min,
+      extracted_hourly_rate_max: row.extracted_hourly_rate_max,
     }));
 
-    const dedupedRows = new Map<string, SocialJobRow>();
-
-    for (const row of (socialData as SocialJobRow[])) {
-      if (!newestMatchByJobId.has(row.id)) continue;
-      if (compiledRoleFilters.length > 0) {
-        const matchesAnyRole = compiledRoleFilters.some((item) => roleMatchesPersona(row, item.targetRole, item.skillList));
-        if (!matchesAnyRole) continue;
-      }
-
-      const dedupKey = buildSocialLeadDedupKey(row);
-      if (!dedupKey) continue;
-
-      const existing = dedupedRows.get(dedupKey);
-      if (!existing) {
-        dedupedRows.set(dedupKey, row);
-        continue;
-      }
-
-      const existingMatchTs = new Date(newestMatchByJobId.get(existing.id)?.created_at ?? 0).getTime();
-      const nextMatchTs = new Date(newestMatchByJobId.get(row.id)?.created_at ?? 0).getTime();
-      if (nextMatchTs > existingMatchTs) {
-        dedupedRows.set(dedupKey, row);
-      }
-    }
-
-    const filtered = Array.from(dedupedRows.values())
-      .filter((row) => newestMatchByJobId.has(row.id));
-
-    // Vector-based dedup pass using pgvector cosine similarity
-    const textDedupedIds = filtered.map((r) => r.id);
-    let vectorDedupedIds: Set<string> | null = null;
-    if (textDedupedIds.length > 1) {
-      const { data: uniqueIds } = await supabase.rpc('dedup_social_job_ids', {
-        job_ids: textDedupedIds,
-        similarity_threshold: 0.92,
+    const newestMatchByJobId = new Map<string, RadarSocialMatchRow>();
+    for (const row of rpcRows) {
+      newestMatchByJobId.set(row.lead_id, {
+        id: row.lead_id,
+        profile_id: row.profile_id ?? '',
+        job_source: 'social',
+        job_id: row.lead_id,
+        created_at: row.match_created_at,
+        final_average_score: row.final_average_score,
+        score_breakdown: row.score_breakdown,
       });
-      if (uniqueIds && Array.isArray(uniqueIds)) {
-        vectorDedupedIds = new Set(uniqueIds as string[]);
-      }
     }
 
-    const finalFiltered = (vectorDedupedIds ? filtered.filter((r) => vectorDedupedIds!.has(r.id)) : filtered)
+    const finalFiltered = socialData
+      .filter((row) => newestMatchByJobId.has(row.id))
       .sort((a, b) => {
         const aMatchTs = new Date(newestMatchByJobId.get(a.id)?.created_at ?? 0).getTime();
         const bMatchTs = new Date(newestMatchByJobId.get(b.id)?.created_at ?? 0).getTime();
         return bMatchTs - aMatchTs;
       })
-      .slice(0, 120)
       .map((row) => {
         const matchedAt = newestMatchByJobId.get(row.id)?.created_at;
         const eventTime = matchedAt || row.posted_at || row.created_at;
         return {
           id: row.id,
-          title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || persona?.target_role || 'Untitled Job',
+          title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || 'Untitled Job',
           location: row.location?.trim() || 'Location not specified',
           company: row.company_name?.trim() || '',
           posterName: row.posted_by_name?.trim() || 'Vendor contact',
@@ -1238,55 +1575,25 @@ export default function PulsePage() {
 
     setFeed(finalFiltered);
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
+    setDesktopRecentVisibleCount(MATCHES_PAGE_SIZE);
+    setDesktopRevealedVisibleCount(MATCHES_PAGE_SIZE);
     setFeedLoading(false);
-  }, [selectedProfileRange.hours, showToast]);
+  }, [loadGlobalPulseRows, showToast]);
 
   useEffect(() => {
-    if (selectedCategoryId === 'all') {
-      if (activePersona) {
-        setActivePersona(null);
-      }
-      void loadFeed(null);
-      return;
-    }
-
-    if (activePersona) {
-      const activeRoleKey = normalize(activePersona.target_role);
-      const isActiveInCategory = categoryFeedPersonas.some((persona) => normalize(persona.target_role) === activeRoleKey);
-      if (isActiveInCategory) {
-        void loadFeed(activePersona);
-        return;
-      }
-      setActivePersona(null);
-    }
-
-    if (categoryFeedPersonas.length === 0) {
-      setFeed([]);
-      return;
-    }
-
-    void loadFeed(null, categoryFeedPersonas);
-  }, [activePersona, categoryFeedPersonas, loadFeed, selectedCategoryId]);
+    void loadFeed(null);
+  }, [loadFeed]);
 
   // Re-fetch matches when date range changes
   useEffect(() => {
-    if (selectedCategoryId === 'all') {
-      if (activePersona) {
-        setActivePersona(null);
-      }
-      void loadFeed(null);
-      return;
-    }
-    if (activePersona) {
-      void loadFeed(activePersona);
-      return;
-    }
-    if (categoryFeedPersonas.length === 0) {
-      setFeed([]);
-      return;
-    }
-    void loadFeed(null, categoryFeedPersonas);
-  }, [categoryFeedPersonas, loadFeed, selectedCategoryId, selectedProfileRange.hours]);
+    void loadFeed(null);
+  }, [loadFeed, selectedProfileRange.hours]);
+
+  useEffect(() => {
+    setVisibleMatchesCount(MATCHES_PAGE_SIZE);
+    setDesktopRecentVisibleCount(MATCHES_PAGE_SIZE);
+    setDesktopRevealedVisibleCount(MATCHES_PAGE_SIZE);
+  }, [activePersona?.target_role, selectedCategoryId, selectedMatchesTab, selectedTechStacks]);
 
   const ensureRoleActive = useCallback(async (persona: PulsePersona, avatarUrl?: string | null) => {
     if (!account?.id) throw new Error('No account found');
@@ -1372,7 +1679,7 @@ export default function PulsePage() {
       });
       setActivePersona(persona);
       setView('feed');
-      await loadFeed(persona);
+      await loadFeed(null);
       void loadLeaderboard();
       showToast(`Watching ${persona.target_role}`, 'success');
     } catch (error) {
@@ -1385,22 +1692,26 @@ export default function PulsePage() {
   const selectPersona = useCallback(async (persona: PulsePersona) => {
     setActivePersona(persona);
     setView('feed');
-    await loadFeed(persona);
+    await loadFeed(null);
   }, [loadFeed]);
 
   const refreshFeed = useCallback(async () => {
-    if (!activePersona) return;
     setRefreshing(true);
-    await loadFeed(activePersona);
-    const { data: latestMatch } = await supabase
-      .from('radar_match_results')
-      .select('created_at')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (latestMatch?.created_at) setLastMatchAt(latestMatch.created_at);
+    await loadFeed(null);
+
+    try {
+      const { data: latestRows } = await supabase.rpc('get_pulse_social_feed', {
+        p_since: '1970-01-01T00:00:00.000Z',
+        p_limit: 1,
+      } as never);
+      const latest = (latestRows?.[0] as PulseSocialFeedRpcRow | undefined)?.match_created_at;
+      if (latest) setLastMatchAt(latest);
+    } catch {
+      // Keep existing lastMatchAt if timestamp refresh fails.
+    }
+
     setRefreshing(false);
-  }, [activePersona, loadFeed]);
+  }, [loadFeed]);
 
   const copyText = useCallback(async (value: string, label: string) => {
     if (!value.trim()) {
@@ -1737,7 +2048,7 @@ export default function PulsePage() {
       <AppNav />
 
       <main className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2 sm:px-6 sm:py-4 lg:px-8">
+        <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2">
 
 
           {loading ? (
@@ -1745,9 +2056,9 @@ export default function PulsePage() {
               <LogoSpinner size={24} />
             </div>
           ) : (
-            <div className="flex h-full min-h-0 flex-col gap-2 sm:gap-3 overflow-hidden">
+            <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
               {/* Category Pills (desktop horizontal scroll) */}
-              <div className="hidden sm:block shrink-0 hide-scrollbar w-full overflow-x-auto">
+              <div className="hidden shrink-0 hide-scrollbar w-full overflow-x-auto">
                 <div className="flex w-max min-w-full gap-1.5">
                   {[...PROFILE_CATEGORY_TABS]
                     .map((category) => {
@@ -1787,7 +2098,7 @@ export default function PulsePage() {
               </div>
 
               {selectedCategoryId !== 'all' && CATEGORY_TECH_STACKS[selectedCategoryId] && (
-                <div className="hidden sm:block shrink-0 hide-scrollbar w-full overflow-x-auto">
+                <div className="hidden shrink-0 hide-scrollbar w-full overflow-x-auto">
                   <div className="flex w-max min-w-full gap-1.5 pb-1">
                     {CATEGORY_TECH_STACKS[selectedCategoryId].map((tech) => {
                       const isActive = selectedTechStacks.includes(tech);
@@ -1807,7 +2118,7 @@ export default function PulsePage() {
               )}
 
               {/* Search & Filter: collapsed pill on mobile, inline bar on desktop */}
-              <div className="hidden sm:flex flex-wrap items-center gap-2">
+              <div className="hidden flex-wrap items-center gap-2">
                   <div className="min-w-[240px] flex-1">
                     <label htmlFor="profile-search" className="sr-only">Search profiles</label>
                     <div className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
@@ -1852,7 +2163,7 @@ export default function PulsePage() {
                 </div>
 
               {/* Mobile search/filter row */}
-              <div className="flex sm:hidden items-center gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
                   className="flex-1 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-medium text-gray-600"
@@ -1882,7 +2193,7 @@ export default function PulsePage() {
                 </button>
               </div>
               {mobileSearchOpen && (
-                <div className="flex sm:hidden items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
+                <div className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
                   <Search size={12} className="text-gray-400" />
                   <input
                     type="text"
@@ -1898,8 +2209,8 @@ export default function PulsePage() {
                 </div>
               )}
 
-              <div className="grid min-h-0 flex-1 grid-cols-[20%_80%] sm:grid-cols-[minmax(0,40%)_minmax(0,60%)] sm:grid-rows-none gap-0 overflow-hidden border border-gray-200 rounded-lg">
-                <aside className="sm:hidden sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar border-r border-gray-200 bg-gray-50 px-1.5 py-2">
+              <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[20%_80%]' : 'grid-cols-[15%_85%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
+                <aside className="sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar border-r border-gray-200 bg-gray-50 px-1.5 py-2">
                   <div className="space-y-1">
                     {[...PROFILE_CATEGORY_TABS]
                       .map((category) => {
@@ -1922,16 +2233,31 @@ export default function PulsePage() {
                             key={category.id}
                             type="button"
                             onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
-                            className={`w-full rounded-md border px-1.5 py-2 text-center transition ${isSelected ? 'border-blue-300 bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
+                            className={`w-full rounded-md border transition ${isMobileViewport
+                              ? `px-1.5 py-2 text-center ${isSelected ? 'border-blue-300 bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`
+                              : `px-2 py-2 text-left ${isSelected ? 'border-blue-200 bg-white text-blue-700' : 'border-transparent bg-transparent text-gray-600 hover:bg-white/80 hover:text-gray-800'}`}`}
                           >
-                            <div className="flex flex-col items-center gap-1">
-                              <CategoryIcon size={12} />
-                              <span className="text-[8px] font-semibold leading-tight">{category.label}</span>
-                            </div>
-                            <div className={`mt-1 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-blue-500' : 'text-gray-400'}`}>
-                              <span className="inline-flex items-center gap-0.5"><Building2 size={8} />{vendorsCount}</span>
-                              <span className="inline-flex items-center gap-0.5"><Briefcase size={8} />{jobsCount}</span>
-                            </div>
+                            {isMobileViewport ? (
+                              <div className="flex flex-col items-center gap-1">
+                                <CategoryIcon size={12} />
+                                <span className="text-[8px] font-semibold leading-tight">{category.label}</span>
+                                <div className={`mt-0.5 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-blue-500' : 'text-gray-400'}`}>
+                                  <span className="inline-flex items-center gap-0.5"><Building2 size={8} />{vendorsCount}</span>
+                                  <span className="inline-flex items-center gap-0.5"><Briefcase size={8} />{jobsCount}</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-[24px_1fr] grid-rows-2 gap-x-1.5 gap-y-0.5">
+                                <span className={`row-span-2 inline-flex h-full min-h-[34px] w-6 shrink-0 items-center justify-center rounded ${isSelected ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-500'}`}>
+                                  <CategoryIcon size={14} />
+                                </span>
+                                <span className="min-w-0 self-end truncate text-[11px] font-bold leading-tight">{category.label}</span>
+                                <div className={`min-w-0 self-start flex items-center gap-1.5 text-[8px] font-semibold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>
+                                  <span className="inline-flex items-center gap-0.5 whitespace-nowrap"><Building2 size={8} />Vendors {vendorsCount}</span>
+                                  <span className="inline-flex items-center gap-0.5 whitespace-nowrap"><Briefcase size={8} />Jobs {jobsCount}</span>
+                                </div>
+                              </div>
+                            )}
                           </button>
                         );
                       })}
@@ -1948,7 +2274,7 @@ export default function PulsePage() {
                               key={tech}
                               type="button"
                               onClick={() => setSelectedTechStacks((prev) => isActive ? prev.filter((t) => t !== tech) : [...prev, tech])}
-                              className={`w-full rounded-md border px-1.5 py-1 text-[8px] font-semibold transition ${isActive ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
+                              className={`w-full rounded-md border px-1.5 py-1 text-[8px] font-semibold transition ${isActive ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-transparent bg-white/80 text-gray-600 hover:bg-white hover:text-gray-800'}`}
                             >
                               {tech}
                             </button>
@@ -1959,84 +2285,188 @@ export default function PulsePage() {
                   )}
                 </aside>
 
-              <div className="col-start-2 row-span-2 min-w-0 h-full flex min-h-0 flex-col overflow-hidden sm:contents">
+              <div className="col-start-2 row-span-2 min-w-0 h-full flex min-h-0 flex-col overflow-hidden">
 
-              <section className="min-w-0 shrink-0 overflow-hidden border-b border-gray-200 sm:col-start-1 sm:row-start-1 sm:flex sm:min-h-0 sm:flex-col sm:border-b-0 sm:border-r">
-                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50">
+              <section className="min-w-0 shrink-0 overflow-hidden">
+                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50/80">
                   <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
                     <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
                   </div>
-                  <div className="ml-auto grid grid-cols-2 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedProfilesView('all')}
-                      className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
-                    >
-                      <span>All</span>
-                      <span className={`text-[9px] font-bold ${selectedProfilesView === 'all' ? 'text-blue-500' : 'text-gray-500'}`}>{profileViewCounts.all}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedProfilesView('watching')}
-                      className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
-                    >
-                      <span>Watching</span>
-                      <span className={`text-[9px] font-bold ${selectedProfilesView === 'watching' ? 'text-blue-500' : 'text-gray-500'}`}>{profileViewCounts.watching}</span>
-                    </button>
-                  </div>
+                  {isMobileViewport ? (
+                    <div className="ml-auto grid grid-cols-2 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfilesView('all')}
+                        className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                      >
+                        <span>All</span>
+                        <span className={`text-[9px] font-bold ${selectedProfilesView === 'all' ? 'text-blue-500' : 'text-gray-500'}`}>{profileViewCounts.all}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfilesView('watching')}
+                        className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                      >
+                        <span>Watching</span>
+                        <span className={`text-[9px] font-bold ${selectedProfilesView === 'watching' ? 'text-blue-500' : 'text-gray-500'}`}>{profileViewCounts.watching}</span>
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
                 {/* Profile list */}
-                <div ref={profileListScrollRef} className="overflow-x-auto overflow-y-hidden pb-1 sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:overflow-x-hidden sm:pb-0 slim-scrollbar">
-                  <div className="flex gap-2 px-2 py-2 sm:block sm:px-0 sm:py-0 sm:divide-y sm:divide-gray-100 snap-x snap-mandatory">
-                    {visibleJobsRankedLeaderboard.length === 0 && (
-                      <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
-                    )}
-                    {visibleJobsRankedLeaderboard.map((persona) => {
-                      const isWatching = watchingRoles.has(normalize(persona.target_role));
-                      const isActivating = activatingRole === persona.target_role;
-                      const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
-                      const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
-                      const details = getPersonaDetailColumns(persona);
+                {isMobileViewport ? (
+                  <div ref={profileListScrollRef} className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
+                    <div className="flex gap-2 px-2 py-2 snap-x snap-mandatory">
+                      {visibleJobsRankedLeaderboard.length === 0 && (
+                        <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
+                      )}
+                      {visibleJobsRankedLeaderboard.map((persona) => {
+                        const isWatching = watchingRoles.has(normalize(persona.target_role));
+                        const isActivating = activatingRole === persona.target_role;
+                        const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
+                        const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
+                        const details = getPersonaDetailColumns(persona);
 
-                      return (
-                        <div
-                          key={persona.target_role}
-                          onClick={() => void selectPersona(persona)}
-                          className={`snap-start shrink-0 w-[84%] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors sm:w-auto sm:rounded-none sm:border-0 sm:px-3 sm:py-2.5 ${isSelected ? 'bg-blue-50 border-blue-200 sm:border-0' : 'bg-white border-gray-200 hover:bg-gray-50 sm:bg-transparent sm:border-0'}`}
-                        >
-                          <div className="flex items-center justify-between gap-1.5">
-                            <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                        return (
+                          <div
+                            key={persona.target_role}
+                            onClick={() => void selectPersona(persona)}
+                            className={`snap-start shrink-0 w-[84%] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                          >
+                            <div className="flex items-center justify-between gap-1.5">
+                              <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                            </div>
+                            <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
+                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.experience !== '-' ? details.experience : '—'}</div>
+                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.location !== '-' ? details.location : '—'}</div>
+                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
+                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
+                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.workType !== '-' ? details.workType : '—'}</div>
+                              <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-500 truncate">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
+                            </div>
+                            <div className="mt-1 flex items-center gap-1.5">
+                              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>
+                              <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{stats.uniqueVendors} Vendors</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
+                                disabled={isActivating}
+                                className={`ml-auto inline-flex min-w-[64px] shrink-0 items-center justify-center rounded-md border px-2 py-0.5 text-[9px] font-semibold transition ${isWatching ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                              >
+                                {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
+                              </button>
+                            </div>
                           </div>
-                          <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight sm:block sm:mt-0.5">
-                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.experience !== '-' ? details.experience : '—'}</div>
-                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.location !== '-' ? details.location : '—'}</div>
-                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
-                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
-                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.workType !== '-' ? details.workType : '—'}</div>
-                            <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-500 truncate sm:bg-transparent sm:px-0 sm:py-0">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
-                          </div>
-                          <div className="mt-1 flex items-center gap-1.5">
-                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>
-                            <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{stats.uniqueVendors} Vendors</span>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
-                              disabled={isActivating}
-                              className={`ml-auto inline-flex min-w-[64px] shrink-0 items-center justify-center rounded-md border px-2 py-0.5 text-[9px] font-semibold transition ${isWatching ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
-                            >
-                              {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
-                            </button>
-                          </div>
+                        );
+                      })}
+                      {canLoadMoreProfiles && (
+                        <div ref={mobileProfilesLoadMoreRef} className="flex w-[84%] shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-[10px] text-gray-400 snap-start">
+                          Loading more profiles...
                         </div>
-                      );
-                    })}
-                    {isMobileViewport && canLoadMoreProfiles && (
-                      <div ref={mobileProfilesLoadMoreRef} className="flex w-[84%] shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-[10px] text-gray-400 snap-start">
-                        Loading more profiles...
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="hidden sm:flex shrink-0 items-center justify-between gap-2 border-t border-gray-200 bg-white px-2 py-1.5">
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 px-2 py-2">
+                    <div className="min-w-0 rounded-md bg-transparent">
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">All ({profileViewCounts.all})</div>
+                      <div className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
+                        <div className="flex gap-2 px-2 py-2 snap-x snap-mandatory">
+                          {filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).length === 0 && (
+                            <div className="px-3 py-6 text-center text-xs text-gray-400">No profiles found.</div>
+                          )}
+                          {filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).map((persona) => {
+                            const isWatching = watchingRoles.has(normalize(persona.target_role));
+                            const isActivating = activatingRole === persona.target_role;
+                            const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
+                            const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
+                            const details = getPersonaDetailColumns(persona);
+
+                            return (
+                              <div
+                                key={`all-${persona.target_role}`}
+                                onClick={() => void selectPersona(persona)}
+                                className={`snap-start shrink-0 w-[clamp(220px,20vw,290px)] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                              >
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                                </div>
+                                <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.experience !== '-' ? details.experience : '—'}</div>
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.location !== '-' ? details.location : '—'}</div>
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.workType !== '-' ? details.workType : '—'}</div>
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-500 truncate">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
+                                </div>
+                                <div className="mt-1 flex items-center gap-1.5">
+                                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>
+                                  <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{stats.uniqueVendors} Vendors</span>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
+                                    disabled={isActivating}
+                                    className={`ml-auto inline-flex min-w-[64px] shrink-0 items-center justify-center rounded-md border px-2 py-0.5 text-[9px] font-semibold transition ${isWatching ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                  >
+                                    {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 rounded-md bg-transparent">
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Watching ({profileViewCounts.watching})</div>
+                      <div className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
+                        <div className="flex gap-2 px-2 py-2 snap-x snap-mandatory">
+                          {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length === 0 && (
+                            <div className="px-3 py-6 text-center text-xs text-gray-400">No watching profiles yet.</div>
+                          )}
+                          {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).map((persona) => {
+                            const isWatching = watchingRoles.has(normalize(persona.target_role));
+                            const isActivating = activatingRole === persona.target_role;
+                            const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
+                            const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
+                            const details = getPersonaDetailColumns(persona);
+
+                            return (
+                              <div
+                                key={`watching-${persona.target_role}`}
+                                onClick={() => void selectPersona(persona)}
+                                className={`snap-start shrink-0 w-[clamp(220px,20vw,290px)] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                              >
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                                </div>
+                                <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.experience !== '-' ? details.experience : '—'}</div>
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.location !== '-' ? details.location : '—'}</div>
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.workType !== '-' ? details.workType : '—'}</div>
+                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-500 truncate">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
+                                </div>
+                                <div className="mt-1 flex items-center gap-1.5">
+                                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>
+                                  <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{stats.uniqueVendors} Vendors</span>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
+                                    disabled={isActivating}
+                                    className={`ml-auto inline-flex min-w-[64px] shrink-0 items-center justify-center rounded-md border px-2 py-0.5 text-[9px] font-semibold transition ${isWatching ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                  >
+                                    {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="hidden shrink-0 items-center justify-between gap-2 border-t border-gray-200 bg-white px-2 py-1.5">
                   <p className="text-[10px] text-gray-500">
                     {profilePage}/{totalProfilePages}
                   </p>
@@ -2059,185 +2489,85 @@ export default function PulsePage() {
                 </div>
               </section>
 
-              <section className="min-w-0 flex flex-1 min-h-0 flex-col overflow-hidden sm:col-start-2 sm:row-start-1">
-                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50">
+              <section className="min-w-0 flex flex-1 min-h-0 flex-col overflow-hidden">
+                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50/80">
                   <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
                     <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
                   </div>
-                  <div className="ml-auto grid grid-cols-2 gap-1">
-                    {([
-                      { id: 'queued', label: 'Recent' },
-                      { id: 'revealed', label: 'Revealed' },
-                    ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
-                      const isSelected = selectedMatchesTab === tab.id;
-                      const count = matchesTabCounts[tab.id];
-                      return (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                          className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
-                        >
-                          <span>{tab.label}</span>
-                          <span className={`text-[9px] font-bold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>{count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {isMobileViewport ? (
+                    <div className="ml-auto grid grid-cols-2 gap-1">
+                      {([
+                        { id: 'queued', label: 'Recent' },
+                        { id: 'revealed', label: 'Revealed' },
+                      ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
+                        const isSelected = selectedMatchesTab === tab.id;
+                        const count = matchesTabCounts[tab.id];
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
+                            className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                          >
+                            <span>{tab.label}</span>
+                            <span className={`text-[9px] font-bold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto slim-scrollbar">
+                <div className="min-h-0 flex-1 overflow-hidden">
                   {feedLoading ? (
                     <div className="flex h-full items-center justify-center">
                       <LogoSpinner size={20} />
                     </div>
-                  ) : filteredFeed.length === 0 ? (
-                    <div className="flex h-full items-center justify-center p-4 text-center">
-                      <div>
-                        <Radar size={16} className="mx-auto text-gray-300" />
-                        <p className="mt-1.5 text-[11px] text-gray-500">No matches yet</p>
-                      </div>
-                    </div>
                   ) : (
-                    <div className="space-y-1.5 p-1.5">
-                      {visibleFeed.map((lead, index) => {
-                        const cardToneClass = [
-                          'border-blue-100 bg-blue-50/35',
-                          'border-emerald-100 bg-emerald-50/35',
-                          'border-amber-100 bg-amber-50/40',
-                          'border-slate-200 bg-slate-50/75',
-                        ][index % 4];
-                        const inlineBreakdownItems = buildScoreBreakdownDisplayItems(
-                          lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
-                        );
-                        const isInlineBreakdownExpanded = expandedInlineBreakdownLeadIds.has(lead.id);
-                        const experienceInlineItem = inlineBreakdownItems.find((item) => {
-                          const key = item.key.toLowerCase();
-                          return key.includes('experience') || key.includes('exp');
-                        });
-                        const visaInlineItem = inlineBreakdownItems.find((item) => {
-                          const key = item.key.toLowerCase();
-                          return key.includes('visa') || key.includes('authorization') || key.includes('work_auth');
-                        });
-                        const collapsedInlineBreakdownItems = [experienceInlineItem, visaInlineItem]
-                          .filter((item): item is NonNullable<typeof item> => Boolean(item))
-                          .filter((item, idx, arr) => arr.findIndex((other) => other.key === item.key) === idx);
-
-                        if (collapsedInlineBreakdownItems.length < 2) {
-                          for (const item of inlineBreakdownItems) {
-                            if (collapsedInlineBreakdownItems.some((existing) => existing.key === item.key)) continue;
-                            collapsedInlineBreakdownItems.push(item);
-                            if (collapsedInlineBreakdownItems.length >= 2) break;
-                          }
-                        }
-
-                        const visibleInlineBreakdownItems = isInlineBreakdownExpanded
-                          ? inlineBreakdownItems
-                          : collapsedInlineBreakdownItems;
-
-                        return (
-                        <div key={lead.id} className={`rounded-lg border px-3 py-2.5 ${cardToneClass}`}>
-                          <div className="flex items-center justify-between gap-1.5">
-                            <p className="text-[11px] font-semibold text-gray-900 leading-snug">{lead.title || 'Job Opportunity'}</p>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {(lead.matchScore !== null && Number.isFinite(lead.matchScore) && lead.matchScore > 0) && (
-                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{Math.round(lead.matchScore)}%</span>
-                              )}
-                              <span className="text-[9px] font-bold uppercase text-gray-400">{lead.platform}</span>
+                    isMobileViewport ? (
+                      <div className="min-h-0 h-full overflow-y-auto slim-scrollbar" onScroll={handleMobileMatchesScroll}>
+                        {filteredFeed.length === 0 ? (
+                          <div className="flex h-full items-center justify-center p-4 text-center">
+                            <div>
+                              <Radar size={16} className="mx-auto text-gray-300" />
+                              <p className="mt-1.5 text-[11px] text-gray-500">No matches yet</p>
                             </div>
                           </div>
-                          {lead.company && (
-                            <div className="mt-0.5 text-[10px] text-gray-600">{lead.company}</div>
-                          )}
-                          <div className="mt-0.5 text-[10px] text-gray-500">
-                            <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
-                            <span> • </span>
-                            <span>{lead.postedAgo}</span>
+                        ) : (
+                          <div className="space-y-1.5 p-1.5">
+                            {renderLeadCards(visibleFeed)}
                           </div>
-                          {inlineBreakdownItems.length > 0 && (
-                            <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200 sm:hidden">
-                              <div>
-                                <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                                  <thead className="bg-gray-50">
-                                    <tr>
-                                      <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                                      <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
-                                      <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {visibleInlineBreakdownItems.map((item) => (
-                                      <tr key={item.key}>
-                                        <td className="border-b border-gray-100 px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
-                                        <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
-                                        <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-                          <div className="mt-1.5 flex items-center gap-1.5">
-                            {inlineBreakdownItems.length > 2 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setExpandedInlineBreakdownLeadIds((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(lead.id)) {
-                                      next.delete(lead.id);
-                                    } else {
-                                      next.add(lead.id);
-                                    }
-                                    return next;
-                                  });
-                                }}
-                                className="inline-flex flex-1 items-center justify-center rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50 sm:w-auto sm:flex-none"
-                              >
-                                {isInlineBreakdownExpanded ? 'Hide Details' : 'Details'}
-                              </button>
-                            )}
-                            <button
-                              onClick={() => void handleOpenBreakdown(lead)}
-                              disabled={processingBreakdownLeadId === lead.id}
-                              className={`hidden sm:inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'border-gray-200 text-gray-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                            >
-                              {breakdownChargedLeadIds.has(lead.id) && <Check size={9} className="text-emerald-600" />}
-                              {processingBreakdownLeadId === lead.id ? '...' : 'Breakdown'}
-                            </button>
-                            {revealedLeadIds.has(lead.id) ? (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
-                                className="inline-flex flex-1 justify-center items-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200 sm:w-auto sm:flex-none"
-                              >
-                                <Copy size={9} /> Email <AtSign size={9} />
-                              </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid min-h-0 h-full grid-cols-2 gap-2 p-1.5">
+                        <div className="min-h-0 rounded-md bg-transparent">
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Recent ({matchesTabCounts.queued})</div>
+                          <div className="min-h-0 h-[calc(100%-24px)] overflow-y-auto p-1.5 slim-scrollbar" onScroll={handleDesktopRecentScroll}>
+                            {recentVisibleFeed.length === 0 ? (
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No recent jobs.</div>
                             ) : (
-                              <button
-                                onClick={() => void handleRevealContact(lead)}
-                                disabled={processingLeadId === lead.id}
-                                className="inline-flex flex-1 justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60 sm:w-auto sm:flex-none"
-                              >
-                                <AtSign size={9} />
-                                {processingLeadId === lead.id ? '...' : 'Reveal Email'}
-                              </button>
+                              <div className="space-y-1.5">
+                                {renderLeadCards(visibleDesktopRecentFeed)}
+                              </div>
                             )}
                           </div>
                         </div>
-                        );
-                      })}
-                      {canLoadMoreMatches && (
-                        <div className="px-3 py-2">
-                          <button
-                            onClick={() => setVisibleMatchesCount((prev) => prev + MATCHES_PAGE_SIZE)}
-                            className="w-full rounded border border-gray-300 bg-white py-1.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-50"
-                          >
-                            Load More ({filteredFeed.length - visibleMatchesCount})
-                          </button>
+
+                        <div className="min-h-0 rounded-md bg-transparent">
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Revealed ({matchesTabCounts.revealed})</div>
+                          <div className="min-h-0 h-[calc(100%-24px)] overflow-y-auto p-1.5 slim-scrollbar" onScroll={handleDesktopRevealedScroll}>
+                            {revealedVisibleFeed.length === 0 ? (
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No revealed jobs yet.</div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {renderLeadCards(visibleDesktopRevealedFeed)}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )
                   )}
                 </div>
               </section>
