@@ -1,8 +1,10 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pencil, Trash2 } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
 import { triggerRoleEmbedding } from '../lib/embeddings';
+import { filterAndSortAccountStats, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
+import { buildRoleFeedRowsFromMatches, buildRoleStatsSummary } from '../lib/hotlist-role-stats';
 
 interface AccountStats {
   id: string;
@@ -127,6 +129,7 @@ export default function AdminDashboard() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyRows, setHistoryRows] = useState<HotlistMatchRunRow[]>([]);
   const [historyError, setHistoryError] = useState('');
+  const [roleStatsSummary, setRoleStatsSummary] = useState<Record<string, { job_count: number; watch_count: number; active_watch_count: number }>>({});
   const [rolesSearchQuery, setRolesSearchQuery] = useState('');
   const [rolesCategoryFilter, setRolesCategoryFilter] = useState('all');
   const [adminView, setAdminView] = useState<AdminView>('stats');
@@ -151,6 +154,7 @@ export default function AdminDashboard() {
   const [showAddRoleModal, setShowAddRoleModal] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
+  const [deleteConfirmRole, setDeleteConfirmRole] = useState<HotlistRoleRow | null>(null);
   const [runningRoleMatchId, setRunningRoleMatchId] = useState<string | null>(null);
 
   // Filters
@@ -159,6 +163,8 @@ export default function AdminDashboard() {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [showDateDropdown, setShowDateDropdown] = useState(false);
+  const [sortKey, setSortKey] = useState<AdminStatsSortKey>('created_at');
+  const [sortDirection, setSortDirection] = useState<AdminStatsSortDirection>('desc');
   const dateDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -230,7 +236,49 @@ export default function AdminDashboard() {
       return;
     }
 
-    setRoles((data ?? []) as HotlistRoleRow[]);
+    const roleRows = (data ?? []) as HotlistRoleRow[];
+    setRoles(roleRows);
+
+    const roleIds = roleRows.map((role) => role.id);
+
+    const [matchRowsResult, watchesResult] = await Promise.all([
+      supabase
+        .from('radar_match_results')
+        .select('job_source, job_id, created_at')
+        .eq('job_source', 'social')
+        .order('created_at', { ascending: false })
+        .limit(5000),
+      roleIds.length > 0
+        ? supabase.from('watchlist_profiles').select('source_hotlist_role_id,is_watching').in('source_hotlist_role_id', roleIds)
+        : Promise.resolve({ data: [] as Array<{ source_hotlist_role_id: string | null; is_watching: boolean | null }>, error: null }),
+    ]);
+
+    if (matchRowsResult.error || watchesResult.error) {
+      setRoleStatsSummary({});
+    } else {
+      const matchRows = (matchRowsResult.data ?? []) as Array<{ job_source?: string | null; job_id?: string | null; created_at?: string | null }>;
+      const socialJobIds = Array.from(new Set(matchRows.map((row) => (row.job_id ?? '').trim()).filter(Boolean)));
+      let socialRows: Array<{ id?: string | null; extracted_role_normalized?: string | null; job_title?: string | null; post_content?: string | null }> = [];
+
+      if (socialJobIds.length > 0) {
+        const { data: socialData, error: socialError } = await supabase
+          .from('social_jobs')
+          .select('id, job_title, post_content, extracted_role_normalized')
+          .in('id', socialJobIds);
+
+        if (!socialError) {
+          socialRows = (socialData ?? []) as Array<{ id?: string | null; extracted_role_normalized?: string | null; job_title?: string | null; post_content?: string | null }>;
+        }
+      }
+
+      const feedRows = buildRoleFeedRowsFromMatches(matchRows, socialRows);
+      setRoleStatsSummary(buildRoleStatsSummary(
+        roleRows.map((role) => ({ id: role.id, target_role: role.target_role, priority_skills: role.priority_skills })),
+        feedRows,
+        (watchesResult.data ?? []) as Array<{ source_hotlist_role_id?: string | null; is_watching?: boolean | null }>
+      ));
+    }
+
     setRolesLoading(false);
   }
 
@@ -418,11 +466,9 @@ export default function AdminDashboard() {
   }
 
   async function deleteRole(role: HotlistRoleRow) {
-    const confirmed = window.confirm(`Delete role \"${role.target_role}\"? This action cannot be undone.`);
-    if (!confirmed) return;
-
     setDeletingRoleId(role.id);
     setRolesError('');
+    setDeleteConfirmRole(null);
 
     const { error } = await supabase
       .from('hotlist_ai_roles')
@@ -437,6 +483,16 @@ export default function AdminDashboard() {
 
     await fetchHotlistRoles();
     setDeletingRoleId(null);
+  }
+
+  function openDeleteConfirm(role: HotlistRoleRow) {
+    if (deletingRoleId || runningRoleMatchId) return;
+    setDeleteConfirmRole(role);
+  }
+
+  function closeDeleteConfirm() {
+    if (deletingRoleId) return;
+    setDeleteConfirmRole(null);
   }
 
   async function runMatchesForRole(role: HotlistRoleRow) {
@@ -495,12 +551,15 @@ export default function AdminDashboard() {
     }
   }
 
-  // Filtered stats by search
   const filteredStats = useMemo(() => {
-    if (!searchQuery.trim()) return stats;
-    const q = searchQuery.toLowerCase();
-    return stats.filter((s) => [s.name, s.user_name, s.user_email].some((value) => (value || '').toLowerCase().includes(q)));
-  }, [stats, searchQuery]);
+    return filterAndSortAccountStats(stats, {
+      query: searchQuery,
+      startDate: customStart,
+      endDate: customEnd,
+      sortKey,
+      sortDirection,
+    });
+  }, [stats, searchQuery, customStart, customEnd, sortKey, sortDirection]);
 
   const filteredRoles = useMemo(() => {
     const q = rolesSearchQuery.trim().toLowerCase();
@@ -534,6 +593,16 @@ export default function AdminDashboard() {
       ? filteredStats.reduce((sum, s) => sum + ((s[col.key] as number) || 0), 0)
       : 0;
   }
+
+  const roleTotals = filteredRoles.reduce(
+    (acc, role) => {
+      const summary = roleStatsSummary[role.id];
+      acc.jobs += summary?.job_count ?? 0;
+      acc.watches += summary?.watch_count ?? 0;
+      return acc;
+    },
+    { jobs: 0, watches: 0 }
+  );
 
   const currentPresetLabel = DATE_PRESETS.find(p => p.key === datePreset)?.label ?? 'Last 7 days';
 
@@ -640,107 +709,132 @@ export default function AdminDashboard() {
 
       {/* Filter Bar */}
       {adminView === 'stats' && (
-      <div className="max-w-[1600px] mx-auto px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          {/* Search */}
-          <div className="relative flex-1 max-w-sm">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search accounts..."
-              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            />
-            {searchQuery && (
+      <div className="w-full px-4 py-3 sm:px-6 sm:py-4">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1 w-full">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search by name, username, or email"
+                className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="relative" ref={dateDropdownRef}>
               <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                onClick={() => setShowDateDropdown(!showDateDropdown)}
+                className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
               >
-                <X size={14} />
+                <Calendar size={14} className="text-gray-500" />
+                <span>{currentPresetLabel}</span>
+                {datePreset === 'custom' && (customStart || customEnd) && (
+                  <span className="ml-1 text-[10px] text-blue-600">
+                    {customStart && new Date(customStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {customStart && customEnd && ' - '}
+                    {customEnd && new Date(customEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                )}
+                <ChevronDown size={12} className="text-gray-500" />
               </button>
-            )}
+
+              {showDateDropdown && (
+                <div className="absolute top-full right-0 z-20 mt-2 w-72 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+                  <div className="p-2">
+                    {DATE_PRESETS.map(p => (
+                      <button
+                        key={p.key}
+                        onClick={() => {
+                          setDatePreset(p.key);
+                          if (p.key !== 'custom') setShowDateDropdown(false);
+                        }}
+                        className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                          datePreset === p.key
+                            ? 'bg-blue-50 font-medium text-blue-700'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {datePreset === 'custom' && (
+                    <div className="space-y-3 border-t border-gray-200 p-3">
+                      <div>
+                        <label className="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">Start Date</label>
+                        <input
+                          type="date"
+                          value={customStart}
+                          onChange={e => setCustomStart(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-[11px] uppercase tracking-wider text-gray-500">End Date</label>
+                        <input
+                          type="date"
+                          value={customEnd}
+                          onChange={e => setCustomEnd(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <button
+                        onClick={applyCustomRange}
+                        disabled={!customStart && !customEnd}
+                        className="w-full rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
+                      >
+                        Apply Range
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Date Range Dropdown */}
-          <div className="relative" ref={dateDropdownRef}>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sort</span>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as AdminStatsSortKey)}
+                className="bg-transparent outline-none"
+              >
+                <option value="created_at">Created</option>
+                <option value="name">Name</option>
+                <option value="user_name">User Name</option>
+                <option value="user_email">User Email</option>
+                <option value="watching_count">Watching</option>
+                <option value="credits_balance">Credits</option>
+                <option value="reveals_count">Reveals</option>
+                <option value="contacts_count">Contacts</option>
+                <option value="last_logged_in">Last Logged In</option>
+              </select>
+            </label>
             <button
-              onClick={() => setShowDateDropdown(!showDateDropdown)}
-              className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+              onClick={() => setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
             >
-              <Calendar size={14} className="text-gray-500" />
-              <span>{currentPresetLabel}</span>
-              {datePreset === 'custom' && (customStart || customEnd) && (
-                <span className="text-[10px] text-blue-600 ml-1">
-                  {customStart && new Date(customStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  {customStart && customEnd && ' - '}
-                  {customEnd && new Date(customEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                </span>
-              )}
-              <ChevronDown size={12} className="text-gray-500" />
+              {sortDirection === 'desc' ? 'High → Low' : 'Low → High'}
             </button>
-
-            {showDateDropdown && (
-              <div className="absolute top-full mt-2 right-0 z-20 w-72 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-                {/* Preset options */}
-                <div className="p-2">
-                  {DATE_PRESETS.map(p => (
-                    <button
-                      key={p.key}
-                      onClick={() => {
-                        setDatePreset(p.key);
-                        if (p.key !== 'custom') setShowDateDropdown(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                        datePreset === p.key
-                          ? 'bg-blue-50 text-blue-700 font-medium'
-                          : 'text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Custom date inputs */}
-                {datePreset === 'custom' && (
-                  <div className="border-t border-gray-200 p-3 space-y-3">
-                    <div>
-                      <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">Start Date</label>
-                      <input
-                        type="date"
-                        value={customStart}
-                        onChange={e => setCustomStart(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">End Date</label>
-                      <input
-                        type="date"
-                        value={customEnd}
-                        onChange={e => setCustomEnd(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <button
-                      onClick={applyCustomRange}
-                      disabled={!customStart && !customEnd}
-                      className="w-full rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
-                    >
-                      Apply Range
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>
       )}
 
       {/* Stats Table */}
-      <div className="max-w-[1600px] mx-auto flex-1 min-h-0 min-w-0 px-4 pb-4 sm:px-6 sm:pb-6">
+      <div className="mx-auto flex-1 min-h-0 min-w-0 w-full max-w-[1600px] overflow-x-hidden px-4 pb-4 sm:px-6 sm:pb-6">
         {adminView === 'stats' && (
           loading && stats.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 gap-4">
@@ -750,28 +844,35 @@ export default function AdminDashboard() {
           ) : (
             <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
               <div className="min-h-0 flex-1 overflow-auto">
-              <table className="min-w-[1080px] w-full table-fixed text-left">
+              <table className="min-w-[900px] w-full table-fixed text-left">
                 <thead className="sticky top-0 z-[4]">
                   <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="w-[170px] bg-gray-50 px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-600">
-                      Account
-                    </th>
                     {COLUMNS.map(col => (
-                      <th key={col.key} className={`${col.widthClass} px-3 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap ${col.kind === 'number' ? 'text-right' : 'text-left'}`}>
-                        <span className={`flex items-center gap-1.5 ${col.kind === 'number' ? 'justify-end' : 'justify-start'}`}>
+                      <th key={col.key} className={`${col.widthClass} px-3 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap ${col.kind === 'number' ? 'text-left' : 'text-left'}`}>
+                        <button
+                          className="flex items-center gap-1.5 text-left"
+                          onClick={() => {
+                            if (sortKey === col.key) {
+                              setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'));
+                            } else {
+                              setSortKey(col.key as AdminStatsSortKey);
+                              setSortDirection('desc');
+                            }
+                          }}
+                        >
                           {col.icon} {col.label}
-                        </span>
+                          {sortKey === col.key && (
+                            <span className="text-[10px] text-blue-600">{sortDirection === 'desc' ? '↓' : '↑'}</span>
+                          )}
+                        </button>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   <tr className="border-b border-gray-200 bg-blue-50">
-                    <td className="bg-blue-50 px-4 py-3">
-                      <span className="text-sm font-semibold text-blue-700">ALL TOTALS</span>
-                    </td>
                     {COLUMNS.map(col => (
-                      <td key={col.key} className={`px-4 py-3 ${col.kind === 'number' ? 'text-right' : 'text-left'}`}>
+                      <td key={col.key} className={`px-4 py-3 ${col.kind === 'number' ? 'text-left' : 'text-left'}`}>
                         <span className={`text-sm font-semibold text-blue-700 ${col.kind === 'number' ? 'tabular-nums' : ''}`}>
                           {col.kind === 'number' ? (totals[col.key] ?? 0).toLocaleString() : '-'}
                         </span>
@@ -781,7 +882,7 @@ export default function AdminDashboard() {
 
                   {filteredStats.length === 0 && (
                     <tr>
-                      <td colSpan={COLUMNS.length + 1} className="px-5 py-12 text-center text-gray-500 text-sm">
+                      <td colSpan={COLUMNS.length} className="px-5 py-12 text-center text-gray-500 text-sm">
                         {searchQuery ? 'No accounts match your search.' : 'No data available.'}
                       </td>
                     </tr>
@@ -794,27 +895,10 @@ export default function AdminDashboard() {
                         idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
                       }`}
                     >
-                      <td className={`px-4 py-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 truncate max-w-[150px]">
-                            {account.name || 'Unnamed'}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-gray-500">
-                              {new Date(account.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </span>
-                            {account.is_trial && (
-                              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
-                                TRIAL
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
                       {COLUMNS.map(col => {
                         const value = account[col.key];
                         return (
-                          <td key={col.key} className={`px-3 py-3 ${col.kind === 'number' ? 'text-right' : 'text-left'}`}>
+                          <td key={col.key} className={`px-3 py-3 ${col.kind === 'number' ? 'text-left' : 'text-left'}`}>
                             {col.kind === 'number' ? (
                               <span className={`text-sm tabular-nums font-medium ${((value as number) || 0) > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
                                 {((value as number) || 0).toLocaleString()}
@@ -841,7 +925,7 @@ export default function AdminDashboard() {
         )}
 
         {adminView === 'hotlist' && (
-        <div className="mt-4 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <div className="mt-4 flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
           <div className="flex flex-wrap items-center justify-between border-b border-gray-200 px-3 py-3 gap-3 sm:px-4">
             <div className="relative w-full max-w-md">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -905,96 +989,134 @@ export default function AdminDashboard() {
               <LogoSpinner size={18} />
             </div>
           ) : (
-            <div className="min-h-0 flex-1 overflow-auto">
-              <table className="min-w-[1200px] w-full table-auto text-left">
-                <thead className="sticky top-0 z-[1]">
+            <div className="min-h-0 flex-1 overflow-x-scroll overflow-y-auto pb-2 pr-2" style={{ scrollbarGutter: 'stable both-edges' }}>
+              <table className="min-w-max w-full table-auto border-collapse border-spacing-0 text-left">
+                <thead className="sticky top-0 z-[2]">
                   <tr className="border-b border-gray-200 bg-gray-50 text-[11px] uppercase tracking-wide text-gray-600">
-                    <th className="px-3 py-2">Role</th>
-                    <th className="px-3 py-2">Category</th>
-                    <th className="px-3 py-2">Years</th>
-                    <th className="px-3 py-2">Visa</th>
-                    <th className="px-3 py-2">Emp Type</th>
-                    <th className="px-3 py-2">Work Type</th>
-                    <th className="px-3 py-2">Locations</th>
-                    <th className="px-3 py-2">Rate Min</th>
-                    <th className="px-3 py-2">Rate Max</th>
-                    <th className="px-3 py-2">Skills</th>
-                    <th className="px-3 py-2">Reloc</th>
-                    <th className="px-3 py-2">SCHED</th>
-                    <th className="px-3 py-2">Active</th>
-                    <th className="px-3 py-2">Updated</th>
-                    <th className="sticky right-0 z-[2] border-l border-gray-200 bg-gray-50 px-3 py-2">Action</th>
+                    <th className="sticky left-0 z-[5] w-[160px] min-w-[160px] max-w-[160px] border-r border-gray-200 bg-gray-50 px-3 py-2 whitespace-normal">Role</th>
+                    <th className="sticky left-[160px] z-[5] w-[90px] min-w-[90px] max-w-[90px] border-r border-gray-200 bg-gray-50 px-3 py-2 whitespace-nowrap">Category</th>
+                    <th className="sticky left-[250px] z-[5] w-[70px] min-w-[70px] max-w-[70px] border-r border-gray-200 bg-gray-50 px-3 py-2 whitespace-nowrap">Jobs</th>
+                    <th className="sticky left-[320px] z-[5] w-[80px] min-w-[80px] max-w-[80px] border-r border-gray-200 bg-gray-50 px-3 py-2 whitespace-nowrap">Watches</th>
+                    <th className="min-w-[80px] px-3 py-2 whitespace-nowrap">Years</th>
+                    <th className="min-w-[80px] px-3 py-2 whitespace-nowrap">Visa</th>
+                    <th className="min-w-[100px] px-3 py-2 whitespace-nowrap">Emp Type</th>
+                    <th className="min-w-[90px] px-3 py-2 whitespace-nowrap">Work Type</th>
+                    <th className="min-w-[150px] px-3 py-2 whitespace-nowrap">Locations</th>
+                    <th className="min-w-[80px] px-3 py-2 whitespace-nowrap">Rate Min</th>
+                    <th className="min-w-[80px] px-3 py-2 whitespace-nowrap">Rate Max</th>
+                    <th className="min-w-[220px] px-3 py-2 whitespace-nowrap">Skills</th>
+                    <th className="min-w-[70px] px-3 py-2 whitespace-nowrap">Reloc</th>
+                    <th className="min-w-[90px] px-3 py-2 whitespace-nowrap">Status</th>
+                    <th className="min-w-[110px] px-3 py-2 whitespace-nowrap">Updated</th>
+                    <th
+                      className="sticky right-0 z-[6] min-w-[104px] bg-gray-50 px-1.5 py-2 whitespace-nowrap"
+                      style={{ boxShadow: '-14px 0 14px -14px rgba(255,255,255,1)' }}
+                    >
+                      Action
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
+                  <tr className="border-b border-blue-200 bg-blue-50 text-xs">
+                    <td className="sticky left-0 z-[4] w-[160px] min-w-[160px] max-w-[160px] border-r border-blue-200 bg-blue-50 px-3 py-2 whitespace-normal break-words">
+                      <span className="block font-semibold text-blue-700">Totals</span>
+                    </td>
+                    <td className="sticky left-[160px] z-[4] w-[90px] min-w-[90px] max-w-[90px] border-r border-blue-200 bg-blue-50 px-3 py-2 whitespace-nowrap">
+                      <span className="text-blue-700">All</span>
+                    </td>
+                    <td className="sticky left-[250px] z-[4] w-[70px] min-w-[70px] max-w-[70px] border-r border-blue-200 bg-blue-50 px-3 py-2 whitespace-nowrap">
+                      <span className="font-semibold text-blue-700">{roleTotals.jobs}</span>
+                    </td>
+                    <td className="sticky left-[320px] z-[4] w-[80px] min-w-[80px] max-w-[80px] border-r border-blue-200 bg-blue-50 px-3 py-2 whitespace-nowrap">
+                      <span className="font-semibold text-blue-700">{roleTotals.watches}</span>
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap" colSpan={11} />
+                    <td
+                      className="sticky right-0 z-[6] min-w-[104px] bg-blue-50 px-1.5 py-2 whitespace-nowrap"
+                      style={{ boxShadow: '-14px 0 14px -14px rgba(255,255,255,1)' }}
+                    />
+                  </tr>
+
                   {filteredRoles.map((role) => (
                     <tr key={role.id} className="border-b border-gray-200 align-top text-xs text-gray-800 hover:bg-gray-50">
-                      <td className="px-3 py-2 break-normal whitespace-normal">
-                        <span className="font-medium text-gray-900">{role.target_role || '-'}</span>
+                      <td className="sticky left-0 z-[4] w-[160px] min-w-[160px] max-w-[160px] border-r border-gray-200 bg-white px-3 py-2 whitespace-normal break-words">
+                        <span className="block font-medium leading-snug text-gray-900">{role.target_role || '-'}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="sticky left-[160px] z-[4] w-[90px] min-w-[90px] max-w-[90px] border-r border-gray-200 bg-white px-3 py-2 whitespace-nowrap">
                         <span className="rounded bg-gray-100 px-2 py-1 text-[11px] text-gray-700">{role.category || 'all'}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="sticky left-[250px] z-[4] w-[70px] min-w-[70px] max-w-[70px] border-r border-gray-200 bg-white px-3 py-2 whitespace-nowrap">
+                        <span className="font-semibold text-gray-900">{roleStatsSummary[role.id]?.job_count ?? 0}</span>
+                      </td>
+                      <td className="sticky left-[320px] z-[4] w-[80px] min-w-[80px] max-w-[80px] border-r border-gray-200 bg-white px-3 py-2 whitespace-nowrap">
+                        <span className="font-semibold text-gray-900">{roleStatsSummary[role.id]?.watch_count ?? 0}</span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span>{(role.min_years_exp != null && role.max_years_exp != null) ? `${role.min_years_exp}-${role.max_years_exp}` : (role.min_years_exp ?? '-')}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span>{role.visa_status || '-'}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span>{role.employment_type || '-'}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span>{role.work_type || '-'}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span>{role.preferred_locations || '-'}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span>{role.min_rate_usd_per_hr != null ? `${role.min_rate_usd_per_hr}` : '-'}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span>{role.max_rate_usd_per_hr != null ? `${role.max_rate_usd_per_hr}` : '-'}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span>{role.priority_skills || '-'}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span>{role.relocation_open ? 'Yes' : 'No'}</span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
-                        <span>{role.schedule_frequency}</span>
-                      </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span className={`rounded px-2 py-1 text-[11px] ${role.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                           {role.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal text-gray-500">
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-500">
                         {new Date(role.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </td>
-                      <td className="sticky right-0 border-l border-gray-200 bg-white px-3 py-2 break-normal whitespace-normal">
+                      <td
+                        className="sticky right-0 z-[6] min-w-[104px] bg-white px-1.5 py-2 whitespace-nowrap"
+                        style={{ boxShadow: '-14px 0 14px -14px rgba(255,255,255,1)' }}
+                      >
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => void runMatchesForRole(role)}
                             disabled={!!runningRoleMatchId || deletingRoleId === role.id}
-                            className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                            aria-label={`Run match for ${role.target_role || 'role'}`}
+                            title="Run match"
+                            className="rounded-md border border-emerald-300 bg-emerald-50 p-2 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
                           >
-                            {runningRoleMatchId === role.id ? 'Running...' : 'Run Match'}
+                            {runningRoleMatchId === role.id ? <RefreshCcw size={14} className="animate-spin" /> : <Play size={14} />}
                           </button>
                           <button
                             onClick={() => openEditRoleModal(role)}
                             disabled={deletingRoleId === role.id || !!runningRoleMatchId}
-                            className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            aria-label={`Edit ${role.target_role || 'role'}`}
+                            title="Edit"
+                            className="rounded-md border border-gray-300 bg-white p-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                           >
-                            Edit
+                            <Pencil size={14} />
                           </button>
                           <button
-                            onClick={() => void deleteRole(role)}
+                            onClick={() => openDeleteConfirm(role)}
                             disabled={deletingRoleId === role.id || !!runningRoleMatchId}
-                            className="rounded-md border border-red-300 bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                            aria-label={`Delete ${role.target_role || 'role'}`}
+                            title="Delete"
+                            className="rounded-md border border-red-300 bg-red-50 p-2 text-red-700 hover:bg-red-100 disabled:opacity-50"
                           >
-                            {deletingRoleId === role.id ? 'Deleting...' : 'Delete'}
+                            {deletingRoleId === role.id ? <RefreshCcw size={14} className="animate-spin" /> : <Trash2 size={14} />}
                           </button>
                         </div>
                       </td>
@@ -1241,6 +1363,38 @@ export default function AdminDashboard() {
               >
                 {newRoleSaving ? <LogoSpinner size={12} /> : <Plus size={11} />}
                 {editingRoleId ? 'Save Changes' : 'Add Role'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmRole && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white shadow-xl">
+            <div className="border-b border-gray-200 px-4 py-3">
+              <p className="text-sm font-semibold text-gray-900">Delete role?</p>
+              <p className="mt-1 text-xs text-gray-500">
+                This will permanently remove <span className="font-medium text-gray-900">{deleteConfirmRole.target_role || 'this role'}</span>.
+              </p>
+            </div>
+            <div className="px-4 py-4 text-sm text-gray-700">
+              Are you sure you want to delete this hotlist role? This action cannot be undone.
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-4 py-3">
+              <button
+                onClick={closeDeleteConfirm}
+                disabled={!!deletingRoleId}
+                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void deleteRole(deleteConfirmRole)}
+                disabled={!!deletingRoleId}
+                className="rounded-md border border-red-300 bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingRoleId === deleteConfirmRole.id ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>
