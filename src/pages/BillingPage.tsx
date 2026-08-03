@@ -306,6 +306,7 @@ export default function BillingPage() {
 
   const balance = visibleBalance ?? account?.credits_balance ?? 0;
   const planBudget = hasActiveSub ? (subscription!.plan_amount_usd ?? 0) : 5;
+  const totalUsersInAccount = Object.keys(userNames).length + (account?.owner_id ? 1 : 0);
 
   function fireCrmEvent(event: string, extra: Record<string, unknown> = {}) {
     supabase.functions.invoke('notify-crm-webhook', {
@@ -542,7 +543,6 @@ export default function BillingPage() {
               </div>
               <div>
                 <h1 className="text-sm font-bold text-gray-900">Billing & Credits</h1>
-                <p className="text-[11px] text-gray-400 mt-0.5">Usage intelligence, subscription management &amp; cost optimisation</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -554,7 +554,7 @@ export default function BillingPage() {
                 </select>
                 <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
-              {isOwner && canUpgrade && (
+              {isOwner && canUpgrade && !window.matchMedia('(max-width: 639px)').matches && (
                 <button onClick={openUpgradeModal}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity"
                   style={{ background: 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)' }}>
@@ -569,242 +569,128 @@ export default function BillingPage() {
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-5 flex flex-col lg:flex-row gap-4 sm:gap-5">
 
-            {/* ── LEFT: Usage Intelligence ─────────────────────────────── */}
+            {/* ── LEFT: Upgrade & Summary ─────────────────────────────── */}
             <div className="flex-1 flex flex-col gap-4 min-w-0">
 
-              {/* KPI row */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              {/* Plan upgrade banner */}
+              <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 p-4 text-white shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-blue-100">Upgrade to Pro</p>
+                    <h2 className="mt-1 text-base font-bold">Get access to more active vendors and real time job alerts</h2>
+                  </div>
+                  {isOwner && canUpgrade && (
+                    <button onClick={openUpgradeModal}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-[11px] font-bold text-blue-700 shadow-sm transition hover:bg-blue-50"
+                    >
+                      <ArrowUpRight size={12} />
+                      {hasActiveSub ? 'Upgrade Plan' : 'Upgrade to Pro'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Count cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                 {[
                   {
-                    label: 'Credits Balance',
+                    label: 'Plan',
+                    value: hasActiveSub ? `${fmtINR(subscription!.plan_amount_usd)}/mo` : 'Free',
+                    sub: hasActiveSub ? 'Active subscription' : 'No active plan',
+                    icon: CreditCard,
+                    color: '#2563eb',
+                  },
+                  {
+                    label: 'Balance',
                     value: fmtBalance(balance),
-                    sub: 'Available now',
+                    sub: 'Available credits',
                     icon: Zap,
                     color: '#10b981',
-                    trend: null,
                   },
                   {
-                    label: 'Period Spend',
-                    value: fmtCredits(totalCost),
-                    sub: TIMEFRAMES.find(t => t.days === timeframe)?.label ?? '',
-                    icon: Activity,
-                    color: '#3b82f6',
-                    trend: null,
+                    label: 'Total Users',
+                    value: String(totalUsersInAccount),
+                    sub: 'In this account',
+                    icon: Users,
+                    color: '#0f766e',
                   },
                   {
-                    label: 'Operations',
+                    label: 'Revealed Jobs',
                     value: String(totalOps),
-                    sub: totalOps > 0 ? `avg ${fmtCredits(totalOps > 0 ? totalCost / totalOps : 0)}/call` : 'none yet',
-                    icon: Cpu,
+                    sub: 'Jobs surfaced',
+                    icon: Search,
                     color: '#8b5cf6',
-                    trend: null,
-                  },
-                  {
-                    label: 'Budget Used',
-                    value: planBudget > 0 ? `${Math.min(100, (totalCost / planBudget * 100)).toFixed(0)}%` : '—',
-                    sub: `of $${planBudget}/mo plan`,
-                    icon: BarChart2,
-                    color: totalCost / Math.max(planBudget, 0.001) > 0.8 ? '#ef4444' : '#f59e0b',
-                    trend: null,
                   },
                 ].map(({ label, value, sub, icon: Icon, color }) => (
-                  <div key={label} className="bg-white rounded-2xl border border-gray-200 px-4 py-3.5 flex flex-col gap-1">
-                    <div className="flex items-center justify-between">
+                  <div key={label} className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5">
+                    <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
                       <Icon size={13} style={{ color }} />
                     </div>
-                    <p className="text-xl font-extrabold text-gray-900 leading-none">{value}</p>
-                    <p className="text-[10px] text-gray-400">{sub}</p>
+                    <p className="mt-2 text-lg font-extrabold text-gray-900 leading-none">{value}</p>
+                    <p className="mt-1 text-[10px] text-gray-400">{sub}</p>
                   </div>
                 ))}
               </div>
 
-              {/* Tab switcher */}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-0.5 overflow-x-auto hide-scrollbar">
-                  {([{ id: 'team', label: 'Team Usage', icon: Users }, { id: 'visual', label: 'Visual Analytics', icon: BarChart2 }, { id: 'log', label: 'Usage Log', icon: List }] as const).map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                        activeTab === tab.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                      }`}>
-                      <tab.icon size={12} />
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-                {activeTab === 'log' && (
-                  <div className="flex items-center gap-2">
-                    {/* filter by function */}
-                    <div className="relative">
-                      <select value={filterFn} onChange={e => { setFilterFn(e.target.value); setPage(1); }}
-                        className="appearance-none text-[11px] font-medium text-gray-600 bg-white border border-gray-200 rounded-xl pl-3 pr-6 py-1.5 focus:outline-none focus:border-blue-400 cursor-pointer">
-                        <option value="">All operations</option>
-                        {uniqueFns.map(fn => <option key={fn} value={fn}>{FN_LABELS[fn] ?? fn}</option>)}
-                      </select>
-                      <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    </div>
-                    {/* table / cards toggle */}
-                    <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
-                      {([{ v: 'table', Icon: List }, { v: 'cards', Icon: LayoutGrid }] as const).map(({ v, Icon }) => (
-                        <button key={v} onClick={() => setLogView(v)}
-                          className={`px-2.5 py-1.5 transition-colors ${logView === v ? 'bg-gray-900 text-white' : 'bg-white text-gray-400 hover:text-gray-600'}`}>
-                          <Icon size={12} />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {/* Main content panel */}
-              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="rounded-2xl border border-gray-200 bg-white p-4">
                 {loading ? (
                   <div className="flex items-center justify-center py-20"><LogoSpinner size={20} /></div>
-                ) : activeTab === 'team' ? (
-                  <TeamAnalytics logs={usageLogs} userNames={userNames} />
-                ) : activeTab === 'visual' ? (
-                  <VisualAnalytics
-                    breakdown={breakdown} donutSegs={donutSegs} dailySeries={dailySeries}
-                    totalCost={totalCost} totalOps={totalOps} insights={insights}
-                  />
-                ) : (
-                  <UsageLog
-                    logs={pagedLogs} view={logView} page={page} totalPages={totalPages}
-                    total={filteredLogs.length} onPage={setPage} userNames={userNames}
-                  />
-                )}
+                ) : null}
               </div>
             </div>
 
             {/* ── RIGHT: Subscription panel ───────────────────────────── */}
             <div className="w-full lg:w-72 shrink-0 flex flex-col gap-3">
 
-              {/* Plan card */}
-              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                <div className="px-4 pt-4 pb-3 border-b border-gray-100"
-                  style={{ background: hasActiveSub ? 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)' : '#f9fafb' }}>
-                  <div className="flex items-center justify-between mb-2">
+              {/* Current plan summary */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Current Plan</p>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColors[currentStatus] ?? statusColors.inactive}`}>
-                      {statusLabels[currentStatus] ?? currentStatus}
-                    </span>
+                    <p className="mt-1 text-lg font-extrabold text-gray-900">{hasActiveSub ? `${fmtINR(subscription!.plan_amount_usd)}/mo` : 'Free'}</p>
+                    <p className="mt-1 text-[11px] text-gray-500">{hasActiveSub ? `${planBudget} credits/mo • renews ${pendingPeriodEnd ?? 'monthly'}` : `${planBudget} credits/mo • no subscription yet`}</p>
                   </div>
-                  {hasActiveSub ? (
-                    <>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-2xl font-extrabold text-gray-900">{fmtINR(subscription!.plan_amount_usd)}</span>
-                        <span className="text-gray-400 text-xs">/mo</span>
-                      </div>
-                      <p className="text-xs font-semibold text-blue-500 mt-0.5">${subscription!.plan_amount_usd} AI credits/month</p>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-2xl font-extrabold text-gray-900">Free</span>
-                      <p className="text-xs font-semibold text-blue-500 mt-0.5">$5 AI credits/month</p>
-                    </>
-                  )}
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusColors[currentStatus] ?? statusColors.inactive}`}>
+                    {statusLabels[currentStatus] ?? currentStatus}
+                  </span>
                 </div>
-
-                {/* Credit gauge */}
-                <div className="px-4 py-3 border-b border-gray-100">
+                <div className="mt-3">
                   <CreditGauge used={totalCost} total={planBudget} />
                 </div>
-
-                {/* Plan details */}
-                <div className="px-4 py-3 space-y-2 text-[11px]">
-                  {hasActiveSub && (
-                    <>
-                      {pendingPeriodEnd && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Next billing</span>
-                          <span className="font-semibold text-gray-800">{pendingPeriodEnd}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Credits reset</span>
-                        <span className="font-semibold text-gray-800">{pendingPeriodEnd ?? 'Monthly'}</span>
-                      </div>
-                    </>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">AI credits/mo</span>
-                    <span className="font-semibold text-gray-800">${planBudget}</span>
-                  </div>
-                  <div className="flex justify-between">
+                <div className="mt-3 space-y-2 text-[11px] text-gray-600">
+                  <div className="flex items-center justify-between">
                     <span className="text-gray-500">Available balance</span>
                     <span className="font-semibold text-emerald-600">{fmtBalance(balance)}</span>
                   </div>
                   {subscription?.pending_plan_amount_usd && (
-                    <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2 mt-1">
-                      <AlertCircle size={10} className="text-amber-500 shrink-0 mt-0.5" />
-                      <p className="text-[10px] text-amber-700">
-                        Downgrading to {fmtINR(subscription.pending_plan_amount_usd)}/mo on {pendingPeriodEnd ?? 'next renewal'}
-                      </p>
+                    <div className="rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-2 text-amber-700">
+                      Downgrading to {fmtINR(subscription.pending_plan_amount_usd)}/mo on {pendingPeriodEnd ?? 'next renewal'}
                     </div>
                   )}
                   {isPending && (
-                    <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2 mt-1">
-                      <RefreshCw size={10} className="text-amber-500 shrink-0 mt-0.5" />
-                      <p className="text-[10px] text-amber-700">Payment pending. Complete checkout to activate.</p>
+                    <div className="rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-2 text-amber-700">
+                      Payment pending. Complete checkout to activate.
                     </div>
                   )}
                 </div>
-
-                {/* Features */}
-                <div className="px-4 pb-3 space-y-1.5">
-                  {(hasActiveSub
-                    ? ['All AI features unlocked', 'Multi-board job search', 'Unlimited team members', 'Vendor & client directory', 'Usage analytics']
-                    : ['Core AI features', 'Multi-board job search', 'Candidate onboarding portal']
-                  ).map(f => (
-                    <div key={f} className="flex items-center gap-1.5">
-                      <Check size={9} className="text-emerald-500 shrink-0" />
-                      <span className="text-[10px] text-gray-500">{f}</span>
-                    </div>
-                  ))}
+                <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Pro plan features</p>
+                  <ul className="mt-2 space-y-1.5 text-[11px] text-gray-600">
+                    <li className="flex items-center gap-2"><Check size={10} className="text-emerald-500" /> More active vendors</li>
+                    <li className="flex items-center gap-2"><Check size={10} className="text-emerald-500" /> Real time job alerts</li>
+                    <li className="flex items-center gap-2"><Check size={10} className="text-emerald-500" /> Higher credit budget</li>
+                  </ul>
                 </div>
-
-                {/* Action buttons */}
-                {isOwner ? (
-                  <div className="px-4 pb-4 flex flex-col gap-2">
-                    {canUpgrade && (
-                      <button onClick={openUpgradeModal}
-                        className="w-full py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5 shadow-sm hover:opacity-90 transition-opacity"
-                        style={{ background: 'linear-gradient(135deg, #2563eb 0%, #f97316 60%, #facc15 100%)' }}>
-                        <ArrowUpRight size={12} />
-                        {hasActiveSub ? 'Upgrade Plan' : 'Upgrade to Pro'}
-                      </button>
-                    )}
-                    {canDowngrade && (
-                      <button onClick={openDowngradeModal}
-                        className="w-full py-1.5 text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors text-center">
-                        Downgrade plan
-                      </button>
-                    )}
-                  </div>
-                ) : !hasActiveSub ? (
-                  <div className="px-4 pb-4">
-                    <p className="text-[10px] text-gray-400 text-center">Ask your account owner to upgrade.</p>
-                  </div>
-                ) : null}
+                {isOwner && canDowngrade && (
+                  <button onClick={openDowngradeModal}
+                    className="mt-3 w-full text-center text-[11px] font-medium text-gray-400 hover:text-gray-600">
+                    Downgrade plan
+                  </button>
+                )}
               </div>
 
-              {/* Tier comparison */}
-              <TierComparison currentUsd={hasActiveSub ? (subscription?.plan_amount_usd ?? 0) : 0} />
-
-              {/* Quick facts */}
-              <div className="bg-gray-50 rounded-2xl border border-gray-100 p-4 space-y-2">
-                {[
-                  ['All AI features on every plan', '#10b981'],
-                  ['Shared credit pool across team', '#3b82f6'],
-                  ['Upgrade takes effect immediately', '#8b5cf6'],
-                  ['Downgrade at next renewal cycle', '#f59e0b'],
-                ].map(([fact, color]) => (
-                  <div key={fact} className="flex items-start gap-2">
-                    <Check size={10} style={{ color }} className="shrink-0 mt-0.5" />
-                    <p className="text-[10px] text-gray-500 leading-tight">{fact}</p>
-                  </div>
-                ))}
-              </div>
             </div>
 
           </div>
@@ -832,7 +718,7 @@ export default function BillingPage() {
   );
 }
 
-// ── Visual Analytics panel ─────────────────────────────────────────────────
+// ── Billing summary panel ─────────────────────────────────────────────────
 interface BreakdownItem { fn: string; count: number; cost: number; tokens: number }
 interface DonutSeg2 { label: string; value: number; color: string }
 
@@ -851,7 +737,7 @@ function VisualAnalytics({
       <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
         <BarChart2 size={28} className="text-gray-200" />
         <p className="text-sm font-semibold text-gray-500">No usage data for this period</p>
-        <p className="text-xs text-gray-400 max-w-xs">Start using AI features like resume rewrites, job matching, and search to see intelligent analytics here.</p>
+        <p className="text-xs text-gray-400 max-w-xs">Start using AI features to build momentum and unlock more value from your plan.</p>
       </div>
     );
   }
@@ -962,7 +848,7 @@ function VisualAnalytics({
       {/* AI Insights */}
       {insights.length > 0 && (
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-2">Intelligent Insights</p>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-2">Key Highlights</p>
           <div className="grid grid-cols-2 gap-2">
             {insights.map((txt, i) => {
               const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444'];

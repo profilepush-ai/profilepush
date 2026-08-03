@@ -4,8 +4,8 @@ import {
   Building2, Users, User, Shield, CreditCard, AlertTriangle,
   Copy, Check, Plus, Trash2, Pencil, X, Save, Mail,
   Crown, Eye, EyeOff, Lock, LogOut, KeyRound,
-  ChevronDown, ChevronRight, RefreshCw, Info, Zap, ArrowRight,
-  UserCheck, Bell, Phone, Smartphone, Target, Power, Loader2,
+  ChevronDown, ChevronRight, RefreshCw, Info, Zap,
+  UserCheck, Bell, Phone, Smartphone,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -62,7 +62,6 @@ const PERMISSION_MATRIX = [
   { feature: 'Manage tracker',           owner: true,  admin: true,  full: true,  assigned: 'own' },
   { feature: 'View team members',        owner: true,  admin: true,  full: true,  assigned: true  },
   { feature: 'Invite & manage team',     owner: true,  admin: false, full: false, assigned: false },
-  { feature: 'Edit workspace settings',  owner: true,  admin: false, full: false, assigned: false },
   { feature: 'Access billing & plan',    owner: true,  admin: false, full: false, assigned: false },
 ];
 
@@ -70,7 +69,6 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ElementType; danger?:
   { id: 'profile',       label: 'My Profile',        icon: User      },
   { id: 'workspace',     label: 'Workspace',          icon: Building2 },
   { id: 'team',          label: 'Team Members',       icon: Users     },
-  { id: 'watch_schedule', label: 'Watch Schedule',    icon: Target    },
   { id: 'security',      label: 'Security',           icon: KeyRound  },
   { id: 'billing',       label: 'Plan & Billing',     icon: CreditCard },
   { id: 'notifications', label: 'Notifications',      icon: Bell      },
@@ -151,14 +149,10 @@ function PermCell({ val }: { val: boolean | 'own' }) {  if (val === true)  retur
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AccountSettings() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, account, membership, subscription, refreshAccount, signOut } = useAuth();
 
   const isOwner = membership?.role === 'owner';
-  const isAdmin = membership?.role === 'admin';
-  const canManageWatch = isOwner || isAdmin;
-  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
 
   // ── Global ──────────────────────────────────────────────────
   const [section, setSection] = useState<Section>(() => {
@@ -574,11 +568,6 @@ export default function AccountSettings() {
           {/* ── PROFILE ── */}
           {section === 'profile' && (
             <>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">My Profile</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Your personal details within this workspace.</p>
-              </div>
-
               <Card>
                 <CardHeader icon={User} title="Personal Information" />
                 <div className="px-6 py-5">
@@ -624,24 +613,6 @@ export default function AccountSettings() {
                 </div>
               </Card>
 
-              <Card>
-                <CardHeader icon={Shield} title="Role & Permissions" description="What you can access in this workspace" />
-                <div className="px-6 py-4 space-y-3">
-                  {PERMISSION_MATRIX.map((row, i) => {
-                    const myAccess = membership?.role === 'owner' ? row.owner
-                      : membership?.role === 'admin' ? row.admin
-                      : membership?.data_access === 'full' ? row.full
-                      : row.assigned;
-                    return (
-                      <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-                        <span className="text-xs text-gray-600">{row.feature}</span>
-                        <PermCell val={myAccess as boolean | 'own'} />
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-
               {/* Logout */}
               <button
                 onClick={() => void signOut()}
@@ -656,11 +627,6 @@ export default function AccountSettings() {
           {/* ── WORKSPACE ── */}
           {section === 'workspace' && (
             <>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Workspace</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Organization-level settings for your workspace.</p>
-              </div>
-
               <Card>
                 <CardHeader icon={Building2} title="Workspace Details" />
                 <div className="px-6 py-5 space-y-5">
@@ -720,11 +686,6 @@ export default function AccountSettings() {
           {/* ── TEAM ── */}
           {section === 'team' && (
             <>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Team Members</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Manage access, roles, and permissions for your team.</p>
-              </div>
-
               {/* Active members */}
               <Card>
                 <CardHeader icon={Users} title="Active Members"
@@ -933,107 +894,9 @@ export default function AccountSettings() {
             </>
           )}
 
-          {/* ── WATCH SCHEDULE ── */}
-          {section === 'watch_schedule' && (
-            <>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Watch Schedule</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Account-level Job Watch AI schedule for hotlist candidates.</p>
-              </div>
-
-              <Card>
-                <CardHeader
-                  icon={Target}
-                  title="Job Watch AI Settings"
-                  description="Hotlist candidates are watched by default using this schedule."
-                />
-                <div className="px-6 py-5 space-y-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-semibold text-gray-800">Watching</p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
-                        {globalWatch?.is_active ? 'Automatic matching is active' : 'Automatic matching is paused'}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => updateWatchSchedule({ is_active: !globalWatch?.is_active })}
-                      disabled={!globalWatch || savingWatch || !canManageWatch}
-                      className={`inline-flex items-center gap-1.5 px-3 h-8 rounded-full border text-xs font-bold transition-colors ${
-                        globalWatch?.is_active
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                          : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                      } disabled:opacity-40 disabled:cursor-not-allowed`}
-                    >
-                      {savingWatch ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
-                      {globalWatch?.is_active ? 'ON' : 'OFF'}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1.5">Match Frequency</label>
-                      <select
-                        value={globalWatch?.frequency ?? 'daily'}
-                        onChange={(e) => updateWatchSchedule({ frequency: e.target.value as 'daily' | 'hourly' })}
-                        disabled={!globalWatch || savingWatch || !canManageWatch}
-                        className="w-full md:max-w-[200px] border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
-                      >
-                        <option value="daily">Daily</option>
-                        {isPaidPlan && <option value="hourly">Hourly</option>}
-                      </select>
-                      {!isPaidPlan && (
-                        <p className="text-[11px] text-amber-600 mt-1.5">
-                          Free accounts are limited to only Daily matches. Upgrade your account to setup hourly match schedules
-                        </p>
-                      )}
-                    </div>
-
-                    {!isPaidPlan && (
-                      <button
-                        onClick={() => navigate('/billing')}
-                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity"
-                        style={{ background: 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)' }}
-                      >
-                        <ArrowRight size={12} />
-                        Upgrade now
-                      </button>
-                    )}
-                  </div>
-
-                  {globalWatch && (
-                    <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 text-[11px] text-gray-500 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span>Run status</span>
-                        <span className="font-semibold text-gray-700 capitalize">{globalWatch.run_status}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Last run</span>
-                        <span className="font-semibold text-gray-700">
-                          {globalWatch.last_run_at ? new Date(globalWatch.last_run_at).toLocaleString() : 'Not run yet'}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {!canManageWatch && (
-                    <p className="text-[11px] text-gray-400 flex items-center gap-1">
-                      <Info size={10} />Only workspace owner or admin can modify watch schedule
-                    </p>
-                  )}
-                </div>
-              </Card>
-            </>
-          )}
-
           {/* ── SECURITY ── */}
           {section === 'security' && (
             <>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Security</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Manage your password and account security.</p>
-              </div>
-
               <Card>
                 <CardHeader icon={KeyRound} title="Change Password" description="Choose a strong password of at least 8 characters" />
                 <div className="px-6 py-5">
@@ -1103,11 +966,6 @@ export default function AccountSettings() {
           {/* ── BILLING ── */}
           {section === 'billing' && (
             <>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Plan & Billing</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Your subscription, usage credits, and billing management.</p>
-              </div>
-
               {!isOwner && (
                 <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
                   <Info size={13} className="shrink-0" />
@@ -1179,11 +1037,6 @@ export default function AccountSettings() {
           {/* ── NOTIFICATIONS ── */}
           {section === 'notifications' && (
             <>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Notification Preferences</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Choose how and where you receive notifications.</p>
-              </div>
-
               {/* Delivery channels info */}
               <Card>
                 <CardHeader icon={Bell} title="Delivery Channels" description="Configure how notifications reach you" />
@@ -1333,11 +1186,6 @@ export default function AccountSettings() {
           {/* ── DANGER ZONE ── */}
           {section === 'danger' && (
             <>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Danger Zone</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Irreversible actions. Proceed with caution.</p>
-              </div>
-
               {/* Leave workspace — non-owners */}
               {!isOwner && (
                 <Card>

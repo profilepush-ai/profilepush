@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  Activity,
   AtSign,
   Brain,
   Briefcase,
@@ -198,6 +199,7 @@ type ProfileStats = {
   uniqueCompanies: number;
   uniqueVendors: number;
   uniqueJobs: number;
+  avgMatchScore: number | null;
 };
 
 type ProfileRangeOption = {
@@ -274,6 +276,30 @@ function canonicalizeRoleForUniqueness(role: string) {
 
 function getStablePortraitUrl(seed: string) {
   return `https://i.pravatar.cc/120?u=${encodeURIComponent(seed)}`;
+}
+
+function RecommendedBadge() {
+  const [played, setPlayed] = useState(false);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setPlayed(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded border border-blue-200 bg-white/90 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-blue-700 transition-all duration-700 ${played ? 'translate-y-0 scale-100 opacity-100' : '-translate-y-1 scale-95 opacity-0'}`}
+    >
+      <span className={`inline-flex items-center transition-transform duration-700 ${played ? 'rotate-0' : '-rotate-12'}`}>
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <circle cx="2.4" cy="3.2" r="1.1" fill="#facc15" />
+          <circle cx="2.4" cy="7.4" r="1.1" fill="#f97316" />
+          <polyline points="5.1,2.4 8.8,5.5 5.1,8.6" stroke="#2563eb" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+      <span>Recommended</span>
+    </span>
+  );
 }
 
 const DEFAULT_PERSONA_AVATARS: Record<string, string> = {
@@ -739,6 +765,12 @@ export default function PulsePage() {
   const [processingLeadId, setProcessingLeadId] = useState<string | null>(null);
   const [processingBreakdownLeadId, setProcessingBreakdownLeadId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isMobileTopCollapsed, setIsMobileTopCollapsed] = useState(false);
+  const mobileRightPaneLastScrollTopRef = useRef(0);
+  const mobileTopCollapsedRef = useRef(false);
+  const mobileScrollUpAccumRef = useRef(0);
+  const mobileScrollDownAccumRef = useRef(0);
+  const mobileCollapseLockUntilRef = useRef(0);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -762,6 +794,7 @@ export default function PulsePage() {
     uniqueCompanies: 0,
     uniqueVendors: 0,
     uniqueJobs: 0,
+    avgMatchScore: null,
   }), []);
 
   const jobsRankedLeaderboard = useMemo(() => {
@@ -973,7 +1006,43 @@ export default function PulsePage() {
     if (nearBottom) onLoadMore();
   }, []);
 
-  const handleMobileMatchesScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+  const handleMobileRightPaneScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const nextTop = event.currentTarget.scrollTop;
+    const prevTop = mobileRightPaneLastScrollTopRef.current;
+    const delta = nextTop - prevTop;
+    const now = Date.now();
+
+    if (nextTop <= 0) {
+      mobileScrollUpAccumRef.current = 0;
+      mobileScrollDownAccumRef.current = 0;
+      if (mobileTopCollapsedRef.current) {
+        mobileTopCollapsedRef.current = false;
+        setIsMobileTopCollapsed(false);
+      }
+    } else if (now >= mobileCollapseLockUntilRef.current) {
+      if (delta > 1) {
+        mobileScrollUpAccumRef.current += delta;
+        mobileScrollDownAccumRef.current = 0;
+        if (!mobileTopCollapsedRef.current && nextTop > 40 && mobileScrollUpAccumRef.current > 16) {
+          mobileTopCollapsedRef.current = true;
+          setIsMobileTopCollapsed(true);
+          mobileCollapseLockUntilRef.current = now + 140;
+          mobileScrollUpAccumRef.current = 0;
+        }
+      } else if (delta < -1) {
+        mobileScrollDownAccumRef.current += Math.abs(delta);
+        mobileScrollUpAccumRef.current = 0;
+        if (mobileTopCollapsedRef.current && mobileScrollDownAccumRef.current > 10) {
+          mobileTopCollapsedRef.current = false;
+          setIsMobileTopCollapsed(false);
+          mobileCollapseLockUntilRef.current = now + 140;
+          mobileScrollDownAccumRef.current = 0;
+        }
+      }
+    }
+
+    mobileRightPaneLastScrollTopRef.current = Math.max(0, nextTop);
+
     maybeLoadMoreMatches(event.currentTarget, canLoadMoreMatches, () => {
       setVisibleMatchesCount((prev) => Math.min(filteredFeed.length, prev + MATCHES_PAGE_SIZE));
     });
@@ -991,13 +1060,91 @@ export default function PulsePage() {
     });
   }, [canLoadMoreDesktopRevealed, maybeLoadMoreMatches, revealedVisibleFeed.length]);
 
-  const renderLeadCards = (leads: SocialLead[]) => leads.map((lead, index) => {
-    const cardToneClass = [
-      'border-blue-100 bg-blue-50/35',
-      'border-emerald-100 bg-emerald-50/35',
-      'border-amber-100 bg-amber-50/40',
-      'border-slate-200 bg-slate-50/75',
-    ][index % 4];
+  function getScoreVisual(score: number | null) {
+    const rounded = typeof score === 'number' && Number.isFinite(score) && score > 0
+      ? Math.round(score)
+      : null;
+
+    if (rounded === null) {
+      return {
+        rounded: null,
+        isRecommended: false,
+        cardToneClass: 'border-amber-200 bg-amber-50/55',
+        badgeClass: 'text-gray-700 bg-white border border-gray-200',
+      };
+    }
+    if (rounded < 60) {
+      return {
+        rounded,
+        isRecommended: false,
+        cardToneClass: 'border-red-200 bg-red-50/70',
+        badgeClass: 'text-red-700 bg-red-100 border border-red-200',
+      };
+    }
+    if (rounded < 70) {
+      return {
+        rounded,
+        isRecommended: false,
+        cardToneClass: 'border-yellow-200 bg-yellow-50/80',
+        badgeClass: 'text-amber-800 bg-yellow-100 border border-yellow-200',
+      };
+    }
+    if (rounded < 80) {
+      return {
+        rounded,
+        isRecommended: false,
+        cardToneClass: 'border-emerald-200 bg-emerald-50/75',
+        badgeClass: 'text-emerald-700 bg-emerald-100 border border-emerald-200',
+      };
+    }
+    return {
+      rounded,
+      isRecommended: true,
+      cardToneClass: 'border-blue-200 bg-gradient-to-br from-emerald-50 via-blue-50 to-cyan-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]',
+      badgeClass: 'text-blue-700 bg-white/90 border border-blue-200 shadow-sm',
+    };
+  }
+
+  function getMarketPulseVisual(uniqueJobs: number) {
+    const jobs = Number.isFinite(uniqueJobs) ? Math.max(0, Math.round(uniqueJobs)) : 0;
+
+    if (jobs >= 15) {
+      return {
+        level: 'High',
+        cardToneClass: 'border-emerald-200 bg-emerald-50/75',
+        badgeClass: 'text-emerald-700 bg-emerald-100 border border-emerald-200',
+      };
+    }
+    if (jobs >= 6) {
+      return {
+        level: 'Medium',
+        cardToneClass: 'border-yellow-200 bg-yellow-50/80',
+        badgeClass: 'text-amber-800 bg-yellow-100 border border-yellow-200',
+      };
+    }
+    return {
+      level: 'Low',
+      cardToneClass: 'border-red-200 bg-red-50/70',
+      badgeClass: 'text-red-700 bg-red-100 border border-red-200',
+    };
+  }
+
+  function renderMarketPulseSymbol(level: string, badgeClass: string, uniqueJobs: number) {
+    const shortLevel = level === 'Medium' ? 'Med' : level;
+    return (
+      <span
+        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold ${badgeClass}`}
+        title={`Market Pulse ${level} (${uniqueJobs} jobs)`}
+        aria-label={`Market Pulse ${level}`}
+      >
+        <Activity size={10} />
+        <span>{shortLevel}</span>
+      </span>
+    );
+  }
+
+  const renderLeadCards = (leads: SocialLead[]) => leads.map((lead) => {
+    const leadScoreVisual = getScoreVisual(lead.matchScore);
     const inlineBreakdownItems = buildScoreBreakdownDisplayItems(
       lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
     );
@@ -1025,43 +1172,60 @@ export default function PulsePage() {
     const visibleInlineBreakdownItems = isInlineBreakdownExpanded
       ? inlineBreakdownItems
       : collapsedInlineBreakdownItems;
+    const hasDetailsToggle = inlineBreakdownItems.length > 2;
+    const maskedEmailHint = (() => {
+      const email = (lead.posterEmail || '').trim();
+      if (!email) return '***@';
+      const localPart = email.split('@')[0] ?? '';
+      const prefix = (localPart.slice(0, 3) || '***').replace(/\s+/g, '');
+      return `${prefix}**@`;
+    })();
 
     return (
-      <div key={lead.id} className={`rounded-lg border px-3 py-2.5 ${cardToneClass}`}>
-        <div className="flex items-center justify-between gap-1.5">
-          <p className="text-[11px] font-semibold text-gray-900 leading-snug">{lead.title || 'Job Opportunity'}</p>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {(lead.matchScore !== null && Number.isFinite(lead.matchScore) && lead.matchScore > 0) && (
-              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{Math.round(lead.matchScore)}%</span>
+      <div key={lead.id} className={`rounded-lg border px-3 py-2.5 ${leadScoreVisual.cardToneClass}`}>
+        <div className="flex items-start justify-between gap-1.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold leading-snug text-gray-900">{lead.title || 'Job Opportunity'}</p>
+            {lead.company && (
+              <div className="mt-0.5 text-[10px] text-gray-600">{lead.company}</div>
             )}
-            <span className="text-[9px] font-bold uppercase text-gray-400">{lead.platform}</span>
+            <div className="mt-0.5 text-[10px] text-gray-500">
+              <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
+              <span> • </span>
+              <span>{lead.postedAgo}</span>
+            </div>
           </div>
-        </div>
-        {lead.company && (
-          <div className="mt-0.5 text-[10px] text-gray-600">{lead.company}</div>
-        )}
-        <div className="mt-0.5 text-[10px] text-gray-500">
-          <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
-          <span> • </span>
-          <span>{lead.postedAgo}</span>
+          <div className="flex shrink-0 flex-col items-end gap-0.5">
+            <div className="flex items-center gap-1.5">
+              {leadScoreVisual.rounded !== null && (
+                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${leadScoreVisual.badgeClass}`}>{leadScoreVisual.rounded}%</span>
+              )}
+              {leadScoreVisual.isRecommended && <RecommendedBadge />}
+            </div>
+            {lead.platform && (
+              <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
+                {lead.platform}
+              </span>
+            )}
+          </div>
         </div>
         {inlineBreakdownItems.length > 0 && (
           <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200">
             <div>
               <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                <thead className="bg-gray-50">
+                <thead className="bg-white">
                   <tr>
-                    <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                    <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
-                    <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
+                    <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
+                    <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
+                    <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visibleInlineBreakdownItems.map((item) => (
                     <tr key={item.key}>
-                      <td className="border-b border-gray-100 px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
-                      <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
-                      <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
+                      <td className="border-b border-gray-100 bg-white px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
+                      <td className="border-b border-gray-100 bg-white px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
+                      <td className="border-b border-gray-100 bg-white px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1069,8 +1233,8 @@ export default function PulsePage() {
             </div>
           </div>
         )}
-        <div className="mt-1.5 flex items-center gap-1.5">
-          {inlineBreakdownItems.length > 2 && (
+        <div className="mt-1.5 grid grid-cols-10 gap-1.5">
+          {hasDetailsToggle && (
             <button
               type="button"
               onClick={() => {
@@ -1084,7 +1248,7 @@ export default function PulsePage() {
                   return next;
                 });
               }}
-              className="inline-flex flex-1 items-center justify-center rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+              className="col-span-3 inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
             >
               {isInlineBreakdownExpanded ? 'Hide Details' : 'Details'}
             </button>
@@ -1100,18 +1264,17 @@ export default function PulsePage() {
           {revealedLeadIds.has(lead.id) ? (
             <button
               onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
-              className="inline-flex flex-1 justify-center items-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200"
+              className={`${hasDetailsToggle ? 'col-span-7' : 'col-span-10'} inline-flex items-center justify-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200`}
             >
-              <Copy size={9} /> Email <AtSign size={9} />
+              Email
             </button>
           ) : (
             <button
               onClick={() => void handleRevealContact(lead)}
               disabled={processingLeadId === lead.id}
-              className="inline-flex flex-1 justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+              className={`${hasDetailsToggle ? 'col-span-7' : 'col-span-10'} inline-flex items-center justify-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60`}
             >
-              <AtSign size={9} />
-              {processingLeadId === lead.id ? '...' : 'Reveal Email'}
+              {processingLeadId === lead.id ? '...' : `Reveal ${maskedEmailHint}`}
             </button>
           )}
         </div>
@@ -1131,6 +1294,21 @@ export default function PulsePage() {
     mediaQuery.addEventListener('change', updateViewport);
     return () => mediaQuery.removeEventListener('change', updateViewport);
   }, []);
+
+  useEffect(() => {
+    mobileTopCollapsedRef.current = isMobileTopCollapsed;
+  }, [isMobileTopCollapsed]);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setIsMobileTopCollapsed(false);
+      mobileRightPaneLastScrollTopRef.current = 0;
+      mobileTopCollapsedRef.current = false;
+      mobileScrollUpAccumRef.current = 0;
+      mobileScrollDownAccumRef.current = 0;
+      mobileCollapseLockUntilRef.current = 0;
+    }
+  }, [isMobileViewport]);
 
   useEffect(() => {
     if (!isMobileViewport || !canLoadMoreProfiles) return;
@@ -1456,7 +1634,10 @@ export default function PulsePage() {
       job_title: row.job_title,
       post_content: row.post_content,
       extracted_role_normalized: row.extracted_role_normalized,
-    })) as Array<Pick<SocialJobRow, 'id' | 'company_name' | 'posted_by_name' | 'poster_email' | 'poster_phone' | 'job_title' | 'post_content' | 'extracted_role_normalized'>>;
+      match_score: typeof row.final_average_score === 'number' && Number.isFinite(row.final_average_score) && row.final_average_score > 0
+        ? row.final_average_score
+        : null,
+    })) as Array<Pick<SocialJobRow, 'id' | 'company_name' | 'posted_by_name' | 'poster_email' | 'poster_phone' | 'job_title' | 'post_content' | 'extracted_role_normalized'> & { match_score: number | null }>;
     const stats: Record<string, ProfileStats> = {};
 
     for (const persona of sortedLeaderboard) {
@@ -1465,11 +1646,17 @@ export default function PulsePage() {
       const companies = new Set<string>();
       const vendors = new Set<string>();
       const jobs = new Set<string>();
+      let matchScoreSum = 0;
+      let matchScoreCount = 0;
 
       for (const row of rows) {
         if (!roleMatchesPersona(row as SocialJobRow, persona.target_role, skills)) continue;
 
         jobs.add(row.id);
+        if (typeof row.match_score === 'number') {
+          matchScoreSum += row.match_score;
+          matchScoreCount += 1;
+        }
 
         const company = (row.company_name ?? '').trim();
         if (company) companies.add(normalize(company));
@@ -1484,6 +1671,7 @@ export default function PulsePage() {
         uniqueCompanies: companies.size,
         uniqueVendors: vendors.size,
         uniqueJobs: jobs.size,
+        avgMatchScore: matchScoreCount > 0 ? (matchScoreSum / matchScoreCount) : null,
       };
     }
 
@@ -2061,7 +2249,7 @@ export default function PulsePage() {
       <AppNav />
 
       <main className="flex-1 min-h-0 overflow-hidden">
-        <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2">
+        <div className={`h-full w-full flex flex-col overflow-hidden ${isMobileViewport ? 'px-2 pt-0 pb-2' : 'px-2 py-2'}`}>
 
 
           {loading ? (
@@ -2176,54 +2364,56 @@ export default function PulsePage() {
                 </div>
 
               {/* Mobile search/filter row */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
-                  className="flex-1 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-medium text-gray-600"
-                >
-                  <Search size={11} />
-                  {profileSearchQuery || 'Search & Filter'}
-                </button>
-                <select
-                  aria-label="Date range"
-                  value={profileRangeId}
-                  onChange={(e) => setProfileRangeId(e.target.value as ProfileRangeOption['id'])}
-                  className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium text-gray-600"
-                >
-                  {PROFILE_RANGE_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>{option.label}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => {
-                    void loadProfileStats();
-                    void refreshFeed();
-                  }}
-                  disabled={profileStatsLoading || refreshing || feedLoading}
-                  className="rounded-full border border-gray-200 bg-gray-50 p-1.5 text-gray-600 disabled:opacity-50"
-                >
-                  <RefreshCw size={13} className={refreshing || profileStatsLoading ? 'animate-spin' : ''} />
-                </button>
-              </div>
-              {mobileSearchOpen && (
-                <div className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
-                  <Search size={12} className="text-gray-400" />
-                  <input
-                    type="text"
-                    autoFocus
-                    value={profileSearchQuery}
-                    onChange={(e) => setProfileSearchQuery(e.target.value)}
-                    placeholder="Search by role, skills, location, visa..."
-                    className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
-                  />
-                  <button onClick={() => { setProfileSearchQuery(''); setMobileSearchOpen(false); }} className="text-gray-400">
-                    <X size={12} />
+              <div className={isMobileViewport ? 'sticky top-0 z-30 border-b border-gray-200 bg-white px-2 py-2' : 'px-2 py-2'}>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
+                    className="flex-1 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-medium text-gray-600"
+                  >
+                    <Search size={11} />
+                    {profileSearchQuery || 'Search & Filter'}
+                  </button>
+                  <select
+                    aria-label="Date range"
+                    value={profileRangeId}
+                    onChange={(e) => setProfileRangeId(e.target.value as ProfileRangeOption['id'])}
+                    className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium text-gray-600"
+                  >
+                    {PROFILE_RANGE_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>{option.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => {
+                      void loadProfileStats();
+                      void refreshFeed();
+                    }}
+                    disabled={profileStatsLoading || refreshing || feedLoading}
+                    className="rounded-full border border-gray-200 bg-gray-50 p-1.5 text-gray-600 disabled:opacity-50"
+                  >
+                    <RefreshCw size={13} className={refreshing || profileStatsLoading ? 'animate-spin' : ''} />
                   </button>
                 </div>
-              )}
+                {mobileSearchOpen && (
+                  <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
+                    <Search size={12} className="text-gray-400" />
+                    <input
+                      type="text"
+                      autoFocus
+                      value={profileSearchQuery}
+                      onChange={(e) => setProfileSearchQuery(e.target.value)}
+                      placeholder="Search by role, skills, location, visa..."
+                      className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                    />
+                    <button onClick={() => { setProfileSearchQuery(''); setMobileSearchOpen(false); }} className="text-gray-400">
+                      <X size={12} />
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[15%_85%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
-                <aside className={`sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar ${isMobileViewport ? 'border-r-0 bg-transparent px-0 py-0' : 'border-r border-gray-200 bg-gray-50 px-1.5 py-2'}`}>
+                <aside className={`sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar ${isMobileViewport ? 'border-r-0 bg-transparent px-0 py-0' : 'border-r border-gray-200 bg-white px-1.5 py-2'}`}>
                   <div className="space-y-1">
                     {[...PROFILE_CATEGORY_TABS]
                       .map((category) => {
@@ -2252,7 +2442,7 @@ export default function PulsePage() {
                           >
                             {isMobileViewport ? (
                               <div className="flex flex-col items-center gap-1">
-                                <CategoryIcon size={12} />
+                                <CategoryIcon size={15} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
                                 <span className="text-[8px] font-semibold leading-tight">{category.label}</span>
                                 <div className={`mt-0.5 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-blue-500' : 'text-gray-400'}`}>
                                   <span className="inline-flex items-center gap-0.5"><Building2 size={8} />{vendorsCount}</span>
@@ -2260,9 +2450,9 @@ export default function PulsePage() {
                                 </div>
                               </div>
                             ) : (
-                              <div className="grid grid-cols-[24px_1fr] grid-rows-2 gap-x-1.5 gap-y-0.5">
-                                <span className={`row-span-2 inline-flex h-full min-h-[34px] w-6 shrink-0 items-center justify-center rounded ${isSelected ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-500'}`}>
-                                  <CategoryIcon size={14} />
+                              <div className="grid grid-cols-[22px_1fr] grid-rows-2 gap-x-1.5 gap-y-0.5">
+                                <span className={`row-span-2 inline-flex h-full min-h-[34px] w-[22px] shrink-0 items-center justify-center ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}>
+                                  <CategoryIcon size={18} />
                                 </span>
                                 <span className="min-w-0 self-end truncate text-[11px] font-bold leading-tight">{category.label}</span>
                                 <div className={`min-w-0 self-start flex items-center gap-1.5 text-[8px] font-semibold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>
@@ -2298,14 +2488,15 @@ export default function PulsePage() {
                   )}
                 </aside>
 
-              <div className="col-start-2 row-span-2 min-w-0 h-full flex min-h-0 flex-col overflow-hidden">
-
-              <section className="min-w-0 shrink-0 overflow-hidden">
-                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50/80">
-                  <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
-                    <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
-                  </div>
-                  {isMobileViewport ? (
+              <div
+                className={`col-start-2 row-span-2 min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-white slim-scrollbar' : 'overflow-hidden'}`}
+                onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
+              >
+                {isMobileViewport ? (
+                  <div className="sticky top-0 z-20 shrink-0 min-h-[36px] flex items-center gap-2 border-b border-gray-200 bg-gray-50/80 px-2">
+                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
+                      <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
+                    </div>
                     <div className="ml-auto grid grid-cols-2 gap-1">
                       <button
                         type="button"
@@ -2324,8 +2515,17 @@ export default function PulsePage() {
                         <span className={`text-[9px] font-bold ${selectedProfilesView === 'watching' ? 'text-blue-500' : 'text-gray-500'}`}>{profileViewCounts.watching}</span>
                       </button>
                     </div>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
+
+              <section className="min-w-0 shrink-0 overflow-hidden">
+                {!isMobileViewport ? (
+                  <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50/80">
+                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
+                      <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
+                    </div>
+                  </div>
+                ) : null}
                 {/* Profile list */}
                 {isMobileViewport ? (
                   <div ref={profileListScrollRef} className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
@@ -2338,6 +2538,7 @@ export default function PulsePage() {
                         const isActivating = activatingRole === persona.target_role;
                         const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
                         const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
+                        const profilePulseVisual = getMarketPulseVisual(stats.uniqueJobs);
                         const details = getPersonaDetailColumns(persona);
                         const isExpanded = expandedMobileProfileCardIds.has(persona.target_role);
                         const collapsedDetails = [
@@ -2357,42 +2558,54 @@ export default function PulsePage() {
                           <div
                             key={persona.target_role}
                             onClick={() => void selectPersona(persona)}
-                            className={`snap-start shrink-0 w-[84%] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                            className={`snap-start shrink-0 w-[84%] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${profilePulseVisual.cardToneClass} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                           >
                             <div className="flex items-start justify-between gap-1.5">
                               <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExpandedMobileProfileCardIds((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(persona.target_role)) next.delete(persona.target_role);
-                                    else next.add(persona.target_role);
-                                    return next;
-                                  });
-                                }}
-                                className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-blue-600"
-                                aria-label={isExpanded ? 'Collapse profile details' : 'Expand profile details'}
-                              >
-                                {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                              </button>
+                              <div className="ml-auto flex items-center gap-1">
+                                {renderMarketPulseSymbol(profilePulseVisual.level, profilePulseVisual.badgeClass, stats.uniqueJobs)}
+                              </div>
                             </div>
                             <div className={`mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight ${isExpanded ? '' : ''}`}>
                               {mobileDetails.map((item) => (
-                                <div key={item.key} className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{item.value}</div>
+                                <div
+                                  key={item.key}
+                                  className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600"
+                                >
+                                  {item.value}
+                                </div>
                               ))}
                             </div>
-                            <div className="mt-1 flex items-center gap-1.5">
-                              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>
-                              <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{stats.uniqueVendors} Vendors</span>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
-                                disabled={isActivating}
-                                className={`ml-auto inline-flex min-w-[64px] shrink-0 items-center justify-center rounded-md border px-2 py-0.5 text-[9px] font-semibold transition ${isWatching ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
-                              >
-                                {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
-                              </button>
+                            <div className="mt-1 space-y-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
+                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
+                              </div>
+                              <div className="grid grid-cols-10 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedMobileProfileCardIds((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(persona.target_role)) next.delete(persona.target_role);
+                                      else next.add(persona.target_role);
+                                      return next;
+                                    });
+                                  }}
+                                  className="col-span-3 inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-2 py-1 text-gray-600 transition hover:bg-gray-50"
+                                  aria-label={isExpanded ? 'Collapse profile details' : 'Expand profile details'}
+                                >
+                                  {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
+                                  disabled={isActivating}
+                                  className={`col-span-7 inline-flex items-center justify-center rounded-md border px-2 py-1 text-[9px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                >
+                                  {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -2418,32 +2631,38 @@ export default function PulsePage() {
                             const isActivating = activatingRole === persona.target_role;
                             const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
                             const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
+                            const profilePulseVisual = getMarketPulseVisual(stats.uniqueJobs);
                             const details = getPersonaDetailColumns(persona);
 
                             return (
                               <div
                                 key={`all-${persona.target_role}`}
                                 onClick={() => void selectPersona(persona)}
-                                className={`snap-start shrink-0 w-[clamp(220px,20vw,290px)] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                                className={`snap-start shrink-0 w-[clamp(220px,20vw,290px)] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${profilePulseVisual.cardToneClass} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                               >
                                 <div className="flex items-center justify-between gap-1.5">
                                   <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                                  <div className="flex items-center gap-1">
+                                    {renderMarketPulseSymbol(profilePulseVisual.level, profilePulseVisual.badgeClass, stats.uniqueJobs)}
+                                  </div>
                                 </div>
                                 <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.experience !== '-' ? details.experience : '—'}</div>
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.location !== '-' ? details.location : '—'}</div>
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.workType !== '-' ? details.workType : '—'}</div>
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-500 truncate">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.experience !== '-' ? details.experience : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.location !== '-' ? details.location : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.workType !== '-' ? details.workType : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
                                 </div>
-                                <div className="mt-1 flex items-center gap-1.5">
-                                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>
-                                  <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{stats.uniqueVendors} Vendors</span>
+                                <div className="mt-1 space-y-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
+                                  </div>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
                                     disabled={isActivating}
-                                    className={`ml-auto inline-flex min-w-[64px] shrink-0 items-center justify-center rounded-md border px-2 py-0.5 text-[9px] font-semibold transition ${isWatching ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                    className={`inline-flex w-full items-center justify-center rounded-md border px-2 py-1 text-[9px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                                   >
                                     {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
                                   </button>
@@ -2467,32 +2686,38 @@ export default function PulsePage() {
                             const isActivating = activatingRole === persona.target_role;
                             const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
                             const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
+                            const profilePulseVisual = getMarketPulseVisual(stats.uniqueJobs);
                             const details = getPersonaDetailColumns(persona);
 
                             return (
                               <div
                                 key={`watching-${persona.target_role}`}
                                 onClick={() => void selectPersona(persona)}
-                                className={`snap-start shrink-0 w-[clamp(220px,20vw,290px)] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                                className={`snap-start shrink-0 w-[clamp(220px,20vw,290px)] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${profilePulseVisual.cardToneClass} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                               >
                                 <div className="flex items-center justify-between gap-1.5">
                                   <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                                  <div className="flex items-center gap-1">
+                                    {renderMarketPulseSymbol(profilePulseVisual.level, profilePulseVisual.badgeClass, stats.uniqueJobs)}
+                                  </div>
                                 </div>
                                 <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.experience !== '-' ? details.experience : '—'}</div>
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.location !== '-' ? details.location : '—'}</div>
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-600 truncate">{details.workType !== '-' ? details.workType : '—'}</div>
-                                  <div className="min-w-0 rounded bg-gray-50 px-1.5 py-1 text-gray-500 truncate">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.experience !== '-' ? details.experience : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.location !== '-' ? details.location : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.workType !== '-' ? details.workType : '—'}</div>
+                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
                                 </div>
-                                <div className="mt-1 flex items-center gap-1.5">
-                                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>
-                                  <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{stats.uniqueVendors} Vendors</span>
+                                <div className="mt-1 space-y-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
+                                  </div>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
                                     disabled={isActivating}
-                                    className={`ml-auto inline-flex min-w-[64px] shrink-0 items-center justify-center rounded-md border px-2 py-0.5 text-[9px] font-semibold transition ${isWatching ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                    className={`inline-flex w-full items-center justify-center rounded-md border px-2 py-1 text-[9px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                                   >
                                     {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
                                   </button>
@@ -2528,52 +2753,60 @@ export default function PulsePage() {
                 </div>
               </section>
 
-              <section className="min-w-0 flex flex-1 min-h-0 flex-col overflow-hidden">
-                <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50/80">
+              {isMobileViewport && (
+                <div className="sticky top-0 z-40 shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-white shadow-[0_1px_0_0_rgba(229,231,235,1)] transform-gpu backface-hidden">
                   <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
                     <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
                   </div>
-                  {isMobileViewport ? (
-                    <div className="ml-auto grid grid-cols-2 gap-1">
-                      {([
-                        { id: 'queued', label: 'Recent' },
-                        { id: 'revealed', label: 'Revealed' },
-                      ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
-                        const isSelected = selectedMatchesTab === tab.id;
-                        const count = matchesTabCounts[tab.id];
-                        return (
-                          <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                            className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
-                          >
-                            <span>{tab.label}</span>
-                            <span className={`text-[9px] font-bold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>{count}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
+                  <div className="ml-auto grid grid-cols-2 gap-1">
+                    {([
+                      { id: 'queued', label: 'Recent' },
+                      { id: 'revealed', label: 'Revealed' },
+                    ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
+                      const isSelected = selectedMatchesTab === tab.id;
+                      const count = matchesTabCounts[tab.id];
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
+                          className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                        >
+                          <span>{tab.label}</span>
+                          <span className={`text-[9px] font-bold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+              )}
 
-                <div className="min-h-0 flex-1 overflow-hidden">
+              <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
+                {!isMobileViewport && (
+                  <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50/80">
+                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
+                      <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className={`min-h-0 ${isMobileViewport ? '' : 'flex-1 overflow-hidden'}`}>
                   {feedLoading ? (
-                    <div className="flex h-full items-center justify-center">
+                    <div className={`${isMobileViewport ? 'py-10' : 'flex h-full'} items-center justify-center`}>
                       <LogoSpinner size={20} />
                     </div>
                   ) : (
                     isMobileViewport ? (
-                      <div className="min-h-0 h-full overflow-y-auto slim-scrollbar" onScroll={handleMobileMatchesScroll}>
+                      <div>
                         {filteredFeed.length === 0 ? (
-                          <div className="flex h-full items-center justify-center p-4 text-center">
+                          <div className="flex items-center justify-center p-6 text-center">
                             <div>
                               <Radar size={16} className="mx-auto text-gray-300" />
                               <p className="mt-1.5 text-[11px] text-gray-500">No matches yet</p>
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-1.5 p-1.5">
+                          <div className="space-y-1.5 px-1.5 pt-0 pb-4">
                             {renderLeadCards(visibleFeed)}
                           </div>
                         )}
