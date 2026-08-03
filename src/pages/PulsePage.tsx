@@ -1870,21 +1870,21 @@ export default function PulsePage() {
                     <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{profilesForActiveView.length}</span>
                   </div>
                 </div>
-                <div className="shrink-0 h-[32px] flex items-center gap-1 px-2 border-b border-gray-200 bg-white">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedProfilesView('all')}
-                    className={`rounded-full px-2 py-0.5 text-[9px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
-                  >
-                    All Profiles
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedProfilesView('watching')}
-                    className={`rounded-full px-2 py-0.5 text-[9px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
-                  >
-                    Watching
-                  </button>
+                <div className="shrink-0 h-[36px] grid grid-cols-2 gap-1 border-b border-gray-200 bg-gray-50 px-2 py-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProfilesView('all')}
+                      className={`rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProfilesView('watching')}
+                      className={`rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                    >
+                      Watching
+                    </button>
                 </div>
                 {/* Profile list */}
                 <div ref={profileListScrollRef} className="min-h-0 flex-1 overflow-y-auto slim-scrollbar">
@@ -1972,7 +1972,7 @@ export default function PulsePage() {
                   </div>
                 </div>
 
-                <div className="shrink-0 h-[32px] flex items-center gap-1 px-2 border-b border-gray-200 bg-white overflow-x-auto hide-scrollbar">
+                <div className="shrink-0 h-[36px] grid grid-cols-3 gap-1 border-b border-gray-200 bg-gray-50 px-2 py-1">
                   {([
                     { id: 'queued', label: 'New' },
                     { id: 'revealed', label: 'Revealed' },
@@ -1985,10 +1985,10 @@ export default function PulsePage() {
                         key={tab.id}
                         type="button"
                         onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                        className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-semibold transition ${isSelected ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
                       >
                         <span>{tab.label}</span>
-                        <span className={`text-[8px] font-bold ${isSelected ? 'text-blue-100' : 'text-gray-500'}`}>{count}</span>
+                        <span className={`text-[9px] font-bold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>{count}</span>
                       </button>
                     );
                   })}
