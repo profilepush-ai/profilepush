@@ -660,72 +660,26 @@ function buildFallbackLeaderboardFromRoles(
     .map((item, idx) => ({ ...item, rank: idx + 1 }));
 }
 
-function buildInsertPayload(accountId: string, targetRole: string, avatarUrl?: string | null) {
-  const suggestion = findSuggestionForRole(targetRole);
-  const category = inferRoleCategoryId(targetRole, suggestion?.summary);
-
-  if (suggestion) {
-    return {
-      account_id: accountId,
-      target_role: suggestion.title,
-      category,
-      min_years_exp: suggestion.minYearsExp,
-      max_years_exp: suggestion.maxYearsExp,
-      visa_status: suggestion.visaStatus,
-      employment_type: suggestion.employmentType,
-      work_type: suggestion.workType,
-      preferred_locations: suggestion.locations,
-      min_rate_usd_per_hr: suggestion.minRate,
-      max_rate_usd_per_hr: suggestion.maxRate,
-      relocation_open: suggestion.relocationOpen,
-      priority_skills: suggestion.skills,
-      schedule_frequency: 'hourly' as const,
-      is_active: true,
-      avatar_url: avatarUrl ?? null,
-    };
-  }
+function buildWatchlistPayloadFromRole(accountId: string, role: HotlistRoleRow, userId?: string | null) {
+  const roleTitle = role.target_role.trim();
 
   return {
     account_id: accountId,
-    target_role: targetRole,
-    category,
-    min_years_exp: null,
-    max_years_exp: null,
-    visa_status: null,
-    employment_type: null,
-    work_type: null,
-    preferred_locations: null,
-    min_rate_usd_per_hr: null,
-    max_rate_usd_per_hr: null,
-    relocation_open: false,
-    priority_skills: null,
-    schedule_frequency: 'hourly' as const,
-    is_active: true,
-    avatar_url: avatarUrl ?? null,
-  };
-}
-
-function buildWatchlistPayloadFromRole(accountId: string, role: Partial<HotlistRoleRow>, fallbackPersona: PulsePersona, userId?: string | null) {
-  const roleTitle = (role.target_role ?? fallbackPersona.target_role).trim();
-  const suggestion = findSuggestionForRole(roleTitle);
-
-  return {
-    account_id: accountId,
-    source_hotlist_role_id: role.id ?? null,
+    source_hotlist_role_id: role.id,
     target_role: roleTitle,
-    category: role.category ?? inferRoleCategoryId(roleTitle, fallbackPersona.summary),
-    min_years_exp: role.min_years_exp ?? fallbackPersona.min_years_exp ?? suggestion?.minYearsExp ?? null,
-    max_years_exp: role.max_years_exp ?? fallbackPersona.max_years_exp ?? suggestion?.maxYearsExp ?? null,
-    visa_status: role.visa_status ?? fallbackPersona.visa_status ?? suggestion?.visaStatus ?? null,
-    employment_type: role.employment_type ?? fallbackPersona.employment_type ?? suggestion?.employmentType ?? null,
-    work_type: role.work_type ?? fallbackPersona.work_type ?? suggestion?.workType ?? null,
-    preferred_locations: role.preferred_locations ?? fallbackPersona.preferred_locations ?? suggestion?.locations ?? null,
-    min_rate_usd_per_hr: role.min_rate_usd_per_hr ?? fallbackPersona.min_rate_usd_per_hr ?? suggestion?.minRate ?? null,
-    max_rate_usd_per_hr: role.max_rate_usd_per_hr ?? fallbackPersona.max_rate_usd_per_hr ?? suggestion?.maxRate ?? null,
-    relocation_open: role.relocation_open ?? fallbackPersona.relocation_open ?? suggestion?.relocationOpen ?? false,
-    priority_skills: role.priority_skills ?? fallbackPersona.priority_skills ?? suggestion?.skills ?? null,
-    avatar_url: role.avatar_url ?? fallbackPersona.avatar_url ?? null,
-    schedule_frequency: role.schedule_frequency ?? 'hourly',
+    category: role.category,
+    min_years_exp: role.min_years_exp,
+    max_years_exp: role.max_years_exp,
+    visa_status: role.visa_status,
+    employment_type: role.employment_type,
+    work_type: role.work_type,
+    preferred_locations: role.preferred_locations,
+    min_rate_usd_per_hr: role.min_rate_usd_per_hr,
+    max_rate_usd_per_hr: role.max_rate_usd_per_hr,
+    relocation_open: role.relocation_open,
+    priority_skills: role.priority_skills,
+    avatar_url: role.avatar_url,
+    schedule_frequency: role.schedule_frequency,
     is_watching: true,
     created_by: userId ?? null,
     updated_at: new Date().toISOString(),
@@ -1653,41 +1607,6 @@ export default function PulsePage() {
     setDesktopRevealedVisibleCount(MATCHES_PAGE_SIZE);
   }, [activePersona?.target_role, selectedCategoryId, selectedMatchesTab, selectedTechStacks]);
 
-  const ensureRoleActive = useCallback(async (persona: PulsePersona, avatarUrl?: string | null) => {
-    if (!account?.id) throw new Error('No account found');
-
-    const { data: existingRows, error: findError } = await supabase
-      .from('hotlist_ai_roles')
-      .select('id, avatar_url')
-      .eq('account_id', account.id)
-      .ilike('target_role', persona.target_role)
-      .order('updated_at', { ascending: false })
-      .limit(1);
-
-    if (findError) throw findError;
-
-    const existing = (existingRows?.[0] ?? null) as Pick<HotlistRoleRow, 'id' | 'avatar_url'> | null;
-
-    if (existing?.id) {
-      const updatePayload: Record<string, unknown> = {
-        is_active: true,
-        schedule_frequency: 'hourly',
-        category: inferRoleCategoryId(persona.target_role, persona.summary),
-      };
-      if (avatarUrl) updatePayload.avatar_url = avatarUrl;
-      const { error: updateError } = await supabase
-        .from('hotlist_ai_roles')
-        .update(updatePayload)
-        .eq('id', existing.id);
-      if (updateError) throw updateError;
-      return;
-    }
-
-    const payload = buildInsertPayload(account.id, persona.target_role, avatarUrl);
-    const { error: insertError } = await supabase.from('hotlist_ai_roles').insert(payload);
-    if (insertError) throw insertError;
-  }, [account?.id]);
-
   const ensureBenchProfileForWatchedRole = useCallback(async (persona: PulsePersona) => {
     if (!account?.id) return;
 
@@ -1734,8 +1653,12 @@ export default function PulsePage() {
 
     if (roleError) throw roleError;
 
-    const role = (roleRows?.[0] ?? null) as Partial<HotlistRoleRow> | null;
-    const payload = buildWatchlistPayloadFromRole(account.id, role ?? {}, persona, user?.id ?? null);
+    const role = (roleRows?.[0] ?? null) as HotlistRoleRow | null;
+    if (!role) {
+      throw new Error(`No hotlist role found for ${persona.target_role}. Add it in Hotlist AI first.`);
+    }
+
+    const payload = buildWatchlistPayloadFromRole(account.id, role, user?.id ?? null);
     const { error: upsertError } = await supabase
       .from('watchlist_profiles' as never)
       .upsert(payload as never, { onConflict: 'account_id,target_role_key' } as never);
@@ -1746,16 +1669,16 @@ export default function PulsePage() {
   const activatePersona = useCallback(async (persona: PulsePersona) => {
     try {
       setActivatingRole(persona.target_role);
-      await ensureRoleActive(persona);
       try {
         await syncWatchlistProfileFromHotlistRole(persona);
       } catch (watchlistSyncError) {
         showToast(
           watchlistSyncError instanceof Error
-            ? `Watching enabled but watchlist sync failed: ${watchlistSyncError.message}`
-            : 'Watching enabled but watchlist sync failed',
+            ? watchlistSyncError.message
+            : 'Could not create watchlist profile',
           'error',
         );
+        return;
       }
       try {
         await ensureBenchProfileForWatchedRole(persona);
@@ -1777,7 +1700,7 @@ export default function PulsePage() {
     } finally {
       setActivatingRole(null);
     }
-  }, [ensureBenchProfileForWatchedRole, ensureRoleActive, loadFeed, loadLeaderboard, showToast, syncWatchlistProfileFromHotlistRole]);
+  }, [ensureBenchProfileForWatchedRole, loadFeed, loadLeaderboard, showToast, syncWatchlistProfileFromHotlistRole]);
 
   const selectPersona = useCallback(async (persona: PulsePersona) => {
     setActivePersona(persona);

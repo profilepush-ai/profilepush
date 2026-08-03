@@ -15,7 +15,7 @@ import { PlanModal } from '../components/PlanModal';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import { loadRazorpay, TIERS, INR_PER_USD, fmtINR, getBillingErrorMessage } from '../lib/billing-plan';
 import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
-import { triggerProfileEmbedding } from '../lib/embeddings';
+import { triggerProfileEmbedding, triggerRoleEmbedding } from '../lib/embeddings';
 import { normalizeProfileLocationFields, splitPreferredLocations } from '../lib/location-normalization';
 import { getMatchHealthPercent } from '../lib/match-health';
 import { buildDemoRolePayload, getCreatedAtTimestamp, getDemoRoleDisplayMatchCount, getLiveMatchActionLabel, getWatchListDisplayMatchCount } from '../lib/demo-role-utils';
@@ -1163,6 +1163,7 @@ export default function RadarPage() {
       if (error || !data) throw error ?? new Error('Failed to save demo role');
 
       setDemoRoles(prev => prev.map(role => (role.id === roleId ? (data as DemoRoleRow) : role)));
+      void triggerRoleEmbedding(roleId);
       setIsEditingProfile(false);
       showToast('Demo role updated and ready to match', 'success');
     } catch (error) {

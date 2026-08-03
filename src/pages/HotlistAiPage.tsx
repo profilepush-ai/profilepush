@@ -6,6 +6,7 @@ import Toast from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
 import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
 import { HOTLIST_AI_SUGGESTIONS } from '../lib/hotlist-ai-suggestions';
+import { triggerRoleEmbedding } from '../lib/embeddings';
 
 interface HotlistRoleRow {
   id: string;
@@ -178,6 +179,9 @@ export default function HotlistAiPage() {
       };
       const { data, error } = await supabase.from('hotlist_ai_roles').insert(payload).select().single();
       if (error) throw error;
+      if ((data as HotlistRoleRow | null)?.id) {
+        void triggerRoleEmbedding((data as HotlistRoleRow).id);
+      }
       await loadRoles();
       setSelectedRoleId((data as HotlistRoleRow).id);
       showToast(`Added ${suggestion.title} to your bench and Hotlist AI.`, 'success');

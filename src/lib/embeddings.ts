@@ -56,3 +56,20 @@ export async function triggerJobEmbeddingsBatch(
     // Fire-and-forget
   }
 }
+
+export async function triggerRoleEmbedding(roleId: string): Promise<void> {
+  try {
+    const token = (await supabase.auth.getSession()).data.session?.access_token ?? supabaseAnonKey;
+    await fetch(`${supabaseUrl}/functions/v1/generate-embedding`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'Apikey': supabaseAnonKey,
+      },
+      body: JSON.stringify({ type: 'role', id: roleId }),
+    });
+  } catch {
+    // Fire-and-forget
+  }
+}
