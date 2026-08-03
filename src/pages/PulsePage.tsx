@@ -804,8 +804,8 @@ export default function PulsePage() {
     if (selectedProfilesView === 'watching') {
       return orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role)));
     }
-    return orderedJobsRankedLeaderboard;
-  }, [orderedJobsRankedLeaderboard, selectedProfilesView, watchingRoles]);
+    return filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role)));
+  }, [filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, selectedProfilesView, watchingRoles]);
 
   const visibleJobsRankedLeaderboard = useMemo(
     () => {
@@ -828,9 +828,9 @@ export default function PulsePage() {
   }), [breakdownChargedLeadIds, feed, revealedLeadIds]);
 
   const profileViewCounts = useMemo(() => ({
-    all: orderedJobsRankedLeaderboard.length,
+    all: filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).length,
     watching: orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length,
-  }), [orderedJobsRankedLeaderboard, watchingRoles]);
+  }), [filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, watchingRoles]);
 
   const filteredFeed = useMemo(() => {
     if (selectedMatchesTab === 'breakdown') {
