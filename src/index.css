@@ -35,6 +35,30 @@
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  .slim-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .slim-scrollbar::-webkit-scrollbar {
+    width: 1px;
+    height: 1px;
+  }
+
+  .slim-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .slim-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #64748b;
+    border-radius: 9999px;
+  }
+
+  .slim-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8;
+  }
 }
 
 /* Job description HTML renderer */

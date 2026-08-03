@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AtSign,
@@ -212,6 +212,17 @@ const ROLE_SUGGESTION_HINTS: Array<{ test: RegExp; suggestionTitle: string }> = 
 
 function normalize(input: string | null | undefined) {
   return (input ?? '').toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+function formatBreakdownFieldName(key: string) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\bmatch\b/gi, '')
+    .replace(/\bemployment\b/gi, 'Emp')
+    .replace(/\bexperience\b/gi, 'Exp')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function canonicalizeRoleForUniqueness(role: string) {
@@ -661,11 +672,21 @@ export default function PulsePage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
+  const [selectedProfilesView, setSelectedProfilesView] = useState<'all' | 'watching'>('all');
   const [profilePage, setProfilePage] = useState(1);
   const visibleProfilesCount = profilePage * TOP_PROFILES_PAGE_SIZE;
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 639px)').matches;
+  });
+  const profileListScrollRef = useRef<HTMLDivElement | null>(null);
+  const mobileProfilesLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const [profileStatsLoading, setProfileStatsLoading] = useState(false);
   const [profileStatsByRole, setProfileStatsByRole] = useState<Record<string, ProfileStats>>({});
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
+  const [generatedEmailDraft, setGeneratedEmailDraft] = useState('');
+  const [showGeneratedEmailDraft, setShowGeneratedEmailDraft] = useState(false);
+  const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('all');
   const [visibleMatchesCount, setVisibleMatchesCount] = useState(MATCHES_PAGE_SIZE);
   const [revealedLeadIds, setRevealedLeadIds] = useState<Set<string>>(new Set());
@@ -762,12 +783,24 @@ export default function PulsePage() {
     return [...watched, ...unwatched].map((item, idx) => ({ ...item, rank: idx + 1 }));
   }, [filteredJobsRankedLeaderboard, watchingRoles]);
 
+  const profilesForActiveView = useMemo(() => {
+    if (selectedProfilesView === 'watching') {
+      return orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role)));
+    }
+    return orderedJobsRankedLeaderboard;
+  }, [orderedJobsRankedLeaderboard, selectedProfilesView, watchingRoles]);
+
   const visibleJobsRankedLeaderboard = useMemo(
-    () => orderedJobsRankedLeaderboard.slice((profilePage - 1) * TOP_PROFILES_PAGE_SIZE, profilePage * TOP_PROFILES_PAGE_SIZE),
-    [orderedJobsRankedLeaderboard, profilePage],
+    () => {
+      if (isMobileViewport) {
+        return profilesForActiveView.slice(0, visibleProfilesCount);
+      }
+      return profilesForActiveView.slice((profilePage - 1) * TOP_PROFILES_PAGE_SIZE, profilePage * TOP_PROFILES_PAGE_SIZE);
+    },
+    [isMobileViewport, profilePage, profilesForActiveView, visibleProfilesCount],
   );
 
-  const totalProfilePages = Math.max(1, Math.ceil(orderedJobsRankedLeaderboard.length / TOP_PROFILES_PAGE_SIZE));
+  const totalProfilePages = Math.max(1, Math.ceil(profilesForActiveView.length / TOP_PROFILES_PAGE_SIZE));
   const canLoadMoreProfiles = profilePage < totalProfilePages;
 
   const matchesTabCounts = useMemo(() => ({
@@ -795,7 +828,42 @@ export default function PulsePage() {
 
   useEffect(() => {
     setProfilePage(1);
-  }, [profileRangeId, profileSearchQuery, selectedCategoryId]);
+  }, [profileRangeId, profileSearchQuery, selectedCategoryId, selectedProfilesView]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 639px)');
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileViewport || !canLoadMoreProfiles) return;
+    const root = profileListScrollRef.current;
+    const target = mobileProfilesLoadMoreRef.current;
+    if (!root || !target) return;
+
+    let requested = false;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (requested) return;
+        if (entries.some((entry) => entry.isIntersecting)) {
+          requested = true;
+          setProfilePage((prev) => Math.min(totalProfilePages, prev + 1));
+        }
+      },
+      {
+        root,
+        rootMargin: '0px 0px 120px 0px',
+        threshold: 0.1,
+      },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [canLoadMoreProfiles, isMobileViewport, totalProfilePages]);
 
   const loadWatchingRoles = useCallback(async () => {
     if (!account?.id) return;
@@ -1311,6 +1379,47 @@ export default function PulsePage() {
     }
   }, [showToast]);
 
+  const generateEmailDraft = useCallback((lead: SocialLead) => {
+    const activeDetails = activePersona ? getPersonaDetailColumns(activePersona) : null;
+    const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
+      || user?.email?.split('@')[0]
+      || 'Your Name';
+
+    const profileLines = [
+      `- Role: ${activePersona?.target_role || '-'}`,
+      `- Exp: ${activeDetails?.experience || '-'}`,
+      `- Location: ${activeDetails?.location || '-'}`,
+      `- Visa: ${activeDetails?.visaStatus || '-'}`,
+      `- Rate: ${activeDetails?.rateRange || '-'}`,
+      `- Skills: ${activeDetails?.skills || '-'}`,
+    ];
+
+    return [
+      `Hi ${lead.posterName || 'there'},`,
+      '',
+      `Saw your post about the ${lead.title || 'requirement'}${lead.company ? ` at ${lead.company}` : ''}.`,
+      'I have a profile that looks highly relevant to this requirement.',
+      '',
+      'Profile Highlights:',
+      ...profileLines,
+      '',
+      'If this looks relevant, I can share the full profile and coordinate next steps.',
+      '',
+      'Thanks,',
+      signedInUserName,
+    ].join('\n');
+  }, [activePersona, user?.email, user?.user_metadata?.full_name]);
+
+  useEffect(() => {
+    if (!selectedLead) {
+      setGeneratedEmailDraft('');
+      setShowGeneratedEmailDraft(false);
+      return;
+    }
+    setGeneratedEmailDraft('');
+    setShowGeneratedEmailDraft(false);
+  }, [selectedLead?.id]);
+
   const consumeCreditsLegacy = useCallback(async (
     amount: number,
     feature: 'pulse_reveal_contact' | 'pulse_view_breakdown',
@@ -1588,7 +1697,7 @@ export default function PulsePage() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   return (
-    <div className="h-screen overflow-hidden bg-white text-gray-900 flex flex-col pb-14 sm:pb-0">
+    <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       <main className="flex-1 min-h-0 overflow-hidden">
@@ -1753,14 +1862,32 @@ export default function PulsePage() {
                 </div>
               )}
 
-              <div className="grid min-h-0 flex-1 grid-cols-[200px_1fr] sm:grid-cols-[280px_1fr] gap-0 overflow-hidden border border-gray-200 rounded-lg">
-              <section className="flex min-h-0 flex-col overflow-hidden border-r border-gray-200">
-                <div className="shrink-0 h-[36px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
-                  <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
-                  <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{orderedJobsRankedLeaderboard.length}</span>
+              <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,40%)_minmax(0,60%)] sm:grid-cols-[minmax(0,40%)_minmax(0,60%)] gap-0 overflow-hidden border border-gray-200 rounded-lg">
+              <section className="min-w-0 flex min-h-0 flex-col overflow-hidden border-r border-gray-200">
+                <div className="shrink-0 h-[36px] flex items-center justify-between gap-2 px-2 border-b border-gray-200 bg-white">
+                  <div className="inline-flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
+                    <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{profilesForActiveView.length}</span>
+                  </div>
+                </div>
+                <div className="shrink-0 h-[32px] flex items-center gap-1 px-2 border-b border-gray-200 bg-white">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProfilesView('all')}
+                    className={`rounded-full px-2 py-0.5 text-[9px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                  >
+                    All Profiles
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProfilesView('watching')}
+                    className={`rounded-full px-2 py-0.5 text-[9px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                  >
+                    Watching
+                  </button>
                 </div>
                 {/* Profile list */}
-                <div className="min-h-0 flex-1 overflow-y-auto">
+                <div ref={profileListScrollRef} className="min-h-0 flex-1 overflow-y-auto slim-scrollbar">
                   <div className="divide-y divide-gray-100">
                     {visibleJobsRankedLeaderboard.length === 0 && (
                       <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
@@ -1791,12 +1918,15 @@ export default function PulsePage() {
                           {details.visaStatus !== '-' && (
                             <div className="mt-0.5 text-[10px] text-gray-400">{details.visaStatus}</div>
                           )}
-                          <div className="mt-1 flex items-center justify-end gap-1.5">
+                          <div className="mt-1 flex items-center justify-start gap-1.5">
                             <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{stats.uniqueJobs} Jobs</span>
+                            <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{stats.uniqueVendors} Vendors</span>
+                          </div>
+                          <div className="mt-1">
                             <button
                               onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
                               disabled={isActivating}
-                              className={`rounded-full px-2 py-0.5 text-[9px] font-semibold transition ${isWatching ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}
+                              className={`w-full rounded-md border px-2 py-1 text-[10px] font-semibold transition ${isWatching ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                             >
                               {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
                             </button>
@@ -1804,9 +1934,14 @@ export default function PulsePage() {
                         </div>
                       );
                     })}
+                    {isMobileViewport && canLoadMoreProfiles && (
+                      <div ref={mobileProfilesLoadMoreRef} className="px-3 py-2 text-[10px] text-gray-400">
+                        Loading more profiles...
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="shrink-0 flex items-center justify-between gap-2 border-t border-gray-200 bg-white px-2 py-1.5">
+                <div className="hidden sm:flex shrink-0 items-center justify-between gap-2 border-t border-gray-200 bg-white px-2 py-1.5">
                   <p className="text-[10px] text-gray-500">
                     {profilePage}/{totalProfilePages}
                   </p>
@@ -1829,13 +1964,19 @@ export default function PulsePage() {
                 </div>
               </section>
 
-              <section className="flex min-h-0 flex-col overflow-hidden">
-                <div className="shrink-0 h-[36px] flex items-center gap-1.5 px-3 border-b border-gray-200 bg-white overflow-x-auto hide-scrollbar">
+              <section className="min-w-0 flex min-h-0 flex-col overflow-hidden">
+                <div className="shrink-0 h-[36px] flex items-center justify-between gap-2 px-2 border-b border-gray-200 bg-white">
+                  <div className="inline-flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
+                    <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{filteredFeed.length}</span>
+                  </div>
+                </div>
+
+                <div className="shrink-0 h-[32px] flex items-center gap-1 px-2 border-b border-gray-200 bg-white overflow-x-auto hide-scrollbar">
                   {([
-                    { id: 'all', label: 'All' },
-                    { id: 'breakdown', label: 'Breakdown' },
+                    { id: 'queued', label: 'New' },
                     { id: 'revealed', label: 'Revealed' },
-                    { id: 'queued', label: 'Queued' },
+                    { id: 'all', label: 'All' },
                   ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
                     const isSelected = selectedMatchesTab === tab.id;
                     const count = matchesTabCounts[tab.id];
@@ -1844,16 +1985,16 @@ export default function PulsePage() {
                         key={tab.id}
                         type="button"
                         onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                        className={`inline-flex items-center gap-0.5 px-2 py-1 rounded text-[10px] font-medium transition ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
+                        className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-semibold transition ${isSelected ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                       >
                         <span>{tab.label}</span>
-                        <span className={`text-[8px] font-bold ${isSelected ? 'text-blue-600' : 'text-gray-400'}`}>{count}</span>
+                        <span className={`text-[8px] font-bold ${isSelected ? 'text-blue-100' : 'text-gray-500'}`}>{count}</span>
                       </button>
                     );
                   })}
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="min-h-0 flex-1 overflow-y-auto slim-scrollbar">
                   {feedLoading ? (
                     <div className="flex h-full items-center justify-center">
                       <LogoSpinner size={20} />
@@ -1867,7 +2008,16 @@ export default function PulsePage() {
                     </div>
                   ) : (
                     <div className="divide-y divide-gray-100">
-                      {visibleFeed.map((lead) => (
+                      {visibleFeed.map((lead) => {
+                        const inlineBreakdownItems = buildScoreBreakdownDisplayItems(
+                          lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+                        );
+                        const isInlineBreakdownExpanded = expandedInlineBreakdownLeadIds.has(lead.id);
+                        const visibleInlineBreakdownItems = isInlineBreakdownExpanded
+                          ? inlineBreakdownItems
+                          : inlineBreakdownItems.slice(0, 2);
+
+                        return (
                         <div key={lead.id} className="px-3 py-2.5">
                           <div className="flex items-center justify-between gap-1.5">
                             <p className="text-[11px] font-semibold text-gray-900 leading-snug">{lead.title || 'Job Opportunity'}</p>
@@ -1878,19 +2028,65 @@ export default function PulsePage() {
                               <span className="text-[9px] font-bold uppercase text-gray-400">{lead.platform}</span>
                             </div>
                           </div>
-                          {([lead.company, lead.location].filter(Boolean).length > 0) && (
-                            <div className="mt-0.5 text-[10px] text-gray-600">{[lead.company, lead.location].filter(Boolean).join(' • ')}</div>
+                          {lead.company && (
+                            <div className="mt-0.5 text-[10px] text-gray-600">{lead.company}</div>
+                          )}
+                          {lead.location && (
+                            <div className="mt-0.5 text-[10px] text-gray-600">{lead.location}</div>
                           )}
                           <div className="mt-0.5 text-[10px] text-gray-500">
                             <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
                             <span> • </span>
                             <span>{lead.postedAgo}</span>
                           </div>
+                          {inlineBreakdownItems.length > 0 && (
+                            <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200 sm:hidden">
+                              <div>
+                                <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
+                                      <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
+                                      <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {visibleInlineBreakdownItems.map((item) => (
+                                      <tr key={item.key}>
+                                        <td className="border-b border-gray-100 px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
+                                        <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
+                                        <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                              {inlineBreakdownItems.length > 2 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setExpandedInlineBreakdownLeadIds((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(lead.id)) {
+                                        next.delete(lead.id);
+                                      } else {
+                                        next.add(lead.id);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+                                >
+                                  {isInlineBreakdownExpanded ? 'Hide Details' : 'See Details'}
+                                </button>
+                              )}
+                            </div>
+                          )}
                           <div className="mt-1.5 flex items-center gap-1.5">
                             <button
                               onClick={() => void handleOpenBreakdown(lead)}
                               disabled={processingBreakdownLeadId === lead.id}
-                              className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'border-gray-200 text-gray-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                              className={`hidden sm:inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'border-gray-200 text-gray-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
                             >
                               {breakdownChargedLeadIds.has(lead.id) && <Check size={9} className="text-emerald-600" />}
                               {processingBreakdownLeadId === lead.id ? '...' : 'Breakdown'}
@@ -1898,7 +2094,7 @@ export default function PulsePage() {
                             {revealedLeadIds.has(lead.id) ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
-                                className="inline-flex items-center gap-1 rounded border border-gray-200 bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500"
+                                className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200 sm:w-auto"
                               >
                                 <Copy size={9} /> Email <AtSign size={9} />
                               </button>
@@ -1906,7 +2102,7 @@ export default function PulsePage() {
                               <button
                                 onClick={() => void handleRevealContact(lead)}
                                 disabled={processingLeadId === lead.id}
-                                className="inline-flex items-center gap-1 rounded border border-blue-600 bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                                className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
                               >
                                 <AtSign size={9} />
                                 {processingLeadId === lead.id ? '...' : 'Reveal'}
@@ -1914,7 +2110,8 @@ export default function PulsePage() {
                             )}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                       {canLoadMoreMatches && (
                         <div className="px-3 py-2">
                           <button
@@ -1936,14 +2133,11 @@ export default function PulsePage() {
       </main>
 
       {selectedLead && (
-        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/25 sm:p-3" onClick={() => setSelectedLead(null)}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-3" onClick={() => setSelectedLead(null)}>
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-lg rounded-t-2xl sm:rounded-xl border border-gray-200 bg-white p-4 sm:p-3 shadow-xl animate-[slideUp_0.2s_ease-out] sm:animate-none max-h-[80vh] overflow-y-auto"
+            className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-4 sm:p-3 shadow-xl max-h-[85vh] overflow-y-auto"
           >
-            {/* Drag handle (mobile) */}
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-300 sm:hidden" />
-
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-gray-900">{selectedLead.title}</p>
@@ -1979,15 +2173,15 @@ export default function PulsePage() {
                       <table className="min-w-full border-collapse text-left text-[11px]">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Score</th>
-                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Candidate</th>
+                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
+                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
                             <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Job</th>
                           </tr>
                         </thead>
                         <tbody>
                           {breakdownItems.map((item) => (
                             <tr key={item.key}>
-                              <td className="border-b border-gray-100 px-2 py-1.5 font-semibold text-gray-900">{Math.round(item.score)}%</td>
+                              <td className="border-b border-gray-100 px-2 py-1.5 font-semibold text-gray-900">{formatBreakdownFieldName(item.key)}</td>
                               <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{item.detail?.candidate_value || '-'}</td>
                               <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{item.detail?.job_value || '-'}</td>
                             </tr>
@@ -2002,15 +2196,17 @@ export default function PulsePage() {
 
             {/* Action buttons — thumb-zone friendly on mobile */}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+
               <button
                 onClick={() => {
-                  if (!selectedLead.profileId) return;
-                  navigate(`/profile-details/${selectedLead.profileId}`);
+                  const draft = generateEmailDraft(selectedLead);
+                  setGeneratedEmailDraft(draft);
+                  setShowGeneratedEmailDraft(true);
                 }}
-                disabled={!selectedLead.profileId}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-3 sm:py-2.5 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-3 sm:py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
               >
-                Visit Profile
+                <Sparkles size={14} />
+                Generate Email
               </button>
 
               <button
@@ -2019,19 +2215,8 @@ export default function PulsePage() {
                 className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-300 bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
               >
                 <Mail size={14} />
-                Copy Email
+                Copy Email ID
               </button>
-
-              {/* Mobile: mailto launcher */}
-              {revealedLeadIds.has(selectedLead.id) && selectedLead.posterEmail && (
-                <a
-                  href={`mailto:${selectedLead.posterEmail}?subject=${encodeURIComponent(selectedLead.title + ' - ProfilePush')}&body=${encodeURIComponent(`Hi ${selectedLead.posterName},\n\nI saw your posting for "${selectedLead.title}" and would like to discuss a potential candidate match.\n\nBest regards`)}`}
-                  className="inline-flex sm:hidden items-center justify-center gap-2 rounded-md border border-indigo-300 bg-indigo-600 px-3 py-3 text-xs font-semibold text-white"
-                >
-                  <Sparkles size={14} />
-                  Launch Mail App
-                </a>
-              )}
 
               {selectedLead.posterPhone && (
                 <button
@@ -2044,6 +2229,26 @@ export default function PulsePage() {
                 </button>
               )}
             </div>
+
+            {showGeneratedEmailDraft && (
+              <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold text-gray-700">Generated Email Draft</p>
+                  <button
+                    type="button"
+                    onClick={() => void copyText(generatedEmailDraft, 'Email draft')}
+                    className="rounded border border-gray-300 bg-white px-2 py-1 text-[10px] font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Copy Draft
+                  </button>
+                </div>
+                <textarea
+                  value={generatedEmailDraft}
+                  onChange={(e) => setGeneratedEmailDraft(e.target.value)}
+                  className="h-48 w-full resize-y rounded-md border border-gray-300 bg-white p-2 text-[11px] leading-relaxed text-gray-700 outline-none focus:border-blue-500"
+                />
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -60,6 +60,11 @@ function scoreDisplayWorkTypeMatch(candidateWorkType?: string | null, jobWorkTyp
   return 50;
 }
 
+function isSkillsBreakdownKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  return normalized.includes('skill');
+}
+
 export function buildScoreBreakdownDisplayItems(
   breakdown: Record<string, RadarScoreBreakdownEntry | number> | undefined,
   profile?: { work_authorization?: string | null; work_type?: string | null },
@@ -113,7 +118,16 @@ export function buildScoreBreakdownDisplayItems(
     }
   }
 
-  return displayItems.sort((a, b) => b.score - a.score);
+  return displayItems.sort((a, b) => {
+    const aIsSkills = isSkillsBreakdownKey(a.key);
+    const bIsSkills = isSkillsBreakdownKey(b.key);
+
+    if (aIsSkills !== bIsSkills) {
+      return aIsSkills ? 1 : -1;
+    }
+
+    return b.score - a.score;
+  });
 }
 
 export function getDisplayJobTitle(job?: { job_title?: string | null; company_name?: string | null; job_description?: string | null; post_content?: string | null }) {

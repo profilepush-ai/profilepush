@@ -11,6 +11,7 @@ import LogoSpinner from '../components/LogoSpinner';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile } from '../types/database';
+import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,9 +23,12 @@ interface VendorHistoryJob {
   company_name: string;
   location: string;
   posted_by_name: string;
+  poster_email: string;
   platform: string;
   created_at: string;
   extracted_role_normalized: string | null;
+  match_score: number | null;
+  score_breakdown: Record<string, unknown> | null;
 }
 interface Submission {
   id: string; candidate_name: string; skill_set: string; vendor_name: string;
@@ -166,6 +170,17 @@ function fmtIso(iso: string) {
   return iso.slice(0, 10).split('-').map((p, i) => i === 0 ? p : p).join('-').replace(/(\d{4})-(\d{2})-(\d{2})/, '$2/$3/$1');
 }
 
+function formatBreakdownFieldName(key: string) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\bmatch\b/gi, '')
+    .replace(/\bemployment\b/gi, 'Emp')
+    .replace(/\bexperience\b/gi, 'Exp')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   const escape = (v: string) => `"${(v ?? '').replace(/"/g, '""')}"`;
   const csv = [headers.map(escape), ...rows.map(r => r.map(escape))].map(r => r.join(',')).join('\n');
@@ -242,6 +257,7 @@ export default function TrackerPage() {
   // Vendor history
   const [activeVendorId, setActiveVendorId] = useState<string | null>(null);
   const [vendorHistory, setVendorHistory] = useState<VendorHistoryJob[]>([]);
+  const [expandedHistoryBreakdownIds, setExpandedHistoryBreakdownIds] = useState<Set<string>>(new Set());
   const [historyLoading, setHistoryLoading] = useState(false);
   const [revealedFields, setRevealedFields] = useState<Set<string>>(new Set());
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -503,7 +519,7 @@ export default function TrackerPage() {
     // Query social_jobs matching this vendor by name or email, filtered to revealed IDs
     let query = supabase
       .from('social_jobs')
-      .select('id, job_title, company_name, location, posted_by_name, platform, created_at, extracted_role_normalized')
+      .select('id, job_title, company_name, location, posted_by_name, poster_email, platform, created_at, extracted_role_normalized')
       .in('id', revealedIds)
       .order('created_at', { ascending: false })
       .limit(100);
@@ -522,10 +538,60 @@ export default function TrackerPage() {
     const { data: jobs, error: jobsErr } = await query;
 
     if (!jobsErr && jobs) {
-      setVendorHistory(jobs as VendorHistoryJob[]);
+      const jobIds = (jobs as Array<{ id: string }>).map((job) => job.id);
+      let matchByJobId = new Map<string, { final_average_score: number | null; score_breakdown: Record<string, unknown> | null }>();
+
+      if (jobIds.length > 0) {
+        const { data: matches } = await supabase
+          .from('radar_match_results')
+          .select('job_id, final_average_score, score_breakdown, created_at')
+          .in('job_id', jobIds)
+          .order('created_at', { ascending: false });
+
+        for (const row of (matches ?? []) as Array<{ job_id: string; final_average_score: number | null; score_breakdown: Record<string, unknown> | null }>) {
+          if (!matchByJobId.has(row.job_id)) {
+            matchByJobId.set(row.job_id, {
+              final_average_score: row.final_average_score,
+              score_breakdown: row.score_breakdown,
+            });
+          }
+        }
+      }
+
+      const hydratedJobs = (jobs as Array<Omit<VendorHistoryJob, 'match_score' | 'score_breakdown'>>).map((job) => {
+        const match = matchByJobId.get(job.id);
+        return {
+          ...job,
+          match_score: match?.final_average_score ?? null,
+          score_breakdown: match?.score_breakdown ?? null,
+        };
+      });
+
+      setVendorHistory(hydratedJobs);
     }
     setHistoryLoading(false);
   }, []);
+
+  const generateTrackerEmailDraft = useCallback(async (job: VendorHistoryJob) => {
+    const draft = [
+      `Hi ${job.posted_by_name || 'there'},`,
+      '',
+      `Saw your post about the ${job.job_title || job.extracted_role_normalized || 'requirement'}${job.company_name ? ` at ${job.company_name}` : ''}.`,
+      'I have a profile that looks highly relevant to this requirement and can share details right away.',
+      '',
+      'Please let me know if you want me to send the profile and availability.',
+      '',
+      'Thanks,',
+      defaultSubmittedBy || (user?.email?.split('@')[0] ?? 'ProfilePush User'),
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(draft);
+      setToast({ message: 'Email draft copied.', type: 'success' });
+    } catch {
+      setToast({ message: 'Could not copy email draft.', type: 'error' });
+    }
+  }, [defaultSubmittedBy, user?.email]);
 
   function handleVendorRowClick(vendor: Vendor) {
     if (activeVendorId === vendor.id) {
@@ -575,7 +641,7 @@ export default function TrackerPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden pb-14 sm:pb-0">
+    <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden overscroll-none pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       {/* ── Global toolbar ── */}
@@ -655,10 +721,10 @@ export default function TrackerPage() {
       </div>
 
       {/* ── Page content: 2 columns – Contacts (narrow) + Jobs History (wide) ── */}
-      <div className="flex-1 grid grid-cols-[200px_1fr] sm:grid-cols-[280px_1fr] gap-0 overflow-hidden">
+      <div className="flex-1 grid grid-cols-[minmax(0,40%)_minmax(0,60%)] sm:grid-cols-[minmax(0,40%)_minmax(0,60%)] gap-0 overflow-hidden">
 
         {/* ════════════════ CONTACTS LIST (narrow) ════════════════ */}
-        <div className="border-r border-gray-200 bg-white flex flex-col overflow-hidden">
+        <div className="min-w-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
           <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
             <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Contacts</span>
             <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded ring-1 ring-amber-200">{filteredVendors.length}</span>
@@ -685,7 +751,7 @@ export default function TrackerPage() {
                       className={`px-3 py-2.5 cursor-pointer transition-colors ${isActive ? 'bg-amber-100/60' : 'hover:bg-amber-50/30'}`}
                     >
                       <div className="flex items-center justify-between gap-1.5">
-                        <p className="text-xs font-semibold text-gray-900 truncate">{v.name}</p>
+                        <p className="text-xs font-semibold text-gray-900 break-words whitespace-normal leading-snug">{v.name}</p>
                         <div className="flex items-center gap-1 shrink-0">
                           {subCount > 0 && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{subCount}</span>}
                           <button onClick={(e) => { e.stopPropagation(); openEditVendor(v); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors" title="Edit"><Pencil size={10} /></button>
@@ -716,22 +782,6 @@ export default function TrackerPage() {
                           <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `email-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0">
                             {revealedFields.has(`email-${v.id}`) ? <EyeOff size={9} /> : <Eye size={9} />}
                           </button>
-                          <button onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(v.email); setCopiedField(`email-${v.id}`); setTimeout(() => setCopiedField(null), 1500); }} className="p-0.5 rounded text-gray-400 hover:text-green-600 transition-colors shrink-0">
-                            {copiedField === `email-${v.id}` ? <Check size={9} className="text-green-500" /> : <Copy size={9} />}
-                          </button>
-                        </div>
-                      )}
-                      {v.contact && (
-                        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-600">
-                          <Phone size={10} className="text-gray-400 shrink-0" />
-                          {revealedFields.has(`phone-${v.id}`) ? (
-                            <span className="truncate">{v.contact}</span>
-                          ) : (
-                            <span className="text-gray-400 truncate">{v.contact.slice(0, 3)}•••</span>
-                          )}
-                          <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `phone-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0">
-                            {revealedFields.has(`phone-${v.id}`) ? <EyeOff size={9} /> : <Eye size={9} />}
-                          </button>
                         </div>
                       )}
                       {v.location && (
@@ -741,6 +791,22 @@ export default function TrackerPage() {
                         </div>
                       )}
                       <div className="mt-1 text-[10px] text-gray-400">{fmtIso(v.created_at)}</div>
+                      {v.email && (
+                        <div className="mt-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(v.email);
+                              setCopiedField(`email-${v.id}`);
+                              setTimeout(() => setCopiedField(null), 1500);
+                            }}
+                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+                          >
+                            {copiedField === `email-${v.id}` ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
+                            {copiedField === `email-${v.id}` ? 'Copied' : 'Copy Email ID'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -750,7 +816,7 @@ export default function TrackerPage() {
         </div>
 
         {/* ════════════════ VENDOR HISTORY COLUMN ════════════════ */}
-        <div className="bg-white flex flex-col overflow-hidden">
+        <div className="min-w-0 bg-white flex flex-col overflow-hidden">
           <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
             <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
             {activeVendorId && (
@@ -781,29 +847,90 @@ export default function TrackerPage() {
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
-                {vendorHistory.map(job => (
-                  <div key={job.id} className="px-3 py-2.5">
-                    <div className="flex items-center justify-between gap-1.5">
-                      <p className="text-[11px] font-semibold text-gray-900 leading-snug">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
-                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600 shrink-0">{job.platform}</span>
-                    </div>
-                    <div className="flex items-center gap-1 mt-1 text-[11px] text-gray-600">
-                      <Building2 size={10} className="text-gray-400 shrink-0" />
-                      <span className="truncate">{job.company_name || '—'}</span>
-                    </div>
-                    {job.location && (
-                      <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-500">
-                        <MapPin size={10} className="text-gray-400 shrink-0" />
-                        <span className="truncate">{job.location}</span>
+                {vendorHistory.map(job => {
+                  const breakdownItems = buildScoreBreakdownDisplayItems(
+                    job.score_breakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+                  );
+                  const isExpanded = expandedHistoryBreakdownIds.has(job.id);
+                  const visibleBreakdownItems = isExpanded ? breakdownItems : breakdownItems.slice(0, 2);
+
+                  return (
+                    <div key={job.id} className="px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <p className="text-[11px] font-semibold text-gray-900 leading-snug">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {(job.match_score !== null && Number.isFinite(job.match_score) && job.match_score > 0) && (
+                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{Math.round(job.match_score)}%</span>
+                          )}
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600">{job.platform}</span>
+                        </div>
                       </div>
-                    )}
-                    <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-500">
-                      <User size={10} className="text-gray-400 shrink-0" />
-                      <span className="truncate">{job.posted_by_name || '—'}</span>
+                      {job.company_name && (
+                        <div className="mt-0.5 text-[10px] text-gray-600">{job.company_name}</div>
+                      )}
+                      {job.location && (
+                        <div className="mt-0.5 text-[10px] text-gray-600">{job.location}</div>
+                      )}
+                      <div className="mt-0.5 text-[10px] text-gray-500">
+                        <span>{job.posted_by_name || '—'}</span>
+                        <span> • </span>
+                        <span>{formatAgo(job.created_at)}</span>
+                      </div>
+
+                      {breakdownItems.length > 0 && (
+                        <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200">
+                          <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
+                                <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
+                                <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {visibleBreakdownItems.map((item) => (
+                                <tr key={item.key}>
+                                  <td className="border-b border-gray-100 px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
+                                  <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
+                                  <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {breakdownItems.length > 2 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpandedHistoryBreakdownIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(job.id)) {
+                                    next.delete(job.id);
+                                  } else {
+                                    next.add(job.id);
+                                  }
+                                  return next;
+                                });
+                              }}
+                              className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+                            >
+                              {isExpanded ? 'Hide Details' : 'See Details'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mt-1.5">
+                        <button
+                          onClick={() => void generateTrackerEmailDraft(job)}
+                          className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                        >
+                          <Mail size={10} />
+                          Generate Email
+                        </button>
+                      </div>
                     </div>
-                    <div className="mt-1 text-[10px] text-gray-400">{formatAgo(job.created_at)}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

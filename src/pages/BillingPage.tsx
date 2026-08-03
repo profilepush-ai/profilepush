@@ -529,7 +529,7 @@ export default function BillingPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 pb-14 sm:pb-0">
+    <div className="h-[100dvh] flex flex-col bg-gray-50 overscroll-none pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
