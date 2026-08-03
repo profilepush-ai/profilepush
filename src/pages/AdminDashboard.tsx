@@ -28,7 +28,6 @@ interface HotlistRoleRow {
   account_id: string;
   target_role: string;
   category: string | null;
-  years_exp: number | null;
   min_years_exp: number | null;
   max_years_exp: number | null;
   visa_status: string | null;
@@ -46,7 +45,23 @@ interface HotlistRoleRow {
   updated_at: string;
 }
 
-type AdminView = 'stats' | 'hotlist';
+interface HotlistMatchRunRow {
+  id: string;
+  trigger_source: string;
+  account_id: string | null;
+  role_id: string | null;
+  roles_found: number;
+  profiles_processed: number;
+  total_matched: number;
+  status: 'running' | 'success' | 'error';
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+type AdminView = 'stats' | 'hotlist' | 'history';
 
 type DatePreset = '7d' | '30d' | '90d' | 'all' | 'custom';
 
@@ -60,6 +75,14 @@ const DATE_PRESETS: { key: DatePreset; label: string }[] = [
 
 const ROLE_CATEGORY_OPTIONS = ['all', 'front-end', 'backend', 'data', 'security', 'crm', 'qa', 'biz-dev', 'ai', 'ml', 'devops'];
 const ROLE_SCHEDULE_OPTIONS: Array<HotlistRoleRow['schedule_frequency']> = ['disabled', 'hourly', 'daily', 'twice_daily', 'weekly'];
+
+function formatTriggerSource(triggerSource: string | null | undefined) {
+  if (!triggerSource) return '-';
+  if (triggerSource === 'manual_all') return 'manual_all (all roles)';
+  if (triggerSource === 'manual_scoped') return 'manual_scoped (single role)';
+  if (triggerSource === 'scheduled_cron') return 'scheduled_cron (cron)';
+  return triggerSource;
+}
 
 function getDateRange(preset: DatePreset, customStart: string, customEnd: string): { start_date: string | null; end_date: string | null } {
   if (preset === 'all') return { start_date: null, end_date: null };
@@ -99,6 +122,10 @@ export default function AdminDashboard() {
   const [rolesLoading, setRolesLoading] = useState(false);
   const [roles, setRoles] = useState<HotlistRoleRow[]>([]);
   const [rolesError, setRolesError] = useState('');
+  const [rolesNotice, setRolesNotice] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRows, setHistoryRows] = useState<HotlistMatchRunRow[]>([]);
+  const [historyError, setHistoryError] = useState('');
   const [rolesSearchQuery, setRolesSearchQuery] = useState('');
   const [rolesCategoryFilter, setRolesCategoryFilter] = useState('all');
   const [adminView, setAdminView] = useState<AdminView>('stats');
@@ -123,6 +150,7 @@ export default function AdminDashboard() {
   const [showAddRoleModal, setShowAddRoleModal] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
+  const [runningRoleMatchId, setRunningRoleMatchId] = useState<string | null>(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -183,7 +211,7 @@ export default function AdminDashboard() {
   }
 
   async function refresh() {
-    await Promise.all([fetchStats(), fetchHotlistRoles()]);
+    await Promise.all([fetchStats(), fetchHotlistRoles(), fetchMatchRunHistory()]);
   }
 
   async function fetchHotlistRoles() {
@@ -203,6 +231,26 @@ export default function AdminDashboard() {
 
     setRoles((data ?? []) as HotlistRoleRow[]);
     setRolesLoading(false);
+  }
+
+  async function fetchMatchRunHistory() {
+    setHistoryLoading(true);
+    setHistoryError('');
+
+    const { data, error } = await supabase
+      .from('hotlist_match_runs')
+      .select('id, trigger_source, account_id, role_id, roles_found, profiles_processed, total_matched, status, error_message, started_at, completed_at, duration_ms, created_at')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (error) {
+      setHistoryError(error.message);
+      setHistoryLoading(false);
+      return;
+    }
+
+    setHistoryRows((data ?? []) as HotlistMatchRunRow[]);
+    setHistoryLoading(false);
   }
 
   function resetNewRoleForm() {
@@ -236,7 +284,7 @@ export default function AdminDashboard() {
     setNewRoleAccountId(role.account_id);
     setNewRoleTargetRole(role.target_role || '');
     setNewRoleCategory(role.category || 'all');
-    setNewRoleMinYearsExp(role.min_years_exp != null ? String(role.min_years_exp) : (role.years_exp != null ? String(role.years_exp) : ''));
+    setNewRoleMinYearsExp(role.min_years_exp != null ? String(role.min_years_exp) : '');
     setNewRoleMaxYearsExp(role.max_years_exp != null ? String(role.max_years_exp) : '');
     setNewRoleVisaStatus(role.visa_status || '');
     setNewRoleEmploymentType(role.employment_type || '');
@@ -284,7 +332,6 @@ export default function AdminDashboard() {
       account_id: accountId,
       target_role: newRoleTargetRole.trim(),
       category: newRoleCategory,
-      years_exp: toNumberOrNull(newRoleMinYearsExp),
       min_years_exp: toNumberOrNull(newRoleMinYearsExp),
       max_years_exp: toNumberOrNull(newRoleMaxYearsExp),
       visa_status: newRoleVisaStatus.trim() || null,
@@ -337,7 +384,6 @@ export default function AdminDashboard() {
       account_id: newRoleAccountId,
       target_role: newRoleTargetRole.trim(),
       category: newRoleCategory,
-      years_exp: toNumberOrNull(newRoleMinYearsExp),
       min_years_exp: toNumberOrNull(newRoleMinYearsExp),
       max_years_exp: toNumberOrNull(newRoleMaxYearsExp),
       visa_status: newRoleVisaStatus.trim() || null,
@@ -392,6 +438,36 @@ export default function AdminDashboard() {
     setDeletingRoleId(null);
   }
 
+  async function runMatchesForRole(role: HotlistRoleRow) {
+    if (runningRoleMatchId) return;
+
+    setRunningRoleMatchId(role.id);
+    setRolesError('');
+    setRolesNotice('');
+
+    const { data, error } = await supabase.functions.invoke('job-watch-trigger', {
+      body: {
+        trigger_source: 'manual_scoped',
+        role_id: role.id,
+      },
+    });
+
+    if (error) {
+      setRolesError(error.message || `Failed to run matches for ${role.target_role}.`);
+      setRunningRoleMatchId(null);
+      return;
+    }
+
+    const summary = typeof data?.message === 'string'
+      ? data.message
+      : `Match run completed for ${role.target_role}.`;
+    const profilesProcessed = typeof data?.profiles_processed === 'number' ? data.profiles_processed : 0;
+    const totalMatched = typeof data?.total_matched === 'number' ? data.total_matched : 0;
+    setRolesNotice(`${summary} Roles processed: ${profilesProcessed}. Matches added: ${totalMatched}.`);
+    await fetchHotlistRoles();
+    setRunningRoleMatchId(null);
+  }
+
   // Re-fetch when date range changes (if already authed)
   useEffect(() => {
     if (authed && datePreset !== 'custom') {
@@ -402,6 +478,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (authed) {
       void fetchHotlistRoles();
+      void fetchMatchRunHistory();
     }
   }, [authed]);
 
@@ -514,7 +591,9 @@ export default function AdminDashboard() {
               <p className="text-[11px] text-gray-500">
                 {adminView === 'stats'
                   ? `${filteredStats.length} of ${stats.length} accounts`
-                  : `${roles.length} hotlist roles`}
+                  : adminView === 'hotlist'
+                    ? `${roles.length} hotlist roles`
+                    : `${historyRows.length} match runs`}
               </p>
             </div>
           </div>
@@ -531,6 +610,12 @@ export default function AdminDashboard() {
                 className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'hotlist' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 Hotlist AI Roles
+              </button>
+              <button
+                onClick={() => setAdminView('history')}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                Match History
               </button>
             </div>
             <button
@@ -794,6 +879,12 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {rolesNotice && (
+            <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">
+              {rolesNotice}
+            </div>
+          )}
+
           {rolesLoading && roles.length === 0 ? (
             <div className="flex flex-1 items-center justify-center py-8">
               <LogoSpinner size={18} />
@@ -830,7 +921,7 @@ export default function AdminDashboard() {
                         <span className="rounded bg-gray-100 px-2 py-1 text-[11px] text-gray-700">{role.category || 'all'}</span>
                       </td>
                       <td className="px-3 py-2 break-normal whitespace-normal">
-                        <span>{(role.min_years_exp != null && role.max_years_exp != null) ? `${role.min_years_exp}-${role.max_years_exp}` : role.years_exp ?? '-'}</span>
+                        <span>{(role.min_years_exp != null && role.max_years_exp != null) ? `${role.min_years_exp}-${role.max_years_exp}` : (role.min_years_exp ?? '-')}</span>
                       </td>
                       <td className="px-3 py-2 break-normal whitespace-normal">
                         <span>{role.visa_status || '-'}</span>
@@ -870,15 +961,22 @@ export default function AdminDashboard() {
                       <td className="sticky right-0 border-l border-gray-200 bg-white px-3 py-2 break-normal whitespace-normal">
                         <div className="flex items-center gap-1.5">
                           <button
+                            onClick={() => void runMatchesForRole(role)}
+                            disabled={!!runningRoleMatchId || deletingRoleId === role.id}
+                            className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                          >
+                            {runningRoleMatchId === role.id ? 'Running...' : 'Run Match'}
+                          </button>
+                          <button
                             onClick={() => openEditRoleModal(role)}
-                            disabled={deletingRoleId === role.id}
+                            disabled={deletingRoleId === role.id || !!runningRoleMatchId}
                             className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                           >
                             Edit
                           </button>
                           <button
                             onClick={() => void deleteRole(role)}
-                            disabled={deletingRoleId === role.id}
+                            disabled={deletingRoleId === role.id || !!runningRoleMatchId}
                             className="rounded-md border border-red-300 bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
                           >
                             {deletingRoleId === role.id ? 'Deleting...' : 'Delete'}
@@ -891,6 +989,88 @@ export default function AdminDashboard() {
                   {filteredRoles.length === 0 && !rolesLoading && (
                     <tr>
                       <td colSpan={15} className="px-4 py-8 text-center text-xs text-gray-500">No hotlist roles found.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        )}
+
+        {adminView === 'history' && (
+        <div className="mt-4 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+            <p className="text-sm font-semibold text-gray-900">Match Run History</p>
+            <button
+              onClick={() => void fetchMatchRunHistory()}
+              disabled={historyLoading}
+              className="flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <RefreshCcw size={11} className={historyLoading ? 'animate-spin' : ''} /> Reload History
+            </button>
+          </div>
+
+          {historyError && (
+            <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+              {historyError}
+            </div>
+          )}
+
+          {historyLoading && historyRows.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center py-8">
+              <LogoSpinner size={18} />
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <table className="min-w-[1100px] w-full table-auto text-left">
+                <thead className="sticky top-0 z-[1]">
+                  <tr className="border-b border-gray-200 bg-gray-50 text-[11px] uppercase tracking-wide text-gray-600">
+                    <th className="px-3 py-2">Started</th>
+                    <th className="px-3 py-2">Completed</th>
+                    <th className="px-3 py-2">Source</th>
+                    <th className="px-3 py-2">Account</th>
+                    <th className="px-3 py-2">Role</th>
+                    <th className="px-3 py-2">Roles Found</th>
+                    <th className="px-3 py-2">Processed</th>
+                    <th className="px-3 py-2">Matches</th>
+                    <th className="px-3 py-2">Duration</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyRows.map((row) => (
+                    <tr key={row.id} className="border-b border-gray-200 align-top text-xs text-gray-800 hover:bg-gray-50">
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">
+                        {new Date(row.started_at).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">
+                        {row.completed_at ? new Date(row.completed_at).toLocaleString() : '-'}
+                      </td>
+                      <td className="px-3 py-2 break-normal whitespace-normal">
+                        <span className="rounded bg-gray-100 px-2 py-1 text-[11px] text-gray-700">{formatTriggerSource(row.trigger_source)}</span>
+                      </td>
+                      <td className="px-3 py-2 break-normal whitespace-normal text-gray-600">{row.account_id || '-'}</td>
+                      <td className="px-3 py-2 break-normal whitespace-normal text-gray-600">{row.role_id || '-'}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{row.roles_found ?? 0}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{row.profiles_processed ?? 0}</td>
+                      <td className="px-3 py-2 whitespace-nowrap font-semibold text-gray-900">{row.total_matched ?? 0}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">
+                        {row.duration_ms != null ? `${Math.round(row.duration_ms / 1000)}s` : '-'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className={`rounded px-2 py-1 text-[11px] ${row.status === 'success' ? 'bg-green-100 text-green-700' : row.status === 'error' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 break-normal whitespace-normal text-red-700">{row.error_message || '-'}</td>
+                    </tr>
+                  ))}
+
+                  {historyRows.length === 0 && !historyLoading && (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-8 text-center text-xs text-gray-500">No match runs found.</td>
                     </tr>
                   )}
                 </tbody>

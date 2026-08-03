@@ -117,27 +117,32 @@ Deno.serve(async (req: Request) => {
       return respond({ error: error.message }, 500);
     }
 
-    // Generate embeddings for newly upserted social jobs (fire-and-forget)
+    let embeddingTriggered = false;
+    let embeddingCompleted = false;
+
     if (data && data.length > 0) {
       const embeddingPayload = data.map((r: { id: string }) => ({ type: "job", id: r.id, table: "social_jobs" }));
-      const EMB_BATCH = 20;
-      for (let i = 0; i < embeddingPayload.length; i += EMB_BATCH) {
-        const batch = embeddingPayload.slice(i, i + EMB_BATCH);
-        fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-embedding`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-            "Apikey": Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-          },
-          body: JSON.stringify(batch),
-        }).catch(() => {});
+      const embeddingResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-embedding`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "Apikey": Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        },
+        body: JSON.stringify(embeddingPayload),
+      });
+
+      embeddingTriggered = true;
+      embeddingCompleted = embeddingResponse.ok;
+
+      if (!embeddingResponse.ok) {
+        const errorText = await embeddingResponse.text();
+        return respond({ error: `Embedding generation failed: ${errorText || embeddingResponse.statusText}` }, 500);
       }
     }
 
-    // Trigger immediate social matching (global hourly social schedules).
     if (data && data.length > 0) {
-      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/job-watch-trigger`, {
+      const jobWatchResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/job-watch-trigger`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -145,24 +150,16 @@ Deno.serve(async (req: Request) => {
           "Apikey": Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
         },
         body: JSON.stringify({
+          trigger_source: "ingestion_social",
           board_filter: "social",
-          frequency_filter: "hourly",
-          force_run: true,
+          social_job_ids: data.map((r: { id: string }) => r.id),
         }),
-      }).catch(() => {});
+      });
 
-      // Trigger immediate hotlist role matching without waiting for schedules.
-      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/hotlist-ai-match`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          "Apikey": Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-        },
-        body: JSON.stringify({
-          run_all_active: true,
-        }),
-      }).catch(() => {});
+      if (!jobWatchResponse.ok) {
+        const errorText = await jobWatchResponse.text();
+        return respond({ error: `Role matching trigger failed: ${errorText || jobWatchResponse.statusText}` }, 500);
+      }
     }
 
     return respond({
@@ -171,6 +168,8 @@ Deno.serve(async (req: Request) => {
       ids: data?.map((r: { id: string }) => r.id) ?? [],
       immediate_match_triggered: (data?.length ?? 0) > 0,
       immediate_hotlist_roles_triggered: (data?.length ?? 0) > 0,
+      embeddings_triggered: embeddingTriggered,
+      embeddings_completed: embeddingCompleted,
     });
   } catch (err) {
     return respond({ error: (err as Error).message }, 500);

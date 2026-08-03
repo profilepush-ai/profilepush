@@ -18,7 +18,11 @@ const PAID_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS = 60 * 60 * 1000;
 const LIVE_MATCH_USAGE_SOURCE = "job-watch-ai";
 const LIVE_MATCH_ATTEMPT_FLAG = true;
 const FREE_PLAN_MATCH_UNLOCK_LIMIT = 5;
-const ENABLE_LIVE_VECTOR_SEARCH = false;
+const ENABLE_LIVE_VECTOR_SEARCH = true;
+const DEFAULT_VECTOR_SIMILARITY_THRESHOLD = Number(Deno.env.get("RADAR_VECTOR_SIMILARITY_THRESHOLD") ?? "0.72");
+const DEFAULT_VECTOR_MAX_RESULTS = Number(Deno.env.get("RADAR_VECTOR_MAX_RESULTS") ?? "120");
+const DEFAULT_ROLE_MODE_MIN_SCORE = Number(Deno.env.get("RADAR_ROLE_MODE_MIN_SCORE") ?? "0");
+const ROLE_MODE_FALLBACK_JOB_LIMIT = Number(Deno.env.get("RADAR_ROLE_MODE_FALLBACK_JOB_LIMIT") ?? "250");
 
 async function chargeMatchCredits(
   supabase: ReturnType<typeof createClient>,
@@ -243,6 +247,34 @@ async function ensureProfileEmbedding(
   return null;
 }
 
+function parseEmbeddingValue(value: unknown): unknown | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+function buildScoringProfileFromRole(role: Record<string, unknown>): Record<string, unknown> {
+  const fallbackYears = Number(role.max_years_exp ?? role.min_years_exp ?? role.years_exp ?? 0);
+  return {
+    target_role: (role.target_role as string | null) ?? "",
+    core_skills: (role.priority_skills as string | null) ?? "",
+    years_experience: Number.isFinite(fallbackYears) ? fallbackYears : 0,
+    visa_status: (role.visa_status as string | null) ?? "",
+    work_authorization: (role.employment_type as string | null) ?? "",
+    work_type: (role.work_type as string | null) ?? "",
+    preferred_locations: (role.preferred_locations as string | null) ?? "",
+    desired_salary_min: role.min_rate_usd_per_hr ?? null,
+    desired_salary_max: role.max_rate_usd_per_hr ?? null,
+    relocation_open: role.relocation_open === true,
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -255,51 +287,104 @@ Deno.serve(async (req: Request) => {
   );
 
   try {
-    const { profile_id, account_id } = await req.json();
-    if (!profile_id) throw new Error("profile_id is required");
-    if (!account_id) throw new Error("account_id is required");
+    const {
+      profile_id,
+      account_id,
+      role_id,
+      bypass_plan_limits,
+      min_score,
+      job_window_hours,
+      social_job_ids,
+      vector_similarity_threshold,
+      vector_max_results,
+    } = await req.json();
+
+    const roleId = typeof role_id === "string" ? role_id : null;
+    const isRoleRun = !profile_id && !!roleId;
+    const bypassPlanLimits = bypass_plan_limits === true;
+
+    if (!profile_id && !isRoleRun) throw new Error("profile_id is required");
+    if (!isRoleRun && !account_id) throw new Error("account_id is required");
+
+    const accountId = typeof account_id === "string" ? account_id : null;
+    const profileId = typeof profile_id === "string" ? profile_id : null;
+    const scopedSocialJobIds = Array.isArray(social_job_ids)
+      ? social_job_ids.filter((value: unknown): value is string => typeof value === "string" && value.length > 0)
+      : [];
+
+    const vectorSimilarityThreshold = typeof vector_similarity_threshold === "number"
+      ? vector_similarity_threshold
+      : (isRoleRun ? 0.5 : DEFAULT_VECTOR_SIMILARITY_THRESHOLD);
+    const vectorMaxResults = typeof vector_max_results === "number"
+      ? vector_max_results
+      : DEFAULT_VECTOR_MAX_RESULTS;
+    const jobWindowHours = typeof job_window_hours === "number" && Number.isFinite(job_window_hours)
+      ? Math.max(1, Math.min(168, Math.round(job_window_hours)))
+      : (isRoleRun ? 24 : 168);
+    const minScore = typeof min_score === "number"
+      ? Math.max(0, Math.min(100, Math.round(min_score)))
+      : (isRoleRun ? DEFAULT_ROLE_MODE_MIN_SCORE : 70);
 
     let isPaidPlan = true;
-    if (account_id) {
+    if (!isRoleRun && accountId) {
       const { data: sub } = await supabase
         .from("subscriptions")
         .select("status, plan_amount_usd")
-        .eq("account_id", account_id)
+        .eq("account_id", accountId)
         .maybeSingle();
       const status = (sub?.status as string | undefined) ?? "";
       const amount = Number((sub?.plan_amount_usd as number | null | undefined) ?? 0);
       isPaidPlan = status === "active" && amount > 0;
     }
 
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", profile_id)
-      .maybeSingle();
+    let scoringProfile: Record<string, unknown> | null = null;
+    let roleEmbedding: unknown | null = null;
 
-    if (profileErr || !profile) throw new Error("Profile not found");
+    if (isRoleRun) {
+      const { data: roleRow, error: roleErr } = await supabase
+        .from("hotlist_ai_roles")
+        .select("*")
+        .eq("id", roleId)
+        .maybeSingle();
 
-    const now = Date.now();
-    const accountWindowCutoff = new Date(now - 24 * 60 * 60 * 1000).toISOString();
-    const profileWindowCutoff = new Date(now - (isPaidPlan ? PAID_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS : FREE_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS)).toISOString();
+      if (roleErr || !roleRow) throw new Error("Role not found");
+      scoringProfile = buildScoringProfileFromRole(roleRow as Record<string, unknown>);
+      roleEmbedding = parseEmbeddingValue((roleRow as { role_embedding?: unknown }).role_embedding);
+      isPaidPlan = true;
+    } else {
+      const { data: profile, error: profileErr } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", profileId)
+        .maybeSingle();
 
-    const profileAttempts = await countRecentLiveMatchAttempts(supabase, account_id, profile_id, profileWindowCutoff, "profile");
-    if (profileAttempts >= 1) {
-      return respond({
-        error: isPaidPlan
-          ? "You can refresh this candidate once every hour."
-          : "You can only try this candidate once every 24 hours.",
-      }, 429);
-    }
+      if (profileErr || !profile) throw new Error("Profile not found");
+      scoringProfile = profile as Record<string, unknown>;
 
-    if (!isPaidPlan) {
-      const accountAttempts = await countRecentLiveMatchAttempts(supabase, account_id, profile_id, accountWindowCutoff, "account");
-      if (accountAttempts >= FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT) {
-        return respond({ error: `You have used all ${FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT} live matches in the last 24 hours.` }, 429);
+      if (!bypassPlanLimits && accountId && profileId) {
+        const now = Date.now();
+        const accountWindowCutoff = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        const profileWindowCutoff = new Date(now - (isPaidPlan ? PAID_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS : FREE_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS)).toISOString();
+
+        const profileAttempts = await countRecentLiveMatchAttempts(supabase, accountId, profileId, profileWindowCutoff, "profile");
+        if (profileAttempts >= 1) {
+          return respond({
+            error: isPaidPlan
+              ? "You can refresh this candidate once every hour."
+              : "You can only try this candidate once every 24 hours.",
+          }, 429);
+        }
+
+        if (!isPaidPlan) {
+          const accountAttempts = await countRecentLiveMatchAttempts(supabase, accountId, profileId, accountWindowCutoff, "account");
+          if (accountAttempts >= FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT) {
+            return respond({ error: `You have used all ${FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT} live matches in the last 24 hours.` }, 429);
+          }
+        }
+
+        await logLiveMatchAttempt(supabase, accountId, profileId, isPaidPlan);
       }
     }
-
-    await logLiveMatchAttempt(supabase, account_id, profile_id, isPaidPlan);
 
     if (!GEMINI_API_KEY) {
       return respond({ error: "GEMINI_API_KEY not configured" }, 500);
@@ -316,29 +401,35 @@ Deno.serve(async (req: Request) => {
           emit({ type: "batch", matched: 0, total_so_far: 0, progress: 0, total_jobs: 0 });
 
           // Filter out already-scored jobs early
-          const { data: existingMatches } = await supabase
-            .from("radar_match_results")
-            .select("job_id")
-            .eq("profile_id", profile_id);
-
-          const existingJobIds = new Set((existingMatches ?? []).map((m: { job_id: string }) => m.job_id));
-          const recentJobsCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+          const existingJobIds = new Set<string>();
+          if (!isRoleRun) {
+            const { data: existingMatches } = await supabase
+              .from("radar_match_results")
+              .select("job_id")
+              .eq("profile_id", profileId);
+            for (const row of existingMatches ?? []) {
+              existingJobIds.add((row as { job_id: string }).job_id);
+            }
+          }
+          const recentJobsCutoff = new Date(Date.now() - jobWindowHours * 60 * 60 * 1000).toISOString();
 
           const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
           const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-          const profileEmbedding = ENABLE_LIVE_VECTOR_SEARCH
-            ? await ensureProfileEmbedding(supabase, profile.id, supabaseUrl, serviceRoleKey)
+          const queryEmbedding = ENABLE_LIVE_VECTOR_SEARCH
+            ? (isRoleRun
+              ? roleEmbedding
+              : await ensureProfileEmbedding(supabase, profileId!, supabaseUrl, serviceRoleKey))
             : null;
 
           // Load jobs — use vector similarity if enabled and embedding exists, else fallback to recent jobs.
           const allJobs: Array<{ id: string; source: string; title: string; description: string; location: string; extracted_skills: string; extracted_experience_years: number | null; extracted_visa_types: string; extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null; employment_type: string | null }> = [];
           let usedVectorSearch = false;
 
-          if (ENABLE_LIVE_VECTOR_SEARCH && profileEmbedding) {
+          if (ENABLE_LIVE_VECTOR_SEARCH && queryEmbedding) {
             const { data: vectorMatches, error: vecErr } = await supabase.rpc("match_jobs_by_embedding", {
-              query_embedding: profileEmbedding,
-              similarity_threshold: 0.70,
-              max_results: 200,
+              query_embedding: queryEmbedding,
+              similarity_threshold: vectorSimilarityThreshold,
+              max_results: vectorMaxResults,
             });
 
             if (!vecErr && vectorMatches && vectorMatches.length > 0) {
@@ -346,17 +437,14 @@ Deno.serve(async (req: Request) => {
 
               const jobsBySource: Record<string, string[]> = {};
               for (const m of vectorMatches) {
+                if (m.job_source !== "social") continue;
+                if (scopedSocialJobIds.length > 0 && !scopedSocialJobIds.includes(m.job_id)) continue;
                 if (existingJobIds.has(m.job_id)) continue;
                 if (!jobsBySource[m.job_source]) jobsBySource[m.job_source] = [];
                 jobsBySource[m.job_source].push(m.job_id);
               }
 
               const sourceConfig: Record<string, { table: string; locationCol: string }> = {
-                linkedin: { table: "linkedin_jobs", locationCol: "location" },
-                dice: { table: "dice_jobs", locationCol: "location" },
-                indeed: { table: "indeed_jobs", locationCol: "location_display" },
-                monster: { table: "monster_jobs", locationCol: "location_display" },
-                careerbuilder: { table: "careerbuilder_jobs", locationCol: "location_display" },
                 social: { table: "social_jobs", locationCol: "location" },
               };
 
@@ -395,48 +483,19 @@ Deno.serve(async (req: Request) => {
           }
 
           if (!usedVectorSearch || allJobs.length === 0) {
-            const sources = [
-              { table: "linkedin_jobs", source: "linkedin", locationCol: "location" },
-              { table: "dice_jobs", source: "dice", locationCol: "location" },
-              { table: "indeed_jobs", source: "indeed", locationCol: "location_display" },
-              { table: "monster_jobs", source: "monster", locationCol: "location_display" },
-              { table: "careerbuilder_jobs", source: "careerbuilder", locationCol: "location_display" },
-            ];
-
-            for (const { table, source, locationCol } of sources) {
-              const { data: jobs } = await supabase
-                .from(table)
-                .select(`id, job_title, job_description, ${locationCol}, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type, created_at`)
-                .gte("created_at", recentJobsCutoff)
-                .order("created_at", { ascending: false })
-                .limit(50);
-
-              if (jobs) {
-                for (const j of jobs) {
-                  allJobs.push({
-                    id: j.id,
-                    source,
-                    title: j.job_title ?? "",
-                    description: (j.job_description ?? "").slice(0, 2000),
-                    location: j[locationCol] ?? "",
-                    extracted_skills: Array.isArray(j.extracted_skills) ? j.extracted_skills.join(", ") : (j.extracted_skills ?? ""),
-                    extracted_experience_years: j.extracted_experience_years,
-                    extracted_visa_types: Array.isArray(j.extracted_visa_types) ? j.extracted_visa_types.join(", ") : (j.extracted_visa_types ?? ""),
-                    extracted_hourly_rate_min: j.extracted_hourly_rate_min,
-                    extracted_hourly_rate_max: j.extracted_hourly_rate_max,
-                    employment_type: j.employment_type ?? null,
-                  });
-                }
-              }
-            }
-
             const socialSelect = "id, job_title, job_description, location, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, employment_type";
-            const { data: socialJobsData } = await supabase
+            let socialJobsQuery = supabase
               .from("social_jobs")
               .select(socialSelect)
-              .gte("created_at", recentJobsCutoff)
-              .order("created_at", { ascending: false })
-              .limit(50);
+              .order("created_at", { ascending: false });
+
+            if (scopedSocialJobIds.length > 0) {
+              socialJobsQuery = socialJobsQuery.in("id", scopedSocialJobIds);
+            } else {
+              socialJobsQuery = socialJobsQuery.gte("created_at", recentJobsCutoff);
+            }
+
+            const { data: socialJobsData } = await socialJobsQuery.limit(isRoleRun ? ROLE_MODE_FALLBACK_JOB_LIMIT : 50);
 
             const socialJobs = (socialJobsData ?? []) as Record<string, unknown>[];
             for (const j of socialJobs) {
@@ -471,10 +530,15 @@ Deno.serve(async (req: Request) => {
           }
 
           const contentFilteredJobs = newJobs.filter((job) => hasMeaningfulJobContent(job));
-          const targetRole = ((profile.target_role as string) ?? "").toLowerCase();
-          const effectiveJobs = usedVectorSearch
-            ? contentFilteredJobs
-            : filterRelevantJobs(contentFilteredJobs, targetRole, (profile.core_skills as string) ?? "");
+          const targetRole = (((scoringProfile?.target_role as string) ?? "")).toLowerCase();
+          const relevanceFilteredJobs = filterRelevantJobs(
+            contentFilteredJobs,
+            targetRole,
+            (scoringProfile?.core_skills as string) ?? "",
+          );
+          const effectiveJobs = isRoleRun
+            ? relevanceFilteredJobs
+            : (usedVectorSearch ? contentFilteredJobs : relevanceFilteredJobs);
 
           if (effectiveJobs.length === 0) {
             emit({ type: "done", matched: 0, skipped: existingJobIds.size, message: "No relevant jobs found matching the target role" });
@@ -497,8 +561,13 @@ Deno.serve(async (req: Request) => {
               continue;
             }
 
-            const batchResults = scoreJobsAgainstProfile(extractedJobs, profile);
-            const qualifyingResults = batchResults.filter(r => (r.score ?? 0) >= 70);
+            const batchResults = scoreJobsAgainstProfile(extractedJobs, scoringProfile ?? {});
+            const qualifyingResults = isRoleRun
+              ? batchResults.filter((result) => {
+                const roleMatchScore = result.breakdown.role_match?.score ?? 0;
+                return !result.disqualified && (result.score ?? 0) >= Math.max(minScore, 70) && roleMatchScore >= 75;
+              })
+              : batchResults.filter(r => (r.score ?? 0) >= minScore);
 
             let persistableResults = qualifyingResults;
             if (!isPaidPlan) {
@@ -508,7 +577,7 @@ Deno.serve(async (req: Request) => {
 
             if (persistableResults.length > 0) {
               const rows = [] as Array<{
-                profile_id: string;
+                profile_id: string | null;
                 job_source: string;
                 job_id: string;
                 final_average_score: number;
@@ -526,8 +595,8 @@ Deno.serve(async (req: Request) => {
                 const result = persistableResults[idx];
                 const shouldCharge = isPaidPlan || idx < freeChargeAllowance;
 
-                if (account_id && shouldCharge) {
-                  const charged = await chargeMatchCredits(supabase, account_id, profile_id, result);
+                if (!isRoleRun && accountId && profileId && shouldCharge) {
+                  const charged = await chargeMatchCredits(supabase, accountId, profileId, result);
                   if (!charged) {
                     emit({ type: "error", error: "Insufficient credits. Please top up your account." });
                     controller.close();
@@ -538,7 +607,7 @@ Deno.serve(async (req: Request) => {
                 }
 
                 rows.push({
-                  profile_id,
+                  profile_id: isRoleRun ? null : profileId,
                   job_source: result.job_source,
                   job_id: result.job_id,
                   final_average_score: result.score,
@@ -549,9 +618,20 @@ Deno.serve(async (req: Request) => {
                 });
               }
 
-              await supabase.from("radar_match_results").insert(rows);
-              totalMatched += rows.length;
-              if (!isPaidPlan) freePlanSavedCount += rows.length;
+              const { data: insertedRows, error: insertErr } = await supabase
+                .from("radar_match_results")
+                .insert(rows)
+                .select("job_id");
+
+              if (insertErr) {
+                emit({ type: "error", error: `Failed to save radar matches: ${insertErr.message}` });
+                controller.close();
+                return;
+              }
+
+              const insertedCount = Array.isArray(insertedRows) ? insertedRows.length : rows.length;
+              totalMatched += insertedCount;
+              if (!isPaidPlan) freePlanSavedCount += insertedCount;
             }
 
             emit({ type: "batch", matched: persistableResults.length, total_so_far: totalMatched, progress: Math.min(i + batchSize, effectiveJobs.length), total_jobs: effectiveJobs.length });

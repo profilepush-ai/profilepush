@@ -15,51 +15,85 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const startedAtMs = Date.now();
+  let runLogId: string | null = null;
 
   try {
     const body = await req.json().catch(() => ({}));
-    const forcedScheduleId = body.schedule_id ?? null;
-    const frequencyFilter = body.frequency_filter ?? null;
-    const boardFilter = typeof body.board_filter === "string" ? body.board_filter : null;
-    const forceRun = body.force_run === true;
+    const roleIdFilter = typeof body.role_id === "string" ? body.role_id : null;
+    const socialJobIds = Array.isArray(body.social_job_ids)
+      ? body.social_job_ids.filter((value: unknown): value is string => typeof value === "string" && value.length > 0)
+      : [];
 
-    let query = supabase.from("watch_schedules").select("*").eq("is_active", true);
-    if (forcedScheduleId) {
-      query = supabase.from("watch_schedules").select("*").eq("id", forcedScheduleId);
+    const triggerSource = typeof body.trigger_source === "string"
+      ? body.trigger_source
+      : (body.force_run === true && body.frequency_filter)
+        ? "scheduled_cron"
+        : roleIdFilter
+          ? "manual_scoped"
+          : "manual_all";
+    const jobWindowHours = triggerSource === "manual_all" || triggerSource === "manual_scoped" ? 24 : 168;
+
+    const { data: insertedRunLog } = await supabase
+      .from("hotlist_match_runs")
+      .insert({
+        trigger_source: triggerSource,
+        trigger_payload: body,
+        account_id: null,
+        role_id: roleIdFilter,
+        status: "running",
+        started_at: new Date().toISOString(),
+      })
+      .select("id")
+      .maybeSingle();
+
+    runLogId = (insertedRunLog?.id as string | undefined) ?? null;
+
+    const result = await matchAllActiveRoles(
+      supabase,
+      supabaseUrl,
+      serviceRoleKey,
+      roleIdFilter,
+      jobWindowHours,
+      socialJobIds,
+    );
+    const runStatus = typeof result.status === "string" ? result.status : "success";
+    const runErrorMessage = typeof result.error_message === "string" ? result.error_message : null;
+
+    if (runLogId) {
+      await supabase
+        .from("hotlist_match_runs")
+        .update({
+          roles_found: Number(result.roles_found ?? 0),
+          profiles_processed: Number(result.profiles_processed ?? 0),
+          total_matched: Number(result.total_matched ?? 0),
+          status: runStatus,
+          error_message: runErrorMessage,
+          completed_at: new Date().toISOString(),
+          duration_ms: Date.now() - startedAtMs,
+        })
+        .eq("id", runLogId);
     }
-    if (frequencyFilter) {
-      query = query.eq("frequency", frequencyFilter);
-    }
-    if (boardFilter) {
-      query = query.contains("boards", [boardFilter]);
-    }
-    const { data: schedules, error: schedErr } = await query;
 
-    if (schedErr) throw new Error(`Failed to load schedules: ${schedErr.message}`);
-
-    // If no schedules exist, fall through to match all active hotlist_ai_roles directly
-    if (!schedules || schedules.length === 0) {
-      const result = await matchAllActiveRoles(supabase, supabaseUrl, serviceRoleKey);
-      return respond(result);
-    }
-
-    const now = new Date();
-    const results: Array<{ id: string; status: string; jobs_matched: number }> = [];
-
-    for (const schedule of schedules) {
-      const isDue = forcedScheduleId || forceRun || isScheduleDue(
-        schedule.last_run_at ? new Date(schedule.last_run_at) : null,
-        schedule.frequency,
-        now,
-      );
-      if (!isDue) continue;
-
-      const result = await runFullPipeline(supabase, supabaseUrl, serviceRoleKey, schedule);
-      results.push(result);
-    }
-
-    return respond({ message: "Trigger complete", triggered: results.length, results });
+    return respond({
+      ...result,
+      mode: "direct_hotlist_roles",
+      watch_schedule_gate_bypassed: true,
+      run_log_id: runLogId,
+    });
   } catch (err) {
+    if (runLogId) {
+      await supabase
+        .from("hotlist_match_runs")
+        .update({
+          status: "error",
+          error_message: (err as Error).message,
+          completed_at: new Date().toISOString(),
+          duration_ms: Date.now() - startedAtMs,
+        })
+        .eq("id", runLogId);
+    }
+
     return new Response(
       JSON.stringify({ error: (err as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -181,7 +215,7 @@ async function runFullPipeline(
   }
 
   // ── Skip Part 1: Scraping is now handled by apify-scraper-scheduler ──
-  // Jobs are already in linkedin_jobs, dice_jobs, indeed_jobs, monster_jobs, careerbuilder_jobs tables
+  // Jobs are read directly from social_jobs for this trigger path.
 
   // ── Step 2: Transition to matching ──
   await supabase.from("watch_schedules").update({ run_status: "matching" }).eq("id", scheduleId);
@@ -301,82 +335,170 @@ function isScheduleDue(lastRun: Date | null, frequency: string, now: Date): bool
   }
 }
 
+function extractRadarMatchResultFromStream(rawText: string): { matched: number; error: string | null; done: boolean } {
+  const lines = rawText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let matched = 0;
+  let error: string | null = null;
+  let done = false;
+
+  for (const line of lines) {
+    try {
+      const payload = JSON.parse(line) as Record<string, unknown>;
+      if (payload.type === "done") {
+        matched = Number(payload.matched ?? 0);
+        done = true;
+      }
+      if (payload.type === "error" && typeof payload.error === "string") {
+        error = payload.error;
+      }
+      if (typeof payload.error === "string") {
+        error = payload.error;
+      }
+    } catch {
+      // Ignore non-JSON lines.
+    }
+  }
+
+  if (!done && !error) {
+    error = "radar-match stream ended before done event";
+  }
+
+  return { matched, error, done };
+}
+
 async function matchAllActiveRoles(
   supabase: ReturnType<typeof createClient>,
   supabaseUrl: string,
   serviceRoleKey: string,
+  roleIdFilter: string | null,
+  jobWindowHours: number,
+  socialJobIds: string[],
 ): Promise<Record<string, unknown>> {
-  // Load all active hotlist_ai_roles across all accounts
-  const { data: roles, error: rolesErr } = await supabase
+  // Load all active hotlist_ai_roles directly.
+  let rolesQuery = supabase
     .from("hotlist_ai_roles")
-    .select("id, account_id, target_role")
+    .select("id, target_role, priority_skills")
     .eq("is_active", true);
 
-  if (rolesErr || !roles || roles.length === 0) {
-    return { message: "No active hotlist_ai_roles found", triggered: 0 };
+  if (roleIdFilter) {
+    rolesQuery = rolesQuery.eq("id", roleIdFilter);
   }
 
-  // Group roles by account_id
-  const rolesByAccount = new Map<string, Array<{ id: string; target_role: string }>>();
-  for (const role of roles) {
-    const acctId = role.account_id as string;
-    if (!acctId) continue;
-    if (!rolesByAccount.has(acctId)) rolesByAccount.set(acctId, []);
-    rolesByAccount.get(acctId)!.push({ id: role.id as string, target_role: role.target_role as string });
+  const { data: roles, error: rolesErr } = await rolesQuery;
+
+  if (rolesErr || !roles || roles.length === 0) {
+    return {
+      message: "No active hotlist_ai_roles found",
+      status: "error",
+      error_message: "No active hotlist_ai_roles found",
+      profiles_processed: 0,
+      total_matched: 0,
+      roles_found: 0,
+    };
   }
+
+  const roleNames = Array.from(new Set(roles.map((r) => r.target_role as string).filter(Boolean)));
+  if (roleNames.length === 0) {
+    return {
+      message: "No active roles with target_role found",
+      status: "error",
+      error_message: "Active roles are missing target_role values",
+      profiles_processed: 0,
+      total_matched: 0,
+      roles_found: roles.length,
+    };
+  }
+
+  let totalMatched = 0;
+  let rolesProcessed = 0;
+  let rolesFailed = 0;
+  let firstFailureReason: string | null = null;
+  const processedRoleIds: string[] = [];
 
   const headers = {
     "Content-Type": "application/json",
     "Authorization": `Bearer ${serviceRoleKey}`,
   };
 
-  let totalMatched = 0;
-  let profilesProcessed = 0;
+  for (const role of roles) {
+    const roleId = role.id as string;
+    const targetRoleRaw = (role.target_role as string | null) ?? "";
+    const targetRole = targetRoleRaw.trim();
+    if (!targetRole) continue;
 
-  for (const [accountId, accountRoles] of rolesByAccount) {
-    const roleNames = accountRoles.map((r) => r.target_role).filter(Boolean);
+    let roleMatches = 0;
 
-    // Find profiles matching these roles for this account
-    const { data: profileRows } = await supabase
-      .from("profiles")
-      .select("id, target_role")
-      .eq("account_id", accountId)
-      .in("target_role", roleNames);
+    try {
+      const abortController = new AbortController();
+      const timeoutHandle = setTimeout(() => abortController.abort("radar-match timeout"), 300000);
 
-    if (!profileRows || profileRows.length === 0) continue;
+      const res = await fetch(`${supabaseUrl}/functions/v1/radar-match`, {
+        method: "POST",
+        headers,
+        signal: abortController.signal,
+        body: JSON.stringify({
+          role_id: roleId,
+          source_scope: "social_only",
+          bypass_plan_limits: true,
+          vector_similarity_threshold: 0.5,
+          min_score: 0,
+          job_window_hours: jobWindowHours,
+          social_job_ids: socialJobIds,
+        }),
+      });
+      clearTimeout(timeoutHandle);
 
-    for (const profile of profileRows) {
-      try {
-        const res = await fetch(`${supabaseUrl}/functions/v1/radar-match`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ profile_id: profile.id, account_id: accountId }),
-        });
-        const result = await res.json();
-        totalMatched += result.matched ?? 0;
-        profilesProcessed += 1;
-      } catch {
-        // Continue with other profiles
+      const raw = await res.text();
+      const parsed = extractRadarMatchResultFromStream(raw);
+      if (!res.ok || parsed.error) {
+        rolesFailed += 1;
+        if (!firstFailureReason) {
+          firstFailureReason = parsed.error ?? `radar-match failed with HTTP ${res.status}`;
+        }
+        continue;
       }
+
+      roleMatches = parsed.matched;
+    } catch (err) {
+      rolesFailed += 1;
+      if (!firstFailureReason) {
+        firstFailureReason = (err as Error).message || "radar-match request failed";
+      }
+      continue;
     }
 
-    // Update last_run_at for processed roles
-    const processedRoleNames = new Set((profileRows ?? []).map((p) => p.target_role as string));
-    const processedRoleIds = accountRoles
-      .filter((r) => processedRoleNames.has(r.target_role))
-      .map((r) => r.id);
+    totalMatched += roleMatches;
+    rolesProcessed += 1;
+    processedRoleIds.push(roleId);
 
-    if (processedRoleIds.length > 0) {
-      await supabase
-        .from("hotlist_ai_roles")
-        .update({ last_run_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .in("id", processedRoleIds);
-    }
+    await supabase
+      .from("hotlist_ai_roles")
+      .update({
+        last_result_summary: `${roleMatches} radar matches saved`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", roleId);
+  }
+
+  if (processedRoleIds.length > 0) {
+    await supabase
+      .from("hotlist_ai_roles")
+      .update({ last_run_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .in("id", processedRoleIds);
   }
 
   return {
-    message: "Direct role matching complete (no schedules)",
-    profiles_processed: profilesProcessed,
+    message: "Role match run complete (social_jobs via radar-match)",
+    status: rolesProcessed > 0 ? "success" : "error",
+    error_message: firstFailureReason ?? (rolesProcessed > 0 ? null : "No roles were processed successfully"),
+    roles_failed: rolesFailed,
+    first_failure_reason: firstFailureReason,
+    profiles_processed: rolesProcessed,
+    roles_processed: rolesProcessed,
     total_matched: totalMatched,
     roles_found: roles.length,
   };
