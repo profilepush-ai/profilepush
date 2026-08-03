@@ -745,13 +745,17 @@ export default function PulsePage() {
   const filteredJobsRankedLeaderboard = useMemo(() => {
     const selectedCategory = PROFILE_CATEGORY_TABS.find((item) => item.id === selectedCategoryId) ?? PROFILE_CATEGORY_TABS[0];
     const categoryFiltered = jobsRankedLeaderboard.filter((persona) => isPersonaInCategory(persona, selectedCategory.id));
+    const hasStatsLoaded = Object.keys(profileStatsByRole).length > 0;
+    const rangeAlignedProfiles = hasStatsLoaded
+      ? categoryFiltered.filter((persona) => (profileStatsByRole[normalize(persona.target_role)]?.uniqueJobs ?? 0) > 0)
+      : categoryFiltered;
     // Tech stack sub-filter
     const techFiltered = selectedTechStacks.length > 0
-      ? categoryFiltered.filter((persona) => {
+      ? rangeAlignedProfiles.filter((persona) => {
           const text = normalize(`${persona.target_role} ${persona.summary} ${persona.priority_skills ?? ''}`);
           return selectedTechStacks.some((tech) => text.includes(normalize(tech)));
         })
-      : categoryFiltered;
+      : rangeAlignedProfiles;
     const query = normalize(profileSearchQuery);
     if (!query) return techFiltered;
     return techFiltered.filter((item) => {
@@ -766,18 +770,20 @@ export default function PulsePage() {
         || normalize(d.experience).includes(query)
         || normalize(d.rateRange).includes(query);
     });
-  }, [jobsRankedLeaderboard, profileSearchQuery, selectedCategoryId, selectedTechStacks]);
+  }, [jobsRankedLeaderboard, profileSearchQuery, profileStatsByRole, selectedCategoryId, selectedTechStacks]);
 
   const categoryFeedPersonas = useMemo(() => {
     if (selectedCategoryId === 'all') return [] as PulsePersona[];
     const selectedCategory = PROFILE_CATEGORY_TABS.find((item) => item.id === selectedCategoryId) ?? PROFILE_CATEGORY_TABS[0];
-    const categoryFiltered = jobsRankedLeaderboard.filter((persona) => isPersonaInCategory(persona, selectedCategory.id));
+    const categoryFiltered = jobsRankedLeaderboard
+      .filter((persona) => isPersonaInCategory(persona, selectedCategory.id))
+      .filter((persona) => (profileStatsByRole[normalize(persona.target_role)]?.uniqueJobs ?? 0) > 0);
     if (selectedTechStacks.length === 0) return categoryFiltered;
     return categoryFiltered.filter((persona) => {
       const text = normalize(`${persona.target_role} ${persona.summary} ${persona.priority_skills ?? ''}`);
       return selectedTechStacks.some((tech) => text.includes(normalize(tech)));
     });
-  }, [jobsRankedLeaderboard, selectedCategoryId, selectedTechStacks]);
+  }, [jobsRankedLeaderboard, profileStatsByRole, selectedCategoryId, selectedTechStacks]);
 
   const orderedJobsRankedLeaderboard = useMemo(() => {
     const watched: PulsePersona[] = [];
@@ -1034,18 +1040,6 @@ export default function PulsePage() {
       .order('created_at', { ascending: false })
       .limit(5000);
 
-    if (!matchError && (!matchData || matchData.length === 0)) {
-      const fallback = await supabase
-        .from('radar_match_results')
-        .select('job_id, created_at')
-        .eq('job_source', 'social')
-        .order('created_at', { ascending: false })
-        .limit(5000);
-
-      matchData = fallback.data;
-      matchError = fallback.error;
-    }
-
     if (matchError) {
       showToast('Could not load profile stats', 'error');
       setProfileStatsLoading(false);
@@ -1122,7 +1116,7 @@ export default function PulsePage() {
       .eq('job_source', 'social')
       .gte('created_at', threshold)
       .order('created_at', { ascending: false })
-      .limit(400);
+      .limit(5000);
 
     if (matchError) {
       showToast('Failed to load social matches', 'error');
@@ -1250,10 +1244,9 @@ export default function PulsePage() {
   useEffect(() => {
     if (selectedCategoryId === 'all') {
       if (activePersona) {
-        void loadFeed(activePersona);
-      } else {
-        void loadFeed(null);
+        setActivePersona(null);
       }
+      void loadFeed(null);
       return;
     }
 
@@ -1279,10 +1272,9 @@ export default function PulsePage() {
   useEffect(() => {
     if (selectedCategoryId === 'all') {
       if (activePersona) {
-        void loadFeed(activePersona);
-      } else {
-        void loadFeed(null);
+        setActivePersona(null);
       }
+      void loadFeed(null);
       return;
     }
     if (activePersona) {
@@ -2072,7 +2064,7 @@ export default function PulsePage() {
                   <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
                     <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
                   </div>
-                  <div className="ml-auto grid w-full max-w-[220px] grid-cols-2 gap-1">
+                  <div className="ml-auto grid grid-cols-2 gap-1">
                     {([
                       { id: 'queued', label: 'Recent' },
                       { id: 'revealed', label: 'Revealed' },
@@ -2107,18 +2099,44 @@ export default function PulsePage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="divide-y divide-gray-100">
-                      {visibleFeed.map((lead) => {
+                    <div className="space-y-1.5 p-1.5">
+                      {visibleFeed.map((lead, index) => {
+                        const cardToneClass = [
+                          'border-blue-100 bg-blue-50/35',
+                          'border-emerald-100 bg-emerald-50/35',
+                          'border-amber-100 bg-amber-50/40',
+                          'border-slate-200 bg-slate-50/75',
+                        ][index % 4];
                         const inlineBreakdownItems = buildScoreBreakdownDisplayItems(
                           lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
                         );
                         const isInlineBreakdownExpanded = expandedInlineBreakdownLeadIds.has(lead.id);
+                        const experienceInlineItem = inlineBreakdownItems.find((item) => {
+                          const key = item.key.toLowerCase();
+                          return key.includes('experience') || key.includes('exp');
+                        });
+                        const visaInlineItem = inlineBreakdownItems.find((item) => {
+                          const key = item.key.toLowerCase();
+                          return key.includes('visa') || key.includes('authorization') || key.includes('work_auth');
+                        });
+                        const collapsedInlineBreakdownItems = [experienceInlineItem, visaInlineItem]
+                          .filter((item): item is NonNullable<typeof item> => Boolean(item))
+                          .filter((item, idx, arr) => arr.findIndex((other) => other.key === item.key) === idx);
+
+                        if (collapsedInlineBreakdownItems.length < 2) {
+                          for (const item of inlineBreakdownItems) {
+                            if (collapsedInlineBreakdownItems.some((existing) => existing.key === item.key)) continue;
+                            collapsedInlineBreakdownItems.push(item);
+                            if (collapsedInlineBreakdownItems.length >= 2) break;
+                          }
+                        }
+
                         const visibleInlineBreakdownItems = isInlineBreakdownExpanded
                           ? inlineBreakdownItems
-                          : inlineBreakdownItems.slice(0, 2);
+                          : collapsedInlineBreakdownItems;
 
                         return (
-                        <div key={lead.id} className="px-3 py-2.5">
+                        <div key={lead.id} className={`rounded-lg border px-3 py-2.5 ${cardToneClass}`}>
                           <div className="flex items-center justify-between gap-1.5">
                             <p className="text-[11px] font-semibold text-gray-900 leading-snug">{lead.title || 'Job Opportunity'}</p>
                             <div className="flex items-center gap-1.5 shrink-0">
@@ -2143,7 +2161,6 @@ export default function PulsePage() {
                                   <thead className="bg-gray-50">
                                     <tr>
                                       <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                                      <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
                                       <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
                                     </tr>
                                   </thead>
@@ -2151,7 +2168,6 @@ export default function PulsePage() {
                                     {visibleInlineBreakdownItems.map((item) => (
                                       <tr key={item.key}>
                                         <td className="border-b border-gray-100 px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
-                                        <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
                                         <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
                                       </tr>
                                     ))}
@@ -2177,7 +2193,7 @@ export default function PulsePage() {
                                 }}
                                 className="inline-flex flex-1 items-center justify-center rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50 sm:w-auto sm:flex-none"
                               >
-                                {isInlineBreakdownExpanded ? 'Hide Details' : 'See Details'}
+                                {isInlineBreakdownExpanded ? 'Hide Details' : 'Details'}
                               </button>
                             )}
                             <button
@@ -2202,7 +2218,7 @@ export default function PulsePage() {
                                 className="inline-flex flex-1 justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60 sm:w-auto sm:flex-none"
                               >
                                 <AtSign size={9} />
-                                {processingLeadId === lead.id ? '...' : 'Reveal'}
+                                {processingLeadId === lead.id ? '...' : 'Reveal Email'}
                               </button>
                             )}
                           </div>
@@ -2273,7 +2289,6 @@ export default function PulsePage() {
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
                             <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Job</th>
                           </tr>
                         </thead>
@@ -2281,7 +2296,6 @@ export default function PulsePage() {
                           {breakdownItems.map((item) => (
                             <tr key={item.key}>
                               <td className="border-b border-gray-100 px-2 py-1.5 font-semibold text-gray-900">{formatBreakdownFieldName(item.key)}</td>
-                              <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{item.detail?.candidate_value || '-'}</td>
                               <td className="border-b border-gray-100 px-2 py-1.5 text-gray-700">{item.detail?.job_value || '-'}</td>
                             </tr>
                           ))}
