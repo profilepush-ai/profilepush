@@ -2282,15 +2282,15 @@ export default function PulsePage() {
                         key={category.id}
                         type="button"
                         onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
-                        className={`inline-flex shrink-0 flex-col items-center gap-0.5 rounded-md border px-3 py-1.5 text-[11px] font-medium transition ${isSelected ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
+                        className={`inline-flex shrink-0 flex-col items-center gap-0.5 rounded-md border px-3 py-1.5 text-[11px] font-medium transition ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
                       >
                         <span className="inline-flex items-center gap-1.5">
-                          <CategoryIcon size={14} />
-                          <span>{category.label}</span>
+                          <CategoryIcon size={14} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
+                          <span className={isSelected ? 'text-gray-900' : 'text-gray-700'}>{category.label}</span>
                         </span>
-                        <span className={`inline-flex items-center gap-1.5 text-[9px] ${isSelected ? 'text-blue-500' : 'text-gray-400'}`}>
-                          <span className="inline-flex items-center gap-0.5"><Building2 size={9} />{vendorsCount}</span>
-                          <span className="inline-flex items-center gap-0.5"><Briefcase size={9} />{jobsCount}</span>
+                        <span className={`inline-flex items-center gap-1.5 text-[9px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
+                          <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={9} />{vendorsCount}</span>
+                          <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={9} />{jobsCount}</span>
                         </span>
                       </button>
                       );
@@ -2413,8 +2413,8 @@ export default function PulsePage() {
               </div>
 
               <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[15%_85%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
-                <aside className={`sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar ${isMobileViewport ? 'border-r-0 bg-transparent px-0 py-0' : 'border-r border-gray-200 bg-white px-1.5 py-2'}`}>
-                  <div className="space-y-1">
+                <aside className={`sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar ${isMobileViewport ? 'border-r-0 bg-transparent px-0 py-0' : 'border-r border-gray-200 bg-white px-1 py-2'}`}>
+                  <div className="space-y-1 pr-0.5">
                     {[...PROFILE_CATEGORY_TABS]
                       .map((category) => {
                         const categoryProfiles = jobsRankedLeaderboard.filter((p) => isPersonaInCategory(p, category.id));
@@ -2437,16 +2437,16 @@ export default function PulsePage() {
                             type="button"
                             onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
                             className={`w-full rounded-md border transition ${isMobileViewport
-                              ? `px-1.5 py-2 text-center ${isSelected ? 'border-blue-300 bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`
-                              : `px-2 py-2 text-left ${isSelected ? 'border-blue-200 bg-white text-blue-700' : 'border-transparent bg-transparent text-gray-600 hover:bg-white/80 hover:text-gray-800'}`}`}
+                              ? `px-1.5 py-2 text-center ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`
+                              : `px-1.5 py-2 text-left ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-transparent bg-transparent text-gray-600 hover:bg-white/80 hover:text-gray-800'}`}`}
                           >
                             {isMobileViewport ? (
                               <div className="flex flex-col items-center gap-1">
                                 <CategoryIcon size={15} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
-                                <span className="text-[8px] font-semibold leading-tight">{category.label}</span>
-                                <div className={`mt-0.5 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-blue-500' : 'text-gray-400'}`}>
-                                  <span className="inline-flex items-center gap-0.5"><Building2 size={8} />{vendorsCount}</span>
-                                  <span className="inline-flex items-center gap-0.5"><Briefcase size={8} />{jobsCount}</span>
+                                <span className={`text-[8px] font-semibold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
+                                <div className={`mt-0.5 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
+                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />{vendorsCount}</span>
+                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />{jobsCount}</span>
                                 </div>
                               </div>
                             ) : (
@@ -2454,10 +2454,10 @@ export default function PulsePage() {
                                 <span className={`row-span-2 inline-flex h-full min-h-[34px] w-[22px] shrink-0 items-center justify-center ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}>
                                   <CategoryIcon size={18} />
                                 </span>
-                                <span className="min-w-0 self-end truncate text-[11px] font-bold leading-tight">{category.label}</span>
-                                <div className={`min-w-0 self-start flex items-center gap-1.5 text-[8px] font-semibold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>
-                                  <span className="inline-flex items-center gap-0.5 whitespace-nowrap"><Building2 size={8} />Vendors {vendorsCount}</span>
-                                  <span className="inline-flex items-center gap-0.5 whitespace-nowrap"><Briefcase size={8} />Jobs {jobsCount}</span>
+                                <span className={`min-w-0 self-end truncate text-[11px] font-bold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
+                                <div className={`min-w-0 self-start flex items-center gap-1.5 text-[8px] font-semibold ${isSelected ? 'text-gray-600' : 'text-gray-500'}`}>
+                                  <span className={`inline-flex items-center gap-0.5 whitespace-nowrap ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />Vendors {vendorsCount}</span>
+                                  <span className={`inline-flex items-center gap-0.5 whitespace-nowrap ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />Jobs {jobsCount}</span>
                                 </div>
                               </div>
                             )}
@@ -2493,26 +2493,26 @@ export default function PulsePage() {
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
               >
                 {isMobileViewport ? (
-                  <div className="sticky top-0 z-20 shrink-0 min-h-[36px] flex items-center gap-2 border-b border-gray-200 bg-gray-50/80 px-2">
-                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
-                      <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
+                  <div className="sticky top-0 z-20 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
+                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
                     </div>
                     <div className="ml-auto grid grid-cols-2 gap-1">
                       <button
                         type="button"
                         onClick={() => setSelectedProfilesView('all')}
-                        className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                        className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                       >
                         <span>All</span>
-                        <span className={`text-[9px] font-bold ${selectedProfilesView === 'all' ? 'text-blue-500' : 'text-gray-500'}`}>{profileViewCounts.all}</span>
+                        <span className={`text-[9px] font-bold ${selectedProfilesView === 'all' ? 'text-white/90' : 'text-gray-500'}`}>{profileViewCounts.all}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setSelectedProfilesView('watching')}
-                        className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                        className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                       >
                         <span>Watching</span>
-                        <span className={`text-[9px] font-bold ${selectedProfilesView === 'watching' ? 'text-blue-500' : 'text-gray-500'}`}>{profileViewCounts.watching}</span>
+                        <span className={`text-[9px] font-bold ${selectedProfilesView === 'watching' ? 'text-white/90' : 'text-gray-500'}`}>{profileViewCounts.watching}</span>
                       </button>
                     </div>
                   </div>
@@ -2520,16 +2520,16 @@ export default function PulsePage() {
 
               <section className="min-w-0 shrink-0 overflow-hidden">
                 {!isMobileViewport ? (
-                  <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50/80">
-                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
-                      <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Profiles</span>
+                  <div className="shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
+                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
                     </div>
                   </div>
                 ) : null}
                 {/* Profile list */}
                 {isMobileViewport ? (
                   <div ref={profileListScrollRef} className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
-                    <div className="flex gap-2 px-2 py-2 snap-x snap-mandatory">
+                    <div className="flex gap-2 px-1.5 py-2 snap-x snap-mandatory">
                       {visibleJobsRankedLeaderboard.length === 0 && (
                         <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
                       )}
@@ -2622,7 +2622,7 @@ export default function PulsePage() {
                     <div className="min-w-0 rounded-md bg-transparent">
                       <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">All ({profileViewCounts.all})</div>
                       <div className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
-                        <div className="flex gap-2 px-2 py-2 snap-x snap-mandatory">
+                        <div className="flex gap-2 px-1.5 py-2 snap-x snap-mandatory">
                           {filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).length === 0 && (
                             <div className="px-3 py-6 text-center text-xs text-gray-400">No profiles found.</div>
                           )}
@@ -2677,7 +2677,7 @@ export default function PulsePage() {
                     <div className="min-w-0 rounded-md bg-transparent">
                       <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Watching ({profileViewCounts.watching})</div>
                       <div className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
-                        <div className="flex gap-2 px-2 py-2 snap-x snap-mandatory">
+                        <div className="flex gap-2 px-1.5 py-2 snap-x snap-mandatory">
                           {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length === 0 && (
                             <div className="px-3 py-6 text-center text-xs text-gray-400">No watching profiles yet.</div>
                           )}
@@ -2754,9 +2754,9 @@ export default function PulsePage() {
               </section>
 
               {isMobileViewport && (
-                <div className="sticky top-0 z-40 shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-white shadow-[0_1px_0_0_rgba(229,231,235,1)] transform-gpu backface-hidden">
-                  <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
-                    <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
+                <div className="sticky top-0 z-40 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur transform-gpu backface-hidden">
+                  <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-amber-50/80 px-2 py-1">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">Jobs</span>
                   </div>
                   <div className="ml-auto grid grid-cols-2 gap-1">
                     {([
@@ -2770,10 +2770,10 @@ export default function PulsePage() {
                           key={tab.id}
                           type="button"
                           onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                          className={`inline-flex items-center justify-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-600 hover:bg-white/80'}`}
+                          className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-amber-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                         >
                           <span>{tab.label}</span>
-                          <span className={`text-[9px] font-bold ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>{count}</span>
+                          <span className={`text-[9px] font-bold ${isSelected ? 'text-white/90' : 'text-gray-500'}`}>{count}</span>
                         </button>
                       );
                     })}
@@ -2783,9 +2783,9 @@ export default function PulsePage() {
 
               <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
                 {!isMobileViewport && (
-                  <div className="shrink-0 min-h-[36px] flex items-center gap-2 px-2 border-b border-gray-200 bg-gray-50/80">
-                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0">
-                      <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
+                  <div className="shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
+                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-amber-50/80 px-2 py-1">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">Jobs</span>
                     </div>
                   </div>
                 )}
@@ -2806,13 +2806,13 @@ export default function PulsePage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-1.5 px-1.5 pt-0 pb-4">
+                          <div className="space-y-1.5 px-1.5 pt-2 pb-4">
                             {renderLeadCards(visibleFeed)}
                           </div>
                         )}
                       </div>
                     ) : (
-                      <div className="grid min-h-0 h-full grid-cols-2 gap-2 p-1.5">
+                      <div className="grid min-h-0 h-full grid-cols-2 gap-2 p-1">
                         <div className="min-h-0 rounded-md bg-transparent">
                           <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Recent ({matchesTabCounts.queued})</div>
                           <div className="min-h-0 h-[calc(100%-24px)] overflow-y-auto p-1.5 slim-scrollbar" onScroll={handleDesktopRecentScroll}>
