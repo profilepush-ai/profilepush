@@ -712,6 +712,32 @@ function buildWatchlistPayloadFromRole(accountId: string, role: HotlistRoleRow, 
   };
 }
 
+function buildHotlistRolePayloadFromPersona(accountId: string, persona: PulsePersona) {
+  const suggestion = findSuggestionForRole(persona.target_role);
+  const roleTitle = persona.target_role.trim();
+  const minYears = persona.min_years_exp ?? suggestion?.minYearsExp ?? 3;
+  const maxYears = persona.max_years_exp ?? suggestion?.maxYearsExp ?? Math.max(minYears + 3, 6);
+
+  return {
+    account_id: accountId,
+    target_role: roleTitle,
+    category: inferRoleCategoryId(roleTitle, persona.summary ?? suggestion?.summary ?? ''),
+    min_years_exp: minYears,
+    max_years_exp: maxYears,
+    visa_status: persona.visa_status ?? suggestion?.visaStatus ?? 'USC',
+    employment_type: persona.employment_type ?? suggestion?.employmentType ?? 'Full Time',
+    work_type: persona.work_type ?? suggestion?.workType ?? 'Remote',
+    preferred_locations: persona.preferred_locations ?? suggestion?.locations ?? 'Remote',
+    min_rate_usd_per_hr: persona.min_rate_usd_per_hr ?? suggestion?.minRate ?? 60,
+    max_rate_usd_per_hr: persona.max_rate_usd_per_hr ?? suggestion?.maxRate ?? 95,
+    relocation_open: persona.relocation_open ?? suggestion?.relocationOpen ?? false,
+    priority_skills: persona.priority_skills ?? suggestion?.skills ?? '',
+    avatar_url: persona.avatar_url,
+    schedule_frequency: 'daily' as const,
+    is_active: true,
+  };
+}
+
 
 export default function PulsePage() {
   const { account, user, refreshAccount } = useAuth();
@@ -1841,9 +1867,20 @@ export default function PulsePage() {
 
     if (roleError) throw roleError;
 
-    const role = (roleRows?.[0] ?? null) as HotlistRoleRow | null;
+    let role = (roleRows?.[0] ?? null) as HotlistRoleRow | null;
     if (!role) {
-      throw new Error(`No hotlist role found for ${persona.target_role}. Add it in Hotlist AI first.`);
+      const createPayload = buildHotlistRolePayloadFromPersona(account.id, persona);
+      const { data: createdRole, error: createRoleError } = await supabase
+        .from('hotlist_ai_roles')
+        .insert(createPayload)
+        .select('id, target_role, account_id, category, min_years_exp, max_years_exp, visa_status, employment_type, work_type, preferred_locations, min_rate_usd_per_hr, max_rate_usd_per_hr, relocation_open, priority_skills, avatar_url, schedule_frequency, is_active')
+        .single();
+
+      if (createRoleError) {
+        throw new Error(`Could not create Hotlist AI role for ${persona.target_role}: ${createRoleError.message}`);
+      }
+
+      role = createdRole as HotlistRoleRow;
     }
 
     const payload = buildWatchlistPayloadFromRole(account.id, role, user?.id ?? null);

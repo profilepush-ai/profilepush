@@ -163,7 +163,6 @@ export default function HotlistAiPage() {
         account_id: account.id,
         target_role: suggestion.title,
         category: inferRoleCategoryId(suggestion.title, suggestion.summary),
-        years_exp: suggestion.minYearsExp,
         min_years_exp: suggestion.minYearsExp,
         max_years_exp: suggestion.maxYearsExp,
         visa_status: suggestion.visaStatus,
