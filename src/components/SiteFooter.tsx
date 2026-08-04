@@ -20,7 +20,7 @@ export default function SiteFooter() {
             <ul className="space-y-2.5">
               <li><Link to="/about" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">About Us</Link></li>
               <li><Link to="/contact" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Contact Us</Link></li>
-              <li><Link to="/pricing" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Pricing</Link></li>
+              <li><Link to="/#pricing" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Pricing</Link></li>
             </ul>
           </div>
 

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -32,7 +32,6 @@ const TrackerPage = lazy(() => import('./pages/TrackerPage'));
 const AIBenchMatch = lazy(() => import('./pages/AIBenchMatch'));
 const AboutUs = lazy(() => import('./pages/AboutUs'));
 const ContactUs = lazy(() => import('./pages/ContactUs'));
-const PricingPage = lazy(() => import('./pages/PricingPage'));
 const CancellationRefundPolicy = lazy(() => import('./pages/CancellationRefundPolicy'));
 const ComparisonPage = lazy(() => import('./pages/ComparisonPage'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -180,7 +179,7 @@ export default function App() {
             <Route path="/security" element={<ErrorBoundary><SecurityPage /></ErrorBoundary>} />
             <Route path="/about" element={<ErrorBoundary><AboutUs /></ErrorBoundary>} />
             <Route path="/contact" element={<ErrorBoundary><ContactUs /></ErrorBoundary>} />
-            <Route path="/pricing" element={<ErrorBoundary><PricingPage /></ErrorBoundary>} />
+            <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
             <Route path="/cancellation-refund" element={<ErrorBoundary><CancellationRefundPolicy /></ErrorBoundary>} />
             <Route path="/vs/:competitor" element={<ErrorBoundary><ComparisonPage /></ErrorBoundary>} />
             <Route path="/book-demo" element={<ErrorBoundary><BookDemo /></ErrorBoundary>} />

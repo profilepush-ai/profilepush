@@ -488,7 +488,7 @@ export default function ComparisonPage() {
                 Start free — no credit card <ArrowRight size={15} />
               </Link>
               <Link
-                to="/pricing"
+                to="/#pricing"
                 className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
               >
                 View pricing

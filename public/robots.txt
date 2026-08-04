@@ -20,6 +20,7 @@ Disallow: /pulse
 Disallow: /watchlist-profiles
 Disallow: /admin
 Disallow: /welcome
+Disallow: /pricing
 
 # Block auth/transactional routes
 Disallow: /signin

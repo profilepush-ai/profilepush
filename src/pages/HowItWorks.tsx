@@ -107,7 +107,7 @@ export default function HowItWorks() {
           <Link to="/"><Logo size="md" /></Link>
           <div className="hidden md:flex items-center gap-8 text-sm text-gray-500">
             <Link to="/" className="hover:text-gray-900 transition-colors">Home</Link>
-            <Link to="/pricing" className="hover:text-gray-900 transition-colors">Pricing</Link>
+            <Link to="/#pricing" className="hover:text-gray-900 transition-colors">Pricing</Link>
             <Link to="/why-ai-copilot" className="hover:text-gray-900 transition-colors">Why AI Co-pilot</Link>
             <Link to="/how-it-works" className="hover:text-gray-900 transition-colors">How it Works</Link>
           </div>
