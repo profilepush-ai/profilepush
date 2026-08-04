@@ -8,6 +8,7 @@ import LogoSpinner from './components/LogoSpinner';
 import StartupSplash from './components/StartupSplash';
 import { useAuth } from './contexts/AuthContext';
 import { isSupabaseConfigured, supabaseConfigMissing } from './lib/supabase';
+import { initializeOneSignal, setOneSignalExternalUserId } from './lib/onesignal';
 
 const SignUp = lazy(() => import('./pages/SignUp'));
 const SignIn = lazy(() => import('./pages/SignIn'));
@@ -110,6 +111,16 @@ function PersistentResumeAI() {
   );
 }
 
+function OneSignalIdentitySync() {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    setOneSignalExternalUserId(user?.id ?? null);
+  }, [user?.id]);
+
+  return null;
+}
+
 function SupabaseSetupRequired() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-6">
@@ -135,6 +146,7 @@ export default function App() {
   const [showStartupSplash, setShowStartupSplash] = useState(true);
 
   useEffect(() => {
+    initializeOneSignal();
     const timer = window.setTimeout(() => setShowStartupSplash(false), 1500);
     return () => window.clearTimeout(timer);
   }, []);
@@ -149,6 +161,7 @@ export default function App() {
       <BrowserRouter>
         <AuthProvider>
           <ScrollToTop />
+          <OneSignalIdentitySync />
           <PersistentJobFinder />
           <PersistentWishlist />
           <PersistentResumeAI />

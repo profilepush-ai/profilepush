@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "617522585767",
+    "project_id": "profile-push-ai",
+    "storage_bucket": "profile-push-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:617522585767:android:8a6a1e136f517314fdfb82",
+        "android_client_info": {
+          "package_name": "com.profilepush.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBYZPSB1ppa6jbPh17xcCZQM4Kb0pJQRbk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

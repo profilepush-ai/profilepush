@@ -21,3 +21,14 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Native build artifacts and local machine files
+android/.gradle/
+android/**/build/
+android/local.properties
+android/keystore/
+android/gradle-*.zip
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+ios/**/xcuserdata/
