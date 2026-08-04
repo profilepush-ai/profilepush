@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import LandingPage from './pages/LandingPage';
 import LogoSpinner from './components/LogoSpinner';
+import StartupSplash from './components/StartupSplash';
 import { useAuth } from './contexts/AuthContext';
 import { isSupabaseConfigured, supabaseConfigMissing } from './lib/supabase';
 
@@ -131,19 +132,28 @@ function SupabaseSetupRequired() {
 }
 
 export default function App() {
+  const [showStartupSplash, setShowStartupSplash] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowStartupSplash(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   if (!isSupabaseConfigured) {
     return <SupabaseSetupRequired />;
   }
 
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <ScrollToTop />
-        <PersistentJobFinder />
-        <PersistentWishlist />
-        <PersistentResumeAI />
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
+    <>
+      <StartupSplash hide={!showStartupSplash} />
+      <BrowserRouter>
+        <AuthProvider>
+          <ScrollToTop />
+          <PersistentJobFinder />
+          <PersistentWishlist />
+          <PersistentResumeAI />
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
             {/* Public */}
             <Route path="/" element={<ErrorBoundary><LandingPage /></ErrorBoundary>} />
             <Route path="/signup" element={<ErrorBoundary><SignUp /></ErrorBoundary>} />
@@ -182,9 +192,10 @@ export default function App() {
             <Route path="/job-watch-ai" element={<ProtectedRoute><ErrorBoundary><RadarPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><PulsePage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />
-          </Routes>
-        </Suspense>
-      </AuthProvider>
-    </BrowserRouter>
+            </Routes>
+          </Suspense>
+        </AuthProvider>
+      </BrowserRouter>
+    </>
   );
 }

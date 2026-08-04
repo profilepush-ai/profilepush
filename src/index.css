@@ -3,6 +3,31 @@
 @tailwind utilities;
 
 @layer utilities {
+  @keyframes splash-logo-rise {
+    0% {
+      opacity: 0;
+      transform: translateY(12px) scale(0.97);
+    }
+    70% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes splash-text-pulse {
+    0%,
+    100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
   @keyframes slide-up {
     from {
       opacity: 0;
@@ -25,6 +50,14 @@
 
   .animate-slide-up {
     animation: slide-up 0.2s ease-out;
+  }
+
+  .animate-splash-logo-rise {
+    animation: splash-logo-rise 600ms ease-out;
+  }
+
+  .animate-splash-text-pulse {
+    animation: splash-text-pulse 1.2s ease-in-out infinite;
   }
 
   .hide-scrollbar {
@@ -58,6 +91,13 @@
 
   .slim-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: #94a3b8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-splash-logo-rise,
+  .animate-splash-text-pulse {
+    animation: none;
   }
 }
 

@@ -266,6 +266,34 @@ function formatBreakdownFieldName(key: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+type BreakdownDetail = {
+  score?: number;
+  candidate_value?: string;
+  job_value?: string;
+  rule?: string;
+};
+
+function getBreakdownCandidateValue(
+  breakdown: Record<string, unknown> | null | undefined,
+  key: string,
+) {
+  const value = breakdown?.[key];
+  if (!value || typeof value !== 'object') return '';
+
+  const detail = value as BreakdownDetail;
+  return (detail.candidate_value ?? '').trim();
+}
+
+function firstMeaningfulValue(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const cleaned = (value ?? '').trim();
+    if (cleaned && cleaned !== '-' && cleaned.toLowerCase() !== 'not specified') {
+      return cleaned;
+    }
+  }
+  return '-';
+}
+
 function canonicalizeRoleForUniqueness(role: string) {
   return normalize(role)
     .replace(/\b(senior|sr\.?|junior|jr\.?|lead|principal|staff|ii|iii|iv)\b/g, ' ')
@@ -1965,18 +1993,56 @@ export default function PulsePage() {
   }, [showToast]);
 
   const generateEmailDraft = useCallback((lead: SocialLead) => {
-    const activeDetails = activePersona ? getPersonaDetailColumns(activePersona) : null;
+    const roleFromBreakdown = getBreakdownCandidateValue(lead.scoreBreakdown, 'role_match');
+    const activeRole = activePersona?.target_role ?? '';
+    const useActivePersona = Boolean(
+      activePersona
+      && (
+        !roleFromBreakdown
+        || normalize(roleFromBreakdown).includes(normalize(activeRole))
+        || normalize(activeRole).includes(normalize(roleFromBreakdown))
+      ),
+    );
+
+    const activeDetails = useActivePersona && activePersona ? getPersonaDetailColumns(activePersona) : null;
     const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
       || user?.email?.split('@')[0]
       || 'Your Name';
 
+    const profileRole = firstMeaningfulValue(activePersona?.target_role, roleFromBreakdown);
+    const profileExperience = firstMeaningfulValue(
+      activeDetails?.experience,
+      getBreakdownCandidateValue(lead.scoreBreakdown, 'experience_match'),
+      lead.experienceYears != null ? `${lead.experienceYears} years` : '',
+    );
+    const profileLocation = firstMeaningfulValue(
+      activeDetails?.location,
+      getBreakdownCandidateValue(lead.scoreBreakdown, 'location_match'),
+      lead.location,
+    );
+    const profileVisa = firstMeaningfulValue(
+      activeDetails?.visaStatus,
+      getBreakdownCandidateValue(lead.scoreBreakdown, 'visa_match'),
+      Array.isArray(lead.visaTypes) ? lead.visaTypes.join(', ') : '',
+    );
+    const profileRate = firstMeaningfulValue(
+      activeDetails?.rateRange,
+      getBreakdownCandidateValue(lead.scoreBreakdown, 'hourly_rate_match'),
+      lead.hourlyRate,
+    );
+    const profileSkills = firstMeaningfulValue(
+      activeDetails?.skills,
+      getBreakdownCandidateValue(lead.scoreBreakdown, 'skills_match'),
+      Array.isArray(lead.skills) ? lead.skills.join(', ') : '',
+    );
+
     const profileLines = [
-      `- Role: ${activePersona?.target_role || '-'}`,
-      `- Exp: ${activeDetails?.experience || '-'}`,
-      `- Location: ${activeDetails?.location || '-'}`,
-      `- Visa: ${activeDetails?.visaStatus || '-'}`,
-      `- Rate: ${activeDetails?.rateRange || '-'}`,
-      `- Skills: ${activeDetails?.skills || '-'}`,
+      `- Role: ${profileRole}`,
+      `- Exp: ${profileExperience}`,
+      `- Location: ${profileLocation}`,
+      `- Visa: ${profileVisa}`,
+      `- Rate: ${profileRate}`,
+      `- Skills: ${profileSkills}`,
     ];
 
     return [
