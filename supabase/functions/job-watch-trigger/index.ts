@@ -20,6 +20,26 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json().catch(() => ({}));
+    const action = typeof body.action === "string" ? body.action : null;
+
+    if (action === "abort") {
+      const runLogIdToAbort = typeof body.run_log_id === "string" ? body.run_log_id : null;
+      if (!runLogIdToAbort) {
+        return respond({ error: "run_log_id is required for abort action" }, 400);
+      }
+
+      const aborted = await abortHotlistMatchRun(supabase, runLogIdToAbort);
+      if (!aborted) {
+        return respond({ error: "Run not found or not running" }, 404);
+      }
+
+      return respond({
+        message: "Abort requested",
+        status: "aborted",
+        run_log_id: runLogIdToAbort,
+      });
+    }
+
     const roleIdFilter = typeof body.role_id === "string" ? body.role_id : null;
     const socialJobIds = Array.isArray(body.social_job_ids)
       ? body.social_job_ids.filter((value: unknown): value is string => typeof value === "string" && value.length > 0)
@@ -56,19 +76,32 @@ Deno.serve(async (req: Request) => {
       roleIdFilter,
       jobWindowHours,
       socialJobIds,
+      runLogId,
     );
     const runStatus = typeof result.status === "string" ? result.status : "success";
     const runErrorMessage = typeof result.error_message === "string" ? result.error_message : null;
 
     if (runLogId) {
+      const { data: currentRun } = await supabase
+        .from("hotlist_match_runs")
+        .select("status, error_message")
+        .eq("id", runLogId)
+        .maybeSingle();
+
+      const existingStatus = typeof currentRun?.status === "string" ? currentRun.status : "running";
+      const wasAborted = existingStatus === "aborted";
+      const existingError = typeof currentRun?.error_message === "string" ? currentRun.error_message : null;
+
       await supabase
         .from("hotlist_match_runs")
         .update({
           roles_found: Number(result.roles_found ?? 0),
           profiles_processed: Number(result.profiles_processed ?? 0),
           total_matched: Number(result.total_matched ?? 0),
-          status: runStatus,
-          error_message: runErrorMessage,
+          status: wasAborted ? "aborted" : runStatus,
+          error_message: wasAborted
+            ? (existingError || runErrorMessage || "Run aborted by admin")
+            : runErrorMessage,
           completed_at: new Date().toISOString(),
           duration_ms: Date.now() - startedAtMs,
         })
@@ -83,15 +116,23 @@ Deno.serve(async (req: Request) => {
     });
   } catch (err) {
     if (runLogId) {
-      await supabase
+      const { data: currentRun } = await supabase
         .from("hotlist_match_runs")
-        .update({
-          status: "error",
-          error_message: (err as Error).message,
-          completed_at: new Date().toISOString(),
-          duration_ms: Date.now() - startedAtMs,
-        })
-        .eq("id", runLogId);
+        .select("status")
+        .eq("id", runLogId)
+        .maybeSingle();
+
+      if (currentRun?.status !== "aborted") {
+        await supabase
+          .from("hotlist_match_runs")
+          .update({
+            status: "error",
+            error_message: (err as Error).message,
+            completed_at: new Date().toISOString(),
+            duration_ms: Date.now() - startedAtMs,
+          })
+          .eq("id", runLogId);
+      }
     }
 
     return new Response(
@@ -377,6 +418,7 @@ async function matchAllActiveRoles(
   roleIdFilter: string | null,
   jobWindowHours: number,
   socialJobIds: string[],
+  runLogId: string | null,
 ): Promise<Record<string, unknown>> {
   // Load all active hotlist_ai_roles directly.
   let rolesQuery = supabase
@@ -425,6 +467,23 @@ async function matchAllActiveRoles(
   };
 
   for (const role of roles) {
+    if (runLogId) {
+      const aborted = await isHotlistMatchRunAborted(supabase, runLogId);
+      if (aborted) {
+        return {
+          message: "Role match run aborted",
+          status: "aborted",
+          error_message: "Run aborted by admin",
+          roles_failed: rolesFailed,
+          first_failure_reason: firstFailureReason,
+          profiles_processed: rolesProcessed,
+          roles_processed: rolesProcessed,
+          total_matched: totalMatched,
+          roles_found: roles.length,
+        };
+      }
+    }
+
     const roleId = role.id as string;
     const targetRoleRaw = (role.target_role as string | null) ?? "";
     const targetRole = targetRoleRaw.trim();
@@ -502,6 +561,49 @@ async function matchAllActiveRoles(
     total_matched: totalMatched,
     roles_found: roles.length,
   };
+}
+
+async function isHotlistMatchRunAborted(
+  supabase: ReturnType<typeof createClient>,
+  runLogId: string,
+): Promise<boolean> {
+  const { data: row } = await supabase
+    .from("hotlist_match_runs")
+    .select("status")
+    .eq("id", runLogId)
+    .maybeSingle();
+  return row?.status === "aborted";
+}
+
+async function abortHotlistMatchRun(
+  supabase: ReturnType<typeof createClient>,
+  runLogId: string,
+): Promise<boolean> {
+  const { data: current } = await supabase
+    .from("hotlist_match_runs")
+    .select("id, status, started_at")
+    .eq("id", runLogId)
+    .maybeSingle();
+
+  if (!current || current.status !== "running") {
+    return false;
+  }
+
+  const startedAt = typeof current.started_at === "string" ? new Date(current.started_at).getTime() : Date.now();
+  const durationMs = Math.max(0, Date.now() - (Number.isFinite(startedAt) ? startedAt : Date.now()));
+
+  await supabase
+    .from("hotlist_match_runs")
+    .update({
+      status: "aborted",
+      error_message: "Run aborted by admin",
+      completed_at: new Date().toISOString(),
+      duration_ms: durationMs,
+    })
+    .eq("id", runLogId)
+    .eq("status", "running");
+
+  return true;
 }
 
 function respond(data: Record<string, unknown>, status = 200) {

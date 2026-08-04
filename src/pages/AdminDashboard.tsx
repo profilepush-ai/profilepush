@@ -52,12 +52,19 @@ interface HotlistMatchRunRow {
   roles_found: number;
   profiles_processed: number;
   total_matched: number;
-  status: 'running' | 'success' | 'error';
+  status: 'running' | 'success' | 'error' | 'failed' | 'aborted';
   error_message: string | null;
   started_at: string;
   completed_at: string | null;
   duration_ms: number | null;
   created_at: string;
+}
+
+function canRetryMatchRun(row: HotlistMatchRunRow) {
+  const status = String(row.status ?? '').toLowerCase();
+  const hasStatusFailure = status === 'error' || status === 'failed' || status === 'aborted';
+  const hasErrorMessage = typeof row.error_message === 'string' && row.error_message.trim().length > 0;
+  return hasStatusFailure || hasErrorMessage;
 }
 
 type AdminView = 'stats' | 'hotlist' | 'history';
@@ -133,6 +140,9 @@ export default function AdminDashboard() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyRows, setHistoryRows] = useState<HotlistMatchRunRow[]>([]);
   const [historyError, setHistoryError] = useState('');
+  const [historyNotice, setHistoryNotice] = useState('');
+  const [retryingHistoryRunId, setRetryingHistoryRunId] = useState<string | null>(null);
+  const [abortingHistoryRunId, setAbortingHistoryRunId] = useState<string | null>(null);
   const [roleStatsSummary, setRoleStatsSummary] = useState<Record<string, { job_count: number; watch_count: number; active_watch_count: number }>>({});
   const [rolesSearchQuery, setRolesSearchQuery] = useState('');
   const [rolesCategoryFilter, setRolesCategoryFilter] = useState('all');
@@ -159,6 +169,7 @@ export default function AdminDashboard() {
   const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
   const [deleteConfirmRole, setDeleteConfirmRole] = useState<HotlistRoleRow | null>(null);
   const [runningRoleMatchId, setRunningRoleMatchId] = useState<string | null>(null);
+  const [runningAllRolesMatch, setRunningAllRolesMatch] = useState(false);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -303,6 +314,66 @@ export default function AdminDashboard() {
 
     setHistoryRows((data ?? []) as HotlistMatchRunRow[]);
     setHistoryLoading(false);
+  }
+
+  async function retryErroredMatchRun(row: HotlistMatchRunRow) {
+    if (retryingHistoryRunId || abortingHistoryRunId || !canRetryMatchRun(row)) return;
+
+    setRetryingHistoryRunId(row.id);
+    setHistoryError('');
+    setHistoryNotice('');
+
+    const payload = row.role_id
+      ? { trigger_source: 'manual_scoped', role_id: row.role_id }
+      : { trigger_source: 'manual_all' };
+
+    const { data, error } = await supabase.functions.invoke('job-watch-trigger', {
+      body: payload,
+    });
+
+    if (error) {
+      setHistoryError(error.message || 'Failed to retry this match run.');
+      setRetryingHistoryRunId(null);
+      return;
+    }
+
+    const summary = typeof data?.message === 'string'
+      ? data.message
+      : row.role_id
+        ? 'Retry completed for role run.'
+        : 'Retry completed for all roles run.';
+    const profilesProcessed = typeof data?.profiles_processed === 'number' ? data.profiles_processed : 0;
+    const totalMatched = typeof data?.total_matched === 'number' ? data.total_matched : 0;
+    setHistoryNotice(`${summary} Roles processed: ${profilesProcessed}. Matches added: ${totalMatched}.`);
+
+    await fetchMatchRunHistory();
+    setRetryingHistoryRunId(null);
+  }
+
+  async function abortRunningMatchRun(row: HotlistMatchRunRow) {
+    if (retryingHistoryRunId || abortingHistoryRunId || row.status !== 'running') return;
+
+    setAbortingHistoryRunId(row.id);
+    setHistoryError('');
+    setHistoryNotice('');
+
+    const { data, error } = await supabase.functions.invoke('job-watch-trigger', {
+      body: {
+        action: 'abort',
+        run_log_id: row.id,
+      },
+    });
+
+    if (error) {
+      setHistoryError(error.message || 'Failed to abort this running match run.');
+      setAbortingHistoryRunId(null);
+      return;
+    }
+
+    const summary = typeof data?.message === 'string' ? data.message : 'Abort requested.';
+    setHistoryNotice(summary);
+    await fetchMatchRunHistory();
+    setAbortingHistoryRunId(null);
   }
 
   function resetNewRoleForm() {
@@ -513,7 +584,7 @@ export default function AdminDashboard() {
   }
 
   async function runMatchesForRole(role: HotlistRoleRow) {
-    if (runningRoleMatchId) return;
+    if (runningRoleMatchId || runningAllRolesMatch) return;
 
     setRunningRoleMatchId(role.id);
     setRolesError('');
@@ -540,6 +611,36 @@ export default function AdminDashboard() {
     setRolesNotice(`${summary} Roles processed: ${profilesProcessed}. Matches added: ${totalMatched}.`);
     await fetchHotlistRoles();
     setRunningRoleMatchId(null);
+  }
+
+  async function runMatchesForAllRoles() {
+    if (runningAllRolesMatch || runningRoleMatchId) return;
+
+    setRunningAllRolesMatch(true);
+    setRolesError('');
+    setRolesNotice('');
+
+    const { data, error } = await supabase.functions.invoke('job-watch-trigger', {
+      body: {
+        trigger_source: 'manual_all',
+      },
+    });
+
+    if (error) {
+      setRolesError(error.message || 'Failed to run matches for all roles.');
+      setRunningAllRolesMatch(false);
+      return;
+    }
+
+    const summary = typeof data?.message === 'string'
+      ? data.message
+      : 'Match run completed for all active roles.';
+    const rolesFound = typeof data?.roles_found === 'number' ? data.roles_found : 0;
+    const profilesProcessed = typeof data?.profiles_processed === 'number' ? data.profiles_processed : 0;
+    const totalMatched = typeof data?.total_matched === 'number' ? data.total_matched : 0;
+    setRolesNotice(`${summary} Roles found: ${rolesFound}. Roles processed: ${profilesProcessed}. Matches added: ${totalMatched}.`);
+    await fetchHotlistRoles();
+    setRunningAllRolesMatch(false);
   }
 
   // Re-fetch when date range changes (if already authed)
@@ -974,6 +1075,13 @@ export default function AdminDashboard() {
                 ))}
               </select>
               <button
+                onClick={() => void runMatchesForAllRoles()}
+                disabled={rolesLoading || runningAllRolesMatch || !!runningRoleMatchId || roles.length === 0}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+              >
+                {runningAllRolesMatch ? <RefreshCcw size={11} className="animate-spin" /> : <Play size={11} />} Run All Roles
+              </button>
+              <button
                 onClick={openAddRoleModal}
                 className="inline-flex h-9 items-center gap-1.5 rounded-md border border-blue-600 bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700"
               >
@@ -1110,7 +1218,7 @@ export default function AdminDashboard() {
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => void runMatchesForRole(role)}
-                            disabled={!!runningRoleMatchId || deletingRoleId === role.id}
+                            disabled={runningAllRolesMatch || !!runningRoleMatchId || deletingRoleId === role.id}
                             aria-label={`Run match for ${role.target_role || 'role'}`}
                             title="Run match"
                             className="rounded-md border border-emerald-300 bg-emerald-50 p-2 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
@@ -1171,6 +1279,12 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {historyNotice && (
+            <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">
+              {historyNotice}
+            </div>
+          )}
+
           {historyLoading && historyRows.length === 0 ? (
             <div className="flex flex-1 items-center justify-center py-8">
               <LogoSpinner size={18} />
@@ -1191,6 +1305,7 @@ export default function AdminDashboard() {
                     <th className="px-3 py-2">Duration</th>
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2">Error</th>
+                    <th className="px-3 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1214,17 +1329,42 @@ export default function AdminDashboard() {
                         {row.duration_ms != null ? `${Math.round(row.duration_ms / 1000)}s` : '-'}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">
-                        <span className={`rounded px-2 py-1 text-[11px] ${row.status === 'success' ? 'bg-green-100 text-green-700' : row.status === 'error' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                        <span className={`rounded px-2 py-1 text-[11px] ${row.status === 'success' ? 'bg-green-100 text-green-700' : row.status === 'error' || row.status === 'failed' || row.status === 'aborted' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                           {row.status}
                         </span>
                       </td>
                       <td className="px-3 py-2 break-normal whitespace-normal text-red-700">{row.error_message || '-'}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {row.status === 'running' ? (
+                          <button
+                            onClick={() => void abortRunningMatchRun(row)}
+                            disabled={historyLoading || !!abortingHistoryRunId || !!retryingHistoryRunId}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                            title="Abort this running run"
+                          >
+                            {abortingHistoryRunId === row.id ? <RefreshCcw size={11} className="animate-spin" /> : <X size={11} />}
+                            Abort
+                          </button>
+                        ) : canRetryMatchRun(row) ? (
+                          <button
+                            onClick={() => void retryErroredMatchRun(row)}
+                            disabled={historyLoading || !!retryingHistoryRunId || !!abortingHistoryRunId}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                            title="Retry this failed run"
+                          >
+                            {retryingHistoryRunId === row.id ? <RefreshCcw size={11} className="animate-spin" /> : <RefreshCcw size={11} />}
+                            Retry
+                          </button>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
 
                   {historyRows.length === 0 && !historyLoading && (
                     <tr>
-                      <td colSpan={11} className="px-4 py-8 text-center text-xs text-gray-500">No match runs found.</td>
+                      <td colSpan={12} className="px-4 py-8 text-center text-xs text-gray-500">No match runs found.</td>
                     </tr>
                   )}
                 </tbody>
