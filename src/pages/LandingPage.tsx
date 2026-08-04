@@ -39,7 +39,7 @@ const FAQS = [
   },
   {
     q: 'What is Pulse?',
-    a: 'Pulse is a real-time social job feed powered by AI. It scans LinkedIn, Reddit, and other platforms, scores each job against tech stack categories, and lets you reveal poster contact info (email, phone) to reach out directly. Score breakdowns cost $0.10 and contact reveals cost $0.25 in AI credits.',
+    a: 'Pulse is a real-time social job feed powered by AI. It scans LinkedIn, Reddit, and other platforms, scores each job against tech stack categories, and lets you reveal poster contact info (email, phone) to reach out directly. Contact reveals cost $0.25 in AI credits.',
   },
   {
     q: 'What is Tracker?',
@@ -47,7 +47,7 @@ const FAQS = [
   },
   {
     q: 'How much does ProfilePush cost?',
-    a: 'ProfilePush is free to start with $5 in monthly AI credits — no credit card required. The Pro plan at ₹2,500/month includes $25 in AI credits, unlimited users, and Live Job Alerts. Score breakdowns cost $0.10 and contact reveals cost $0.25 per action.',
+    a: 'ProfilePush is free to start with $5 in monthly AI credits — no credit card required. The Pro plan at ₹2,500/month includes $25 in AI credits, unlimited users, and Live Job Alerts. Contact reveals cost $0.25 per action.',
   },
 ];
 
@@ -248,6 +248,9 @@ export default function LandingPage() {
     setScreenshots(prev => ({ ...prev, [key]: url }));
   }
 
+  const pulseFeature = FEATURES.find(f => f.key === 'pulse');
+  const pulseImageUrl = screenshots.pulse ?? null;
+
   return (
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
       <main>
@@ -297,20 +300,6 @@ export default function LandingPage() {
             <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for Bench Sales Teams to Hit 10X Submissions</span>
           </h1>
 
-          {/* Mobile-only hero video — between headline and subline */}
-          <div className="block md:hidden mb-6 -mx-2">
-            <div className="overflow-hidden border border-gray-200 shadow-2xl shadow-gray-300/40 ring-1 ring-gray-100/80 bg-white rounded-xl">
-              <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
-                <iframe
-                  src="https://www.loom.com/embed/691b8c9165be4319aed366641e54f159"
-                  frameBorder="0"
-                  allowFullScreen
-                  className="absolute top-0 left-0 w-full h-full"
-                />
-              </div>
-            </div>
-          </div>
-
           <p className="text-base md:text-lg text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
             Our AI watches LinkedIn groups, Facebook communities, WhatsApp channels, email lists, and job boards 24/7 — pulling matched jobs so you don't have to scroll through thousands of posts manually.
           </p>
@@ -333,90 +322,24 @@ export default function LandingPage() {
               <span>No Credit Card Required</span>
             </p>
           </div>
-        </div>
-      </section>
 
-      {/* ── HERO VIDEO (desktop only) ── */}
-      <div className="hidden md:block relative z-10 -mt-4 px-4 sm:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="overflow-hidden border border-gray-200 shadow-2xl shadow-gray-300/40 ring-1 ring-gray-100/80 bg-white rounded-2xl">
-            <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
-              <iframe
-                src="https://www.loom.com/embed/691b8c9165be4319aed366641e54f159"
-                frameBorder="0"
-                allowFullScreen
-                className="absolute top-0 left-0 w-full h-full"
-              />
-            </div>
-          </div>
         </div>
-      </div>
+
+        {pulseFeature && (
+          <div className="relative z-10 mt-8 max-w-6xl mx-auto text-left">
+            <GifSlot
+              featureKey={pulseFeature.key}
+              imageUrl={pulseImageUrl}
+              canEdit={canEdit}
+              onUploaded={handleUploaded}
+              accent={pulseFeature.accent}
+              topGlow={pulseFeature.topGlow}
+            />
+          </div>
+        )}
+      </section>
 
       {/* ── FEATURES HEADLINE ── */}
-
-      {/* ── FEATURES ── */}
-      <section id="features" className="py-10 px-4 md:py-16 md:px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1 rounded-full mb-4">
-              <Zap size={11} />
-              Two powerful tools
-            </span>
-            <h2 className="text-4xl md:text-5xl font-extrabold text-gray-900 tracking-tight leading-tight mb-4">
-              Pulse + Tracker
-            </h2>
-            <p className="text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed">
-              AI-matched social jobs and a built-in vendor CRM — everything a Bench Sales recruiter needs to find and close roles faster.
-            </p>
-          </div>
-
-          {canEdit && (
-            <div className="flex items-center justify-center gap-2 mb-10 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700">
-              <Upload size={14} />
-              <span>Hover any feature or hero area to upload a WebM video.</span>
-            </div>
-          )}
-
-          <div className="divide-y divide-gray-100">
-            {FEATURES.map((f) => {
-              const imgUrl = screenshots[f.key] ?? null;
-
-              return (
-                <div key={f.key} className="flex flex-col gap-4 py-10 md:py-20">
-                  {/* Row 1 — feature badge */}
-                  <div>
-                    <span className={`inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${f.badge}`}>
-                      {f.badgeLabel}
-                    </span>
-                  </div>
-
-                  {/* Row 2 — headline + subline */}
-                  <div>
-                    <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight mb-3 md:whitespace-nowrap overflow-hidden text-ellipsis">
-                      {f.headline}
-                    </h2>
-                    <p className="text-gray-500 text-base md:text-lg leading-relaxed">
-                      {f.subline}
-                    </p>
-                  </div>
-
-                  {/* Row 3 — screenshot */}
-                  <div className="w-full mt-2">
-                    <GifSlot
-                      featureKey={f.key}
-                      imageUrl={imgUrl}
-                      canEdit={canEdit}
-                      onUploaded={handleUploaded}
-                      accent={f.accent}
-                      topGlow={f.topGlow}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
 
       {/* ── HOW IT WORKS ── */}
       <section id="how-it-works" className="py-24 px-6 bg-white border-y border-gray-100">
@@ -470,8 +393,6 @@ export default function LandingPage() {
 
             {/* Credit costs */}
             <div className="flex items-center justify-center gap-6 mt-4 text-sm text-gray-500">
-              <span>Score Breakdown — <strong className="text-gray-700">$0.10</strong></span>
-              <span className="text-gray-300">|</span>
               <span>Reveal Contacts — <strong className="text-gray-700">$0.25</strong></span>
             </div>
           </div>
