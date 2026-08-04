@@ -1,10 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pencil, Trash2 } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
+import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import { supabase } from '../lib/supabase';
 import { triggerRoleEmbedding } from '../lib/embeddings';
 import { filterAndSortAccountStats, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
 import { buildRoleFeedRowsFromMatches, buildRoleStatsSummary } from '../lib/hotlist-role-stats';
+import { splitPreferredLocations } from '../lib/location-normalization';
 
 interface AccountStats {
   id: string;
@@ -71,7 +73,9 @@ const DATE_PRESETS: { key: DatePreset; label: string }[] = [
 ];
 
 const ROLE_CATEGORY_OPTIONS = ['all', 'front-end', 'backend', 'data', 'security', 'crm', 'qa', 'biz-dev', 'ai', 'ml', 'devops'];
-const ROLE_SCHEDULE_OPTIONS: Array<HotlistRoleRow['schedule_frequency']> = ['disabled', 'hourly', 'daily', 'twice_daily', 'weekly'];
+const VISA_TYPE_OPTIONS = ['US Citizen', 'Green Card', 'H1B', 'H4EAD', 'TN', 'OPT', 'CPT', 'F1', 'EAD', 'Other'];
+const EMPLOYMENT_TYPE_OPTIONS = ['C2C', 'W2', '1099', 'C2C or W2', 'Any'];
+const WORK_TYPE_OPTIONS = ['Remote', 'Hybrid', 'Onsite', 'Open'];
 
 function formatTriggerSource(triggerSource: string | null | undefined) {
   if (!triggerSource) return '-';
@@ -147,8 +151,7 @@ export default function AdminDashboard() {
   const [newRoleMaxRate, setNewRoleMaxRate] = useState('');
   const [newRolePrioritySkills, setNewRolePrioritySkills] = useState('');
   const [newRoleRelocationOpen, setNewRoleRelocationOpen] = useState(false);
-  const [newRoleAvatarUrl, setNewRoleAvatarUrl] = useState('');
-  const [newRoleSchedule, setNewRoleSchedule] = useState<HotlistRoleRow['schedule_frequency']>('daily');
+  const [preferredLocationInput, setPreferredLocationInput] = useState('');
   const [newRoleIsActive, setNewRoleIsActive] = useState(true);
   const [newRoleSaving, setNewRoleSaving] = useState(false);
   const [showAddRoleModal, setShowAddRoleModal] = useState(false);
@@ -316,8 +319,7 @@ export default function AdminDashboard() {
     setNewRoleMaxRate('');
     setNewRolePrioritySkills('');
     setNewRoleRelocationOpen(false);
-    setNewRoleAvatarUrl('');
-    setNewRoleSchedule('daily');
+    setPreferredLocationInput('');
     setNewRoleIsActive(true);
   }
 
@@ -343,8 +345,7 @@ export default function AdminDashboard() {
     setNewRoleMaxRate(role.max_rate_usd_per_hr != null ? String(role.max_rate_usd_per_hr) : '');
     setNewRolePrioritySkills(role.priority_skills || '');
     setNewRoleRelocationOpen(Boolean(role.relocation_open));
-    setNewRoleAvatarUrl(role.avatar_url || '');
-    setNewRoleSchedule(role.schedule_frequency || 'daily');
+    setPreferredLocationInput('');
     setNewRoleIsActive(role.is_active);
     setRolesError('');
     setShowAddRoleModal(true);
@@ -360,6 +361,25 @@ export default function AdminDashboard() {
     if (!trimmed) return null;
     const parsed = Number(trimmed);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function addPreferredLocation(value: string) {
+    const candidate = value.trim();
+    if (!candidate) return;
+    const current = splitPreferredLocations(newRolePreferredLocations);
+    const exists = current.some((loc) => loc.toLowerCase() === candidate.toLowerCase());
+    if (exists) {
+      setPreferredLocationInput('');
+      return;
+    }
+    setNewRolePreferredLocations([...current, candidate].join(' | '));
+    setPreferredLocationInput('');
+  }
+
+  function removePreferredLocation(value: string) {
+    const next = splitPreferredLocations(newRolePreferredLocations)
+      .filter((loc) => loc.toLowerCase() !== value.toLowerCase());
+    setNewRolePreferredLocations(next.join(' | '));
   }
 
   async function createRole() {
@@ -391,9 +411,8 @@ export default function AdminDashboard() {
       max_rate_usd_per_hr: toNumberOrNull(newRoleMaxRate),
       relocation_open: newRoleRelocationOpen,
       priority_skills: newRolePrioritySkills.trim() || null,
-      schedule_frequency: newRoleSchedule,
+      schedule_frequency: 'daily' as const,
       is_active: newRoleIsActive,
-      avatar_url: newRoleAvatarUrl.trim() || null,
     };
 
     const { data, error } = await supabase
@@ -443,9 +462,7 @@ export default function AdminDashboard() {
       max_rate_usd_per_hr: toNumberOrNull(newRoleMaxRate),
       relocation_open: newRoleRelocationOpen,
       priority_skills: newRolePrioritySkills.trim() || null,
-      schedule_frequency: newRoleSchedule,
       is_active: newRoleIsActive,
-      avatar_url: newRoleAvatarUrl.trim() || null,
     };
 
     const { error } = await supabase
@@ -1234,110 +1251,174 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-2 p-4 md:grid-cols-6">
-              <select
-                value={newRoleAccountId}
-                onChange={(e) => setNewRoleAccountId(e.target.value)}
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500 md:col-span-2"
-              >
-                {stats.map((item) => (
-                  <option key={item.id} value={item.id}>{item.name || item.id}</option>
-                ))}
-              </select>
-              <input
-                value={newRoleTargetRole}
-                onChange={(e) => setNewRoleTargetRole(e.target.value)}
-                placeholder="Target role"
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500 md:col-span-2"
-              />
-              <select
-                value={newRoleCategory}
-                onChange={(e) => setNewRoleCategory(e.target.value)}
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-              >
-                {ROLE_CATEGORY_OPTIONS.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-              <select
-                value={newRoleSchedule}
-                onChange={(e) => setNewRoleSchedule(e.target.value as HotlistRoleRow['schedule_frequency'])}
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-              >
-                {ROLE_SCHEDULE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-              <input
-                value={newRoleMinYearsExp}
-                onChange={(e) => setNewRoleMinYearsExp(e.target.value)}
-                placeholder="Min Yrs"
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-              />
-              <input
-                value={newRoleMaxYearsExp}
-                onChange={(e) => setNewRoleMaxYearsExp(e.target.value)}
-                placeholder="Max Yrs"
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-              />
-              <input
-                value={newRoleVisaStatus}
-                onChange={(e) => setNewRoleVisaStatus(e.target.value)}
-                placeholder="Visa"
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-              />
-              <input
-                value={newRoleEmploymentType}
-                onChange={(e) => setNewRoleEmploymentType(e.target.value)}
-                placeholder="Employment"
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-              />
-              <input
-                value={newRoleWorkType}
-                onChange={(e) => setNewRoleWorkType(e.target.value)}
-                placeholder="Work type"
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-              />
-              <input
-                value={newRolePreferredLocations}
-                onChange={(e) => setNewRolePreferredLocations(e.target.value)}
-                placeholder="Locations"
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500 md:col-span-2"
-              />
-              <input
-                value={newRoleMinRate}
-                onChange={(e) => setNewRoleMinRate(e.target.value)}
-                placeholder="Rate min"
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-              />
-              <input
-                value={newRoleMaxRate}
-                onChange={(e) => setNewRoleMaxRate(e.target.value)}
-                placeholder="Rate max"
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-              />
-              <input
-                value={newRoleAvatarUrl}
-                onChange={(e) => setNewRoleAvatarUrl(e.target.value)}
-                placeholder="Avatar URL"
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500 md:col-span-2"
-              />
-              <textarea
-                value={newRolePrioritySkills}
-                onChange={(e) => setNewRolePrioritySkills(e.target.value)}
-                placeholder="Priority skills"
-                rows={2}
-                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500 md:col-span-3"
-              />
+            <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-6">
+              <label className="md:col-span-3">
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Target Role</span>
+                <input
+                  value={newRoleTargetRole}
+                  onChange={(e) => setNewRoleTargetRole(e.target.value)}
+                  placeholder="Senior Java Developer"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                />
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Category</span>
+                <select
+                  value={newRoleCategory}
+                  onChange={(e) => setNewRoleCategory(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                >
+                  {ROLE_CATEGORY_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Status</span>
+                <select
+                  value={newRoleIsActive ? 'active' : 'inactive'}
+                  onChange={(e) => setNewRoleIsActive(e.target.value === 'active')}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Min Years</span>
+                <input
+                  value={newRoleMinYearsExp}
+                  onChange={(e) => setNewRoleMinYearsExp(e.target.value)}
+                  placeholder="3"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                />
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Max Years</span>
+                <input
+                  value={newRoleMaxYearsExp}
+                  onChange={(e) => setNewRoleMaxYearsExp(e.target.value)}
+                  placeholder="8"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                />
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Visa Type</span>
+                <select
+                  value={newRoleVisaStatus}
+                  onChange={(e) => setNewRoleVisaStatus(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                >
+                  <option value="">Select</option>
+                  {VISA_TYPE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Employment Type</span>
+                <select
+                  value={newRoleEmploymentType}
+                  onChange={(e) => setNewRoleEmploymentType(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                >
+                  <option value="">Select</option>
+                  {EMPLOYMENT_TYPE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Work Type</span>
+                <select
+                  value={newRoleWorkType}
+                  onChange={(e) => setNewRoleWorkType(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                >
+                  <option value="">Select</option>
+                  {WORK_TYPE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="md:col-span-2">
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Preferred Locations</span>
+                <div className="rounded-md border border-gray-300 bg-white p-2">
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {splitPreferredLocations(newRolePreferredLocations).map((loc) => (
+                      <span key={loc} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700">
+                        {loc}
+                        <button
+                          type="button"
+                          onClick={() => removePreferredLocation(loc)}
+                          className="text-blue-400 hover:text-red-500"
+                          aria-label={`Remove ${loc}`}
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <LocationAutosuggestInput
+                      value={preferredLocationInput}
+                      onChange={setPreferredLocationInput}
+                      onSelectPlace={(place) => addPreferredLocation(place.formatted || preferredLocationInput)}
+                      scope="any"
+                      placeholder="Type city/state/country and pick"
+                      className="flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => addPreferredLocation(preferredLocationInput)}
+                      className="h-[30px] rounded-md border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Rate Min ($/hr)</span>
+                <input
+                  value={newRoleMinRate}
+                  onChange={(e) => setNewRoleMinRate(e.target.value)}
+                  placeholder="50"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                />
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Rate Max ($/hr)</span>
+                <input
+                  value={newRoleMaxRate}
+                  onChange={(e) => setNewRoleMaxRate(e.target.value)}
+                  placeholder="80"
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                />
+              </label>
+
+              <label className="md:col-span-3">
+                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Priority Skills</span>
+                <textarea
+                  value={newRolePrioritySkills}
+                  onChange={(e) => setNewRolePrioritySkills(e.target.value)}
+                  placeholder="Java, Spring Boot, AWS"
+                  rows={2}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
+                />
+              </label>
+
               <div className="flex items-center gap-3 md:col-span-3">
-                <label className="inline-flex items-center gap-2 text-xs text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={newRoleIsActive}
-                    onChange={(e) => setNewRoleIsActive(e.target.checked)}
-                  />
-                  Active
-                </label>
                 <label className="inline-flex items-center gap-2 text-xs text-gray-700">
                   <input
                     type="checkbox"
