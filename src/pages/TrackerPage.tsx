@@ -764,7 +764,7 @@ export default function TrackerPage() {
       </div>
 
       {/* ── Page content: 2 columns – Contacts (narrow) + Jobs History (wide) ── */}
-      <div className="flex-1 grid grid-cols-[minmax(0,40%)_minmax(0,60%)] sm:grid-cols-[minmax(0,40%)_minmax(0,60%)] gap-0 overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[420px_minmax(0,1fr)] gap-0 overflow-hidden">
 
         {/* ════════════════ CONTACTS LIST (narrow) ════════════════ */}
         <div className="min-w-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
@@ -783,7 +783,7 @@ export default function TrackerPage() {
                 {isSearching ? 'No vendors match your search.' : `No vendors in ${dateLabel}.`}
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="p-3 space-y-3">
                 {filteredVendors.map((v) => {
                   const subCount = submissions.filter(s => s.vendor_name === v.name).length;
                   const isActive = activeVendorId === v.id;
@@ -791,10 +791,10 @@ export default function TrackerPage() {
                     <div
                       key={v.id}
                       onClick={() => handleVendorRowClick(v)}
-                      className={`px-3 py-2.5 cursor-pointer transition-colors ${isActive ? 'bg-amber-100/60' : 'hover:bg-amber-50/30'}`}
+                      className={`rounded-xl border px-3.5 py-3 cursor-pointer transition-colors ${isActive ? 'border-amber-300 bg-amber-50/70 shadow-sm' : 'border-gray-200 bg-white hover:bg-amber-50/30'}`}
                     >
                       <div className="flex items-center justify-between gap-1.5">
-                        <p className="text-xs font-semibold text-gray-900 break-words whitespace-normal leading-snug">{v.name}</p>
+                        <p className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{v.name}</p>
                         <div className="flex items-center gap-1 shrink-0">
                           {subCount > 0 && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{subCount}</span>}
                           <button onClick={(e) => { e.stopPropagation(); openEditVendor(v); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors" title="Edit"><Pencil size={10} /></button>
@@ -802,7 +802,7 @@ export default function TrackerPage() {
                         </div>
                       </div>
                       {v.contact_person && (
-                        <div className="flex items-center gap-1 mt-1 text-[11px] text-gray-600">
+                        <div className="flex items-center gap-1 mt-1.5 text-xs text-gray-600">
                           <User size={10} className="text-gray-400 shrink-0" />
                           {revealedFields.has(`cp-${v.id}`) ? (
                             <span className="truncate">{v.contact_person}</span>
@@ -815,7 +815,7 @@ export default function TrackerPage() {
                         </div>
                       )}
                       {v.email && (
-                        <div className="flex items-center gap-1 mt-0.5 text-[11px]">
+                        <div className="flex items-center gap-1 mt-1 text-xs">
                           <Mail size={10} className="text-gray-400 shrink-0" />
                           {revealedFields.has(`email-${v.id}`) ? (
                             <a href={`mailto:${v.email}`} onClick={e => e.stopPropagation()} className="text-blue-600 hover:underline truncate">{v.email}</a>
@@ -828,13 +828,13 @@ export default function TrackerPage() {
                         </div>
                       )}
                       {v.location && (
-                        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-500">
+                        <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
                           <MapPin size={10} className="text-gray-400 shrink-0" />
                           <span className="truncate">{v.location}</span>
                         </div>
                       )}
                       {v.email && (
-                        <div className="mt-1">
+                        <div className="mt-2">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -842,7 +842,7 @@ export default function TrackerPage() {
                               setCopiedField(`email-${v.id}`);
                               setTimeout(() => setCopiedField(null), 1500);
                             }}
-                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
                           >
                             {copiedField === `email-${v.id}` ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
                             {copiedField === `email-${v.id}` ? 'Copied' : 'Copy Email ID'}
@@ -882,7 +882,7 @@ export default function TrackerPage() {
                 <p className="mt-1">{activeVendorId ? 'No contact reveals found for this vendor yet.' : 'No contact reveals found across these contacts yet.'}</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="p-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
                 {vendorHistory.map((job, index) => {
                   const breakdownItems = buildScoreBreakdownDisplayItems(
                     job.score_breakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
@@ -906,10 +906,10 @@ export default function TrackerPage() {
                   ][index % 4];
 
                   return (
-                    <div key={job.id} className={`px-3 py-2.5 rounded-lg border ${cardToneClass}`}> 
+                    <div key={job.id} className={`px-3.5 py-3 rounded-xl border ${cardToneClass}`}> 
                       <div className="flex items-start justify-between gap-1.5">
                         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                          <p className="text-[11px] font-semibold text-gray-900 leading-snug">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
+                          <p className="text-sm font-semibold text-gray-900 leading-snug">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
                           <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600">{job.platform}</span>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
@@ -919,19 +919,19 @@ export default function TrackerPage() {
                         </div>
                       </div>
                       {job.company_name && (
-                        <div className="mt-0.5 text-[10px] text-gray-600">{job.company_name}</div>
+                        <div className="mt-1 text-xs text-gray-600">{job.company_name}</div>
                       )}
-                      <div className="mt-0.5 text-[10px] text-gray-500">
+                      <div className="mt-0.5 text-xs text-gray-500">
                         <span>{job.posted_by_name || '—'}</span>
                       </div>
-                      <div className="mt-0.5 space-y-0.5 text-[10px] text-gray-400">
+                      <div className="mt-1 space-y-0.5 text-xs text-gray-400">
                         <div>- {formatAgo(job.created_at)} posted</div>
                         <div>- {job.revealed_at ? `${formatAgo(job.revealed_at)} revealed` : '— revealed'}</div>
                       </div>
 
                       {breakdownItems.length > 0 && (
                         <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200">
-                          <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                          <table className="w-full table-fixed border-collapse text-left text-xs">
                             <thead className="bg-gray-50">
                               <tr>
                                 <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
@@ -968,14 +968,14 @@ export default function TrackerPage() {
                                   return next;
                                 });
                               }}
-                              className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+                              className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
                             >
                               {isExpanded ? 'Hide Details' : 'Details'}
                             </button>
                           )}
                           <button
                             onClick={() => void generateTrackerEmailDraft(job)}
-                            className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                              className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
                           >
                             <Mail size={10} />
                             Generate Email
