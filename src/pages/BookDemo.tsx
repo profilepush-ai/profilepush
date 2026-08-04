@@ -17,7 +17,11 @@ export default function BookDemo() {
 
   return (
     <>
-      <SEO title="Book a Demo Call | ProfilePush" description="Schedule a demo call with our onboarding specialist to see how ProfilePush can transform your bench sales workflow." />
+      <SEO
+        title="Book a Demo Call | ProfilePush"
+        description="Book a live ProfilePush demo to see Pulse AI job radar, contact reveals, Tracker CRM, and recruiter AI workflows tailored for Bench Sales teams."
+        canonical="https://profilepush.ai/book-demo"
+      />
 
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100">

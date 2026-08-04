@@ -6,10 +6,31 @@ import SiteFooter from '../components/SiteFooter';
 
 const READING_TIME = '12 min read';
 
+const WHY_AI_JSONLD = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'The Truth About AI in Bench Sales: Why The Machines Are Not Coming For Your Job',
+  description: 'A practical guide on how AI changes Bench Sales workflows and why recruiter-led execution still wins.',
+  author: {
+    '@type': 'Organization',
+    name: 'ProfilePush Team',
+  },
+  publisher: {
+    '@id': 'https://profilepush.ai/#organization',
+  },
+  mainEntityOfPage: 'https://profilepush.ai/why-ai-copilot',
+  url: 'https://profilepush.ai/why-ai-copilot',
+};
+
 export default function WhyAICopilot() {
   return (
     <div className="min-h-screen bg-white">
-      <SEO title="Why AI Co-pilot | ProfilePush" description="The truth about AI in bench sales and why the machines are not coming for your job." />
+      <SEO
+        title="Why AI Co-pilot | ProfilePush"
+        description="The truth about AI in Bench Sales and how recruiter-first AI workflows help teams source faster, submit better, and close more roles."
+        canonical="https://profilepush.ai/why-ai-copilot"
+        jsonLd={WHY_AI_JSONLD}
+      />
 
       {/* Nav */}
       <nav className="fixed top-0 inset-x-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100">

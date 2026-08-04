@@ -86,7 +86,7 @@ export default function PricingPage() {
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       <SEO
         title="Pricing — ProfilePush AI Copilot for Bench Sales Recruiters"
-        description="ProfilePush Pro starts at $25/month. Pick the credit amount you need. All AI features, unlimited users, cancel anytime."
+        description="ProfilePush pricing for Bench Sales teams: free plan with monthly AI credits, plus Pro at INR 2,500/month with higher credits, unlimited users, and live alerts."
         canonical="https://profilepush.ai/pricing"
       />
 

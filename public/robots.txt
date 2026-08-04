@@ -1,18 +1,30 @@
 User-agent: *
 Allow: /
 
-# Block authenticated app pages
-Disallow: /dashboard
-Disallow: /profiles
+# Block authenticated and non-marketing app pages
+Disallow: /desk
+Disallow: /bench
 Disallow: /profile-details/
 Disallow: /job-finder
-Disallow: /wishlist
+Disallow: /submission-queue
 Disallow: /resume-ai
 Disallow: /account
 Disallow: /support
 Disallow: /roadmap
 Disallow: /billing
-Disallow: /submissions
+Disallow: /tracker
+Disallow: /alerts
+Disallow: /jd-ai
+Disallow: /job-watch-ai
+Disallow: /pulse
+Disallow: /watchlist-profiles
+Disallow: /admin
+Disallow: /welcome
+
+# Block auth/transactional routes
+Disallow: /signin
+Disallow: /signup
+Disallow: /reset-password
 Disallow: /onboard/
 Disallow: /confirm-applied/
 
