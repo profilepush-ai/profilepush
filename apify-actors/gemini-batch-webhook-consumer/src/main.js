@@ -21,13 +21,13 @@ await Actor.main(async () => {
     gemini_webhook_secret = "",
     gemini_secret_field = "secret",
     boards = SUPPORTED_BOARDS,
-    max_results = 25,
+    max_results = 20,
     posted_within = "Past 24 hours",
     linkedin_experience_level = "Mid-Senior",
     linkedin_employment_type = "",
     linkedin_work_arrangement = "",
-    max_combinations = 90,
-    max_concurrent = 10,
+    max_combinations = 40,
+    max_concurrent = 3,
     dry_run = false,
   } = input;
 
