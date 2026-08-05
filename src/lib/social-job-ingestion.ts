@@ -83,3 +83,28 @@ export function normalizeSocialJobItems(items: SocialJobItem[]): NormalizedSocia
 
   return { rows, errors };
 }
+
+export async function logSocialJobPayload(
+  insertLog: (payload: Record<string, unknown>) => Promise<unknown>,
+  payload: Record<string, unknown>,
+  normalizedRows: NormalizedSocialJobItem[],
+  errors: string[],
+  insertedCount: number,
+  status: string,
+): Promise<boolean> {
+  try {
+    await insertLog({
+      function_name: 'receive-social-job',
+      source: payload?.source ?? null,
+      payload,
+      normalized_rows: normalizedRows,
+      errors,
+      inserted_count: insertedCount,
+      status,
+    });
+    return true;
+  } catch (error) {
+    console.error('social_job_payload_logs insert failed:', error);
+    return false;
+  }
+}

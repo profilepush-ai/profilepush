@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeSocialJobItems } from './social-job-ingestion';
+import { logSocialJobPayload, normalizeSocialJobItems } from './social-job-ingestion';
 
 describe('normalizeSocialJobItems', () => {
   it('maps alternate webhook field names into social_jobs rows', () => {
@@ -45,5 +45,13 @@ describe('normalizeSocialJobItems', () => {
 
     expect(result.rows).toHaveLength(0);
     expect(result.errors).toHaveLength(1);
+  });
+
+  it('returns false without throwing when the payload logger fails', async () => {
+    const insertLog = async () => {
+      throw new Error('table missing');
+    };
+
+    await expect(logSocialJobPayload(insertLog, { source: 'linkedin' }, [], [], 0, 'rejected')).resolves.toBe(false);
   });
 });
