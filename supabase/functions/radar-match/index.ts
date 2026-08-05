@@ -10,7 +10,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
 const FREE_PLAN_MATCH_TOTAL_LIMIT = 5;
 const FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT = 5;
 const FREE_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS = 24 * 60 * 60 * 1000;

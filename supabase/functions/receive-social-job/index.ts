@@ -97,13 +97,42 @@ Title: ${j.title}
 Location: ${j.location}
 Description: ${j.description.slice(0, 1500)}`).join("\n---\n");
 
-  const prompt = `Extract structured fields from each job posting. Return ONLY a raw JSON array, no markdown.
-For each job: job_id (from input), role_title, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).
+  const prompt = `Extract structured fields from each job posting. Return ONLY valid JSON, no markdown.
+Return one result per input job and preserve job_id from input. If a field is unknown, use null (or [] for arrays).
+For each job include: job_id, role_title, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).
 
 JOBS:
 ${jobTexts}
 
 Return ONLY valid JSON array:`;
+
+  const normalizeExtractedResults = (parsed: unknown): Record<string, unknown>[] => {
+    let rawRows: unknown[] = [];
+
+    if (Array.isArray(parsed)) {
+      rawRows = parsed;
+    } else if (parsed && typeof parsed === "object") {
+      const obj = parsed as Record<string, unknown>;
+      if (Array.isArray(obj.results)) rawRows = obj.results;
+      else if (Array.isArray(obj.items)) rawRows = obj.items;
+      else if (Array.isArray(obj.jobs)) rawRows = obj.jobs;
+      else if (
+        "job_id" in obj ||
+        "role_title" in obj ||
+        "core_skills" in obj ||
+        "years_experience" in obj
+      ) rawRows = [obj];
+    }
+
+    return rawRows
+      .map((row, index) => {
+        if (!row || typeof row !== "object") return null;
+        const obj = { ...(row as Record<string, unknown>) };
+        if (!obj.job_id) obj.job_id = jobs[index]?.id ?? jobs[0]?.id ?? null;
+        return obj;
+      })
+      .filter((row): row is Record<string, unknown> => Boolean(row && row.job_id));
+  };
 
   const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
   let lastError = "No models succeeded";
@@ -112,7 +141,10 @@ Return ONLY valid JSON array:`;
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.1 } }),
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
+        }),
       });
       if (!res.ok) {
         const errBody = await res.text();
@@ -124,7 +156,12 @@ Return ONLY valid JSON array:`;
       if (!text) { lastError = `${model}: empty response`; continue; }
       text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
       const parsed = JSON.parse(text);
-      return { results: Array.isArray(parsed) ? parsed : (parsed.results ?? []) };
+      const results = normalizeExtractedResults(parsed);
+      if (results.length === 0) {
+        lastError = `${model}: parsed JSON but no usable result rows`;
+        continue;
+      }
+      return { results };
     } catch (e) { lastError = `${model}: ${(e as Error).message}`; continue; }
   }
   return { results: [], error: lastError };
@@ -180,16 +217,34 @@ Deno.serve(async (req: Request) => {
     // Call Gemini synchronously — inline extraction, no radar-match delegation.
     let extractionSaved = 0;
     let extractionError: string | null = null;
-    if (GEMINI_API_KEY && jobsForExtraction.length > 0) {
+
+    if (!GEMINI_API_KEY) {
+      extractionError = "GEMINI_API_KEY is not configured; extraction skipped";
+    } else if (jobsForExtraction.length === 0) {
+      extractionError = "No inserted jobs available for extraction";
+    } else {
       try {
         const { results: extracted, error: geminiError } = await extractWithGemini(jobsForExtraction, GEMINI_API_KEY);
-        if (geminiError) extractionError = geminiError;
+        if (geminiError) {
+          extractionError = geminiError;
+        }
         if (extracted.length > 0) {
           const matchRows = extracted.map((e: Record<string, unknown>) => {
             const jobInput = jobsForExtraction.find(j => j.id === String(e.job_id ?? "")) ?? jobsForExtraction[0];
             const rateStr = (e.hourly_rate_min != null || e.hourly_rate_max != null)
               ? `$${e.hourly_rate_min ?? "?"}–$${e.hourly_rate_max ?? "?"}/hr`
               : "Not specified";
+            const extractionSummary = {
+              role_title: String(e.role_title ?? jobInput.title ?? "Not specified"),
+              core_skills: Array.isArray(e.core_skills) ? e.core_skills as string[] : [],
+              years_experience: typeof e.years_experience === "number" ? e.years_experience : null,
+              visa_types: Array.isArray(e.visa_types) ? e.visa_types as string[] : [],
+              employment_type: String(e.employment_type ?? ""),
+              work_type: String(e.work_type ?? ""),
+              locations: Array.isArray(e.locations) ? e.locations as string[] : [],
+              hourly_rate_min: typeof e.hourly_rate_min === "number" ? e.hourly_rate_min : null,
+              hourly_rate_max: typeof e.hourly_rate_max === "number" ? e.hourly_rate_max : null,
+            };
             return {
               profile_id: null,
               job_source: "social",
@@ -204,21 +259,9 @@ Deno.serve(async (req: Request) => {
                 location_match: { score: 0, candidate_value: "", job_value: Array.isArray(e.locations) && (e.locations as string[]).length ? (e.locations as string[]).join(", ") : jobInput.location || "Not specified", rule: "Location" },
                 rate_match: { score: 0, candidate_value: "", job_value: rateStr, rule: "Hourly rate" },
               },
-              ai_notes: "extraction_only",
+              ai_notes: `extraction_only|${JSON.stringify(extractionSummary)}`,
               disqualified: false,
               disqualify_reason: null,
-              job_title: jobInput.title || null,
-              role_title: String(e.role_title ?? jobInput.title ?? ""),
-              core_skills: Array.isArray(e.core_skills) ? e.core_skills as string[] : [],
-              years_experience: typeof e.years_experience === "number" ? e.years_experience : null,
-              visa_types: Array.isArray(e.visa_types) ? e.visa_types as string[] : [],
-              employment_type: String(e.employment_type ?? ""),
-              work_type: String(e.work_type ?? ""),
-              locations: Array.isArray(e.locations) ? e.locations as string[] : [],
-              hourly_rate_min: typeof e.hourly_rate_min === "number" ? e.hourly_rate_min : null,
-              hourly_rate_max: typeof e.hourly_rate_max === "number" ? e.hourly_rate_max : null,
-              relocation_required: false,
-              extracted_fields: e,
             };
           });
 
@@ -229,7 +272,12 @@ Deno.serve(async (req: Request) => {
           if (!matchErr) {
             extractionSaved = matchRows.length;
             await supabase.from("social_jobs").update({ extracted_at: new Date().toISOString() }).in("id", matchRows.map(r => r.job_id));
-          } else console.error("radar_match_results upsert error:", matchErr.message);
+          } else {
+            extractionError = `radar_match_results upsert error: ${matchErr.message}`;
+            console.error("radar_match_results upsert error:", matchErr.message);
+          }
+        } else if (!extractionError) {
+          extractionError = "Gemini returned no extraction rows";
         }
       } catch (geminiErr) {
         console.error("Gemini extraction error:", geminiErr);
