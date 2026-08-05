@@ -170,8 +170,10 @@ Deno.serve(async (req: Request) => {
             .from("radar_match_results")
             .upsert(matchRows, { onConflict: "job_id,job_source", ignoreDuplicates: false });
 
-          if (!matchErr) extractionSaved = matchRows.length;
-          else console.error("radar_match_results upsert error:", matchErr.message);
+          if (!matchErr) {
+            extractionSaved = matchRows.length;
+            await supabase.from("social_jobs").update({ extracted_at: new Date().toISOString() }).in("id", matchRows.map(r => r.job_id));
+          } else console.error("radar_match_results upsert error:", matchErr.message);
         }
       } catch (geminiErr) {
         console.error("Gemini extraction error:", geminiErr);
