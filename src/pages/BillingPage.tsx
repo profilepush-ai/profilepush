@@ -445,8 +445,13 @@ export default function BillingPage() {
         body: { plan_amount_usd: selectedNewTier },
         headers,
       });
-      if (error || !data?.subscription_id) {
-        throw new Error(getBillingErrorMessage(error, 'Failed to create subscription'));
+      if (error) {
+        let msg = 'Failed to create subscription';
+        try { const body = await (error as { context?: Response }).context?.json?.(); if (body?.error) msg = body.error; } catch {}
+        throw new Error(msg);
+      }
+      if (!data?.subscription_id) {
+        throw new Error(data?.error ?? 'Failed to create subscription');
       }
       const rzp = new window.Razorpay({
         key: data.key_id, subscription_id: data.subscription_id,
@@ -486,8 +491,13 @@ export default function BillingPage() {
         body: { new_plan_amount_usd: selectedNewTier },
         headers,
       });
-      if (error || !data) {
-        throw new Error(getBillingErrorMessage(error, 'Failed to change plan'));
+      if (error) {
+        let msg = 'Failed to change plan';
+        try { const body = await (error as { context?: Response }).context?.json?.(); if (body?.error) msg = body.error; } catch {}
+        throw new Error(msg);
+      }
+      if (!data) {
+        throw new Error('Failed to change plan');
       }
       if (isUpgrade && data.order_id) {
         await loadRazorpay();
@@ -573,18 +583,14 @@ export default function BillingPage() {
             <div className="flex-1 flex flex-col gap-4 min-w-0">
 
               {/* Plan upgrade banner */}
-              <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 p-4 text-white shadow-sm">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-blue-100">Upgrade to Pro</p>
-                    <h2 className="mt-1 text-base font-bold">Get access to more active vendors and real time job alerts</h2>
-                  </div>
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-semibold text-blue-700">Get more reveals and live job alerts for your watch list.</p>
                   {isOwner && canUpgrade && (
                     <button onClick={openUpgradeModal}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-[11px] font-bold text-blue-700 shadow-sm transition hover:bg-blue-50"
-                    >
-                      <ArrowUpRight size={12} />
-                      {hasActiveSub ? 'Upgrade Plan' : 'Upgrade to Pro'}
+                      className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700">
+                      <ArrowUpRight size={13} />
+                      Upgrade to Pro
                     </button>
                   )}
                 </div>
@@ -633,12 +639,6 @@ export default function BillingPage() {
                 ))}
               </div>
 
-              {/* Main content panel */}
-              <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                {loading ? (
-                  <div className="flex items-center justify-center py-20"><LogoSpinner size={20} /></div>
-                ) : null}
-              </div>
             </div>
 
             {/* ── RIGHT: Subscription panel ───────────────────────────── */}
@@ -674,14 +674,6 @@ export default function BillingPage() {
                       Payment pending. Complete checkout to activate.
                     </div>
                   )}
-                </div>
-                <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Pro plan features</p>
-                  <ul className="mt-2 space-y-1.5 text-[11px] text-gray-600">
-                    <li className="flex items-center gap-2"><Check size={10} className="text-emerald-500" /> More active vendors</li>
-                    <li className="flex items-center gap-2"><Check size={10} className="text-emerald-500" /> Real time job alerts</li>
-                    <li className="flex items-center gap-2"><Check size={10} className="text-emerald-500" /> Higher credit budget</li>
-                  </ul>
                 </div>
                 {isOwner && canDowngrade && (
                   <button onClick={openDowngradeModal}
@@ -1139,9 +1131,16 @@ function TierComparison({ currentUsd }: { currentUsd: number }) {
 }
 
 // ── Plan modal ─────────────────────────────────────────────────────────────
+const PLAN_FEATURES = [
+  '$25 AI Credits (approx 100 reveals)',
+  'Live Job alerts for Watchlist Profiles',
+  'Unlimited team members',
+  'Vendors Tracker & Bulk Export',
+];
+
 function PlanModal({
   hasActiveSub, subscription, selectedNewTier, setSelectedNewTier, pendingPeriodEnd,
-  changingPlan, subscribing, onClose, onSubmit, user,
+  changingPlan, subscribing, onClose, onSubmit,
 }: {
   hasActiveSub: boolean;
   subscription: { plan_amount_usd: number; status: string; pending_plan_amount_usd?: number | null } | null;
@@ -1156,104 +1155,55 @@ function PlanModal({
 }) {
   const isUpgrade = hasActiveSub && subscription ? selectedNewTier > subscription.plan_amount_usd : false;
   const isSame    = hasActiveSub && subscription ? selectedNewTier === subscription.plan_amount_usd : false;
+  const inr = (selectedNewTier * INR_PER_USD).toLocaleString('en-IN');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
-        <button onClick={onClose}
-          className="absolute top-4 right-4 z-10 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-          <X size={16} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
+        <button onClick={onClose} className="absolute top-3 right-3 z-10 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+          <X size={15} />
         </button>
-
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr]">
-          {/* Left: pricing */}
-          <div className="px-6 py-7 flex flex-col" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 50%, #1e40af 100%)' }}>
-            <p className="text-[10px] font-extrabold uppercase tracking-widest text-white/80 mb-5">
-              {hasActiveSub ? 'Change Plan' : 'Pro Plan'}
-            </p>
-            <div className="mb-5">
-              <div className="flex items-baseline gap-1.5 mb-1">
-                <span className="text-4xl font-extrabold text-white">₹{(selectedNewTier * INR_PER_USD).toLocaleString('en-IN')}</span>
-                <span className="text-blue-200 text-sm pb-1">/ month</span>
-              </div>
-              <p className="text-sm font-semibold text-yellow-300">${selectedNewTier} in AI credits/month</p>
-            </div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-blue-200 mb-2 block">Select Plan</label>
-            <div className="relative mb-4">
-              <select value={selectedNewTier} onChange={e => setSelectedNewTier(Number(e.target.value))}
-                className="w-full appearance-none border border-white/25 text-white rounded-xl px-4 py-3 pr-10 text-sm font-semibold focus:outline-none focus:border-white/60 cursor-pointer"
-                style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}>
-                {TIERS.map(tier => (
-                  <option key={tier} value={tier} style={{ backgroundColor: '#1e3a8a', color: '#fff' }}>
-                    ₹{(tier * INR_PER_USD).toLocaleString('en-IN')}/mo — ${tier} credits{subscription?.plan_amount_usd === tier && hasActiveSub ? ' (current)' : ''}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
-            </div>
-            <div className="rounded-xl p-3 mb-4 space-y-2 border border-white/20" style={{ backgroundColor: 'rgba(255,255,255,0.10)' }}>
-              <div className="flex justify-between text-sm">
-                <span className="text-blue-200">Charged in INR</span>
-                <span className="font-bold text-white">₹{(selectedNewTier * INR_PER_USD).toLocaleString('en-IN')}/mo</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-blue-200">AI credits / month</span>
-                <span className="font-semibold text-yellow-300">${selectedNewTier}</span>
-              </div>
-            </div>
-            {hasActiveSub && subscription && !isSame && (
-              <div className={`flex items-start gap-2 text-xs rounded-xl px-3 py-2.5 mb-4 ${
-                isUpgrade ? 'bg-emerald-400/20 border border-emerald-300/30 text-emerald-200'
-                          : 'bg-amber-400/20 border border-amber-300/30 text-amber-200'
-              }`}>
-                {isUpgrade ? <ArrowUpRight size={13} className="shrink-0 mt-0.5" /> : <ArrowDownRight size={13} className="shrink-0 mt-0.5" />}
-                <span>
-                  {isUpgrade
-                    ? 'Upgrade — prorated charge for remaining period, extra credits added immediately.'
-                    : `Downgrade — effective ${pendingPeriodEnd ?? 'at next renewal'}.`}
-                </span>
-              </div>
-            )}
-            <div className="mt-auto">
-              <button onClick={onSubmit} disabled={isSame || changingPlan || subscribing}
-                className="w-full py-3 rounded-xl text-sm font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-md"
-                style={{ background: 'linear-gradient(135deg, #facc15 0%, #f97316 50%, #2563eb 100%)' }}>
-                {(changingPlan || subscribing) && <LogoSpinner size={14} />}
-                {hasActiveSub
-                  ? isSame ? 'Already on this plan' : isUpgrade ? `Upgrade to ${fmtINR(selectedNewTier)}/mo` : `Downgrade to ${fmtINR(selectedNewTier)}/mo`
-                  : `Upgrade Now — ${fmtINR(selectedNewTier)}/mo`
-                }
-              </button>
-              <p className="text-[10px] text-blue-300/60 text-center mt-2">Payments processed in INR via Razorpay</p>
-            </div>
+        <div className="px-6 pt-6 pb-5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-3">ProfilePush Pro</p>
+          <div className="mb-5">
+            <span className="text-3xl font-extrabold text-gray-900">₹{inr}</span>
+            <span className="text-sm font-medium text-gray-400">/month</span>
+            <p className="text-xs text-gray-400 mt-0.5">Billed via Razorpay</p>
           </div>
-
-          {/* Right: features */}
-          <div className="px-6 py-7 flex flex-col bg-white">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">What's included</p>
-            <p className="text-base font-bold text-gray-900 mb-5">Everything you need to run recruiting ops.</p>
-            <ul className="space-y-3 flex-1">
-              {[
-                ['All AI features unlocked', Users],
-                ['Multi-board job search', Search],
-                ['Candidate onboarding portal', FileText],
-                ['Role-based access control', Layers],
-                ['Unlimited team members', Users],
-                ['Profile & bench management', Activity],
-                ['Vendor & client directory', Target],
-                ['Usage analytics & insights', BarChart2],
-                ['Activity audit log', Clock],
-              ].map(([label, Icon]) => (
-                <li key={label as string} className="flex items-center gap-3">
-                  <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
-                    <Check size={9} className="text-white" strokeWidth={3} />
-                  </div>
-                  <p className="text-sm font-medium text-gray-700">{label as string}</p>
-                </li>
+          <div className="relative mb-5">
+            <select value={selectedNewTier} onChange={e => setSelectedNewTier(Number(e.target.value))}
+              className="w-full appearance-none border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-gray-800 bg-gray-50 focus:outline-none focus:border-blue-400 cursor-pointer">
+              {TIERS.map(tier => (
+                <option key={tier} value={tier}>
+                  ₹{(tier * INR_PER_USD).toLocaleString('en-IN')}/mo{subscription?.plan_amount_usd === tier && hasActiveSub ? ' — current' : ''}
+                </option>
               ))}
-            </ul>
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
+          <ul className="space-y-2.5 mb-5">
+            {PLAN_FEATURES.map(f => (
+              <li key={f} className="flex items-start gap-2.5 text-sm text-gray-700">
+                <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                  <Check size={9} className="text-white" strokeWidth={3} />
+                </div>
+                {f}
+              </li>
+            ))}
+          </ul>
+          {hasActiveSub && subscription && !isSame && (
+            <p className="text-xs text-gray-500 mb-4 text-center">
+              {isUpgrade ? 'Upgrade takes effect immediately.' : `Downgrade effective ${pendingPeriodEnd ?? 'at next renewal'}.`}
+            </p>
+          )}
+          <button onClick={onSubmit} disabled={isSame || changingPlan || subscribing}
+            className="w-full py-3 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 shadow-sm">
+            {(changingPlan || subscribing) && <LogoSpinner size={14} />}
+            {hasActiveSub
+              ? isSame ? 'Already on this plan' : isUpgrade ? `Upgrade to ₹${inr}/mo` : `Switch to ₹${inr}/mo`
+              : `Get Pro — ₹${inr}/mo`}
+          </button>
         </div>
       </div>
     </div>
