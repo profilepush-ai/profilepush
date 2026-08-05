@@ -4,7 +4,7 @@ import {
   Users, Bookmark, ChevronDown, LogOut, Settings,
   Building2, LifeBuoy, Map, CreditCard, AlertTriangle, PenLine, FileText,
   Bell, BellRing, Check, ArrowRight, X,
-  Activity, ShieldCheck,
+  Activity, ShieldCheck, Briefcase,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from './Logo';
@@ -13,7 +13,8 @@ import type { AppNotification, NotificationType } from '../lib/notifications';
 import { NOTIFICATION_TYPES } from '../lib/notifications';
 
 const navItems = [
-  { path: '/pulse',          label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
+  { path: '/jobs',          label: 'Jobs',           mobileLabel: 'Jobs',    icon: Briefcase, hideOnMobile: false },
+  { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
   { path: '/watchlist-profiles', label: 'Watchlist', mobileLabel: 'Watch',   icon: Bookmark, hideOnMobile: false },
   { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
   { path: '/resume-ai',     label: 'Resume AI',      mobileLabel: 'AI',      icon: PenLine,   hideOnMobile: true },
@@ -270,10 +271,17 @@ export default function AppNav() {
         </Link>
       )}
 
-      {/* Mobile: credits chip next to logo */}
-      {user && account != null && (
-        <span className="sm:hidden ml-auto">
-          <CreditsChip balance={account.credits_balance} />
+      {/* Mobile: credits chip + account avatar */}
+      {user && (
+        <span className="sm:hidden ml-auto flex items-center gap-2">
+          {account != null && <CreditsChip balance={account.credits_balance} />}
+          <Link
+            to="/account"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white"
+            title="Account"
+          >
+            {initials}
+          </Link>
         </span>
       )}
 
@@ -405,6 +413,13 @@ export default function AppNav() {
       {user && (
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
           <Link
+            to="/jobs"
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/jobs' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <Briefcase size={18} />
+            <span>Jobs</span>
+          </Link>
+          <Link
             to="/pulse"
             className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
           >
@@ -431,15 +446,6 @@ export default function AppNav() {
           >
             <Bell size={18} />
             <span>Alerts</span>
-          </Link>
-          <Link
-            to="/account"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/account' ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white">
-              {initials}
-            </div>
-            <span>Profile</span>
           </Link>
         </nav>
       )}

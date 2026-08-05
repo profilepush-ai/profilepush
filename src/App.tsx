@@ -40,6 +40,7 @@ const WhyAICopilot = lazy(() => import('./pages/WhyAICopilot'));
 const HowItWorks = lazy(() => import('./pages/HowItWorks'));
 const RadarPage = lazy(() => import('./pages/RadarPage'));
 const PulsePage = lazy(() => import('./pages/PulsePage'));
+const ProfilesPage = lazy(() => import('./pages/ProfilesPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const WatchlistProfilesPage = lazy(() => import('./pages/WatchlistProfilesPage'));
 const OnboardingVideo = lazy(() => import('./pages/OnboardingVideo'));
@@ -202,7 +203,8 @@ export default function App() {
             <Route path="/alerts" element={<ProtectedRoute><ErrorBoundary><AlertsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/jd-ai" element={<ProtectedRoute><ErrorBoundary><AIBenchMatch /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/job-watch-ai" element={<ProtectedRoute><ErrorBoundary><RadarPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><PulsePage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/jobs" element={<ProtectedRoute><ErrorBoundary><PulsePage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><ProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             </Routes>
           </Suspense>

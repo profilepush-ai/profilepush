@@ -142,7 +142,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (data && data.length > 0) {
-      const jobWatchResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/job-watch-trigger`, {
+      const radarResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/radar-match`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -150,15 +150,14 @@ Deno.serve(async (req: Request) => {
           "Apikey": Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
         },
         body: JSON.stringify({
-          trigger_source: "ingestion_social",
-          board_filter: "social",
+          extract_only: true,
           social_job_ids: data.map((r: { id: string }) => r.id),
         }),
       });
 
-      if (!jobWatchResponse.ok) {
-        const errorText = await jobWatchResponse.text();
-        return respond({ error: `Role matching trigger failed: ${errorText || jobWatchResponse.statusText}` }, 500);
+      if (!radarResponse.ok) {
+        const errorText = await radarResponse.text();
+        return respond({ error: `Extraction trigger failed: ${errorText || radarResponse.statusText}` }, 500);
       }
     }
 
@@ -166,8 +165,7 @@ Deno.serve(async (req: Request) => {
       success: true,
       inserted: data?.length ?? 0,
       ids: data?.map((r: { id: string }) => r.id) ?? [],
-      immediate_match_triggered: (data?.length ?? 0) > 0,
-      immediate_hotlist_roles_triggered: (data?.length ?? 0) > 0,
+      extraction_triggered: (data?.length ?? 0) > 0,
       embeddings_triggered: embeddingTriggered,
       embeddings_completed: embeddingCompleted,
     });

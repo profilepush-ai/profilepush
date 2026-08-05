@@ -246,7 +246,7 @@ type PulseLeadActionRow = {
 
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
-const TOP_PROFILES_PAGE_SIZE = 10;
+const TOP_PROFILES_PAGE_SIZE = 5;
 const MATCHES_PAGE_SIZE = 5;
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
@@ -789,7 +789,7 @@ function buildHotlistRolePayloadFromPersona(accountId: string, persona: PulsePer
 }
 
 
-export default function PulsePage() {
+export default function ProfilesPage() {
   const { account, user, refreshAccount } = useAuth();
   const navigate = useNavigate();
 
@@ -839,7 +839,6 @@ export default function PulsePage() {
   const [revealedLeadIds, setRevealedLeadIds] = useState<Set<string>>(new Set());
   const [breakdownChargedLeadIds, setBreakdownChargedLeadIds] = useState<Set<string>>(new Set());
   const [queuedLeadIds, setQueuedLeadIds] = useState<Set<string>>(new Set());
-  const [revealCountsByLeadId, setRevealCountsByLeadId] = useState<Record<string, number>>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [processingLeadId, setProcessingLeadId] = useState<string | null>(null);
   const [processingBreakdownLeadId, setProcessingBreakdownLeadId] = useState<string | null>(null);
@@ -912,19 +911,22 @@ export default function PulsePage() {
         })
       : rangeAlignedProfiles;
     const query = normalize(profileSearchQuery);
-    if (!query) return techFiltered;
-    return techFiltered.filter((item) => {
-      const d = getPersonaDetailColumns(item);
-      return normalize(item.target_role).includes(query)
-        || normalize(item.summary).includes(query)
-        || normalize(d.skills).includes(query)
-        || normalize(d.location).includes(query)
-        || normalize(d.visaStatus).includes(query)
-        || normalize(d.employmentType).includes(query)
-        || normalize(d.workType).includes(query)
-        || normalize(d.experience).includes(query)
-        || normalize(d.rateRange).includes(query);
-    });
+    const result = query
+      ? techFiltered.filter((item) => {
+          const d = getPersonaDetailColumns(item);
+          return normalize(item.target_role).includes(query)
+            || normalize(item.summary).includes(query)
+            || normalize(d.skills).includes(query)
+            || normalize(d.location).includes(query)
+            || normalize(d.visaStatus).includes(query)
+            || normalize(d.employmentType).includes(query)
+            || normalize(d.workType).includes(query)
+            || normalize(d.experience).includes(query)
+            || normalize(d.rateRange).includes(query);
+        })
+      : techFiltered;
+    // Re-rank from 1 after filtering so cards always show sequential ranks.
+    return result.map((item, idx) => ({ ...item, rank: idx + 1 }));
   }, [jobsRankedLeaderboard, profileSearchQuery, profileStatsByRole, selectedCategoryId, selectedTechStacks]);
 
   const orderedJobsRankedLeaderboard = useMemo(() => {
@@ -946,7 +948,7 @@ export default function PulsePage() {
     if (selectedProfilesView === 'watching') {
       return orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role)));
     }
-    return filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role)));
+    return filteredJobsRankedLeaderboard;
   }, [filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, selectedProfilesView, watchingRoles]);
 
   const visibleJobsRankedLeaderboard = useMemo(
@@ -1066,7 +1068,7 @@ export default function PulsePage() {
   }), [breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed.length, revealedVisibleFeed.length]);
 
   const profileViewCounts = useMemo(() => ({
-    all: filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).length,
+    all: filteredJobsRankedLeaderboard.length,
     watching: orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length,
   }), [filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, watchingRoles]);
 
@@ -1140,10 +1142,16 @@ export default function PulsePage() {
 
     mobileRightPaneLastScrollTopRef.current = Math.max(0, nextTop);
 
+    // Load next batch of profiles when scrolled within 200px of the bottom.
+    const container = event.currentTarget;
+    if (canLoadMoreProfiles && container.scrollTop + container.clientHeight >= container.scrollHeight - 200) {
+      setProfilePage((prev) => Math.min(totalProfilePages, prev + 1));
+    }
+
     maybeLoadMoreMatches(event.currentTarget, canLoadMoreMatches, () => {
       setVisibleMatchesCount((prev) => Math.min(filteredFeed.length, prev + MATCHES_PAGE_SIZE));
     });
-  }, [canLoadMoreMatches, filteredFeed.length, maybeLoadMoreMatches]);
+  }, [canLoadMoreMatches, canLoadMoreProfiles, filteredFeed.length, maybeLoadMoreMatches, totalProfilePages]);
 
   const handleDesktopRecentScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopRecent, () => {
@@ -1240,17 +1248,8 @@ export default function PulsePage() {
     );
   }
 
-  const CARD_PALETTE = [
-    'border-blue-100 bg-blue-50/60',
-    'border-violet-100 bg-violet-50/60',
-    'border-emerald-100 bg-emerald-50/60',
-    'border-amber-100 bg-amber-50/60',
-    'border-rose-100 bg-rose-50/60',
-    'border-cyan-100 bg-cyan-50/60',
-  ];
-
-  const renderLeadCards = (leads: SocialLead[]) => leads.map((lead, idx) => {
-    const cardClass = CARD_PALETTE[idx % CARD_PALETTE.length];
+  const renderLeadCards = (leads: SocialLead[]) => leads.map((lead) => {
+    const leadScoreVisual = getScoreVisual(lead.matchScore);
     const inlineBreakdownItems = buildScoreBreakdownDisplayItems(
       lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
     );
@@ -1259,22 +1258,26 @@ export default function PulsePage() {
       const key = item.key.toLowerCase();
       return key.includes('experience') || key.includes('exp');
     });
-    const workTypeInlineItem = inlineBreakdownItems.find((item) => {
+    const visaInlineItem = inlineBreakdownItems.find((item) => {
       const key = item.key.toLowerCase();
-      return key.includes('work_type') || key.includes('work type');
+      return key.includes('visa') || key.includes('authorization') || key.includes('work_auth');
     });
-    const collapsedInlineBreakdownItems = [experienceInlineItem, workTypeInlineItem]
+    const collapsedInlineBreakdownItems = [experienceInlineItem, visaInlineItem]
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .filter((item, idx, arr) => arr.findIndex((other) => other.key === item.key) === idx);
 
-    if (collapsedInlineBreakdownItems.length < 3) {
+    if (collapsedInlineBreakdownItems.length < 2) {
       for (const item of inlineBreakdownItems) {
         if (collapsedInlineBreakdownItems.some((existing) => existing.key === item.key)) continue;
         collapsedInlineBreakdownItems.push(item);
-        if (collapsedInlineBreakdownItems.length >= 3) break;
+        if (collapsedInlineBreakdownItems.length >= 2) break;
       }
     }
 
+    const visibleInlineBreakdownItems = isInlineBreakdownExpanded
+      ? inlineBreakdownItems
+      : collapsedInlineBreakdownItems;
+    const hasDetailsToggle = inlineBreakdownItems.length > 2;
     const maskedEmailHint = (() => {
       const email = (lead.posterEmail || '').trim();
       if (!email) return '***@';
@@ -1284,15 +1287,12 @@ export default function PulsePage() {
     })();
 
     return (
-      <div key={lead.id} className={`rounded-lg border px-3 py-2.5 ${cardClass}`}>
+      <div key={lead.id} className={`rounded-lg border px-3 py-2.5 ${leadScoreVisual.cardToneClass}`}>
         <div className="flex items-start justify-between gap-1.5">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold leading-snug text-gray-900">{lead.title || 'Job Opportunity'}</p>
             {lead.company && (
-              <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-600">
-                <Building2 size={10} className="shrink-0 text-gray-400" />
-                {revealedLeadIds.has(lead.id) ? lead.company : `${lead.company.slice(0, 3)}***`}
-              </div>
+              <div className="mt-0.5 text-[10px] text-gray-600">{lead.company}</div>
             )}
             <div className="mt-0.5 text-[10px] text-gray-500">
               <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
@@ -1300,59 +1300,76 @@ export default function PulsePage() {
               <span>{lead.postedAgo}</span>
             </div>
           </div>
-          {lead.platform && (
-            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-gray-400">
-              {lead.platform}
-            </span>
-          )}
+          <div className="flex shrink-0 flex-col items-end gap-0.5">
+            <div className="flex items-center gap-1.5">
+              {leadScoreVisual.rounded !== null && (
+                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${leadScoreVisual.badgeClass}`}>{leadScoreVisual.rounded}%</span>
+              )}
+              {leadScoreVisual.isRecommended && <RecommendedBadge />}
+            </div>
+            {lead.platform && (
+              <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
+                {lead.platform}
+              </span>
+            )}
+          </div>
         </div>
         {inlineBreakdownItems.length > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              setExpandedInlineBreakdownLeadIds((prev) => {
-                const next = new Set(prev);
-                if (next.has(lead.id)) next.delete(lead.id);
-                else next.add(lead.id);
-                return next;
-              });
-            }}
-            className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left relative group focus:outline-none"
-          >
-            <table className="w-full table-fixed border-collapse text-left text-[10px]">
-              <thead className="bg-white">
-                <tr>
-                  <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                  <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(isInlineBreakdownExpanded ? inlineBreakdownItems : collapsedInlineBreakdownItems).map((item, idx) => (
-                  <tr key={item.key}>
-                    <td className={`border-b border-gray-100 bg-white px-2 py-1 font-semibold break-words whitespace-normal transition-all duration-200 ${!isInlineBreakdownExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-900'}`}>{formatBreakdownFieldName(item.key)}</td>
-                    <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isInlineBreakdownExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{item.detail?.job_value || '-'}</td>
+          <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200">
+            <div>
+              <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                <thead className="bg-white">
+                  <tr>
+                    <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
+                    <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
+                    <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {!isInlineBreakdownExpanded && (
-              <div className="absolute bottom-0 left-0 right-0 h-7 flex items-center justify-center pointer-events-none">
-                <span className="rounded-full bg-white/90 border border-gray-200 p-1 shadow-sm">
-                  <Eye size={10} className="text-gray-400" />
-                </span>
-              </div>
-            )}
-          </button>
+                </thead>
+                <tbody>
+                  {visibleInlineBreakdownItems.map((item) => (
+                    <tr key={item.key}>
+                      <td className="border-b border-gray-100 bg-white px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
+                      <td className="border-b border-gray-100 bg-white px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
+                      <td className="border-b border-gray-100 bg-white px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
         <div className="mt-1.5 grid grid-cols-10 gap-1.5">
-          <div className="col-span-3 inline-flex flex-col items-center justify-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-center">
-            <span className="text-[11px] font-bold text-gray-700">{revealCountsByLeadId[lead.id] ?? 0}</span>
-            <span className="text-[8px] text-gray-400 leading-tight">reveals</span>
-          </div>
+          {hasDetailsToggle && (
+            <button
+              type="button"
+              onClick={() => {
+                setExpandedInlineBreakdownLeadIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(lead.id)) {
+                    next.delete(lead.id);
+                  } else {
+                    next.add(lead.id);
+                  }
+                  return next;
+                });
+              }}
+              className="col-span-3 inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+            >
+              {isInlineBreakdownExpanded ? 'Hide Details' : 'Details'}
+            </button>
+          )}
+          <button
+            onClick={() => void handleOpenBreakdown(lead)}
+            disabled={processingBreakdownLeadId === lead.id}
+            className={`hidden items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'border-gray-200 text-gray-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          >
+            {breakdownChargedLeadIds.has(lead.id) && <Check size={9} className="text-emerald-600" />}
+            {processingBreakdownLeadId === lead.id ? '...' : 'Breakdown'}
+          </button>
           {revealedLeadIds.has(lead.id) ? (
             <button
               onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
-              className="col-span-7 inline-flex items-center justify-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200"
+              className={`${hasDetailsToggle ? 'col-span-7' : 'col-span-10'} inline-flex items-center justify-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200`}
             >
               Email
             </button>
@@ -1360,7 +1377,7 @@ export default function PulsePage() {
             <button
               onClick={() => void handleRevealContact(lead)}
               disabled={processingLeadId === lead.id}
-              className="col-span-7 inline-flex items-center justify-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+              className={`${hasDetailsToggle ? 'col-span-7' : 'col-span-10'} inline-flex items-center justify-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60`}
             >
               {processingLeadId === lead.id ? '...' : `Reveal ${maskedEmailHint}`}
             </button>
@@ -1398,31 +1415,18 @@ export default function PulsePage() {
     }
   }, [isMobileViewport]);
 
+  // Auto-advance pages until the scroll container actually overflows.
   useEffect(() => {
     if (!isMobileViewport || !canLoadMoreProfiles) return;
-    const root = profileListScrollRef.current;
-    const target = mobileProfilesLoadMoreRef.current;
-    if (!root || !target) return;
-
-    let requested = false;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (requested) return;
-        if (entries.some((entry) => entry.isIntersecting)) {
-          requested = true;
-          setProfilePage((prev) => Math.min(totalProfilePages, prev + 1));
-        }
-      },
-      {
-        root,
-        rootMargin: '0px 0px 120px 0px',
-        threshold: 0.1,
-      },
-    );
-
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [canLoadMoreProfiles, isMobileViewport, totalProfilePages]);
+    const container = profileListScrollRef.current;
+    if (!container) return;
+    const id = requestAnimationFrame(() => {
+      if (container.scrollHeight <= container.clientHeight + 50) {
+        setProfilePage((prev) => Math.min(totalProfilePages, prev + 1));
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [canLoadMoreProfiles, isMobileViewport, profilePage, totalProfilePages]);
 
   const loadWatchingRoles = useCallback(async () => {
     if (!account?.id) return;
@@ -1756,6 +1760,36 @@ export default function PulsePage() {
     }
 
     setProfileStatsLoading(true);
+
+    const targetRoles = sortedLeaderboard.map((p) => p.target_role);
+
+    // Primary path: vector similarity via hotlist_ai_roles.role_embedding ↔ social_jobs.job_embedding.
+    const { data: vectorData, error: vectorError } = await supabase.rpc(
+      'get_profile_stats_by_vector',
+      { p_target_roles: targetRoles, p_similarity_threshold: 0.65 } as never,
+    );
+
+    if (!vectorError && Array.isArray(vectorData) && vectorData.length > 0) {
+      const stats: Record<string, ProfileStats> = Object.fromEntries(
+        sortedLeaderboard.map((item) => [normalize(item.target_role), { ...zeroStats }]),
+      );
+      for (const row of vectorData as Array<{ target_role: string; job_count: number; vendor_count: number }>) {
+        const key = normalize(row.target_role);
+        if (stats[key]) {
+          stats[key] = {
+            uniqueCompanies: 0,
+            uniqueVendors: row.vendor_count ?? 0,
+            uniqueJobs: row.job_count ?? 0,
+            avgMatchScore: null,
+          };
+        }
+      }
+      setProfileStatsByRole(stats);
+      setProfileStatsLoading(false);
+      return;
+    }
+
+    // Fallback: text-based matching against the social feed.
     let rpcRows: PulseSocialFeedRpcRow[] = [];
     try {
       rpcRows = await loadGlobalPulseRows();
@@ -1896,7 +1930,7 @@ export default function PulsePage() {
     }
 
     const finalFiltered = socialData
-      .filter((row) => newestMatchByJobId.has(row.id) && (row.poster_email ?? '').trim())
+      .filter((row) => newestMatchByJobId.has(row.id))
       .sort((a, b) => {
         const aMatchTs = new Date(newestMatchByJobId.get(a.id)?.created_at ?? 0).getTime();
         const bMatchTs = new Date(newestMatchByJobId.get(b.id)?.created_at ?? 0).getTime();
@@ -1943,23 +1977,6 @@ export default function PulsePage() {
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
     setDesktopRecentVisibleCount(MATCHES_PAGE_SIZE);
     setDesktopRevealedVisibleCount(MATCHES_PAGE_SIZE);
-
-    if (finalFiltered.length > 0) {
-      const leadIds = finalFiltered.map((l) => l.id);
-      const { data: revealRows } = await supabase
-        .from('pulse_lead_actions')
-        .select('lead_id')
-        .eq('action_type', 'revealed')
-        .in('lead_id', leadIds);
-      if (revealRows) {
-        const counts: Record<string, number> = {};
-        for (const row of revealRows as Array<{ lead_id: string }>) {
-          counts[row.lead_id] = (counts[row.lead_id] ?? 0) + 1;
-        }
-        setRevealCountsByLeadId(counts);
-      }
-    }
-
     setFeedLoading(false);
   }, [loadGlobalPulseRows, showToast]);
 
@@ -2595,16 +2612,15 @@ export default function PulsePage() {
                   </button>
                 </div>
 
-              {/* Mobile search/filter row — controls job feed search */}
+              {/* Mobile search/filter row */}
               <div className={isMobileViewport ? 'sticky top-0 z-30 border-b border-gray-200 bg-white px-2 py-2' : 'px-2 py-2'}>
-                {!mobileSearchOpen && (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
                     className="flex-1 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-medium text-gray-600"
                   >
                     <Search size={11} />
-                    {feedSearchQuery || 'Search & Filter'}
+                    {profileSearchQuery || 'Search & Filter'}
                   </button>
                   <select
                     aria-label="Date range"
@@ -2627,35 +2643,18 @@ export default function PulsePage() {
                     <RefreshCw size={13} className={refreshing || profileStatsLoading ? 'animate-spin' : ''} />
                   </button>
                 </div>
-                )}
                 {mobileSearchOpen && (
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <div className="flex flex-1 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
-                      <Search size={12} className="text-gray-400" />
-                      <input
-                        type="text"
-                        autoFocus
-                        value={feedSearchQuery}
-                        onChange={(e) => setFeedSearchQuery(e.target.value)}
-                        placeholder="Search role, skills, location, visa..."
-                        className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
-                      />
-                    </div>
-                    <select
-                      aria-label="Filter"
-                      value={feedSearchScope}
-                      onChange={(e) => setFeedSearchScope(e.target.value as PulseFeedSearchScope)}
-                      className="shrink-0 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-700"
-                    >
-                      <option value="all">Filter</option>
-                      <option value="role">Role</option>
-                      <option value="skills">Skills</option>
-                      <option value="location">Location</option>
-                      <option value="visa">Visa</option>
-                      <option value="experience">Exp</option>
-                      <option value="rate">Rate</option>
-                    </select>
-                    <button onClick={() => { setFeedSearchQuery(''); setFeedSearchScope('all'); setMobileSearchOpen(false); }} className="text-gray-400 shrink-0">
+                  <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
+                    <Search size={12} className="text-gray-400" />
+                    <input
+                      type="text"
+                      autoFocus
+                      value={profileSearchQuery}
+                      onChange={(e) => setProfileSearchQuery(e.target.value)}
+                      placeholder="Search by role, skills, location, visa..."
+                      className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                    />
+                    <button onClick={() => { setProfileSearchQuery(''); setMobileSearchOpen(false); }} className="text-gray-400">
                       <X size={12} />
                     </button>
                   </div>
@@ -2739,10 +2738,11 @@ export default function PulsePage() {
                 </aside>
 
               <div
+                ref={isMobileViewport ? profileListScrollRef : undefined}
                 className={`col-start-2 row-span-2 min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-white slim-scrollbar' : 'overflow-hidden'}`}
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
               >
-                {false && isMobileViewport ? (
+                {isMobileViewport ? (
                   <div className="sticky top-0 z-20 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
                       <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
@@ -2768,7 +2768,7 @@ export default function PulsePage() {
                   </div>
                 ) : null}
 
-              {false && <section className="min-w-0 shrink-0 overflow-hidden">
+              <section className={isMobileViewport ? 'min-w-0' : 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col'}>
                 {!isMobileViewport ? (
                   <div className="shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
@@ -2778,8 +2778,8 @@ export default function PulsePage() {
                 ) : null}
                 {/* Profile list */}
                 {isMobileViewport ? (
-                  <div ref={profileListScrollRef} className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
-                    <div className="flex gap-2 px-1.5 py-2 snap-x snap-mandatory">
+                  <div className="w-full">
+                    <div className="flex flex-col gap-2 px-1.5 py-2">
                       {visibleJobsRankedLeaderboard.length === 0 && (
                         <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
                       )}
@@ -2791,92 +2791,49 @@ export default function PulsePage() {
                         const profilePulseVisual = getMarketPulseVisual(stats.uniqueJobs);
                         const details = getPersonaDetailColumns(persona);
                         const isExpanded = expandedMobileProfileCardIds.has(persona.target_role);
-                        const collapsedDetails = [
-                          { key: 'experience', value: details.experience !== '-' ? details.experience : '—' },
-                          { key: 'rate', value: details.rateRange !== '-' ? details.rateRange : '—' },
-                          { key: 'visa', value: details.visaStatus !== '-' ? details.visaStatus : '—' },
-                        ];
-                        const expandedDetails = [
-                          ...collapsedDetails,
-                          { key: 'location', value: details.location !== '-' ? details.location : '—' },
-                          { key: 'employment', value: details.employmentType !== '-' ? details.employmentType : '—' },
-                          { key: 'work', value: details.workType !== '-' ? details.workType : '—' },
-                        ];
-                        const mobileDetails = isExpanded ? expandedDetails : collapsedDetails;
 
                         return (
                           <div
                             key={persona.target_role}
                             onClick={() => void selectPersona(persona)}
-                            className={`snap-start shrink-0 w-[84%] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${profilePulseVisual.cardToneClass} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
+                            className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${persona.rank <= 10 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                           >
-                            <div className="flex items-start justify-between gap-1.5">
-                              <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
-                              <div className="ml-auto flex items-center gap-1">
-                                {renderMarketPulseSymbol(profilePulseVisual.level, profilePulseVisual.badgeClass, stats.uniqueJobs)}
-                              </div>
+                            <div className="flex items-start gap-2">
+                              <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${persona.rank <= 10 ? 'text-emerald-600' : 'text-gray-400'}`}>#{persona.rank}</span>
+                              <p className="flex-1 text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                              {persona.active_watchers > 0 && (
+                                <span className="shrink-0 text-[8px] text-gray-400 mt-0.5">{persona.active_watchers} watching</span>
+                              )}
                             </div>
-                            <div className={`mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight ${isExpanded ? '' : ''}`}>
-                              {mobileDetails.map((item) => (
-                                <div
-                                  key={item.key}
-                                  className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600"
-                                >
-                                  {item.value}
-                                </div>
-                              ))}
-                            </div>
-                            <div className="mt-1 space-y-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
-                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
-                              </div>
-                              <div className="grid grid-cols-10 gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setExpandedMobileProfileCardIds((prev) => {
-                                      const next = new Set(prev);
-                                      if (next.has(persona.target_role)) next.delete(persona.target_role);
-                                      else next.add(persona.target_role);
-                                      return next;
-                                    });
-                                  }}
-                                  className="col-span-3 inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-2 py-1 text-gray-600 transition hover:bg-gray-50"
-                                  aria-label={isExpanded ? 'Collapse profile details' : 'Expand profile details'}
-                                >
-                                  {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
-                                  disabled={isActivating}
-                                  className={`col-span-7 inline-flex items-center justify-center rounded-md border px-2 py-1 text-[9px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
-                                >
-                                  {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
-                                </button>
-                              </div>
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
+                              <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
+                                disabled={isActivating}
+                                className={`ml-auto inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'}`}
+                              >
+                                {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
+                              </button>
                             </div>
                           </div>
                         );
                       })}
                       {canLoadMoreProfiles && (
-                        <div ref={mobileProfilesLoadMoreRef} className="flex w-[84%] shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-[10px] text-gray-400 snap-start">
-                          Loading more profiles...
-                        </div>
+                        <div ref={mobileProfilesLoadMoreRef} className="h-2" />
                       )}
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2 px-2 py-2">
-                    <div className="min-w-0 rounded-md bg-transparent">
-                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">All ({profileViewCounts.all})</div>
-                      <div className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
-                        <div className="flex gap-2 px-1.5 py-2 snap-x snap-mandatory">
-                          {filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).length === 0 && (
+                  <div className="grid grid-cols-2 gap-2 px-2 py-2 flex-1 min-h-0">
+                    <div className="min-w-0 rounded-md bg-transparent flex flex-col min-h-0">
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 shrink-0">All ({profileViewCounts.all})</div>
+                      <div className="overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar">
+                        <div className="flex flex-col gap-2 px-1.5 py-2">
+                          {filteredJobsRankedLeaderboard.length === 0 && (
                             <div className="px-3 py-6 text-center text-xs text-gray-400">No profiles found.</div>
                           )}
-                          {filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).map((persona) => {
+                          {filteredJobsRankedLeaderboard.map((persona) => {
                             const isWatching = watchingRoles.has(normalize(persona.target_role));
                             const isActivating = activatingRole === persona.target_role;
                             const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
@@ -2888,31 +2845,22 @@ export default function PulsePage() {
                               <div
                                 key={`all-${persona.target_role}`}
                                 onClick={() => void selectPersona(persona)}
-                                className={`snap-start shrink-0 w-[clamp(220px,20vw,290px)] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${profilePulseVisual.cardToneClass} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
+                                className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${persona.rank <= 10 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                               >
-                                <div className="flex items-center justify-between gap-1.5">
-                                  <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
-                                  <div className="flex items-center gap-1">
-                                    {renderMarketPulseSymbol(profilePulseVisual.level, profilePulseVisual.badgeClass, stats.uniqueJobs)}
-                                  </div>
+                                <div className="flex items-start gap-2">
+                                  <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${persona.rank <= 10 ? 'text-emerald-600' : 'text-gray-400'}`}>#{persona.rank}</span>
+                                  <p className="flex-1 text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                                  {persona.active_watchers > 0 && (
+                                    <span className="shrink-0 text-[8px] text-gray-400 mt-0.5">{persona.active_watchers} watching</span>
+                                  )}
                                 </div>
-                                <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.experience !== '-' ? details.experience : '—'}</div>
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.location !== '-' ? details.location : '—'}</div>
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.workType !== '-' ? details.workType : '—'}</div>
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
-                                </div>
-                                <div className="mt-1 space-y-1.5">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
-                                  </div>
+                                <div className="mt-2 flex items-center gap-1.5">
+                                  <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
+                                  <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
                                     disabled={isActivating}
-                                    className={`inline-flex w-full items-center justify-center rounded-md border px-2 py-1 text-[9px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                    className={`ml-auto inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'}`}
                                   >
                                     {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
                                   </button>
@@ -2924,10 +2872,10 @@ export default function PulsePage() {
                       </div>
                     </div>
 
-                    <div className="min-w-0 rounded-md bg-transparent">
-                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Watching ({profileViewCounts.watching})</div>
-                      <div className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
-                        <div className="flex gap-2 px-1.5 py-2 snap-x snap-mandatory">
+                    <div className="min-w-0 rounded-md bg-transparent flex flex-col min-h-0">
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 shrink-0">Watching ({profileViewCounts.watching})</div>
+                      <div className="overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar">
+                        <div className="flex flex-col gap-2 px-1.5 py-2">
                           {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length === 0 && (
                             <div className="px-3 py-6 text-center text-xs text-gray-400">No watching profiles yet.</div>
                           )}
@@ -2943,31 +2891,22 @@ export default function PulsePage() {
                               <div
                                 key={`watching-${persona.target_role}`}
                                 onClick={() => void selectPersona(persona)}
-                                className={`snap-start shrink-0 w-[clamp(220px,20vw,290px)] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${profilePulseVisual.cardToneClass} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
+                                className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${persona.rank <= 10 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                               >
-                                <div className="flex items-center justify-between gap-1.5">
-                                  <p className="text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
-                                  <div className="flex items-center gap-1">
-                                    {renderMarketPulseSymbol(profilePulseVisual.level, profilePulseVisual.badgeClass, stats.uniqueJobs)}
-                                  </div>
+                                <div className="flex items-start gap-2">
+                                  <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${persona.rank <= 10 ? 'text-emerald-600' : 'text-gray-400'}`}>#{persona.rank}</span>
+                                  <p className="flex-1 text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                                  {persona.active_watchers > 0 && (
+                                    <span className="shrink-0 text-[8px] text-gray-400 mt-0.5">{persona.active_watchers} watching</span>
+                                  )}
                                 </div>
-                                <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.experience !== '-' ? details.experience : '—'}</div>
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.location !== '-' ? details.location : '—'}</div>
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.rateRange !== '-' ? details.rateRange : '—'}</div>
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.employmentType !== '-' ? details.employmentType : '—'}</div>
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.workType !== '-' ? details.workType : '—'}</div>
-                                  <div className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600">{details.visaStatus !== '-' ? details.visaStatus : '—'}</div>
-                                </div>
-                                <div className="mt-1 space-y-1.5">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
-                                  </div>
+                                <div className="mt-2 flex items-center gap-1.5">
+                                  <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
+                                  <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
                                     disabled={isActivating}
-                                    className={`inline-flex w-full items-center justify-center rounded-md border px-2 py-1 text-[9px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                    className={`ml-auto inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'}`}
                                   >
                                     {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
                                   </button>
@@ -3001,9 +2940,9 @@ export default function PulsePage() {
                     </button>
                   </div>
                 </div>
-              </section>}
+              </section>
 
-              {isMobileViewport && (
+              {false && (
                 <div className="sticky top-0 z-40 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur transform-gpu backface-hidden">
                   <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-amber-50/80 px-2 py-1">
                     <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">Jobs</span>
@@ -3031,7 +2970,7 @@ export default function PulsePage() {
                 </div>
               )}
 
-              <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
+              {false && <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
                 {!isMobileViewport && (
                   <div className="shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-amber-50/80 px-2 py-1">
@@ -3041,6 +2980,46 @@ export default function PulsePage() {
                 )}
 
                 <div className={`min-h-0 ${isMobileViewport ? '' : 'flex-1 overflow-hidden'}`}>
+                  <div className="shrink-0 border-b border-gray-200 bg-white px-2 py-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <label className="flex-1">
+                        <span className="sr-only">Search jobs</span>
+                        <div className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-gray-50 px-2 py-1.5">
+                          <Search size={12} className="text-gray-400" />
+                          <input
+                            type="text"
+                            value={feedSearchQuery}
+                            onChange={(e) => setFeedSearchQuery(e.target.value)}
+                            placeholder="Search role, skills, location, visa..."
+                            className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                          />
+                        </div>
+                      </label>
+                      <select
+                        aria-label="Feed search scope"
+                        value={feedSearchScope}
+                        onChange={(e) => setFeedSearchScope(e.target.value as PulseFeedSearchScope)}
+                        className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-700"
+                      >
+                        <option value="all">All fields</option>
+                        <option value="role">Role</option>
+                        <option value="skills">Skills</option>
+                        <option value="location">Location</option>
+                        <option value="visa">Visa</option>
+                        <option value="experience">Experience</option>
+                        <option value="rate">Rate</option>
+                      </select>
+                      {(feedSearchQuery || feedSearchScope !== 'all') && (
+                        <button
+                          type="button"
+                          onClick={() => { setFeedSearchQuery(''); setFeedSearchScope('all'); }}
+                          className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-600"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   {feedLoading ? (
                     <div className={`${isMobileViewport ? 'py-10' : 'flex h-full'} items-center justify-center`}>
                       <LogoSpinner size={20} />
@@ -3092,7 +3071,7 @@ export default function PulsePage() {
                     )
                   )}
                 </div>
-              </section>
+              </section>}
 
               </div>
               </div>

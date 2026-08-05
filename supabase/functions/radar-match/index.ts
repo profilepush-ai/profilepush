@@ -130,6 +130,18 @@ interface MatchResult {
   notes: string;
   disqualified: boolean;
   reason: string | null;
+  extracted?: {
+    role_title: string;
+    core_skills: string[];
+    years_experience: number | null;
+    visa_types: string[];
+    employment_type: string;
+    work_type: string;
+    locations: string[];
+    hourly_rate_min: number | null;
+    hourly_rate_max: number | null;
+    relocation_required: boolean;
+  };
 }
 
 function escapeRegExp(value: string): string {
@@ -297,14 +309,16 @@ Deno.serve(async (req: Request) => {
       social_job_ids,
       vector_similarity_threshold,
       vector_max_results,
+      extract_only,
     } = await req.json();
 
     const roleId = typeof role_id === "string" ? role_id : null;
     const isRoleRun = !profile_id && !!roleId;
+    const extractOnly = extract_only === true;
     const bypassPlanLimits = bypass_plan_limits === true;
 
-    if (!profile_id && !isRoleRun) throw new Error("profile_id is required");
-    if (!isRoleRun && !account_id) throw new Error("account_id is required");
+    if (!profile_id && !isRoleRun && !extractOnly) throw new Error("profile_id is required");
+    if (!isRoleRun && !extractOnly && !account_id) throw new Error("account_id is required");
 
     const accountId = typeof account_id === "string" ? account_id : null;
     const profileId = typeof profile_id === "string" ? profile_id : null;
@@ -321,12 +335,12 @@ Deno.serve(async (req: Request) => {
     const jobWindowHours = typeof job_window_hours === "number" && Number.isFinite(job_window_hours)
       ? Math.max(1, Math.min(168, Math.round(job_window_hours)))
       : (isRoleRun ? 24 : 168);
-    const minScore = typeof min_score === "number"
+    const minScore = extractOnly ? 0 : (typeof min_score === "number"
       ? Math.max(0, Math.min(100, Math.round(min_score)))
-      : (isRoleRun ? DEFAULT_ROLE_MODE_MIN_SCORE : 70);
+      : (isRoleRun ? DEFAULT_ROLE_MODE_MIN_SCORE : 70));
 
     let isPaidPlan = true;
-    if (!isRoleRun && accountId) {
+    if (!isRoleRun && !extractOnly && accountId) {
       const { data: sub } = await supabase
         .from("subscriptions")
         .select("status, plan_amount_usd")
@@ -340,7 +354,10 @@ Deno.serve(async (req: Request) => {
     let scoringProfile: Record<string, unknown> | null = null;
     let roleEmbedding: unknown | null = null;
 
-    if (isRoleRun) {
+    if (extractOnly) {
+      // No profile or role needed — extraction mode only.
+      isPaidPlan = true;
+    } else if (isRoleRun) {
       const { data: roleRow, error: roleErr } = await supabase
         .from("hotlist_ai_roles")
         .select("*")
@@ -402,7 +419,7 @@ Deno.serve(async (req: Request) => {
 
           // Filter out already-scored jobs early
           const existingJobIds = new Set<string>();
-          if (!isRoleRun) {
+          if (!isRoleRun && !extractOnly) {
             const { data: existingMatches } = await supabase
               .from("radar_match_results")
               .select("job_id")
@@ -415,7 +432,7 @@ Deno.serve(async (req: Request) => {
 
           const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
           const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-          const queryEmbedding = ENABLE_LIVE_VECTOR_SEARCH
+          const queryEmbedding = ENABLE_LIVE_VECTOR_SEARCH && !extractOnly
             ? (isRoleRun
               ? roleEmbedding
               : await ensureProfileEmbedding(supabase, profileId!, supabaseUrl, serviceRoleKey))
@@ -561,21 +578,44 @@ Deno.serve(async (req: Request) => {
               continue;
             }
 
-            const batchResults = scoreJobsAgainstProfile(extractedJobs, scoringProfile ?? {});
-            const qualifyingResults = isRoleRun
-              ? batchResults.filter((result) => {
-                const roleMatchScore = result.breakdown.role_match?.score ?? 0;
-                return !result.disqualified && (result.score ?? 0) >= Math.max(minScore, 70) && roleMatchScore >= 75;
-              })
-              : batchResults.filter(r => (r.score ?? 0) >= minScore);
-
-            let persistableResults = qualifyingResults;
+            const batchResults = extractOnly
+              ? extractedJobs.map((job) => {
+                  const e = job.extracted;
+                  const rateStr = (e.hourly_rate_min != null || e.hourly_rate_max != null)
+                    ? `$${e.hourly_rate_min ?? "?"}–$${e.hourly_rate_max ?? "?"}/hr`
+                    : "Not specified";
+                  return {
+                    job_id: job.job_id,
+                    job_source: job.source,
+                    score: 100,
+                    breakdown: {
+                      role_match: { score: 100, candidate_value: "", job_value: e.role_title || "Not specified", rule: "Job role title" },
+                      skills_match: { score: 100, candidate_value: "", job_value: e.core_skills.join(", ") || "Not specified", rule: "Required skills" },
+                      experience_match: { score: 100, candidate_value: "", job_value: e.years_experience != null ? `${e.years_experience}+ years` : "Not specified", rule: "Required experience" },
+                      visa_match: { score: 100, candidate_value: "", job_value: e.visa_types.join(", ") || "Not specified", rule: "Visa requirements" },
+                      work_type_match: { score: 100, candidate_value: "", job_value: e.work_type || "Not specified", rule: "Work arrangement" },
+                      location_match: { score: 100, candidate_value: "", job_value: e.locations.join(", ") || "Not specified", rule: "Location" },
+                      rate_match: { score: 100, candidate_value: "", job_value: rateStr, rule: "Hourly rate" },
+                    },
+                    notes: "extraction_only",
+                    disqualified: false,
+                    reason: null,
+                    extracted: e,
+                  } as MatchResult;
+                })
+              : scoreJobsAgainstProfile(extractedJobs, scoringProfile ?? {});
+            const persistableResults = batchResults.filter((result) => {
+              if (isRoleRun || extractOnly) return true;
+              if (scopedSocialJobIds.length > 0) return true;
+              return (result.score ?? 0) >= minScore;
+            });
             if (!isPaidPlan) {
               const remaining = Math.max(0, FREE_PLAN_MATCH_TOTAL_LIMIT - freePlanSavedCount);
-              persistableResults = qualifyingResults.slice(0, remaining);
+              persistableResults = persistableResults.slice(0, remaining);
             }
 
             if (persistableResults.length > 0) {
+              const extractedByJobId = new Map(extractedJobs.map((job) => [job.job_id, job]));
               const rows = [] as Array<{
                 profile_id: string | null;
                 job_source: string;
@@ -585,6 +625,18 @@ Deno.serve(async (req: Request) => {
                 ai_notes: string;
                 disqualified: boolean;
                 disqualify_reason: string | null;
+                job_title: string | null;
+                role_title: string | null;
+                core_skills: string[];
+                years_experience: number | null;
+                visa_types: string[];
+                employment_type: string | null;
+                work_type: string | null;
+                locations: string[];
+                hourly_rate_min: number | null;
+                hourly_rate_max: number | null;
+                relocation_required: boolean;
+                extracted_fields: Record<string, unknown> | null;
               }>;
 
               const freeChargeAllowance = !isPaidPlan
@@ -606,8 +658,11 @@ Deno.serve(async (req: Request) => {
                   if (!isPaidPlan) freePlanChargedCount += 1;
                 }
 
+                const extractedJob = extractedByJobId.get(result.job_id);
+                const extracted = extractedJob?.extracted;
+
                 rows.push({
-                  profile_id: isRoleRun ? null : profileId,
+                  profile_id: (isRoleRun || extractOnly) ? null : profileId,
                   job_source: result.job_source,
                   job_id: result.job_id,
                   final_average_score: result.score,
@@ -615,6 +670,29 @@ Deno.serve(async (req: Request) => {
                   ai_notes: result.notes,
                   disqualified: result.disqualified,
                   disqualify_reason: result.reason,
+                  job_title: extractedJob?.title ?? extracted?.role_title ?? null,
+                  role_title: extracted?.role_title ?? null,
+                  core_skills: extracted?.core_skills ?? [],
+                  years_experience: extracted?.years_experience ?? null,
+                  visa_types: extracted?.visa_types ?? [],
+                  employment_type: extracted?.employment_type ?? null,
+                  work_type: extracted?.work_type ?? null,
+                  locations: extracted?.locations ?? [],
+                  hourly_rate_min: extracted?.hourly_rate_min ?? null,
+                  hourly_rate_max: extracted?.hourly_rate_max ?? null,
+                  relocation_required: extracted?.relocation_required ?? false,
+                  extracted_fields: extracted ? {
+                    role_title: extracted.role_title,
+                    core_skills: extracted.core_skills,
+                    years_experience: extracted.years_experience,
+                    visa_types: extracted.visa_types,
+                    employment_type: extracted.employment_type,
+                    work_type: extracted.work_type,
+                    locations: extracted.locations,
+                    hourly_rate_min: extracted.hourly_rate_min,
+                    hourly_rate_max: extracted.hourly_rate_max,
+                    relocation_required: extracted.relocation_required,
+                  } : null,
                 });
               }
 
@@ -956,6 +1034,18 @@ function scoreJobsAgainstProfile(extractedJobs: ExtractedJob[], profile: Record<
       notes: notes.trim(),
       disqualified,
       reason: disqualifyReason,
+      extracted: {
+        role_title: e.role_title,
+        core_skills: e.core_skills,
+        years_experience: e.years_experience,
+        visa_types: e.visa_types,
+        employment_type: e.employment_type,
+        work_type: e.work_type,
+        locations: e.locations,
+        hourly_rate_min: e.hourly_rate_min,
+        hourly_rate_max: e.hourly_rate_max,
+        relocation_required: e.relocation_required,
+      },
     });
   }
 
