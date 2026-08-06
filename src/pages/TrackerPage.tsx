@@ -916,9 +916,6 @@ export default function TrackerPage() {
                           <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600">{job.platform}</span>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {(job.match_score !== null && Number.isFinite(job.match_score) && job.match_score > 0) && (
-                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">{Math.round(job.match_score)}%</span>
-                          )}
                         </div>
                       </div>
                       {job.company_name && (
@@ -938,7 +935,6 @@ export default function TrackerPage() {
                             <thead className="bg-gray-50">
                               <tr>
                                 <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                                <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
                                 <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
                               </tr>
                             </thead>
@@ -946,7 +942,6 @@ export default function TrackerPage() {
                               {visibleBreakdownItems.map((item) => (
                                 <tr key={item.key}>
                                   <td className="border-b border-gray-100 px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
-                                  <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
                                   <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
                                 </tr>
                               ))}

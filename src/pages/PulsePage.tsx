@@ -1249,11 +1249,45 @@ export default function PulsePage() {
     'border-cyan-100 bg-cyan-50/60',
   ];
 
+  const isRoleLikeBreakdownKey = (key: string) => {
+    const normalized = key.toLowerCase();
+    return (
+      normalized.includes('role') ||
+      normalized.includes('title') ||
+      normalized.includes('name_match')
+    );
+  };
+
+  const getPulseBreakdownOrder = (key: string) => {
+    const normalized = key.toLowerCase();
+    if (normalized.includes('experience') || normalized.includes('exp')) return 0;
+    if (normalized.includes('work_type') || normalized.includes('work type')) return 1;
+    if (normalized.includes('employment_type') || normalized.includes('employment type')) return 2;
+    if (normalized.includes('rate') || normalized.includes('hourly')) return 3;
+    if (normalized.includes('visa')) return 4;
+    if (normalized.includes('location')) return 5;
+    if (normalized.includes('skill')) return 6;
+    return 999;
+  };
+
+  const orderPulseBreakdownItems = <T extends { key: string }>(items: T[]) => {
+    return [...items].sort((a, b) => {
+      const orderDelta = getPulseBreakdownOrder(a.key) - getPulseBreakdownOrder(b.key);
+      if (orderDelta !== 0) return orderDelta;
+      return a.key.localeCompare(b.key);
+    });
+  };
+
   const renderLeadCards = (leads: SocialLead[]) => leads.map((lead, idx) => {
     const cardClass = CARD_PALETTE[idx % CARD_PALETTE.length];
-    const inlineBreakdownItems = buildScoreBreakdownDisplayItems(
+    const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
       lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
-    );
+      undefined,
+      {
+        employment_type: lead.employmentType || null,
+        work_type: null,
+      },
+    ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
     const isInlineBreakdownExpanded = expandedInlineBreakdownLeadIds.has(lead.id);
     const experienceInlineItem = inlineBreakdownItems.find((item) => {
       const key = item.key.toLowerCase();
@@ -1263,7 +1297,11 @@ export default function PulsePage() {
       const key = item.key.toLowerCase();
       return key.includes('work_type') || key.includes('work type');
     });
-    const collapsedInlineBreakdownItems = [experienceInlineItem, workTypeInlineItem]
+    const employmentTypeInlineItem = inlineBreakdownItems.find((item) => {
+      const key = item.key.toLowerCase();
+      return key.includes('employment_type') || key.includes('employment type');
+    });
+    const collapsedInlineBreakdownItems = [experienceInlineItem, workTypeInlineItem, employmentTypeInlineItem]
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .filter((item, idx, arr) => arr.findIndex((other) => other.key === item.key) === idx);
 
@@ -1320,12 +1358,6 @@ export default function PulsePage() {
             className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left relative group focus:outline-none"
           >
             <table className="w-full table-fixed border-collapse text-left text-[10px]">
-              <thead className="bg-white">
-                <tr>
-                  <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                  <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
-                </tr>
-              </thead>
               <tbody>
                 {(isInlineBreakdownExpanded ? inlineBreakdownItems : collapsedInlineBreakdownItems).map((item, idx) => (
                   <tr key={item.key}>
@@ -2485,7 +2517,7 @@ export default function PulsePage() {
 
 
           {loading ? (
-            <div className="flex h-64 items-center justify-center rounded-xl border border-gray-200 bg-white">
+            <div className="flex h-full min-h-0 items-center justify-center rounded-xl border border-gray-200 bg-white">
               <LogoSpinner size={24} />
             </div>
           ) : (
@@ -3042,7 +3074,7 @@ export default function PulsePage() {
 
                 <div className={`min-h-0 ${isMobileViewport ? '' : 'flex-1 overflow-hidden'}`}>
                   {feedLoading ? (
-                    <div className={`${isMobileViewport ? 'py-10' : 'flex h-full'} items-center justify-center`}>
+                    <div className={`${isMobileViewport ? 'flex min-h-[50vh] w-full' : 'flex h-full min-h-0 w-full'} items-center justify-center`}>
                       <LogoSpinner size={20} />
                     </div>
                   ) : (
@@ -3125,9 +3157,14 @@ export default function PulsePage() {
             {showBreakdown && (
               <div className="mb-3 overflow-hidden rounded-md border border-gray-200">
                 {(() => {
-                  const breakdownItems = buildScoreBreakdownDisplayItems(
+                  const breakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
                     selectedLead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
-                  );
+                    undefined,
+                    {
+                      employment_type: selectedLead.employmentType || null,
+                      work_type: null,
+                    },
+                  ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
 
                   if (breakdownItems.length === 0) {
                     return (
@@ -3140,13 +3177,6 @@ export default function PulsePage() {
                   return (
                     <div className="max-h-52 overflow-y-auto">
                       <table className="min-w-full border-collapse text-left text-[11px]">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
-                            <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Job</th>
-                          </tr>
-                        </thead>
                         <tbody>
                           {breakdownItems.map((item) => (
                             <tr key={item.key}>

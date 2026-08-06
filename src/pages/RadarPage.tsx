@@ -410,9 +410,9 @@ function ScoreBreakdownChart({ items, detailMap, compact = false, expandedKeys, 
     <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
       <div className={`grid ${gridClass} gap-2 border-b border-slate-100 bg-slate-50 ${headerClass} text-[10px] font-semibold uppercase tracking-wide text-slate-500`}>
         <span>Score</span>
-        <span>Rule</span>
+        <span aria-hidden="true" />
         {!compact && <span>Candidate</span>}
-        <span>Job</span>
+        <span aria-hidden="true" />
       </div>
       <div className="divide-y divide-slate-100">
         {sortedItems.map((item) => {
