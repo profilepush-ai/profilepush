@@ -1023,7 +1023,7 @@ function buildHotlistRolePayloadFromPersona(accountId: string, persona: PulsePer
 
 
 export default function PulsePage() {
-  const { account, user, refreshAccount } = useAuth();
+  const { account, subscription, user, refreshAccount } = useAuth();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -1098,6 +1098,7 @@ export default function PulsePage() {
   const mobileCollapseLockUntilRef = useRef(0);
   const mobilePullStartYRef = useRef<number | null>(null);
   const mobilePullArmedRef = useRef(false);
+  const appliedSearchParamQueryRef = useRef<string | null>(null);
   const rangeMenuRef = useRef<HTMLDivElement | null>(null);
   const recentSearchesRef = useRef<HTMLDivElement | null>(null);
   const desktopMatchesScrollRef = useRef<HTMLDivElement | null>(null);
@@ -1106,8 +1107,10 @@ export default function PulsePage() {
     setToast({ message, type });
   }, []);
 
-  const REVEAL_CONTACT_COST = 0.25;
+  const REVEAL_CONTACT_COST = 0.10;
   const BREAKDOWN_COST = 0.1;
+  const FREE_PLAN_DAILY_REVEAL_LIMIT = 10;
+  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
 
   const sortedLeaderboard = useMemo(() => {
     return [...leaderboard]
@@ -1794,7 +1797,8 @@ export default function PulsePage() {
       }
     }
 
-    const isExpandedBreakdownVisible = isLeadRevealed || isInlineBreakdownExpanded;
+    const shouldForceExpandedBreakdown = isLeadRevealed && selectedMatchesTab !== 'revealed';
+    const isExpandedBreakdownVisible = shouldForceExpandedBreakdown || isInlineBreakdownExpanded;
 
     const maskedEmailHint = (() => {
       const email = (lead.posterEmail || '').trim();
@@ -1833,7 +1837,7 @@ export default function PulsePage() {
           )}
         </div>
         {inlineBreakdownItems.length > 0 && (
-          isLeadRevealed ? (
+          (isLeadRevealed && selectedMatchesTab !== 'revealed') ? (
             <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left">
               <table className="w-full table-fixed border-collapse text-left text-[10px]">
                 <tbody>
@@ -2503,18 +2507,19 @@ export default function PulsePage() {
 
     if (finalFiltered.length > 0) {
       const leadIds = finalFiltered.map((l) => l.id);
-      const { data: revealRows } = await supabase
-        .from('pulse_lead_actions')
-        .select('lead_id')
-        .eq('action_type', 'revealed')
-        .in('lead_id', leadIds);
-      if (revealRows) {
+      const { data: revealRows } = await supabase.rpc('get_pulse_reveal_counts', {
+        p_lead_ids: leadIds,
+      });
+      if (Array.isArray(revealRows)) {
         const counts: Record<string, number> = {};
-        for (const row of revealRows as Array<{ lead_id: string }>) {
-          counts[row.lead_id] = (counts[row.lead_id] ?? 0) + 1;
+        for (const row of revealRows as Array<{ lead_id: string; reveal_count: number | string | null }>) {
+          const nextCount = Number(row.reveal_count ?? 0);
+          counts[row.lead_id] = Number.isFinite(nextCount) ? nextCount : 0;
         }
         setRevealCountsByLeadId(counts);
       }
+    } else {
+      setRevealCountsByLeadId({});
     }
 
     setFeedLoading(false);
@@ -3047,6 +3052,30 @@ export default function PulsePage() {
     return true;
   }, [showToast]);
 
+  const isFreePlanRevealLimitReached = useCallback(async () => {
+    if (!account?.id || isPaidPlan) return false;
+
+    const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count, error } = await supabase
+      .from('pulse_lead_actions')
+      .select('id', { count: 'exact', head: true })
+      .eq('account_id', account.id)
+      .eq('action_type', 'revealed')
+      .gte('created_at', sinceIso);
+
+    if (error) {
+      showToast('Could not verify daily reveal limit right now', 'error');
+      return true;
+    }
+
+    if ((count ?? 0) >= FREE_PLAN_DAILY_REVEAL_LIMIT) {
+      showToast(`Free plan limit reached: ${FREE_PLAN_DAILY_REVEAL_LIMIT} reveals per day`, 'error');
+      return true;
+    }
+
+    return false;
+  }, [account?.id, isPaidPlan, showToast]);
+
   const handleRevealContact = useCallback(async (lead: SocialLead) => {
     if (!user) {
       showToast('Please sign in to reveal contact details', 'error');
@@ -3058,6 +3087,11 @@ export default function PulsePage() {
 
     try {
       if (!alreadyRevealed) {
+        if (!isPaidPlan) {
+          const limitReached = await isFreePlanRevealLimitReached();
+          if (limitReached) return;
+        }
+
         const consumed = await consumeCredits(REVEAL_CONTACT_COST, 'pulse_reveal_contact', {
           lead_id: lead.id,
           platform: lead.platform,
@@ -3074,6 +3108,10 @@ export default function PulsePage() {
         setRevealedAtByLeadId((prev) => ({
           ...prev,
           [lead.id]: new Date().toISOString(),
+        }));
+        setRevealCountsByLeadId((prev) => ({
+          ...prev,
+          [lead.id]: Math.max(1, (prev[lead.id] ?? 0) + 1),
         }));
         void persistLeadAction(lead.id, 'revealed');
         showToast(`$${REVEAL_CONTACT_COST.toFixed(2)} credits consumed for reveal`, 'success');
@@ -3094,7 +3132,7 @@ export default function PulsePage() {
     } finally {
       setProcessingLeadId(null);
     }
-  }, [consumeCredits, persistLeadAction, revealedLeadIds, saveVendorToTracker, showToast, user]);
+  }, [consumeCredits, isFreePlanRevealLimitReached, isPaidPlan, persistLeadAction, revealedLeadIds, saveVendorToTracker, showToast, user]);
 
   const handleOpenBreakdown = useCallback(async (lead: SocialLead) => {
     setProcessingBreakdownLeadId(lead.id);
@@ -3171,6 +3209,18 @@ export default function PulsePage() {
 
     setVectorSearchLoading(false);
   }, [account?.id, loadRecentSearches, pendingFeedSearchQuery, user?.id]);
+
+  useEffect(() => {
+    const queryFromParams = (searchParams.get('q') ?? '').trim();
+    if (!queryFromParams) {
+      appliedSearchParamQueryRef.current = null;
+      return;
+    }
+    if (appliedSearchParamQueryRef.current === queryFromParams) return;
+    appliedSearchParamQueryRef.current = queryFromParams;
+    setPendingFeedSearchQuery(queryFromParams);
+    void applyFeedSearch(queryFromParams);
+  }, [applyFeedSearch, searchParams]);
 
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
@@ -3292,7 +3342,7 @@ export default function PulsePage() {
                 </div>
 
               {/* Mobile search/filter row — controls job feed search */}
-              <div className={isMobileViewport ? 'sticky top-0 z-30 border-b border-gray-200 bg-white px-0 py-2' : 'px-2 py-2'}>
+              <div className={isMobileViewport ? 'sticky top-0 z-30 bg-white px-0 pt-1.5 pb-1' : 'px-2 py-2'}>
                 <div className="flex items-center gap-2">
                   <div ref={recentSearchesRef} className="relative flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
                     <Search size={11} className="text-gray-400" />
@@ -3710,7 +3760,7 @@ export default function PulsePage() {
               </section>}
 
               {isMobileViewport && (
-                <div className="sticky top-0 z-40 shrink-0 bg-white/90 px-1.5 pt-0 pb-1.5 backdrop-blur transform-gpu backface-hidden">
+                <div className="sticky top-0 z-40 shrink-0 bg-white/90 px-1.5 pt-0 pb-1 backdrop-blur transform-gpu backface-hidden">
                   <div className="grid w-full grid-cols-2 gap-1">
                     {([
                       { id: 'queued', label: 'Recent' },
@@ -3751,7 +3801,7 @@ export default function PulsePage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-1.5 px-1.5 pt-2 pb-4">
+                          <div className="space-y-1.5 px-1.5 pt-1 pb-4">
                             {renderLeadCards(visibleFeed)}
                           </div>
                         )}

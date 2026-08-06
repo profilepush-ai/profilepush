@@ -3,7 +3,7 @@ import {
   Plus, Search, Trash2, Pencil, X, Save, User, Briefcase,
   Building2, Mail, Phone, MapPin, DollarSign, Calendar,
   UserCheck, ChevronDown, ChevronUp, FileText, Tag, Clock, Users, Download,
-  AlertTriangle, History, Eye, EyeOff, Copy, Check,
+  AlertTriangle, History, Eye, EyeOff, Copy, Check, Clock3, Sparkles,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -36,6 +36,8 @@ interface Submission {
   vendor_email: string; vendor_contact: string; client_name: string; job_location: string;
   rate: string; submitted_by: string; submission_date: string; submission_type: string; created_at: string;
 }
+
+type EmailDraftTabId = 'pitching' | 'requestDetails';
 
 // ── Date range ────────────────────────────────────────────────────────────────
 
@@ -222,6 +224,7 @@ export default function TrackerPage() {
   const dateRef = useRef<HTMLDivElement>(null);
 
   // Search
+  const [pendingGlobalSearch, setPendingGlobalSearch] = useState('');
   const [globalSearch, setGlobalSearch] = useState('');
 
   // Selections
@@ -264,7 +267,12 @@ export default function TrackerPage() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<{ existing: Submission[]; } | null>(null);
-  const [emailDraft, setEmailDraft] = useState<{ subject: string; body: string } | null>(null);
+  const [activeEmailJob, setActiveEmailJob] = useState<VendorHistoryJob | null>(null);
+  const [trackerEmailDrafts, setTrackerEmailDrafts] = useState<{ pitching: string; requestDetails: string }>({
+    pitching: '',
+    requestDetails: '',
+  });
+  const [selectedEmailDraftTab, setSelectedEmailDraftTab] = useState<EmailDraftTabId>('pitching');
 
   // Close date picker on outside click
   useEffect(() => {
@@ -311,7 +319,18 @@ export default function TrackerPage() {
     setDateOpen(false);
   }
 
+  function applyGlobalSearch() {
+    setGlobalSearch(pendingGlobalSearch.trim());
+  }
+
   const dateLabel = DATE_PRESETS.find(p => p.id === datePreset)?.label ?? 'Custom range';
+  const trackerDateShortLabel: Record<DatePreset, string> = {
+    '30d': '30d',
+    today: '1d',
+    '7d': '7d',
+    month: 'MTD',
+    custom: 'Custom',
+  };
 
   // ── Suggestions ────────────────────────────────────────────────────────────
 
@@ -597,7 +616,7 @@ export default function TrackerPage() {
     void loadVendorHistoryForVendors(filteredVendors);
   }, [activeVendorId, filteredVendorIdsKey, loadVendorHistoryForVendors]);
 
-  const generateTrackerEmailDraft = useCallback((job: VendorHistoryJob) => {
+  const generateTrackerEmailDrafts = useCallback((job: VendorHistoryJob) => {
     const breakdownItems = buildScoreBreakdownDisplayItems(
       job.score_breakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
     );
@@ -607,7 +626,9 @@ export default function TrackerPage() {
       return item?.detail?.candidate_value?.trim() || '-';
     };
 
-    const subject = `Re: ${job.job_title || job.extracted_role_normalized || 'Requirement'}${job.company_name ? ` at ${job.company_name}` : ''}`;
+    const role = job.job_title || job.extracted_role_normalized || 'requirement';
+    const companyText = job.company_name ? ` at ${job.company_name}` : '';
+
     const profileHighlights = [
       `- Role: ${pickDetail([/role/i, /title/i, /position/i])}`,
       `- Exp: ${pickDetail([/experience/i, /years?_?exp/i, /exp/i])}`,
@@ -617,10 +638,10 @@ export default function TrackerPage() {
       `- Skills: ${pickDetail([/skill/i])}`,
     ];
 
-    const body = [
+    const pitching = [
       `Hi ${job.posted_by_name || 'there'},`,
       '',
-      `I saw your post for the ${job.job_title || job.extracted_role_normalized || 'requirement'}${job.company_name ? ` at ${job.company_name}` : ''}.`,
+      `I saw your post for the ${role}${companyText}.`,
       'I have a profile that looks highly relevant and can share it right away.',
       '',
       'Profile Highlights:',
@@ -632,9 +653,45 @@ export default function TrackerPage() {
       defaultSubmittedBy || (user?.email?.split('@')[0] ?? 'ProfilePush User'),
     ].join('\n');
 
-    setEmailDraft({ subject, body });
+    const requestDetails = [
+      `Hi ${job.posted_by_name || 'there'},`,
+      '',
+      `Following up on the ${role}${companyText}.`,
+      'Could you please share the following details so I can submit the best-fit profile quickly?',
+      '',
+      '- Full JD / must-have skills',
+      '- Interview process and timeline',
+      '- Work authorization constraints',
+      '- Work type (onsite / hybrid / remote)',
+      '- Target bill rate range',
+      '- Client/VMS details and submission format',
+      '',
+      'I can send matching profiles immediately after this.',
+      '',
+      'Thanks,',
+      defaultSubmittedBy || (user?.email?.split('@')[0] ?? 'ProfilePush User'),
+    ].join('\n');
+
+    setActiveEmailJob(job);
+    setTrackerEmailDrafts({ pitching, requestDetails });
+    setSelectedEmailDraftTab('pitching');
     setModal('email');
   }, [defaultSubmittedBy, user?.email]);
+
+  const copyText = useCallback(async (text: string, label: string) => {
+    if (!text) {
+      setToast({ message: `${label} is unavailable.`, type: 'error' });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(label);
+      setTimeout(() => setCopiedField(null), 1500);
+      setToast({ message: `${label} copied.`, type: 'success' });
+    } catch {
+      setToast({ message: `Could not copy ${label.toLowerCase()}.`, type: 'error' });
+    }
+  }, []);
 
   function handleVendorRowClick(vendor: Vendor) {
     if (activeVendorId === vendor.id) {
@@ -688,37 +745,57 @@ export default function TrackerPage() {
       <AppNav />
 
       {/* ── Global toolbar ── */}
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm px-5 py-2.5 flex items-center gap-3">
+      <div className="sticky top-0 z-20 border-b border-gray-200 bg-white px-2 py-2 flex items-center gap-2">
         {/* Search */}
-        <div className="relative flex-1">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+          <Search size={11} className="text-gray-400" />
           <input
             type="text"
-            placeholder="Search candidates, vendors, clients..."
-            value={globalSearch}
-            onChange={e => setGlobalSearch(e.target.value)}
-            className="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 focus:bg-white transition-all"
+            placeholder="Search contacts and revealed jobs..."
+            value={pendingGlobalSearch}
+            onChange={e => setPendingGlobalSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                applyGlobalSearch();
+              }
+            }}
+            className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
           />
-          {globalSearch && (
-            <button onClick={() => setGlobalSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X size={12} />
+          {pendingGlobalSearch && (
+            <button
+              onClick={() => {
+                setPendingGlobalSearch('');
+                setGlobalSearch('');
+              }}
+              className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600"
+            >
+              <X size={11} />
             </button>
           )}
         </div>
 
+        <button
+          type="button"
+          onClick={applyGlobalSearch}
+          className="rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700"
+          aria-label="Search"
+        >
+          <Search size={12} />
+        </button>
+
         {/* Date range picker */}
         {!isSearching && (
-          <div className="relative" ref={dateRef}>
+          <div className="relative shrink-0" ref={dateRef}>
             <button
               onClick={() => setDateOpen(o => !o)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors text-gray-600 font-medium"
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100"
             >
-              <Calendar size={12} className="text-gray-400" />
-              {dateLabel}
-              <ChevronDown size={11} className="text-gray-300" />
+              <Clock3 size={11} />
+              <span>{trackerDateShortLabel[datePreset]}</span>
             </button>
             {dateOpen && (
-              <div className="absolute left-0 top-full mt-1.5 bg-white rounded-xl border border-gray-200 shadow-2xl z-30 w-64 p-3">
+              <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-64 rounded-xl border border-gray-200 bg-white p-3 shadow-2xl">
                 <div className="space-y-0.5 mb-3">
                   {DATE_PRESETS.filter(p => p.id !== 'custom').map(p => (
                     <button
@@ -757,7 +834,7 @@ export default function TrackerPage() {
         )}
 
         {isSearching && (
-          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-1 rounded-lg">
+          <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-1.5 text-[10px] font-semibold text-blue-700">
             {filteredSubs.length + filteredVendors.length} results across all data
           </span>
         )}
@@ -827,12 +904,6 @@ export default function TrackerPage() {
                           </button>
                         </div>
                       )}
-                      {v.location && (
-                        <div className="flex items-center gap-1 mt-0.5 sm:mt-1 text-[11px] sm:text-xs text-gray-500">
-                          <MapPin size={10} className="text-gray-400 shrink-0" />
-                          <span className="truncate">{v.location}</span>
-                        </div>
-                      )}
                       {v.email && (
                         <div className="mt-1.5 sm:mt-2">
                           <button
@@ -845,7 +916,7 @@ export default function TrackerPage() {
                             className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
                           >
                             {copiedField === `email-${v.id}` ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
-                            {copiedField === `email-${v.id}` ? 'Copied' : 'Copy Email ID'}
+                            {copiedField === `email-${v.id}` ? 'Copied' : 'Email ID'}
                           </button>
                         </div>
                       )}
@@ -897,7 +968,9 @@ export default function TrackerPage() {
 
                     return getPriority(a.key) - getPriority(b.key);
                   });
-                  const visibleBreakdownItems = isExpanded ? prioritizedBreakdownItems : prioritizedBreakdownItems.slice(0, 2);
+                  const canToggleBreakdown = prioritizedBreakdownItems.length > 2;
+                  const collapsedBreakdownItems = prioritizedBreakdownItems.slice(0, 3);
+                  const visibleBreakdownItems = isExpanded ? prioritizedBreakdownItems : collapsedBreakdownItems;
                   const cardToneClass = [
                     'border-blue-100 bg-blue-50/35',
                     'border-emerald-100 bg-emerald-50/35',
@@ -930,49 +1003,59 @@ export default function TrackerPage() {
                       </div>
 
                       {breakdownItems.length > 0 && (
-                        <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200">
-                          <table className="w-full table-fixed border-collapse text-left text-[10px] sm:text-xs">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                                <th className="border-b border-gray-200 px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {visibleBreakdownItems.map((item) => (
-                                <tr key={item.key}>
-                                  <td className="border-b border-gray-100 px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
-                                  <td className="border-b border-gray-100 px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                        canToggleBreakdown ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setExpandedHistoryBreakdownIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(job.id)) next.delete(job.id);
+                                else next.add(job.id);
+                                return next;
+                              });
+                            }}
+                            className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left relative group focus:outline-none"
+                          >
+                            <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                              <tbody>
+                                {visibleBreakdownItems.map((item, idx) => (
+                                  <tr key={item.key}>
+                                    <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>
+                                      {formatBreakdownFieldName(item.key)}
+                                    </td>
+                                    <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>
+                                      {item.detail?.job_value || '-'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {!isExpanded && (
+                              <div className="absolute bottom-0 left-0 right-0 h-7 flex items-center justify-center pointer-events-none">
+                                <ChevronDown size={12} className="text-blue-500" />
+                              </div>
+                            )}
+                          </button>
+                        ) : (
+                          <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left">
+                            <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                              <tbody>
+                                {visibleBreakdownItems.map((item) => (
+                                  <tr key={item.key}>
+                                    <td className="border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal text-gray-700">{formatBreakdownFieldName(item.key)}</td>
+                                    <td className="border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal text-gray-700">{item.detail?.job_value || '-'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )
                       )}
 
                       <div className="mt-2">
                         <div className="flex flex-col gap-1.5">
-                          {breakdownItems.length > 2 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setExpandedHistoryBreakdownIds((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(job.id)) {
-                                    next.delete(job.id);
-                                  } else {
-                                    next.add(job.id);
-                                  }
-                                  return next;
-                                });
-                              }}
-                              className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 sm:px-2.5 sm:py-2 text-[10px] sm:text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
-                            >
-                              {isExpanded ? 'Hide Details' : 'Details'}
-                            </button>
-                          )}
                           <button
-                            onClick={() => void generateTrackerEmailDraft(job)}
+                            onClick={() => void generateTrackerEmailDrafts(job)}
                                 className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2 py-1.5 sm:px-2.5 sm:py-2 text-[10px] sm:text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
                           >
                             <Mail size={10} />
@@ -1177,54 +1260,86 @@ export default function TrackerPage() {
       )}
 
       {/* ── EMAIL DRAFT MODAL ── */}
-      {modal === 'email' && emailDraft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setModal(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <div>
-                <h2 className="text-base font-bold text-gray-900">Email Draft</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Review and copy the generated outreach email</p>
+      {modal === 'email' && activeEmailJob && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-3" onClick={() => setModal(null)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-4 sm:p-3 shadow-xl max-h-[85vh] overflow-y-auto"
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-900">
+                  {activeEmailJob.job_title || activeEmailJob.extracted_role_normalized || 'Requirement'}
+                </p>
+                <p className="text-[12px] text-gray-600">{[activeEmailJob.company_name, activeEmailJob.location].filter(Boolean).join(' • ') || 'Company details unavailable'}</p>
+                <p className="mt-0.5 text-[11px] text-gray-500">{activeEmailJob.posted_by_name || 'Posted by hidden'}{activeEmailJob.created_at ? ` • ${formatAgo(activeEmailJob.created_at)}` : ''}</p>
               </div>
-              <button onClick={() => setModal(null)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"><X size={16} /></button>
-            </div>
-            <div className="px-6 py-5 space-y-4">
-              <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Subject</label>
-                <input
-                  value={emailDraft.subject}
-                  readOnly
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Message</label>
-                <textarea
-                  value={emailDraft.body}
-                  readOnly
-                  rows={12}
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none whitespace-pre-wrap"
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-gray-100">
               <button
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText([`Subject: ${emailDraft.subject}`, '', emailDraft.body].join('\n'));
-                    setCopiedField('email-draft');
-                    setTimeout(() => setCopiedField(null), 1500);
-                    setToast({ message: 'Email draft copied.', type: 'success' });
-                  } catch {
-                    setToast({ message: 'Could not copy email draft.', type: 'error' });
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+                onClick={() => setModal(null)}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                aria-label="Close"
               >
-                {copiedField === 'email-draft' ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
-                {copiedField === 'email-draft' ? 'Copied' : 'Copy Email'}
+                <X size={14} />
               </button>
-              <button onClick={() => setModal(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Close</button>
+            </div>
+
+            <div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  onClick={() => generateTrackerEmailDrafts(activeEmailJob)}
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-3 sm:py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  <Sparkles size={14} />
+                  Generate Email
+                </button>
+
+                <button
+                  onClick={() => void copyText(activeEmailJob.poster_email, 'Email ID')}
+                  disabled={!activeEmailJob.poster_email}
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-300 bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
+                >
+                  <Mail size={14} />
+                  {copiedField === 'Email ID' ? 'Copied' : 'Email ID'}
+                </button>
+              </div>
+
+              <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEmailDraftTab('pitching')}
+                      className={`rounded px-2 py-1 text-[10px] font-semibold transition ${selectedEmailDraftTab === 'pitching' ? 'bg-blue-600 text-white' : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      Pitching Email
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEmailDraftTab('requestDetails')}
+                      className={`rounded px-2 py-1 text-[10px] font-semibold transition ${selectedEmailDraftTab === 'requestDetails' ? 'bg-blue-600 text-white' : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      Request Details
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void copyText(
+                      selectedEmailDraftTab === 'pitching' ? trackerEmailDrafts.pitching : trackerEmailDrafts.requestDetails,
+                      'Email draft',
+                    )}
+                    className="rounded border border-gray-300 bg-white px-2 py-1 text-[10px] font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    {copiedField === 'Email draft' ? 'Copied' : 'Copy Draft'}
+                  </button>
+                </div>
+
+                <textarea
+                  value={selectedEmailDraftTab === 'pitching' ? trackerEmailDrafts.pitching : trackerEmailDrafts.requestDetails}
+                  readOnly
+                  rows={14}
+                  className="w-full rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none whitespace-pre-wrap"
+                />
+              </div>
             </div>
           </div>
         </div>

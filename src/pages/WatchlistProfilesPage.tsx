@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookmarkCheck, ChevronDown, ChevronUp, Pencil, RefreshCw, Save, Search, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BookmarkCheck, Check, Clock3, ChevronDown, ChevronUp, Pencil, Save, Search, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import Toast from '../components/Toast';
@@ -129,18 +129,62 @@ function renderSelectOptions(options: SelectOption[], currentValue?: string) {
   ));
 }
 
+type WatchlistRangeOption = {
+  id: '24h' | '3d' | '7d' | '15d' | '30d';
+  label: string;
+  hours: number;
+};
+
+const WATCHLIST_RANGE_OPTIONS: WatchlistRangeOption[] = [
+  { id: '24h', label: 'Last 24 hours', hours: 24 },
+  { id: '3d', label: 'Last 3 days', hours: 72 },
+  { id: '7d', label: 'Last 7 days', hours: 168 },
+  { id: '15d', label: 'Last 15 days', hours: 360 },
+  { id: '30d', label: 'Last 30 days', hours: 720 },
+];
+
+const WATCHLIST_RANGE_SHORT_LABELS: Record<WatchlistRangeOption['id'], string> = {
+  '24h': '24h',
+  '3d': '3d',
+  '7d': '7d',
+  '15d': '15d',
+  '30d': '30d',
+};
+
 export default function WatchlistProfilesPage() {
   const { account } = useAuth();
 
   const [profiles, setProfiles] = useState<WatchlistProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [pendingQuery, setPendingQuery] = useState('');
   const [query, setQuery] = useState('');
+  const [rangeId, setRangeId] = useState<WatchlistRangeOption['id']>('7d');
+  const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [editingProfile, setEditingProfile] = useState<WatchlistProfile | null>(null);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [form, setForm] = useState<WatchlistFormState>(EMPTY_FORM);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const rangeMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isRangeMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (rangeMenuRef.current && target && !rangeMenuRef.current.contains(target)) {
+        setIsRangeMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [isRangeMenuOpen]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -184,23 +228,18 @@ export default function WatchlistProfilesPage() {
 
   const filteredProfiles = useMemo(() => {
     const value = query.trim().toLowerCase();
-    if (!value) return profiles;
+    const hours = WATCHLIST_RANGE_OPTIONS.find((option) => option.id === rangeId)?.hours ?? 168;
+    const cutoff = Date.now() - hours * 60 * 60 * 1000;
+
     return profiles.filter((item) => {
-      const haystack = [
-        item.target_role,
-        item.category,
-        item.priority_skills,
-        item.preferred_locations,
-        item.visa_status,
-        item.employment_type,
-        item.work_type,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(value);
+      const updatedTs = new Date(item.updated_at).getTime();
+      if (Number.isFinite(updatedTs) && updatedTs < cutoff) return false;
+      if (!value) return true;
+
+      const roleName = (item.target_role ?? '').toLowerCase();
+      return roleName.includes(value);
     });
-  }, [profiles, query]);
+  }, [profiles, query, rangeId]);
 
   const activeCount = useMemo(() => filteredProfiles.filter((item) => item.is_watching).length, [filteredProfiles]);
   const selectedProfile = useMemo(
@@ -320,35 +359,81 @@ export default function WatchlistProfilesPage() {
     <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden overscroll-none pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm px-5 py-2.5 flex items-center gap-3">
-        <div className="relative flex-1">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+      <div className="sticky top-0 z-20 border-b border-gray-200 bg-white px-2 py-2 flex items-center gap-2">
+        <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+          <Search size={11} className="text-gray-400" />
           <input
             type="text"
-            placeholder="Search profiles, skills, locations..."
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 focus:bg-white transition-all"
+            placeholder="Search role name..."
+            value={pendingQuery}
+            onChange={(event) => setPendingQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                setQuery(pendingQuery.trim());
+              }
+            }}
+            className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
           />
-          {query && (
-            <button onClick={() => setQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X size={12} />
+          {pendingQuery && (
+            <button
+              onClick={() => {
+                setPendingQuery('');
+                setQuery('');
+              }}
+              className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600"
+            >
+              <X size={11} />
             </button>
           )}
         </div>
 
-        <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-1 rounded-lg">
-          {activeCount} active / {filteredProfiles.length} profiles
-        </span>
-
         <button
           type="button"
-          onClick={() => void loadProfiles()}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors text-gray-600 font-medium"
+          onClick={() => setQuery(pendingQuery.trim())}
+          className="rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700"
+          aria-label="Search"
         >
-          <RefreshCw size={12} className="text-gray-400" />
-          Refresh
+          <Search size={12} />
         </button>
+
+        <div ref={rangeMenuRef} className="relative shrink-0">
+          <button
+            onClick={() => setIsRangeMenuOpen((prev) => !prev)}
+            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100"
+            aria-label="Change date range"
+          >
+            <Clock3 size={11} />
+            <span>{WATCHLIST_RANGE_SHORT_LABELS[rangeId]}</span>
+          </button>
+
+          {isRangeMenuOpen && (
+            <div className="absolute right-0 top-[calc(100%+6px)] z-30 min-w-[116px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+              {WATCHLIST_RANGE_OPTIONS.map((option) => {
+                const isActive = option.id === rangeId;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => {
+                      setRangeId(option.id);
+                      setIsRangeMenuOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    <span>{option.label}</span>
+                    {isActive ? <Check size={11} /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1.5 text-[10px] font-semibold text-blue-700">
+          <BookmarkCheck size={11} />
+          <span>{activeCount}/{filteredProfiles.length}</span>
+        </span>
       </div>
 
       <div className="flex-1 grid grid-cols-[minmax(0,40%)_minmax(0,60%)] gap-0 overflow-hidden">
@@ -377,7 +462,7 @@ export default function WatchlistProfilesPage() {
                       className={`px-3 py-2.5 cursor-pointer transition-colors ${isSelected ? 'bg-blue-100/60' : 'hover:bg-blue-50/30'}`}
                     >
                       <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-1.5">
-                        <p className="text-xs font-semibold text-gray-900 break-words whitespace-normal leading-snug">
+                        <p className="text-[11px] font-semibold text-gray-900 break-words whitespace-normal leading-snug">
                           {profile.target_role}
                         </p>
                         <div className="flex flex-wrap items-center gap-1 shrink-0">
@@ -397,9 +482,6 @@ export default function WatchlistProfilesPage() {
         <div className="min-w-0 bg-white flex flex-col overflow-hidden">
           <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
             <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Details</span>
-            {selectedProfile && (
-              <span className="ml-auto text-[10px] text-gray-500 truncate max-w-[220px]">{selectedProfile.target_role}</span>
-            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-3">
@@ -562,8 +644,8 @@ export default function WatchlistProfilesPage() {
                 <table className="w-full table-fixed border-collapse text-left text-[11px]">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="border-b border-gray-200 px-3 py-2 font-semibold uppercase tracking-wide text-gray-500 w-[132px]">Field</th>
-                      <th className="border-b border-gray-200 px-3 py-2 font-semibold uppercase tracking-wide text-gray-500 w-[calc(100%-132px)]">Value</th>
+                      <th className="w-[96px] sm:w-[132px] border-b border-gray-200 px-3 py-2 font-semibold uppercase tracking-wide text-gray-500">Field</th>
+                      <th className="border-b border-gray-200 px-3 py-2 font-semibold uppercase tracking-wide text-gray-500">Value</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -571,8 +653,8 @@ export default function WatchlistProfilesPage() {
                       const isLastVisible = index === visibleRows.length - 1;
                       return (
                         <tr key={label}>
-                          <td className={`${isLastVisible ? '' : 'border-b border-gray-100'} px-3 py-2 font-semibold text-gray-700`}>{label}</td>
-                          <td className={`${isLastVisible ? '' : 'border-b border-gray-100'} px-3 py-2 text-gray-700`}>{value}</td>
+                          <td className={`${isLastVisible ? '' : 'border-b border-gray-100'} px-3 py-2 font-semibold align-top text-gray-700 break-words whitespace-normal`}>{label}</td>
+                          <td className={`${isLastVisible ? '' : 'border-b border-gray-100'} px-3 py-2 align-top text-gray-700 break-words whitespace-normal`}>{value}</td>
                         </tr>
                       );
                     })}

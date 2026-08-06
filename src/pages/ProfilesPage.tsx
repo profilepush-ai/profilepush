@@ -829,8 +829,7 @@ export default function ProfilesPage() {
   const [feedSearchScope, setFeedSearchScope] = useState<PulseFeedSearchScope>('all');
   const [selectedProfilesView, setSelectedProfilesView] = useState<'all' | 'watching'>('all');
   const [profilesLayoutMode, setProfilesLayoutMode] = useState<'cards' | 'table'>(() => {
-    if (typeof window === 'undefined') return 'cards';
-    return window.matchMedia('(max-width: 639px)').matches ? 'cards' : 'table';
+    return 'table';
   });
   const [profilePage, setProfilePage] = useState(1);
   const visibleProfilesCount = profilePage * TOP_PROFILES_PAGE_SIZE;
@@ -996,11 +995,14 @@ export default function ProfilesPage() {
   const visibleJobsRankedLeaderboard = useMemo(
     () => {
       if (isMobileViewport) {
+        if (profilesLayoutMode === 'table') {
+          return profilesForActiveView;
+        }
         return profilesForActiveView.slice(0, visibleProfilesCount);
       }
       return profilesForActiveView.slice((profilePage - 1) * TOP_PROFILES_PAGE_SIZE, profilePage * TOP_PROFILES_PAGE_SIZE);
     },
-    [isMobileViewport, profilePage, profilesForActiveView, visibleProfilesCount],
+    [isMobileViewport, profilePage, profilesForActiveView, profilesLayoutMode, visibleProfilesCount],
   );
 
   const totalProfilePages = Math.max(1, Math.ceil(profilesForActiveView.length / TOP_PROFILES_PAGE_SIZE));
@@ -1319,10 +1321,10 @@ export default function ProfilesPage() {
                 return (
                   <tr
                     key={`${keyPrefix}-${persona.target_role}`}
-                    onClick={() => void selectPersona(persona)}
+                    onClick={() => openJobsForRole(persona.target_role)}
                     className={`cursor-pointer ${isSelected ? 'bg-blue-50/50' : 'bg-white'} hover:bg-gray-50`}
                   >
-                    <td className={`border-b border-gray-100 font-semibold leading-tight text-gray-900 break-words whitespace-normal ${compact ? 'px-1.5 py-1' : 'px-2 py-1.5'}`} title={persona.target_role}>
+                    <td className={`border-b border-gray-100 font-semibold leading-tight text-blue-700 break-words whitespace-normal ${compact ? 'px-1.5 py-1' : 'px-2 py-1.5'}`} title={persona.target_role}>
                       {persona.target_role}
                     </td>
                     <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{stats.uniqueJobs}</td>
@@ -2201,11 +2203,11 @@ export default function ProfilesPage() {
     }
   }, [ensureBenchProfileForWatchedRole, loadFeed, loadLeaderboard, showToast, syncWatchlistProfileFromHotlistRole]);
 
-  const selectPersona = useCallback(async (persona: PulsePersona) => {
-    setActivePersona(persona);
-    setView('feed');
-    await loadFeed(null);
-  }, [loadFeed]);
+  const openJobsForRole = useCallback((role: string) => {
+    const query = role.trim();
+    if (!query) return;
+    navigate(`/jobs?q=${encodeURIComponent(query)}`);
+  }, [navigate]);
 
   const refreshFeed = useCallback(async () => {
     setRefreshing(true);
@@ -2711,7 +2713,7 @@ export default function ProfilesPage() {
                 </div>
 
               {/* Mobile search/filter row */}
-              <div className={isMobileViewport ? 'sticky top-0 z-30 border-b border-gray-200 bg-white px-0 py-2' : 'px-2 py-2'}>
+              <div className={isMobileViewport ? 'sticky top-0 z-30 bg-white px-0 pt-1.5 pb-1' : 'px-2 py-2'}>
                 <div className="flex items-center gap-2">
                   <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
                     <Search size={11} className="text-gray-400" />
@@ -2725,7 +2727,7 @@ export default function ProfilesPage() {
                           applyProfileSearch();
                         }
                       }}
-                      placeholder="Solutions Architect C2C $45"
+                      placeholder="Solutions Architect"
                       className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
                     />
                     {pendingProfileSearchQuery && (
@@ -2902,7 +2904,7 @@ export default function ProfilesPage() {
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
               >
                 {isMobileViewport ? (
-                  <div className="sticky top-0 z-40 shrink-0 flex items-center gap-1.5 border-b border-gray-100 bg-white px-1.5 pt-0 pb-1.5">
+                  <div className="sticky top-0 z-40 shrink-0 flex items-center gap-1.5 bg-white px-1.5 pt-0 pb-1">
                     <button
                       type="button"
                       onClick={() => setProfilesLayoutMode((prev) => (prev === 'cards' ? 'table' : 'cards'))}
@@ -2933,11 +2935,11 @@ export default function ProfilesPage() {
                   </div>
                 ) : null}
 
-              <section className={isMobileViewport ? 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col' : 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col'}>
+              <section className={isMobileViewport ? 'min-w-0 flex-none' : 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col'}>
                 {/* Profile list */}
                 {isMobileViewport ? (
-                  <div className="w-full flex-1 min-h-0">
-                    <div className={`flex min-h-0 flex-col gap-2 px-1.5 py-2 ${profilesLayoutMode === 'table' ? 'h-full' : ''}`}>
+                  <div className="w-full">
+                    <div className={`flex flex-col gap-2 px-1.5 pt-1 pb-2 ${profilesLayoutMode === 'table' ? 'h-full' : ''}`}>
                       {profilesLayoutMode === 'table' ? (
                         renderProfilesTable(visibleJobsRankedLeaderboard, 'No profiles found.', 'mobile')
                       ) : (
@@ -2957,12 +2959,12 @@ export default function ProfilesPage() {
                         return (
                           <div
                             key={persona.target_role}
-                            onClick={() => void selectPersona(persona)}
+                            onClick={() => openJobsForRole(persona.target_role)}
                             className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${persona.rank <= 10 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                           >
                             <div className="flex items-start gap-2">
                               <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${persona.rank <= 10 ? 'text-emerald-600' : 'text-gray-400'}`}>#{persona.rank}</span>
-                              <p className="flex-1 text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                              <p className="flex-1 text-[11px] font-semibold text-blue-700 leading-snug">{persona.target_role}</p>
                               {persona.active_watchers > 0 && (
                                 <span className="shrink-0 text-[8px] text-gray-400 mt-0.5">{persona.active_watchers} watching</span>
                               )}
@@ -2983,7 +2985,7 @@ export default function ProfilesPage() {
                           })}
                         </>
                       )}
-                      {canLoadMoreProfiles && (
+                      {canLoadMoreProfiles && profilesLayoutMode !== 'table' && (
                         <div ref={mobileProfilesLoadMoreRef} className="h-2" />
                       )}
                     </div>
@@ -3023,12 +3025,12 @@ export default function ProfilesPage() {
                                   return (
                                     <div
                                       key={`${showingWatching ? 'watching' : 'all'}-${persona.target_role}`}
-                                      onClick={() => void selectPersona(persona)}
+                                      onClick={() => openJobsForRole(persona.target_role)}
                                       className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${persona.rank <= 10 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                                     >
                                       <div className="flex items-start gap-2">
                                         <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${persona.rank <= 10 ? 'text-emerald-600' : 'text-gray-400'}`}>#{persona.rank}</span>
-                                        <p className="flex-1 text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                                        <p className="flex-1 text-[11px] font-semibold text-blue-700 leading-snug">{persona.target_role}</p>
                                         {persona.active_watchers > 0 && (
                                           <span className="shrink-0 text-[8px] text-gray-400 mt-0.5">{persona.active_watchers} watching</span>
                                         )}
