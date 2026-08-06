@@ -3145,11 +3145,8 @@ export default function PulsePage() {
               </section>}
 
               {isMobileViewport && (
-                <div className="sticky top-0 z-40 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur transform-gpu backface-hidden">
-                  <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-amber-50/80 px-2 py-1">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">Jobs</span>
-                  </div>
-                  <div className="ml-auto grid grid-cols-2 gap-1">
+                <div className="sticky top-0 z-40 shrink-0 bg-white/90 px-1.5 pt-0 pb-1.5 backdrop-blur transform-gpu backface-hidden">
+                  <div className="grid w-full grid-cols-2 gap-1">
                     {([
                       { id: 'queued', label: 'Recent' },
                       { id: 'revealed', label: 'Revealed' },
@@ -3161,10 +3158,10 @@ export default function PulsePage() {
                           key={tab.id}
                           type="button"
                           onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                          className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-amber-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                          className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${isSelected ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                         >
                           <span>{tab.label}</span>
-                          <span className={`text-[9px] font-bold ${isSelected ? 'text-white/90' : 'text-gray-500'}`}>{count}</span>
+                          <span>{count}</span>
                         </button>
                       );
                     })}
@@ -3174,11 +3171,8 @@ export default function PulsePage() {
 
               <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
                 {!isMobileViewport && (
-                  <div className="shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
-                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-amber-50/80 px-2 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">Jobs</span>
-                    </div>
-                    <div className="ml-auto grid grid-cols-2 gap-1">
+                  <div className="shrink-0 bg-white/90 px-1.5 pt-0 pb-1.5 backdrop-blur">
+                    <div className="grid w-full grid-cols-2 gap-1">
                       {([
                         { id: 'queued', label: 'Recent' },
                         { id: 'revealed', label: 'Revealed' },
@@ -3195,10 +3189,10 @@ export default function PulsePage() {
                               if (tab.id === 'revealed') setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                             }}
-                            className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-amber-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                            className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${isSelected ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                           >
                             <span>{tab.label}</span>
-                            <span className={`text-[9px] font-bold ${isSelected ? 'text-white/90' : 'text-gray-500'}`}>{count}</span>
+                            <span>{count}</span>
                           </button>
                         );
                       })}

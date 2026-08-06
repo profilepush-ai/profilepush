@@ -2803,10 +2803,7 @@ export default function ProfilesPage() {
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
               >
                 {isMobileViewport ? (
-                  <div className="sticky top-0 z-40 shrink-0 flex items-center gap-2 border-b border-gray-100 bg-white px-1.5 py-2">
-                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
-                    </div>
+                  <div className="sticky top-0 z-40 shrink-0 flex items-center gap-1.5 border-b border-gray-100 bg-white px-1.5 pt-0 pb-1.5">
                     <button
                       type="button"
                       onClick={() => setProfilesLayoutMode((prev) => (prev === 'cards' ? 'table' : 'cards'))}
@@ -2816,22 +2813,22 @@ export default function ProfilesPage() {
                     >
                       <TableProperties size={13} />
                     </button>
-                    <div className="ml-auto grid grid-cols-2 gap-1">
+                    <div className="grid flex-1 grid-cols-2 gap-1">
                       <button
                         type="button"
                         onClick={() => setSelectedProfilesView('all')}
-                        className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                       >
                         <span>All</span>
-                        <span className={`text-[9px] font-bold ${selectedProfilesView === 'all' ? 'text-white/90' : 'text-gray-500'}`}>{profileViewCounts.all}</span>
+                        <span>{profileViewCounts.all}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setSelectedProfilesView('watching')}
-                        className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                       >
                         <span>Watching</span>
-                        <span className={`text-[9px] font-bold ${selectedProfilesView === 'watching' ? 'text-white/90' : 'text-gray-500'}`}>{profileViewCounts.watching}</span>
+                        <span>{profileViewCounts.watching}</span>
                       </button>
                     </div>
                   </div>
@@ -2839,10 +2836,7 @@ export default function ProfilesPage() {
 
               <section className={isMobileViewport ? 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col' : 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col'}>
                 {!isMobileViewport ? (
-                  <div className="shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
-                    <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
-                    </div>
+                  <div className="shrink-0 flex items-center gap-1.5 bg-white/90 px-1.5 pt-0 pb-1.5 backdrop-blur">
                     <button
                       type="button"
                       onClick={() => setProfilesLayoutMode((prev) => (prev === 'cards' ? 'table' : 'cards'))}
@@ -2852,6 +2846,24 @@ export default function ProfilesPage() {
                     >
                       <TableProperties size={13} />
                     </button>
+                    <div className="grid flex-1 grid-cols-2 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfilesView('all')}
+                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        <span>All</span>
+                        <span>{profileViewCounts.all}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfilesView('watching')}
+                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        <span>Watching</span>
+                        <span>{profileViewCounts.watching}</span>
+                      </button>
+                    </div>
                   </div>
                 ) : null}
                 {/* Profile list */}
@@ -2909,111 +2921,67 @@ export default function ProfilesPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2 px-2 py-2 flex-1 min-h-0">
-                    <div className="min-w-0 rounded-md bg-transparent flex flex-col min-h-0">
-                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 shrink-0">All ({profileViewCounts.all})</div>
+                  <div className="px-2 py-2 flex-1 min-h-0 flex flex-col">
+                    <div className="min-w-0 rounded-md bg-transparent flex flex-1 flex-col min-h-0">
                       <div className={`${profilesLayoutMode === 'table' ? 'flex-1 min-h-0 overflow-hidden' : 'overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar'}`}>
                         <div className={`${profilesLayoutMode === 'table' ? 'h-full min-h-0 px-1.5 py-2' : 'flex flex-col gap-2 px-1.5 py-2'}`}>
-                          {profilesLayoutMode === 'table' ? (
-                            renderProfilesTable(filteredJobsRankedLeaderboard, 'No profiles found.', 'all')
-                          ) : (
-                            <>
-                              {filteredJobsRankedLeaderboard.length === 0 && (
-                                <div className="px-3 py-6 text-center text-xs text-gray-400">No profiles found.</div>
-                              )}
-                              {filteredJobsRankedLeaderboard.map((persona) => {
-                            const isWatching = watchingRoles.has(normalize(persona.target_role));
-                            const isActivating = activatingRole === persona.target_role;
-                            const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
-                            const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
-                            const profilePulseVisual = getMarketPulseVisual(stats.uniqueJobs);
-                            const details = getPersonaDetailColumns(persona);
+                          {(() => {
+                            const showingWatching = selectedProfilesView === 'watching';
+                            const desktopProfiles = showingWatching
+                              ? orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role)))
+                              : filteredJobsRankedLeaderboard;
+
+                            if (profilesLayoutMode === 'table') {
+                              return renderProfilesTable(
+                                desktopProfiles,
+                                showingWatching ? 'No watching profiles yet.' : 'No profiles found.',
+                                showingWatching ? 'watching' : 'all',
+                              );
+                            }
 
                             return (
-                              <div
-                                key={`all-${persona.target_role}`}
-                                onClick={() => void selectPersona(persona)}
-                                className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${persona.rank <= 10 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
-                              >
-                                <div className="flex items-start gap-2">
-                                  <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${persona.rank <= 10 ? 'text-emerald-600' : 'text-gray-400'}`}>#{persona.rank}</span>
-                                  <p className="flex-1 text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
-                                  {persona.active_watchers > 0 && (
-                                    <span className="shrink-0 text-[8px] text-gray-400 mt-0.5">{persona.active_watchers} watching</span>
-                                  )}
-                                </div>
-                                <div className="mt-2 flex items-center gap-1.5">
-                                  <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
-                                  <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
-                                    disabled={isActivating}
-                                    className={`ml-auto inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'}`}
-                                  >
-                                    {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                              })}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                              <>
+                                {desktopProfiles.length === 0 && (
+                                  <div className="px-3 py-6 text-center text-xs text-gray-400">
+                                    {showingWatching ? 'No watching profiles yet.' : 'No profiles found.'}
+                                  </div>
+                                )}
+                                {desktopProfiles.map((persona) => {
+                                  const isWatching = watchingRoles.has(normalize(persona.target_role));
+                                  const isActivating = activatingRole === persona.target_role;
+                                  const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
+                                  const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
 
-                    <div className="min-w-0 rounded-md bg-transparent flex flex-col min-h-0">
-                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 shrink-0">Watching ({profileViewCounts.watching})</div>
-                      <div className={`${profilesLayoutMode === 'table' ? 'flex-1 min-h-0 overflow-hidden' : 'overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar'}`}>
-                        <div className={`${profilesLayoutMode === 'table' ? 'h-full min-h-0 px-1.5 py-2' : 'flex flex-col gap-2 px-1.5 py-2'}`}>
-                          {profilesLayoutMode === 'table' ? (
-                            renderProfilesTable(
-                              orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))),
-                              'No watching profiles yet.',
-                              'watching',
-                            )
-                          ) : (
-                            <>
-                              {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length === 0 && (
-                                <div className="px-3 py-6 text-center text-xs text-gray-400">No watching profiles yet.</div>
-                              )}
-                              {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).map((persona) => {
-                            const isWatching = watchingRoles.has(normalize(persona.target_role));
-                            const isActivating = activatingRole === persona.target_role;
-                            const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
-                            const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
-                            const profilePulseVisual = getMarketPulseVisual(stats.uniqueJobs);
-                            const details = getPersonaDetailColumns(persona);
-
-                            return (
-                              <div
-                                key={`watching-${persona.target_role}`}
-                                onClick={() => void selectPersona(persona)}
-                                className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${persona.rank <= 10 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
-                              >
-                                <div className="flex items-start gap-2">
-                                  <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${persona.rank <= 10 ? 'text-emerald-600' : 'text-gray-400'}`}>#{persona.rank}</span>
-                                  <p className="flex-1 text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
-                                  {persona.active_watchers > 0 && (
-                                    <span className="shrink-0 text-[8px] text-gray-400 mt-0.5">{persona.active_watchers} watching</span>
-                                  )}
-                                </div>
-                                <div className="mt-2 flex items-center gap-1.5">
-                                  <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
-                                  <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
-                                    disabled={isActivating}
-                                    className={`ml-auto inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'}`}
-                                  >
-                                    {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
-                                  </button>
-                                </div>
-                              </div>
+                                  return (
+                                    <div
+                                      key={`${showingWatching ? 'watching' : 'all'}-${persona.target_role}`}
+                                      onClick={() => void selectPersona(persona)}
+                                      className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${persona.rank <= 10 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
+                                    >
+                                      <div className="flex items-start gap-2">
+                                        <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${persona.rank <= 10 ? 'text-emerald-600' : 'text-gray-400'}`}>#{persona.rank}</span>
+                                        <p className="flex-1 text-[11px] font-semibold text-gray-900 leading-snug">{persona.target_role}</p>
+                                        {persona.active_watchers > 0 && (
+                                          <span className="shrink-0 text-[8px] text-gray-400 mt-0.5">{persona.active_watchers} watching</span>
+                                        )}
+                                      </div>
+                                      <div className="mt-2 flex items-center gap-1.5">
+                                        <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
+                                        <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
+                                          disabled={isActivating}
+                                          className={`ml-auto inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'}`}
+                                        >
+                                          {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </>
                             );
-                              })}
-                            </>
-                          )}
+                          })()}
                         </div>
                       </div>
                     </div>
