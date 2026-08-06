@@ -3931,16 +3931,6 @@ export default function PulsePage() {
                 Copy Email ID
               </button>
 
-              {selectedLead.posterPhone && (
-                <button
-                  onClick={() => void copyText(selectedLead.posterPhone, 'WhatsApp number')}
-                  disabled={!revealedLeadIds.has(selectedLead.id)}
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-3 sm:py-2.5 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500"
-                >
-                  <Phone size={14} />
-                  Copy Phone
-                </button>
-              )}
             </div>
 
             {showGeneratedEmailDraft && (
