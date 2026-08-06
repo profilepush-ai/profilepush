@@ -52,7 +52,7 @@ AS $$
       SELECT 1
       FROM public.radar_match_results rmr
       WHERE rmr.job_source = 'social'
-        AND rmr.job_id = sj.id::text
+        AND rmr.job_id::text = sj.id::text
     )
   )
   SELECT

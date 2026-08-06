@@ -1034,6 +1034,8 @@ export default function PulsePage() {
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
+  const [isRecentSearchesOpen, setIsRecentSearchesOpen] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
   const [feedSearchFilters, setFeedSearchFilters] = useState<FeedSearchFilters>(DEFAULT_FEED_SEARCH_FILTERS);
   const [pendingFeedSearchQuery, setPendingFeedSearchQuery] = useState('');
@@ -1082,6 +1084,7 @@ export default function PulsePage() {
   const mobilePullStartYRef = useRef<number | null>(null);
   const mobilePullArmedRef = useRef(false);
   const rangeMenuRef = useRef<HTMLDivElement | null>(null);
+  const recentSearchesRef = useRef<HTMLDivElement | null>(null);
   const desktopMatchesScrollRef = useRef<HTMLDivElement | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
@@ -1119,6 +1122,46 @@ export default function PulsePage() {
       document.removeEventListener('touchstart', handlePointerDown);
     };
   }, [isRangeMenuOpen]);
+
+  useEffect(() => {
+    if (!isRecentSearchesOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (recentSearchesRef.current && target && !recentSearchesRef.current.contains(target)) {
+        setIsRecentSearchesOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [isRecentSearchesOpen]);
+
+  const loadRecentSearches = useCallback(async () => {
+    if (!user?.id) {
+      setRecentSearches([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('job_search_history')
+      .select('search_query')
+      .eq('user_id', user.id)
+      .eq('page', '/jobs')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (error) return;
+    setRecentSearches(
+      ((data ?? []) as Array<{ search_query: string | null }>)
+        .map((row) => (row.search_query ?? '').trim())
+        .filter(Boolean),
+    );
+  }, [user?.id]);
 
   const zeroStats: ProfileStats = useMemo(() => ({
     uniqueCompanies: 0,
@@ -1846,7 +1889,7 @@ export default function PulsePage() {
             <button
               onClick={() => void handleRevealContact(lead)}
               disabled={processingLeadId === lead.id}
-              className="col-span-7 inline-flex items-center justify-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+              className="col-span-7 inline-flex items-center justify-center gap-1 rounded-md border border-blue-600 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60"
             >
               {processingLeadId === lead.id ? '...' : `Reveal ${maskedEmailHint}`}
             </button>
@@ -3050,13 +3093,27 @@ export default function PulsePage() {
     }
   }, [breakdownChargedLeadIds, consumeCredits, persistLeadAction, showToast]);
 
-  const applyFeedSearch = useCallback(async () => {
-    const parsed = parseFeedSearchIntent(pendingFeedSearchQuery);
+  const applyFeedSearch = useCallback(async (queryOverride?: string) => {
+    const rawQuery = (queryOverride ?? pendingFeedSearchQuery).trim();
+    const parsed = parseFeedSearchIntent(rawQuery);
     const appliedQuery = parsed.roleQuery;
     const appliedFilters = mergeFeedFiltersWithIntent(DEFAULT_FEED_SEARCH_FILTERS, parsed.inferred);
 
     setFeedSearchQuery(appliedQuery);
     setFeedSearchFilters(appliedFilters);
+    setIsRecentSearchesOpen(false);
+
+    if (rawQuery && user?.id) {
+      await supabase
+        .from('job_search_history')
+        .insert({
+          user_id: user.id,
+          account_id: account?.id ?? null,
+          page: '/jobs',
+          search_query: rawQuery,
+        });
+      void loadRecentSearches();
+    }
 
     if (!appliedQuery) {
       setVectorSearchLeadIds(null);
@@ -3081,7 +3138,7 @@ export default function PulsePage() {
     }
 
     setVectorSearchLoading(false);
-  }, [pendingFeedSearchQuery]);
+  }, [account?.id, loadRecentSearches, pendingFeedSearchQuery, user?.id]);
 
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
@@ -3205,12 +3262,20 @@ export default function PulsePage() {
               {/* Mobile search/filter row — controls job feed search */}
               <div className={isMobileViewport ? 'sticky top-0 z-30 border-b border-gray-200 bg-white px-0 py-2' : 'px-2 py-2'}>
                 <div className="flex items-center gap-2">
-                  <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+                  <div ref={recentSearchesRef} className="relative flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
                     <Search size={11} className="text-gray-400" />
                     <input
                       type="text"
                       value={pendingFeedSearchQuery}
                       onChange={(e) => setPendingFeedSearchQuery(e.target.value)}
+                      onFocus={() => {
+                        setIsRecentSearchesOpen(true);
+                        void loadRecentSearches();
+                      }}
+                      onClick={() => {
+                        setIsRecentSearchesOpen(true);
+                        void loadRecentSearches();
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault();
@@ -3228,12 +3293,32 @@ export default function PulsePage() {
                           setFeedSearchQuery('');
                           setFeedSearchFilters(DEFAULT_FEED_SEARCH_FILTERS);
                           setVectorSearchLeadIds(null);
+                          setIsRecentSearchesOpen(false);
                         }}
                         className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600"
                         aria-label="Clear search field"
                       >
                         <X size={11} />
                       </button>
+                    )}
+
+                    {isRecentSearchesOpen && recentSearches.length > 0 && (
+                      <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+                        {recentSearches.map((search, idx) => (
+                          <button
+                            key={`${search}-${idx}`}
+                            type="button"
+                            onClick={() => {
+                              setPendingFeedSearchQuery(search);
+                              void applyFeedSearch(search);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[10px] font-medium text-gray-700 transition hover:bg-gray-50"
+                          >
+                            <Clock3 size={10} className="text-gray-400" />
+                            <span className="truncate">{search}</span>
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
 
@@ -3286,82 +3371,10 @@ export default function PulsePage() {
                 </div>
               </div>
 
-              <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[10%_90%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
-                <aside className="sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar border-r-0 bg-transparent px-0 py-0">
-                  <div className="space-y-1 pr-0">
-                    {[...PROFILE_CATEGORY_TABS]
-                      .map((category) => {
-                        const categoryProfiles = jobsRankedLeaderboard.filter((p) => isPersonaInCategory(p, category.id));
-                        const vendorsCount = categoryProfiles.reduce((s, p) => s + (profileStatsByRole[normalize(p.target_role)]?.uniqueVendors ?? 0), 0);
-                        const jobsCount = categoryProfiles.reduce((s, p) => s + (profileStatsByRole[normalize(p.target_role)]?.uniqueJobs ?? 0), 0);
-                        return { category, vendorsCount, jobsCount };
-                      })
-                      .sort((a, b) => {
-                        if (a.category.id === 'all') return -1;
-                        if (b.category.id === 'all') return 1;
-                        return b.jobsCount - a.jobsCount || a.category.label.localeCompare(b.category.label);
-                      })
-                      .map(({ category, vendorsCount, jobsCount }) => {
-                        const isSelected = selectedCategoryId === category.id;
-                        const CategoryIcon = category.icon;
-
-                        return (
-                          <button
-                            key={category.id}
-                            type="button"
-                            onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
-                            className={`w-full rounded-md border ${isMobileViewport ? 'px-1.5 py-1.5' : 'px-0.5 py-1'} text-center transition ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
-                          >
-                            {isMobileViewport ? (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <CategoryIcon size={13} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
-                                <span className={`text-[8px] font-semibold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
-                                <div className={`mt-0 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
-                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />{vendorsCount}</span>
-                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />{jobsCount}</span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <div className="inline-flex items-center justify-center gap-1">
-                                  <CategoryIcon size={13} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
-                                  <span className={`text-[9px] font-semibold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
-                                </div>
-                                <div className={`mt-0 flex flex-col items-center gap-0.5 text-[9px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
-                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />{vendorsCount}</span>
-                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />{jobsCount}</span>
-                                </div>
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                  </div>
-
-                  {selectedCategoryId !== 'all' && CATEGORY_TECH_STACKS[selectedCategoryId] && (
-                    <div className="mt-3 border-t border-gray-200 pt-2">
-                      <div className="mb-1 px-1 text-[8px] font-bold uppercase tracking-[0.18em] text-gray-400">Tech</div>
-                      <div className="space-y-1">
-                        {CATEGORY_TECH_STACKS[selectedCategoryId].map((tech) => {
-                          const isActive = selectedTechStacks.includes(tech);
-                          return (
-                            <button
-                              key={tech}
-                              type="button"
-                              onClick={() => setSelectedTechStacks((prev) => isActive ? prev.filter((t) => t !== tech) : [...prev, tech])}
-                              className={`w-full rounded-md border px-1.5 py-1 text-[8px] font-semibold transition ${isActive ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-transparent bg-white/80 text-gray-600 hover:bg-white hover:text-gray-800'}`}
-                            >
-                              {tech}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </aside>
+              <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white">
 
               <div
-                className={`col-start-2 row-span-2 min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-white slim-scrollbar' : 'overflow-hidden'}`}
+                className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-white slim-scrollbar' : 'overflow-hidden'}`}
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
                 onTouchStart={isMobileViewport ? handleMobilePullStart : undefined}
                 onTouchMove={isMobileViewport ? handleMobilePullMove : undefined}
