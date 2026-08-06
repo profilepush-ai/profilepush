@@ -1839,7 +1839,7 @@ export default function PulsePage() {
                 <tbody>
                   {inlineBreakdownItems.map((item) => (
                     <tr key={item.key}>
-                      <td className="border-b border-gray-100 bg-white px-2 py-1 font-semibold break-words whitespace-normal text-gray-900">{formatBreakdownFieldName(item.key)}</td>
+                      <td className="border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal text-gray-700">{formatBreakdownFieldName(item.key)}</td>
                       <td className="border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal text-gray-700">{item.detail?.job_value || '-'}</td>
                     </tr>
                   ))}
@@ -1863,7 +1863,7 @@ export default function PulsePage() {
                 <tbody>
                   {(isExpandedBreakdownVisible ? inlineBreakdownItems : collapsedInlineBreakdownItems).map((item, idx) => (
                     <tr key={item.key}>
-                      <td className={`border-b border-gray-100 bg-white px-2 py-1 font-semibold break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-900'}`}>{formatBreakdownFieldName(item.key)}</td>
+                      <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{formatBreakdownFieldName(item.key)}</td>
                       <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{item.detail?.job_value || '-'}</td>
                     </tr>
                   ))}
@@ -1871,9 +1871,7 @@ export default function PulsePage() {
               </table>
               {!isExpandedBreakdownVisible && (
                 <div className="absolute bottom-0 left-0 right-0 h-7 flex items-center justify-center pointer-events-none">
-                  <span className="rounded-full bg-white/90 border border-gray-200 p-1 shadow-sm">
-                    <Eye size={10} className="text-gray-400" />
-                  </span>
+                  <ChevronDown size={12} className="text-blue-500" />
                 </div>
               )}
             </button>
