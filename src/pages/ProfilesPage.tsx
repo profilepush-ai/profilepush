@@ -817,6 +817,7 @@ export default function ProfilesPage() {
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
   const [feedSearchScope, setFeedSearchScope] = useState<PulseFeedSearchScope>('all');
   const [selectedProfilesView, setSelectedProfilesView] = useState<'all' | 'watching'>('all');
+  const [profilesLayoutMode, setProfilesLayoutMode] = useState<'cards' | 'table'>('cards');
   const [profilePage, setProfilePage] = useState(1);
   const visibleProfilesCount = profilePage * TOP_PROFILES_PAGE_SIZE;
   const [isMobileViewport, setIsMobileViewport] = useState(() => {
@@ -1247,6 +1248,64 @@ export default function ProfilesPage() {
       </span>
     );
   }
+
+  const renderProfilesTable = (profiles: PulsePersona[], emptyMessage: string, keyPrefix: string) => {
+    if (profiles.length === 0) {
+      return <div className="px-3 py-6 text-center text-xs text-gray-400">{emptyMessage}</div>;
+    }
+
+    const compact = isMobileViewport;
+
+    return (
+      <div className="h-full min-h-0 rounded-md border border-gray-200 bg-white flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto slim-scrollbar">
+          <table className="w-full table-fixed border-collapse text-left text-[9px] sm:text-[10px]">
+            <thead>
+              <tr>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[54%] px-1.5 py-1' : 'w-[58%] px-2 py-1.5'}`}>Role</th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[14%] px-1 py-1' : 'w-[14%] px-2 py-1.5'}`}>Jobs</th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[18%] px-1 py-1' : 'w-[16%] px-2 py-1.5'}`}>Vendors</th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[14%] px-1 py-1' : 'w-[12%] px-2 py-1.5'}`}>Watch</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profiles.map((persona) => {
+                const isWatching = watchingRoles.has(normalize(persona.target_role));
+                const isActivating = activatingRole === persona.target_role;
+                const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
+                const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
+
+                return (
+                  <tr
+                    key={`${keyPrefix}-${persona.target_role}`}
+                    onClick={() => void selectPersona(persona)}
+                    className={`cursor-pointer ${isSelected ? 'bg-blue-50/50' : 'bg-white'} hover:bg-gray-50`}
+                  >
+                    <td className={`border-b border-gray-100 font-semibold leading-tight text-gray-900 break-words whitespace-normal ${compact ? 'px-1.5 py-1' : 'px-2 py-1.5'}`} title={persona.target_role}>
+                      {persona.target_role}
+                    </td>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{stats.uniqueJobs}</td>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{stats.uniqueVendors}</td>
+                    <td className={`border-b border-gray-100 text-center ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
+                        disabled={isActivating}
+                        className={`inline-flex items-center justify-center rounded-md border transition ${compact ? 'h-5 w-5' : 'h-6 w-6'} ${isWatching ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-blue-300 bg-blue-50 text-blue-600 hover:bg-blue-100'} disabled:opacity-60`}
+                        aria-label={isWatching ? `Watching ${persona.target_role}` : `Watch ${persona.target_role}`}
+                      >
+                        {isActivating ? '…' : isWatching ? <Check size={compact ? 11 : 12} /> : <span className={`${compact ? 'text-xs' : 'text-sm'} leading-none`}>+</span>}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
 
   const renderLeadCards = (leads: SocialLead[]) => leads.map((lead) => {
     const leadScoreVisual = getScoreVisual(lead.matchScore);
@@ -2743,10 +2802,19 @@ export default function ProfilesPage() {
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
               >
                 {isMobileViewport ? (
-                  <div className="sticky top-0 z-20 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
+                  <div className="sticky top-0 z-40 shrink-0 flex items-center gap-2 border-b border-gray-100 bg-white px-1.5 py-2">
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
                       <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setProfilesLayoutMode((prev) => (prev === 'cards' ? 'table' : 'cards'))}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${profilesLayoutMode === 'table' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                      aria-label={profilesLayoutMode === 'table' ? 'Switch to card layout' : 'Switch to table layout'}
+                      title={profilesLayoutMode === 'table' ? 'Card layout' : 'Table layout'}
+                    >
+                      <TableProperties size={13} />
+                    </button>
                     <div className="ml-auto grid grid-cols-2 gap-1">
                       <button
                         type="button"
@@ -2768,7 +2836,7 @@ export default function ProfilesPage() {
                   </div>
                 ) : null}
 
-              <section className={isMobileViewport ? 'min-w-0' : 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col'}>
+              <section className={isMobileViewport ? 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col' : 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col'}>
                 {!isMobileViewport ? (
                   <div className="shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
@@ -2778,12 +2846,16 @@ export default function ProfilesPage() {
                 ) : null}
                 {/* Profile list */}
                 {isMobileViewport ? (
-                  <div className="w-full">
-                    <div className="flex flex-col gap-2 px-1.5 py-2">
-                      {visibleJobsRankedLeaderboard.length === 0 && (
-                        <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
-                      )}
-                      {visibleJobsRankedLeaderboard.map((persona) => {
+                  <div className="w-full flex-1 min-h-0">
+                    <div className={`flex min-h-0 flex-col gap-2 px-1.5 py-2 ${profilesLayoutMode === 'table' ? 'h-full' : ''}`}>
+                      {profilesLayoutMode === 'table' ? (
+                        renderProfilesTable(visibleJobsRankedLeaderboard, 'No profiles found.', 'mobile')
+                      ) : (
+                        <>
+                          {visibleJobsRankedLeaderboard.length === 0 && (
+                            <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
+                          )}
+                          {visibleJobsRankedLeaderboard.map((persona) => {
                         const isWatching = watchingRoles.has(normalize(persona.target_role));
                         const isActivating = activatingRole === persona.target_role;
                         const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
@@ -2818,7 +2890,9 @@ export default function ProfilesPage() {
                             </div>
                           </div>
                         );
-                      })}
+                          })}
+                        </>
+                      )}
                       {canLoadMoreProfiles && (
                         <div ref={mobileProfilesLoadMoreRef} className="h-2" />
                       )}
@@ -2830,10 +2904,14 @@ export default function ProfilesPage() {
                       <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 shrink-0">All ({profileViewCounts.all})</div>
                       <div className="overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar">
                         <div className="flex flex-col gap-2 px-1.5 py-2">
-                          {filteredJobsRankedLeaderboard.length === 0 && (
-                            <div className="px-3 py-6 text-center text-xs text-gray-400">No profiles found.</div>
-                          )}
-                          {filteredJobsRankedLeaderboard.map((persona) => {
+                          {profilesLayoutMode === 'table' ? (
+                            renderProfilesTable(filteredJobsRankedLeaderboard, 'No profiles found.', 'all')
+                          ) : (
+                            <>
+                              {filteredJobsRankedLeaderboard.length === 0 && (
+                                <div className="px-3 py-6 text-center text-xs text-gray-400">No profiles found.</div>
+                              )}
+                              {filteredJobsRankedLeaderboard.map((persona) => {
                             const isWatching = watchingRoles.has(normalize(persona.target_role));
                             const isActivating = activatingRole === persona.target_role;
                             const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
@@ -2867,7 +2945,9 @@ export default function ProfilesPage() {
                                 </div>
                               </div>
                             );
-                          })}
+                              })}
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2876,10 +2956,18 @@ export default function ProfilesPage() {
                       <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 shrink-0">Watching ({profileViewCounts.watching})</div>
                       <div className="overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar">
                         <div className="flex flex-col gap-2 px-1.5 py-2">
-                          {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length === 0 && (
-                            <div className="px-3 py-6 text-center text-xs text-gray-400">No watching profiles yet.</div>
-                          )}
-                          {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).map((persona) => {
+                          {profilesLayoutMode === 'table' ? (
+                            renderProfilesTable(
+                              orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))),
+                              'No watching profiles yet.',
+                              'watching',
+                            )
+                          ) : (
+                            <>
+                              {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length === 0 && (
+                                <div className="px-3 py-6 text-center text-xs text-gray-400">No watching profiles yet.</div>
+                              )}
+                              {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).map((persona) => {
                             const isWatching = watchingRoles.has(normalize(persona.target_role));
                             const isActivating = activatingRole === persona.target_role;
                             const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
@@ -2913,7 +3001,9 @@ export default function ProfilesPage() {
                                 </div>
                               </div>
                             );
-                          })}
+                              })}
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
