@@ -278,6 +278,7 @@ type ExperienceRangeOption = {
 type PulseLeadActionRow = {
   lead_id: string;
   action_type: LeadActionType;
+  created_at?: string;
 };
 
 const LEADERBOARD_RPC_LIMIT = 500;
@@ -290,14 +291,16 @@ const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
   { id: '24h', label: 'Last 24 hours', hours: 24 },
   { id: '3d', label: 'Last 3 days', hours: 72 },
   { id: '7d', label: 'Last 7 days', hours: 168 },
-  { id: 'all', label: 'All time', hours: 24 * 365 * 100 },
+  { id: '15d', label: 'Last 15 days', hours: 360 },
+  { id: '30d', label: 'Last 30 days', hours: 720 },
 ];
 
 const PROFILE_RANGE_SHORT_LABELS: Record<ProfileRangeOption['id'], string> = {
   '24h': '24h',
   '3d': '3d',
   '7d': '7d',
-  all: 'All',
+  '15d': '15d',
+  '30d': '30d',
 };
 
 const EXPERIENCE_RANGE_OPTIONS: ExperienceRangeOption[] = [
@@ -766,6 +769,17 @@ function formatAgo(dateIso: string) {
   return `${Math.floor(hrs / 24)} days ago`;
 }
 
+function formatRevealedAt(dateIso: string) {
+  const ts = new Date(dateIso);
+  if (Number.isNaN(ts.getTime())) return '';
+  return ts.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 function maskPosterName(name: string) {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return 'Posted by hidden';
@@ -1069,6 +1083,7 @@ export default function PulsePage() {
   const [breakdownChargedLeadIds, setBreakdownChargedLeadIds] = useState<Set<string>>(new Set());
   const [queuedLeadIds, setQueuedLeadIds] = useState<Set<string>>(new Set());
   const [revealCountsByLeadId, setRevealCountsByLeadId] = useState<Record<string, number>>({});
+  const [revealedAtByLeadId, setRevealedAtByLeadId] = useState<Record<string, string>>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [processingLeadId, setProcessingLeadId] = useState<string | null>(null);
   const [processingBreakdownLeadId, setProcessingBreakdownLeadId] = useState<string | null>(null);
@@ -1486,10 +1501,15 @@ export default function PulsePage() {
     [dedupedScopedFeed, revealedLeadIds],
   );
 
-  const revealedVisibleFeed = useMemo(
-    () => dedupedScopedFeed.filter((lead) => revealedLeadIds.has(lead.id)),
-    [dedupedScopedFeed, revealedLeadIds],
-  );
+  const revealedVisibleFeed = useMemo(() => {
+    const revealed = dedupedScopedFeed.filter((lead) => revealedLeadIds.has(lead.id));
+    return revealed.sort((a, b) => {
+      const aTs = revealedAtByLeadId[a.id] ? new Date(revealedAtByLeadId[a.id]).getTime() : 0;
+      const bTs = revealedAtByLeadId[b.id] ? new Date(revealedAtByLeadId[b.id]).getTime() : 0;
+      if (aTs !== bTs) return bTs - aTs;
+      return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
+    });
+  }, [dedupedScopedFeed, revealedAtByLeadId, revealedLeadIds]);
 
   const matchesTabCounts = useMemo(() => ({
     all: dedupedScopedFeed.length,
@@ -1785,7 +1805,7 @@ export default function PulsePage() {
     })();
 
     return (
-      <div key={lead.id} className={`rounded-lg border px-3 py-2.5 ${cardClass}`}>
+      <div key={lead.id} className={`mb-1.5 break-inside-avoid rounded-lg border px-3 py-2.5 ${cardClass}`}>
         <div className="flex items-start justify-between gap-1.5">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold leading-snug text-gray-900">{lead.title || 'Job Opportunity'}</p>
@@ -1800,6 +1820,11 @@ export default function PulsePage() {
               <span> • </span>
               <span>{lead.postedAgo}</span>
             </div>
+            {selectedMatchesTab === 'revealed' && revealedAtByLeadId[lead.id] && (
+              <div className="mt-0.5 text-[10px] font-medium text-emerald-700">
+                Revealed {formatRevealedAt(revealedAtByLeadId[lead.id])}
+              </div>
+            )}
           </div>
           {lead.platform && (
             <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-gray-400">
@@ -1996,7 +2021,7 @@ export default function PulsePage() {
   const loadLeadActionState = useCallback(async () => {
     const { data, error } = await supabase
       .from('pulse_lead_actions')
-      .select('lead_id, action_type')
+      .select('lead_id, action_type, created_at')
       .in('action_type', ['revealed', 'breakdown']);
 
     if (error) {
@@ -2005,13 +2030,18 @@ export default function PulsePage() {
 
     const revealed = new Set<string>();
     const breakdown = new Set<string>();
+    const revealedAt: Record<string, string> = {};
     for (const row of (data ?? []) as PulseLeadActionRow[]) {
-      if (row.action_type === 'revealed') revealed.add(row.lead_id);
+      if (row.action_type === 'revealed') {
+        revealed.add(row.lead_id);
+        if (row.created_at) revealedAt[row.lead_id] = row.created_at;
+      }
       if (row.action_type === 'breakdown') breakdown.add(row.lead_id);
     }
 
     setRevealedLeadIds(revealed);
     setBreakdownChargedLeadIds(breakdown);
+    setRevealedAtByLeadId(revealedAt);
   }, []);
 
   const loadLeaderboard = useCallback(async () => {
@@ -3043,6 +3073,10 @@ export default function PulsePage() {
           next.add(lead.id);
           return next;
         });
+        setRevealedAtByLeadId((prev) => ({
+          ...prev,
+          [lead.id]: new Date().toISOString(),
+        }));
         void persistLeadAction(lead.id, 'revealed');
         showToast(`$${REVEAL_CONTACT_COST.toFixed(2)} credits consumed for reveal`, 'success');
       }
@@ -3333,6 +3367,34 @@ export default function PulsePage() {
                   >
                     <Search size={12} className={vectorSearchLoading ? 'animate-pulse' : ''} />
                   </button>
+
+                  {!isMobileViewport && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      {([
+                        { id: 'queued', label: 'Recent' },
+                        { id: 'revealed', label: 'Revealed' },
+                      ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
+                        const isSelected = selectedMatchesTab === tab.id;
+                        const count = matchesTabCounts[tab.id];
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMatchesTab(tab.id);
+                              setVisibleMatchesCount(MATCHES_PAGE_SIZE);
+                              if (tab.id === 'revealed') setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+                              if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+                            }}
+                            className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${isSelected ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                          >
+                            <span>{tab.label}</span>
+                            <span>{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   <div ref={rangeMenuRef} className="relative shrink-0">
                     <button
@@ -3675,36 +3737,6 @@ export default function PulsePage() {
               )}
 
               <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
-                {!isMobileViewport && (
-                  <div className="shrink-0 bg-white/90 px-1.5 pt-0 pb-1.5 backdrop-blur">
-                    <div className="grid w-full grid-cols-2 gap-1">
-                      {([
-                        { id: 'queued', label: 'Recent' },
-                        { id: 'revealed', label: 'Revealed' },
-                      ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
-                        const isSelected = selectedMatchesTab === tab.id;
-                        const count = matchesTabCounts[tab.id];
-                        return (
-                          <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedMatchesTab(tab.id);
-                              setVisibleMatchesCount(MATCHES_PAGE_SIZE);
-                              if (tab.id === 'revealed') setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
-                              if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
-                            }}
-                            className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${isSelected ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                          >
-                            <span>{tab.label}</span>
-                            <span>{count}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
                 <div className={`min-h-0 ${isMobileViewport ? '' : 'flex-1 overflow-hidden'}`}>
                   {feedLoading ? (
                     <div className={`${isMobileViewport ? 'flex min-h-[50vh] w-full' : 'flex h-full min-h-0 w-full'} items-center justify-center`}>
@@ -3737,7 +3769,7 @@ export default function PulsePage() {
                             revealedVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No revealed jobs yet.</div>
                             ) : (
-                              <div className="grid grid-cols-3 gap-1.5">
+                              <div className="columns-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopRevealedFeed)}
                               </div>
                             )
@@ -3745,7 +3777,7 @@ export default function PulsePage() {
                             recentVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No recent jobs.</div>
                             ) : (
-                              <div className="grid grid-cols-3 gap-1.5">
+                              <div className="columns-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopRecentFeed)}
                               </div>
                             )

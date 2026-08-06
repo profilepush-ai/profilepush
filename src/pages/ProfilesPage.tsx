@@ -253,14 +253,16 @@ const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
   { id: '24h', label: 'Last 24 hours', hours: 24 },
   { id: '3d', label: 'Last 3 days', hours: 72 },
   { id: '7d', label: 'Last 7 days', hours: 168 },
-  { id: 'all', label: 'All time', hours: 24 * 365 * 100 },
+  { id: '15d', label: 'Last 15 days', hours: 360 },
+  { id: '30d', label: 'Last 30 days', hours: 720 },
 ];
 
 const PROFILE_RANGE_SHORT_LABELS: Record<ProfileRangeOption['id'], string> = {
   '24h': '24h',
   '3d': '3d',
   '7d': '7d',
-  all: 'All',
+  '15d': '15d',
+  '30d': '30d',
 };
 
 const PERSONA_SUMMARY_BY_ROLE = new Map(
@@ -2750,6 +2752,39 @@ export default function ProfilesPage() {
                     <Search size={12} />
                   </button>
 
+                  {!isMobileViewport && (
+                    <>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProfilesView('all')}
+                          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                        >
+                          <span>All</span>
+                          <span>{profileViewCounts.all}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProfilesView('watching')}
+                          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                        >
+                          <span>Watching</span>
+                          <span>{profileViewCounts.watching}</span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setProfilesLayoutMode((prev) => (prev === 'cards' ? 'table' : 'cards'))}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${profilesLayoutMode === 'table' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                        aria-label={profilesLayoutMode === 'table' ? 'Switch to card layout' : 'Switch to table layout'}
+                        title={profilesLayoutMode === 'table' ? 'Card layout' : 'Table layout'}
+                      >
+                        <TableProperties size={13} />
+                      </button>
+                    </>
+                  )}
+
                   <div ref={rangeMenuRef} className="relative shrink-0">
                     <button
                       onClick={() => {
@@ -2899,37 +2934,6 @@ export default function ProfilesPage() {
                 ) : null}
 
               <section className={isMobileViewport ? 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col' : 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col'}>
-                {!isMobileViewport ? (
-                  <div className="shrink-0 flex items-center gap-1.5 bg-white/90 px-1.5 pt-0 pb-1.5 backdrop-blur">
-                    <button
-                      type="button"
-                      onClick={() => setProfilesLayoutMode((prev) => (prev === 'cards' ? 'table' : 'cards'))}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${profilesLayoutMode === 'table' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                      aria-label={profilesLayoutMode === 'table' ? 'Switch to card layout' : 'Switch to table layout'}
-                      title={profilesLayoutMode === 'table' ? 'Card layout' : 'Table layout'}
-                    >
-                      <TableProperties size={13} />
-                    </button>
-                    <div className="grid flex-1 grid-cols-2 gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedProfilesView('all')}
-                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                      >
-                        <span>All</span>
-                        <span>{profileViewCounts.all}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedProfilesView('watching')}
-                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                      >
-                        <span>Watching</span>
-                        <span>{profileViewCounts.watching}</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
                 {/* Profile list */}
                 {isMobileViewport ? (
                   <div className="w-full flex-1 min-h-0">
@@ -2985,10 +2989,10 @@ export default function ProfilesPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="px-2 py-2 flex-1 min-h-0 flex flex-col">
+                  <div className="px-2 pb-2 pt-0 flex-1 min-h-0 flex flex-col">
                     <div className="min-w-0 rounded-md bg-transparent flex flex-1 flex-col min-h-0">
                       <div className={`${profilesLayoutMode === 'table' ? 'flex-1 min-h-0 overflow-hidden' : 'overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar'}`}>
-                        <div className={`${profilesLayoutMode === 'table' ? 'h-full min-h-0 px-1.5 py-2' : 'flex flex-col gap-2 px-1.5 py-2'}`}>
+                        <div className={`${profilesLayoutMode === 'table' ? 'h-full min-h-0 px-1.5 pb-2 pt-0' : 'flex flex-col gap-2 px-1.5 py-2'}`}>
                           {(() => {
                             const showingWatching = selectedProfilesView === 'watching';
                             const desktopProfiles = showingWatching
