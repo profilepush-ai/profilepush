@@ -189,11 +189,11 @@ export default function App() {
             <Route path="/admin" element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
 
             {/* Protected */}
-            <Route path="/desk" element={<ProtectedRoute><ErrorBoundary><Dashboard /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/bench" element={<ProtectedRoute><ErrorBoundary><ProfilesDirectory /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/desk" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
+            <Route path="/bench" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
             <Route path="/profile-details/:id" element={<ProtectedRoute><ErrorBoundary><ProfileDetails /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/job-finder" element={<ProtectedRoute><ErrorBoundary>{null}</ErrorBoundary></ProtectedRoute>} />
-            <Route path="/submission-queue" element={<ProtectedRoute><ErrorBoundary>{null}</ErrorBoundary></ProtectedRoute>} />
+            <Route path="/job-finder" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
+            <Route path="/submission-queue" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
             <Route path="/resume-ai" element={<ProtectedRoute><ErrorBoundary>{null}</ErrorBoundary></ProtectedRoute>} />
             <Route path="/account" element={<ProtectedRoute><ErrorBoundary><AccountSettings /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/support" element={<ProtectedRoute><ErrorBoundary><SupportPage /></ErrorBoundary></ProtectedRoute>} />
@@ -201,8 +201,8 @@ export default function App() {
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/alerts" element={<ProtectedRoute><ErrorBoundary><AlertsPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/jd-ai" element={<ProtectedRoute><ErrorBoundary><AIBenchMatch /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/job-watch-ai" element={<ProtectedRoute><ErrorBoundary><RadarPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/jd-ai" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
+            <Route path="/job-watch-ai" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
             <Route path="/jobs" element={<ProtectedRoute><ErrorBoundary><PulsePage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><ProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />

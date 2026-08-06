@@ -411,7 +411,7 @@ export default function AppNav() {
 
       {/* Mobile Bottom Navigation */}
       {user && (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[calc(env(safe-area-inset-bottom)+10px)] sm:hidden">
           <Link
             to="/jobs"
             className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/jobs' ? 'text-blue-600' : 'text-gray-500'}`}
@@ -438,7 +438,7 @@ export default function AppNav() {
             className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/watchlist-profiles' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Bookmark size={18} />
-            <span>My Watchlist</span>
+            <span>Watchlist</span>
           </Link>
           <Link
             to="/alerts"
