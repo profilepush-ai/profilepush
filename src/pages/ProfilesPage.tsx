@@ -256,6 +256,13 @@ const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
   { id: 'all', label: 'All time', hours: 24 * 365 * 100 },
 ];
 
+const PROFILE_RANGE_SHORT_LABELS: Record<ProfileRangeOption['id'], string> = {
+  '24h': '24h',
+  '3d': '3d',
+  '7d': '7d',
+  all: 'All',
+};
+
 const PERSONA_SUMMARY_BY_ROLE = new Map(
   HOTLIST_AI_SUGGESTIONS.map((item) => [normalize(item.title), item.summary]),
 );
@@ -813,7 +820,9 @@ export default function ProfilesPage() {
   const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('7d');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
+  const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
+  const [pendingProfileSearchQuery, setPendingProfileSearchQuery] = useState('');
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
   const [feedSearchScope, setFeedSearchScope] = useState<PulseFeedSearchScope>('all');
   const [selectedProfilesView, setSelectedProfilesView] = useState<'all' | 'watching'>('all');
@@ -853,6 +862,7 @@ export default function ProfilesPage() {
   const mobileScrollUpAccumRef = useRef(0);
   const mobileScrollDownAccumRef = useRef(0);
   const mobileCollapseLockUntilRef = useRef(0);
+  const rangeMenuRef = useRef<HTMLDivElement | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -871,6 +881,32 @@ export default function ProfilesPage() {
     () => PROFILE_RANGE_OPTIONS.find((item) => item.id === profileRangeId) ?? PROFILE_RANGE_OPTIONS[2],
     [profileRangeId],
   );
+
+  const applyProfileSearch = useCallback(() => {
+    setProfileSearchQuery(pendingProfileSearchQuery);
+  }, [pendingProfileSearchQuery]);
+
+  useEffect(() => {
+    setPendingProfileSearchQuery(profileSearchQuery);
+  }, [profileSearchQuery]);
+
+  useEffect(() => {
+    if (!isRangeMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (rangeMenuRef.current && target && !rangeMenuRef.current.contains(target)) {
+        setIsRangeMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [isRangeMenuOpen]);
 
   const zeroStats: ProfileStats = useMemo(() => ({
     uniqueCompanies: 0,
@@ -2553,8 +2589,6 @@ export default function ProfilesPage() {
     }
   }, [breakdownChargedLeadIds, consumeCredits, persistLeadAction, showToast]);
 
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
@@ -2675,52 +2709,82 @@ export default function ProfilesPage() {
                 </div>
 
               {/* Mobile search/filter row */}
-              <div className={isMobileViewport ? 'sticky top-0 z-30 border-b border-gray-200 bg-white px-2 py-2' : 'px-2 py-2'}>
+              <div className={isMobileViewport ? 'sticky top-0 z-30 border-b border-gray-200 bg-white px-0 py-2' : 'px-2 py-2'}>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
-                    className="flex-1 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-medium text-gray-600"
-                  >
-                    <Search size={11} />
-                    {profileSearchQuery || 'Search & Filter'}
-                  </button>
-                  <select
-                    aria-label="Date range"
-                    value={profileRangeId}
-                    onChange={(e) => setProfileRangeId(e.target.value as ProfileRangeOption['id'])}
-                    className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium text-gray-600"
-                  >
-                    {PROFILE_RANGE_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>{option.label}</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => {
-                      void loadProfileStats();
-                      void refreshFeed();
-                    }}
-                    disabled={profileStatsLoading || refreshing || feedLoading}
-                    className="rounded-full border border-gray-200 bg-gray-50 p-1.5 text-gray-600 disabled:opacity-50"
-                  >
-                    <RefreshCw size={13} className={refreshing || profileStatsLoading ? 'animate-spin' : ''} />
-                  </button>
-                </div>
-                {mobileSearchOpen && (
-                  <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
-                    <Search size={12} className="text-gray-400" />
+                  <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+                    <Search size={11} className="text-gray-400" />
                     <input
                       type="text"
-                      autoFocus
-                      value={profileSearchQuery}
-                      onChange={(e) => setProfileSearchQuery(e.target.value)}
-                      placeholder="Search by role, skills, location, visa..."
+                      value={pendingProfileSearchQuery}
+                      onChange={(e) => setPendingProfileSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          applyProfileSearch();
+                        }
+                      }}
+                      placeholder="Solutions Architect C2C $45"
                       className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
                     />
-                    <button onClick={() => { setProfileSearchQuery(''); setMobileSearchOpen(false); }} className="text-gray-400">
-                      <X size={12} />
-                    </button>
+                    {pendingProfileSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingProfileSearchQuery('');
+                          setProfileSearchQuery('');
+                        }}
+                        className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600"
+                        aria-label="Clear search field"
+                      >
+                        <X size={11} />
+                      </button>
+                    )}
                   </div>
-                )}
+
+                  <button
+                    type="button"
+                    onClick={applyProfileSearch}
+                    className="rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700"
+                    aria-label="Search"
+                  >
+                    <Search size={12} />
+                  </button>
+
+                  <div ref={rangeMenuRef} className="relative shrink-0">
+                    <button
+                      onClick={() => {
+                        setIsRangeMenuOpen((prev) => !prev);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100"
+                      aria-label="Change date range"
+                    >
+                      <Clock3 size={11} />
+                      <span>{PROFILE_RANGE_SHORT_LABELS[profileRangeId]}</span>
+                    </button>
+
+                    {isRangeMenuOpen && (
+                      <div className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[116px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+                        {PROFILE_RANGE_OPTIONS.map((option) => {
+                          const isActive = option.id === profileRangeId;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => {
+                                setProfileRangeId(option.id);
+                                setIsRangeMenuOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                            >
+                              <span>{option.label}</span>
+                              {isActive ? <Check size={11} /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[10%_90%]'} gap-0 overflow-hidden rounded-lg bg-white`}>

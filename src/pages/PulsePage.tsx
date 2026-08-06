@@ -45,7 +45,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { HOTLIST_AI_SUGGESTIONS } from '../lib/hotlist-ai-suggestions';
 import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
-import { matchesPulseFeedSearch, type PulseFeedSearchScope } from '../lib/pulse-feed-search';
+import { matchesPulseFeedSearch } from '../lib/pulse-feed-search';
 
 type PulsePersona = {
   target_role: string;
@@ -239,6 +239,41 @@ type ProfileCategoryTab = {
 type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'queued';
 type LeadActionType = 'revealed' | 'breakdown';
 type EmailDraftTabId = 'pitching' | 'requestDetails';
+type FeedSearchFilters = {
+  experienceRange: string;
+  workType: string;
+  employmentType: string;
+  visaStatus: string;
+  location: string;
+  skillsQuery: string;
+  rateMode: 'all' | 'has_rate' | 'range';
+  rateMin: string;
+  rateMax: string;
+};
+
+const DEFAULT_FEED_SEARCH_FILTERS: FeedSearchFilters = {
+  experienceRange: 'all',
+  workType: 'all',
+  employmentType: 'all',
+  visaStatus: 'all',
+  location: '',
+  skillsQuery: '',
+  rateMode: 'all',
+  rateMin: '',
+  rateMax: '',
+};
+
+type ParsedFeedSearchIntent = {
+  roleQuery: string;
+  inferred: Partial<FeedSearchFilters>;
+};
+
+type ExperienceRangeOption = {
+  id: string;
+  label: string;
+  min: number;
+  max: number | null;
+};
 
 type PulseLeadActionRow = {
   lead_id: string;
@@ -256,6 +291,52 @@ const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
   { id: '3d', label: 'Last 3 days', hours: 72 },
   { id: '7d', label: 'Last 7 days', hours: 168 },
   { id: 'all', label: 'All time', hours: 24 * 365 * 100 },
+];
+
+const PROFILE_RANGE_SHORT_LABELS: Record<ProfileRangeOption['id'], string> = {
+  '24h': '24h',
+  '3d': '3d',
+  '7d': '7d',
+  all: 'All',
+};
+
+const EXPERIENCE_RANGE_OPTIONS: ExperienceRangeOption[] = [
+  { id: 'all', label: 'Experience', min: 0, max: null },
+  { id: '1-3', label: '1-3', min: 1, max: 3 },
+  { id: '3-5', label: '3-5', min: 3, max: 5 },
+  { id: '5-7', label: '5-7', min: 5, max: 7 },
+  { id: '7-9', label: '7-9', min: 7, max: 9 },
+  { id: '9-12', label: '9-12', min: 9, max: 12 },
+  { id: '12-15', label: '12-15', min: 12, max: 15 },
+  { id: '15+', label: '15+', min: 15, max: null },
+];
+
+const WORK_TYPE_OPTIONS = [
+  { value: 'all', label: 'Work Type' },
+  { value: 'remote', label: 'Remote' },
+  { value: 'hybrid', label: 'Hybrid' },
+  { value: 'onsite', label: 'Onsite' },
+];
+
+const EMPLOYMENT_TYPE_OPTIONS = [
+  { value: 'all', label: 'Emp Type' },
+  { value: 'full_time', label: 'Full-time' },
+  { value: 'contract', label: 'Contract' },
+  { value: 'c2c', label: 'C2C' },
+  { value: 'w2', label: 'W2' },
+  { value: '1099', label: '1099' },
+  { value: 'part_time', label: 'Part-time' },
+];
+
+const VISA_STATUS_OPTIONS = [
+  { value: 'all', label: 'Visa' },
+  { value: 'usc', label: 'USC' },
+  { value: 'gc', label: 'GC' },
+  { value: 'h1b', label: 'H1B' },
+  { value: 'ead', label: 'EAD' },
+  { value: 'opt', label: 'OPT' },
+  { value: 'cpt', label: 'CPT' },
+  { value: 'tn', label: 'TN' },
 ];
 
 const PERSONA_SUMMARY_BY_ROLE = new Map(
@@ -277,6 +358,104 @@ const ROLE_SUGGESTION_HINTS: Array<{ test: RegExp; suggestionTitle: string }> = 
 
 function normalize(input: string | null | undefined) {
   return (input ?? '').toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+function parseFeedSearchIntent(rawInput: string): ParsedFeedSearchIntent {
+  let working = ` ${rawInput ?? ''} `;
+  const inferred: Partial<FeedSearchFilters> = {};
+
+  const consume = (pattern: RegExp, onMatch: (match: RegExpMatchArray) => void) => {
+    const match = working.match(pattern);
+    if (!match) return;
+    onMatch(match);
+    working = working.replace(match[0], ' ');
+  };
+
+  consume(/\b(c2c|corp\s*to\s*corp)\b/i, () => {
+    inferred.employmentType = 'c2c';
+  });
+  consume(/\b(w2|w-2)\b/i, () => {
+    inferred.employmentType = 'w2';
+  });
+  consume(/\b1099\b/i, () => {
+    inferred.employmentType = '1099';
+  });
+  consume(/\bfull[\s-]?time\b|\bft\b/i, () => {
+    inferred.employmentType = 'full_time';
+  });
+  consume(/\bpart[\s-]?time\b|\bpt\b/i, () => {
+    inferred.employmentType = 'part_time';
+  });
+  consume(/\bcontract\b/i, () => {
+    inferred.employmentType = 'contract';
+  });
+
+  consume(/\bremote\b/i, () => {
+    inferred.workType = 'remote';
+  });
+  consume(/\bhybrid\b/i, () => {
+    inferred.workType = 'hybrid';
+  });
+  consume(/\bonsite\b|\bon\s*site\b|\bon-site\b/i, () => {
+    inferred.workType = 'onsite';
+  });
+
+  consume(/\b(usc|us\s*citizen)\b/i, () => {
+    inferred.visaStatus = 'usc';
+  });
+  consume(/\b(gc|green\s*card)\b/i, () => {
+    inferred.visaStatus = 'gc';
+  });
+  consume(/\b(h1b|h-1b)\b/i, () => {
+    inferred.visaStatus = 'h1b';
+  });
+  consume(/\bead\b/i, () => {
+    inferred.visaStatus = 'ead';
+  });
+  consume(/\bopt\b/i, () => {
+    inferred.visaStatus = 'opt';
+  });
+  consume(/\bcpt\b/i, () => {
+    inferred.visaStatus = 'cpt';
+  });
+  consume(/\btn\b/i, () => {
+    inferred.visaStatus = 'tn';
+  });
+
+  consume(/\$\s*(\d{2,4})\s*(?:-|to|–|—)\s*\$?\s*(\d{2,4})\b/i, (match) => {
+    inferred.rateMode = 'range';
+    inferred.rateMin = match[1];
+    inferred.rateMax = match[2];
+  });
+
+  if (inferred.rateMode !== 'range') {
+    consume(/(?:\$\s*)?(\d{2,4})\s*(?:\/\s*hr|per\s*hour|hourly|hr)?\b/i, (match) => {
+      inferred.rateMode = 'range';
+      inferred.rateMin = match[1];
+      inferred.rateMax = '';
+    });
+  }
+
+  const roleQuery = working
+    .replace(/[^a-z0-9+/#\-\s]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return { roleQuery, inferred };
+}
+
+function mergeFeedFiltersWithIntent(base: FeedSearchFilters, inferred: Partial<FeedSearchFilters>): FeedSearchFilters {
+  return {
+    experienceRange: base.experienceRange,
+    workType: base.workType !== 'all' ? base.workType : (inferred.workType ?? 'all'),
+    employmentType: base.employmentType !== 'all' ? base.employmentType : (inferred.employmentType ?? 'all'),
+    visaStatus: base.visaStatus !== 'all' ? base.visaStatus : (inferred.visaStatus ?? 'all'),
+    location: base.location,
+    skillsQuery: base.skillsQuery,
+    rateMode: base.rateMode !== 'all' ? base.rateMode : (inferred.rateMode ?? 'all'),
+    rateMin: base.rateMin || inferred.rateMin || '',
+    rateMax: base.rateMax || inferred.rateMax || '',
+  };
 }
 
 function formatBreakdownFieldName(key: string) {
@@ -308,6 +487,17 @@ function getBreakdownCandidateValue(
   return (detail.candidate_value ?? '').trim();
 }
 
+function getBreakdownJobValue(
+  breakdown: Record<string, unknown> | null | undefined,
+  key: string,
+) {
+  const value = breakdown?.[key];
+  if (!value || typeof value !== 'object') return '';
+
+  const detail = value as BreakdownDetail;
+  return (detail.job_value ?? '').trim();
+}
+
 function firstMeaningfulValue(...values: Array<string | null | undefined>) {
   for (const value of values) {
     const cleaned = (value ?? '').trim();
@@ -316,6 +506,33 @@ function firstMeaningfulValue(...values: Array<string | null | undefined>) {
     }
   }
   return '-';
+}
+
+function parseFirstNumericValue(value: string) {
+  const match = value.match(/(\d+(?:,\d{3})*(?:\.\d+)?)/);
+  if (!match) return null;
+  const parsed = Number(match[1].replace(/,/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseExperienceYears(value: string) {
+  const matches = value.match(/\d+(?:\.\d+)?/g);
+  if (!matches || matches.length === 0) return null;
+  const numbers = matches.map(Number).filter((num) => Number.isFinite(num));
+  if (numbers.length === 0) return null;
+  if (value.includes('+')) return numbers[0];
+  if (value.includes('-') && numbers.length >= 2) return (numbers[0] + numbers[1]) / 2;
+  return numbers[0];
+}
+
+function matchesExperienceRange(years: number | null, rangeId: string) {
+  if (rangeId === 'all') return true;
+  if (years == null) return false;
+
+  const range = EXPERIENCE_RANGE_OPTIONS.find((item) => item.id === rangeId);
+  if (!range) return true;
+  if (range.max == null) return years >= range.min;
+  return years >= range.min && years <= range.max;
 }
 
 function canonicalizeRoleForUniqueness(role: string) {
@@ -816,8 +1033,12 @@ export default function PulsePage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
+  const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
-  const [feedSearchScope, setFeedSearchScope] = useState<PulseFeedSearchScope>('all');
+  const [feedSearchFilters, setFeedSearchFilters] = useState<FeedSearchFilters>(DEFAULT_FEED_SEARCH_FILTERS);
+  const [pendingFeedSearchQuery, setPendingFeedSearchQuery] = useState('');
+  const [vectorSearchLeadIds, setVectorSearchLeadIds] = useState<string[] | null>(null);
+  const [vectorSearchLoading, setVectorSearchLoading] = useState(false);
   const [selectedProfilesView, setSelectedProfilesView] = useState<'all' | 'watching'>('all');
   const [profilePage, setProfilePage] = useState(1);
   const visibleProfilesCount = profilePage * TOP_PROFILES_PAGE_SIZE;
@@ -851,11 +1072,16 @@ export default function PulsePage() {
   const [processingBreakdownLeadId, setProcessingBreakdownLeadId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isMobileTopCollapsed, setIsMobileTopCollapsed] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const mobileRightPaneLastScrollTopRef = useRef(0);
   const mobileTopCollapsedRef = useRef(false);
   const mobileScrollUpAccumRef = useRef(0);
   const mobileScrollDownAccumRef = useRef(0);
   const mobileCollapseLockUntilRef = useRef(0);
+  const mobilePullStartYRef = useRef<number | null>(null);
+  const mobilePullArmedRef = useRef(false);
+  const rangeMenuRef = useRef<HTMLDivElement | null>(null);
   const desktopMatchesScrollRef = useRef<HTMLDivElement | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
@@ -875,6 +1101,24 @@ export default function PulsePage() {
     () => PROFILE_RANGE_OPTIONS.find((item) => item.id === profileRangeId) ?? PROFILE_RANGE_OPTIONS[2],
     [profileRangeId],
   );
+
+  useEffect(() => {
+    if (!isRangeMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (rangeMenuRef.current && target && !rangeMenuRef.current.contains(target)) {
+        setIsRangeMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [isRangeMenuOpen]);
 
   const zeroStats: ProfileStats = useMemo(() => ({
     uniqueCompanies: 0,
@@ -953,7 +1197,7 @@ export default function PulsePage() {
     if (selectedProfilesView === 'watching') {
       return orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role)));
     }
-    return filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role)));
+    return orderedJobsRankedLeaderboard;
   }, [filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, selectedProfilesView, watchingRoles]);
 
   const visibleJobsRankedLeaderboard = useMemo(
@@ -969,7 +1213,7 @@ export default function PulsePage() {
   const totalProfilePages = Math.max(1, Math.ceil(profilesForActiveView.length / TOP_PROFILES_PAGE_SIZE));
   const canLoadMoreProfiles = profilePage < totalProfilePages;
 
-  const scopedFeed = useMemo(() => {
+  const baseScopedFeed = useMemo(() => {
     let next = feed;
 
     if (selectedCategoryId !== 'all') {
@@ -981,24 +1225,6 @@ export default function PulsePage() {
         const haystack = normalize(`${lead.title} ${lead.snippet} ${lead.skills.join(' ')}`);
         return selectedTechStacks.some((tech) => haystack.includes(normalize(tech)));
       });
-    }
-
-    if (feedSearchQuery.trim()) {
-      next = next.filter((lead) => matchesPulseFeedSearch({
-        title: lead.title,
-        roleTitle: lead.roleTitle,
-        company: lead.company,
-        location: lead.location,
-        posterName: lead.posterName,
-        employmentType: lead.employmentType,
-        seniority: lead.seniority,
-        salaryRange: lead.salaryRange,
-        hourlyRate: lead.hourlyRate,
-        snippet: lead.snippet,
-        skills: lead.skills,
-        experienceYears: lead.experienceYears,
-        visaTypes: lead.visaTypes,
-      }, feedSearchQuery, feedSearchScope));
     }
 
     if (activePersona) {
@@ -1032,7 +1258,164 @@ export default function PulsePage() {
     }
 
     return next;
-  }, [activePersona, feed, feedSearchQuery, feedSearchScope, selectedCategoryId, selectedTechStacks]);
+  }, [activePersona, feed, selectedCategoryId, selectedTechStacks]);
+
+  const getLeadFilterContext = useCallback((lead: SocialLead) => {
+    const breakdown = lead.scoreBreakdown as Record<string, unknown> | null | undefined;
+    const experienceText = firstMeaningfulValue(
+      getBreakdownJobValue(breakdown, 'experience_match'),
+      lead.experienceYears != null ? `${lead.experienceYears} years` : '',
+      lead.seniority,
+    );
+    const experienceYears = lead.experienceYears ?? parseExperienceYears(experienceText);
+
+    const workTypeText = firstMeaningfulValue(
+      getBreakdownJobValue(breakdown, 'work_type_match'),
+      '',
+    );
+    const normalizedWorkType = normalize(workTypeText);
+    const workType = normalizedWorkType.includes('remote')
+      ? 'remote'
+      : normalizedWorkType.includes('hybrid')
+        ? 'hybrid'
+        : normalizedWorkType.includes('onsite') || normalizedWorkType.includes('on site') || normalizedWorkType.includes('on-site')
+          ? 'onsite'
+          : 'other';
+
+    const employmentTypeText = firstMeaningfulValue(
+      getBreakdownJobValue(breakdown, 'employment_type_match'),
+      lead.employmentType,
+    );
+    const normalizedEmployment = normalize(employmentTypeText);
+    const employmentType = normalizedEmployment.includes('full')
+      ? 'full_time'
+      : normalizedEmployment.includes('contract')
+        ? 'contract'
+        : normalizedEmployment.includes('c2c')
+          ? 'c2c'
+          : normalizedEmployment.includes('w2')
+            ? 'w2'
+            : normalizedEmployment.includes('1099')
+              ? '1099'
+              : normalizedEmployment.includes('part')
+                ? 'part_time'
+                : 'other';
+
+    const visaText = firstMeaningfulValue(
+      getBreakdownJobValue(breakdown, 'visa_match'),
+      Array.isArray(lead.visaTypes) ? lead.visaTypes.join(', ') : '',
+    );
+    const normalizedVisa = normalize(visaText);
+    const visaStatus = normalizedVisa.includes('usc') || normalizedVisa.includes('us citizen')
+      ? 'usc'
+      : normalizedVisa.includes('green card') || normalizedVisa === 'gc' || normalizedVisa.includes(' gc ')
+        ? 'gc'
+        : normalizedVisa.includes('h1b') || normalizedVisa.includes('h-1')
+          ? 'h1b'
+          : normalizedVisa.includes('ead')
+            ? 'ead'
+            : normalizedVisa.includes('opt')
+              ? 'opt'
+              : normalizedVisa.includes('cpt')
+                ? 'cpt'
+                : normalizedVisa.includes('tn')
+                  ? 'tn'
+                  : 'other';
+
+    const rateText = firstMeaningfulValue(
+      getBreakdownJobValue(breakdown, 'hourly_rate_match'),
+      lead.hourlyRate,
+      lead.salaryRange,
+      '',
+    );
+    const location = firstMeaningfulValue(
+      getBreakdownJobValue(breakdown, 'location_match'),
+      lead.location,
+      '',
+    );
+    const skills = firstMeaningfulValue(
+      getBreakdownJobValue(breakdown, 'skills_match'),
+      Array.isArray(lead.skills) ? lead.skills.join(', ') : '',
+      '',
+    );
+
+    const rateValue = parseFirstNumericValue(rateText);
+    const hasRate = rateText !== '-' && normalize(rateText) !== 'unknown';
+
+    return {
+      experienceYears,
+      workType,
+      employmentType,
+      visaStatus,
+      location,
+      skills,
+      rateValue,
+      hasRate,
+    };
+  }, []);
+
+  const scopedFeed = useMemo(() => {
+    let next = baseScopedFeed;
+
+    if (feedSearchQuery.trim()) {
+      if (Array.isArray(vectorSearchLeadIds) && vectorSearchLeadIds.length > 0) {
+        const rankById = new Map<string, number>();
+        vectorSearchLeadIds.forEach((id, idx) => rankById.set(id, idx));
+        next = next
+          .filter((lead) => rankById.has(lead.id))
+          .sort((a, b) => (rankById.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rankById.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+      } else {
+        next = next.filter((lead) => matchesPulseFeedSearch({
+          title: lead.title,
+          roleTitle: lead.roleTitle,
+          company: lead.company,
+          location: lead.location,
+          posterName: lead.posterName,
+          employmentType: lead.employmentType,
+          seniority: lead.seniority,
+          salaryRange: lead.salaryRange,
+          hourlyRate: lead.hourlyRate,
+          snippet: lead.snippet,
+          skills: lead.skills,
+          experienceYears: lead.experienceYears,
+          visaTypes: lead.visaTypes,
+        }, feedSearchQuery, 'all'));
+      }
+    }
+
+    next = next.filter((lead) => {
+      const fields = getLeadFilterContext(lead);
+
+      if (!matchesExperienceRange(fields.experienceYears, feedSearchFilters.experienceRange)) return false;
+      if (feedSearchFilters.workType !== 'all' && fields.workType !== feedSearchFilters.workType) return false;
+      if (feedSearchFilters.employmentType !== 'all' && fields.employmentType !== feedSearchFilters.employmentType) return false;
+      if (feedSearchFilters.visaStatus !== 'all' && fields.visaStatus !== feedSearchFilters.visaStatus) return false;
+
+      if (feedSearchFilters.location.trim()) {
+        const locationQuery = normalize(feedSearchFilters.location);
+        if (!normalize(fields.location).includes(locationQuery)) return false;
+      }
+
+      if (feedSearchFilters.skillsQuery.trim()) {
+        const skillsQuery = normalize(feedSearchFilters.skillsQuery);
+        if (!normalize(fields.skills).includes(skillsQuery)) return false;
+      }
+
+      if (feedSearchFilters.rateMode === 'has_rate' && !fields.hasRate) return false;
+
+      if (feedSearchFilters.rateMode === 'range') {
+        const min = Number(feedSearchFilters.rateMin);
+        const max = Number(feedSearchFilters.rateMax);
+        if (fields.rateValue == null) return false;
+        if (Number.isFinite(min) && fields.rateValue < min) return false;
+        if (Number.isFinite(max) && fields.rateValue > max) return false;
+      }
+
+      return true;
+    });
+
+    return next;
+  }, [baseScopedFeed, feedSearchFilters, feedSearchQuery, getLeadFilterContext, vectorSearchLeadIds]);
 
   const dedupedScopedFeed = useMemo(() => {
     const byKey = new Map<string, SocialLead>();
@@ -1073,7 +1456,7 @@ export default function PulsePage() {
   }), [breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed.length, revealedVisibleFeed.length]);
 
   const profileViewCounts = useMemo(() => ({
-    all: filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).length,
+    all: filteredJobsRankedLeaderboard.length,
     watching: orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length,
   }), [filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, watchingRoles]);
 
@@ -2211,6 +2594,56 @@ export default function PulsePage() {
     setRefreshing(false);
   }, [loadFeed]);
 
+  const triggerMobilePullToRefresh = useCallback(async () => {
+    if (isPullRefreshing || profileStatsLoading || refreshing || feedLoading) return;
+    setIsPullRefreshing(true);
+    try {
+      await Promise.all([loadProfileStats(), refreshFeed()]);
+    } finally {
+      setIsPullRefreshing(false);
+      setPullDistance(0);
+      mobilePullArmedRef.current = false;
+      mobilePullStartYRef.current = null;
+    }
+  }, [feedLoading, isPullRefreshing, loadProfileStats, profileStatsLoading, refreshing, refreshFeed]);
+
+  const handleMobilePullStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobileViewport || event.currentTarget.scrollTop > 0 || isPullRefreshing) {
+      mobilePullStartYRef.current = null;
+      return;
+    }
+    mobilePullStartYRef.current = event.touches[0]?.clientY ?? null;
+    mobilePullArmedRef.current = false;
+  }, [isMobileViewport, isPullRefreshing]);
+
+  const handleMobilePullMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobileViewport || isPullRefreshing) return;
+    if (event.currentTarget.scrollTop > 0) {
+      mobilePullStartYRef.current = null;
+      if (pullDistance !== 0) setPullDistance(0);
+      return;
+    }
+
+    const startY = mobilePullStartYRef.current;
+    if (startY == null) return;
+    const currentY = event.touches[0]?.clientY ?? startY;
+    const drag = Math.max(0, currentY - startY);
+    const constrained = Math.min(72, drag * 0.45);
+    setPullDistance(constrained);
+    mobilePullArmedRef.current = constrained > 36;
+  }, [isMobileViewport, isPullRefreshing, pullDistance]);
+
+  const handleMobilePullEnd = useCallback(() => {
+    if (!isMobileViewport || isPullRefreshing) return;
+    if (mobilePullArmedRef.current) {
+      void triggerMobilePullToRefresh();
+      return;
+    }
+    setPullDistance(0);
+    mobilePullArmedRef.current = false;
+    mobilePullStartYRef.current = null;
+  }, [isMobileViewport, isPullRefreshing, triggerMobilePullToRefresh]);
+
   const copyText = useCallback(async (value: string, label: string) => {
     if (!value.trim()) {
       showToast(`${label} is not available on this lead`, 'error');
@@ -2617,7 +3050,38 @@ export default function PulsePage() {
     }
   }, [breakdownChargedLeadIds, consumeCredits, persistLeadAction, showToast]);
 
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const applyFeedSearch = useCallback(async () => {
+    const parsed = parseFeedSearchIntent(pendingFeedSearchQuery);
+    const appliedQuery = parsed.roleQuery;
+    const appliedFilters = mergeFeedFiltersWithIntent(DEFAULT_FEED_SEARCH_FILTERS, parsed.inferred);
+
+    setFeedSearchQuery(appliedQuery);
+    setFeedSearchFilters(appliedFilters);
+
+    if (!appliedQuery) {
+      setVectorSearchLeadIds(null);
+      setVectorSearchLoading(false);
+      return;
+    }
+
+    setVectorSearchLoading(true);
+    const { data, error } = await supabase.rpc('search_pulse_social_feed_vector', {
+      p_role_query: appliedQuery,
+      p_limit: 2000,
+      p_similarity_threshold: 0.58,
+    } as never);
+
+    if (!error && Array.isArray(data)) {
+      const ids = (data as Array<{ lead_id?: string | null }>)
+        .map((row) => (row.lead_id ?? '').trim())
+        .filter(Boolean);
+      setVectorSearchLeadIds(ids.length > 0 ? ids : null);
+    } else {
+      setVectorSearchLeadIds(null);
+    }
+
+    setVectorSearchLoading(false);
+  }, [pendingFeedSearchQuery]);
 
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
@@ -2739,70 +3203,87 @@ export default function PulsePage() {
                 </div>
 
               {/* Mobile search/filter row — controls job feed search */}
-              <div className={isMobileViewport ? 'sticky top-0 z-30 border-b border-gray-200 bg-white px-2 py-2' : 'px-2 py-2'}>
-                {!mobileSearchOpen && (
+              <div className={isMobileViewport ? 'sticky top-0 z-30 border-b border-gray-200 bg-white px-0 py-2' : 'px-2 py-2'}>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
-                    className="flex-1 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-medium text-gray-600"
-                  >
-                    <Search size={11} />
-                    {feedSearchQuery || 'Search & Filter'}
-                  </button>
-                  <select
-                    aria-label="Date range"
-                    value={profileRangeId}
-                    onChange={(e) => setProfileRangeId(e.target.value as ProfileRangeOption['id'])}
-                    className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium text-gray-600"
-                  >
-                    {PROFILE_RANGE_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>{option.label}</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => {
-                      void loadProfileStats();
-                      void refreshFeed();
-                    }}
-                    disabled={profileStatsLoading || refreshing || feedLoading}
-                    className="rounded-full border border-gray-200 bg-gray-50 p-1.5 text-gray-600 disabled:opacity-50"
-                  >
-                    <RefreshCw size={13} className={refreshing || profileStatsLoading ? 'animate-spin' : ''} />
-                  </button>
-                </div>
-                )}
-                {mobileSearchOpen && (
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <div className="flex flex-1 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5">
-                      <Search size={12} className="text-gray-400" />
-                      <input
-                        type="text"
-                        autoFocus
-                        value={feedSearchQuery}
-                        onChange={(e) => setFeedSearchQuery(e.target.value)}
-                        placeholder="Search role, skills, location, visa..."
-                        className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
-                      />
-                    </div>
-                    <select
-                      aria-label="Filter"
-                      value={feedSearchScope}
-                      onChange={(e) => setFeedSearchScope(e.target.value as PulseFeedSearchScope)}
-                      className="shrink-0 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-700"
-                    >
-                      <option value="all">Filter</option>
-                      <option value="role">Role</option>
-                      <option value="skills">Skills</option>
-                      <option value="location">Location</option>
-                      <option value="visa">Visa</option>
-                      <option value="experience">Exp</option>
-                      <option value="rate">Rate</option>
-                    </select>
-                    <button onClick={() => { setFeedSearchQuery(''); setFeedSearchScope('all'); setMobileSearchOpen(false); }} className="text-gray-400 shrink-0">
-                      <X size={12} />
-                    </button>
+                  <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+                    <Search size={11} className="text-gray-400" />
+                    <input
+                      type="text"
+                      value={pendingFeedSearchQuery}
+                      onChange={(e) => setPendingFeedSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void applyFeedSearch();
+                        }
+                      }}
+                      placeholder="Solutions Architect C2C $45"
+                      className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                    />
+                    {pendingFeedSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingFeedSearchQuery('');
+                          setFeedSearchQuery('');
+                          setFeedSearchFilters(DEFAULT_FEED_SEARCH_FILTERS);
+                          setVectorSearchLeadIds(null);
+                        }}
+                        className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600"
+                        aria-label="Clear search field"
+                      >
+                        <X size={11} />
+                      </button>
+                    )}
                   </div>
-                )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void applyFeedSearch();
+                    }}
+                    className="rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700 disabled:opacity-60"
+                    disabled={vectorSearchLoading}
+                    aria-label="Search"
+                  >
+                    <Search size={12} className={vectorSearchLoading ? 'animate-pulse' : ''} />
+                  </button>
+
+                  <div ref={rangeMenuRef} className="relative shrink-0">
+                    <button
+                      onClick={() => {
+                        setIsRangeMenuOpen((prev) => !prev);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100"
+                      aria-label="Change date range"
+                    >
+                      <Clock3 size={11} />
+                      <span>{PROFILE_RANGE_SHORT_LABELS[profileRangeId]}</span>
+                    </button>
+
+                    {isRangeMenuOpen && (
+                      <div className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[116px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+                        {PROFILE_RANGE_OPTIONS.map((option) => {
+                          const isActive = option.id === profileRangeId;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => {
+                                setProfileRangeId(option.id);
+                                setIsRangeMenuOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                            >
+                              <span>{option.label}</span>
+                              {isActive ? <Check size={11} /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[10%_90%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
@@ -2882,7 +3363,18 @@ export default function PulsePage() {
               <div
                 className={`col-start-2 row-span-2 min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-white slim-scrollbar' : 'overflow-hidden'}`}
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
+                onTouchStart={isMobileViewport ? handleMobilePullStart : undefined}
+                onTouchMove={isMobileViewport ? handleMobilePullMove : undefined}
+                onTouchEnd={isMobileViewport ? handleMobilePullEnd : undefined}
               >
+                {isMobileViewport && (pullDistance > 0 || isPullRefreshing) && (
+                  <div className="sticky top-0 z-30 flex items-center justify-center bg-white/95 text-[10px] font-medium text-gray-500">
+                    <div style={{ height: `${Math.max(18, pullDistance)}px` }} className="flex items-center gap-1">
+                      <RefreshCw size={10} className={isPullRefreshing ? 'animate-spin' : ''} />
+                      <span>{isPullRefreshing ? 'Refreshing...' : (mobilePullArmedRef.current ? 'Release to refresh' : 'Pull to refresh')}</span>
+                    </div>
+                  </div>
+                )}
                 {false && isMobileViewport ? (
                   <div className="sticky top-0 z-20 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
