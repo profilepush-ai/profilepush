@@ -238,6 +238,16 @@ type ProfileCategoryTab = {
 
 type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'queued';
 type LeadActionType = 'revealed' | 'breakdown';
+type ProfilesListingMode = 'roles' | 'domains';
+
+type DomainLeaderboardRow = {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  rank: number;
+  uniqueJobs: number;
+  uniqueVendors: number;
+};
 
 type PulseLeadActionRow = {
   lead_id: string;
@@ -247,6 +257,7 @@ type PulseLeadActionRow = {
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
 const TOP_PROFILES_PAGE_SIZE = 5;
+const TABLE_PROFILES_PAGE_SIZE = 25;
 const MATCHES_PAGE_SIZE = 5;
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
@@ -831,7 +842,9 @@ export default function ProfilesPage() {
   const [profilesLayoutMode, setProfilesLayoutMode] = useState<'cards' | 'table'>(() => {
     return 'table';
   });
+  const [profilesListingMode, setProfilesListingMode] = useState<ProfilesListingMode>('roles');
   const [profilePage, setProfilePage] = useState(1);
+  const [tableProfilePage, setTableProfilePage] = useState(1);
   const visibleProfilesCount = profilePage * TOP_PROFILES_PAGE_SIZE;
   const [isMobileViewport, setIsMobileViewport] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -992,21 +1005,65 @@ export default function ProfilesPage() {
     return filteredJobsRankedLeaderboard;
   }, [filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, selectedProfilesView, watchingRoles]);
 
+  const filteredDomainLeaderboard = useMemo(() => {
+    const query = normalize(profileSearchQuery);
+
+    const rows = PROFILE_CATEGORY_TABS
+      .filter((category) => category.id !== 'all')
+      .map((category) => {
+        const categoryProfiles = jobsRankedLeaderboard.filter((persona) => isPersonaInCategory(persona, category.id));
+        const uniqueJobs = categoryProfiles.reduce((sum, persona) => sum + (profileStatsByRole[normalize(persona.target_role)]?.uniqueJobs ?? 0), 0);
+        const uniqueVendors = categoryProfiles.reduce((sum, persona) => sum + (profileStatsByRole[normalize(persona.target_role)]?.uniqueVendors ?? 0), 0);
+        return {
+          id: category.id,
+          label: category.label,
+          icon: category.icon,
+          rank: 0,
+          uniqueJobs,
+          uniqueVendors,
+        } as DomainLeaderboardRow;
+      })
+      .sort((a, b) => b.uniqueJobs - a.uniqueJobs || b.uniqueVendors - a.uniqueVendors || a.label.localeCompare(b.label));
+
+    const filtered = query
+      ? rows.filter((row) => normalize(row.label).includes(query))
+      : rows;
+
+    return filtered.map((row, idx) => ({ ...row, rank: idx + 1 }));
+  }, [jobsRankedLeaderboard, profileSearchQuery, profileStatsByRole]);
+
+  const domainsForActiveView = useMemo(() => filteredDomainLeaderboard, [filteredDomainLeaderboard]);
+
   const visibleJobsRankedLeaderboard = useMemo(
     () => {
+      if (profilesLayoutMode === 'table') {
+        return profilesForActiveView.slice((tableProfilePage - 1) * TABLE_PROFILES_PAGE_SIZE, tableProfilePage * TABLE_PROFILES_PAGE_SIZE);
+      }
+
       if (isMobileViewport) {
-        if (profilesLayoutMode === 'table') {
-          return profilesForActiveView;
-        }
         return profilesForActiveView.slice(0, visibleProfilesCount);
       }
       return profilesForActiveView.slice((profilePage - 1) * TOP_PROFILES_PAGE_SIZE, profilePage * TOP_PROFILES_PAGE_SIZE);
     },
-    [isMobileViewport, profilePage, profilesForActiveView, profilesLayoutMode, visibleProfilesCount],
+    [isMobileViewport, profilePage, profilesForActiveView, profilesLayoutMode, tableProfilePage, visibleProfilesCount],
   );
+
+  const visibleDomainLeaderboard = useMemo(() => {
+    if (profilesLayoutMode === 'table') {
+      return domainsForActiveView.slice((tableProfilePage - 1) * TABLE_PROFILES_PAGE_SIZE, tableProfilePage * TABLE_PROFILES_PAGE_SIZE);
+    }
+
+    if (isMobileViewport) {
+      return domainsForActiveView.slice(0, visibleProfilesCount);
+    }
+
+    return domainsForActiveView;
+  }, [domainsForActiveView, isMobileViewport, profilesLayoutMode, tableProfilePage, visibleProfilesCount]);
 
   const totalProfilePages = Math.max(1, Math.ceil(profilesForActiveView.length / TOP_PROFILES_PAGE_SIZE));
   const canLoadMoreProfiles = profilePage < totalProfilePages;
+  const activeTableTotalCount = profilesListingMode === 'domains' ? domainsForActiveView.length : profilesForActiveView.length;
+  const totalTableProfilePages = Math.max(1, Math.ceil(activeTableTotalCount / TABLE_PROFILES_PAGE_SIZE));
 
   const scopedFeed = useMemo(() => {
     let next = feed;
@@ -1114,7 +1171,8 @@ export default function ProfilesPage() {
   const profileViewCounts = useMemo(() => ({
     all: filteredJobsRankedLeaderboard.length,
     watching: orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length,
-  }), [filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, watchingRoles]);
+    domains: domainsForActiveView.length,
+  }), [domainsForActiveView.length, filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, watchingRoles]);
 
   const filteredFeed = useMemo(() => {
     if (selectedMatchesTab === 'breakdown') {
@@ -1350,6 +1408,75 @@ export default function ProfilesPage() {
     );
   };
 
+  const renderDomainsTable = (domains: DomainLeaderboardRow[], emptyMessage: string, keyPrefix: string) => {
+    if (domains.length === 0) {
+      return <div className="px-3 py-6 text-center text-xs text-gray-400">{emptyMessage}</div>;
+    }
+
+    const compact = isMobileViewport;
+
+    return (
+      <div className="h-full min-h-0 rounded-md border border-gray-200 bg-white flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto slim-scrollbar">
+          <table className="w-full table-fixed border-collapse text-left text-[9px] sm:text-[10px]">
+            <thead>
+              <tr>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[62%] px-1.5 py-1' : 'w-[64%] px-2 py-1.5'}`}>Domain</th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[18%] px-1 py-1' : 'w-[18%] px-2 py-1.5'}`}>Jobs</th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[20%] px-1 py-1' : 'w-[18%] px-2 py-1.5'}`}>Vendors</th>
+              </tr>
+            </thead>
+            <tbody>
+              {domains.map((domain) => {
+                const DomainIcon = domain.icon;
+                return (
+                  <tr key={`${keyPrefix}-${domain.id}`} className="bg-white hover:bg-gray-50">
+                    <td className={`border-b border-gray-100 font-semibold leading-tight text-blue-700 break-words whitespace-normal ${compact ? 'px-1.5 py-1' : 'px-2 py-1.5'}`}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <DomainIcon size={compact ? 11 : 12} className="text-blue-600" />
+                        <span>{domain.label}</span>
+                      </span>
+                    </td>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{domain.uniqueJobs}</td>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{domain.uniqueVendors}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDomainCards = (domains: DomainLeaderboardRow[], keyPrefix: string) => {
+    if (domains.length === 0) {
+      return <div className="px-3 py-8 text-center text-xs text-gray-400">No domains found.</div>;
+    }
+
+    return domains.map((domain) => {
+      const DomainIcon = domain.icon;
+      return (
+        <div
+          key={`${keyPrefix}-${domain.id}`}
+          className={`rounded-lg border px-3 py-2.5 transition-colors ${domain.rank <= 3 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'}`}
+        >
+          <div className="flex items-start gap-2">
+            <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${domain.rank <= 3 ? 'text-emerald-600' : 'text-gray-400'}`}>#{domain.rank}</span>
+            <p className="flex-1 text-[11px] font-semibold text-blue-700 leading-snug inline-flex items-center gap-1.5">
+              <DomainIcon size={13} className="text-blue-600" />
+              <span>{domain.label}</span>
+            </p>
+          </div>
+          <div className="mt-2 flex items-center gap-1.5">
+            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{domain.uniqueJobs} Jobs</span>
+            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{domain.uniqueVendors} Vendors</span>
+          </div>
+        </div>
+      );
+    });
+  };
+
   const renderLeadCards = (leads: SocialLead[]) => leads.map((lead) => {
     const leadScoreVisual = getScoreVisual(lead.matchScore);
     const inlineBreakdownItems = buildScoreBreakdownDisplayItems(
@@ -1491,7 +1618,18 @@ export default function ProfilesPage() {
 
   useEffect(() => {
     setProfilePage(1);
+    setTableProfilePage(1);
   }, [profileRangeId, profileSearchQuery, selectedCategoryId, selectedProfilesView]);
+
+  useEffect(() => {
+    if (profilesLayoutMode === 'table') {
+      setTableProfilePage(1);
+    }
+  }, [profilesLayoutMode]);
+
+  useEffect(() => {
+    setTableProfilePage((prev) => Math.min(prev, totalTableProfilePages));
+  }, [totalTableProfilePages]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -2759,16 +2897,24 @@ export default function ProfilesPage() {
                       <div className="flex shrink-0 items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => setSelectedProfilesView('all')}
-                          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                          onClick={() => { setProfilesListingMode('domains'); setSelectedProfilesView('all'); }}
+                          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'domains' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
                         >
-                          <span>All</span>
+                          <span>Domains</span>
+                          <span>{profileViewCounts.domains}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setProfilesListingMode('roles'); setSelectedProfilesView('all'); }}
+                          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'roles' && selectedProfilesView === 'all' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                        >
+                          <span>Roles</span>
                           <span>{profileViewCounts.all}</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() => setSelectedProfilesView('watching')}
-                          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                          onClick={() => { setProfilesListingMode('roles'); setSelectedProfilesView('watching'); }}
+                          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'roles' && selectedProfilesView === 'watching' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
                         >
                           <span>Watching</span>
                           <span>{profileViewCounts.watching}</span>
@@ -2824,87 +2970,14 @@ export default function ProfilesPage() {
                 </div>
               </div>
 
-              <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[10%_90%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
-                <aside className="sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar border-r-0 bg-transparent px-0 py-0">
-                  <div className="space-y-1 pr-0">
-                    {[...PROFILE_CATEGORY_TABS]
-                      .map((category) => {
-                        const categoryProfiles = jobsRankedLeaderboard.filter((p) => isPersonaInCategory(p, category.id));
-                        const vendorsCount = categoryProfiles.reduce((s, p) => s + (profileStatsByRole[normalize(p.target_role)]?.uniqueVendors ?? 0), 0);
-                        const jobsCount = categoryProfiles.reduce((s, p) => s + (profileStatsByRole[normalize(p.target_role)]?.uniqueJobs ?? 0), 0);
-                        return { category, vendorsCount, jobsCount };
-                      })
-                      .sort((a, b) => {
-                        if (a.category.id === 'all') return -1;
-                        if (b.category.id === 'all') return 1;
-                        return b.jobsCount - a.jobsCount || a.category.label.localeCompare(b.category.label);
-                      })
-                      .map(({ category, vendorsCount, jobsCount }) => {
-                        const isSelected = selectedCategoryId === category.id;
-                        const CategoryIcon = category.icon;
-
-                        return (
-                          <button
-                            key={category.id}
-                            type="button"
-                            onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
-                            className={`w-full rounded-md border ${isMobileViewport ? 'px-1.5 py-1.5' : 'px-0.5 py-1'} text-center transition ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
-                          >
-                            {isMobileViewport ? (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <CategoryIcon size={13} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
-                                <span className={`text-[8px] font-semibold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
-                                <div className={`mt-0 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
-                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />{vendorsCount}</span>
-                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />{jobsCount}</span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <div className="inline-flex items-center justify-center gap-1">
-                                  <CategoryIcon size={13} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
-                                  <span className={`text-[9px] font-semibold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
-                                </div>
-                                <div className={`mt-0 flex flex-col items-center gap-0.5 text-[9px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
-                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />{vendorsCount}</span>
-                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />{jobsCount}</span>
-                                </div>
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                  </div>
-
-                  {selectedCategoryId !== 'all' && CATEGORY_TECH_STACKS[selectedCategoryId] && (
-                    <div className="mt-3 border-t border-gray-200 pt-2">
-                      <div className="mb-1 px-1 text-[8px] font-bold uppercase tracking-[0.18em] text-gray-400">Tech</div>
-                      <div className="space-y-1">
-                        {CATEGORY_TECH_STACKS[selectedCategoryId].map((tech) => {
-                          const isActive = selectedTechStacks.includes(tech);
-                          return (
-                            <button
-                              key={tech}
-                              type="button"
-                              onClick={() => setSelectedTechStacks((prev) => isActive ? prev.filter((t) => t !== tech) : [...prev, tech])}
-                              className={`w-full rounded-md border px-1.5 py-1 text-[8px] font-semibold transition ${isActive ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-transparent bg-white/80 text-gray-600 hover:bg-white hover:text-gray-800'}`}
-                            >
-                              {tech}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </aside>
-
+              <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white">
               <div
                 ref={isMobileViewport ? profileListScrollRef : undefined}
-                className={`col-start-2 row-span-2 min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-white slim-scrollbar' : 'overflow-hidden'}`}
+                className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-white slim-scrollbar' : 'overflow-hidden'}`}
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
               >
                 {isMobileViewport ? (
-                  <div className="sticky top-0 z-40 shrink-0 flex items-center gap-1.5 bg-white px-1.5 pt-0 pb-1">
+                  <div className="sticky top-0 z-40 shrink-0 flex items-start gap-1.5 bg-white px-1.5 pt-0 pb-1">
                     <button
                       type="button"
                       onClick={() => setProfilesLayoutMode((prev) => (prev === 'cards' ? 'table' : 'cards'))}
@@ -2914,19 +2987,27 @@ export default function ProfilesPage() {
                     >
                       <TableProperties size={13} />
                     </button>
-                    <div className="grid flex-1 grid-cols-2 gap-1">
+                    <div className="grid flex-1 min-w-0 grid-cols-3 gap-1">
                       <button
                         type="button"
-                        onClick={() => setSelectedProfilesView('all')}
-                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        onClick={() => { setProfilesListingMode('domains'); setSelectedProfilesView('all'); }}
+                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'domains' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                       >
-                        <span>All</span>
+                        <span>Domains</span>
+                        <span>{profileViewCounts.domains}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setProfilesListingMode('roles'); setSelectedProfilesView('all'); }}
+                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'roles' && selectedProfilesView === 'all' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        <span>Roles</span>
                         <span>{profileViewCounts.all}</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setSelectedProfilesView('watching')}
-                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        onClick={() => { setProfilesListingMode('roles'); setSelectedProfilesView('watching'); }}
+                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'roles' && selectedProfilesView === 'watching' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                       >
                         <span>Watching</span>
                         <span>{profileViewCounts.watching}</span>
@@ -2940,9 +3021,14 @@ export default function ProfilesPage() {
                 {isMobileViewport ? (
                   <div className="w-full">
                     <div className={`flex flex-col gap-2 px-1.5 pt-1 pb-2 ${profilesLayoutMode === 'table' ? 'h-full' : ''}`}>
-                      {profilesLayoutMode === 'table' ? (
-                        renderProfilesTable(visibleJobsRankedLeaderboard, 'No profiles found.', 'mobile')
+                      {profilesListingMode === 'domains' ? (
+                        profilesLayoutMode === 'table'
+                          ? renderDomainsTable(visibleDomainLeaderboard, 'No domains found.', 'mobile-domains')
+                          : <>{renderDomainCards(visibleDomainLeaderboard, 'mobile-domains')}</>
                       ) : (
+                        profilesLayoutMode === 'table' ? (
+                          renderProfilesTable(visibleJobsRankedLeaderboard, 'No profiles found.', 'mobile')
+                        ) : (
                         <>
                           {visibleJobsRankedLeaderboard.length === 0 && (
                             <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
@@ -2984,8 +3070,9 @@ export default function ProfilesPage() {
                         );
                           })}
                         </>
+                        )
                       )}
-                      {canLoadMoreProfiles && profilesLayoutMode !== 'table' && (
+                      {profilesListingMode === 'roles' && canLoadMoreProfiles && profilesLayoutMode !== 'table' && (
                         <div ref={mobileProfilesLoadMoreRef} className="h-2" />
                       )}
                     </div>
@@ -2996,14 +3083,27 @@ export default function ProfilesPage() {
                       <div className={`${profilesLayoutMode === 'table' ? 'flex-1 min-h-0 overflow-hidden' : 'overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar'}`}>
                         <div className={`${profilesLayoutMode === 'table' ? 'h-full min-h-0 px-1.5 pb-2 pt-0' : 'flex flex-col gap-2 px-1.5 py-2'}`}>
                           {(() => {
+                            if (profilesListingMode === 'domains') {
+                              if (profilesLayoutMode === 'table') {
+                                return renderDomainsTable(
+                                  visibleDomainLeaderboard,
+                                  'No domains found.',
+                                  'desktop-domains',
+                                );
+                              }
+
+                              return <>{renderDomainCards(domainsForActiveView, 'desktop-domains')}</>;
+                            }
+
                             const showingWatching = selectedProfilesView === 'watching';
                             const desktopProfiles = showingWatching
                               ? orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role)))
                               : filteredJobsRankedLeaderboard;
+                            const desktopTableProfiles = desktopProfiles.slice((tableProfilePage - 1) * TABLE_PROFILES_PAGE_SIZE, tableProfilePage * TABLE_PROFILES_PAGE_SIZE);
 
                             if (profilesLayoutMode === 'table') {
                               return renderProfilesTable(
-                                desktopProfiles,
+                                desktopTableProfiles,
                                 showingWatching ? 'No watching profiles yet.' : 'No profiles found.',
                                 showingWatching ? 'watching' : 'all',
                               );
@@ -3057,27 +3157,30 @@ export default function ProfilesPage() {
                     </div>
                   </div>
                 )}
-                <div className="hidden shrink-0 items-center justify-between gap-2 border-t border-gray-200 bg-white px-2 py-1.5">
-                  <p className="text-[10px] text-gray-500">
-                    {profilePage}/{totalProfilePages}
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setProfilePage((p) => Math.max(1, p - 1))}
-                      disabled={profilePage <= 1}
-                      className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-                    >
-                      ‹
-                    </button>
-                    <button
-                      onClick={() => setProfilePage((p) => Math.min(totalProfilePages, p + 1))}
-                      disabled={profilePage >= totalProfilePages}
-                      className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-                    >
-                      ›
-                    </button>
+                {profilesLayoutMode === 'table' && (
+                  <div className="shrink-0 flex items-center justify-between gap-2 border-t border-gray-200 bg-white px-2 py-1.5">
+                    <p className="text-[10px] text-gray-500">
+                      {Math.min((tableProfilePage - 1) * TABLE_PROFILES_PAGE_SIZE + 1, activeTableTotalCount)}-{Math.min(tableProfilePage * TABLE_PROFILES_PAGE_SIZE, activeTableTotalCount)} of {activeTableTotalCount}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setTableProfilePage((p) => Math.max(1, p - 1))}
+                        disabled={tableProfilePage <= 1}
+                        className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      >
+                        Prev
+                      </button>
+                      <span className="px-1 text-[10px] text-gray-500">{tableProfilePage}/{totalTableProfilePages}</span>
+                      <button
+                        onClick={() => setTableProfilePage((p) => Math.min(totalTableProfilePages, p + 1))}
+                        disabled={tableProfilePage >= totalTableProfilePages}
+                        className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </section>
 
               {false && (

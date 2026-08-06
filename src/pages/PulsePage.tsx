@@ -1776,8 +1776,13 @@ export default function PulsePage() {
     });
   };
 
-  const renderLeadCards = (leads: SocialLead[]) => leads.map((lead, idx) => {
-    const cardClass = CARD_PALETTE[idx % CARD_PALETTE.length];
+  const renderLeadCards = (leads: SocialLead[], columns = 1) => leads.map((lead, idx) => {
+    const safeColumns = Math.max(1, columns);
+    const row = Math.floor(idx / safeColumns);
+    const col = idx % safeColumns;
+    // Spread palette by row/column so adjacent cards do not share a tone.
+    const paletteIndex = (row + (col * 2)) % CARD_PALETTE.length;
+    const cardClass = CARD_PALETTE[paletteIndex];
     const cardBorderClass = cardClass.split(' ').find((token) => token.startsWith('border-')) ?? 'border-blue-100';
     const buttonToneClass = BUTTON_TONE_BY_BORDER[cardBorderClass] ?? 'bg-blue-100/35 hover:bg-blue-100/55';
     const isLeadRevealed = revealedLeadIds.has(lead.id);
@@ -1814,15 +1819,54 @@ export default function PulsePage() {
       }
     }
 
+    const useFourColumnBreakdown = idx % 2 === 1;
+    const normalizeDisplayValue = (value: string | null | undefined) => {
+      const cleaned = (value ?? '').trim();
+      const normalized = cleaned.toLowerCase().replace(/\s+/g, ' ');
+      if (!cleaned) return '-';
+      if (
+        normalized === 'unknown'
+        || normalized === 'not specified'
+        || normalized === 'not available'
+        || normalized === 'n/a'
+        || normalized === 'na'
+        || normalized === 'none'
+        || normalized === 'null'
+        || normalized === '-'
+        || normalized === '--'
+        || normalized === 'tbd'
+      ) {
+        return '-';
+      }
+      return cleaned;
+    };
+    const getBreakdownValue = (matchers: string[]) => {
+      const found = inlineBreakdownItems.find((item) => {
+        const key = item.key.toLowerCase();
+        return matchers.some((matcher) => key.includes(matcher));
+      });
+      return normalizeDisplayValue(found?.detail?.job_value);
+    };
+    const expValue = getBreakdownValue(['experience', 'exp']);
+    const workTypeValue = getBreakdownValue(['work_type', 'work type']);
+    const employmentTypeValue = getBreakdownValue(['employment_type', 'employment type']);
+    const rateValue = getBreakdownValue(['rate', 'hourly']);
+    const visaValue = getBreakdownValue(['visa']);
+    const locationValue = getBreakdownValue(['location']);
+    const companyValue = normalizeDisplayValue(lead.company);
+    const platformValue = normalizeDisplayValue(lead.platform);
+    const skillsValue = getBreakdownValue(['skill']);
+
     const shouldForceExpandedBreakdown = isLeadRevealed && selectedMatchesTab !== 'revealed';
     const isExpandedBreakdownVisible = shouldForceExpandedBreakdown || isInlineBreakdownExpanded;
 
     const maskedEmailHint = (() => {
       const email = (lead.posterEmail || '').trim();
       if (!email) return '***@';
-      const localPart = email.split('@')[0] ?? '';
+      const [localPart = '', domainPart = ''] = email.split('@');
       const prefix = (localPart.slice(0, 3) || '***').replace(/\s+/g, '');
-      return `${prefix}**@`;
+      const ext = domainPart.includes('.') ? domainPart.split('.').pop()?.trim() : '';
+      return ext ? `${prefix}**@***.${ext}` : `${prefix}**@***`;
     })();
 
     return (
@@ -1854,6 +1898,72 @@ export default function PulsePage() {
           )}
         </div>
         {inlineBreakdownItems.length > 0 && (
+          useFourColumnBreakdown ? (
+            <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left">
+              <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                <tbody>
+                  <tr>
+                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                      <div className="text-[9px] text-gray-400">Exp</div>
+                      <div className="text-[9px] leading-tight text-gray-700 break-words">{expValue}</div>
+                    </td>
+                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                      <div className="text-[9px] text-gray-400">Work Type</div>
+                      <div className="text-[9px] leading-tight text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">{workTypeValue}</div>
+                    </td>
+                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                      <div className="text-[9px] text-gray-400">Emp Type</div>
+                      <div className="text-[9px] leading-tight text-gray-700 break-words">{employmentTypeValue}</div>
+                    </td>
+                    <td className="border-b border-gray-100 bg-white px-2 py-1 align-top">
+                      <div className="text-[9px] text-gray-400">Rate</div>
+                      <div className="text-[9px] leading-tight text-gray-700 break-words">{rateValue}</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                      <div className="text-[9px] text-gray-400">Visa</div>
+                      <div className="text-[9px] leading-tight text-gray-700 break-words">{visaValue}</div>
+                    </td>
+                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                      <div className="text-[9px] text-gray-400">Location</div>
+                      <div className="text-[9px] leading-tight text-gray-700 break-words">{locationValue}</div>
+                    </td>
+                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                      <div className="text-[9px] text-gray-400">Company</div>
+                      <div className="text-[9px] leading-tight text-gray-700 break-words">{companyValue}</div>
+                    </td>
+                    <td className="border-b border-gray-100 bg-white px-2 py-1 align-top">
+                      <div className="text-[9px] text-gray-400">Platform</div>
+                      <div className="text-[9px] leading-tight text-gray-700 break-words">{platformValue}</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <button
+                type="button"
+                onClick={() => {
+                  setExpandedInlineBreakdownLeadIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(lead.id)) next.delete(lead.id);
+                    else next.add(lead.id);
+                    return next;
+                  });
+                }}
+                className="relative w-full border-t border-gray-100 bg-white px-2 py-1 text-left focus:outline-none"
+              >
+                <div className="text-[9px] text-gray-400">Skills</div>
+                <div className={`text-[9px] leading-tight break-words transition-all duration-200 ${isExpandedBreakdownVisible ? 'text-gray-700' : 'blur-sm select-none text-gray-400 pr-5'}`}>
+                  {normalizeDisplayValue(skillsValue)}
+                </div>
+                {!isExpandedBreakdownVisible && (
+                  <div className="pointer-events-none absolute bottom-0 right-0 h-full w-5 flex items-center justify-center bg-gradient-to-l from-white via-white/85 to-transparent">
+                    <ChevronDown size={12} className="text-blue-500" />
+                  </div>
+                )}
+              </button>
+            </div>
+          ) : (
           (isLeadRevealed && selectedMatchesTab !== 'revealed') ? (
             <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left">
               <table className="w-full table-fixed border-collapse text-left text-[10px]">
@@ -1861,7 +1971,7 @@ export default function PulsePage() {
                   {inlineBreakdownItems.map((item) => (
                     <tr key={item.key}>
                       <td className="border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal text-gray-700">{formatBreakdownFieldName(item.key)}</td>
-                      <td className="border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal text-gray-700">{item.detail?.job_value || '-'}</td>
+                      <td className="border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal text-gray-700">{normalizeDisplayValue(item.detail?.job_value)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1885,7 +1995,7 @@ export default function PulsePage() {
                   {(isExpandedBreakdownVisible ? inlineBreakdownItems : collapsedInlineBreakdownItems).map((item, idx) => (
                     <tr key={item.key}>
                       <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{formatBreakdownFieldName(item.key)}</td>
-                      <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{item.detail?.job_value || '-'}</td>
+                      <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{normalizeDisplayValue(item.detail?.job_value)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1896,6 +2006,7 @@ export default function PulsePage() {
                 </div>
               )}
             </button>
+          )
           )
         )}
         <div className="mt-1.5 grid grid-cols-10 gap-1.5">
@@ -1940,7 +2051,12 @@ export default function PulsePage() {
               disabled={processingLeadId === lead.id}
               className={`col-span-7 inline-flex items-center justify-center gap-1 rounded-md border ${cardBorderClass} ${buttonToneClass} px-2.5 py-1.5 text-[10px] font-semibold text-blue-800 backdrop-blur-md transition disabled:opacity-60`}
             >
-              {processingLeadId === lead.id ? '...' : `Reveal ${maskedEmailHint}`}
+              {processingLeadId === lead.id ? '...' : (
+                <>
+                  <Copy size={11} />
+                  <span>{maskedEmailHint}</span>
+                </>
+              )}
             </button>
           )}
         </div>
@@ -3979,16 +4095,16 @@ export default function PulsePage() {
                             revealedVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No revealed jobs yet.</div>
                             ) : (
-                              <div className="columns-3 gap-1.5">
-                                {renderLeadCards(visibleDesktopRevealedFeed)}
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {renderLeadCards(visibleDesktopRevealedFeed, 3)}
                               </div>
                             )
                           ) : (
                             recentVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No recent jobs.</div>
                             ) : (
-                              <div className="columns-3 gap-1.5">
-                                {renderLeadCards(visibleDesktopRecentFeed)}
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {renderLeadCards(visibleDesktopRecentFeed, 3)}
                               </div>
                             )
                           )}
