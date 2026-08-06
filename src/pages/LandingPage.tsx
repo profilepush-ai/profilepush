@@ -255,7 +255,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
       <main>
       <SEO
-        title="ProfilePush — AI Copilot for watching job posts from social media groups"
+        title="ProfilePush — AI Copilot for watching job posts from 500+ social media groups"
         description="Our AI watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups and job boards 24/7, pulling vendor emails along with jobs so Bench Sales teams can stop scrolling and submit faster."
         canonical="https://profilepush.ai/"
         jsonLd={LANDING_FAQ_JSONLD}
@@ -297,7 +297,7 @@ export default function LandingPage() {
         <div className="relative max-w-3xl mx-auto">
 
           <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
-            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for watching job posts from social media groups</span>
+            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for watching job posts from 500+ social media groups</span>
           </h1>
 
           <p className="text-base md:text-lg text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
