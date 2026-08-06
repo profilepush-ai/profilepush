@@ -817,7 +817,10 @@ export default function ProfilesPage() {
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
   const [feedSearchScope, setFeedSearchScope] = useState<PulseFeedSearchScope>('all');
   const [selectedProfilesView, setSelectedProfilesView] = useState<'all' | 'watching'>('all');
-  const [profilesLayoutMode, setProfilesLayoutMode] = useState<'cards' | 'table'>('cards');
+  const [profilesLayoutMode, setProfilesLayoutMode] = useState<'cards' | 'table'>(() => {
+    if (typeof window === 'undefined') return 'cards';
+    return window.matchMedia('(max-width: 639px)').matches ? 'cards' : 'table';
+  });
   const [profilePage, setProfilePage] = useState(1);
   const visibleProfilesCount = profilePage * TOP_PROFILES_PAGE_SIZE;
   const [isMobileViewport, setIsMobileViewport] = useState(() => {
@@ -2842,6 +2845,15 @@ export default function ProfilesPage() {
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
                       <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setProfilesLayoutMode((prev) => (prev === 'cards' ? 'table' : 'cards'))}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${profilesLayoutMode === 'table' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                      aria-label={profilesLayoutMode === 'table' ? 'Switch to card layout' : 'Switch to table layout'}
+                      title={profilesLayoutMode === 'table' ? 'Card layout' : 'Table layout'}
+                    >
+                      <TableProperties size={13} />
+                    </button>
                   </div>
                 ) : null}
                 {/* Profile list */}
@@ -2902,8 +2914,8 @@ export default function ProfilesPage() {
                   <div className="grid grid-cols-2 gap-2 px-2 py-2 flex-1 min-h-0">
                     <div className="min-w-0 rounded-md bg-transparent flex flex-col min-h-0">
                       <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 shrink-0">All ({profileViewCounts.all})</div>
-                      <div className="overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar">
-                        <div className="flex flex-col gap-2 px-1.5 py-2">
+                      <div className={`${profilesLayoutMode === 'table' ? 'flex-1 min-h-0 overflow-hidden' : 'overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar'}`}>
+                        <div className={`${profilesLayoutMode === 'table' ? 'h-full min-h-0 px-1.5 py-2' : 'flex flex-col gap-2 px-1.5 py-2'}`}>
                           {profilesLayoutMode === 'table' ? (
                             renderProfilesTable(filteredJobsRankedLeaderboard, 'No profiles found.', 'all')
                           ) : (
@@ -2954,8 +2966,8 @@ export default function ProfilesPage() {
 
                     <div className="min-w-0 rounded-md bg-transparent flex flex-col min-h-0">
                       <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 shrink-0">Watching ({profileViewCounts.watching})</div>
-                      <div className="overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar">
-                        <div className="flex flex-col gap-2 px-1.5 py-2">
+                      <div className={`${profilesLayoutMode === 'table' ? 'flex-1 min-h-0 overflow-hidden' : 'overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar'}`}>
+                        <div className={`${profilesLayoutMode === 'table' ? 'h-full min-h-0 px-1.5 py-2' : 'flex flex-col gap-2 px-1.5 py-2'}`}>
                           {profilesLayoutMode === 'table' ? (
                             renderProfilesTable(
                               orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))),
