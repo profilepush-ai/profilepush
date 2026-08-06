@@ -15,7 +15,7 @@ const FEATURES = [
   {
     key: 'pulse',
     headline: 'AI-matched jobs from social platforms.',
-    subline: 'Pulse scans LinkedIn, Reddit, and other social platforms in real-time, matching jobs to your tech stacks with AI scores. Filter by category, reveal poster contact info, and act on the best matches instantly.',
+    subline: 'Pulse watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards in real-time, matching jobs to your tech stacks with AI scores and pulling vendor emails.',
     accent: 'from-blue-100 to-white',
     badge: 'bg-blue-100 text-blue-700',
     badgeLabel: 'Pulse',
@@ -35,11 +35,11 @@ const FEATURES = [
 const FAQS = [
   {
     q: 'What is ProfilePush?',
-    a: 'ProfilePush is an AI-powered platform built for Bench Sales recruiters. It surfaces matched jobs from social platforms like LinkedIn and Reddit in real-time and gives you a built-in vendor CRM to track every contact, submission, and rate — all in one place.',
+    a: 'ProfilePush is an AI-powered platform built for Bench Sales recruiters. It watches job posts from social media groups and job boards in real-time, pulls vendor emails, and gives you a built-in vendor CRM to track every contact, submission, and rate in one place.',
   },
   {
     q: 'What is Pulse?',
-    a: 'Pulse is a real-time social job feed powered by AI. It scans LinkedIn, Reddit, and other platforms, scores each job against tech stack categories, and lets you reveal poster contact info (email, phone) to reach out directly. Contact reveals cost $0.25 in AI credits.',
+    a: 'Pulse is a real-time social job feed powered by AI. It watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards, scores each job against tech stack categories, and lets you reveal poster contact info (email, phone) to reach out directly.',
   },
   {
     q: 'What is Tracker?',
@@ -47,7 +47,7 @@ const FAQS = [
   },
   {
     q: 'How much does ProfilePush cost?',
-    a: 'ProfilePush is free to start with $5 in monthly AI credits — no credit card required. The Pro plan at ₹2,500/month includes $25 in AI credits, unlimited users, and Live Job Alerts. Contact reveals cost $0.25 per action.',
+    a: 'ProfilePush is free to start with $5 in monthly AI credits — no credit card required. Free plan accounts are limited to 10 reveals every day. The Pro plan at ₹2,500/month includes $25 in AI credits, unlimited users, and Live Job Alerts.',
   },
 ];
 
@@ -255,8 +255,8 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
       <main>
       <SEO
-        title="ProfilePush — AI Job Radar & Vendor Tracker for Bench Sales"
-        description="ProfilePush surfaces AI-matched jobs from LinkedIn, Reddit, and social platforms in real-time. Track vendors, log submissions, and never double-submit — built for Bench Sales recruiters."
+        title="ProfilePush — AI Copilot for watching job posts from social media groups"
+        description="Our AI watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups and job boards 24/7, pulling vendor emails along with jobs so Bench Sales teams can stop scrolling and submit faster."
         canonical="https://profilepush.ai/"
         jsonLd={LANDING_FAQ_JSONLD}
       />
@@ -297,11 +297,11 @@ export default function LandingPage() {
         <div className="relative max-w-3xl mx-auto">
 
           <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
-            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for Bench Sales Teams to Hit 10X Submissions</span>
+            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for watching job posts from social media groups</span>
           </h1>
 
           <p className="text-base md:text-lg text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
-            Our AI watches LinkedIn groups, Facebook communities, WhatsApp channels, email lists, and job boards 24/7 — pulling matched jobs so you don't have to scroll through thousands of posts manually.
+            Our AI watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups  and job boards 24/7 - pulling vendor emails along with jobs so you don't have to scroll through thousands of posts manually.
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4">
@@ -358,7 +358,7 @@ export default function LandingPage() {
             <div className="space-y-0">
               {[
                 { n: '1', t: 'Browse the Pulse feed', d: 'AI scans LinkedIn, Reddit, and other social platforms — surfacing matched jobs with scores in real-time.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
-                { n: '2', t: 'Reveal contacts', d: 'Unlock poster emails and phone numbers to reach out directly. Each reveal costs $0.25 in AI credits.', dot: 'bg-orange-500', num: 'text-orange-500', ring: 'ring-orange-100' },
+                { n: '2', t: 'Reveal contacts', d: 'Unlock poster emails and phone numbers to reach out directly from the feed.', dot: 'bg-orange-500', num: 'text-orange-500', ring: 'ring-orange-100' },
                 { n: '3', t: 'Track in Tracker', d: 'Log vendor contacts, submissions, and rates. Filter by date, export to CSV, and never double-submit.', dot: 'bg-yellow-500', num: 'text-yellow-500', ring: 'ring-yellow-100' },
               ].map((step, i, arr) => (
                 <div key={step.n} className="relative flex gap-8 pb-10 last:pb-0">
@@ -391,9 +391,9 @@ export default function LandingPage() {
               Start free, upgrade when you're ready. Every plan unlocks all features.
             </p>
 
-            {/* Credit costs */}
+            {/* Free plan limit */}
             <div className="flex items-center justify-center gap-6 mt-4 text-sm text-gray-500">
-              <span>Reveal Contacts — <strong className="text-gray-700">$0.25</strong></span>
+              <span>Free plan: limited to 10 reveals every day</span>
             </div>
           </div>
 
@@ -420,6 +420,7 @@ export default function LandingPage() {
                   'All features unlocked',
                   'Up to 2 users',
                   '$5 AI credits reset each month',
+                  'Limited to 10 reveals every day',
                 ].map(item => (
                   <li key={item} className="flex items-center gap-2.5">
                     <span className="w-4 h-4 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
