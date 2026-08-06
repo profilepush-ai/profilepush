@@ -281,6 +281,11 @@ type PulseLeadActionRow = {
   created_at?: string;
 };
 
+type PulseRevealNamesRow = {
+  lead_id: string;
+  revealer_names: string[] | null;
+};
+
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
 const TOP_PROFILES_PAGE_SIZE = 10;
@@ -1083,6 +1088,7 @@ export default function PulsePage() {
   const [breakdownChargedLeadIds, setBreakdownChargedLeadIds] = useState<Set<string>>(new Set());
   const [queuedLeadIds, setQueuedLeadIds] = useState<Set<string>>(new Set());
   const [revealCountsByLeadId, setRevealCountsByLeadId] = useState<Record<string, number>>({});
+  const [revealNamesByLeadId, setRevealNamesByLeadId] = useState<Record<string, string[]>>({});
   const [revealedAtByLeadId, setRevealedAtByLeadId] = useState<Record<string, string>>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [processingLeadId, setProcessingLeadId] = useState<string | null>(null);
@@ -1724,13 +1730,22 @@ export default function PulsePage() {
   }
 
   const CARD_PALETTE = [
-    'border-blue-100 bg-blue-50/60',
-    'border-violet-100 bg-violet-50/60',
-    'border-emerald-100 bg-emerald-50/60',
-    'border-amber-100 bg-amber-50/60',
-    'border-rose-100 bg-rose-50/60',
-    'border-cyan-100 bg-cyan-50/60',
+    'border-blue-100 bg-white',
+    'border-violet-100 bg-white',
+    'border-emerald-100 bg-white',
+    'border-amber-100 bg-white',
+    'border-rose-100 bg-white',
+    'border-cyan-100 bg-white',
   ];
+
+  const BUTTON_TONE_BY_BORDER: Record<string, string> = {
+    'border-blue-100': 'bg-blue-100/35 hover:bg-blue-100/55',
+    'border-violet-100': 'bg-violet-100/35 hover:bg-violet-100/55',
+    'border-emerald-100': 'bg-emerald-100/35 hover:bg-emerald-100/55',
+    'border-amber-100': 'bg-amber-100/35 hover:bg-amber-100/55',
+    'border-rose-100': 'bg-rose-100/35 hover:bg-rose-100/55',
+    'border-cyan-100': 'bg-cyan-100/35 hover:bg-cyan-100/55',
+  };
 
   const isRoleLikeBreakdownKey = (key: string) => {
     const normalized = key.toLowerCase();
@@ -1763,6 +1778,8 @@ export default function PulsePage() {
 
   const renderLeadCards = (leads: SocialLead[]) => leads.map((lead, idx) => {
     const cardClass = CARD_PALETTE[idx % CARD_PALETTE.length];
+    const cardBorderClass = cardClass.split(' ').find((token) => token.startsWith('border-')) ?? 'border-blue-100';
+    const buttonToneClass = BUTTON_TONE_BY_BORDER[cardBorderClass] ?? 'bg-blue-100/35 hover:bg-blue-100/55';
     const isLeadRevealed = revealedLeadIds.has(lead.id);
     const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
       lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
@@ -1809,10 +1826,10 @@ export default function PulsePage() {
     })();
 
     return (
-      <div key={lead.id} className={`mb-1.5 break-inside-avoid rounded-lg border px-3 py-2.5 ${cardClass}`}>
+      <div key={lead.id} className={`mb-1.5 break-inside-avoid rounded-lg border-2 px-3 py-2.5 ${cardClass}`}>
         <div className="flex items-start justify-between gap-1.5">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold leading-snug text-gray-900">{lead.title || 'Job Opportunity'}</p>
+            <p className="text-[11px] font-semibold leading-snug text-blue-800">{lead.title || 'Job Opportunity'}</p>
             {lead.company && (
               <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-600">
                 <Building2 size={10} className="shrink-0 text-gray-400" />
@@ -1885,12 +1902,17 @@ export default function PulsePage() {
           <div className="col-span-3 inline-flex flex-col items-center justify-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-center">
             <span className="text-[11px] font-bold text-gray-700">{revealCountsByLeadId[lead.id] ?? 0}</span>
             <span className="text-[8px] text-gray-400 leading-tight">reveals</span>
+            {(revealNamesByLeadId[lead.id]?.length ?? 0) > 0 && (
+              <span className="mt-0.5 w-full truncate text-[8px] text-gray-400 leading-tight" title={`Revealed by ${revealNamesByLeadId[lead.id].join(', ')}`}>
+                by {revealNamesByLeadId[lead.id].join(', ')}
+              </span>
+            )}
           </div>
           {isLeadRevealed ? (
             <div className="col-span-7 grid grid-cols-2 gap-1.5">
               <button
                 onClick={(e) => { e.stopPropagation(); void copyText(lead.posterEmail, 'Vendor email'); }}
-                className="inline-flex items-center justify-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100"
+                className={`inline-flex items-center justify-center gap-1 rounded-md border ${cardBorderClass} ${buttonToneClass} px-2 py-1.5 text-[10px] font-semibold text-blue-800 backdrop-blur-md transition`}
               >
                 <Copy size={11} />
                 Email
@@ -1906,7 +1928,7 @@ export default function PulsePage() {
                   setSelectedEmailDraftTab('pitching');
                   setShowGeneratedEmailDraft(true);
                 }}
-                className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+                className={`inline-flex items-center justify-center gap-1 rounded-md border ${cardBorderClass} ${buttonToneClass} px-2 py-1.5 text-[10px] font-semibold text-blue-800 backdrop-blur-md transition`}
               >
                 <Mail size={11} />
                 Draft
@@ -1916,7 +1938,7 @@ export default function PulsePage() {
             <button
               onClick={() => void handleRevealContact(lead)}
               disabled={processingLeadId === lead.id}
-              className="col-span-7 inline-flex items-center justify-center gap-1 rounded-md border border-blue-600 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60"
+              className={`col-span-7 inline-flex items-center justify-center gap-1 rounded-md border ${cardBorderClass} ${buttonToneClass} px-2.5 py-1.5 text-[10px] font-semibold text-blue-800 backdrop-blur-md transition disabled:opacity-60`}
             >
               {processingLeadId === lead.id ? '...' : `Reveal ${maskedEmailHint}`}
             </button>
@@ -2456,12 +2478,124 @@ export default function PulsePage() {
       });
     }
 
+    const nowMs = Date.now();
+    const last24HoursMs = 24 * 60 * 60 * 1000;
+    const NON_MEANINGFUL_TEXT = new Set([
+      'unknown',
+      'not specified',
+      'not available',
+      'n/a',
+      'na',
+      'none',
+      'null',
+      '-',
+      '--',
+      'tbd',
+    ]);
+    const isMeaningfulText = (value: string | null | undefined) => {
+      const normalized = (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (normalized.length === 0) return false;
+      if (NON_MEANINGFUL_TEXT.has(normalized)) return false;
+      if (normalized.includes('unknown')) return false;
+      if (normalized.includes('not specified')) return false;
+      if (normalized.includes('not available')) return false;
+      if (normalized.includes('tbd')) return false;
+      return true;
+    };
+    const hasValues = (value: string[] | null | undefined) => Array.isArray(value) && value.some((item) => isMeaningfulText(item));
+    const getPostedTimestamp = (row: SocialJobRow) => new Date(row.posted_at || row.created_at || 0).getTime();
+    const BREAKDOWN_QUALITY_KEYS = [
+      'experience_match',
+      'work_type_match',
+      'employment_type_match',
+      'hourly_rate_match',
+      'visa_match',
+      'location_match',
+      'skills_match',
+    ];
+    const hasFullyPopulatedFields = (row: SocialJobRow) => {
+      const breakdown = newestMatchByJobId.get(row.id)?.score_breakdown;
+      const hasRequiredBreakdownValues = BREAKDOWN_QUALITY_KEYS.every((key) => isMeaningfulText(getBreakdownJobValue(breakdown, key)));
+
+      const hasRole = isMeaningfulText(row.job_title) || isMeaningfulText(row.extracted_role_normalized);
+      const hasCompany = isMeaningfulText(row.company_name);
+      const hasPosterName = isMeaningfulText(row.posted_by_name);
+      const hasPosterEmail = /^\S+@\S+\.\S+$/.test((row.poster_email ?? '').trim());
+      const hasLocation = isMeaningfulText(row.location);
+      const hasEmploymentType = isMeaningfulText(row.employment_type);
+      const hasSkills = hasValues(row.core_skills) || hasValues(row.extracted_skills);
+      const hasExperience = row.years_experience != null || row.extracted_experience_years != null;
+      const hasVisa = hasValues(row.visa_types) || hasValues(row.extracted_visa_types);
+      const hasRate = row.hourly_rate_min != null
+        || row.hourly_rate_max != null
+        || row.extracted_hourly_rate_min != null
+        || row.extracted_hourly_rate_max != null
+        || isMeaningfulText(row.salary_range);
+
+      return hasRole
+        && hasCompany
+        && hasPosterName
+        && hasPosterEmail
+        && hasLocation
+        && hasEmploymentType
+        && hasSkills
+        && hasExperience
+        && hasVisa
+        && hasRate
+        && hasRequiredBreakdownValues;
+    };
+
+    const getCompletenessScore = (row: SocialJobRow) => {
+      let score = 0;
+      const breakdown = newestMatchByJobId.get(row.id)?.score_breakdown;
+
+      if (isMeaningfulText(row.job_title) || isMeaningfulText(row.extracted_role_normalized)) score += 3;
+      if (isMeaningfulText(row.company_name)) score += 2;
+      if (isMeaningfulText(row.posted_by_name)) score += 2;
+      if (/^\S+@\S+\.\S+$/.test((row.poster_email ?? '').trim())) score += 3;
+      if (isMeaningfulText(row.location)) score += 2;
+      if (isMeaningfulText(row.employment_type)) score += 2;
+      if (hasValues(row.core_skills) || hasValues(row.extracted_skills)) score += 3;
+      if (row.years_experience != null || row.extracted_experience_years != null) score += 2;
+      if (hasValues(row.visa_types) || hasValues(row.extracted_visa_types)) score += 2;
+      if (
+        row.hourly_rate_min != null
+        || row.hourly_rate_max != null
+        || row.extracted_hourly_rate_min != null
+        || row.extracted_hourly_rate_max != null
+        || isMeaningfulText(row.salary_range)
+      ) score += 2;
+
+      for (const key of BREAKDOWN_QUALITY_KEYS) {
+        if (isMeaningfulText(getBreakdownJobValue(breakdown, key))) score += 2;
+      }
+
+      return score;
+    };
+
+    const isPriorityComplete24hLead = (row: SocialJobRow) => {
+      const postedTs = getPostedTimestamp(row);
+      if (!Number.isFinite(postedTs) || postedTs <= 0) return false;
+      const ageMs = nowMs - postedTs;
+      return ageMs >= 0 && ageMs <= last24HoursMs && hasFullyPopulatedFields(row);
+    };
+
     const finalFiltered = socialData
       .filter((row) => newestMatchByJobId.has(row.id) && (row.poster_email ?? '').trim())
       .sort((a, b) => {
+        const aPriority = isPriorityComplete24hLead(a);
+        const bPriority = isPriorityComplete24hLead(b);
+        if (aPriority !== bPriority) return aPriority ? -1 : 1;
+
+        const aCompleteness = getCompletenessScore(a);
+        const bCompleteness = getCompletenessScore(b);
+        if (aCompleteness !== bCompleteness) return bCompleteness - aCompleteness;
+
         const aMatchTs = new Date(newestMatchByJobId.get(a.id)?.created_at ?? 0).getTime();
         const bMatchTs = new Date(newestMatchByJobId.get(b.id)?.created_at ?? 0).getTime();
-        return bMatchTs - aMatchTs;
+        if (bMatchTs !== aMatchTs) return bMatchTs - aMatchTs;
+
+        return getPostedTimestamp(b) - getPostedTimestamp(a);
       })
       .map((row) => {
         const matchedAt = newestMatchByJobId.get(row.id)?.created_at;
@@ -2518,8 +2652,23 @@ export default function PulsePage() {
         }
         setRevealCountsByLeadId(counts);
       }
+
+      const { data: revealNameRows } = await supabase.rpc('get_pulse_reveal_names', {
+        p_lead_ids: leadIds,
+      });
+      if (Array.isArray(revealNameRows)) {
+        const namesByLead: Record<string, string[]> = {};
+        for (const row of revealNameRows as PulseRevealNamesRow[]) {
+          const names = Array.isArray(row.revealer_names)
+            ? row.revealer_names.filter((name) => typeof name === 'string' && name.trim().length > 0)
+            : [];
+          namesByLead[row.lead_id] = names;
+        }
+        setRevealNamesByLeadId(namesByLead);
+      }
     } else {
       setRevealCountsByLeadId({});
+      setRevealNamesByLeadId({});
     }
 
     setFeedLoading(false);
@@ -3113,6 +3262,19 @@ export default function PulsePage() {
           ...prev,
           [lead.id]: Math.max(1, (prev[lead.id] ?? 0) + 1),
         }));
+        const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
+          || user?.email?.split('@')[0]
+          || 'You';
+        setRevealNamesByLeadId((prev) => {
+          const existing = prev[lead.id] ?? [];
+          if (existing.some((name) => name.toLowerCase() === signedInUserName.toLowerCase())) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [lead.id]: [signedInUserName, ...existing].slice(0, 3),
+          };
+        });
         void persistLeadAction(lead.id, 'revealed');
         showToast(`$${REVEAL_CONTACT_COST.toFixed(2)} credits consumed for reveal`, 'success');
       }
