@@ -2723,9 +2723,9 @@ export default function ProfilesPage() {
                 )}
               </div>
 
-              <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[15%_85%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
-                <aside className={`sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar ${isMobileViewport ? 'border-r-0 bg-transparent px-0 py-0' : 'border-r border-gray-200 bg-white px-1 py-2'}`}>
-                  <div className="space-y-1 pr-0.5">
+              <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[10%_90%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
+                <aside className="sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar border-r-0 bg-transparent px-0 py-0">
+                  <div className="space-y-1 pr-0">
                     {[...PROFILE_CATEGORY_TABS]
                       .map((category) => {
                         const categoryProfiles = jobsRankedLeaderboard.filter((p) => isPersonaInCategory(p, category.id));
@@ -2747,28 +2747,26 @@ export default function ProfilesPage() {
                             key={category.id}
                             type="button"
                             onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
-                            className={`w-full rounded-md border transition ${isMobileViewport
-                              ? `px-1.5 py-2 text-center ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`
-                              : `px-1.5 py-2 text-left ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-transparent bg-transparent text-gray-600 hover:bg-white/80 hover:text-gray-800'}`}`}
+                            className={`w-full rounded-md border ${isMobileViewport ? 'px-1.5 py-1.5' : 'px-0.5 py-1'} text-center transition ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
                           >
                             {isMobileViewport ? (
-                              <div className="flex flex-col items-center gap-1">
-                                <CategoryIcon size={15} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
+                              <div className="flex flex-col items-center gap-0.5">
+                                <CategoryIcon size={13} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
                                 <span className={`text-[8px] font-semibold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
-                                <div className={`mt-0.5 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
+                                <div className={`mt-0 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
                                   <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />{vendorsCount}</span>
                                   <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />{jobsCount}</span>
                                 </div>
                               </div>
                             ) : (
-                              <div className="grid grid-cols-[22px_1fr] grid-rows-2 gap-x-1.5 gap-y-0.5">
-                                <span className={`row-span-2 inline-flex h-full min-h-[34px] w-[22px] shrink-0 items-center justify-center ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}>
-                                  <CategoryIcon size={18} />
-                                </span>
-                                <span className={`min-w-0 self-end truncate text-[11px] font-bold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
-                                <div className={`min-w-0 self-start flex items-center gap-1.5 text-[8px] font-semibold ${isSelected ? 'text-gray-600' : 'text-gray-500'}`}>
-                                  <span className={`inline-flex items-center gap-0.5 whitespace-nowrap ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />Vendors {vendorsCount}</span>
-                                  <span className={`inline-flex items-center gap-0.5 whitespace-nowrap ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />Jobs {jobsCount}</span>
+                              <div className="flex flex-col items-center gap-0.5">
+                                <div className="inline-flex items-center justify-center gap-1">
+                                  <CategoryIcon size={13} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
+                                  <span className={`text-[9px] font-semibold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
+                                </div>
+                                <div className={`mt-0 flex flex-col items-center gap-0.5 text-[9px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
+                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />{vendorsCount}</span>
+                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />{jobsCount}</span>
                                 </div>
                               </div>
                             )}

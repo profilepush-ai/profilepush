@@ -238,6 +238,7 @@ type ProfileCategoryTab = {
 
 type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'queued';
 type LeadActionType = 'revealed' | 'breakdown';
+type EmailDraftTabId = 'pitching' | 'requestDetails';
 
 type PulseLeadActionRow = {
   lead_id: string;
@@ -248,6 +249,7 @@ const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
 const TOP_PROFILES_PAGE_SIZE = 10;
 const MATCHES_PAGE_SIZE = 5;
+const DESKTOP_MATCHES_PAGE_SIZE = 12;
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
   { id: '24h', label: 'Last 24 hours', hours: 24 },
@@ -829,13 +831,17 @@ export default function PulsePage() {
   const [profileStatsByRole, setProfileStatsByRole] = useState<Record<string, ProfileStats>>({});
   const [expandedMobileProfileCardIds, setExpandedMobileProfileCardIds] = useState<Set<string>>(new Set());
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
-  const [generatedEmailDraft, setGeneratedEmailDraft] = useState('');
+  const [generatedEmailDrafts, setGeneratedEmailDrafts] = useState<{ pitching: string; requestDetails: string }>({
+    pitching: '',
+    requestDetails: '',
+  });
+  const [selectedEmailDraftTab, setSelectedEmailDraftTab] = useState<EmailDraftTabId>('pitching');
   const [showGeneratedEmailDraft, setShowGeneratedEmailDraft] = useState(false);
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
   const [visibleMatchesCount, setVisibleMatchesCount] = useState(MATCHES_PAGE_SIZE);
-  const [desktopRecentVisibleCount, setDesktopRecentVisibleCount] = useState(MATCHES_PAGE_SIZE);
-  const [desktopRevealedVisibleCount, setDesktopRevealedVisibleCount] = useState(MATCHES_PAGE_SIZE);
+  const [desktopRecentVisibleCount, setDesktopRecentVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
+  const [desktopRevealedVisibleCount, setDesktopRevealedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [revealedLeadIds, setRevealedLeadIds] = useState<Set<string>>(new Set());
   const [breakdownChargedLeadIds, setBreakdownChargedLeadIds] = useState<Set<string>>(new Set());
   const [queuedLeadIds, setQueuedLeadIds] = useState<Set<string>>(new Set());
@@ -850,6 +856,7 @@ export default function PulsePage() {
   const mobileScrollUpAccumRef = useRef(0);
   const mobileScrollDownAccumRef = useRef(0);
   const mobileCollapseLockUntilRef = useRef(0);
+  const desktopMatchesScrollRef = useRef<HTMLDivElement | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -1147,15 +1154,42 @@ export default function PulsePage() {
 
   const handleDesktopRecentScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopRecent, () => {
-      setDesktopRecentVisibleCount((prev) => Math.min(recentVisibleFeed.length, prev + MATCHES_PAGE_SIZE));
+      setDesktopRecentVisibleCount((prev) => Math.min(recentVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
     });
   }, [canLoadMoreDesktopRecent, maybeLoadMoreMatches, recentVisibleFeed.length]);
 
   const handleDesktopRevealedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopRevealed, () => {
-      setDesktopRevealedVisibleCount((prev) => Math.min(revealedVisibleFeed.length, prev + MATCHES_PAGE_SIZE));
+      setDesktopRevealedVisibleCount((prev) => Math.min(revealedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
     });
   }, [canLoadMoreDesktopRevealed, maybeLoadMoreMatches, revealedVisibleFeed.length]);
+
+  useEffect(() => {
+    if (isMobileViewport) return;
+    const container = desktopMatchesScrollRef.current;
+    if (!container) return;
+
+    const hasOverflow = container.scrollHeight > container.clientHeight + 1;
+    if (hasOverflow) return;
+
+    if (selectedMatchesTab === 'revealed' && canLoadMoreDesktopRevealed) {
+      setDesktopRevealedVisibleCount((prev) => Math.min(revealedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
+      return;
+    }
+
+    if (selectedMatchesTab === 'queued' && canLoadMoreDesktopRecent) {
+      setDesktopRecentVisibleCount((prev) => Math.min(recentVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
+    }
+  }, [
+    canLoadMoreDesktopRecent,
+    canLoadMoreDesktopRevealed,
+    isMobileViewport,
+    recentVisibleFeed.length,
+    revealedVisibleFeed.length,
+    selectedMatchesTab,
+    visibleDesktopRecentFeed.length,
+    visibleDesktopRevealedFeed.length,
+  ]);
 
   function getScoreVisual(score: number | null) {
     const rounded = typeof score === 'number' && Number.isFinite(score) && score > 0
@@ -1280,6 +1314,7 @@ export default function PulsePage() {
 
   const renderLeadCards = (leads: SocialLead[]) => leads.map((lead, idx) => {
     const cardClass = CARD_PALETTE[idx % CARD_PALETTE.length];
+    const isLeadRevealed = revealedLeadIds.has(lead.id);
     const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
       lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
       undefined,
@@ -1313,6 +1348,8 @@ export default function PulsePage() {
       }
     }
 
+    const isExpandedBreakdownVisible = isLeadRevealed || isInlineBreakdownExpanded;
+
     const maskedEmailHint = (() => {
       const email = (lead.posterEmail || '').trim();
       if (!email) return '***@';
@@ -1329,11 +1366,11 @@ export default function PulsePage() {
             {lead.company && (
               <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-600">
                 <Building2 size={10} className="shrink-0 text-gray-400" />
-                {revealedLeadIds.has(lead.id) ? lead.company : `${lead.company.slice(0, 3)}***`}
+                {isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}
               </div>
             )}
             <div className="mt-0.5 text-[10px] text-gray-500">
-              <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
+              <span>{isLeadRevealed ? lead.posterName : maskPosterName(lead.posterName)}</span>
               <span> • </span>
               <span>{lead.postedAgo}</span>
             </div>
@@ -1345,49 +1382,83 @@ export default function PulsePage() {
           )}
         </div>
         {inlineBreakdownItems.length > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              setExpandedInlineBreakdownLeadIds((prev) => {
-                const next = new Set(prev);
-                if (next.has(lead.id)) next.delete(lead.id);
-                else next.add(lead.id);
-                return next;
-              });
-            }}
-            className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left relative group focus:outline-none"
-          >
-            <table className="w-full table-fixed border-collapse text-left text-[10px]">
-              <tbody>
-                {(isInlineBreakdownExpanded ? inlineBreakdownItems : collapsedInlineBreakdownItems).map((item, idx) => (
-                  <tr key={item.key}>
-                    <td className={`border-b border-gray-100 bg-white px-2 py-1 font-semibold break-words whitespace-normal transition-all duration-200 ${!isInlineBreakdownExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-900'}`}>{formatBreakdownFieldName(item.key)}</td>
-                    <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isInlineBreakdownExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{item.detail?.job_value || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!isInlineBreakdownExpanded && (
-              <div className="absolute bottom-0 left-0 right-0 h-7 flex items-center justify-center pointer-events-none">
-                <span className="rounded-full bg-white/90 border border-gray-200 p-1 shadow-sm">
-                  <Eye size={10} className="text-gray-400" />
-                </span>
-              </div>
-            )}
-          </button>
+          isLeadRevealed ? (
+            <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left">
+              <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                <tbody>
+                  {inlineBreakdownItems.map((item) => (
+                    <tr key={item.key}>
+                      <td className="border-b border-gray-100 bg-white px-2 py-1 font-semibold break-words whitespace-normal text-gray-900">{formatBreakdownFieldName(item.key)}</td>
+                      <td className="border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal text-gray-700">{item.detail?.job_value || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setExpandedInlineBreakdownLeadIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(lead.id)) next.delete(lead.id);
+                  else next.add(lead.id);
+                  return next;
+                });
+              }}
+              className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left relative group focus:outline-none"
+            >
+              <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                <tbody>
+                  {(isExpandedBreakdownVisible ? inlineBreakdownItems : collapsedInlineBreakdownItems).map((item, idx) => (
+                    <tr key={item.key}>
+                      <td className={`border-b border-gray-100 bg-white px-2 py-1 font-semibold break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-900'}`}>{formatBreakdownFieldName(item.key)}</td>
+                      <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{item.detail?.job_value || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!isExpandedBreakdownVisible && (
+                <div className="absolute bottom-0 left-0 right-0 h-7 flex items-center justify-center pointer-events-none">
+                  <span className="rounded-full bg-white/90 border border-gray-200 p-1 shadow-sm">
+                    <Eye size={10} className="text-gray-400" />
+                  </span>
+                </div>
+              )}
+            </button>
+          )
         )}
         <div className="mt-1.5 grid grid-cols-10 gap-1.5">
           <div className="col-span-3 inline-flex flex-col items-center justify-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-center">
             <span className="text-[11px] font-bold text-gray-700">{revealCountsByLeadId[lead.id] ?? 0}</span>
             <span className="text-[8px] text-gray-400 leading-tight">reveals</span>
           </div>
-          {revealedLeadIds.has(lead.id) ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
-              className="col-span-7 inline-flex items-center justify-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200"
-            >
-              Email
-            </button>
+          {isLeadRevealed ? (
+            <div className="col-span-7 grid grid-cols-2 gap-1.5">
+              <button
+                onClick={(e) => { e.stopPropagation(); void copyText(lead.posterEmail, 'Vendor email'); }}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100"
+              >
+                <Copy size={11} />
+                Email
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedLead(lead);
+                  setGeneratedEmailDrafts({
+                    pitching: generateEmailDraft(lead),
+                    requestDetails: generateRequestDetailsEmailDraft(lead),
+                  });
+                  setSelectedEmailDraftTab('pitching');
+                  setShowGeneratedEmailDraft(true);
+                }}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                <Mail size={11} />
+                Draft
+              </button>
+            </div>
           ) : (
             <button
               onClick={() => void handleRevealContact(lead)}
@@ -1973,8 +2044,8 @@ export default function PulsePage() {
 
     setFeed(finalFiltered);
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
-    setDesktopRecentVisibleCount(MATCHES_PAGE_SIZE);
-    setDesktopRevealedVisibleCount(MATCHES_PAGE_SIZE);
+    setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+    setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
 
     if (finalFiltered.length > 0) {
       const leadIds = finalFiltered.map((l) => l.id);
@@ -2006,8 +2077,8 @@ export default function PulsePage() {
 
   useEffect(() => {
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
-    setDesktopRecentVisibleCount(MATCHES_PAGE_SIZE);
-    setDesktopRevealedVisibleCount(MATCHES_PAGE_SIZE);
+    setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+    setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
   }, [activePersona?.target_role, selectedCategoryId, selectedMatchesTab, selectedTechStacks]);
 
   const ensureBenchProfileForWatchedRole = useCallback(async (persona: PulsePersona) => {
@@ -2222,13 +2293,53 @@ export default function PulsePage() {
     ].join('\n');
   }, [activePersona, user?.email, user?.user_metadata?.full_name]);
 
+  const generateRequestDetailsEmailDraft = useCallback((lead: SocialLead) => {
+    const breakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
+      lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+      undefined,
+      {
+        employment_type: lead.employmentType || null,
+        work_type: null,
+      },
+    ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
+
+    const missingFields = breakdownItems
+      .filter((item) => {
+        const value = (item.detail?.job_value ?? '').trim().toLowerCase();
+        return !value || value === '-' || value === 'unknown' || value === 'not specified' || value === 'n/a';
+      })
+      .map((item) => formatBreakdownFieldName(item.key));
+
+    const uniqueMissingFields = Array.from(new Set(missingFields));
+    const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
+      || user?.email?.split('@')[0]
+      || 'Your Name';
+
+    const detailsLine = uniqueMissingFields.length > 0
+      ? `Could you please share more details on: ${uniqueMissingFields.join(', ')}?`
+      : 'Could you please share a few additional details (experience, work type, visa, location, and rate expectations) so I can shortlist the best-fit profile?';
+
+    return [
+      `Hi ${lead.posterName || 'there'},`,
+      '',
+      `Thanks for posting the ${lead.title || 'role'}${lead.company ? ` at ${lead.company}` : ''}.`,
+      detailsLine,
+      'Once I have that, I can send a tightly matched profile right away.',
+      '',
+      'Thanks,',
+      signedInUserName,
+    ].join('\n');
+  }, [user?.email, user?.user_metadata?.full_name]);
+
   useEffect(() => {
     if (!selectedLead) {
-      setGeneratedEmailDraft('');
+      setGeneratedEmailDrafts({ pitching: '', requestDetails: '' });
+      setSelectedEmailDraftTab('pitching');
       setShowGeneratedEmailDraft(false);
       return;
     }
-    setGeneratedEmailDraft('');
+    setGeneratedEmailDrafts({ pitching: '', requestDetails: '' });
+    setSelectedEmailDraftTab('pitching');
     setShowGeneratedEmailDraft(false);
   }, [selectedLead?.id]);
 
@@ -2694,9 +2805,9 @@ export default function PulsePage() {
                 )}
               </div>
 
-              <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[15%_85%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
-                <aside className={`sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar ${isMobileViewport ? 'border-r-0 bg-transparent px-0 py-0' : 'border-r border-gray-200 bg-white px-1 py-2'}`}>
-                  <div className="space-y-1 pr-0.5">
+              <div className={`grid min-h-0 flex-1 ${isMobileViewport ? 'grid-cols-[16%_84%]' : 'grid-cols-[10%_90%]'} gap-0 overflow-hidden rounded-lg bg-white`}>
+                <aside className="sticky top-0 row-span-2 min-w-0 h-full overflow-y-auto slim-scrollbar border-r-0 bg-transparent px-0 py-0">
+                  <div className="space-y-1 pr-0">
                     {[...PROFILE_CATEGORY_TABS]
                       .map((category) => {
                         const categoryProfiles = jobsRankedLeaderboard.filter((p) => isPersonaInCategory(p, category.id));
@@ -2718,28 +2829,26 @@ export default function PulsePage() {
                             key={category.id}
                             type="button"
                             onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
-                            className={`w-full rounded-md border transition ${isMobileViewport
-                              ? `px-1.5 py-2 text-center ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`
-                              : `px-1.5 py-2 text-left ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-transparent bg-transparent text-gray-600 hover:bg-white/80 hover:text-gray-800'}`}`}
+                            className={`w-full rounded-md border ${isMobileViewport ? 'px-1.5 py-1.5' : 'px-0.5 py-1'} text-center transition ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
                           >
                             {isMobileViewport ? (
-                              <div className="flex flex-col items-center gap-1">
-                                <CategoryIcon size={15} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
+                              <div className="flex flex-col items-center gap-0.5">
+                                <CategoryIcon size={13} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
                                 <span className={`text-[8px] font-semibold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
-                                <div className={`mt-0.5 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
+                                <div className={`mt-0 flex flex-col items-center gap-0.5 text-[8px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
                                   <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />{vendorsCount}</span>
                                   <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />{jobsCount}</span>
                                 </div>
                               </div>
                             ) : (
-                              <div className="grid grid-cols-[22px_1fr] grid-rows-2 gap-x-1.5 gap-y-0.5">
-                                <span className={`row-span-2 inline-flex h-full min-h-[34px] w-[22px] shrink-0 items-center justify-center ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}>
-                                  <CategoryIcon size={18} />
-                                </span>
-                                <span className={`min-w-0 self-end truncate text-[11px] font-bold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
-                                <div className={`min-w-0 self-start flex items-center gap-1.5 text-[8px] font-semibold ${isSelected ? 'text-gray-600' : 'text-gray-500'}`}>
-                                  <span className={`inline-flex items-center gap-0.5 whitespace-nowrap ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />Vendors {vendorsCount}</span>
-                                  <span className={`inline-flex items-center gap-0.5 whitespace-nowrap ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />Jobs {jobsCount}</span>
+                              <div className="flex flex-col items-center gap-0.5">
+                                <div className="inline-flex items-center justify-center gap-1">
+                                  <CategoryIcon size={13} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
+                                  <span className={`text-[9px] font-semibold leading-tight ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{category.label}</span>
+                                </div>
+                                <div className={`mt-0 flex flex-col items-center gap-0.5 text-[9px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
+                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={8} />{vendorsCount}</span>
+                                  <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={8} />{jobsCount}</span>
                                 </div>
                               </div>
                             )}
@@ -3069,6 +3178,31 @@ export default function PulsePage() {
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-amber-50/80 px-2 py-1">
                       <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">Jobs</span>
                     </div>
+                    <div className="ml-auto grid grid-cols-2 gap-1">
+                      {([
+                        { id: 'queued', label: 'Recent' },
+                        { id: 'revealed', label: 'Revealed' },
+                      ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
+                        const isSelected = selectedMatchesTab === tab.id;
+                        const count = matchesTabCounts[tab.id];
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMatchesTab(tab.id);
+                              setVisibleMatchesCount(MATCHES_PAGE_SIZE);
+                              if (tab.id === 'revealed') setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+                              if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+                            }}
+                            className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-amber-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                          >
+                            <span>{tab.label}</span>
+                            <span className={`text-[9px] font-bold ${isSelected ? 'text-white/90' : 'text-gray-500'}`}>{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -3094,31 +3228,29 @@ export default function PulsePage() {
                         )}
                       </div>
                     ) : (
-                      <div className="grid min-h-0 h-full grid-cols-2 gap-2 p-1">
-                        <div className="min-h-0 rounded-md bg-transparent">
-                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Recent ({matchesTabCounts.queued})</div>
-                          <div className="min-h-0 h-[calc(100%-24px)] overflow-y-auto p-1.5 slim-scrollbar" onScroll={handleDesktopRecentScroll}>
-                            {recentVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No recent jobs.</div>
-                            ) : (
-                              <div className="space-y-1.5">
-                                {renderLeadCards(visibleDesktopRecentFeed)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="min-h-0 rounded-md bg-transparent">
-                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Revealed ({matchesTabCounts.revealed})</div>
-                          <div className="min-h-0 h-[calc(100%-24px)] overflow-y-auto p-1.5 slim-scrollbar" onScroll={handleDesktopRevealedScroll}>
-                            {revealedVisibleFeed.length === 0 ? (
+                      <div className="min-h-0 h-full rounded-md bg-transparent p-1">
+                        <div
+                          ref={desktopMatchesScrollRef}
+                          className="min-h-0 h-full overflow-y-auto p-1.5 slim-scrollbar"
+                          onScroll={selectedMatchesTab === 'revealed' ? handleDesktopRevealedScroll : handleDesktopRecentScroll}
+                        >
+                          {selectedMatchesTab === 'revealed' ? (
+                            revealedVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No revealed jobs yet.</div>
                             ) : (
-                              <div className="space-y-1.5">
+                              <div className="grid grid-cols-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopRevealedFeed)}
                               </div>
-                            )}
-                          </div>
+                            )
+                          ) : (
+                            recentVisibleFeed.length === 0 ? (
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No recent jobs.</div>
+                            ) : (
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {renderLeadCards(visibleDesktopRecentFeed)}
+                              </div>
+                            )
+                          )}
                         </div>
                       </div>
                     )
@@ -3198,8 +3330,11 @@ export default function PulsePage() {
 
               <button
                 onClick={() => {
-                  const draft = generateEmailDraft(selectedLead);
-                  setGeneratedEmailDraft(draft);
+                  setGeneratedEmailDrafts({
+                    pitching: generateEmailDraft(selectedLead),
+                    requestDetails: generateRequestDetailsEmailDraft(selectedLead),
+                  });
+                  setSelectedEmailDraftTab('pitching');
                   setShowGeneratedEmailDraft(true);
                 }}
                 className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-3 sm:py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -3232,18 +3367,43 @@ export default function PulsePage() {
             {showGeneratedEmailDraft && (
               <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-2.5">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold text-gray-700">Generated Email Draft</p>
+                  <div className="grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEmailDraftTab('pitching')}
+                      className={`rounded px-2 py-1 text-[10px] font-semibold transition ${selectedEmailDraftTab === 'pitching' ? 'bg-blue-600 text-white' : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      Pitching Email
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEmailDraftTab('requestDetails')}
+                      className={`rounded px-2 py-1 text-[10px] font-semibold transition ${selectedEmailDraftTab === 'requestDetails' ? 'bg-blue-600 text-white' : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      Request Details
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => void copyText(generatedEmailDraft, 'Email draft')}
+                    onClick={() => void copyText(
+                      selectedEmailDraftTab === 'pitching' ? generatedEmailDrafts.pitching : generatedEmailDrafts.requestDetails,
+                      selectedEmailDraftTab === 'pitching' ? 'Pitching email draft' : 'Request details email draft',
+                    )}
                     className="rounded border border-gray-300 bg-white px-2 py-1 text-[10px] font-semibold text-gray-700 hover:bg-gray-50"
                   >
                     Copy Draft
                   </button>
                 </div>
                 <textarea
-                  value={generatedEmailDraft}
-                  onChange={(e) => setGeneratedEmailDraft(e.target.value)}
+                  value={selectedEmailDraftTab === 'pitching' ? generatedEmailDrafts.pitching : generatedEmailDrafts.requestDetails}
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    setGeneratedEmailDrafts((prev) => (
+                      selectedEmailDraftTab === 'pitching'
+                        ? { ...prev, pitching: nextValue }
+                        : { ...prev, requestDetails: nextValue }
+                    ));
+                  }}
                   className="h-48 w-full resize-y rounded-md border border-gray-300 bg-white p-2 text-[11px] leading-relaxed text-gray-700 outline-none focus:border-blue-500"
                 />
               </div>
