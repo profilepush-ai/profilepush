@@ -52,6 +52,7 @@ function normalizeSocialJobItems(items: Array<Record<string, unknown>>) {
     rows.push({
       post_id: postId,
       platform,
+      group_id: asString(item.group_id ?? item.groupId ?? item.source_group_id ?? item.sourceGroupId ?? item.group ?? item.community_id).trim(),
       post_content: postContent,
       posted_by_name: asString(item.posted_by_name ?? item.poster_name ?? item.recruiter_name),
       posted_at: asIsoOrNull(item.posted_at ?? item.created_at ?? item.timestamp),
