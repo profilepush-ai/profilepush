@@ -1049,7 +1049,7 @@ export default function PulsePage() {
     setView(searchParams.get('view') === 'feed' ? 'feed' : 'board');
   }, [searchParams]);
 
-  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('7d');
+  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('3d');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
@@ -1103,6 +1103,11 @@ export default function PulsePage() {
   const mobileScrollUpAccumRef = useRef(0);
   const mobileScrollDownAccumRef = useRef(0);
   const mobileCollapseLockUntilRef = useRef(0);
+  const mobileTouchStartXRef = useRef<number | null>(null);
+  const mobileTouchStartYRef = useRef<number | null>(null);
+  const mobileSwipeDeltaXRef = useRef(0);
+  const mobileSwipeDeltaYRef = useRef(0);
+  const mobileHorizontalSwipeRef = useRef(false);
   const mobilePullStartYRef = useRef<number | null>(null);
   const mobilePullArmedRef = useRef(false);
   const appliedSearchParamQueryRef = useRef<string | null>(null);
@@ -1111,7 +1116,8 @@ export default function PulsePage() {
   const desktopMatchesScrollRef = useRef<HTMLDivElement | null>(null);
   const pulseRowsCacheRef = useRef<PulseSocialFeedRpcRow[] | null>(null);
   const pulseRowsCacheAtRef = useRef(0);
-  const pulseRowsRequestRef = useRef<Promise<PulseSocialFeedRpcRow[]> | null>(null);
+  const pulseRowsCacheRangeHoursRef = useRef<number | null>(null);
+  const pulseRowsRequestRef = useRef<{ hours: number; request: Promise<PulseSocialFeedRpcRow[]> } | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -1129,7 +1135,7 @@ export default function PulsePage() {
   }, [leaderboard]);
 
   const selectedProfileRange = useMemo(
-    () => PROFILE_RANGE_OPTIONS.find((item) => item.id === profileRangeId) ?? PROFILE_RANGE_OPTIONS[2],
+    () => PROFILE_RANGE_OPTIONS.find((item) => item.id === profileRangeId) ?? PROFILE_RANGE_OPTIONS[1],
     [profileRangeId],
   );
 
@@ -1509,10 +1515,14 @@ export default function PulsePage() {
     return Array.from(byKey.values());
   }, [scopedFeed]);
 
-  const recentVisibleFeed = useMemo(
-    () => dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id)),
-    [dedupedScopedFeed, revealedLeadIds],
-  );
+  const recentVisibleFeed = useMemo(() => {
+    const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id));
+    return recent.sort((a, b) => {
+      const aTs = new Date(a.postedAt).getTime();
+      const bTs = new Date(b.postedAt).getTime();
+      return bTs - aTs;
+    });
+  }, [dedupedScopedFeed, revealedLeadIds]);
 
   const revealedVisibleFeed = useMemo(() => {
     const revealed = dedupedScopedFeed.filter((lead) => revealedLeadIds.has(lead.id));
@@ -1875,17 +1885,18 @@ export default function PulsePage() {
       <div key={lead.id} className={`mb-1.5 break-inside-avoid rounded-lg border-2 px-3 py-2.5 ${cardClass}`}>
         <div className="flex items-start justify-between gap-1.5">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold leading-snug text-blue-800">{lead.title || 'Job Opportunity'}</p>
-            {lead.company && (
-              <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-600">
-                <Building2 size={10} className="shrink-0 text-gray-400" />
-                {isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}
-              </div>
-            )}
-            <div className="mt-0.5 text-[10px] text-gray-500">
-              <span>{isLeadRevealed ? lead.posterName : maskPosterName(lead.posterName)}</span>
-              <span> • </span>
+            <p className="text-[12px] font-semibold leading-snug text-blue-800">{lead.title || 'Job Opportunity'}</p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-gray-500">
               <span>{lead.postedAgo}</span>
+              <span>•</span>
+              <span>{isLeadRevealed ? `Posted by ${lead.posterName}` : maskPosterName(lead.posterName)}</span>
+              {lead.company && (
+                <>
+                  <span>•</span>
+                  <Building2 size={10} className="shrink-0 text-gray-400" />
+                  <span className="text-gray-600">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
+                </>
+              )}
             </div>
             {selectedMatchesTab === 'revealed' && revealedAtByLeadId[lead.id] && (
               <div className="mt-0.5 text-[10px] font-medium text-emerald-700">
@@ -2265,8 +2276,8 @@ export default function PulsePage() {
     void loadInitial();
   }, [loadInitial]);
 
-  const loadGlobalPulseRows = useCallback(async () => {
-    const since = '1970-01-01T00:00:00.000Z';
+  const loadGlobalPulseRows = useCallback(async (rangeHours: number) => {
+    const since = new Date(Date.now() - (rangeHours * 60 * 60 * 1000)).toISOString();
 
     // Preferred path: global SECURITY DEFINER RPC (all-account feed).
     const rpcResult = await supabase.rpc('get_pulse_social_feed', {
@@ -2343,6 +2354,7 @@ export default function PulsePage() {
       .from('radar_match_results')
       .select('profile_id, job_source, job_id, created_at, final_average_score, score_breakdown')
       .eq('job_source', 'social')
+      .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(5000);
 
@@ -2439,30 +2451,32 @@ export default function PulsePage() {
     });
   }, []);
 
-  const getGlobalPulseRows = useCallback(async (forceRefresh = false) => {
+  const getGlobalPulseRows = useCallback(async (rangeHours: number, forceRefresh = false) => {
     const now = Date.now();
     const hasFreshCache = pulseRowsCacheRef.current
+      && pulseRowsCacheRangeHoursRef.current === rangeHours
       && (now - pulseRowsCacheAtRef.current) <= PULSE_ROWS_CACHE_TTL_MS;
 
     if (!forceRefresh && hasFreshCache) {
       return pulseRowsCacheRef.current;
     }
 
-    if (!forceRefresh && pulseRowsRequestRef.current) {
-      return pulseRowsRequestRef.current;
+    if (!forceRefresh && pulseRowsRequestRef.current && pulseRowsRequestRef.current.hours === rangeHours) {
+      return pulseRowsRequestRef.current.request;
     }
 
-    const request = loadGlobalPulseRows()
+    const request = loadGlobalPulseRows(rangeHours)
       .then((rows) => {
         pulseRowsCacheRef.current = rows;
         pulseRowsCacheAtRef.current = Date.now();
+        pulseRowsCacheRangeHoursRef.current = rangeHours;
         return rows;
       })
       .finally(() => {
         pulseRowsRequestRef.current = null;
       });
 
-    pulseRowsRequestRef.current = request;
+    pulseRowsRequestRef.current = { hours: rangeHours, request };
     return request;
   }, [loadGlobalPulseRows]);
 
@@ -2475,7 +2489,7 @@ export default function PulsePage() {
     setProfileStatsLoading(true);
     let rpcRows: PulseSocialFeedRpcRow[] = [];
     try {
-      rpcRows = rowsOverride ?? await getGlobalPulseRows();
+      rpcRows = rowsOverride ?? await getGlobalPulseRows(selectedProfileRange.hours);
     } catch {
       showToast('Could not load profile stats', 'error');
       setProfileStatsLoading(false);
@@ -2543,7 +2557,7 @@ export default function PulsePage() {
 
     setProfileStatsByRole(stats);
     setProfileStatsLoading(false);
-  }, [getGlobalPulseRows, showToast, sortedLeaderboard, zeroStats]);
+  }, [getGlobalPulseRows, selectedProfileRange.hours, showToast, sortedLeaderboard, zeroStats]);
 
   useEffect(() => {
     void loadProfileStats();
@@ -2557,7 +2571,7 @@ export default function PulsePage() {
     setFeedLoading(true);
     let rpcRows: PulseSocialFeedRpcRow[] = [];
     try {
-      rpcRows = rowsOverride ?? await getGlobalPulseRows();
+      rpcRows = rowsOverride ?? await getGlobalPulseRows(selectedProfileRange.hours);
     } catch {
       showToast('Failed to load social matches', 'error');
       setFeedLoading(false);
@@ -2810,7 +2824,7 @@ export default function PulsePage() {
     }
 
     setFeedLoading(false);
-  }, [getGlobalPulseRows, showToast]);
+  }, [getGlobalPulseRows, selectedProfileRange.hours, showToast]);
 
   useEffect(() => {
     void loadFeed(null);
@@ -2943,7 +2957,7 @@ export default function PulsePage() {
     setRefreshing(true);
     let rows: PulseSocialFeedRpcRow[] = [];
     try {
-      rows = await getGlobalPulseRows(true);
+      rows = await getGlobalPulseRows(selectedProfileRange.hours, true);
       await Promise.all([loadFeed(null, [], rows), loadProfileStats(rows)]);
     } catch {
       showToast('Failed to refresh Pulse data', 'error');
@@ -2953,7 +2967,7 @@ export default function PulsePage() {
     if (latest) setLastMatchAt(latest);
 
     setRefreshing(false);
-  }, [getGlobalPulseRows, loadFeed, loadProfileStats, showToast]);
+  }, [getGlobalPulseRows, loadFeed, loadProfileStats, selectedProfileRange.hours, showToast]);
 
   const triggerMobilePullToRefresh = useCallback(async () => {
     if (isPullRefreshing || profileStatsLoading || refreshing || feedLoading) return;
@@ -2969,26 +2983,57 @@ export default function PulsePage() {
   }, [feedLoading, isPullRefreshing, profileStatsLoading, refreshing, refreshFeed]);
 
   const handleMobilePullStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    if (!isMobileViewport || event.currentTarget.scrollTop > 0 || isPullRefreshing) {
-      mobilePullStartYRef.current = null;
+    if (!isMobileViewport || isPullRefreshing) {
       return;
     }
-    mobilePullStartYRef.current = event.touches[0]?.clientY ?? null;
+
+    const startX = event.touches[0]?.clientX ?? null;
+    const startY = event.touches[0]?.clientY ?? null;
+    mobileTouchStartXRef.current = startX;
+    mobileTouchStartYRef.current = startY;
+    mobileSwipeDeltaXRef.current = 0;
+    mobileSwipeDeltaYRef.current = 0;
+    mobileHorizontalSwipeRef.current = false;
+
+    mobilePullStartYRef.current = event.currentTarget.scrollTop > 0 ? null : startY;
     mobilePullArmedRef.current = false;
   }, [isMobileViewport, isPullRefreshing]);
 
   const handleMobilePullMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     if (!isMobileViewport || isPullRefreshing) return;
+
+    const startX = mobileTouchStartXRef.current;
+    const startY = mobileTouchStartYRef.current;
+    if (startX != null && startY != null) {
+      const currentX = event.touches[0]?.clientX ?? startX;
+      const currentY = event.touches[0]?.clientY ?? startY;
+      const deltaX = currentX - startX;
+      const deltaY = currentY - startY;
+      mobileSwipeDeltaXRef.current = deltaX;
+      mobileSwipeDeltaYRef.current = deltaY;
+
+      if (!mobileHorizontalSwipeRef.current && Math.abs(deltaX) > 18 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        mobileHorizontalSwipeRef.current = true;
+        mobilePullStartYRef.current = null;
+        mobilePullArmedRef.current = false;
+        if (pullDistance !== 0) setPullDistance(0);
+      }
+    }
+
+    if (mobileHorizontalSwipeRef.current) {
+      return;
+    }
+
     if (event.currentTarget.scrollTop > 0) {
       mobilePullStartYRef.current = null;
       if (pullDistance !== 0) setPullDistance(0);
       return;
     }
 
-    const startY = mobilePullStartYRef.current;
-    if (startY == null) return;
-    const currentY = event.touches[0]?.clientY ?? startY;
-    const drag = Math.max(0, currentY - startY);
+    const pullStartY = mobilePullStartYRef.current;
+    if (pullStartY == null) return;
+    const currentY = event.touches[0]?.clientY ?? pullStartY;
+    const drag = Math.max(0, currentY - pullStartY);
     const constrained = Math.min(72, drag * 0.45);
     setPullDistance(constrained);
     mobilePullArmedRef.current = constrained > 36;
@@ -2996,14 +3041,43 @@ export default function PulsePage() {
 
   const handleMobilePullEnd = useCallback(() => {
     if (!isMobileViewport || isPullRefreshing) return;
+
+    const deltaX = mobileSwipeDeltaXRef.current;
+    const deltaY = mobileSwipeDeltaYRef.current;
+    const isHorizontalSwipe = mobileHorizontalSwipeRef.current
+      && Math.abs(deltaX) > 52
+      && Math.abs(deltaX) > Math.abs(deltaY);
+
+    if (isHorizontalSwipe) {
+      const nextTab: MatchesTabId = deltaX < 0 ? 'revealed' : 'queued';
+      if (nextTab !== selectedMatchesTab) {
+        setSelectedMatchesTab(nextTab);
+        setVisibleMatchesCount(MATCHES_PAGE_SIZE);
+      }
+      setPullDistance(0);
+      mobileHorizontalSwipeRef.current = false;
+      mobileSwipeDeltaXRef.current = 0;
+      mobileSwipeDeltaYRef.current = 0;
+      mobileTouchStartXRef.current = null;
+      mobileTouchStartYRef.current = null;
+      mobilePullArmedRef.current = false;
+      mobilePullStartYRef.current = null;
+      return;
+    }
+
     if (mobilePullArmedRef.current) {
       void triggerMobilePullToRefresh();
       return;
     }
     setPullDistance(0);
+    mobileHorizontalSwipeRef.current = false;
+    mobileSwipeDeltaXRef.current = 0;
+    mobileSwipeDeltaYRef.current = 0;
+    mobileTouchStartXRef.current = null;
+    mobileTouchStartYRef.current = null;
     mobilePullArmedRef.current = false;
     mobilePullStartYRef.current = null;
-  }, [isMobileViewport, isPullRefreshing, triggerMobilePullToRefresh]);
+  }, [isMobileViewport, isPullRefreshing, selectedMatchesTab, triggerMobilePullToRefresh]);
 
   const copyText = useCallback(async (value: string, label: string) => {
     if (!value.trim()) {
@@ -4115,7 +4189,7 @@ export default function PulsePage() {
                             revealedVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No revealed jobs yet.</div>
                             ) : (
-                              <div className="grid grid-cols-3 gap-1.5">
+                              <div className="columns-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopRevealedFeed, 3)}
                               </div>
                             )
@@ -4123,7 +4197,7 @@ export default function PulsePage() {
                             recentVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No recent jobs.</div>
                             ) : (
-                              <div className="grid grid-cols-3 gap-1.5">
+                              <div className="columns-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopRecentFeed, 3)}
                               </div>
                             )
