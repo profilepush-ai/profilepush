@@ -135,7 +135,7 @@ Return ONLY valid JSON array:`;
       .filter((row): row is Record<string, unknown> => Boolean(row && row.job_id));
   };
 
-  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const models = ["gemini-2.5-flash"];
   let lastError = "No models succeeded";
   for (const model of models) {
     try {
