@@ -288,6 +288,7 @@ type PulseRevealNamesRow = {
 
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
+const PULSE_ROWS_CACHE_TTL_MS = 30_000;
 const TOP_PROFILES_PAGE_SIZE = 10;
 const MATCHES_PAGE_SIZE = 5;
 const DESKTOP_MATCHES_PAGE_SIZE = 12;
@@ -1108,6 +1109,9 @@ export default function PulsePage() {
   const rangeMenuRef = useRef<HTMLDivElement | null>(null);
   const recentSearchesRef = useRef<HTMLDivElement | null>(null);
   const desktopMatchesScrollRef = useRef<HTMLDivElement | null>(null);
+  const pulseRowsCacheRef = useRef<PulseSocialFeedRpcRow[] | null>(null);
+  const pulseRowsCacheAtRef = useRef(0);
+  const pulseRowsRequestRef = useRef<Promise<PulseSocialFeedRpcRow[]> | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -1819,7 +1823,7 @@ export default function PulsePage() {
       }
     }
 
-    const useFourColumnBreakdown = idx % 2 === 1;
+    const useFourColumnBreakdown = true;
     const normalizeDisplayValue = (value: string | null | undefined) => {
       const cleaned = (value ?? '').trim();
       const normalized = cleaned.toLowerCase().replace(/\s+/g, ' ');
@@ -1853,8 +1857,6 @@ export default function PulsePage() {
     const rateValue = getBreakdownValue(['rate', 'hourly']);
     const visaValue = getBreakdownValue(['visa']);
     const locationValue = getBreakdownValue(['location']);
-    const companyValue = normalizeDisplayValue(lead.company);
-    const platformValue = normalizeDisplayValue(lead.platform);
     const skillsValue = getBreakdownValue(['skill']);
 
     const shouldForceExpandedBreakdown = isLeadRevealed && selectedMatchesTab !== 'revealed';
@@ -1899,43 +1901,35 @@ export default function PulsePage() {
         </div>
         {inlineBreakdownItems.length > 0 && (
           useFourColumnBreakdown ? (
-            <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left">
+            <div className={`mt-1.5 w-full overflow-hidden rounded-md border ${cardBorderClass} text-left`}>
               <table className="w-full table-fixed border-collapse text-left text-[10px]">
                 <tbody>
                   <tr>
-                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                    <td className={`border-b border-r ${cardBorderClass} bg-white px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Exp</div>
                       <div className="text-[9px] leading-tight text-gray-700 break-words">{expValue}</div>
                     </td>
-                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                    <td className={`border-b border-r ${cardBorderClass} bg-white px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Work Type</div>
                       <div className="text-[9px] leading-tight text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">{workTypeValue}</div>
                     </td>
-                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                    <td className={`border-b ${cardBorderClass} bg-white px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Emp Type</div>
                       <div className="text-[9px] leading-tight text-gray-700 break-words">{employmentTypeValue}</div>
                     </td>
-                    <td className="border-b border-gray-100 bg-white px-2 py-1 align-top">
+                  </tr>
+                  <tr>
+                    <td className={`border-r ${cardBorderClass} bg-white px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Rate</div>
                       <div className="text-[9px] leading-tight text-gray-700 break-words">{rateValue}</div>
                     </td>
-                  </tr>
-                  <tr>
-                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                    <td className={`border-r ${cardBorderClass} bg-white px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Visa</div>
                       <div className="text-[9px] leading-tight text-gray-700 break-words">{visaValue}</div>
                     </td>
-                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
+                    <td className={`bg-white px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Location</div>
                       <div className="text-[9px] leading-tight text-gray-700 break-words">{locationValue}</div>
-                    </td>
-                    <td className="border-b border-r border-gray-100 bg-white px-2 py-1 align-top">
-                      <div className="text-[9px] text-gray-400">Company</div>
-                      <div className="text-[9px] leading-tight text-gray-700 break-words">{companyValue}</div>
-                    </td>
-                    <td className="border-b border-gray-100 bg-white px-2 py-1 align-top">
-                      <div className="text-[9px] text-gray-400">Platform</div>
-                      <div className="text-[9px] leading-tight text-gray-700 break-words">{platformValue}</div>
                     </td>
                   </tr>
                 </tbody>
@@ -1950,7 +1944,7 @@ export default function PulsePage() {
                     return next;
                   });
                 }}
-                className="relative w-full border-t border-gray-100 bg-white px-2 py-1 text-left focus:outline-none"
+                className={`relative w-full border-t ${cardBorderClass} bg-white px-2 py-1 text-left focus:outline-none`}
               >
                 <div className="text-[9px] text-gray-400">Skills</div>
                 <div className={`text-[9px] leading-tight break-words transition-all duration-200 ${isExpandedBreakdownVisible ? 'text-gray-700' : 'blur-sm select-none text-gray-400 pr-5'}`}>
@@ -1988,14 +1982,14 @@ export default function PulsePage() {
                   return next;
                 });
               }}
-              className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left relative group focus:outline-none"
+              className={`mt-1.5 w-full overflow-hidden rounded-md border ${cardBorderClass} text-left relative group focus:outline-none`}
             >
               <table className="w-full table-fixed border-collapse text-left text-[10px]">
                 <tbody>
                   {(isExpandedBreakdownVisible ? inlineBreakdownItems : collapsedInlineBreakdownItems).map((item, idx) => (
                     <tr key={item.key}>
-                      <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{formatBreakdownFieldName(item.key)}</td>
-                      <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{normalizeDisplayValue(item.detail?.job_value)}</td>
+                      <td className={`border-b ${cardBorderClass} bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{formatBreakdownFieldName(item.key)}</td>
+                      <td className={`border-b ${cardBorderClass} bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>{normalizeDisplayValue(item.detail?.job_value)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2011,13 +2005,10 @@ export default function PulsePage() {
         )}
         <div className="mt-1.5 grid grid-cols-10 gap-1.5">
           <div className="col-span-3 inline-flex flex-col items-center justify-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-center">
-            <span className="text-[11px] font-bold text-gray-700">{revealCountsByLeadId[lead.id] ?? 0}</span>
-            <span className="text-[8px] text-gray-400 leading-tight">reveals</span>
-            {(revealNamesByLeadId[lead.id]?.length ?? 0) > 0 && (
-              <span className="mt-0.5 w-full truncate text-[8px] text-gray-400 leading-tight" title={`Revealed by ${revealNamesByLeadId[lead.id].join(', ')}`}>
-                by {revealNamesByLeadId[lead.id].join(', ')}
-              </span>
-            )}
+            <div className="inline-flex items-baseline gap-1">
+              <span className="text-[11px] font-bold text-gray-700">{revealCountsByLeadId[lead.id] ?? 0}</span>
+              <span className="text-[8px] text-gray-400 leading-tight">reveals</span>
+            </div>
           </div>
           {isLeadRevealed ? (
             <div className="col-span-7 grid grid-cols-2 gap-1.5">
@@ -2448,7 +2439,34 @@ export default function PulsePage() {
     });
   }, []);
 
-  const loadProfileStats = useCallback(async () => {
+  const getGlobalPulseRows = useCallback(async (forceRefresh = false) => {
+    const now = Date.now();
+    const hasFreshCache = pulseRowsCacheRef.current
+      && (now - pulseRowsCacheAtRef.current) <= PULSE_ROWS_CACHE_TTL_MS;
+
+    if (!forceRefresh && hasFreshCache) {
+      return pulseRowsCacheRef.current;
+    }
+
+    if (!forceRefresh && pulseRowsRequestRef.current) {
+      return pulseRowsRequestRef.current;
+    }
+
+    const request = loadGlobalPulseRows()
+      .then((rows) => {
+        pulseRowsCacheRef.current = rows;
+        pulseRowsCacheAtRef.current = Date.now();
+        return rows;
+      })
+      .finally(() => {
+        pulseRowsRequestRef.current = null;
+      });
+
+    pulseRowsRequestRef.current = request;
+    return request;
+  }, [loadGlobalPulseRows]);
+
+  const loadProfileStats = useCallback(async (rowsOverride?: PulseSocialFeedRpcRow[]) => {
     if (sortedLeaderboard.length === 0) {
       setProfileStatsByRole({});
       return;
@@ -2457,7 +2475,7 @@ export default function PulsePage() {
     setProfileStatsLoading(true);
     let rpcRows: PulseSocialFeedRpcRow[] = [];
     try {
-      rpcRows = await loadGlobalPulseRows();
+      rpcRows = rowsOverride ?? await getGlobalPulseRows();
     } catch {
       showToast('Could not load profile stats', 'error');
       setProfileStatsLoading(false);
@@ -2525,17 +2543,21 @@ export default function PulsePage() {
 
     setProfileStatsByRole(stats);
     setProfileStatsLoading(false);
-  }, [loadGlobalPulseRows, showToast, sortedLeaderboard, zeroStats]);
+  }, [getGlobalPulseRows, showToast, sortedLeaderboard, zeroStats]);
 
   useEffect(() => {
     void loadProfileStats();
   }, [loadProfileStats]);
 
-  const loadFeed = useCallback(async (_persona: PulsePersona | null, _personaFilters: PulsePersona[] = []) => {
+  const loadFeed = useCallback(async (
+    _persona: PulsePersona | null,
+    _personaFilters: PulsePersona[] = [],
+    rowsOverride?: PulseSocialFeedRpcRow[],
+  ) => {
     setFeedLoading(true);
     let rpcRows: PulseSocialFeedRpcRow[] = [];
     try {
-      rpcRows = await loadGlobalPulseRows();
+      rpcRows = rowsOverride ?? await getGlobalPulseRows();
     } catch {
       showToast('Failed to load social matches', 'error');
       setFeedLoading(false);
@@ -2788,7 +2810,7 @@ export default function PulsePage() {
     }
 
     setFeedLoading(false);
-  }, [loadGlobalPulseRows, showToast]);
+  }, [getGlobalPulseRows, showToast]);
 
   useEffect(() => {
     void loadFeed(null);
@@ -2919,34 +2941,32 @@ export default function PulsePage() {
 
   const refreshFeed = useCallback(async () => {
     setRefreshing(true);
-    await loadFeed(null);
-
+    let rows: PulseSocialFeedRpcRow[] = [];
     try {
-      const { data: latestRows } = await supabase.rpc('get_pulse_social_feed', {
-        p_since: '1970-01-01T00:00:00.000Z',
-        p_limit: 1,
-      } as never);
-      const latest = (latestRows?.[0] as PulseSocialFeedRpcRow | undefined)?.match_created_at;
-      if (latest) setLastMatchAt(latest);
+      rows = await getGlobalPulseRows(true);
+      await Promise.all([loadFeed(null, [], rows), loadProfileStats(rows)]);
     } catch {
-      // Keep existing lastMatchAt if timestamp refresh fails.
+      showToast('Failed to refresh Pulse data', 'error');
     }
 
+    const latest = rows.length > 0 ? rows[0]?.match_created_at : null;
+    if (latest) setLastMatchAt(latest);
+
     setRefreshing(false);
-  }, [loadFeed]);
+  }, [getGlobalPulseRows, loadFeed, loadProfileStats, showToast]);
 
   const triggerMobilePullToRefresh = useCallback(async () => {
     if (isPullRefreshing || profileStatsLoading || refreshing || feedLoading) return;
     setIsPullRefreshing(true);
     try {
-      await Promise.all([loadProfileStats(), refreshFeed()]);
+      await refreshFeed();
     } finally {
       setIsPullRefreshing(false);
       setPullDistance(0);
       mobilePullArmedRef.current = false;
       mobilePullStartYRef.current = null;
     }
-  }, [feedLoading, isPullRefreshing, loadProfileStats, profileStatsLoading, refreshing, refreshFeed]);
+  }, [feedLoading, isPullRefreshing, profileStatsLoading, refreshing, refreshFeed]);
 
   const handleMobilePullStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     if (!isMobileViewport || event.currentTarget.scrollTop > 0 || isPullRefreshing) {
@@ -3606,7 +3626,6 @@ export default function PulsePage() {
                   )}
                   <button
                     onClick={() => {
-                      void loadProfileStats();
                       void refreshFeed();
                     }}
                     disabled={profileStatsLoading || refreshing || feedLoading}
@@ -3768,14 +3787,6 @@ export default function PulsePage() {
                 onTouchMove={isMobileViewport ? handleMobilePullMove : undefined}
                 onTouchEnd={isMobileViewport ? handleMobilePullEnd : undefined}
               >
-                {isMobileViewport && (pullDistance > 0 || isPullRefreshing) && (
-                  <div className="sticky top-0 z-30 flex items-center justify-center bg-white/95 text-[10px] font-medium text-gray-500">
-                    <div style={{ height: `${Math.max(18, pullDistance)}px` }} className="flex items-center gap-1">
-                      <RefreshCw size={10} className={isPullRefreshing ? 'animate-spin' : ''} />
-                      <span>{isPullRefreshing ? 'Refreshing...' : (mobilePullArmedRef.current ? 'Release to refresh' : 'Pull to refresh')}</span>
-                    </div>
-                  </div>
-                )}
                 {false && isMobileViewport ? (
                   <div className="sticky top-0 z-20 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
@@ -4058,6 +4069,15 @@ export default function PulsePage() {
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {isMobileViewport && (pullDistance > 0 || isPullRefreshing) && (
+                <div className="shrink-0 flex items-center justify-center bg-white/95 text-[9px] font-medium text-gray-500">
+                  <div style={{ height: `${Math.max(14, Math.min(24, pullDistance))}px` }} className="flex items-center gap-1 py-0.5">
+                    <RefreshCw size={9} className={isPullRefreshing ? 'animate-spin' : ''} />
+                    <span>{isPullRefreshing ? 'Refreshing...' : (mobilePullArmedRef.current ? 'Release to refresh' : 'Pull to refresh')}</span>
                   </div>
                 </div>
               )}
