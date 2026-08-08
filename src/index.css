@@ -2,6 +2,133 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    background: #f8fafc;
+    color: #0f172a;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html.dark body {
+    background: #00040d;
+    color: #e2e8f0;
+  }
+
+  html.dark #root {
+    background: #00040d;
+    color: inherit;
+  }
+
+  html.dark .bg-white,
+  html.dark .bg-gray-50,
+  html.dark .bg-gray-100,
+  html.dark .bg-slate-50,
+  html.dark .bg-slate-100,
+  html.dark .bg-neutral-50,
+  html.dark .bg-neutral-100 {
+    background-color: #0f172a !important;
+  }
+
+  html.dark [class*='bg-white/'] {
+    background-color: rgba(15, 23, 42, 0.94) !important;
+  }
+
+  html.dark .bg-gray-200,
+  html.dark .bg-slate-200,
+  html.dark .bg-neutral-200 {
+    background-color: #1e293b !important;
+  }
+
+  html.dark .bg-gray-300,
+  html.dark .bg-slate-300,
+  html.dark .bg-neutral-300 {
+    background-color: #334155 !important;
+  }
+
+  html.dark .text-gray-900,
+  html.dark .text-gray-800,
+  html.dark .text-gray-700,
+  html.dark .text-slate-900,
+  html.dark .text-slate-800,
+  html.dark .text-slate-700 {
+    color: #f8fafc !important;
+  }
+
+  html.dark .text-gray-600,
+  html.dark .text-gray-500,
+  html.dark .text-slate-600,
+  html.dark .text-slate-500 {
+    color: #cbd5e1 !important;
+  }
+
+  html.dark .text-gray-400,
+  html.dark .text-slate-400 {
+    color: #94a3b8 !important;
+  }
+
+  html.dark .text-gray-300,
+  html.dark .text-slate-300 {
+    color: #64748b !important;
+  }
+
+  html.dark .border-gray-50,
+  html.dark .border-gray-100,
+  html.dark .border-gray-200,
+  html.dark .border-gray-300,
+  html.dark .border-slate-50,
+  html.dark .border-slate-100,
+  html.dark .border-slate-200,
+  html.dark .border-slate-300 {
+    border-color: #334155 !important;
+  }
+
+  html.dark .shadow-gray-300\/40,
+  html.dark .shadow-gray-300\/50,
+  html.dark .shadow-slate-200\/70,
+  html.dark .shadow-slate-300\/40 {
+    --tw-shadow-color: rgb(15 23 42 / 0.35) !important;
+  }
+
+  html.dark .hover\:bg-gray-50:hover,
+  html.dark .hover\:bg-slate-50:hover {
+    background-color: #1e293b !important;
+  }
+
+  html.dark .hover\:bg-gray-100:hover,
+  html.dark .hover\:bg-slate-100:hover {
+    background-color: #334155 !important;
+  }
+
+  html.dark .hover\:bg-white:hover {
+    background-color: #111827 !important;
+  }
+
+  html.dark .bg-blue-50 {
+    background-color: rgba(37, 99, 235, 0.16) !important;
+  }
+
+  html.dark .bg-amber-50 {
+    background-color: rgba(217, 119, 6, 0.16) !important;
+  }
+
+  html.dark .bg-emerald-50 {
+    background-color: rgba(16, 185, 129, 0.16) !important;
+  }
+
+  html.dark .bg-violet-50 {
+    background-color: rgba(139, 92, 246, 0.16) !important;
+  }
+}
+
 @layer utilities {
   @keyframes splash-logo-rise {
     0% {

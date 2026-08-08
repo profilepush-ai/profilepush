@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LandingPage from './pages/LandingPage';
 import LogoSpinner from './components/LogoSpinner';
 import StartupSplash from './components/StartupSplash';
+import ThemeToggle from './components/ThemeToggle';
 import { useAuth } from './contexts/AuthContext';
 import { isSupabaseConfigured, supabaseConfigMissing } from './lib/supabase';
 import { initializeOneSignal, setOneSignalExternalUserId } from './lib/onesignal';
@@ -158,6 +159,7 @@ export default function App() {
   return (
     <>
       <StartupSplash hide={!showStartupSplash} />
+      {!showStartupSplash && <ThemeToggle />}
       <BrowserRouter>
         <AuthProvider>
           <ScrollToTop />
