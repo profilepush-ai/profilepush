@@ -30,7 +30,7 @@ function CreditsChip({ balance }: { balance: number }) {
     return (
       <Link
         to="/billing"
-        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-red-600 text-red-600 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(254,242,242)] hover:bg-[rgb(254,226,226)]'}`}
+        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-current text-red-600 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(254,242,242)] hover:bg-[rgb(254,226,226)]'}`}
         title="No credits remaining — top up"
       >
         <AlertTriangle size={9} />
@@ -43,7 +43,7 @@ function CreditsChip({ balance }: { balance: number }) {
     return (
       <Link
         to="/billing"
-        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-amber-700 text-amber-700 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(255,251,235)] hover:bg-[rgb(254,243,199)]'}`}
+        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-current text-amber-700 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(255,251,235)] hover:bg-[rgb(254,243,199)]'}`}
         title="Low credits"
       >
         <AlertTriangle size={9} />
@@ -55,7 +55,7 @@ function CreditsChip({ balance }: { balance: number }) {
   return (
     <Link
       to="/billing"
-      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-700 text-emerald-700 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(236,253,245)] hover:bg-[rgb(209,250,229)]'}`}
+      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-current text-emerald-700 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(236,253,245)] hover:bg-[rgb(209,250,229)]'}`}
       title="Credits remaining"
     >
       <CreditCard size={9} />
