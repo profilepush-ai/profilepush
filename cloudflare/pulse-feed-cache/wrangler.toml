@@ -1,0 +1,12 @@
+name = "profilepush-pulse-feed-cache"
+main = "src/index.ts"
+compatibility_date = "2026-08-08"
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "PULSE_FEED_CACHE"
+id = "3f994b672dad4b92b3b199db1ed9ebcd"
+preview_id = "9c75dfac68184dc19c726ee983914645"
+
+[vars]
+CACHE_TTL_SECONDS = "90"

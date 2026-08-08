@@ -218,6 +218,13 @@ type PulseSocialFeedRpcRow = {
   relocation_required?: boolean | null;
 };
 
+type PulseFeedCacheWorkerResponse = {
+  rows?: PulseSocialFeedRpcRow[];
+  cached?: boolean;
+  refreshed_at?: string;
+  warning?: string;
+};
+
 type ProfileStats = {
   uniqueCompanies: number;
   uniqueVendors: number;
@@ -290,6 +297,8 @@ type PulseRevealNamesRow = {
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
 const PULSE_ROWS_CACHE_TTL_MS = 30_000;
+const PULSE_CACHE_WORKER_URL = (import.meta.env.VITE_PULSE_CACHE_WORKER_URL ?? '').trim();
+const PULSE_CACHE_WORKER_TOKEN = (import.meta.env.VITE_PULSE_CACHE_WORKER_TOKEN ?? '').trim();
 const TOP_PROFILES_PAGE_SIZE = 10;
 const MATCHES_PAGE_SIZE = 5;
 const DESKTOP_MATCHES_PAGE_SIZE = 12;
@@ -526,15 +535,23 @@ function firstMeaningfulValue(...values: Array<string | null | undefined>) {
 function formatPersonaDetailValue(value: string): PersonaDetailValue {
   const cleaned = (value ?? '').trim();
   if (!cleaned || cleaned === '-') {
-    return { value: 'Missing', missing: true };
+    return { value: '', missing: true };
   }
   return { value: cleaned, missing: false };
 }
 
-function PersonaMissingTag({ label = 'Missing' }: { label?: string }) {
+function PersonaMissingTag() {
   return (
-    <span className="inline-flex items-center text-[9px] font-semibold tracking-wide text-amber-400">
-      {label}
+    <span
+      className="inline-flex items-center justify-center text-white/95"
+      aria-label="Request the missing details by revealing the email"
+      title="Request the missing details by revealing the email"
+    >
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.2" opacity="0.9" />
+        <path d="M5 2.8V5.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        <circle cx="5" cy="7.3" r="0.6" fill="currentColor" />
+      </svg>
     </span>
   );
 }
@@ -2059,11 +2076,7 @@ export default function PulsePage() {
     };
     const renderMissingAwareValue = (value: string) => {
       if (value === '-') {
-        return (
-          <span className="inline-flex items-center text-[9px] font-semibold tracking-wide text-amber-400">
-            Missing
-          </span>
-        );
+        return <PersonaMissingTag />;
       }
       return value;
     };
@@ -2118,33 +2131,33 @@ export default function PulsePage() {
         </div>
         {inlineBreakdownItems.length > 0 && (
           useFourColumnBreakdown ? (
-            <div className={`mt-1.5 w-full overflow-hidden rounded-md border ${breakdownBorderClass} bg-white dark:bg-slate-950 text-left`}>
+            <div className={`mt-1.5 w-full overflow-hidden rounded-md border ${breakdownBorderClass} bg-transparent text-left`}>
               <table className="w-full table-fixed border-collapse text-left text-[10px]">
                 <tbody>
                   <tr>
-                    <td className={`border-b border-r ${breakdownBorderClass} bg-white px-2 py-1 align-top dark:bg-slate-950`}>
+                    <td className={`border-b border-r ${breakdownBorderClass} bg-transparent px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Exp</div>
                       <div className="text-[9px] leading-tight text-gray-700 break-words">{expValue}</div>
                     </td>
-                    <td className={`border-b border-r ${breakdownBorderClass} bg-white px-2 py-1 align-top dark:bg-slate-950`}>
+                    <td className={`border-b border-r ${breakdownBorderClass} bg-transparent px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Work Type</div>
                       <div className="text-[9px] leading-tight text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">{workTypeValue}</div>
                     </td>
-                    <td className={`border-b ${breakdownBorderClass} bg-white px-2 py-1 align-top dark:bg-slate-950`}>
+                    <td className={`border-b ${breakdownBorderClass} bg-transparent px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Emp Type</div>
                       <div className="text-[9px] leading-tight text-gray-700 break-words">{employmentTypeValue}</div>
                     </td>
                   </tr>
                   <tr>
-                    <td className={`border-r ${breakdownBorderClass} bg-white px-2 py-1 align-top dark:bg-slate-950`}>
+                    <td className={`border-r ${breakdownBorderClass} bg-transparent px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Rate</div>
                       <div className="text-[9px] leading-tight text-gray-700 break-words">{renderMissingAwareValue(rateValue)}</div>
                     </td>
-                    <td className={`border-r ${breakdownBorderClass} bg-white px-2 py-1 align-top dark:bg-slate-950`}>
+                    <td className={`border-r ${breakdownBorderClass} bg-transparent px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Visa</div>
                       <div className="text-[9px] leading-tight text-gray-700 break-words">{renderMissingAwareValue(visaValue)}</div>
                     </td>
-                    <td className={`bg-white px-2 py-1 align-top dark:bg-slate-950`}>
+                    <td className={`bg-transparent px-2 py-1 align-top`}>
                       <div className="text-[9px] text-gray-400">Location</div>
                       <div className="text-[9px] leading-tight text-gray-700 break-words">{locationValue}</div>
                     </td>
@@ -2161,7 +2174,7 @@ export default function PulsePage() {
                     return next;
                   });
                 }}
-                className={`relative w-full border-t ${breakdownBorderClass} bg-white px-2 py-1 text-left focus:outline-none dark:bg-slate-950`}
+                className={`relative w-full border-t ${breakdownBorderClass} bg-transparent px-2 py-1 text-left focus:outline-none`}
               >
                 <div className="text-[9px] text-gray-400">Skills</div>
                 <div className={`text-[9px] leading-tight break-words transition-all duration-200 ${isExpandedBreakdownVisible ? 'text-gray-700' : 'blur-sm select-none text-gray-400 pr-5'}`}>
@@ -2215,11 +2228,10 @@ export default function PulsePage() {
           )
         ))}
         <div className="mt-1.5 grid grid-cols-10 gap-1.5">
-          <div className="col-span-3 inline-flex flex-col items-center justify-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-center">
-            <div className="inline-flex items-baseline gap-1">
-              <span className="text-[11px] font-bold text-gray-700">{revealCountsByLeadId[lead.id] ?? 0}</span>
-              <span className="text-[8px] text-gray-400 leading-tight">reveals</span>
-            </div>
+          <div className="col-span-3 inline-flex items-center px-1">
+            <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+              {revealCountsByLeadId[lead.id] ?? 0} reveals
+            </span>
           </div>
           {isLeadRevealed ? (
             <div className="col-span-7 grid grid-cols-2 gap-1.5">
@@ -2476,7 +2488,41 @@ export default function PulsePage() {
     void loadInitial();
   }, [loadInitial]);
 
+  const loadGlobalPulseRowsFromCacheWorker = useCallback(async (rangeHours: number) => {
+    if (!PULSE_CACHE_WORKER_URL) return null;
+
+    try {
+      const url = new URL(PULSE_CACHE_WORKER_URL);
+      url.searchParams.set('hours', String(rangeHours));
+      url.searchParams.set('limit', '5000');
+
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+      };
+      if (PULSE_CACHE_WORKER_TOKEN) {
+        headers.Authorization = `Bearer ${PULSE_CACHE_WORKER_TOKEN}`;
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers,
+      });
+      if (!response.ok) return null;
+
+      const payload = (await response.json()) as PulseFeedCacheWorkerResponse;
+      if (!Array.isArray(payload.rows)) return null;
+      return payload.rows;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const loadGlobalPulseRows = useCallback(async (rangeHours: number) => {
+    const workerRows = await loadGlobalPulseRowsFromCacheWorker(rangeHours);
+    if (workerRows) {
+      return workerRows;
+    }
+
     const since = new Date(Date.now() - (rangeHours * 60 * 60 * 1000)).toISOString();
 
     // Preferred path: global SECURITY DEFINER RPC (all-account feed).
@@ -2649,7 +2695,7 @@ export default function PulsePage() {
         extracted_hourly_rate_max: social?.extracted_hourly_rate_max ?? null,
       } as PulseSocialFeedRpcRow;
     });
-  }, []);
+  }, [loadGlobalPulseRowsFromCacheWorker]);
 
   const getGlobalPulseRows = useCallback(async (rangeHours: number, forceRefresh = false) => {
     const now = Date.now();
@@ -3764,14 +3810,35 @@ export default function PulsePage() {
     }
 
     setVectorSearchLoading(true);
-    const { data, error } = await supabase.rpc('search_pulse_social_feed_vector', {
+    const since = new Date(Date.now() - (selectedProfileRange.hours * 60 * 60 * 1000)).toISOString();
+
+    const ftsResult = await supabase.rpc('search_pulse_social_feed_fts', {
+      p_query: appliedQuery,
+      p_since: since,
+      p_limit: 2000,
+      p_offset: 0,
+    } as never);
+
+    if (!ftsResult.error && Array.isArray(ftsResult.data)) {
+      const ftsIds = (ftsResult.data as Array<{ lead_id?: string | null }>)
+        .map((row) => (row.lead_id ?? '').trim())
+        .filter(Boolean);
+
+      if (ftsIds.length > 0) {
+        setVectorSearchLeadIds(ftsIds);
+        setVectorSearchLoading(false);
+        return;
+      }
+    }
+
+    const vectorResult = await supabase.rpc('search_pulse_social_feed_vector', {
       p_role_query: appliedQuery,
       p_limit: 2000,
       p_similarity_threshold: 0.58,
     } as never);
 
-    if (!error && Array.isArray(data)) {
-      const ids = (data as Array<{ lead_id?: string | null }>)
+    if (!vectorResult.error && Array.isArray(vectorResult.data)) {
+      const ids = (vectorResult.data as Array<{ lead_id?: string | null }>)
         .map((row) => (row.lead_id ?? '').trim())
         .filter(Boolean);
       setVectorSearchLeadIds(ids.length > 0 ? ids : null);
@@ -3780,7 +3847,7 @@ export default function PulsePage() {
     }
 
     setVectorSearchLoading(false);
-  }, [account?.id, loadRecentSearches, pendingFeedSearchQuery, user?.id]);
+  }, [account?.id, loadRecentSearches, pendingFeedSearchQuery, selectedProfileRange.hours, user?.id]);
 
   useEffect(() => {
     const queryFromParams = (searchParams.get('q') ?? '').trim();
@@ -4111,15 +4178,15 @@ export default function PulsePage() {
                         const details = getPersonaDetailColumns(persona);
                         const isExpanded = expandedMobileProfileCardIds.has(persona.target_role);
                         const collapsedDetails = [
-                          { key: 'experience', value: details.experience !== '-' ? details.experience : '—' },
-                          { key: 'rate', value: details.rateRange !== '-' ? details.rateRange : '—' },
-                          { key: 'visa', value: details.visaStatus !== '-' ? details.visaStatus : '—' },
+                          { key: 'experience', detail: formatPersonaDetailValue(details.experience) },
+                          { key: 'rate', detail: formatPersonaDetailValue(details.rateRange) },
+                          { key: 'visa', detail: formatPersonaDetailValue(details.visaStatus) },
                         ];
                         const expandedDetails = [
                           ...collapsedDetails,
-                          { key: 'location', value: details.location !== '-' ? details.location : '—' },
-                          { key: 'employment', value: details.employmentType !== '-' ? details.employmentType : '—' },
-                          { key: 'work', value: details.workType !== '-' ? details.workType : '—' },
+                          { key: 'location', detail: formatPersonaDetailValue(details.location) },
+                          { key: 'employment', detail: formatPersonaDetailValue(details.employmentType) },
+                          { key: 'work', detail: formatPersonaDetailValue(details.workType) },
                         ];
                         const mobileDetails = isExpanded ? expandedDetails : collapsedDetails;
 
@@ -4141,7 +4208,7 @@ export default function PulsePage() {
                                   key={item.key}
                                   className="min-w-0 truncate rounded border border-gray-200 bg-white px-1.5 py-1 text-gray-600"
                                 >
-                                  {item.value}
+                                  {item.detail.missing ? <PersonaMissingTag /> : item.detail.value}
                                 </div>
                               ))}
                             </div>
@@ -4222,12 +4289,12 @@ export default function PulsePage() {
                                   </div>
                                 </div>
                                 <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{experience.missing ? <PersonaMissingTag label="Missing" /> : experience.value}</div>
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{location.missing ? <PersonaMissingTag label="Missing" /> : location.value}</div>
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{rateRange.missing ? <PersonaMissingTag label="Missing" /> : rateRange.value}</div>
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{employmentType.missing ? <PersonaMissingTag label="Missing" /> : employmentType.value}</div>
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{workType.missing ? <PersonaMissingTag label="Missing" /> : workType.value}</div>
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{visaStatus.missing ? <PersonaMissingTag label="Missing" /> : visaStatus.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{experience.missing ? <PersonaMissingTag /> : experience.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{location.missing ? <PersonaMissingTag /> : location.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{rateRange.missing ? <PersonaMissingTag /> : rateRange.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{employmentType.missing ? <PersonaMissingTag /> : employmentType.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{workType.missing ? <PersonaMissingTag /> : workType.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{visaStatus.missing ? <PersonaMissingTag /> : visaStatus.value}</div>
                                 </div>
                                 <div className="mt-1 space-y-1.5">
                                   <div className="flex items-center gap-1.5">
@@ -4283,12 +4350,12 @@ export default function PulsePage() {
                                   </div>
                                 </div>
                                 <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{experience.missing ? <PersonaMissingTag label="Missing" /> : experience.value}</div>
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{location.missing ? <PersonaMissingTag label="Missing" /> : location.value}</div>
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{rateRange.missing ? <PersonaMissingTag label="Missing" /> : rateRange.value}</div>
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{employmentType.missing ? <PersonaMissingTag label="Missing" /> : employmentType.value}</div>
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{workType.missing ? <PersonaMissingTag label="Missing" /> : workType.value}</div>
-                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{visaStatus.missing ? <PersonaMissingTag label="Missing" /> : visaStatus.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{experience.missing ? <PersonaMissingTag /> : experience.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{location.missing ? <PersonaMissingTag /> : location.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{rateRange.missing ? <PersonaMissingTag /> : rateRange.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{employmentType.missing ? <PersonaMissingTag /> : employmentType.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{workType.missing ? <PersonaMissingTag /> : workType.value}</div>
+                                  <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{visaStatus.missing ? <PersonaMissingTag /> : visaStatus.value}</div>
                                 </div>
                                 <div className="mt-1 space-y-1.5">
                                   <div className="flex items-center gap-1.5">

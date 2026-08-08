@@ -277,7 +277,7 @@ export default function LandingPage() {
             </Link>
             <Link
               to="/signup"
-              className="bg-blue-600 hover:bg-blue-700 transition-colors text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-sm"
+              className="bg-blue-600 hover:bg-blue-700 transition-colors text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5"
             >
               Start Free <ArrowRight size={13} />
             </Link>
@@ -287,13 +287,6 @@ export default function LandingPage() {
 
       {/* ── HERO ── */}
       <section className="relative pt-20 md:pt-28 pb-6 md:pb-12 px-6 text-center overflow-hidden">
-        {/* Background blobs */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-blue-50 rounded-full blur-[80px] opacity-80" />
-          <div className="absolute top-32 right-0 w-72 h-72 bg-orange-100 rounded-full blur-[60px] opacity-60" />
-          <div className="absolute top-48 left-0 w-64 h-64 bg-yellow-100 rounded-full blur-[60px] opacity-60" />
-        </div>
-
         <div className="relative max-w-3xl mx-auto">
 
           <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
@@ -307,7 +300,7 @@ export default function LandingPage() {
           <div className="flex flex-col items-center justify-center gap-4">
             <Link
               to="/signup"
-              className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-semibold px-8 py-3.5 rounded-xl flex items-center gap-2 text-base shadow-lg shadow-blue-200 w-full sm:w-auto justify-center"
+              className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-semibold px-8 py-3.5 rounded-xl flex items-center gap-2 text-base w-full sm:w-auto justify-center"
             >
               Start Free <ChevronRight size={16} />
             </Link>
@@ -401,7 +394,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             {/* Free Plan */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-8 flex flex-col shadow-sm">
+            <div className="bg-white rounded-2xl border border-gray-200 p-8 flex flex-col">
               <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-yellow-100 text-yellow-700 w-fit">
                 Free Plan
               </span>
@@ -437,7 +430,7 @@ export default function LandingPage() {
             </div>
 
             {/* Pro Plan */}
-            <div className="rounded-2xl p-8 flex flex-col shadow-xl shadow-blue-200/50 relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
+            <div className="rounded-2xl p-8 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
               <span className="absolute -top-3 left-8 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm text-blue-900" style={{ backgroundColor: '#facc15' }}>Most Popular</span>
               <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-white/15 text-white w-fit">
                 Pro Plan
@@ -468,7 +461,7 @@ export default function LandingPage() {
                 ))}
               </ul>
 
-              <Link to="/signup" className="w-full text-center bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold py-3 rounded-xl transition-colors shadow-md">
+              <Link to="/signup" className="w-full text-center bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold py-3 rounded-xl transition-colors">
                 Get Started
               </Link>
             </div>
@@ -512,7 +505,7 @@ export default function LandingPage() {
           </p>
           <Link
             to="/signup"
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-10 py-4 rounded-xl transition-all shadow-lg shadow-blue-200 text-base"
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-10 py-4 rounded-xl transition-all text-base"
           >
             Create Free Account <ArrowRight size={16} />
           </Link>

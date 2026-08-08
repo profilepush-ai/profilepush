@@ -90,15 +90,13 @@ async function logSocialJobPayload(insertLog: (payload: Record<string, unknown>)
   }
 }
 
-async function extractWithGemini(jobs: Array<{ id: string; title: string; description: string; location: string }>, apiKey: string): Promise<{ results: Record<string, unknown>[]; error?: string }> {
-  if (!apiKey) return { results: [], error: "GEMINI_API_KEY is not set" };
-
+function buildExtractionPrompt(jobs: Array<{ id: string; title: string; description: string; location: string }>) {
   const jobTexts = jobs.map((j, idx) => `[Job ${idx}] (id: ${j.id})
 Title: ${j.title}
 Location: ${j.location}
 Description: ${j.description.slice(0, 1500)}`).join("\n---\n");
 
-  const prompt = `Extract structured fields from each job posting. Return ONLY valid JSON, no markdown.
+  return `Extract structured fields from each job posting. Return ONLY valid JSON, no markdown.
 Return one result per input job and preserve job_id from input. If a field is unknown, use null (or [] for arrays).
 For each job include: job_id, role_title, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).
 
@@ -106,34 +104,77 @@ JOBS:
 ${jobTexts}
 
 Return ONLY valid JSON array:`;
+}
 
-  const normalizeExtractedResults = (parsed: unknown): Record<string, unknown>[] => {
-    let rawRows: unknown[] = [];
+function normalizeExtractedResults(parsed: unknown, jobs: Array<{ id: string; title: string; description: string; location: string }>): Record<string, unknown>[] {
+  let rawRows: unknown[] = [];
 
-    if (Array.isArray(parsed)) {
-      rawRows = parsed;
-    } else if (parsed && typeof parsed === "object") {
-      const obj = parsed as Record<string, unknown>;
-      if (Array.isArray(obj.results)) rawRows = obj.results;
-      else if (Array.isArray(obj.items)) rawRows = obj.items;
-      else if (Array.isArray(obj.jobs)) rawRows = obj.jobs;
-      else if (
-        "job_id" in obj ||
-        "role_title" in obj ||
-        "core_skills" in obj ||
-        "years_experience" in obj
-      ) rawRows = [obj];
+  if (Array.isArray(parsed)) {
+    rawRows = parsed;
+  } else if (parsed && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    if (Array.isArray(obj.results)) rawRows = obj.results;
+    else if (Array.isArray(obj.items)) rawRows = obj.items;
+    else if (Array.isArray(obj.jobs)) rawRows = obj.jobs;
+    else if (
+      "job_id" in obj ||
+      "role_title" in obj ||
+      "core_skills" in obj ||
+      "years_experience" in obj
+    ) rawRows = [obj];
+  }
+
+  return rawRows
+    .map((row, index) => {
+      if (!row || typeof row !== "object") return null;
+      const obj = { ...(row as Record<string, unknown>) };
+      if (!obj.job_id) obj.job_id = jobs[index]?.id ?? jobs[0]?.id ?? null;
+      return obj;
+    })
+    .filter((row): row is Record<string, unknown> => Boolean(row && row.job_id));
+}
+
+async function extractWithCloudflareWorker(
+  jobs: Array<{ id: string; title: string; description: string; location: string }>,
+  workerUrl: string,
+  workerToken: string,
+): Promise<{ results: Record<string, unknown>[]; error?: string }> {
+  if (!workerUrl) return { results: [], error: "CLOUDFLARE_WORKER_URL is not set" };
+
+  try {
+    const response = await fetch(workerUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(workerToken ? { "Authorization": `Bearer ${workerToken}` } : {}),
+      },
+      body: JSON.stringify({
+        jobs,
+        prompt: buildExtractionPrompt(jobs),
+      }),
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      return { results: [], error: `worker HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 200)}` };
     }
 
-    return rawRows
-      .map((row, index) => {
-        if (!row || typeof row !== "object") return null;
-        const obj = { ...(row as Record<string, unknown>) };
-        if (!obj.job_id) obj.job_id = jobs[index]?.id ?? jobs[0]?.id ?? null;
-        return obj;
-      })
-      .filter((row): row is Record<string, unknown> => Boolean(row && row.job_id));
-  };
+    const rawResults = payload?.results ?? payload?.data ?? payload;
+    const results = normalizeExtractedResults(rawResults, jobs);
+    if (results.length === 0) {
+      return { results: [], error: "worker returned no usable extraction rows" };
+    }
+
+    return { results };
+  } catch (error) {
+    return { results: [], error: `worker fetch failed: ${(error as Error).message}` };
+  }
+}
+
+async function extractWithGemini(jobs: Array<{ id: string; title: string; description: string; location: string }>, apiKey: string): Promise<{ results: Record<string, unknown>[]; error?: string }> {
+  if (!apiKey) return { results: [], error: "GEMINI_API_KEY is not set" };
+
+  const prompt = buildExtractionPrompt(jobs);
 
   const models = ["gemini-2.5-flash"];
   let lastError = "No models succeeded";
@@ -157,7 +198,7 @@ Return ONLY valid JSON array:`;
       if (!text) { lastError = `${model}: empty response`; continue; }
       text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
       const parsed = JSON.parse(text);
-      const results = normalizeExtractedResults(parsed);
+      const results = normalizeExtractedResults(parsed, jobs);
       if (results.length === 0) {
         lastError = `${model}: parsed JSON but no usable result rows`;
         continue;
@@ -177,6 +218,8 @@ Deno.serve(async (req: Request) => {
     if (items.length === 0) return respond({ error: "Empty payload" }, 400);
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const CLOUDFLARE_WORKER_URL = (Deno.env.get("CLOUDFLARE_WORKER_URL") ?? "").trim();
+    const CLOUDFLARE_WORKER_TOKEN = (Deno.env.get("CLOUDFLARE_WORKER_TOKEN") ?? "").trim();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
     const { rows, errors } = normalizeSocialJobItems(items);
     const normalizedRows = rows.map((row) => ({
@@ -207,7 +250,7 @@ Deno.serve(async (req: Request) => {
 
     const insertedIds = data.map((r: { id: string }) => r.id);
 
-    // Build job objects for Gemini — use the in-memory data to avoid a re-fetch.
+    // Build job objects for extraction — use in-memory rows to avoid a re-fetch.
     const jobsForExtraction = data.map((r: { id: string }, idx: number) => ({
       id: r.id,
       title: normalizedRows[idx]?.job_title ?? "",
@@ -215,20 +258,38 @@ Deno.serve(async (req: Request) => {
       location: normalizedRows[idx]?.location ?? "",
     }));
 
-    // Call Gemini synchronously — inline extraction, no radar-match delegation.
+    // Call parsing synchronously with Cloudflare-first fallback to Gemini.
     let extractionSaved = 0;
     let extractionError: string | null = null;
 
-    if (!GEMINI_API_KEY) {
-      extractionError = "GEMINI_API_KEY is not configured; extraction skipped";
-    } else if (jobsForExtraction.length === 0) {
+    if (jobsForExtraction.length === 0) {
       extractionError = "No inserted jobs available for extraction";
     } else {
       try {
-        const { results: extracted, error: geminiError } = await extractWithGemini(jobsForExtraction, GEMINI_API_KEY);
-        if (geminiError) {
-          extractionError = geminiError;
+        let extracted: Record<string, unknown>[] = [];
+
+        if (CLOUDFLARE_WORKER_URL) {
+          const workerResult = await extractWithCloudflareWorker(jobsForExtraction, CLOUDFLARE_WORKER_URL, CLOUDFLARE_WORKER_TOKEN);
+          extracted = workerResult.results;
+          if (workerResult.error) extractionError = `cloudflare worker: ${workerResult.error}`;
         }
+
+        if (extracted.length === 0 && GEMINI_API_KEY) {
+          const geminiResult = await extractWithGemini(jobsForExtraction, GEMINI_API_KEY);
+          extracted = geminiResult.results;
+          if (geminiResult.error) {
+            extractionError = extractionError
+              ? `${extractionError}; gemini fallback: ${geminiResult.error}`
+              : geminiResult.error;
+          } else if (extracted.length > 0 && extractionError) {
+            extractionError = `${extractionError}; recovered via gemini fallback`;
+          }
+        }
+
+        if (extracted.length === 0 && !CLOUDFLARE_WORKER_URL && !GEMINI_API_KEY) {
+          extractionError = "No parser configured. Set CLOUDFLARE_WORKER_URL or GEMINI_API_KEY";
+        }
+
         if (extracted.length > 0) {
           const matchRows = extracted.map((e: Record<string, unknown>) => {
             const jobInput = jobsForExtraction.find(j => j.id === String(e.job_id ?? "")) ?? jobsForExtraction[0];
@@ -278,11 +339,11 @@ Deno.serve(async (req: Request) => {
             console.error("radar_match_results upsert error:", matchErr.message);
           }
         } else if (!extractionError) {
-          extractionError = "Gemini returned no extraction rows";
+          extractionError = "Parser returned no extraction rows";
         }
-      } catch (geminiErr) {
-        console.error("Gemini extraction error:", geminiErr);
-        extractionError = (geminiErr as Error).message;
+      } catch (parserErr) {
+        console.error("Parser extraction error:", parserErr);
+        extractionError = (parserErr as Error).message;
       }
     }
 

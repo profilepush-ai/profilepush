@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pencil, Trash2 } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
@@ -815,6 +816,12 @@ export default function AdminDashboard() {
             >
               <RefreshCcw size={12} className={loading || rolesLoading ? 'animate-spin' : ''} /> Refresh
             </button>
+            <Link
+              to="/admin/commands"
+              className="flex h-9 items-center rounded-lg border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Commands
+            </Link>
             <button
               onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); setStats([]); }}
               className="text-xs text-gray-500 hover:text-red-600 transition-colors"

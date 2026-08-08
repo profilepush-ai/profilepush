@@ -36,6 +36,7 @@ const ContactUs = lazy(() => import('./pages/ContactUs'));
 const CancellationRefundPolicy = lazy(() => import('./pages/CancellationRefundPolicy'));
 const ComparisonPage = lazy(() => import('./pages/ComparisonPage'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminCommands = lazy(() => import('./pages/AdminCommands'));
 const BookDemo = lazy(() => import('./pages/BookDemo'));
 const WhyAICopilot = lazy(() => import('./pages/WhyAICopilot'));
 const HowItWorks = lazy(() => import('./pages/HowItWorks'));
@@ -189,6 +190,7 @@ export default function App() {
             <Route path="/why-ai-copilot" element={<ErrorBoundary><WhyAICopilot /></ErrorBoundary>} />
             <Route path="/how-it-works" element={<ErrorBoundary><HowItWorks /></ErrorBoundary>} />
             <Route path="/admin" element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
+            <Route path="/admin/commands" element={<ErrorBoundary><AdminCommands /></ErrorBoundary>} />
 
             {/* Protected */}
             <Route path="/desk" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />

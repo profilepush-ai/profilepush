@@ -1,0 +1,10 @@
+name = "profilepush-social-job-parser"
+main = "src/index.ts"
+compatibility_date = "2026-08-08"
+workers_dev = true
+
+[ai]
+binding = "AI"
+
+[vars]
+PARSER_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"

@@ -6,6 +6,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const SWR_CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=120";
+
+function jsonResponse(body: unknown, status = 200, cacheControl?: string) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      ...(cacheControl ? { "Cache-Control": cacheControl } : {}),
+    },
+  });
+}
+
 type AutocompleteRequest = {
   mode: "autocomplete";
   input: string;
@@ -82,10 +95,7 @@ Deno.serve(async (req: Request) => {
   try {
     const apiKey = Deno.env.get("GOOGLE_PLACES_API_KEY");
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: "Missing GOOGLE_PLACES_API_KEY in function secrets." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return jsonResponse({ error: "Missing GOOGLE_PLACES_API_KEY in function secrets." }, 500);
     }
 
     const body = (await req.json()) as PlacesRequest;
@@ -93,9 +103,7 @@ Deno.serve(async (req: Request) => {
     if (body.mode === "autocomplete") {
       const input = String(body.input ?? "").trim();
       if (!input) {
-        return new Response(JSON.stringify({ suggestions: [] }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return jsonResponse({ suggestions: [] }, 200, SWR_CACHE_CONTROL);
       }
 
       const url = new URL("https://maps.googleapis.com/maps/api/place/autocomplete/json");
@@ -113,10 +121,7 @@ Deno.serve(async (req: Request) => {
 
       const data = await response.json();
       if (!response.ok) {
-        return new Response(JSON.stringify({ error: data }), {
-          status: response.status,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return jsonResponse({ error: data }, response.status);
       }
 
       const predictions = Array.isArray(data?.predictions) ? data.predictions : [];
@@ -152,18 +157,13 @@ Deno.serve(async (req: Request) => {
         return true;
       });
 
-      return new Response(JSON.stringify({ suggestions: filtered }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ suggestions: filtered }, 200, SWR_CACHE_CONTROL);
     }
 
     if (body.mode === "details") {
       const placeId = String(body.placeId ?? "").trim();
       if (!placeId) {
-        return new Response(JSON.stringify({ error: "placeId is required for details mode." }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return jsonResponse({ error: "placeId is required for details mode." }, 400);
       }
 
       const url = new URL("https://maps.googleapis.com/maps/api/place/details/json");
@@ -175,33 +175,19 @@ Deno.serve(async (req: Request) => {
 
       const data = await response.json();
       if (!response.ok) {
-        return new Response(JSON.stringify({ error: data }), {
-          status: response.status,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return jsonResponse({ error: data }, response.status);
       }
 
       const result = (data?.result ?? null) as Record<string, unknown> | null;
       if (!result) {
-        return new Response(JSON.stringify({ error: data }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return jsonResponse({ error: data }, 400);
       }
 
-      return new Response(JSON.stringify({ place: normalizeDetails(result) }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ place: normalizeDetails(result) }, 200, SWR_CACHE_CONTROL);
     }
 
-    return new Response(JSON.stringify({ error: "Invalid mode. Use autocomplete or details." }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Invalid mode. Use autocomplete or details." }, 400);
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: String(err) }, 500);
   }
 });

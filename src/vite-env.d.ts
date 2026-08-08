@@ -2,6 +2,8 @@
 
 interface ImportMetaEnv {
 	readonly VITE_ONESIGNAL_APP_ID?: string;
+	readonly VITE_PULSE_CACHE_WORKER_URL?: string;
+	readonly VITE_PULSE_CACHE_WORKER_TOKEN?: string;
 }
 
 interface ImportMeta {
