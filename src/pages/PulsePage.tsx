@@ -2246,7 +2246,7 @@ export default function PulsePage() {
             <div className="col-span-7 grid grid-cols-2 gap-1.5">
               <button
                 onClick={(e) => { e.stopPropagation(); void copyText(lead.posterEmail, 'Vendor email'); }}
-                className="inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2 py-1.5 text-[10px] font-semibold text-[var(--accent-hex)] transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)]"
+                className={`inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2 py-1.5 text-[10px] font-semibold transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)] ${isDark ? 'text-[var(--accent-hex)]' : 'text-blue-600'}`}
                 style={{ borderColor: 'rgb(var(--accent-rgb) / 0.30)' }}
               >
                 <Copy size={11} />
@@ -2263,7 +2263,7 @@ export default function PulsePage() {
                   setSelectedEmailDraftTab('pitching');
                   setShowGeneratedEmailDraft(true);
                 }}
-                className="inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2 py-1.5 text-[10px] font-semibold text-[var(--accent-hex)] transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)]"
+                className={`inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2 py-1.5 text-[10px] font-semibold transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)] ${isDark ? 'text-[var(--accent-hex)]' : 'text-blue-600'}`}
                 style={{ borderColor: 'rgb(var(--accent-rgb) / 0.30)' }}
               >
                 <Mail size={11} />
@@ -2274,7 +2274,7 @@ export default function PulsePage() {
             <button
               onClick={() => void handleRevealContact(lead)}
               disabled={processingLeadId === lead.id}
-              className="col-span-7 inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2.5 py-1.5 text-[10px] font-semibold text-[var(--accent-hex)] transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)] disabled:cursor-not-allowed disabled:opacity-70"
+              className={`col-span-7 inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2.5 py-1.5 text-[10px] font-semibold transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)] disabled:cursor-not-allowed disabled:opacity-70 ${isDark ? 'text-[var(--accent-hex)]' : 'text-blue-600'}`}
               style={{ borderColor: 'rgb(var(--accent-rgb) / 0.30)' }}
             >
               {processingLeadId === lead.id ? '...' : (
@@ -4082,7 +4082,7 @@ export default function PulsePage() {
                               if (tab.id === 'revealed') setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                             }}
-                            className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-gray-300 bg-gray-800 text-white') : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                            className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
                           >
                             <span>{tab.label}</span>
                             <span>{count}</span>
@@ -4425,7 +4425,7 @@ export default function PulsePage() {
                           key={tab.id}
                           type="button"
                           onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                          className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${isSelected ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300'}`}
+                          className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
                         >
                           <span>{tab.label}</span>
                           <span>{count}</span>
