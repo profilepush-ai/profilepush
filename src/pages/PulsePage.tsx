@@ -28,7 +28,6 @@ import {
   ChevronUp,
   Server,
   Sparkles,
-  TableProperties,
   GraduationCap,
   Flame,
   Workflow,
@@ -1235,13 +1234,7 @@ export default function PulsePage() {
   const [feedLoading, setFeedLoading] = useState(false);
   const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
-  const [view, setView] = useState<'board' | 'feed'>((searchParams.get('view') === 'feed') ? 'feed' : 'board');
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
-
-  // Sync view state when URL search params change (e.g. bottom nav tap)
-  useEffect(() => {
-    setView(searchParams.get('view') === 'feed' ? 'feed' : 'board');
-  }, [searchParams]);
 
   const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('3d');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
@@ -3201,7 +3194,6 @@ export default function PulsePage() {
         return next;
       });
       setActivePersona(persona);
-      setView('feed');
       await loadFeed(null);
       void loadLeaderboard();
       showToast(`Watching ${persona.target_role}`, 'success');
@@ -3214,7 +3206,6 @@ export default function PulsePage() {
 
   const selectPersona = useCallback(async (persona: PulsePersona) => {
     setActivePersona(persona);
-    setView('feed');
     await loadFeed(null);
   }, [loadFeed]);
 
@@ -4138,10 +4129,10 @@ export default function PulsePage() {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white">
+              <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-[#ffffff] dark:bg-transparent">
 
               <div
-                className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-white slim-scrollbar' : 'overflow-hidden'}`}
+                className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-[#ffffff] dark:bg-transparent slim-scrollbar' : 'overflow-hidden'}`}
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
                 onTouchStart={isMobileViewport ? handleMobilePullStart : undefined}
                 onTouchMove={isMobileViewport ? handleMobilePullMove : undefined}
@@ -4421,7 +4412,7 @@ export default function PulsePage() {
               </section>}
 
               {isMobileViewport && (
-                <div className="sticky top-0 z-40 shrink-0 bg-white/90 px-1.5 pt-0 pb-1 backdrop-blur transform-gpu backface-hidden">
+                <div className="sticky top-0 z-40 shrink-0 bg-[rgba(255,255,255,0.90)] px-1.5 pt-0 pb-1 backdrop-blur transform-gpu backface-hidden dark:bg-transparent">
                   <div className="grid w-full grid-cols-2 gap-1">
                     {([
                       { id: 'queued', label: 'Recent' },
@@ -4434,7 +4425,7 @@ export default function PulsePage() {
                           key={tab.id}
                           type="button"
                           onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                          className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${isSelected ? 'border border-slate-600/70 bg-slate-950/60 text-slate-200' : 'border border-transparent bg-slate-900/50 text-slate-400 hover:bg-slate-900/70 hover:text-slate-200'}`}
+                          className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${isSelected ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300'}`}
                         >
                           <span>{tab.label}</span>
                           <span>{count}</span>
@@ -4446,7 +4437,7 @@ export default function PulsePage() {
               )}
 
               {isMobileViewport && (pullDistance > 0 || isPullRefreshing) && (
-                <div className="shrink-0 flex items-center justify-center bg-white/95 text-[9px] font-medium text-gray-500">
+                <div className="shrink-0 flex items-center justify-center bg-[rgba(255,255,255,0.95)] text-[9px] font-medium text-gray-500 dark:bg-transparent dark:text-[#94A3B8]">
                   <div style={{ height: `${Math.max(14, Math.min(24, pullDistance))}px` }} className="flex items-center gap-1 py-0.5">
                     <RefreshCw size={9} className={isPullRefreshing ? 'animate-spin' : ''} />
                     <span>{isPullRefreshing ? 'Refreshing...' : (mobilePullArmedRef.current ? 'Release to refresh' : 'Pull to refresh')}</span>

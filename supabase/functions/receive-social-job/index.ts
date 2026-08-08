@@ -90,123 +90,46 @@ async function logSocialJobPayload(insertLog: (payload: Record<string, unknown>)
   }
 }
 
-function buildExtractionPrompt(jobs: Array<{ id: string; title: string; description: string; location: string }>) {
-  const jobTexts = jobs.map((j, idx) => `[Job ${idx}] (id: ${j.id})
-Title: ${j.title}
-Location: ${j.location}
-Description: ${j.description.slice(0, 1500)}`).join("\n---\n");
+type QueueExtractionJob = {
+  job_id: string;
+  post_id: string;
+  platform: string;
+  title: string;
+  description: string;
+  location: string;
+};
 
-  return `Extract structured fields from each job posting. Return ONLY valid JSON, no markdown.
-Return one result per input job and preserve job_id from input. If a field is unknown, use null (or [] for arrays).
-For each job include: job_id, role_title, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).
-
-JOBS:
-${jobTexts}
-
-Return ONLY valid JSON array:`;
-}
-
-function normalizeExtractedResults(parsed: unknown, jobs: Array<{ id: string; title: string; description: string; location: string }>): Record<string, unknown>[] {
-  let rawRows: unknown[] = [];
-
-  if (Array.isArray(parsed)) {
-    rawRows = parsed;
-  } else if (parsed && typeof parsed === "object") {
-    const obj = parsed as Record<string, unknown>;
-    if (Array.isArray(obj.results)) rawRows = obj.results;
-    else if (Array.isArray(obj.items)) rawRows = obj.items;
-    else if (Array.isArray(obj.jobs)) rawRows = obj.jobs;
-    else if (
-      "job_id" in obj ||
-      "role_title" in obj ||
-      "core_skills" in obj ||
-      "years_experience" in obj
-    ) rawRows = [obj];
-  }
-
-  return rawRows
-    .map((row, index) => {
-      if (!row || typeof row !== "object") return null;
-      const obj = { ...(row as Record<string, unknown>) };
-      if (!obj.job_id) obj.job_id = jobs[index]?.id ?? jobs[0]?.id ?? null;
-      return obj;
-    })
-    .filter((row): row is Record<string, unknown> => Boolean(row && row.job_id));
-}
-
-async function extractWithCloudflareWorker(
-  jobs: Array<{ id: string; title: string; description: string; location: string }>,
-  workerUrl: string,
-  workerToken: string,
-): Promise<{ results: Record<string, unknown>[]; error?: string }> {
-  if (!workerUrl) return { results: [], error: "CLOUDFLARE_WORKER_URL is not set" };
+async function enqueueExtractionJobs(
+  producerUrl: string,
+  producerToken: string,
+  jobs: QueueExtractionJob[],
+): Promise<{ accepted: number; error?: string }> {
+  if (!producerUrl) return { accepted: 0, error: "CLOUDFLARE_QUEUE_PRODUCER_URL is not set" };
+  if (jobs.length === 0) return { accepted: 0 };
 
   try {
-    const response = await fetch(workerUrl, {
+    const response = await fetch(producerUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(workerToken ? { "Authorization": `Bearer ${workerToken}` } : {}),
+        ...(producerToken ? { "Authorization": `Bearer ${producerToken}` } : {}),
       },
-      body: JSON.stringify({
-        jobs,
-        prompt: buildExtractionPrompt(jobs),
-      }),
+      body: JSON.stringify({ jobs }),
     });
 
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      return { results: [], error: `worker HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 200)}` };
+      return {
+        accepted: 0,
+        error: `queue producer HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 240)}`,
+      };
     }
 
-    const rawResults = payload?.results ?? payload?.data ?? payload;
-    const results = normalizeExtractedResults(rawResults, jobs);
-    if (results.length === 0) {
-      return { results: [], error: "worker returned no usable extraction rows" };
-    }
-
-    return { results };
+    const accepted = typeof payload?.accepted === "number" ? payload.accepted : jobs.length;
+    return { accepted };
   } catch (error) {
-    return { results: [], error: `worker fetch failed: ${(error as Error).message}` };
+    return { accepted: 0, error: `queue producer request failed: ${(error as Error).message}` };
   }
-}
-
-async function extractWithGemini(jobs: Array<{ id: string; title: string; description: string; location: string }>, apiKey: string): Promise<{ results: Record<string, unknown>[]; error?: string }> {
-  if (!apiKey) return { results: [], error: "GEMINI_API_KEY is not set" };
-
-  const prompt = buildExtractionPrompt(jobs);
-
-  const models = ["gemini-2.5-flash"];
-  let lastError = "No models succeeded";
-  for (const model of models) {
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        lastError = `${model} HTTP ${res.status}: ${errBody.slice(0, 200)}`;
-        continue;
-      }
-      const data = await res.json();
-      let text = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
-      if (!text) { lastError = `${model}: empty response`; continue; }
-      text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-      const parsed = JSON.parse(text);
-      const results = normalizeExtractedResults(parsed, jobs);
-      if (results.length === 0) {
-        lastError = `${model}: parsed JSON but no usable result rows`;
-        continue;
-      }
-      return { results };
-    } catch (e) { lastError = `${model}: ${(e as Error).message}`; continue; }
-  }
-  return { results: [], error: lastError };
 }
 
 Deno.serve(async (req: Request) => {
@@ -218,11 +141,10 @@ Deno.serve(async (req: Request) => {
     if (items.length === 0) return respond({ error: "Empty payload" }, 400);
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const CLOUDFLARE_WORKER_URL = (Deno.env.get("CLOUDFLARE_WORKER_URL") ?? "").trim();
-    const CLOUDFLARE_WORKER_TOKEN = (Deno.env.get("CLOUDFLARE_WORKER_TOKEN") ?? "").trim();
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
+    const CLOUDFLARE_QUEUE_PRODUCER_URL = (Deno.env.get("CLOUDFLARE_QUEUE_PRODUCER_URL") ?? "").trim();
+    const CLOUDFLARE_QUEUE_PRODUCER_TOKEN = (Deno.env.get("CLOUDFLARE_QUEUE_PRODUCER_TOKEN") ?? "").trim();
     const { rows, errors } = normalizeSocialJobItems(items);
-    const normalizedRows = rows.map((row) => ({
+    const normalizedRows: Array<Record<string, unknown>> = rows.map((row) => ({
       ...row,
       posted_at: row.posted_at,
     }));
@@ -250,102 +172,21 @@ Deno.serve(async (req: Request) => {
 
     const insertedIds = data.map((r: { id: string }) => r.id);
 
-    // Build job objects for extraction — use in-memory rows to avoid a re-fetch.
-    const jobsForExtraction = data.map((r: { id: string }, idx: number) => ({
-      id: r.id,
-      title: normalizedRows[idx]?.job_title ?? "",
-      description: normalizedRows[idx]?.job_description ?? "",
-      location: normalizedRows[idx]?.location ?? "",
+    // Enqueue parsing jobs for async Cloudflare Queue processing.
+    const jobsForQueue: QueueExtractionJob[] = data.map((r: { id: string; post_id: string; platform: string }, idx: number) => ({
+      job_id: r.id,
+      post_id: r.post_id,
+      platform: r.platform,
+      title: asString(normalizedRows[idx]?.["job_title"]),
+      description: asString(normalizedRows[idx]?.["job_description"]),
+      location: asString(normalizedRows[idx]?.["location"]),
     }));
 
-    // Call parsing synchronously with Cloudflare-first fallback to Gemini.
-    let extractionSaved = 0;
-    let extractionError: string | null = null;
-
-    if (jobsForExtraction.length === 0) {
-      extractionError = "No inserted jobs available for extraction";
-    } else {
-      try {
-        let extracted: Record<string, unknown>[] = [];
-
-        if (CLOUDFLARE_WORKER_URL) {
-          const workerResult = await extractWithCloudflareWorker(jobsForExtraction, CLOUDFLARE_WORKER_URL, CLOUDFLARE_WORKER_TOKEN);
-          extracted = workerResult.results;
-          if (workerResult.error) extractionError = `cloudflare worker: ${workerResult.error}`;
-        }
-
-        if (extracted.length === 0 && GEMINI_API_KEY) {
-          const geminiResult = await extractWithGemini(jobsForExtraction, GEMINI_API_KEY);
-          extracted = geminiResult.results;
-          if (geminiResult.error) {
-            extractionError = extractionError
-              ? `${extractionError}; gemini fallback: ${geminiResult.error}`
-              : geminiResult.error;
-          } else if (extracted.length > 0 && extractionError) {
-            extractionError = `${extractionError}; recovered via gemini fallback`;
-          }
-        }
-
-        if (extracted.length === 0 && !CLOUDFLARE_WORKER_URL && !GEMINI_API_KEY) {
-          extractionError = "No parser configured. Set CLOUDFLARE_WORKER_URL or GEMINI_API_KEY";
-        }
-
-        if (extracted.length > 0) {
-          const matchRows = extracted.map((e: Record<string, unknown>) => {
-            const jobInput = jobsForExtraction.find(j => j.id === String(e.job_id ?? "")) ?? jobsForExtraction[0];
-            const rateStr = (e.hourly_rate_min != null || e.hourly_rate_max != null)
-              ? `$${e.hourly_rate_min ?? "?"}–$${e.hourly_rate_max ?? "?"}/hr`
-              : "Not specified";
-            const extractionSummary = {
-              role_title: String(e.role_title ?? jobInput.title ?? "Not specified"),
-              core_skills: Array.isArray(e.core_skills) ? e.core_skills as string[] : [],
-              years_experience: typeof e.years_experience === "number" ? e.years_experience : null,
-              visa_types: Array.isArray(e.visa_types) ? e.visa_types as string[] : [],
-              employment_type: String(e.employment_type ?? ""),
-              work_type: String(e.work_type ?? ""),
-              locations: Array.isArray(e.locations) ? e.locations as string[] : [],
-              hourly_rate_min: typeof e.hourly_rate_min === "number" ? e.hourly_rate_min : null,
-              hourly_rate_max: typeof e.hourly_rate_max === "number" ? e.hourly_rate_max : null,
-            };
-            return {
-              profile_id: null,
-              job_source: "social",
-              job_id: String(e.job_id ?? jobInput.id),
-              final_average_score: 0,
-              score_breakdown: {
-                role_match: { score: 0, candidate_value: "", job_value: String(e.role_title ?? jobInput.title ?? "Not specified"), rule: "Job role title" },
-                skills_match: { score: 0, candidate_value: "", job_value: Array.isArray(e.core_skills) ? (e.core_skills as string[]).join(", ") : "Not specified", rule: "Required skills" },
-                experience_match: { score: 0, candidate_value: "", job_value: e.years_experience != null ? `${e.years_experience}+ years` : "Not specified", rule: "Required experience" },
-                visa_match: { score: 0, candidate_value: "", job_value: Array.isArray(e.visa_types) && (e.visa_types as string[]).length ? (e.visa_types as string[]).join(", ") : "Not specified", rule: "Visa requirements" },
-                work_type_match: { score: 0, candidate_value: "", job_value: String(e.work_type ?? "Not specified"), rule: "Work arrangement" },
-                location_match: { score: 0, candidate_value: "", job_value: Array.isArray(e.locations) && (e.locations as string[]).length ? (e.locations as string[]).join(", ") : jobInput.location || "Not specified", rule: "Location" },
-                rate_match: { score: 0, candidate_value: "", job_value: rateStr, rule: "Hourly rate" },
-              },
-              ai_notes: `extraction_only|${JSON.stringify(extractionSummary)}`,
-              disqualified: false,
-              disqualify_reason: null,
-            };
-          });
-
-          const { error: matchErr } = await supabase
-            .from("radar_match_results")
-            .upsert(matchRows, { onConflict: "job_id,job_source", ignoreDuplicates: false });
-
-          if (!matchErr) {
-            extractionSaved = matchRows.length;
-            await supabase.from("social_jobs").update({ extracted_at: new Date().toISOString() }).in("id", matchRows.map(r => r.job_id));
-          } else {
-            extractionError = `radar_match_results upsert error: ${matchErr.message}`;
-            console.error("radar_match_results upsert error:", matchErr.message);
-          }
-        } else if (!extractionError) {
-          extractionError = "Parser returned no extraction rows";
-        }
-      } catch (parserErr) {
-        console.error("Parser extraction error:", parserErr);
-        extractionError = (parserErr as Error).message;
-      }
-    }
+    const queueResult = await enqueueExtractionJobs(
+      CLOUDFLARE_QUEUE_PRODUCER_URL,
+      CLOUDFLARE_QUEUE_PRODUCER_TOKEN,
+      jobsForQueue,
+    );
 
     // Fire embedding generation in the background — non-critical.
     const embeddingPromise = fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-embedding`, {
@@ -356,7 +197,14 @@ Deno.serve(async (req: Request) => {
 
     (globalThis as unknown as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime?.waitUntil(embeddingPromise);
 
-    return respond({ success: true, inserted: data.length, ids: insertedIds, extraction_saved: extractionSaved, extraction_error: extractionError, skipped: errors });
+    return respond({
+      success: true,
+      inserted: data.length,
+      ids: insertedIds,
+      enqueued_count: queueResult.accepted,
+      enqueue_error: queueResult.error ?? null,
+      skipped: errors,
+    });
   } catch (err) {
     return respond({ error: (err as Error).message }, 500);
   }

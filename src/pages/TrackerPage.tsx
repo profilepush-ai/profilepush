@@ -929,16 +929,16 @@ export default function TrackerPage() {
         </div>
 
         {/* ════════════════ VENDOR HISTORY COLUMN ════════════════ */}
-        <div className="min-w-0 bg-white flex flex-col overflow-hidden">
-          <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Jobs</span>
-            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ring-1 ring-blue-200">{vendorHistory.length}</span>
+        <div className="min-w-0 bg-white dark:bg-[#1B1D21] flex flex-col overflow-hidden">
+          <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#1F2328]">
+            <span className="text-xs font-bold text-gray-700 dark:text-slate-200 uppercase tracking-wider">Jobs</span>
+            <span className="text-[10px] font-bold text-blue-700 dark:text-slate-200 bg-blue-50 dark:bg-[#2A2E35] px-1.5 py-0.5 rounded ring-1 ring-blue-200 dark:ring-white/10">{vendorHistory.length}</span>
             {activeVendorId ? (
-              <span className="ml-auto text-[10px] text-gray-500 truncate max-w-[140px]">
+              <span className="ml-auto text-[10px] text-gray-500 dark:text-[#94A3B8] truncate max-w-[140px]">
                 {vendors.find(v => v.id === activeVendorId)?.name}
               </span>
             ) : (
-              <span className="ml-auto text-[10px] text-gray-500 truncate max-w-[140px]">All contacts</span>
+              <span className="ml-auto text-[10px] text-gray-500 dark:text-[#94A3B8] truncate max-w-[140px]">All contacts</span>
             )}
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -947,9 +947,9 @@ export default function TrackerPage() {
                 <LogoSpinner size={20} />
               </div>
             ) : vendorHistory.length === 0 ? (
-              <div className="py-16 text-center text-xs text-gray-400">
-                <History size={18} className="mx-auto text-gray-300 mb-2" />
-                <p className="font-medium text-gray-500">No revealed jobs</p>
+              <div className="py-16 text-center text-xs text-gray-400 dark:text-[#94A3B8]">
+                <History size={18} className="mx-auto text-gray-300 dark:text-slate-600 mb-2" />
+                <p className="font-medium text-gray-500 dark:text-[#CBD5E1]">No revealed jobs</p>
                 <p className="mt-1">{activeVendorId ? 'No contact reveals found for this vendor yet.' : 'No contact reveals found across these contacts yet.'}</p>
               </div>
             ) : (
@@ -972,32 +972,32 @@ export default function TrackerPage() {
                   const collapsedBreakdownItems = prioritizedBreakdownItems.slice(0, 3);
                   const visibleBreakdownItems = isExpanded ? prioritizedBreakdownItems : collapsedBreakdownItems;
                   const cardToneClass = [
-                    'border-blue-100 bg-blue-50/35',
-                    'border-emerald-100 bg-emerald-50/35',
-                    'border-amber-100 bg-amber-50/40',
-                    'border-slate-200 bg-slate-50/75',
+                    'border-blue-100 bg-blue-50/35 dark:border-white/10 dark:bg-[#23272e]',
+                    'border-emerald-100 bg-emerald-50/35 dark:border-white/10 dark:bg-[#252a30]',
+                    'border-amber-100 bg-amber-50/40 dark:border-white/10 dark:bg-[#2a2d32]',
+                    'border-slate-200 bg-slate-50/75 dark:border-white/10 dark:bg-[#22262c]',
                   ][index % 4];
 
                   return (
                     <div
                       key={job.id}
-                      className={`px-2.5 sm:px-3.5 py-2.5 sm:py-3 ${index > 0 ? 'border-t border-gray-100 lg:border-t-0' : ''} lg:rounded-xl lg:border ${cardToneClass}`}
+                      className={`px-2.5 sm:px-3.5 py-2.5 sm:py-3 ${index > 0 ? 'border-t border-gray-100 dark:border-white/10 lg:border-t-0' : ''} lg:rounded-xl lg:border ${cardToneClass}`}
                     >
                       <div className="flex items-start justify-between gap-1.5">
                         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                          <p className="text-[11px] sm:text-sm font-semibold text-gray-900 leading-snug">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
-                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600">{job.platform}</span>
+                          <p className="text-[11px] sm:text-sm font-semibold text-gray-900 dark:text-[#CBD5E1] leading-snug">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
+                          <span className="rounded bg-gray-100 dark:bg-[#171a1f] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600 dark:text-[#94A3B8]">{job.platform}</span>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                         </div>
                       </div>
                       {job.company_name && (
-                        <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-gray-600">{job.company_name}</div>
+                        <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-gray-600 dark:text-[#94A3B8]">{job.company_name}</div>
                       )}
-                      <div className="mt-0.5 text-[10px] sm:text-xs text-gray-500">
+                      <div className="mt-0.5 text-[10px] sm:text-xs text-gray-500 dark:text-[#94A3B8]">
                         <span>{job.posted_by_name || '—'}</span>
                       </div>
-                      <div className="mt-0.5 sm:mt-1 space-y-0.5 text-[10px] sm:text-xs text-gray-400">
+                      <div className="mt-0.5 sm:mt-1 space-y-0.5 text-[10px] sm:text-xs text-gray-400 dark:text-slate-500">
                         <div>- {formatAgo(job.created_at)} posted</div>
                         <div>- {job.revealed_at ? `${formatAgo(job.revealed_at)} revealed` : '— revealed'}</div>
                       </div>
@@ -1014,16 +1014,16 @@ export default function TrackerPage() {
                                 return next;
                               });
                             }}
-                            className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left relative group focus:outline-none"
+                            className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 dark:border-white/10 text-left relative group focus:outline-none"
                           >
                             <table className="w-full table-fixed border-collapse text-left text-[10px]">
                               <tbody>
                                 {visibleBreakdownItems.map((item, idx) => (
                                   <tr key={item.key}>
-                                    <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>
+                                    <td className={`border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-slate-500' : 'text-gray-700 dark:text-[#CBD5E1]'}`}>
                                       {formatBreakdownFieldName(item.key)}
                                     </td>
-                                    <td className={`border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400' : 'text-gray-700'}`}>
+                                    <td className={`border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-slate-500' : 'text-gray-700 dark:text-[#CBD5E1]'}`}>
                                       {item.detail?.job_value || '-'}
                                     </td>
                                   </tr>
@@ -1032,18 +1032,18 @@ export default function TrackerPage() {
                             </table>
                             {!isExpanded && (
                               <div className="absolute bottom-0 left-0 right-0 h-7 flex items-center justify-center pointer-events-none">
-                                <ChevronDown size={12} className="text-blue-500" />
+                                <ChevronDown size={12} className="text-blue-500 dark:text-[#94A3B8]" />
                               </div>
                             )}
                           </button>
                         ) : (
-                          <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 text-left">
+                          <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 dark:border-white/10 text-left">
                             <table className="w-full table-fixed border-collapse text-left text-[10px]">
                               <tbody>
                                 {visibleBreakdownItems.map((item) => (
                                   <tr key={item.key}>
-                                    <td className="border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal text-gray-700">{formatBreakdownFieldName(item.key)}</td>
-                                    <td className="border-b border-gray-100 bg-white px-2 py-1 break-words whitespace-normal text-gray-700">{item.detail?.job_value || '-'}</td>
+                                    <td className="border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal text-gray-700 dark:text-[#CBD5E1]">{formatBreakdownFieldName(item.key)}</td>
+                                    <td className="border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal text-gray-700 dark:text-[#CBD5E1]">{item.detail?.job_value || '-'}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -1056,7 +1056,7 @@ export default function TrackerPage() {
                         <div className="flex flex-col gap-1.5">
                           <button
                             onClick={() => void generateTrackerEmailDrafts(job)}
-                                className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2 py-1.5 sm:px-2.5 sm:py-2 text-[10px] sm:text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                                  className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 dark:border-white/15 dark:bg-[#2A2E35] px-2 py-1.5 sm:px-2.5 sm:py-2 text-[10px] sm:text-xs font-semibold text-white dark:text-slate-100 shadow-sm transition hover:bg-blue-700 dark:hover:bg-[#343943]"
                           >
                             <Mail size={10} />
                             Generate Email

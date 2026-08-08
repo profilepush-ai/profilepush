@@ -24,11 +24,11 @@ import {
   Search,
   Shield,
   CheckSquare,
+  ChevronRight,
   ChevronDown,
   ChevronUp,
   Server,
   Sparkles,
-  TableProperties,
   GraduationCap,
   Flame,
   Workflow,
@@ -254,8 +254,20 @@ type PulseLeadActionRow = {
   action_type: LeadActionType;
 };
 
+type PulseFeedCacheWorkerResponse = {
+  rows: PulseSocialFeedRpcRow[];
+  cached?: boolean;
+  cacheKey?: string;
+  rangeHours?: number;
+  rowCount?: number;
+  refreshedAt?: string;
+};
+
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
+const PULSE_ROWS_CACHE_TTL_MS = 30_000;
+const PULSE_CACHE_WORKER_URL = (import.meta.env.VITE_PULSE_CACHE_WORKER_URL ?? '').trim();
+const PULSE_CACHE_WORKER_TOKEN = (import.meta.env.VITE_PULSE_CACHE_WORKER_TOKEN ?? '').trim();
 const TOP_PROFILES_PAGE_SIZE = 5;
 const TABLE_PROFILES_PAGE_SIZE = 25;
 const MATCHES_PAGE_SIZE = 5;
@@ -839,9 +851,7 @@ export default function ProfilesPage() {
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
   const [feedSearchScope, setFeedSearchScope] = useState<PulseFeedSearchScope>('all');
   const [selectedProfilesView, setSelectedProfilesView] = useState<'all' | 'watching'>('all');
-  const [profilesLayoutMode, setProfilesLayoutMode] = useState<'cards' | 'table'>(() => {
-    return 'table';
-  });
+  const profilesLayoutMode: 'table' = 'table';
   const [profilesListingMode, setProfilesListingMode] = useState<ProfilesListingMode>('roles');
   const [profilePage, setProfilePage] = useState(1);
   const [tableProfilePage, setTableProfilePage] = useState(1);
@@ -876,6 +886,9 @@ export default function ProfilesPage() {
   const mobileScrollUpAccumRef = useRef(0);
   const mobileScrollDownAccumRef = useRef(0);
   const mobileCollapseLockUntilRef = useRef(0);
+  const pulseRowsCacheRef = useRef<PulseSocialFeedRpcRow[] | null>(null);
+  const pulseRowsCacheAtRef = useRef(0);
+  const pulseRowsCacheRangeHoursRef = useRef<number | null>(null);
   const rangeMenuRef = useRef<HTMLDivElement | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
@@ -1382,8 +1395,11 @@ export default function ProfilesPage() {
                     onClick={() => openJobsForRole(persona.target_role)}
                     className={`cursor-pointer ${isSelected ? 'bg-blue-50/50' : 'bg-white'} hover:bg-gray-50`}
                   >
-                    <td className={`border-b border-gray-100 font-semibold leading-tight text-blue-700 break-words whitespace-normal ${compact ? 'px-1.5 py-1' : 'px-2 py-1.5'}`} title={persona.target_role}>
-                      {persona.target_role}
+                    <td className={`border-b border-gray-100 font-semibold leading-tight text-blue-700 dark:text-white break-words whitespace-normal ${compact ? 'px-1.5 py-1' : 'px-2 py-1.5'}`} title={persona.target_role}>
+                      <span className="inline-flex w-full items-center justify-between gap-1.5">
+                        <span className="min-w-0 break-words whitespace-normal">{persona.target_role}</span>
+                        <ChevronRight size={compact ? 11 : 12} className="shrink-0 text-[#6B7280]" aria-hidden="true" />
+                      </span>
                     </td>
                     <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{stats.uniqueJobs}</td>
                     <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{stats.uniqueVendors}</td>
@@ -1430,11 +1446,24 @@ export default function ProfilesPage() {
               {domains.map((domain) => {
                 const DomainIcon = domain.icon;
                 return (
-                  <tr key={`${keyPrefix}-${domain.id}`} className="bg-white hover:bg-gray-50">
-                    <td className={`border-b border-gray-100 font-semibold leading-tight text-blue-700 break-words whitespace-normal ${compact ? 'px-1.5 py-1' : 'px-2 py-1.5'}`}>
-                      <span className="inline-flex items-center gap-1.5">
-                        <DomainIcon size={compact ? 11 : 12} className="text-blue-600" />
-                        <span>{domain.label}</span>
+                  <tr
+                    key={`${keyPrefix}-${domain.id}`}
+                    onClick={() => {
+                      setSelectedCategoryId(domain.id);
+                      setSelectedTechStacks([]);
+                      setActivePersona(null);
+                      setProfilesListingMode('roles');
+                      setSelectedProfilesView('all');
+                    }}
+                    className="cursor-pointer bg-white hover:bg-gray-50"
+                  >
+                    <td className={`border-b border-gray-100 font-semibold leading-tight text-blue-700 dark:text-white break-words whitespace-normal ${compact ? 'px-1.5 py-1' : 'px-2 py-1.5'}`}>
+                      <span className="inline-flex w-full items-center justify-between gap-1.5">
+                        <span className="inline-flex min-w-0 items-center gap-1.5">
+                          <DomainIcon size={compact ? 11 : 12} className="text-blue-600" />
+                          <span className="min-w-0 break-words whitespace-normal">{domain.label}</span>
+                        </span>
+                        <ChevronRight size={compact ? 11 : 12} className="shrink-0 text-[#6B7280]" aria-hidden="true" />
                       </span>
                     </td>
                     <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{domain.uniqueJobs}</td>
@@ -1819,8 +1848,56 @@ export default function ProfilesPage() {
     void loadInitial();
   }, [loadInitial]);
 
-  const loadGlobalPulseRows = useCallback(async () => {
-    const since = '1970-01-01T00:00:00.000Z';
+  const loadGlobalPulseRowsFromCacheWorker = useCallback(async (rangeHours: number) => {
+    if (!PULSE_CACHE_WORKER_URL) return null;
+
+    try {
+      const url = new URL(PULSE_CACHE_WORKER_URL);
+      url.searchParams.set('hours', String(rangeHours));
+      url.searchParams.set('limit', '5000');
+
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+      };
+      if (PULSE_CACHE_WORKER_TOKEN) {
+        headers.Authorization = `Bearer ${PULSE_CACHE_WORKER_TOKEN}`;
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers,
+      });
+      if (!response.ok) return null;
+
+      const payload = (await response.json()) as PulseFeedCacheWorkerResponse;
+      if (!Array.isArray(payload.rows)) return null;
+      return payload.rows;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const loadGlobalPulseRows = useCallback(async (rangeHours: number, forceRefresh = false) => {
+    const now = Date.now();
+    const hasFreshCache = pulseRowsCacheRef.current
+      && pulseRowsCacheRangeHoursRef.current === rangeHours
+      && (now - pulseRowsCacheAtRef.current) <= PULSE_ROWS_CACHE_TTL_MS;
+
+    if (!forceRefresh && hasFreshCache) {
+      return pulseRowsCacheRef.current;
+    }
+
+    if (!forceRefresh) {
+      const workerRows = await loadGlobalPulseRowsFromCacheWorker(rangeHours);
+      if (workerRows) {
+        pulseRowsCacheRef.current = workerRows;
+        pulseRowsCacheAtRef.current = Date.now();
+        pulseRowsCacheRangeHoursRef.current = rangeHours;
+        return workerRows;
+      }
+    }
+
+    const since = new Date(Date.now() - (rangeHours * 60 * 60 * 1000)).toISOString();
 
     // Preferred path: global SECURITY DEFINER RPC (all-account feed).
     const rpcResult = await supabase.rpc('get_pulse_social_feed', {
@@ -1853,7 +1930,7 @@ export default function ProfilesPage() {
             if (nextTs > currentTs) latestByJobId.set(jobId, matchRow);
           }
 
-          return rows.map((row) => {
+          const mergedRows = rows.map((row) => {
             const extra = latestByJobId.get(row.lead_id);
             if (!extra) return row;
             const extractedFields = (extra.extracted_fields as Record<string, unknown> | null | undefined) ?? null;
@@ -1887,8 +1964,16 @@ export default function ProfilesPage() {
               relocation_required: (extra.relocation_required as boolean | null | undefined) ?? (extractedFields?.relocation_required as boolean | null | undefined) ?? null,
             } as PulseSocialFeedRpcRow;
           });
+
+          pulseRowsCacheRef.current = mergedRows;
+          pulseRowsCacheAtRef.current = Date.now();
+          pulseRowsCacheRangeHoursRef.current = rangeHours;
+          return mergedRows;
         }
       }
+      pulseRowsCacheRef.current = rows;
+      pulseRowsCacheAtRef.current = Date.now();
+      pulseRowsCacheRangeHoursRef.current = rangeHours;
       return rows;
     }
 
@@ -1960,7 +2045,7 @@ export default function ProfilesPage() {
       }
     }
 
-    return latestMatches.map((match) => {
+    const fallbackRows = latestMatches.map((match) => {
       const social = match.job_source === 'social' ? socialById.get(match.job_id) : null;
       const leadId = social ? social.id : `${match.job_source}:${match.job_id}`;
 
@@ -1991,7 +2076,12 @@ export default function ProfilesPage() {
         extracted_hourly_rate_max: social?.extracted_hourly_rate_max ?? null,
       } as PulseSocialFeedRpcRow;
     });
-  }, []);
+
+    pulseRowsCacheRef.current = fallbackRows;
+    pulseRowsCacheAtRef.current = Date.now();
+    pulseRowsCacheRangeHoursRef.current = rangeHours;
+    return fallbackRows;
+  }, [loadGlobalPulseRowsFromCacheWorker]);
 
   const loadProfileStats = useCallback(async () => {
     if (sortedLeaderboard.length === 0) {
@@ -2032,7 +2122,7 @@ export default function ProfilesPage() {
     // Fallback: text-based matching against the social feed.
     let rpcRows: PulseSocialFeedRpcRow[] = [];
     try {
-      rpcRows = await loadGlobalPulseRows();
+      rpcRows = await loadGlobalPulseRows(selectedProfileRange.hours);
     } catch {
       showToast('Could not load profile stats', 'error');
       setProfileStatsLoading(false);
@@ -2100,17 +2190,17 @@ export default function ProfilesPage() {
 
     setProfileStatsByRole(stats);
     setProfileStatsLoading(false);
-  }, [loadGlobalPulseRows, showToast, sortedLeaderboard, zeroStats]);
+  }, [loadGlobalPulseRows, selectedProfileRange.hours, showToast, sortedLeaderboard, zeroStats]);
 
   useEffect(() => {
     void loadProfileStats();
   }, [loadProfileStats]);
 
-  const loadFeed = useCallback(async (_persona: PulsePersona | null, _personaFilters: PulsePersona[] = []) => {
+  const loadFeed = useCallback(async (_persona: PulsePersona | null, _personaFilters: PulsePersona[] = [], forceRefresh = false) => {
     setFeedLoading(true);
     let rpcRows: PulseSocialFeedRpcRow[] = [];
     try {
-      rpcRows = await loadGlobalPulseRows();
+      rpcRows = await loadGlobalPulseRows(selectedProfileRange.hours, forceRefresh);
     } catch {
       showToast('Failed to load social matches', 'error');
       setFeedLoading(false);
@@ -2218,16 +2308,11 @@ export default function ProfilesPage() {
     setDesktopRecentVisibleCount(MATCHES_PAGE_SIZE);
     setDesktopRevealedVisibleCount(MATCHES_PAGE_SIZE);
     setFeedLoading(false);
-  }, [loadGlobalPulseRows, showToast]);
+  }, [loadGlobalPulseRows, selectedProfileRange.hours, showToast]);
 
   useEffect(() => {
     void loadFeed(null);
   }, [loadFeed]);
-
-  // Re-fetch matches when date range changes
-  useEffect(() => {
-    void loadFeed(null);
-  }, [loadFeed, selectedProfileRange.hours]);
 
   useEffect(() => {
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
@@ -2349,7 +2434,7 @@ export default function ProfilesPage() {
 
   const refreshFeed = useCallback(async () => {
     setRefreshing(true);
-    await loadFeed(null);
+    await loadFeed(null, [], true);
 
     try {
       const { data: latestRows } = await supabase.rpc('get_pulse_social_feed', {
@@ -2921,15 +3006,6 @@ export default function ProfilesPage() {
                         </button>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setProfilesLayoutMode((prev) => (prev === 'cards' ? 'table' : 'cards'))}
-                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${profilesLayoutMode === 'table' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                        aria-label={profilesLayoutMode === 'table' ? 'Switch to card layout' : 'Switch to table layout'}
-                        title={profilesLayoutMode === 'table' ? 'Card layout' : 'Table layout'}
-                      >
-                        <TableProperties size={13} />
-                      </button>
                     </>
                   )}
 
@@ -2978,15 +3054,6 @@ export default function ProfilesPage() {
               >
                 {isMobileViewport ? (
                   <div className="sticky top-0 z-40 shrink-0 flex items-start gap-1.5 bg-white px-1.5 pt-0 pb-1">
-                    <button
-                      type="button"
-                      onClick={() => setProfilesLayoutMode((prev) => (prev === 'cards' ? 'table' : 'cards'))}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${profilesLayoutMode === 'table' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                      aria-label={profilesLayoutMode === 'table' ? 'Switch to card layout' : 'Switch to table layout'}
-                      title={profilesLayoutMode === 'table' ? 'Card layout' : 'Table layout'}
-                    >
-                      <TableProperties size={13} />
-                    </button>
                     <div className="grid flex-1 min-w-0 grid-cols-3 gap-1">
                       <button
                         type="button"

@@ -4,9 +4,10 @@ import {
   Users, Bookmark, ChevronDown, LogOut, Settings,
   Building2, LifeBuoy, Map, CreditCard, AlertTriangle, PenLine, FileText,
   Bell, BellRing, Check, ArrowRight, X,
-  Activity, ShieldCheck, Briefcase,
+  Activity, ShieldCheck, Briefcase, MoonStar, SunMedium,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
 import { supabase } from '../lib/supabase';
 import type { AppNotification, NotificationType } from '../lib/notifications';
@@ -21,6 +22,7 @@ const navItems = [
 ];
 
 function CreditsChip({ balance }: { balance: number }) {
+  const { isDark } = useTheme();
   const isLow = balance < 1;
   const isZero = balance <= 0;
 
@@ -28,7 +30,7 @@ function CreditsChip({ balance }: { balance: number }) {
     return (
       <Link
         to="/billing"
-        className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-600 text-[10px] font-bold hover:bg-red-100 transition-colors"
+        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-red-600 text-red-600 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(254,242,242)] hover:bg-[rgb(254,226,226)]'}`}
         title="No credits remaining — top up"
       >
         <AlertTriangle size={9} />
@@ -41,7 +43,7 @@ function CreditsChip({ balance }: { balance: number }) {
     return (
       <Link
         to="/billing"
-        className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold hover:bg-amber-100 transition-colors"
+        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-amber-700 text-amber-700 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(255,251,235)] hover:bg-[rgb(254,243,199)]'}`}
         title="Low credits"
       >
         <AlertTriangle size={9} />
@@ -53,7 +55,7 @@ function CreditsChip({ balance }: { balance: number }) {
   return (
     <Link
       to="/billing"
-      className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold hover:bg-emerald-100 transition-colors"
+      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-700 text-emerald-700 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(236,253,245)] hover:bg-[rgb(209,250,229)]'}`}
       title="Credits remaining"
     >
       <CreditCard size={9} />
@@ -235,6 +237,7 @@ function NotificationBell({ userId, accountId }: { userId: string; accountId: st
 export default function AppNav() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
   const { user, account, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -274,6 +277,15 @@ export default function AppNav() {
       {/* Mobile: credits chip + account avatar */}
       {user && (
         <span className="sm:hidden ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-50"
+          >
+            {isDark ? <SunMedium size={12} /> : <MoonStar size={12} />}
+          </button>
           {account != null && <CreditsChip balance={account.credits_balance} />}
           <Link
             to="/account"
@@ -335,6 +347,16 @@ export default function AppNav() {
       {/* Credits + Bell + Profile */}
       {user && (
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="hidden sm:inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-50"
+          >
+            {isDark ? <SunMedium size={13} /> : <MoonStar size={13} />}
+          </button>
+
           {account != null && (
             <span className="hidden sm:block">
               <CreditsChip balance={account.credits_balance} />

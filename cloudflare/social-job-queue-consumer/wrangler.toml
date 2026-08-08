@@ -1,0 +1,17 @@
+name = "profilepush-social-job-queue-consumer"
+main = "src/index.ts"
+compatibility_date = "2026-08-08"
+workers_dev = true
+
+[ai]
+binding = "AI"
+
+[vars]
+PARSER_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
+
+[[queues.consumers]]
+queue = "social-job-parse"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "social-job-parse-dlq"

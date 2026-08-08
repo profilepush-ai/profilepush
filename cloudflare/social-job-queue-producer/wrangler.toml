@@ -1,0 +1,8 @@
+name = "profilepush-social-job-queue-producer"
+main = "src/index.ts"
+compatibility_date = "2026-08-08"
+workers_dev = true
+
+[[queues.producers]]
+binding = "JOB_PARSE_QUEUE"
+queue = "social-job-parse"

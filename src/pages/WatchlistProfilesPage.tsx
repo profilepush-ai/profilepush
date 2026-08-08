@@ -359,8 +359,8 @@ export default function WatchlistProfilesPage() {
     <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden overscroll-none pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
-      <div className="sticky top-0 z-20 border-b border-gray-200 bg-white px-2 py-2 flex items-center gap-2">
-        <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+      <div className="sticky top-0 z-20 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#1F2328] px-2 py-2 flex items-center gap-2">
+        <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#171a1f] px-3 py-1.5">
           <Search size={11} className="text-gray-400" />
           <input
             type="text"
@@ -373,7 +373,7 @@ export default function WatchlistProfilesPage() {
                 setQuery(pendingQuery.trim());
               }
             }}
-            className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+            className="w-full border-0 bg-transparent text-[11px] text-gray-700 dark:text-slate-200 outline-none placeholder:text-gray-400 dark:placeholder:text-slate-500"
           />
           {pendingQuery && (
             <button
@@ -381,7 +381,7 @@ export default function WatchlistProfilesPage() {
                 setPendingQuery('');
                 setQuery('');
               }}
-              className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600"
+              className="rounded-full p-0.5 text-gray-400 dark:text-slate-500 transition hover:text-gray-600 dark:hover:text-slate-300"
             >
               <X size={11} />
             </button>
@@ -391,7 +391,7 @@ export default function WatchlistProfilesPage() {
         <button
           type="button"
           onClick={() => setQuery(pendingQuery.trim())}
-          className="rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700"
+          className="rounded-full border border-blue-600 dark:border-white/15 bg-transparent p-1.5 text-blue-600 dark:text-slate-200 transition hover:text-blue-700 dark:hover:text-slate-100"
           aria-label="Search"
         >
           <Search size={12} />
@@ -400,7 +400,7 @@ export default function WatchlistProfilesPage() {
         <div ref={rangeMenuRef} className="relative shrink-0">
           <button
             onClick={() => setIsRangeMenuOpen((prev) => !prev)}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100"
+            className="inline-flex items-center gap-1 rounded-full border border-gray-200 dark:border-white/10 bg-transparent px-2 py-1.5 text-[10px] font-semibold text-gray-600 dark:text-[#94A3B8] transition hover:text-gray-700 dark:hover:text-slate-200"
             aria-label="Change date range"
           >
             <Clock3 size={11} />
@@ -408,7 +408,7 @@ export default function WatchlistProfilesPage() {
           </button>
 
           {isRangeMenuOpen && (
-            <div className="absolute right-0 top-[calc(100%+6px)] z-30 min-w-[116px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+            <div className="absolute right-0 top-[calc(100%+6px)] z-30 min-w-[116px] overflow-hidden rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1F2328] p-1 shadow-lg">
               {WATCHLIST_RANGE_OPTIONS.map((option) => {
                 const isActive = option.id === rangeId;
                 return (
@@ -419,7 +419,7 @@ export default function WatchlistProfilesPage() {
                       setRangeId(option.id);
                       setIsRangeMenuOpen(false);
                     }}
-                    className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? 'text-blue-700 dark:text-slate-100' : 'text-gray-600 dark:text-[#94A3B8] hover:text-gray-700 dark:hover:text-slate-200'}`}
                   >
                     <span>{option.label}</span>
                     {isActive ? <Check size={11} /> : null}
@@ -459,14 +459,14 @@ export default function WatchlistProfilesPage() {
                     <div
                       key={profile.id}
                       onClick={() => { setSelectedProfileId(profile.id); setEditingProfile(null); }}
-                      className={`px-3 py-2.5 cursor-pointer transition-colors ${isSelected ? 'bg-blue-100/60' : 'hover:bg-blue-50/30'}`}
+                      className={`px-3 py-2.5 cursor-pointer transition-colors ${isSelected ? 'bg-blue-100/60 dark:bg-[#252a30]' : 'hover:bg-blue-50/30 dark:hover:bg-[#20242a]'}`}
                     >
                       <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-1.5">
                         <p className="text-[11px] font-semibold text-gray-900 break-words whitespace-normal leading-snug">
                           {profile.target_role}
                         </p>
                         <div className="flex flex-wrap items-center gap-1 shrink-0">
-                          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold ${profile.is_watching ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-gray-200 bg-gray-50 text-gray-500'}`} title="Watching status">
+                          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold ${profile.is_watching ? 'border border-emerald-200 dark:border-emerald-500/35 bg-transparent text-emerald-700 dark:text-emerald-300' : 'border border-gray-200 dark:border-white/10 bg-transparent text-gray-500 dark:text-[#94A3B8]'}`} title="Watching status">
                             <BookmarkCheck size={10} /> {profile.is_watching ? 'Watching' : 'Not Watching'}
                           </span>
                         </div>
@@ -615,10 +615,10 @@ export default function WatchlistProfilesPage() {
                 </div>
 
                 <div className="sticky bottom-0 z-10 flex items-center justify-end gap-2 border-t border-gray-200 p-3 bg-gray-50">
-                  <button type="button" onClick={closeEditor} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white">
+                  <button type="button" onClick={closeEditor} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:text-gray-900">
                     <X size={12} /> Cancel
                   </button>
-                  <button type="button" onClick={() => void handleSave()} disabled={savingId === editingProfile.id} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+                  <button type="button" onClick={() => void handleSave()} disabled={savingId === editingProfile.id} className="inline-flex items-center gap-1 rounded-lg border border-blue-600 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200 disabled:opacity-60">
                     <Save size={12} /> Save
                   </button>
                 </div>
@@ -662,10 +662,10 @@ export default function WatchlistProfilesPage() {
                 </table>
 
                 <div className="sticky bottom-0 z-10 flex items-center justify-end gap-2 border-t border-gray-200 p-3 bg-gray-50">
-                  <button type="button" onClick={() => startEditing(selectedProfile)} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white">
+                  <button type="button" onClick={() => startEditing(selectedProfile)} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-white/10 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-slate-200 hover:text-gray-900 dark:hover:text-slate-100">
                     <Pencil size={12} /> Edit
                   </button>
-                  <button type="button" onClick={() => void handleToggleWatch(selectedProfile)} disabled={savingId === selectedProfile.id} className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60">
+                  <button type="button" onClick={() => void handleToggleWatch(selectedProfile)} disabled={savingId === selectedProfile.id} className="inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-500/35 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 disabled:opacity-60">
                     <BookmarkCheck size={12} /> Unwatch
                   </button>
                 </div>
