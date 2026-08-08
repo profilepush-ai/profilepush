@@ -657,24 +657,24 @@ function ScoreBreakdownTable({
   const cellClass = 'px-3 py-2 text-[11px]';
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+    <div className="rounded-xl bg-[#172033] overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <div className={showComparison ? 'overflow-x-auto' : ''}>
         <div className={showComparison ? 'min-w-[38rem]' : 'w-full'}>
-          <div className={`grid ${gridClass} gap-2 border-b border-slate-100 bg-slate-50 px-2 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500`}>
+          <div className={`grid ${gridClass} gap-2 bg-transparent px-2 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400`}>
             <span>Score</span>
             <span>Rule</span>
             {showComparison && <span>Candidate</span>}
             <span>Job</span>
           </div>
-          <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
+          <div className="max-h-72 overflow-y-auto space-y-1.5 p-1.5">
             {rows.map(item => {
               const detail = detailMap[item.key];
               return (
-                <div key={item.key} className={`grid ${gridClass} gap-2 ${cellClass} text-slate-700`}>
+                <div key={item.key} className={`grid ${gridClass} gap-2 ${cellClass} rounded-md bg-[#0F172A]/40 px-2 py-1.5 text-slate-200`}>
                   <div className={`font-semibold tabular-nums ${getScoreTextClass(item.score)}`}>{Math.round(item.score)}</div>
-                  <div className="font-medium text-slate-800 break-words whitespace-pre-wrap">{formatScoreLabel(item.key)}</div>
-                  {showComparison && <div className="min-w-0 text-slate-600 break-words whitespace-pre-wrap">{detail?.candidate_value || '—'}</div>}
-                  <div className="min-w-0 text-slate-600 break-all whitespace-pre-wrap">{detail?.job_value || '—'}</div>
+                  <div className="font-medium text-slate-200 break-words whitespace-pre-wrap">{formatScoreLabel(item.key)}</div>
+                  {showComparison && <div className="min-w-0 text-slate-400 break-words whitespace-pre-wrap">{detail?.candidate_value || '—'}</div>}
+                  <div className="min-w-0 text-slate-400 break-all whitespace-pre-wrap">{detail?.job_value || '—'}</div>
                 </div>
               );
             })}
@@ -688,14 +688,14 @@ function ScoreBreakdownTable({
 function cardClass(id: string, isSaved: boolean, ms: MatchScore | undefined, previewedIds: Set<string>, defaultHover: string): string {
   if (ms && !ms.queued) {
     const s = ms.score;
-    if (s >= 80) return 'bg-green-50 border-green-300 hover:shadow-sm';
-    if (s >= 60) return 'bg-amber-50 border-amber-300 hover:shadow-sm';
-    if (s >= 40) return 'bg-orange-50/70 border-orange-300 hover:shadow-sm';
-    return 'bg-red-50 border-red-300 hover:shadow-sm';
+    if (s >= 80) return 'bg-[#1E293B] border-[#334155] hover:shadow-sm';
+    if (s >= 60) return 'bg-[#1E293B] border-[#334155] hover:shadow-sm';
+    if (s >= 40) return 'bg-[#1E293B] border-[#334155] hover:shadow-sm';
+    return 'bg-[#1E293B] border-[#334155] hover:shadow-sm';
   }
-  if (isSaved) return 'bg-blue-50 border-blue-200 hover:shadow-sm';
-  if (previewedIds.has(id)) return 'bg-slate-100 border-slate-400 hover:shadow-sm';
-  return `bg-white border-gray-200 ${defaultHover} hover:shadow-sm`;
+  if (isSaved) return 'bg-[#1E293B] border-[#334155] hover:shadow-sm';
+  if (previewedIds.has(id)) return 'bg-[#1E293B] border-[#334155] hover:shadow-sm';
+  return `bg-[#1E293B] border-[#334155] ${defaultHover} hover:shadow-sm`;
 }
 
 function looksLikeHtml(s: string) { return /<[a-z][\s\S]*?>/i.test(s); }
@@ -745,18 +745,18 @@ function ScoreBadge({
       <button
         onClick={onToggle}
         className={isPopup
-          ? 'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-slate-200 bg-white transition-all hover:bg-slate-50'
+          ? 'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[#1E293B]/90 ring-1 ring-slate-700/60 transition-all hover:bg-[#0F172A]'
           : `w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg ring-1 ${colors.ring} ${colors.bg} transition-all`}
       >
         <span className={isPopup ? `text-sm font-semibold leading-none tabular-nums ${getScoreTextClass(ms.score)}` : `text-sm font-bold leading-none tabular-nums ${colors.text}`}>{ms.score}</span>
-        <div className={isPopup ? 'flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden' : 'flex-1 h-1 bg-white/60 rounded-full overflow-hidden'}>
+        <div className={isPopup ? 'flex-1 h-1.5 bg-[#0F172A] rounded-full overflow-hidden' : 'flex-1 h-1 bg-[#1E293B]/60 rounded-full overflow-hidden'}>
           <div className={`h-full rounded-full ${colors.bar}`} style={{ width: `${ms.score}%` }} />
         </div>
         <span className={isPopup ? `text-[10px] font-medium ${getScoreTextClass(ms.score)} whitespace-nowrap` : `text-[9px] font-semibold ${colors.text} opacity-70 whitespace-nowrap`}>{label}</span>
       </button>
       {opened && (
-        <div className={isPopup ? 'mt-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 space-y-2' : 'mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 space-y-2'}>
-          {ms.summary && <p className={isPopup ? 'text-[11px] text-slate-600 leading-relaxed' : 'text-[11px] text-gray-700 leading-relaxed'}>{ms.summary}</p>}
+        <div className={isPopup ? 'mt-2 rounded-xl bg-[#172033] p-2.5 space-y-2 shadow-sm' : 'mt-1 rounded-xl bg-[#172033] shadow-sm p-3 space-y-2'}>
+          {ms.summary && <p className={isPopup ? 'text-[11px] text-slate-300 leading-relaxed' : 'text-[11px] text-slate-300 leading-relaxed'}>{ms.summary}</p>}
           {breakdownDisplay.length > 0 ? (
             <ScoreBreakdownTable
               items={breakdownDisplay.map(item => ({ key: item.key, score: item.score }))}

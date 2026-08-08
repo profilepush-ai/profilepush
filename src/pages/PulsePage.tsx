@@ -543,7 +543,7 @@ function formatPersonaDetailValue(value: string): PersonaDetailValue {
 function PersonaMissingTag() {
   return (
     <span
-      className="inline-flex items-center justify-center text-white/95"
+      className="inline-flex items-center justify-center text-[#64748B]"
       aria-label="Request the missing details by revealing the email"
       title="Request the missing details by revealing the email"
     >
@@ -571,6 +571,16 @@ function parseExperienceYears(value: string) {
   if (value.includes('+')) return numbers[0];
   if (value.includes('-') && numbers.length >= 2) return (numbers[0] + numbers[1]) / 2;
   return numbers[0];
+}
+
+function hexToRgbChannels(hex: string): string {
+  const cleaned = hex.replace('#', '').trim();
+  const normalized = cleaned.length === 3
+    ? cleaned.split('').map((char) => `${char}${char}`).join('')
+    : cleaned;
+  const value = Number.parseInt(normalized, 16);
+  if (Number.isNaN(value)) return '56 189 248';
+  return `${(value >> 16) & 255} ${(value >> 8) & 255} ${value & 255}`;
 }
 
 function matchesExperienceRange(years: number | null, rangeId: string) {
@@ -1930,27 +1940,33 @@ export default function PulsePage() {
   const CARD_PALETTE = [
     {
       border: 'border-blue-100',
-      fill: 'bg-white dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-950 dark:to-slate-950',
+      fill: 'bg-white dark:bg-[#1E2126]',
+      titleColor: '#38BDF8',
     },
     {
       border: 'border-violet-100',
-      fill: 'bg-white dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-950 dark:to-slate-950',
+      fill: 'bg-white dark:bg-[#1E2126]',
+      titleColor: '#FACC15',
     },
     {
       border: 'border-emerald-100',
-      fill: 'bg-white dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-950 dark:to-slate-950',
+      fill: 'bg-white dark:bg-[#1E2126]',
+      titleColor: '#34D399',
     },
     {
       border: 'border-amber-100',
-      fill: 'bg-white dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-950 dark:to-slate-950',
+      fill: 'bg-white dark:bg-[#1E2126]',
+      titleColor: '#FB7185',
     },
     {
       border: 'border-rose-100',
-      fill: 'bg-white dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-950 dark:to-slate-950',
+      fill: 'bg-white dark:bg-[#1E2126]',
+      titleColor: '#C084FC',
     },
     {
       border: 'border-cyan-100',
-      fill: 'bg-white dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-950 dark:to-slate-950',
+      fill: 'bg-white dark:bg-[#1E2126]',
+      titleColor: '#FB923C',
     },
   ];
 
@@ -2001,17 +2017,14 @@ export default function PulsePage() {
     const cardPalette = CARD_PALETTE[paletteIndex];
     const cardBorderClass = cardPalette.border;
     const cardFillClass = cardPalette.fill;
-    const buttonToneClass = BUTTON_TONE_BY_BORDER[cardBorderClass] ?? 'bg-blue-100/35 hover:bg-blue-100/55';
-    const titleToneClass = isDark
-      ? {
-        'border-blue-100': 'text-blue-300',
-        'border-violet-100': 'text-violet-300',
-        'border-emerald-100': 'text-emerald-300',
-        'border-amber-100': 'text-amber-300',
-        'border-rose-100': 'text-rose-300',
-        'border-cyan-100': 'text-cyan-300',
-      }[cardBorderClass] ?? 'text-blue-300'
-      : 'text-blue-800';
+    const accentColor = cardPalette.titleColor;
+    const accentRgb = hexToRgbChannels(accentColor);
+    const accentVars = {
+      '--accent-rgb': accentRgb,
+      '--accent-hex': accentColor,
+    } as React.CSSProperties;
+    const cardBorderColor = isDark ? 'rgb(255 255 255 / 0.25)' : `rgb(${accentRgb} / 0.45)`;
+    const titleToneStyle = { color: isDark ? accentColor : '#2563EB' };
     const isLeadRevealed = revealedLeadIds.has(lead.id);
     const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
       lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
@@ -2090,6 +2103,15 @@ export default function PulsePage() {
 
     const shouldForceExpandedBreakdown = isLeadRevealed && selectedMatchesTab !== 'revealed';
     const isExpandedBreakdownVisible = shouldForceExpandedBreakdown || isInlineBreakdownExpanded;
+    const metaSurfaceClass = isDark ? 'bg-[#272B31]/70' : 'bg-transparent';
+    const metaLabelClass = isDark ? 'text-[#64748B]' : 'text-slate-500';
+    const metaValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
+    const skillsValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
+    const revealedTableSurfaceClass = isDark
+      ? 'bg-[#272B31]/70 ring-white/10'
+      : 'bg-transparent ring-slate-200';
+    const revealedTableLabelClass = isDark ? 'text-[#64748B]' : 'text-slate-500';
+    const revealedTableValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
 
     const maskedEmailHint = (() => {
       const email = (lead.posterEmail || '').trim();
@@ -2101,19 +2123,19 @@ export default function PulsePage() {
     })();
 
     return (
-      <div key={lead.id} className={`mb-1.5 break-inside-avoid rounded-lg border-0 px-3 py-2.5 ${cardFillClass} dark:ring-1 dark:ring-white/5`}>
+      <div key={lead.id} className={`mb-1.5 break-inside-avoid rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
         <div className="flex items-start justify-between gap-1.5">
           <div className="min-w-0 flex-1">
-            <p className={`text-[12px] font-semibold leading-snug ${titleToneClass}`}>{lead.title || 'Job Opportunity'}</p>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-gray-500">
+            <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || 'Job Opportunity'}</p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
               <span>{lead.postedAgo}</span>
               <span>•</span>
               <span>{isLeadRevealed ? `Posted by ${lead.posterName}` : maskPosterName(lead.posterName)}</span>
               {lead.company && (
                 <>
                   <span>•</span>
-                  <Building2 size={10} className="shrink-0 text-gray-400" />
-                  <span className="text-gray-600">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
+                  <Building2 size={10} className="shrink-0 text-slate-500" />
+                  <span className="text-[#94A3B8]">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
                 </>
               )}
             </div>
@@ -2124,46 +2146,40 @@ export default function PulsePage() {
             )}
           </div>
           {lead.platform && (
-            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-gray-400">
+            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-[#64748B]">
               {lead.platform}
             </span>
           )}
         </div>
         {inlineBreakdownItems.length > 0 && (
           useFourColumnBreakdown ? (
-            <div className={`mt-1.5 w-full overflow-hidden rounded-md border ${breakdownBorderClass} bg-transparent text-left`}>
-              <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                <tbody>
-                  <tr>
-                    <td className={`border-b border-r ${breakdownBorderClass} bg-transparent px-2 py-1 align-top`}>
-                      <div className="text-[9px] text-gray-400">Exp</div>
-                      <div className="text-[9px] leading-tight text-gray-700 break-words">{expValue}</div>
-                    </td>
-                    <td className={`border-b border-r ${breakdownBorderClass} bg-transparent px-2 py-1 align-top`}>
-                      <div className="text-[9px] text-gray-400">Work Type</div>
-                      <div className="text-[9px] leading-tight text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">{workTypeValue}</div>
-                    </td>
-                    <td className={`border-b ${breakdownBorderClass} bg-transparent px-2 py-1 align-top`}>
-                      <div className="text-[9px] text-gray-400">Emp Type</div>
-                      <div className="text-[9px] leading-tight text-gray-700 break-words">{employmentTypeValue}</div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className={`border-r ${breakdownBorderClass} bg-transparent px-2 py-1 align-top`}>
-                      <div className="text-[9px] text-gray-400">Rate</div>
-                      <div className="text-[9px] leading-tight text-gray-700 break-words">{renderMissingAwareValue(rateValue)}</div>
-                    </td>
-                    <td className={`border-r ${breakdownBorderClass} bg-transparent px-2 py-1 align-top`}>
-                      <div className="text-[9px] text-gray-400">Visa</div>
-                      <div className="text-[9px] leading-tight text-gray-700 break-words">{renderMissingAwareValue(visaValue)}</div>
-                    </td>
-                    <td className={`bg-transparent px-2 py-1 align-top`}>
-                      <div className="text-[9px] text-gray-400">Location</div>
-                      <div className="text-[9px] leading-tight text-gray-700 break-words">{locationValue}</div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <div className={`mt-1.5 w-full rounded-md px-2.5 py-2 text-left ${metaSurfaceClass}`}>
+              <div className="grid grid-cols-3 gap-x-3 gap-y-2">
+                <div className="min-w-0">
+                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Exp</div>
+                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{expValue}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Work Type</div>
+                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{workTypeValue}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Emp Type</div>
+                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{employmentTypeValue}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Rate</div>
+                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(rateValue)}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Visa</div>
+                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(visaValue)}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Location</div>
+                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{locationValue}</div>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -2174,23 +2190,23 @@ export default function PulsePage() {
                     return next;
                   });
                 }}
-                className={`relative w-full border-t ${breakdownBorderClass} bg-transparent px-2 py-1 text-left focus:outline-none`}
+                className={`mt-2 w-full rounded-md px-2 py-1.5 text-left focus:outline-none ${metaSurfaceClass}`}
               >
-                <div className="text-[9px] text-gray-400">Skills</div>
-                <div className={`text-[9px] leading-tight break-words transition-all duration-200 ${isExpandedBreakdownVisible ? 'text-gray-700' : 'blur-sm select-none text-gray-400 pr-5'}`}>
+                <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Skills</div>
+                <div className={`text-[9px] leading-tight break-words transition-all duration-200 ${isExpandedBreakdownVisible ? skillsValueClass : `blur-sm select-none ${metaLabelClass} pr-5`}`}>
                   {normalizeDisplayValue(skillsValue)}
                 </div>
               </button>
             </div>
           ) : (
           (isLeadRevealed && selectedMatchesTab !== 'revealed') ? (
-            <div className="mt-1.5 w-full overflow-hidden rounded-md bg-white/5 text-left ring-1 ring-inset ring-white/10">
+            <div className={`mt-1.5 w-full overflow-hidden rounded-md text-left ring-1 ring-inset ${revealedTableSurfaceClass}`}>
               <table className="w-full table-fixed border-collapse text-left text-[10px]">
                 <tbody>
                   {inlineBreakdownItems.map((item) => (
                     <tr key={item.key}>
-                      <td className="bg-white/0 px-2 py-1 break-words whitespace-normal text-gray-700 dark:text-gray-300">{formatBreakdownFieldName(item.key)}</td>
-                      <td className="bg-white/0 px-2 py-1 break-words whitespace-normal text-gray-700 dark:text-gray-300">{normalizeDisplayValue(item.detail?.job_value)}</td>
+                      <td className={`bg-transparent px-2 py-1 break-words whitespace-normal ${revealedTableLabelClass}`}>{formatBreakdownFieldName(item.key)}</td>
+                      <td className={`bg-transparent px-2 py-1 break-words whitespace-normal ${revealedTableValueClass}`}>{normalizeDisplayValue(item.detail?.job_value)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2227,9 +2243,9 @@ export default function PulsePage() {
             </button>
           )
         ))}
-        <div className="mt-1.5 grid grid-cols-10 gap-1.5">
+        <div className="mt-1.5 grid grid-cols-10 gap-1.5" style={accentVars}>
           <div className="col-span-3 inline-flex items-center px-1">
-            <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+            <span className="text-[11px] font-semibold text-[#94A3B8]">
               {revealCountsByLeadId[lead.id] ?? 0} reveals
             </span>
           </div>
@@ -2237,7 +2253,8 @@ export default function PulsePage() {
             <div className="col-span-7 grid grid-cols-2 gap-1.5">
               <button
                 onClick={(e) => { e.stopPropagation(); void copyText(lead.posterEmail, 'Vendor email'); }}
-                className={`inline-flex items-center justify-center gap-1 rounded-md border border-slate-700/80 bg-transparent px-2 py-1.5 text-[10px] font-semibold ${titleToneClass} transition hover:bg-white/5 dark:border-slate-600/80 dark:hover:bg-white/5`}
+                className="inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2 py-1.5 text-[10px] font-semibold text-[var(--accent-hex)] transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)]"
+                style={{ borderColor: 'rgb(var(--accent-rgb) / 0.30)' }}
               >
                 <Copy size={11} />
                 Email
@@ -2253,7 +2270,8 @@ export default function PulsePage() {
                   setSelectedEmailDraftTab('pitching');
                   setShowGeneratedEmailDraft(true);
                 }}
-                className={`inline-flex items-center justify-center gap-1 rounded-md border border-slate-700/80 bg-transparent px-2 py-1.5 text-[10px] font-semibold ${titleToneClass} transition hover:bg-white/5 dark:border-slate-600/80 dark:hover:bg-white/5`}
+                className="inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2 py-1.5 text-[10px] font-semibold text-[var(--accent-hex)] transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)]"
+                style={{ borderColor: 'rgb(var(--accent-rgb) / 0.30)' }}
               >
                 <Mail size={11} />
                 Draft
@@ -2263,7 +2281,8 @@ export default function PulsePage() {
             <button
               onClick={() => void handleRevealContact(lead)}
               disabled={processingLeadId === lead.id}
-              className={`col-span-7 inline-flex items-center justify-center gap-1 rounded-md border border-slate-700/80 bg-transparent px-2.5 py-1.5 text-[10px] font-semibold ${titleToneClass} transition hover:bg-white/5 dark:border-slate-600/80 dark:hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-70`}
+              className="col-span-7 inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2.5 py-1.5 text-[10px] font-semibold text-[var(--accent-hex)] transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)] disabled:cursor-not-allowed disabled:opacity-70"
+              style={{ borderColor: 'rgb(var(--accent-rgb) / 0.30)' }}
             >
               {processingLeadId === lead.id ? '...' : (
                 <>
@@ -3862,7 +3881,7 @@ export default function PulsePage() {
   }, [applyFeedSearch, searchParams]);
 
   return (
-    <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#00040d] dark:text-slate-100">
+    <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
       <AppNav />
 
       <main className="flex-1 min-h-0 overflow-hidden">
@@ -3870,7 +3889,7 @@ export default function PulsePage() {
 
 
           {loading ? (
-            <div className="flex h-full min-h-0 items-center justify-center rounded-xl border border-gray-200 bg-white dark:border-slate-700 dark:bg-[#08101d]">
+            <div className="flex h-full min-h-0 items-center justify-center rounded-xl border border-gray-200 bg-white dark:border-slate-700 dark:bg-[#1E293B]">
               <LogoSpinner size={24} />
             </div>
           ) : (
@@ -4072,7 +4091,7 @@ export default function PulsePage() {
                               if (tab.id === 'revealed') setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                             }}
-                            className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${isSelected ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                            className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-gray-300 bg-gray-800 text-white') : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
                           >
                             <span>{tab.label}</span>
                             <span>{count}</span>
@@ -4106,7 +4125,7 @@ export default function PulsePage() {
                                 setProfileRangeId(option.id);
                                 setIsRangeMenuOpen(false);
                               }}
-                              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? (isDark ? 'bg-[#2A2E35] text-slate-100' : 'bg-gray-100 text-gray-800') : 'text-gray-600 hover:bg-gray-50'}`}
                             >
                               <span>{option.label}</span>
                               {isActive ? <Check size={11} /> : null}
