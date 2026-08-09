@@ -243,6 +243,12 @@ export interface Database {
         };
       };
     };
+    Functions: {
+      track_user_activity: {
+        Args: { p_auth_session_id: string };
+        Returns: undefined;
+      };
+    };
   };
 }
 

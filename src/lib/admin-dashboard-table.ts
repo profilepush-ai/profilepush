@@ -8,11 +8,17 @@ export interface AdminAccountStatsRow {
   credits_balance: number;
   reveals_count: number;
   contacts_count: number;
+  searches_count: number;
+  account_age_days: number;
+  session_count: number;
+  active_seconds: number;
+  active_days: number;
+  last_activity_at: string | null;
   last_logged_in: string | null;
   is_trial: boolean;
 }
 
-export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'watching_count' | 'credits_balance' | 'reveals_count' | 'contacts_count' | 'last_logged_in' | 'created_at';
+export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'watching_count' | 'credits_balance' | 'reveals_count' | 'contacts_count' | 'searches_count' | 'account_age_days' | 'session_count' | 'active_seconds' | 'active_days' | 'last_activity_at' | 'last_logged_in' | 'created_at';
 export type AdminStatsSortDirection = 'asc' | 'desc';
 
 export interface AdminStatsFilterState {
@@ -50,9 +56,9 @@ export function filterAndSortAccountStats(
   return filtered.sort((a, b) => {
     const direction = filterState.sortDirection === 'asc' ? 1 : -1;
 
-    if (filterState.sortKey === 'last_logged_in') {
-      const aDate = toDateValue(a.last_logged_in);
-      const bDate = toDateValue(b.last_logged_in);
+    if (filterState.sortKey === 'last_logged_in' || filterState.sortKey === 'last_activity_at') {
+      const aDate = toDateValue(a[filterState.sortKey]);
+      const bDate = toDateValue(b[filterState.sortKey]);
       if (aDate == null && bDate == null) return 0;
       if (aDate == null) return 1;
       if (bDate == null) return -1;

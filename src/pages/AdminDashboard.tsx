@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
@@ -19,6 +19,12 @@ interface AccountStats {
   credits_balance: number;
   reveals_count: number;
   contacts_count: number;
+  searches_count: number;
+  account_age_days: number;
+  session_count: number;
+  active_seconds: number;
+  active_days: number;
+  last_activity_at: string | null;
   last_logged_in: string | null;
   is_trial: boolean;
 }
@@ -131,13 +137,19 @@ function getDateRange(preset: DatePreset, customStart: string, customEnd: string
   return { start_date: d.toISOString(), end_date: null };
 }
 
-const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.ReactNode; kind: 'text' | 'number' | 'date'; widthClass: string }> = [
+const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.ReactNode; kind: 'text' | 'number' | 'duration' | 'age' | 'date'; widthClass: string }> = [
   { key: 'user_name', label: 'User Name', icon: <UserCheck size={12} />, kind: 'text', widthClass: 'w-[140px]' },
   { key: 'user_email', label: 'User Email', icon: <Mail size={12} />, kind: 'text', widthClass: 'w-[210px]' },
   { key: 'watching_count', label: 'Watching', icon: <Users size={12} />, kind: 'number', widthClass: 'w-[95px]' },
   { key: 'credits_balance', label: 'Credits', icon: <Database size={12} />, kind: 'number', widthClass: 'w-[110px]' },
   { key: 'reveals_count', label: 'Reveals', icon: <Eye size={12} />, kind: 'number', widthClass: 'w-[90px]' },
   { key: 'contacts_count', label: 'Contacts', icon: <Phone size={12} />, kind: 'number', widthClass: 'w-[95px]' },
+  { key: 'searches_count', label: 'Searches', icon: <Search size={12} />, kind: 'number', widthClass: 'w-[95px]' },
+  { key: 'account_age_days', label: 'Created Since', icon: <CalendarDays size={12} />, kind: 'age', widthClass: 'w-[120px]' },
+  { key: 'session_count', label: 'Sessions', icon: <LogIn size={12} />, kind: 'number', widthClass: 'w-[95px]' },
+  { key: 'active_seconds', label: 'Active Time', icon: <Clock size={12} />, kind: 'duration', widthClass: 'w-[110px]' },
+  { key: 'active_days', label: 'Active Days', icon: <CalendarDays size={12} />, kind: 'number', widthClass: 'w-[105px]' },
+  { key: 'last_activity_at', label: 'Last Activity', icon: <Activity size={12} />, kind: 'date', widthClass: 'w-[155px]' },
   { key: 'last_logged_in', label: 'Last Logged In', icon: <Calendar size={12} />, kind: 'date', widthClass: 'w-[155px]' },
 ];
 
@@ -150,6 +162,14 @@ function formatCompactDateTime(value: string | null) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function formatActiveTime(totalSeconds: number) {
+  if (totalSeconds < 60) return totalSeconds > 0 ? '<1m' : '0m';
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
 export default function AdminDashboard() {
@@ -944,7 +964,7 @@ export default function AdminDashboard() {
   // Totals row
   const totals: Record<string, number> = {};
   for (const col of COLUMNS) {
-    totals[col.key] = col.kind === 'number'
+    totals[col.key] = col.kind === 'number' || col.kind === 'duration'
       ? filteredStats.reduce((sum, s) => sum + ((s[col.key] as number) || 0), 0)
       : 0;
   }
@@ -1008,89 +1028,91 @@ export default function AdminDashboard() {
     <div className="h-screen overflow-hidden bg-white text-gray-900 font-sans flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
-        <div className="max-w-[1600px] mx-auto px-4 py-3 sm:px-6 sm:py-4 flex flex-wrap items-start justify-between gap-3 sm:items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center">
-              <TrendingUp size={16} className="text-gray-700" />
+        <div className="mx-auto w-full max-w-[1600px] px-4 py-2.5 sm:px-6">
+          <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100">
+                <TrendingUp size={15} className="text-gray-700" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="whitespace-nowrap text-sm font-semibold text-gray-900">ProfilePush Admin</h1>
+                <p className="truncate text-[10px] text-gray-500">
+                  {adminView === 'stats'
+                    ? `${filteredStats.length} of ${stats.length} accounts`
+                    : adminView === 'hotlist'
+                      ? `${roles.length} hotlist roles`
+                      : adminView === 'scraper'
+                        ? `${linkedinGroups.filter((group) => group.is_active).length} active of ${linkedinGroups.length} LinkedIn groups`
+                      : adminView === 'keyword-scraper'
+                        ? 'LinkedIn keyword search configuration'
+                      : `${historyRows.length} match runs`}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-base font-semibold text-gray-900">ProfilePush Admin</h1>
-              <p className="text-[11px] text-gray-500">
-                {adminView === 'stats'
-                  ? `${filteredStats.length} of ${stats.length} accounts`
-                  : adminView === 'hotlist'
-                    ? `${roles.length} hotlist roles`
-                    : adminView === 'scraper'
-                      ? `${linkedinGroups.filter((group) => group.is_active).length} active of ${linkedinGroups.length} LinkedIn groups`
-                    : adminView === 'keyword-scraper'
-                      ? 'LinkedIn keyword search configuration'
-                    : `${historyRows.length} match runs`}
-              </p>
-            </div>
-          </div>
-          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:gap-3">
-            <div className="flex items-center gap-1 rounded-lg border border-gray-300 bg-gray-50 p-1">
+            <nav className="order-3 flex w-full min-w-0 items-center gap-1 overflow-x-auto lg:order-none lg:ml-auto lg:w-auto" aria-label="Admin sections">
               <button
                 onClick={() => setAdminView('stats')}
-                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'stats' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'stats' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
               >
                 Account Stats
               </button>
               <button
                 onClick={() => setAdminView('hotlist')}
-                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'hotlist' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'hotlist' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
               >
                 Hotlist Roles
               </button>
               <button
                 onClick={() => setAdminView('scraper')}
-                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'scraper' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'scraper' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
               >
                 Scraper Config
               </button>
               <button
                 onClick={() => setAdminView('keyword-scraper')}
-                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'keyword-scraper' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'keyword-scraper' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
               >
                 Keyword Scraper
               </button>
               <button
                 onClick={() => setAdminView('history')}
-                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'history' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
               >
                 Match History
               </button>
+            </nav>
+            <div className="ml-auto flex shrink-0 items-center gap-1 lg:ml-2">
+              <button
+                onClick={refresh}
+                disabled={loading || rolesLoading || linkedinGroupsLoading}
+                title="Refresh dashboard"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
+              >
+                <RefreshCcw size={13} className={loading || rolesLoading || linkedinGroupsLoading ? 'animate-spin' : ''} />
+              </button>
+              <button
+                onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); setStats([]); }}
+                className="h-8 rounded-md px-2 text-xs font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
+              >
+                Logout
+              </button>
             </div>
-            <button
-              onClick={refresh}
-              disabled={loading || rolesLoading || linkedinGroupsLoading}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              <RefreshCcw size={12} className={loading || rolesLoading || linkedinGroupsLoading ? 'animate-spin' : ''} /> Refresh
-            </button>
-            <button
-              onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); setStats([]); }}
-              className="text-xs text-gray-500 hover:text-red-600 transition-colors"
-            >
-              Logout
-            </button>
           </div>
         </div>
       </div>
 
       {/* Filter Bar */}
       {adminView === 'stats' && (
-      <div className="w-full px-4 py-3 sm:px-6 sm:py-4">
-        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1 w-full">
+      <div className="w-full px-4 py-2 sm:px-6">
+        <div className="mx-auto grid w-full max-w-[1600px] gap-2 sm:grid-cols-[minmax(280px,1fr)_180px] sm:items-center">
+          <div className="relative min-w-0">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search by name, username, or email"
-                className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="h-10 w-full rounded-md border border-gray-300 bg-white pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
               {searchQuery && (
                 <button
@@ -1100,12 +1122,12 @@ export default function AdminDashboard() {
                   <X size={14} />
                 </button>
               )}
-            </div>
+          </div>
 
             <div className="relative" ref={dateDropdownRef}>
               <button
                 onClick={() => setShowDateDropdown(!showDateDropdown)}
-                className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 hover:bg-gray-50 lg:w-[180px]"
               >
                 <Calendar size={14} className="text-gray-500" />
                 <span>{currentPresetLabel}</span>
@@ -1172,34 +1194,7 @@ export default function AdminDashboard() {
                 </div>
               )}
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm">
-              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sort</span>
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as AdminStatsSortKey)}
-                className="bg-transparent outline-none"
-              >
-                <option value="created_at">Created</option>
-                <option value="name">Name</option>
-                <option value="user_name">User Name</option>
-                <option value="user_email">User Email</option>
-                <option value="watching_count">Watching</option>
-                <option value="credits_balance">Credits</option>
-                <option value="reveals_count">Reveals</option>
-                <option value="contacts_count">Contacts</option>
-                <option value="last_logged_in">Last Logged In</option>
-              </select>
-            </label>
-            <button
-              onClick={() => setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-50"
-            >
-              {sortDirection === 'desc' ? 'High → Low' : 'Low → High'}
-            </button>
-          </div>
         </div>
       </div>
       )}
@@ -1213,15 +1208,34 @@ export default function AdminDashboard() {
               <p className="text-sm text-gray-500">Loading account data...</p>
             </div>
           ) : (
-            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <div className="flex h-full min-h-0 flex-col gap-3">
+              <div className="grid shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-4 lg:grid-cols-8">
+                {[
+                  { label: 'Accounts', value: filteredStats.length.toLocaleString() },
+                  { label: 'Watching', value: (totals.watching_count ?? 0).toLocaleString() },
+                  { label: 'Credits', value: (totals.credits_balance ?? 0).toLocaleString() },
+                  { label: 'Reveals', value: (totals.reveals_count ?? 0).toLocaleString() },
+                  { label: 'Contacts', value: (totals.contacts_count ?? 0).toLocaleString() },
+                  { label: 'Searches', value: (totals.searches_count ?? 0).toLocaleString() },
+                  { label: 'Sessions', value: (totals.session_count ?? 0).toLocaleString() },
+                  { label: 'Active Time', value: formatActiveTime(totals.active_seconds ?? 0) },
+                ].map((metric) => (
+                  <div key={metric.label} className="border-b border-r border-gray-200 px-4 py-3 last:border-r-0 sm:last:border-b-0 lg:border-b-0">
+                    <p className="text-[10px] font-semibold uppercase text-gray-500">{metric.label}</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{metric.value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
               <div className="min-h-0 flex-1 overflow-auto">
-              <table className="min-w-[900px] w-full table-fixed text-left">
+              <table className="w-full min-w-[1720px] table-fixed text-left">
                 <thead className="sticky top-0 z-[4]">
                   <tr className="border-b border-gray-200 bg-gray-50">
                     {COLUMNS.map(col => (
-                      <th key={col.key} className={`${col.widthClass} px-3 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap ${col.kind === 'number' ? 'text-left' : 'text-left'}`}>
+                      <th key={col.key} className={`${col.widthClass} px-4 py-2.5 text-[10px] font-semibold uppercase text-gray-600 whitespace-nowrap ${col.kind === 'number' || col.kind === 'duration' || col.kind === 'age' ? 'text-right' : 'text-left'}`}>
                         <button
-                          className="flex items-center gap-1.5 text-left"
+                          title={`Sort by ${col.label}`}
+                          className={`flex w-full items-center gap-1.5 transition-colors hover:text-blue-600 ${col.kind === 'number' || col.kind === 'duration' || col.kind === 'age' ? 'justify-end text-right' : 'justify-start text-left'}`}
                           onClick={() => {
                             if (sortKey === col.key) {
                               setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'));
@@ -1241,16 +1255,6 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-b border-gray-200 bg-blue-50">
-                    {COLUMNS.map(col => (
-                      <td key={col.key} className={`px-4 py-3 ${col.kind === 'number' ? 'text-left' : 'text-left'}`}>
-                        <span className={`text-sm font-semibold text-blue-700 ${col.kind === 'number' ? 'tabular-nums' : ''}`}>
-                          {col.kind === 'number' ? (totals[col.key] ?? 0).toLocaleString() : '-'}
-                        </span>
-                      </td>
-                    ))}
-                  </tr>
-
                   {filteredStats.length === 0 && (
                     <tr>
                       <td colSpan={COLUMNS.length} className="px-5 py-12 text-center text-gray-500 text-sm">
@@ -1259,27 +1263,33 @@ export default function AdminDashboard() {
                     </tr>
                   )}
 
-                  {filteredStats.map((account, idx) => (
+                  {filteredStats.map((account) => (
                     <tr
                       key={account.id}
-                      className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${
-                        idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
-                      }`}
+                      className="border-b border-gray-200 bg-white transition-colors hover:bg-gray-50"
                     >
                       {COLUMNS.map(col => {
                         const value = account[col.key];
                         return (
-                          <td key={col.key} className={`px-3 py-3 ${col.kind === 'number' ? 'text-left' : 'text-left'}`}>
+                          <td key={col.key} className={`px-4 py-2.5 ${col.kind === 'number' || col.kind === 'duration' || col.kind === 'age' ? 'text-right' : 'text-left'}`}>
                             {col.kind === 'number' ? (
-                              <span className={`text-sm tabular-nums font-medium ${((value as number) || 0) > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                              <span className={`text-xs tabular-nums font-normal ${((value as number) || 0) > 0 ? 'text-gray-800' : 'text-gray-400'}`}>
                                 {((value as number) || 0).toLocaleString()}
                               </span>
+                            ) : col.kind === 'duration' ? (
+                              <span className={`text-xs tabular-nums font-normal ${((value as number) || 0) > 0 ? 'text-gray-800' : 'text-gray-400'}`}>
+                                {formatActiveTime((value as number) || 0)}
+                              </span>
+                            ) : col.kind === 'age' ? (
+                              <span className="text-xs tabular-nums font-normal text-gray-700">
+                                {`${Math.max(0, (value as number) || 0).toLocaleString()}d`}
+                              </span>
                             ) : col.kind === 'date' ? (
-                              <span className="block truncate text-sm font-medium text-gray-700 whitespace-nowrap">
+                              <span className="block truncate text-xs font-normal text-gray-600 whitespace-nowrap">
                                 {typeof value === 'string' ? formatCompactDateTime(value) : '-'}
                               </span>
                             ) : (
-                              <span className="block truncate text-sm font-medium text-gray-900">
+                              <span className="block truncate text-xs font-normal text-gray-800">
                                 {typeof value === 'string' && value ? value : '-'}
                               </span>
                             )}
@@ -1290,6 +1300,7 @@ export default function AdminDashboard() {
                   ))}
                 </tbody>
               </table>
+              </div>
               </div>
             </div>
           )

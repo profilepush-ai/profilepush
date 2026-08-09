@@ -13,6 +13,12 @@ describe('filterAndSortAccountStats', () => {
       credits_balance: 200,
       reveals_count: 2,
       contacts_count: 1,
+      searches_count: 12,
+      account_age_days: 90,
+      session_count: 4,
+      active_seconds: 3600,
+      active_days: 2,
+      last_activity_at: '2024-02-10T09:30:00.000Z',
       last_logged_in: '2024-02-10T09:00:00.000Z',
       is_trial: false,
     },
@@ -26,6 +32,12 @@ describe('filterAndSortAccountStats', () => {
       credits_balance: 100,
       reveals_count: 3,
       contacts_count: 2,
+      searches_count: 20,
+      account_age_days: 59,
+      session_count: 7,
+      active_seconds: 7200,
+      active_days: 3,
+      last_activity_at: '2024-03-14T09:30:00.000Z',
       last_logged_in: '2024-03-14T09:00:00.000Z',
       is_trial: true,
     },
@@ -39,6 +51,12 @@ describe('filterAndSortAccountStats', () => {
       credits_balance: 500,
       reveals_count: 4,
       contacts_count: 3,
+      searches_count: 5,
+      account_age_days: 30,
+      session_count: 2,
+      active_seconds: 1800,
+      active_days: 1,
+      last_activity_at: null,
       last_logged_in: '2024-01-15T09:00:00.000Z',
       is_trial: false,
     },
@@ -66,5 +84,45 @@ describe('filterAndSortAccountStats', () => {
     });
 
     expect(result.map((item) => item.id)).toEqual(['2', '1', '3']);
+  });
+
+  it('sorts tracked activity metrics and keeps missing activity last', () => {
+    const byTime = filterAndSortAccountStats(rows, {
+      query: '',
+      startDate: '',
+      endDate: '',
+      sortKey: 'active_seconds',
+      sortDirection: 'desc',
+    });
+    const byLastActivity = filterAndSortAccountStats(rows, {
+      query: '',
+      startDate: '',
+      endDate: '',
+      sortKey: 'last_activity_at',
+      sortDirection: 'desc',
+    });
+
+    expect(byTime.map((item) => item.id)).toEqual(['2', '1', '3']);
+    expect(byLastActivity.map((item) => item.id)).toEqual(['2', '1', '3']);
+  });
+
+  it('sorts search counts and account age', () => {
+    const bySearches = filterAndSortAccountStats(rows, {
+      query: '',
+      startDate: '',
+      endDate: '',
+      sortKey: 'searches_count',
+      sortDirection: 'desc',
+    });
+    const byNewestAccount = filterAndSortAccountStats(rows, {
+      query: '',
+      startDate: '',
+      endDate: '',
+      sortKey: 'account_age_days',
+      sortDirection: 'asc',
+    });
+
+    expect(bySearches.map((item) => item.id)).toEqual(['2', '1', '3']);
+    expect(byNewestAccount.map((item) => item.id)).toEqual(['3', '2', '1']);
   });
 });

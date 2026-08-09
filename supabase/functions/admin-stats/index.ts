@@ -56,6 +56,8 @@ Deno.serve(async (req: Request) => {
       vendorsRes,
       clientsRes,
       revealsRes,
+      activityRes,
+      searchesRes,
     ] = await Promise.all([
       supabase
         .from("account_members")
@@ -76,6 +78,21 @@ Deno.serve(async (req: Request) => {
           .in("account_id", accountIds)
           .eq("action_type", "revealed")
       ),
+      (() => {
+        let query = supabase
+          .from("user_activity_daily")
+          .select("account_id, session_count, active_seconds, activity_date, last_activity_at")
+          .in("account_id", accountIds);
+        if (start_date) query = query.gte("activity_date", String(start_date).slice(0, 10));
+        if (end_date) query = query.lte("activity_date", String(end_date).slice(0, 10));
+        return query;
+      })(),
+      withDateRange(
+        supabase
+          .from("job_search_history")
+          .select("account_id")
+          .in("account_id", accountIds)
+      ),
     ]);
 
     function countBy(rows: any[] | null): Record<string, number> {
@@ -92,6 +109,29 @@ Deno.serve(async (req: Request) => {
     const vendorCounts = countBy(vendorsRes.data);
     const clientCounts = countBy(clientsRes.data);
     const revealsCounts = countBy(revealsRes.data);
+    const searchesCounts = countBy(searchesRes.data);
+
+    const activityByAccount: Record<string, {
+      session_count: number;
+      active_seconds: number;
+      active_days: Set<string>;
+      last_activity_at: string | null;
+    }> = {};
+    for (const row of activityRes.data ?? []) {
+      const current = activityByAccount[row.account_id] ?? {
+        session_count: 0,
+        active_seconds: 0,
+        active_days: new Set<string>(),
+        last_activity_at: null,
+      };
+      current.session_count += row.session_count ?? 0;
+      current.active_seconds += row.active_seconds ?? 0;
+      if (row.activity_date) current.active_days.add(row.activity_date);
+      if (row.last_activity_at && (!current.last_activity_at || row.last_activity_at > current.last_activity_at)) {
+        current.last_activity_at = row.last_activity_at;
+      }
+      activityByAccount[row.account_id] = current;
+    }
 
     const primaryMemberByAccount: Record<string, any> = {};
     for (const member of membersRes.data ?? []) {
@@ -136,6 +176,7 @@ Deno.serve(async (req: Request) => {
     const stats = accounts.map((a: any) => {
       const primaryMember = primaryMemberByAccount[a.id] ?? null;
       const authUser = primaryMember?.user_id ? authUsersById[primaryMember.user_id] : null;
+      const activity = activityByAccount[a.id];
 
       return {
         id: a.id,
@@ -147,6 +188,12 @@ Deno.serve(async (req: Request) => {
         credits_balance: a.credits_balance ?? 0,
         reveals_count: revealsCounts[a.id] || 0,
         contacts_count: (vendorCounts[a.id] || 0) + (clientCounts[a.id] || 0),
+        searches_count: searchesCounts[a.id] || 0,
+        account_age_days: Math.max(0, Math.floor((Date.now() - Date.parse(a.created_at)) / 86_400_000)),
+        session_count: activity?.session_count ?? 0,
+        active_seconds: activity?.active_seconds ?? 0,
+        active_days: activity?.active_days.size ?? 0,
+        last_activity_at: activity?.last_activity_at ?? null,
         last_logged_in: authUser?.last_sign_in_at ?? null,
         is_trial: a.is_trial,
       };
