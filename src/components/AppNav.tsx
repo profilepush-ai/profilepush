@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Users, Bookmark, ChevronDown, LogOut, Settings,
-  Building2, LifeBuoy, Map, CreditCard, AlertTriangle, PenLine, FileText,
+  Building2, LifeBuoy, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, ArrowRight, X,
   Activity, ShieldCheck, Briefcase, MoonStar, SunMedium,
 } from 'lucide-react';
@@ -18,7 +18,6 @@ const navItems = [
   { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
   { path: '/watchlist-profiles', label: 'Watchlist', mobileLabel: 'Watch',   icon: Bookmark, hideOnMobile: false },
   { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
-  { path: '/resume-ai',     label: 'Resume AI',      mobileLabel: 'AI',      icon: PenLine,   hideOnMobile: true },
 ];
 
 function CreditsChip({ balance }: { balance: number }) {
@@ -305,7 +304,7 @@ export default function AppNav() {
               key={path}
               to={path}
               className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${hideOnMobile ? 'hidden sm:flex' : ''} ${
-                active ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                active ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}
             >
               <Icon size={12} />
@@ -327,7 +326,7 @@ export default function AppNav() {
         <Link
           to="/support"
           className={`hidden sm:flex items-center px-3 py-1 rounded text-xs font-medium transition-colors ${
-            location.pathname === '/support' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+            location.pathname === '/support' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
           }`}
         >
           ? Help
@@ -336,7 +335,7 @@ export default function AppNav() {
         <Link
           to="/roadmap"
           className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
-            location.pathname === '/roadmap' ? 'bg-amber-50 text-amber-700' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+            location.pathname === '/roadmap' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
           }`}
           title="Roadmap"
         >

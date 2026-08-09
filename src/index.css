@@ -131,6 +131,12 @@
   html.dark .bg-violet-50 {
     background-color: rgba(139, 92, 246, 0.16) !important;
   }
+
+  html.dark .pulse-table-watch-button,
+  html.dark .pulse-table-watch-button:hover {
+    background-color: transparent !important;
+    border-color: currentColor !important;
+  }
 }
 
 @layer utilities {

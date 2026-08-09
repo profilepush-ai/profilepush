@@ -1408,7 +1408,7 @@ export default function ProfilesPage() {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
                         disabled={isActivating}
-                        className={`inline-flex items-center justify-center rounded-md border transition ${compact ? 'h-5 w-5' : 'h-6 w-6'} ${isWatching ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-blue-300 bg-blue-50 text-blue-600 hover:bg-blue-100'} disabled:opacity-60`}
+                        className={`pulse-table-watch-button inline-flex items-center justify-center rounded-md border transition ${compact ? 'h-5 w-5' : 'h-6 w-6'} ${isWatching ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-blue-300 bg-blue-50 text-blue-600 hover:bg-blue-100'} disabled:opacity-60`}
                         aria-label={isWatching ? `Watching ${persona.target_role}` : `Watch ${persona.target_role}`}
                       >
                         {isActivating ? '…' : isWatching ? <Check size={compact ? 11 : 12} /> : <span className={`${compact ? 'text-xs' : 'text-sm'} leading-none`}>+</span>}

@@ -23,7 +23,6 @@ const AccountSettings = lazy(() => import('./pages/AccountSettings'));
 const SupportPage = lazy(() => import('./pages/SupportPage'));
 const RoadmapPage = lazy(() => import('./pages/RoadmapPage'));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
-const ResumeAIPage = lazy(() => import('./pages/ResumeAIPage'));
 const CandidateOnboarding = lazy(() => import('./pages/CandidateOnboarding'));
 const ConfirmApplied = lazy(() => import('./pages/ConfirmApplied'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -97,22 +96,6 @@ function PersistentWishlist() {
   );
 }
 
-function PersistentResumeAI() {
-  const { user } = useAuth();
-  const location = useLocation();
-  const active = location.pathname === '/resume-ai' || location.pathname.startsWith('/resume-ai/');
-
-  if (!user) return null;
-
-  return (
-    <div style={{ display: active ? 'contents' : 'none' }}>
-      <Suspense fallback={<PageLoader />}>
-        <ResumeAIPage />
-      </Suspense>
-    </div>
-  );
-}
-
 function OneSignalIdentitySync() {
   const { user } = useAuth();
 
@@ -167,7 +150,6 @@ export default function App() {
           <UserActivityTracker />
           <PersistentJobFinder />
           <PersistentWishlist />
-          <PersistentResumeAI />
           <Suspense fallback={<PageLoader />}>
             <Routes>
             {/* Public */}
@@ -198,7 +180,7 @@ export default function App() {
             <Route path="/profile-details/:id" element={<ProtectedRoute><ErrorBoundary><ProfileDetails /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/job-finder" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
             <Route path="/submission-queue" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
-            <Route path="/resume-ai" element={<ProtectedRoute><ErrorBoundary>{null}</ErrorBoundary></ProtectedRoute>} />
+            <Route path="/resume-ai/*" element={<Navigate to="/jobs" replace />} />
             <Route path="/account" element={<ProtectedRoute><ErrorBoundary><AccountSettings /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/support" element={<ProtectedRoute><ErrorBoundary><SupportPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/roadmap" element={<ProtectedRoute><ErrorBoundary><RoadmapPage /></ErrorBoundary></ProtectedRoute>} />
