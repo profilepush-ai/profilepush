@@ -9,6 +9,8 @@ type RawPost = Record<string, unknown>;
 type ProcessorPayload = {
   groupId?: unknown;
   group_id?: unknown;
+  keywordId?: unknown;
+  keyword_id?: unknown;
   posts?: RawPost[];
   scrapedPosts?: RawPost[];
   items?: RawPost[];
@@ -31,6 +33,7 @@ type SocialJobRow = {
   seniority_level: string;
   job_description: string;
   salary_range: string;
+  source_keyword_id?: string;
 };
 
 const BATCH_SIZE = 10;
@@ -138,19 +141,19 @@ function getAuthor(post: RawPost): { name: string; profileUrl: string } {
   };
 }
 
-async function generatedPostId(post: RawPost, groupId: string, content: string): Promise<string> {
-  const input = `${groupId}\n${firstString(post.linkedinUrl, post.post_url, post.url)}\n${content}`;
+async function generatedPostId(post: RawPost, sourceId: string, content: string): Promise<string> {
+  const input = `${sourceId}\n${firstString(post.linkedinUrl, post.post_url, post.url)}\n${content}`;
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return `gen_${Array.from(new Uint8Array(digest)).slice(0, 12).map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
-async function normalizePost(post: RawPost, globalGroupId: string): Promise<SocialJobRow | null> {
+async function normalizePost(post: RawPost, globalGroupId: string, keywordId: string): Promise<SocialJobRow | null> {
   const content = firstString(post.text, post.content, post.post_content, post.description);
   if (!isLikelyJobText(content)) return null;
 
   const postUrl = firstString(post.linkedinUrl, post.post_url, post.url, post.postUrl, post["post URL"]);
   const explicitPostId = firstString(post.id, post.post_id, post.postId);
-  const postId = explicitPostId || extractPostId(postUrl) || await generatedPostId(post, globalGroupId, content);
+  const postId = explicitPostId || extractPostId(postUrl) || await generatedPostId(post, globalGroupId || keywordId, content);
   const groupId = extractGroupId(post) || globalGroupId;
   const author = getAuthor(post);
   const postedAt = toIsoDate(post.timestamp)
@@ -175,12 +178,13 @@ async function normalizePost(post: RawPost, globalGroupId: string): Promise<Soci
     seniority_level: asString(post.seniority_level),
     job_description: content,
     salary_range: asString(post.salary_range),
+    ...(keywordId ? { source_keyword_id: keywordId } : {}),
   };
 }
 
-function extractPosts(payload: unknown): { groupId: string; posts: RawPost[] } {
-  if (Array.isArray(payload)) return { groupId: "", posts: payload as RawPost[] };
-  if (!payload || typeof payload !== "object") return { groupId: "", posts: [] };
+function extractPosts(payload: unknown): { groupId: string; keywordId: string; posts: RawPost[] } {
+  if (Array.isArray(payload)) return { groupId: "", keywordId: "", posts: payload as RawPost[] };
+  if (!payload || typeof payload !== "object") return { groupId: "", keywordId: "", posts: [] };
 
   const objectPayload = payload as ProcessorPayload;
   const posts = objectPayload.posts
@@ -190,6 +194,7 @@ function extractPosts(payload: unknown): { groupId: string; posts: RawPost[] } {
     ?? [];
   return {
     groupId: firstString(objectPayload.groupId, objectPayload.group_id, extractGroupId(objectPayload)),
+    keywordId: firstString(objectPayload.keywordId, objectPayload.keyword_id),
     posts: Array.isArray(posts) ? posts : [],
   };
 }
@@ -225,14 +230,14 @@ export default {
       return jsonResponse({ error: "Invalid JSON body" }, 400);
     }
 
-    const { groupId, posts } = extractPosts(payload);
+    const { groupId, keywordId, posts } = extractPosts(payload);
     if (posts.length === 0) return jsonResponse({ error: "posts array is required" }, 400);
     if (posts.length > MAX_POSTS_PER_REQUEST) {
       return jsonResponse({ error: `A maximum of ${MAX_POSTS_PER_REQUEST} posts is allowed` }, 413);
     }
 
     try {
-      const normalized = await Promise.all(posts.map((post) => normalizePost(post, groupId)));
+      const normalized = await Promise.all(posts.map((post) => normalizePost(post, groupId, keywordId)));
       const acceptedRows = normalized.filter((row): row is SocialJobRow => row !== null);
       const rows = [...new Map(
         acceptedRows.map((row) => [`${row.platform}:${row.post_id}`, row]),

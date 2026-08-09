@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
+import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import { supabase } from '../lib/supabase';
 import { triggerRoleEmbedding } from '../lib/embeddings';
 import { filterAndSortAccountStats, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
@@ -90,7 +91,7 @@ function canRetryMatchRun(row: HotlistMatchRunRow) {
   return hasStatusFailure || hasErrorMessage;
 }
 
-type AdminView = 'stats' | 'hotlist' | 'scraper' | 'history';
+type AdminView = 'stats' | 'hotlist' | 'scraper' | 'keyword-scraper' | 'history';
 type LinkedinStatsRange = '24h' | '7d' | '30d' | 'all' | 'custom';
 
 type DatePreset = '7d' | '30d' | '90d' | 'all' | 'custom';
@@ -1021,6 +1022,8 @@ export default function AdminDashboard() {
                     ? `${roles.length} hotlist roles`
                     : adminView === 'scraper'
                       ? `${linkedinGroups.filter((group) => group.is_active).length} active of ${linkedinGroups.length} LinkedIn groups`
+                    : adminView === 'keyword-scraper'
+                      ? 'LinkedIn keyword search configuration'
                     : `${historyRows.length} match runs`}
               </p>
             </div>
@@ -1044,6 +1047,12 @@ export default function AdminDashboard() {
                 className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'scraper' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 Scraper Config
+              </button>
+              <button
+                onClick={() => setAdminView('keyword-scraper')}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'keyword-scraper' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                Keyword Scraper
               </button>
               <button
                 onClick={() => setAdminView('history')}
@@ -1719,6 +1728,8 @@ export default function AdminDashboard() {
         </div>
         </div>
         )}
+
+        {adminView === 'keyword-scraper' && <LinkedinKeywordScraperPanel />}
 
         {adminView === 'history' && (
         <div className="mt-4 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">

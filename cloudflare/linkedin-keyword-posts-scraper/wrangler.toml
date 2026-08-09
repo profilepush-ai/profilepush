@@ -1,0 +1,22 @@
+name = "profilepush-linkedin-keyword-posts-scraper"
+main = "src/index.ts"
+compatibility_date = "2026-08-09"
+workers_dev = true
+
+[vars]
+SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
+PROCESSOR_WORKER_URL = "https://profilepush-linkedin-group-posts-processor.profilepush-ai.workers.dev"
+
+[triggers]
+crons = [ "0 * * * *" ]
+
+[[queues.producers]]
+binding = "KEYWORD_SCRAPE_QUEUE"
+queue = "linkedin-keyword-post-scrape"
+
+[[queues.consumers]]
+queue = "linkedin-keyword-post-scrape"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "linkedin-keyword-post-scrape-dlq"

@@ -18,6 +18,8 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const EMAIL_PATTERN = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
 const EMAIL_IN_TEXT_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const MIN_JOB_CONTENT_LENGTH = 80;
@@ -55,6 +57,7 @@ function normalizeSocialJobItems(items: Array<Record<string, unknown>>) {
     const platform = asString(item.platform ?? item.source ?? item.provider).trim().toLowerCase();
     const postContent = asString(item.post_content ?? item.body ?? item.description ?? item.content).trim();
     const posterEmail = extractEmail(item.poster_email ?? item.email ?? item.posterEmail, postContent);
+    const sourceKeywordId = asString(item.source_keyword_id ?? item.sourceKeywordId).trim();
 
     if (!postId || !platform || !postContent) {
       errors.push("Each item requires: post_id, platform, post_content");
@@ -88,6 +91,7 @@ function normalizeSocialJobItems(items: Array<Record<string, unknown>>) {
       job_description: asString(item.job_description ?? item.description ?? item.body ?? item.post_content),
       salary_range: asString(item.salary_range ?? item.salaryRange),
       account_id: item.account_id ? String(item.account_id) : null,
+      _source_keyword_id: UUID_PATTERN.test(sourceKeywordId) ? sourceKeywordId : null,
     });
   }
 
@@ -268,6 +272,25 @@ Deno.serve(async (req: Request) => {
     }
 
     const normalizedRows = classification.accepted;
+    const acceptedPostIds = [...new Set(normalizedRows.map((row) => asString(row.post_id)).filter(Boolean))];
+    const { data: existingJobs, error: existingJobsError } = acceptedPostIds.length > 0
+      ? await supabase
+        .from("social_jobs")
+        .select("post_id,platform,group_id")
+        .in("post_id", acceptedPostIds)
+      : { data: [], error: null };
+    if (existingJobsError) return respond({ error: existingJobsError.message }, 500);
+    const existingGroupBySourceKey = new Map((existingJobs ?? []).map((row) => (
+      [`${row.platform}:${row.post_id}`, asString(row.group_id)]
+    )));
+    const rowsForUpsert = normalizedRows.map((row) => {
+      const { _source_keyword_id: _sourceKeywordId, ...databaseRow } = row;
+      const sourceKey = `${asString(row.platform)}:${asString(row.post_id)}`;
+      return {
+        ...databaseRow,
+        group_id: asString(databaseRow.group_id) || existingGroupBySourceKey.get(sourceKey) || "",
+      };
+    });
     const rejectionErrors = [...errors, ...classification.rejected];
 
     await logSocialJobPayload(
@@ -285,22 +308,36 @@ Deno.serve(async (req: Request) => {
 
     const { data, error } = await supabase
       .from("social_jobs")
-      .upsert(normalizedRows, { onConflict: "post_id,platform", ignoreDuplicates: false })
+      .upsert(rowsForUpsert, { onConflict: "post_id,platform", ignoreDuplicates: false })
       .select("id, post_id, platform");
 
     if (error) return respond({ error: error.message }, 500);
     if (!data || data.length === 0) return respond({ success: true, inserted: 0, ids: [], errors });
 
     const insertedIds = data.map((r: { id: string }) => r.id);
+    const jobBySourceKey = new Map(data.map((row: { id: string; post_id: string; platform: string }) => (
+      [`${row.platform}:${row.post_id}`, row.id]
+    )));
+    const keywordLinks = normalizedRows.flatMap((row) => {
+      const keywordId = asString(row._source_keyword_id);
+      const jobId = jobBySourceKey.get(`${asString(row.platform)}:${asString(row.post_id)}`);
+      return keywordId && jobId ? [{ keyword_id: keywordId, social_job_id: jobId }] : [];
+    });
+    if (keywordLinks.length > 0) {
+      const { error: keywordLinkError } = await supabase
+        .from("linkedin_keyword_social_jobs")
+        .upsert(keywordLinks, { onConflict: "keyword_id,social_job_id", ignoreDuplicates: true });
+      if (keywordLinkError) return respond({ error: keywordLinkError.message }, 500);
+    }
 
     // Enqueue parsing jobs for async Cloudflare Queue processing.
-    const jobsForQueue: QueueExtractionJob[] = data.map((r: { id: string; post_id: string; platform: string }, idx: number) => ({
+    const jobsForQueue: QueueExtractionJob[] = data.map((r: { id: string; post_id: string; platform: string }) => ({
       job_id: r.id,
       post_id: r.post_id,
       platform: r.platform,
-      title: asString(normalizedRows[idx]?.["job_title"]),
-      description: asString(normalizedRows[idx]?.["job_description"]),
-      location: asString(normalizedRows[idx]?.["location"]),
+      title: asString(normalizedRows.find((row) => row.post_id === r.post_id && row.platform === r.platform)?.["job_title"]),
+      description: asString(normalizedRows.find((row) => row.post_id === r.post_id && row.platform === r.platform)?.["job_description"]),
+      location: asString(normalizedRows.find((row) => row.post_id === r.post_id && row.platform === r.platform)?.["location"]),
     }));
 
     const queueResult = await enqueueExtractionJobs(
