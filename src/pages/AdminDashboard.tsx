@@ -1,6 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pencil, Trash2 } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import { supabase } from '../lib/supabase';
@@ -61,6 +60,29 @@ interface HotlistMatchRunRow {
   created_at: string;
 }
 
+interface LinkedinGroupRow {
+  group_id: string;
+  group_name: string | null;
+  is_active: boolean;
+  scraped_posts_count: number;
+  social_jobs_count: number;
+  radar_results_count: number;
+  last_scraped_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface LinkedinScraperConfig {
+  is_enabled: boolean;
+  max_pages: number;
+  max_posts_per_group: number;
+  posted_limit: '24h' | 'week' | 'month';
+  sort_by: 'date' | 'relevance';
+  schedule_interval_hours: number;
+  last_scheduled_at: string | null;
+  updated_at: string;
+}
+
 function canRetryMatchRun(row: HotlistMatchRunRow) {
   const status = String(row.status ?? '').toLowerCase();
   const hasStatusFailure = status === 'error' || status === 'failed' || status === 'aborted';
@@ -68,7 +90,8 @@ function canRetryMatchRun(row: HotlistMatchRunRow) {
   return hasStatusFailure || hasErrorMessage;
 }
 
-type AdminView = 'stats' | 'hotlist' | 'history';
+type AdminView = 'stats' | 'hotlist' | 'scraper' | 'history';
+type LinkedinStatsRange = '24h' | '7d' | '30d' | 'all' | 'custom';
 
 type DatePreset = '7d' | '30d' | '90d' | 'all' | 'custom';
 
@@ -148,6 +171,29 @@ export default function AdminDashboard() {
   const [rolesSearchQuery, setRolesSearchQuery] = useState('');
   const [rolesCategoryFilter, setRolesCategoryFilter] = useState('all');
   const [adminView, setAdminView] = useState<AdminView>('stats');
+  const [linkedinGroups, setLinkedinGroups] = useState<LinkedinGroupRow[]>([]);
+  const [linkedinScraperConfig, setLinkedinScraperConfig] = useState<LinkedinScraperConfig>({
+    is_enabled: true,
+    max_pages: 1,
+    max_posts_per_group: 100,
+    posted_limit: '24h',
+    sort_by: 'date',
+    schedule_interval_hours: 3,
+    last_scheduled_at: null,
+    updated_at: '',
+  });
+  const [savingScraperConfig, setSavingScraperConfig] = useState(false);
+  const [triggeringScraper, setTriggeringScraper] = useState(false);
+  const [linkedinGroupsLoading, setLinkedinGroupsLoading] = useState(false);
+  const [linkedinGroupsError, setLinkedinGroupsError] = useState('');
+  const [linkedinGroupsNotice, setLinkedinGroupsNotice] = useState('');
+  const [linkedinGroupsSearch, setLinkedinGroupsSearch] = useState('');
+  const [linkedinStatsRange, setLinkedinStatsRange] = useState<LinkedinStatsRange>('24h');
+  const [linkedinStatsStartDate, setLinkedinStatsStartDate] = useState('');
+  const [linkedinStatsEndDate, setLinkedinStatsEndDate] = useState('');
+  const [newLinkedinGroupId, setNewLinkedinGroupId] = useState('');
+  const [newLinkedinGroupName, setNewLinkedinGroupName] = useState('');
+  const [savingLinkedinGroupId, setSavingLinkedinGroupId] = useState<string | null>(null);
 
   const [newRoleAccountId, setNewRoleAccountId] = useState('');
   const [newRoleTargetRole, setNewRoleTargetRole] = useState('');
@@ -233,7 +279,167 @@ export default function AdminDashboard() {
   }
 
   async function refresh() {
-    await Promise.all([fetchStats(), fetchHotlistRoles(), fetchMatchRunHistory()]);
+    await Promise.all([fetchStats(), fetchHotlistRoles(), fetchLinkedinGroups(), fetchMatchRunHistory()]);
+  }
+
+  async function fetchLinkedinGroups(
+    range: LinkedinStatsRange = linkedinStatsRange,
+    startDate = linkedinStatsStartDate,
+    endDate = linkedinStatsEndDate,
+  ) {
+    setLinkedinGroupsLoading(true);
+    setLinkedinGroupsError('');
+    let statsStart: string | null = null;
+    let statsEnd: string | null = null;
+    if (range === 'custom') {
+      const exclusiveEnd = endDate ? new Date(`${endDate}T00:00:00.000Z`) : null;
+      if (exclusiveEnd) exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
+      statsStart = startDate ? `${startDate}T00:00:00.000Z` : null;
+      statsEnd = exclusiveEnd?.toISOString() ?? null;
+    } else if (range !== 'all') {
+      const hours = range === '24h' ? 24 : range === '7d' ? 24 * 7 : 24 * 30;
+      statsEnd = new Date().toISOString();
+      statsStart = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    }
+    const { data, error } = await supabase.functions.invoke('admin-linkedin-groups', {
+      body: {
+        action: 'list',
+        password: sessionStorage.getItem('admin_authed') || password,
+        stats_start: statsStart,
+        stats_end: statsEnd,
+      },
+    });
+
+    if (error) {
+      setLinkedinGroupsError(error.message);
+      setLinkedinGroupsLoading(false);
+      return;
+    }
+
+    setLinkedinGroups((data?.groups ?? []) as LinkedinGroupRow[]);
+    if (data?.config) setLinkedinScraperConfig(data.config as LinkedinScraperConfig);
+    setLinkedinGroupsLoading(false);
+  }
+
+  async function saveLinkedinScraperConfig() {
+    setSavingScraperConfig(true);
+    setLinkedinGroupsError('');
+    setLinkedinGroupsNotice('');
+    const { data, error } = await supabase.functions.invoke('admin-linkedin-groups', {
+      body: {
+        action: 'update_config',
+        password: sessionStorage.getItem('admin_authed') || password,
+        ...linkedinScraperConfig,
+      },
+    });
+    if (error) {
+      setLinkedinGroupsError(error.message);
+    } else {
+      setLinkedinScraperConfig(data.config as LinkedinScraperConfig);
+      setLinkedinGroupsNotice('Scraper settings saved.');
+    }
+    setSavingScraperConfig(false);
+  }
+
+  async function triggerLinkedinScraper() {
+    setTriggeringScraper(true);
+    setLinkedinGroupsError('');
+    setLinkedinGroupsNotice('');
+    const passwordValue = sessionStorage.getItem('admin_authed') || password;
+    const { data: savedData, error: saveError } = await supabase.functions.invoke('admin-linkedin-groups', {
+      body: { action: 'update_config', password: passwordValue, ...linkedinScraperConfig },
+    });
+    if (saveError) {
+      setLinkedinGroupsError(saveError.message);
+      setTriggeringScraper(false);
+      return;
+    }
+    setLinkedinScraperConfig(savedData.config as LinkedinScraperConfig);
+
+    const { data, error } = await supabase.functions.invoke('admin-linkedin-groups', {
+      body: { action: 'trigger_scrape', password: passwordValue },
+    });
+    if (error) {
+      setLinkedinGroupsError(error.message);
+    } else {
+      setLinkedinGroupsNotice(`${Number(data?.groupsQueued ?? 0)} active groups queued for scraping.`);
+    }
+    setTriggeringScraper(false);
+  }
+
+  async function addLinkedinGroup() {
+    const groupId = newLinkedinGroupId.trim().match(/linkedin\.com\/groups\/(\d+)/i)?.[1]
+      ?? newLinkedinGroupId.trim();
+    if (!/^\d+$/.test(groupId)) {
+      setLinkedinGroupsError('Enter a numeric LinkedIn group ID or group URL.');
+      return;
+    }
+
+    setSavingLinkedinGroupId(groupId);
+    setLinkedinGroupsError('');
+    setLinkedinGroupsNotice('');
+    const { error } = await supabase.functions.invoke('admin-linkedin-groups', {
+      body: {
+        action: 'create',
+        password: sessionStorage.getItem('admin_authed') || password,
+        group_id: groupId,
+        group_name: newLinkedinGroupName.trim() || null,
+      },
+    });
+
+    if (error) {
+      setLinkedinGroupsError(error.message);
+    } else {
+      setNewLinkedinGroupId('');
+      setNewLinkedinGroupName('');
+      setLinkedinGroupsNotice(`Group ${groupId} added.`);
+      await fetchLinkedinGroups();
+    }
+    setSavingLinkedinGroupId(null);
+  }
+
+  async function toggleLinkedinGroup(group: LinkedinGroupRow) {
+    setSavingLinkedinGroupId(group.group_id);
+    setLinkedinGroupsError('');
+    setLinkedinGroupsNotice('');
+    const { error } = await supabase.functions.invoke('admin-linkedin-groups', {
+      body: {
+        action: 'set_active',
+        password: sessionStorage.getItem('admin_authed') || password,
+        group_id: group.group_id,
+        is_active: !group.is_active,
+      },
+    });
+
+    if (error) {
+      setLinkedinGroupsError(error.message);
+    } else {
+      setLinkedinGroups((current) => current.map((row) => (
+        row.group_id === group.group_id ? { ...row, is_active: !row.is_active } : row
+      )));
+    }
+    setSavingLinkedinGroupId(null);
+  }
+
+  async function deleteLinkedinGroup(group: LinkedinGroupRow) {
+    if (!window.confirm(`Delete LinkedIn group ${group.group_id}?`)) return;
+    setSavingLinkedinGroupId(group.group_id);
+    setLinkedinGroupsError('');
+    const { error } = await supabase.functions.invoke('admin-linkedin-groups', {
+      body: {
+        action: 'delete',
+        password: sessionStorage.getItem('admin_authed') || password,
+        group_id: group.group_id,
+      },
+    });
+
+    if (error) {
+      setLinkedinGroupsError(error.message);
+    } else {
+      setLinkedinGroups((current) => current.filter((row) => row.group_id !== group.group_id));
+      setLinkedinGroupsNotice(`Group ${group.group_id} deleted.`);
+    }
+    setSavingLinkedinGroupId(null);
   }
 
   async function fetchHotlistRoles() {
@@ -654,6 +860,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (authed) {
       void fetchHotlistRoles();
+      void fetchLinkedinGroups();
       void fetchMatchRunHistory();
     }
   }, [authed]);
@@ -704,6 +911,14 @@ export default function AdminDashboard() {
       return haystack.includes(q);
     });
   }, [roles, rolesCategoryFilter, rolesSearchQuery]);
+
+  const filteredLinkedinGroups = useMemo(() => {
+    const query = linkedinGroupsSearch.trim().toLowerCase();
+    if (!query) return linkedinGroups;
+    return linkedinGroups.filter((group) => (
+      group.group_id.includes(query) || (group.group_name ?? '').toLowerCase().includes(query)
+    ));
+  }, [linkedinGroups, linkedinGroupsSearch]);
 
   // Totals row
   const totals: Record<string, number> = {};
@@ -784,6 +999,8 @@ export default function AdminDashboard() {
                   ? `${filteredStats.length} of ${stats.length} accounts`
                   : adminView === 'hotlist'
                     ? `${roles.length} hotlist roles`
+                    : adminView === 'scraper'
+                      ? `${linkedinGroups.filter((group) => group.is_active).length} active of ${linkedinGroups.length} LinkedIn groups`
                     : `${historyRows.length} match runs`}
               </p>
             </div>
@@ -800,7 +1017,13 @@ export default function AdminDashboard() {
                 onClick={() => setAdminView('hotlist')}
                 className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'hotlist' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
               >
-                Hotlist AI Roles
+                Hotlist Roles
+              </button>
+              <button
+                onClick={() => setAdminView('scraper')}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${adminView === 'scraper' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                Scraper Config
               </button>
               <button
                 onClick={() => setAdminView('history')}
@@ -811,17 +1034,11 @@ export default function AdminDashboard() {
             </div>
             <button
               onClick={refresh}
-              disabled={loading || rolesLoading}
+              disabled={loading || rolesLoading || linkedinGroupsLoading}
               className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
-              <RefreshCcw size={12} className={loading || rolesLoading ? 'animate-spin' : ''} /> Refresh
+              <RefreshCcw size={12} className={loading || rolesLoading || linkedinGroupsLoading ? 'animate-spin' : ''} /> Refresh
             </button>
-            <Link
-              to="/admin/commands"
-              className="flex h-9 items-center rounded-lg border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              Commands
-            </Link>
             <button
               onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); setStats([]); }}
               className="text-xs text-gray-500 hover:text-red-600 transition-colors"
@@ -1264,6 +1481,209 @@ export default function AdminDashboard() {
               </table>
             </div>
           )}
+        </div>
+        )}
+
+        {adminView === 'scraper' && (
+        <div className="mt-4 grid h-full min-h-0 w-full min-w-0 max-w-full gap-4 overflow-y-auto lg:grid-cols-[320px_minmax(0,1fr)] lg:overflow-hidden">
+          <aside className="rounded-lg border border-gray-200 bg-white lg:overflow-y-auto">
+            <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3">
+              <SlidersHorizontal size={15} className="text-gray-500" />
+              <h2 className="text-sm font-semibold text-gray-900">Scraping Settings</h2>
+            </div>
+            <div className="space-y-4 p-4">
+              <label className="flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-gray-700">Scheduled scraping</span>
+                <input type="checkbox" checked={linkedinScraperConfig.is_enabled} onChange={(event) => setLinkedinScraperConfig((current) => ({ ...current, is_enabled: event.target.checked }))} className="h-4 w-4 accent-blue-600" />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-gray-700">Maximum pages per group</span>
+                <input type="number" min={1} max={20} value={linkedinScraperConfig.max_pages} onChange={(event) => setLinkedinScraperConfig((current) => ({ ...current, max_pages: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-gray-300 px-2.5 text-xs outline-none focus:border-blue-500" />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-gray-700">Maximum posts per group</span>
+                <input type="number" min={1} max={1000} value={linkedinScraperConfig.max_posts_per_group} onChange={(event) => setLinkedinScraperConfig((current) => ({ ...current, max_posts_per_group: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-gray-300 px-2.5 text-xs outline-none focus:border-blue-500" />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-gray-700">Posted time window</span>
+                <select value={linkedinScraperConfig.posted_limit} onChange={(event) => setLinkedinScraperConfig((current) => ({ ...current, posted_limit: event.target.value as LinkedinScraperConfig['posted_limit'] }))} className="h-9 w-full rounded-md border border-gray-300 bg-white px-2.5 text-xs outline-none focus:border-blue-500">
+                  <option value="24h">Last 24 hours</option>
+                  <option value="week">Last week</option>
+                  <option value="month">Last month</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-gray-700">Sort results by</span>
+                <select value={linkedinScraperConfig.sort_by} onChange={(event) => setLinkedinScraperConfig((current) => ({ ...current, sort_by: event.target.value as LinkedinScraperConfig['sort_by'] }))} className="h-9 w-full rounded-md border border-gray-300 bg-white px-2.5 text-xs outline-none focus:border-blue-500">
+                  <option value="date">Newest first</option>
+                  <option value="relevance">Relevance</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-gray-700">Run every</span>
+                <select value={linkedinScraperConfig.schedule_interval_hours} onChange={(event) => setLinkedinScraperConfig((current) => ({ ...current, schedule_interval_hours: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-gray-300 bg-white px-2.5 text-xs outline-none focus:border-blue-500">
+                  {[1, 2, 3, 4, 6, 8, 12, 24].map((hours) => <option key={hours} value={hours}>{hours} {hours === 1 ? 'hour' : 'hours'}</option>)}
+                </select>
+              </label>
+              <div className="border-t border-gray-200 pt-3 text-[11px] leading-5 text-gray-500">
+                <p>Last scheduled: {formatCompactDateTime(linkedinScraperConfig.last_scheduled_at)}</p>
+                <p>Updated: {formatCompactDateTime(linkedinScraperConfig.updated_at || null)}</p>
+              </div>
+              <button onClick={() => void saveLinkedinScraperConfig()} disabled={savingScraperConfig} className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                {savingScraperConfig ? <RefreshCcw size={13} className="animate-spin" /> : <Save size={13} />} Save Settings
+              </button>
+              <button onClick={() => void triggerLinkedinScraper()} disabled={triggeringScraper || savingScraperConfig} className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+                {triggeringScraper ? <RefreshCcw size={13} className="animate-spin" /> : <Play size={13} />} Run Now
+              </button>
+            </div>
+          </aside>
+
+          <div className="flex min-h-[520px] min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white lg:min-h-0">
+            <div className="border-b border-gray-200 px-4 py-3">
+              <h2 className="text-sm font-semibold text-gray-900">LinkedIn Groups</h2>
+            </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-3 py-3 sm:px-4">
+            <div className="flex w-full flex-wrap items-end gap-2 xl:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={linkedinGroupsSearch}
+                  onChange={(event) => setLinkedinGroupsSearch(event.target.value)}
+                  placeholder="Search group ID or name..."
+                  className="h-9 w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <select
+                aria-label="Performance date range"
+                value={linkedinStatsRange}
+                onChange={(event) => {
+                  const range = event.target.value as LinkedinStatsRange;
+                  setLinkedinStatsRange(range);
+                  if (range !== 'custom') void fetchLinkedinGroups(range);
+                }}
+                className="h-9 rounded-md border border-gray-300 bg-white px-2.5 text-xs font-semibold text-gray-700 outline-none focus:border-blue-500"
+              >
+                <option value="24h">Last 24 hours</option>
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="all">All time</option>
+                <option value="custom">Custom range</option>
+              </select>
+              {linkedinStatsRange === 'custom' && (
+                <>
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase text-gray-500">From</span>
+                    <input type="date" value={linkedinStatsStartDate} max={linkedinStatsEndDate || undefined} onChange={(event) => setLinkedinStatsStartDate(event.target.value)} className="h-9 rounded-md border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase text-gray-500">To</span>
+                    <input type="date" value={linkedinStatsEndDate} min={linkedinStatsStartDate || undefined} onChange={(event) => setLinkedinStatsEndDate(event.target.value)} className="h-9 rounded-md border border-gray-300 bg-white px-2 text-xs outline-none focus:border-blue-500" />
+                  </label>
+                  <button onClick={() => void fetchLinkedinGroups('custom')} disabled={linkedinGroupsLoading} className="h-9 rounded-md border border-blue-300 bg-blue-50 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">Apply</button>
+                </>
+              )}
+            </div>
+            <div className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
+              <input
+                value={newLinkedinGroupId}
+                onChange={(event) => setNewLinkedinGroupId(event.target.value)}
+                placeholder="Group ID or URL"
+                className="h-9 w-44 rounded-md border border-gray-300 px-2.5 text-xs outline-none focus:border-blue-500"
+              />
+              <input
+                value={newLinkedinGroupName}
+                onChange={(event) => setNewLinkedinGroupName(event.target.value)}
+                placeholder="Name (optional)"
+                className="h-9 w-44 rounded-md border border-gray-300 px-2.5 text-xs outline-none focus:border-blue-500"
+              />
+              <button
+                onClick={() => void addLinkedinGroup()}
+                disabled={!newLinkedinGroupId.trim() || savingLinkedinGroupId !== null}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                <Plus size={12} /> Add Group
+              </button>
+              <button
+                onClick={() => void fetchLinkedinGroups()}
+                disabled={linkedinGroupsLoading}
+                title="Reload groups"
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <RefreshCcw size={13} className={linkedinGroupsLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+
+          {linkedinGroupsError && <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{linkedinGroupsError}</div>}
+          {linkedinGroupsNotice && <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">{linkedinGroupsNotice}</div>}
+
+          {linkedinGroupsLoading && linkedinGroups.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center"><LogoSpinner size={18} /></div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <table className="w-full min-w-[980px] table-fixed text-left">
+                <thead className="sticky top-0 z-[2] bg-gray-50">
+                  <tr className="border-b border-gray-200 text-[11px] uppercase tracking-wide text-gray-600">
+                    <th className="w-[160px] px-4 py-3">Group ID</th>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="w-[110px] px-4 py-3">Status</th>
+                    <th className="w-[100px] px-4 py-3 text-right" title="All raw posts saved from HarvestAPI, including repeat sightings across scrape runs">Scraped</th>
+                    <th className="w-[110px] px-4 py-3 text-right" title="LinkedIn posts accepted into social_jobs after job filtering and deduplication">Social Jobs</th>
+                    <th className="w-[105px] px-4 py-3 text-right" title="Social jobs with a persisted radar_match_results row">Radar</th>
+                    <th className="w-[180px] px-4 py-3">Last Scraped</th>
+                    <th className="w-[130px] px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLinkedinGroups.map((group) => (
+                    <tr key={group.group_id} className="border-b border-gray-200 text-xs text-gray-800 hover:bg-gray-50">
+                      <td className="px-4 py-3 font-semibold text-gray-900">{group.group_id}</td>
+                      <td className="truncate px-4 py-3 text-gray-600">{group.group_name || '-'}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => void toggleLinkedinGroup(group)}
+                          disabled={savingLinkedinGroupId === group.group_id}
+                          className={`rounded px-2 py-1 text-[11px] font-semibold ${group.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
+                        >
+                          {group.is_active ? 'Active' : 'Inactive'}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums text-gray-900">{group.scraped_posts_count.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums text-blue-700">{group.social_jobs_count.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums text-emerald-700">{group.radar_results_count.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-gray-500">{formatCompactDateTime(group.last_scraped_at)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={`https://www.linkedin.com/groups/${group.group_id}/`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Open LinkedIn group"
+                            className="rounded-md border border-gray-300 bg-white p-2 text-gray-700 hover:bg-gray-50"
+                          >
+                            <ExternalLink size={13} />
+                          </a>
+                          <button
+                            onClick={() => void deleteLinkedinGroup(group)}
+                            disabled={savingLinkedinGroupId === group.group_id}
+                            title="Delete group"
+                            className="rounded-md border border-red-300 bg-red-50 p-2 text-red-700 hover:bg-red-100 disabled:opacity-50"
+                          >
+                            {savingLinkedinGroupId === group.group_id ? <RefreshCcw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredLinkedinGroups.length === 0 && !linkedinGroupsLoading && (
+                    <tr><td colSpan={8} className="px-4 py-10 text-center text-xs text-gray-500">No LinkedIn groups found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
         </div>
         )}
 

@@ -1,0 +1,259 @@
+export interface Env {
+  SUPABASE_WEBHOOK_URL: string;
+  SUPABASE_WEBHOOK_TOKEN?: string;
+  WORKER_AUTH_TOKEN?: string;
+}
+
+type RawPost = Record<string, unknown>;
+
+type ProcessorPayload = {
+  groupId?: unknown;
+  group_id?: unknown;
+  posts?: RawPost[];
+  scrapedPosts?: RawPost[];
+  items?: RawPost[];
+  data?: RawPost[];
+};
+
+type SocialJobRow = {
+  post_id: string;
+  group_id: string;
+  platform: string;
+  post_content: string;
+  posted_by_name: string;
+  posted_at: string;
+  profile_link: string;
+  post_url: string;
+  job_title: string;
+  company_name: string;
+  location: string;
+  employment_type: string;
+  seniority_level: string;
+  job_description: string;
+  salary_range: string;
+};
+
+const BATCH_SIZE = 10;
+const MAX_POSTS_PER_REQUEST = 200;
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function getBearerToken(request: Request): string {
+  const [scheme, token] = (request.headers.get("Authorization") ?? "").split(" ");
+  return scheme?.toLowerCase() === "bearer" ? (token ?? "").trim() : "";
+}
+
+function isAuthorized(request: Request, expectedToken?: string): boolean {
+  const expected = (expectedToken ?? "").trim();
+  return expected.length === 0 || getBearerToken(request) === expected;
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+}
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    const text = asString(value);
+    if (text) return text;
+  }
+  return "";
+}
+
+function extractGroupId(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  for (const [key, candidate] of Object.entries(value as Record<string, unknown>)) {
+    const normalizedKey = key.toLowerCase().replace(/[\s_-]/g, "");
+    if (["groupid", "sourcegroupid", "communityid", "group"].includes(normalizedKey)) {
+      return asString(candidate);
+    }
+  }
+  return "";
+}
+
+export function extractPostId(url: string): string {
+  const groupPostMatch = url.match(/urn:li:groupPost:\d+-(\d+)/i);
+  if (groupPostMatch) return groupPostMatch[1];
+  const activityMatch = url.match(/(?:activity|urn:li:activity)[:-](\d+)/i);
+  return activityMatch?.[1] ?? "";
+}
+
+function toIsoDate(value: unknown): string | null {
+  if (typeof value === "number") {
+    const milliseconds = value > 9_999_999_999 ? value : value * 1000;
+    const date = new Date(milliseconds);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  if (typeof value === "string" && value.trim() && !value.includes("[object")) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  if (value && typeof value === "object") {
+    const objectValue = value as Record<string, unknown>;
+    return toIsoDate(objectValue.timestamp ?? objectValue.date ?? objectValue.seconds);
+  }
+  return null;
+}
+
+function isLikelyJobText(value: string): boolean {
+  const text = value.toLowerCase();
+  if (!text.trim()) return false;
+  const signals = [
+    "hiring", "opening", "position", "role", "requirements", "experience",
+    "c2c", "w2", "contract", "full-time", "onsite", "remote", "hybrid",
+    "rate", "resume", "skills",
+  ];
+  let hits = 0;
+  for (const signal of signals) {
+    if (text.includes(signal)) hits += 1;
+    if (hits >= 2) return true;
+  }
+  return false;
+}
+
+function getAuthor(post: RawPost): { name: string; profileUrl: string } {
+  const author = post.author && typeof post.author === "object"
+    ? post.author as Record<string, unknown>
+    : {};
+  return {
+    name: firstString(
+      post.owner_name,
+      post.authorName,
+      post.posted_by_name,
+      author.name,
+      typeof post.author === "string" ? post.author : "",
+    ),
+    profileUrl: firstString(
+      post.owner_profile_url,
+      post.authorLinkedinUrl,
+      post.authorProfileUrl,
+      post.profile_link,
+      author.linkedinUrl,
+    ),
+  };
+}
+
+async function generatedPostId(post: RawPost, groupId: string, content: string): Promise<string> {
+  const input = `${groupId}\n${firstString(post.linkedinUrl, post.post_url, post.url)}\n${content}`;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return `gen_${Array.from(new Uint8Array(digest)).slice(0, 12).map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+async function normalizePost(post: RawPost, globalGroupId: string): Promise<SocialJobRow | null> {
+  const content = firstString(post.text, post.content, post.post_content, post.description);
+  if (!isLikelyJobText(content)) return null;
+
+  const postUrl = firstString(post.linkedinUrl, post.post_url, post.url, post.postUrl, post["post URL"]);
+  const explicitPostId = firstString(post.id, post.post_id, post.postId);
+  const postId = explicitPostId || extractPostId(postUrl) || await generatedPostId(post, globalGroupId, content);
+  const groupId = extractGroupId(post) || globalGroupId;
+  const author = getAuthor(post);
+  const postedAt = toIsoDate(post.timestamp)
+    ?? toIsoDate(post.postedAt)
+    ?? toIsoDate(post.posted_at)
+    ?? toIsoDate(post.time)
+    ?? new Date().toISOString();
+
+  return {
+    post_id: postId,
+    group_id: groupId,
+    platform: "linkedin",
+    post_content: content,
+    posted_by_name: author.name,
+    posted_at: postedAt,
+    profile_link: author.profileUrl,
+    post_url: postUrl,
+    job_title: firstString(post.job_title, post.title),
+    company_name: firstString(post.company_name, post.company),
+    location: asString(post.location),
+    employment_type: asString(post.employment_type),
+    seniority_level: asString(post.seniority_level),
+    job_description: content,
+    salary_range: asString(post.salary_range),
+  };
+}
+
+function extractPosts(payload: unknown): { groupId: string; posts: RawPost[] } {
+  if (Array.isArray(payload)) return { groupId: "", posts: payload as RawPost[] };
+  if (!payload || typeof payload !== "object") return { groupId: "", posts: [] };
+
+  const objectPayload = payload as ProcessorPayload;
+  const posts = objectPayload.posts
+    ?? objectPayload.scrapedPosts
+    ?? objectPayload.items
+    ?? objectPayload.data
+    ?? [];
+  return {
+    groupId: firstString(objectPayload.groupId, objectPayload.group_id, extractGroupId(objectPayload)),
+    posts: Array.isArray(posts) ? posts : [],
+  };
+}
+
+async function sendBatch(env: Env, rows: SocialJobRow[]): Promise<number> {
+  const response = await fetch(env.SUPABASE_WEBHOOK_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(env.SUPABASE_WEBHOOK_TOKEN
+        ? { Authorization: `Bearer ${env.SUPABASE_WEBHOOK_TOKEN}` }
+        : {}),
+    },
+    body: JSON.stringify(rows),
+  });
+  if (!response.ok) {
+    throw new Error(`Supabase webhook ${response.status}: ${(await response.text()).slice(0, 500)}`);
+  }
+  const result = await response.json<Record<string, unknown>>().catch(() => ({}));
+  return Number(result.enqueued_count ?? 0);
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    if (request.method === "GET") return jsonResponse({ status: "ok" });
+    if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
+    if (!isAuthorized(request, env.WORKER_AUTH_TOKEN)) return jsonResponse({ error: "Unauthorized" }, 401);
+
+    let payload: unknown;
+    try {
+      payload = await request.json();
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400);
+    }
+
+    const { groupId, posts } = extractPosts(payload);
+    if (posts.length === 0) return jsonResponse({ error: "posts array is required" }, 400);
+    if (posts.length > MAX_POSTS_PER_REQUEST) {
+      return jsonResponse({ error: `A maximum of ${MAX_POSTS_PER_REQUEST} posts is allowed` }, 413);
+    }
+
+    try {
+      const normalized = await Promise.all(posts.map((post) => normalizePost(post, groupId)));
+      const acceptedRows = normalized.filter((row): row is SocialJobRow => row !== null);
+      const rows = [...new Map(
+        acceptedRows.map((row) => [`${row.platform}:${row.post_id}`, row]),
+      ).values()];
+      let enqueued = 0;
+
+      for (let index = 0; index < rows.length; index += BATCH_SIZE) {
+        enqueued += await sendBatch(env, rows.slice(index, index + BATCH_SIZE));
+      }
+
+      return jsonResponse({
+        success: true,
+        received: posts.length,
+        accepted: rows.length,
+        filtered: posts.length - acceptedRows.length,
+        duplicates: acceptedRows.length - rows.length,
+        enqueued,
+      });
+    } catch (error) {
+      console.error(`Post processing failed: ${(error as Error).message}`);
+      return jsonResponse({ error: (error as Error).message }, 502);
+    }
+  },
+};

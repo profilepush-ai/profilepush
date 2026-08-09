@@ -1,0 +1,7 @@
+name = "profilepush-linkedin-group-posts-processor"
+main = "src/index.ts"
+compatibility_date = "2026-08-08"
+workers_dev = true
+
+[vars]
+SUPABASE_WEBHOOK_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co/functions/v1/receive-social-job"

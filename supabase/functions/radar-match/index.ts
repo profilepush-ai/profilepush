@@ -698,7 +698,7 @@ Deno.serve(async (req: Request) => {
 
               const { data: insertedRows, error: insertErr } = await supabase
                 .from("radar_match_results")
-                .insert(rows)
+                .upsert(rows, { onConflict: "job_id,job_source" })
                 .select("job_id");
 
               if (insertErr) {

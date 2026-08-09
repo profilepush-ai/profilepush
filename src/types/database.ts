@@ -22,6 +22,32 @@ export interface ExperienceEntry {
 export interface Database {
   public: {
     Tables: {
+      linkedin_groups: {
+        Row: {
+          group_id: string;
+          group_name: string | null;
+          is_active: boolean;
+          last_scraped_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          group_id: string;
+          group_name?: string | null;
+          is_active?: boolean;
+          last_scraped_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          group_id?: string;
+          group_name?: string | null;
+          is_active?: boolean;
+          last_scraped_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       profiles: {
         Row: {
           id: string;
