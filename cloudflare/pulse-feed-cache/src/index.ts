@@ -18,6 +18,7 @@ type PulseSocialFeedRpcRow = {
   poster_phone: string;
   social_created_at: string;
   posted_at: string | null;
+  effective_posted_at: string;
   job_title: string;
   company_name: string;
   location: string;
@@ -46,6 +47,7 @@ type PulseSocialFeedRpcRow = {
 type CachePayload = {
   rows: PulseSocialFeedRpcRow[];
   refreshed_at: string;
+  truncated: boolean;
 };
 
 const corsHeaders: Record<string, string> = {
@@ -86,34 +88,53 @@ function normalizeHours(raw: string | null) {
 }
 
 function normalizeLimit(raw: string | null) {
-  const limit = parsePositiveInt(raw, 5000);
-  return Math.max(100, Math.min(5000, limit));
+  const limit = parsePositiveInt(raw, 25000);
+  return Math.max(100, Math.min(25000, limit));
 }
 
-async function fetchPulseRowsFromSupabase(env: Env, hours: number, limit: number): Promise<PulseSocialFeedRpcRow[]> {
+async function fetchPulseRowsFromSupabase(env: Env, hours: number, limit: number): Promise<{ rows: PulseSocialFeedRpcRow[]; truncated: boolean }> {
   const since = new Date(Date.now() - (hours * 60 * 60 * 1000)).toISOString();
-  const rpcUrl = `${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/rpc/get_pulse_social_feed`;
+  const rpcUrl = `${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/rpc/get_pulse_social_feed_page`;
+  const rows: PulseSocialFeedRpcRow[] = [];
+  let beforePostedAt: string | null = null;
+  let beforeLeadId: string | null = null;
 
-  const response = await fetch(rpcUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${env.SUPABASE_ANON_KEY}`,
-      "apikey": env.SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({
-      p_since: since,
-      p_limit: limit,
-    }),
-  });
+  while (rows.length < limit) {
+    const pageLimit = Math.min(1000, limit - rows.length);
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${env.SUPABASE_ANON_KEY}`,
+        "apikey": env.SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        p_since: since,
+        p_before_posted_at: beforePostedAt,
+        p_before_lead_id: beforeLeadId,
+        p_limit: pageLimit,
+      }),
+    });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Supabase RPC failed (${response.status}): ${text.slice(0, 200)}`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Supabase RPC failed (${response.status}): ${text.slice(0, 200)}`);
+    }
+
+    const payload = (await response.json()) as unknown;
+    const page = Array.isArray(payload) ? payload as PulseSocialFeedRpcRow[] : [];
+    rows.push(...page);
+    if (page.length < pageLimit) return { rows, truncated: false };
+
+    const last = page[page.length - 1];
+    if (!last?.effective_posted_at || !last.lead_id) {
+      throw new Error("Supabase RPC page did not return a valid cursor");
+    }
+    beforePostedAt = last.effective_posted_at;
+    beforeLeadId = last.lead_id;
   }
 
-  const payload = (await response.json()) as unknown;
-  return Array.isArray(payload) ? (payload as PulseSocialFeedRpcRow[]) : [];
+  return { rows, truncated: true };
 }
 
 export default {
@@ -162,14 +183,19 @@ export default {
     }
 
     try {
-      const rows = await fetchPulseRowsFromSupabase(env, hours, limit);
+      const result = await fetchPulseRowsFromSupabase(env, hours, limit);
       const payload: CachePayload = {
-        rows,
+        rows: result.rows,
         refreshed_at: new Date().toISOString(),
+        truncated: result.truncated,
       };
-      await env.PULSE_FEED_CACHE.put(cacheKey, JSON.stringify(payload), { expirationTtl: ttlSeconds });
+      try {
+        await env.PULSE_FEED_CACHE.put(cacheKey, JSON.stringify(payload), { expirationTtl: ttlSeconds });
+      } catch (error) {
+        console.warn(`Pulse cache write skipped: ${(error as Error).message}`);
+      }
       return jsonResponse(
-        { ...payload, cached: false },
+        { ...payload, cached: false, warning: result.truncated ? `Result capped at ${limit} rows` : undefined },
         200,
         { "X-Cache-Status": "MISS" },
       );

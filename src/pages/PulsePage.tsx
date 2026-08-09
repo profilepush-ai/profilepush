@@ -192,6 +192,7 @@ type PulseSocialFeedRpcRow = {
   poster_phone: string;
   social_created_at: string;
   posted_at: string | null;
+  effective_posted_at?: string;
   job_title: string;
   company_name: string;
   location: string;
@@ -221,6 +222,7 @@ type PulseFeedCacheWorkerResponse = {
   rows?: PulseSocialFeedRpcRow[];
   cached?: boolean;
   refreshed_at?: string;
+  truncated?: boolean;
   warning?: string;
 };
 
@@ -2506,7 +2508,7 @@ export default function PulsePage() {
     try {
       const url = new URL(PULSE_CACHE_WORKER_URL);
       url.searchParams.set('hours', String(rangeHours));
-      url.searchParams.set('limit', '5000');
+      url.searchParams.set('limit', '25000');
 
       const headers: Record<string, string> = {
         Accept: 'application/json',
@@ -2536,6 +2538,35 @@ export default function PulsePage() {
     }
 
     const since = new Date(Date.now() - (rangeHours * 60 * 60 * 1000)).toISOString();
+
+    const pagedRows: PulseSocialFeedRpcRow[] = [];
+    let beforePostedAt: string | null = null;
+    let beforeLeadId: string | null = null;
+    let pagedRpcAvailable = true;
+
+    while (pagedRows.length < 25000) {
+      const pageResult = await supabase.rpc('get_pulse_social_feed_page', {
+        p_since: since,
+        p_before_posted_at: beforePostedAt,
+        p_before_lead_id: beforeLeadId,
+        p_limit: 1000,
+      } as never);
+      if (pageResult.error) {
+        pagedRpcAvailable = false;
+        break;
+      }
+
+      const page = (pageResult.data ?? []) as PulseSocialFeedRpcRow[];
+      pagedRows.push(...page);
+      if (page.length < 1000) return pagedRows;
+
+      const last = page[page.length - 1];
+      if (!last?.effective_posted_at || !last.lead_id) break;
+      beforePostedAt = last.effective_posted_at;
+      beforeLeadId = last.lead_id;
+    }
+
+    if (pagedRpcAvailable && pagedRows.length > 0) return pagedRows;
 
     // Preferred path: global SECURITY DEFINER RPC (all-account feed).
     const rpcResult = await supabase.rpc('get_pulse_social_feed', {
@@ -2990,8 +3021,15 @@ export default function PulsePage() {
       return ageMs >= 0 && ageMs <= last24HoursMs && hasFullyPopulatedFields(row);
     };
 
+    const rangeCutoffMs = nowMs - (selectedProfileRange.hours * 60 * 60 * 1000);
     const finalFiltered = socialData
-      .filter((row) => newestMatchByJobId.has(row.id) && (row.poster_email ?? '').trim())
+      .filter((row) => {
+        const postedTs = getPostedTimestamp(row);
+        return newestMatchByJobId.has(row.id)
+          && (row.poster_email ?? '').trim()
+          && Number.isFinite(postedTs)
+          && postedTs >= rangeCutoffMs;
+      })
       .sort((a, b) => {
         const aPriority = isPriorityComplete24hLead(a);
         const bPriority = isPriorityComplete24hLead(b);
@@ -3009,7 +3047,7 @@ export default function PulsePage() {
       })
       .map((row) => {
         const matchedAt = newestMatchByJobId.get(row.id)?.created_at;
-        const eventTime = matchedAt || row.posted_at || row.created_at;
+        const eventTime = row.posted_at || row.created_at || matchedAt;
         return {
           id: row.id,
           title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || 'Untitled Job',
