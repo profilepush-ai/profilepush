@@ -245,9 +245,20 @@ type ProfileCategoryTab = {
   icon: LucideIcon;
 };
 
-type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'queued';
+type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'asked' | 'verified' | 'queued';
 type LeadActionType = 'revealed' | 'breakdown';
+
+type AskedJobState = {
+  requestedAt: string;
+  fulfilledAt: string | null;
+};
+
+type GlobalAskedJobState = 'asked' | 'verified';
 type EmailDraftTabId = 'pitching' | 'requestDetails';
+type AskAIConfirmation = {
+  vendorName: string;
+  missingDetails: string[];
+};
 type FeedSearchFilters = {
   experienceRange: string;
   workType: string;
@@ -1263,6 +1274,8 @@ export default function PulsePage() {
   const [profileStatsByRole, setProfileStatsByRole] = useState<Record<string, ProfileStats>>({});
   const [expandedMobileProfileCardIds, setExpandedMobileProfileCardIds] = useState<Set<string>>(new Set());
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
+  const [processingAskAILeadId, setProcessingAskAILeadId] = useState<string | null>(null);
+  const [askAIConfirmation, setAskAIConfirmation] = useState<AskAIConfirmation | null>(null);
   const [generatedEmailDrafts, setGeneratedEmailDrafts] = useState<{ pitching: string; requestDetails: string }>({
     pitching: '',
     requestDetails: '',
@@ -1274,7 +1287,12 @@ export default function PulsePage() {
   const [visibleMatchesCount, setVisibleMatchesCount] = useState(MATCHES_PAGE_SIZE);
   const [desktopRecentVisibleCount, setDesktopRecentVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [desktopRevealedVisibleCount, setDesktopRevealedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
+  const [desktopAskedVisibleCount, setDesktopAskedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
+  const [desktopVerifiedVisibleCount, setDesktopVerifiedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [revealedLeadIds, setRevealedLeadIds] = useState<Set<string>>(new Set());
+  const [askedJobStateByLeadId, setAskedJobStateByLeadId] = useState<Record<string, AskedJobState>>({});
+  const [globalAskedJobStateByLeadId, setGlobalAskedJobStateByLeadId] = useState<Record<string, GlobalAskedJobState>>({});
+  const [askedLeadsById, setAskedLeadsById] = useState<Record<string, SocialLead>>({});
   const [breakdownChargedLeadIds, setBreakdownChargedLeadIds] = useState<Set<string>>(new Set());
   const [queuedLeadIds, setQueuedLeadIds] = useState<Set<string>>(new Set());
   const [revealCountsByLeadId, setRevealCountsByLeadId] = useState<Record<string, number>>({});
@@ -1723,12 +1741,31 @@ export default function PulsePage() {
     });
   }, [dedupedScopedFeed, revealedAtByLeadId, revealedLeadIds]);
 
+  const askedVisibleFeed = useMemo(() => {
+    const scopedById = new Map(dedupedScopedFeed.map((lead) => [lead.id, lead]));
+    return Object.keys(askedJobStateByLeadId)
+      .map((leadId) => scopedById.get(leadId) ?? askedLeadsById[leadId])
+      .filter((lead): lead is SocialLead => Boolean(lead))
+      .sort((a, b) => new Date(askedJobStateByLeadId[b.id].requestedAt).getTime() - new Date(askedJobStateByLeadId[a.id].requestedAt).getTime());
+  }, [askedJobStateByLeadId, askedLeadsById, dedupedScopedFeed]);
+
+  const verifiedVisibleFeed = useMemo(() => {
+    const scopedById = new Map(dedupedScopedFeed.map((lead) => [lead.id, lead]));
+    return Object.entries(globalAskedJobStateByLeadId)
+      .filter(([, state]) => state === 'verified')
+      .map(([leadId]) => scopedById.get(leadId) ?? askedLeadsById[leadId])
+      .filter((lead): lead is SocialLead => Boolean(lead))
+      .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+  }, [askedLeadsById, dedupedScopedFeed, globalAskedJobStateByLeadId]);
+
   const matchesTabCounts = useMemo(() => ({
     all: dedupedScopedFeed.length,
     breakdown: dedupedScopedFeed.filter((lead) => breakdownChargedLeadIds.has(lead.id)).length,
     revealed: revealedVisibleFeed.length,
+    asked: askedVisibleFeed.length,
+    verified: verifiedVisibleFeed.length,
     queued: recentVisibleFeed.length,
-  }), [breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed.length, revealedVisibleFeed.length]);
+  }), [askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed.length, revealedVisibleFeed.length, verifiedVisibleFeed.length]);
 
   const profileViewCounts = useMemo(() => ({
     all: filteredJobsRankedLeaderboard.length,
@@ -1742,11 +1779,17 @@ export default function PulsePage() {
     if (selectedMatchesTab === 'revealed') {
       return revealedVisibleFeed;
     }
+    if (selectedMatchesTab === 'asked') {
+      return askedVisibleFeed;
+    }
+    if (selectedMatchesTab === 'verified') {
+      return verifiedVisibleFeed;
+    }
     if (selectedMatchesTab === 'queued') {
       return recentVisibleFeed;
     }
     return dedupedScopedFeed;
-  }, [breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed, revealedVisibleFeed, selectedMatchesTab]);
+  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed, revealedVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
 
   const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
@@ -1759,8 +1802,18 @@ export default function PulsePage() {
     () => revealedVisibleFeed.slice(0, desktopRevealedVisibleCount),
     [desktopRevealedVisibleCount, revealedVisibleFeed],
   );
+  const visibleDesktopAskedFeed = useMemo(
+    () => askedVisibleFeed.slice(0, desktopAskedVisibleCount),
+    [askedVisibleFeed, desktopAskedVisibleCount],
+  );
+  const visibleDesktopVerifiedFeed = useMemo(
+    () => verifiedVisibleFeed.slice(0, desktopVerifiedVisibleCount),
+    [desktopVerifiedVisibleCount, verifiedVisibleFeed],
+  );
   const canLoadMoreDesktopRecent = desktopRecentVisibleCount < recentVisibleFeed.length;
   const canLoadMoreDesktopRevealed = desktopRevealedVisibleCount < revealedVisibleFeed.length;
+  const canLoadMoreDesktopAsked = desktopAskedVisibleCount < askedVisibleFeed.length;
+  const canLoadMoreDesktopVerified = desktopVerifiedVisibleCount < verifiedVisibleFeed.length;
 
   const maybeLoadMoreMatches = useCallback((container: HTMLDivElement, canLoadMore: boolean, onLoadMore: () => void) => {
     if (!canLoadMore) return;
@@ -1822,6 +1875,18 @@ export default function PulsePage() {
     });
   }, [canLoadMoreDesktopRevealed, maybeLoadMoreMatches, revealedVisibleFeed.length]);
 
+  const handleDesktopAskedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopAsked, () => {
+      setDesktopAskedVisibleCount((prev) => Math.min(askedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
+    });
+  }, [askedVisibleFeed.length, canLoadMoreDesktopAsked, maybeLoadMoreMatches]);
+
+  const handleDesktopVerifiedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopVerified, () => {
+      setDesktopVerifiedVisibleCount((prev) => Math.min(verifiedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
+    });
+  }, [canLoadMoreDesktopVerified, maybeLoadMoreMatches, verifiedVisibleFeed.length]);
+
   useEffect(() => {
     if (isMobileViewport) return;
     const container = desktopMatchesScrollRef.current;
@@ -1835,18 +1900,34 @@ export default function PulsePage() {
       return;
     }
 
+    if (selectedMatchesTab === 'asked' && canLoadMoreDesktopAsked) {
+      setDesktopAskedVisibleCount((prev) => Math.min(askedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
+      return;
+    }
+
+    if (selectedMatchesTab === 'verified' && canLoadMoreDesktopVerified) {
+      setDesktopVerifiedVisibleCount((prev) => Math.min(verifiedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
+      return;
+    }
+
     if (selectedMatchesTab === 'queued' && canLoadMoreDesktopRecent) {
       setDesktopRecentVisibleCount((prev) => Math.min(recentVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
     }
   }, [
+    askedVisibleFeed.length,
+    canLoadMoreDesktopAsked,
     canLoadMoreDesktopRecent,
     canLoadMoreDesktopRevealed,
+    canLoadMoreDesktopVerified,
     isMobileViewport,
     recentVisibleFeed.length,
     revealedVisibleFeed.length,
     selectedMatchesTab,
     visibleDesktopRecentFeed.length,
     visibleDesktopRevealedFeed.length,
+    visibleDesktopAskedFeed.length,
+    visibleDesktopVerifiedFeed.length,
+    verifiedVisibleFeed.length,
   ]);
 
   function getScoreVisual(score: number | null) {
@@ -2003,6 +2084,24 @@ export default function PulsePage() {
     });
   };
 
+  const getMissingJobDetails = (lead: SocialLead) => {
+    const breakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
+      lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+      undefined,
+      {
+        employment_type: lead.employmentType || null,
+        work_type: null,
+      },
+    ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
+
+    return Array.from(new Set(breakdownItems
+      .filter((item) => {
+        const value = (item.detail?.job_value ?? '').trim().toLowerCase();
+        return !value || value === '-' || value === 'unknown' || value === 'not specified' || value === 'n/a';
+      })
+      .map((item) => formatBreakdownFieldName(item.key))));
+  };
+
   const renderLeadCards = (leads: SocialLead[], columns = 1) => leads.map((lead, idx) => {
     const safeColumns = Math.max(1, columns);
     const row = Math.floor(idx / safeColumns);
@@ -2021,6 +2120,12 @@ export default function PulsePage() {
     const cardBorderColor = isDark ? 'rgb(255 255 255 / 0.25)' : `rgb(${accentRgb} / 0.45)`;
     const titleToneStyle = { color: isDark ? accentColor : '#2563EB' };
     const isLeadRevealed = revealedLeadIds.has(lead.id);
+    const askedJobState = askedJobStateByLeadId[lead.id];
+    const globalAskedJobState = globalAskedJobStateByLeadId[lead.id];
+    const isAskPending = globalAskedJobState === 'asked';
+    const isVerified = globalAskedJobState === 'verified';
+    const missingJobDetails = getMissingJobDetails(lead);
+    const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim()) && missingJobDetails.length > 0;
     const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
       lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
       undefined,
@@ -2126,12 +2231,18 @@ export default function PulsePage() {
               <span>{lead.postedAgo}</span>
               <span>•</span>
               <span>{isLeadRevealed ? `Posted by ${lead.posterName}` : maskPosterName(lead.posterName)}</span>
-              {lead.company && (
-                <>
+              {(lead.company || lead.platform) && (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
                   <span>•</span>
-                  <Building2 size={10} className="shrink-0 text-slate-500" />
-                  <span className="text-[#94A3B8]">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
-                </>
+                  {lead.company && (
+                    <>
+                      <Building2 size={10} className="shrink-0 text-slate-500" />
+                      <span className="text-[#94A3B8]">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
+                    </>
+                  )}
+                  {lead.company && lead.platform && <span>•</span>}
+                  {lead.platform && <span className="font-bold uppercase text-[#64748B]">{lead.platform}</span>}
+                </span>
               )}
             </div>
             {selectedMatchesTab === 'revealed' && revealedAtByLeadId[lead.id] && (
@@ -2139,12 +2250,23 @@ export default function PulsePage() {
                 Revealed {formatRevealedAt(revealedAtByLeadId[lead.id])}
               </div>
             )}
+            {selectedMatchesTab === 'asked' && askedJobState && (
+              <div className={`mt-0.5 text-[10px] font-medium ${askedJobState.fulfilledAt ? 'text-emerald-700' : 'text-amber-700'}`}>
+                {askedJobState.fulfilledAt ? `Details updated ${formatRevealedAt(askedJobState.fulfilledAt)}` : 'Awaiting details'}
+              </div>
+            )}
           </div>
-          {lead.platform && (
-            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-[#64748B]">
-              {lead.platform}
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
+            disabled={!canAskAI || processingAskAILeadId === lead.id}
+            title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Missing details have already been requested' : !lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Ask AI to request the missing details'}
+            className="inline-flex shrink-0 items-center gap-1 bg-transparent px-1 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-45"
+            style={{ color: isDark ? `color-mix(in srgb, ${accentColor} 82%, black)` : '#1D4ED8' }}
+          >
+            {isVerified ? <BadgeCheck size={12} strokeWidth={2} /> : <Mail size={12} strokeWidth={2} />}
+            {processingAskAILeadId === lead.id ? 'Sending...' : isVerified ? 'Verified' : isAskPending ? 'Asked' : 'Ask'}
+          </button>
         </div>
         {inlineBreakdownItems.length > 0 && (
           useFourColumnBreakdown ? (
@@ -2412,6 +2534,88 @@ export default function PulsePage() {
     setRevealedAtByLeadId(revealedAt);
   }, []);
 
+  const loadAskedJobState = useCallback(async () => {
+    if (!account?.id || !user?.id) {
+      setAskedJobStateByLeadId({});
+      setGlobalAskedJobStateByLeadId({});
+      setAskedLeadsById({});
+      return;
+    }
+
+    const [ownRequestsResult, globalStatesResult] = await Promise.all([
+      supabase
+        .from('pulse_ask_ai_requests' as never)
+        .select('job_id, status, created_at, fulfilled_at')
+        .eq('account_id', account.id)
+        .eq('user_id', user.id)
+        .in('status', ['completed', 'fulfilled'])
+        .order('created_at', { ascending: false }),
+      supabase.rpc('get_pulse_asked_job_states' as never),
+    ]);
+
+    if (ownRequestsResult.error) return;
+
+    const nextState: Record<string, AskedJobState> = {};
+    for (const row of (ownRequestsResult.data ?? []) as Array<{ job_id: string; created_at: string; fulfilled_at: string | null }>) {
+      if (!nextState[row.job_id]) {
+        nextState[row.job_id] = { requestedAt: row.created_at, fulfilledAt: row.fulfilled_at };
+      }
+    }
+    setAskedJobStateByLeadId(nextState);
+
+    const nextGlobalState: Record<string, GlobalAskedJobState> = {};
+    if (!globalStatesResult.error) {
+      for (const row of (globalStatesResult.data ?? []) as Array<{ job_id: string; state: GlobalAskedJobState }>) {
+        if (row.state === 'asked' || row.state === 'verified') nextGlobalState[row.job_id] = row.state;
+      }
+    }
+    setGlobalAskedJobStateByLeadId(nextGlobalState);
+
+    const jobIds = Array.from(new Set([...Object.keys(nextState), ...Object.keys(nextGlobalState)]));
+    if (jobIds.length === 0) {
+      setAskedLeadsById({});
+      return;
+    }
+
+    const { data: jobRows, error: jobsError } = await supabase
+      .from('social_jobs')
+      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max')
+      .in('id', jobIds);
+    if (jobsError) return;
+
+    const nextLeads: Record<string, SocialLead> = {};
+    for (const row of (jobRows ?? []) as SocialJobRow[]) {
+      const eventTime = row.posted_at || row.created_at;
+      nextLeads[row.id] = {
+        id: row.id,
+        title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || 'Untitled Job',
+        roleTitle: row.job_title?.trim() || row.extracted_role_normalized?.trim() || '',
+        location: row.location?.trim() || 'Location not specified',
+        company: row.company_name?.trim() || '',
+        posterName: row.posted_by_name?.trim() || 'Vendor contact',
+        posterEmail: row.poster_email?.trim() || '',
+        posterPhone: row.poster_phone?.trim() || '',
+        postedAt: eventTime,
+        postedAgo: formatAgo(eventTime),
+        platform: row.platform,
+        matchScore: null,
+        profileId: null,
+        scoreBreakdown: null,
+        snippet: row.post_content?.trim().slice(0, 150) || '',
+        employmentType: row.employment_type?.trim() || '',
+        seniority: row.seniority_level?.trim() || '',
+        salaryRange: row.salary_range?.trim() || '',
+        skills: Array.isArray(row.extracted_skills) ? row.extracted_skills : [],
+        experienceYears: row.extracted_experience_years ?? null,
+        visaTypes: Array.isArray(row.extracted_visa_types) ? row.extracted_visa_types : [],
+        hourlyRate: (row.extracted_hourly_rate_min != null || row.extracted_hourly_rate_max != null)
+          ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
+          : '',
+      };
+    }
+    setAskedLeadsById(nextLeads);
+  }, [account?.id, user?.id]);
+
   const loadLeaderboard = useCallback(async () => {
     const { data, error } = await supabase.rpc('get_pulse_persona_leaderboard', { limit_count: LEADERBOARD_RPC_LIMIT });
 
@@ -2482,7 +2686,7 @@ export default function PulsePage() {
 
   const loadInitial = useCallback(async () => {
     setLoading(true);
-    await Promise.all([loadLeaderboard(), loadWatchingRoles(), loadLeadActionState()]);
+    await Promise.all([loadLeaderboard(), loadWatchingRoles(), loadLeadActionState(), loadAskedJobState()]);
 
     try {
       const { data: latestRows } = await supabase.rpc('get_pulse_social_feed', {
@@ -2496,7 +2700,7 @@ export default function PulsePage() {
     }
 
     setLoading(false);
-  }, [loadLeaderboard, loadWatchingRoles, loadLeadActionState]);
+  }, [loadAskedJobState, loadLeaderboard, loadWatchingRoles, loadLeadActionState]);
 
   useEffect(() => {
     void loadInitial();
@@ -3086,6 +3290,8 @@ export default function PulsePage() {
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
     setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
     setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+    setDesktopAskedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+    setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
 
     if (finalFiltered.length > 0) {
       const leadIds = finalFiltered.map((l) => l.id);
@@ -3135,6 +3341,8 @@ export default function PulsePage() {
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
     setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
     setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+    setDesktopAskedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+    setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
   }, [activePersona?.target_role, selectedCategoryId, selectedMatchesTab, selectedTechStacks]);
 
   const ensureBenchProfileForWatchedRole = useCallback(async (persona: PulsePersona) => {
@@ -3456,42 +3664,73 @@ export default function PulsePage() {
   }, [activePersona, user?.email, user?.user_metadata?.full_name]);
 
   const generateRequestDetailsEmailDraft = useCallback((lead: SocialLead) => {
-    const breakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
-      lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
-      undefined,
-      {
-        employment_type: lead.employmentType || null,
-        work_type: null,
-      },
-    ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
-
-    const missingFields = breakdownItems
-      .filter((item) => {
-        const value = (item.detail?.job_value ?? '').trim().toLowerCase();
-        return !value || value === '-' || value === 'unknown' || value === 'not specified' || value === 'n/a';
-      })
-      .map((item) => formatBreakdownFieldName(item.key));
-
-    const uniqueMissingFields = Array.from(new Set(missingFields));
+    const uniqueMissingFields = getMissingJobDetails(lead);
     const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
       || user?.email?.split('@')[0]
       || 'Your Name';
 
-    const detailsLine = uniqueMissingFields.length > 0
-      ? `Could you please share more details on: ${uniqueMissingFields.join(', ')}?`
-      : 'Could you please share a few additional details (experience, work type, visa, location, and rate expectations) so I can shortlist the best-fit profile?';
+    const detailsLine = `${signedInUserName} is requesting the following missing details regarding your job post: ${uniqueMissingFields.join(', ')}.`;
 
     return [
       `Hi ${lead.posterName || 'there'},`,
       '',
       `Thanks for posting the ${lead.title || 'role'}${lead.company ? ` at ${lead.company}` : ''}.`,
       detailsLine,
-      'Once I have that, I can send a tightly matched profile right away.',
+      'Please reply with these details so the best-fit profiles can be shortlisted.',
       '',
       'Thanks,',
-      signedInUserName,
+      'ProfilePush AI',
     ].join('\n');
   }, [user?.email, user?.user_metadata?.full_name]);
+
+  const handleAskAI = useCallback(async (lead: SocialLead) => {
+    if (!account?.id || processingAskAILeadId) return;
+
+    const missingDetails = getMissingJobDetails(lead);
+    if (missingDetails.length === 0) {
+      showToast('No missing job details were detected', 'error');
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(lead.posterEmail.trim())) {
+      showToast('This job does not have a valid vendor email', 'error');
+      return;
+    }
+
+    setProcessingAskAILeadId(lead.id);
+    try {
+      const emailSubject = `Additional details requested for ${lead.title || 'your job post'}`;
+      const emailContent = generateRequestDetailsEmailDraft(lead);
+      const { data, error } = await supabase.functions.invoke('ask-ai-vendor-email', {
+        body: {
+          request_id: crypto.randomUUID(),
+          account_id: account.id,
+          job_id: lead.id,
+          missing_details: missingDetails,
+          email_subject: emailSubject,
+          email_content: emailContent,
+        },
+      });
+
+      if (error || !data?.ok) {
+        throw new Error(data?.error || error?.message || 'Could not send the request');
+      }
+
+      await refreshAccount();
+      setAskedJobStateByLeadId((prev) => ({
+        ...prev,
+        [lead.id]: { requestedAt: new Date().toISOString(), fulfilledAt: null },
+      }));
+      setGlobalAskedJobStateByLeadId((prev) => ({ ...prev, [lead.id]: 'asked' }));
+      setAskAIConfirmation({
+        vendorName: data.vendor_name || lead.posterName || 'the vendor',
+        missingDetails,
+      });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not send the vendor email request', 'error');
+    } finally {
+      setProcessingAskAILeadId(null);
+    }
+  }, [account?.id, generateRequestDetailsEmailDraft, processingAskAILeadId, refreshAccount, showToast]);
 
   useEffect(() => {
     if (!selectedLead) {
@@ -4107,6 +4346,8 @@ export default function PulsePage() {
                       {([
                         { id: 'queued', label: 'Recent' },
                         { id: 'revealed', label: 'Revealed' },
+                        { id: 'asked', label: 'Asked' },
+                        { id: 'verified', label: 'Verified' },
                       ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
                         const isSelected = selectedMatchesTab === tab.id;
                         const count = matchesTabCounts[tab.id];
@@ -4118,6 +4359,8 @@ export default function PulsePage() {
                               setSelectedMatchesTab(tab.id);
                               setVisibleMatchesCount(MATCHES_PAGE_SIZE);
                               if (tab.id === 'revealed') setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+                              if (tab.id === 'asked') setDesktopAskedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+                              if (tab.id === 'verified') setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                             }}
                             className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
@@ -4451,10 +4694,12 @@ export default function PulsePage() {
 
               {isMobileViewport && (
                 <div className="sticky top-0 z-40 shrink-0 bg-[rgba(255,255,255,0.90)] px-1.5 pt-0 pb-1 backdrop-blur transform-gpu backface-hidden dark:bg-transparent">
-                  <div className="grid w-full grid-cols-2 gap-1">
+                  <div className="grid w-full grid-cols-4 gap-1">
                     {([
                       { id: 'queued', label: 'Recent' },
                       { id: 'revealed', label: 'Revealed' },
+                      { id: 'asked', label: 'Asked' },
+                      { id: 'verified', label: 'Verified' },
                     ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
                       const isSelected = selectedMatchesTab === tab.id;
                       const count = matchesTabCounts[tab.id];
@@ -4510,7 +4755,7 @@ export default function PulsePage() {
                         <div
                           ref={desktopMatchesScrollRef}
                           className="min-h-0 h-full overflow-y-auto p-1.5 slim-scrollbar"
-                          onScroll={selectedMatchesTab === 'revealed' ? handleDesktopRevealedScroll : handleDesktopRecentScroll}
+                          onScroll={selectedMatchesTab === 'revealed' ? handleDesktopRevealedScroll : selectedMatchesTab === 'asked' ? handleDesktopAskedScroll : selectedMatchesTab === 'verified' ? handleDesktopVerifiedScroll : handleDesktopRecentScroll}
                         >
                           {selectedMatchesTab === 'revealed' ? (
                             revealedVisibleFeed.length === 0 ? (
@@ -4518,6 +4763,22 @@ export default function PulsePage() {
                             ) : (
                               <div className="columns-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopRevealedFeed, 3)}
+                              </div>
+                            )
+                          ) : selectedMatchesTab === 'asked' ? (
+                            askedVisibleFeed.length === 0 ? (
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No asked jobs yet.</div>
+                            ) : (
+                              <div className="columns-3 gap-1.5">
+                                {renderLeadCards(visibleDesktopAskedFeed, 3)}
+                              </div>
+                            )
+                          ) : selectedMatchesTab === 'verified' ? (
+                            verifiedVisibleFeed.length === 0 ? (
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No verified jobs yet.</div>
+                            ) : (
+                              <div className="columns-3 gap-1.5">
+                                {renderLeadCards(visibleDesktopVerifiedFeed, 3)}
                               </div>
                             )
                           ) : (
@@ -4542,6 +4803,52 @@ export default function PulsePage() {
           )}
         </div>
       </main>
+
+      {askAIConfirmation && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setAskAIConfirmation(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ask-ai-confirmation-title"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-5 shadow-xl"
+          >
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <Check size={18} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 id="ask-ai-confirmation-title" className="text-sm font-semibold text-gray-900">Request sent</h2>
+                <p className="mt-1 text-xs leading-relaxed text-gray-600">
+                  Ask AI sent an email to {askAIConfirmation.vendorName} requesting the missing job details.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAskAIConfirmation(null)}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+                aria-label="Close confirmation"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="mt-4 rounded-md bg-gray-50 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Requested details</p>
+              <p className="mt-1 text-xs text-gray-700">{askAIConfirmation.missingDetails.join(', ')}</p>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <span className="text-[11px] text-gray-500">$0.01 AI credits charged</span>
+              <button
+                type="button"
+                onClick={() => setAskAIConfirmation(null)}
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedLead && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-3" onClick={() => setSelectedLead(null)}>

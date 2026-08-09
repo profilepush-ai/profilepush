@@ -8,6 +8,7 @@ Queue consumer that parses social jobs with Cloudflare Workers AI parser and wri
 - Calls parser worker (`profilepush-social-job-parser`)
 - Upserts extraction rows to `radar_match_results`
 - Marks `social_jobs.extracted_at`
+- Accepts authenticated vendor email replies, extracts requested details with Workers AI, and marks the job Verified
 
 ## Setup
 
@@ -27,6 +28,7 @@ npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 npx wrangler secret put PARSER_WORKER_URL
 npx wrangler secret put PARSER_WORKER_TOKEN
+npx wrangler secret put INBOUND_REPLY_TOKEN
 ```
 
 3. Deploy:
@@ -34,6 +36,21 @@ npx wrangler secret put PARSER_WORKER_TOKEN
 ```bash
 npx wrangler deploy
 ```
+
+## Vendor reply webhook
+
+Send a `POST` to the deployed worker URL with `Authorization: Bearer <INBOUND_REPLY_TOKEN>`.
+
+```json
+{
+	"job_id": "Job UUID returned in the original Ask Vendor CRM payload",
+	"subject": "Re: Additional details requested",
+	"from_email": "vendor@example.com",
+	"email_content": "The role is hybrid, $65/hr on C2C, and requires 8 years of experience."
+}
+```
+
+The worker verifies that `from_email` matches the vendor attached to `job_id`, then only writes fields that were requested and explicitly present in the reply. Configure the bearer token as a request header; it is not part of the custom data payload.
 
 ## Queue behavior
 

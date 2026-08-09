@@ -2,6 +2,7 @@ export interface Env {
   AI: Ai;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  INBOUND_REPLY_TOKEN?: string;
   PARSER_WORKER_URL?: string;
   PARSER_WORKER_TOKEN?: string;
   PARSER_MODEL?: string;
@@ -20,6 +21,13 @@ type QueueMessageBody = {
 
 type ParserResult = Record<string, unknown>;
 
+type VendorReplyRequest = {
+  job_id?: string;
+  email_content?: string;
+  subject?: string;
+  from_email?: string;
+};
+
 type RadarMatchRow = {
   profile_id: null;
   job_source: "social";
@@ -33,7 +41,7 @@ type RadarMatchRow = {
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
@@ -69,6 +77,179 @@ function parseModelText(raw: unknown): unknown {
     return JSON.parse(trimmed);
   }
   return raw;
+}
+
+function getBearerToken(req: Request): string {
+  const header = req.headers.get("Authorization") ?? "";
+  const [scheme, token] = header.split(" ");
+  return scheme?.toLowerCase() === "bearer" ? (token ?? "").trim() : "";
+}
+
+function requestedDetailKeys(missingDetails: unknown): Set<string> {
+  const keys = new Set<string>();
+  for (const item of Array.isArray(missingDetails) ? missingDetails : []) {
+    const label = String(item ?? "").trim().toLowerCase();
+    if (label.includes("experience") || label === "exp") keys.add("experience_years");
+    if (label.includes("employment")) keys.add("employment_type");
+    if (label.includes("work type")) keys.add("work_type");
+    if (label.includes("rate") || label.includes("salary") || label.includes("hourly")) keys.add("hourly_rate");
+    if (label.includes("visa")) keys.add("visa_types");
+    if (label.includes("location")) keys.add("locations");
+    if (label.includes("skill")) keys.add("skills");
+  }
+  return keys;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => String(item ?? "").trim()).filter(Boolean).slice(0, 20)
+    : [];
+}
+
+function normalizeReplyExtraction(parsed: unknown, allowedKeys: Set<string>): Record<string, unknown> {
+  if (!parsed || typeof parsed !== "object") throw new Error("AI response is not a JSON object");
+  const source = parsed as Record<string, unknown>;
+  const confidence = Number(source.confidence ?? 0);
+  if (!Number.isFinite(confidence) || confidence < 0.75) throw new Error("AI extraction confidence is too low");
+
+  const result: Record<string, unknown> = {};
+  if (allowedKeys.has("experience_years") && Number.isFinite(Number(source.experience_years))) {
+    result.experience_years = Number(source.experience_years);
+  }
+  for (const key of ["employment_type", "work_type"] as const) {
+    const value = String(source[key] ?? "").trim();
+    if (allowedKeys.has(key) && value && value.toLowerCase() !== "unknown") result[key] = value;
+  }
+  for (const key of ["visa_types", "locations", "skills"] as const) {
+    const values = stringArray(source[key]);
+    if (allowedKeys.has(key) && values.length > 0) result[key] = values;
+  }
+  if (allowedKeys.has("hourly_rate")) {
+    const minimum = source.hourly_rate_min == null ? null : Number(source.hourly_rate_min);
+    const maximum = source.hourly_rate_max == null ? null : Number(source.hourly_rate_max);
+    const salaryRange = String(source.salary_range ?? "").trim();
+    if (minimum != null && Number.isFinite(minimum)) result.hourly_rate_min = minimum;
+    if (maximum != null && Number.isFinite(maximum)) result.hourly_rate_max = maximum;
+    if (salaryRange) result.salary_range = salaryRange;
+    if ("hourly_rate_min" in result || "hourly_rate_max" in result || "salary_range" in result) {
+      result.hourly_rate = true;
+    }
+  }
+  return result;
+}
+
+async function supabaseJson(env: Env, path: string, init?: RequestInit): Promise<unknown> {
+  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/${path}`, {
+    ...init,
+    headers: { ...supabaseHeaders(env), ...(init?.headers ?? {}) },
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`Supabase HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 240)}`);
+  return payload;
+}
+
+function updatedBreakdown(existing: unknown, details: Record<string, unknown>): Record<string, unknown> {
+  const breakdown = existing && typeof existing === "object" ? { ...(existing as Record<string, unknown>) } : {};
+  const setJobValue = (key: string, value: string) => {
+    const current = breakdown[key] && typeof breakdown[key] === "object" ? breakdown[key] as Record<string, unknown> : {};
+    breakdown[key] = { ...current, job_value: value };
+  };
+  if (details.experience_years != null) setJobValue("experience_match", `${details.experience_years}+ years`);
+  if (details.employment_type) setJobValue("employment_type_match", String(details.employment_type));
+  if (details.work_type) setJobValue("work_type_match", String(details.work_type));
+  if (Array.isArray(details.visa_types)) setJobValue("visa_match", details.visa_types.join(", "));
+  if (Array.isArray(details.locations)) setJobValue("location_match", details.locations.join(", "));
+  if (Array.isArray(details.skills)) setJobValue("skills_match", details.skills.join(", "));
+  if (details.hourly_rate) {
+    setJobValue("rate_match", String(details.salary_range ?? `$${details.hourly_rate_min ?? "?"}-$${details.hourly_rate_max ?? "?"}/hr`));
+  }
+  return breakdown;
+}
+
+async function handleVendorReply(req: Request, env: Env): Promise<Response> {
+  const expectedToken = (env.INBOUND_REPLY_TOKEN ?? "").trim();
+  if (!expectedToken) return jsonResponse({ error: "Inbound reply webhook is not configured" }, 503);
+  if (getBearerToken(req) !== expectedToken) return jsonResponse({ error: "Unauthorized" }, 401);
+
+  const body = await req.json() as VendorReplyRequest;
+  const jobId = String(body.job_id ?? "").trim();
+  const fromEmail = String(body.from_email ?? "").trim().toLowerCase();
+  const emailContent = String(body.email_content ?? "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(jobId) || !/^\S+@\S+\.\S+$/.test(fromEmail) || !emailContent) {
+    return jsonResponse({ error: "job_id, from_email, and email_content are required" }, 400);
+  }
+
+  const jobs = await supabaseJson(
+    env,
+    `social_jobs?id=eq.${encodeURIComponent(jobId)}&select=id,poster_email&limit=1`,
+  ) as Array<{ id: string; poster_email: string }>;
+  const job = jobs[0];
+  if (!job) return jsonResponse({ error: "Job not found" }, 404);
+  if (String(job.poster_email ?? "").trim().toLowerCase() !== fromEmail) {
+    return jsonResponse({ error: "Sender email does not match this job's vendor" }, 403);
+  }
+
+  const requests = await supabaseJson(
+    env,
+    `pulse_ask_ai_requests?job_id=eq.${encodeURIComponent(jobId)}&status=eq.completed&select=request_id,job_id,missing_details`,
+  ) as Array<{ request_id: string; job_id: string; missing_details: unknown }>;
+  if (requests.length === 0) return jsonResponse({ error: "No pending Ask requests were found for this job" }, 404);
+
+  const allowedKeys = requestedDetailKeys(requests.flatMap((request) => Array.isArray(request.missing_details) ? request.missing_details : []));
+  if (allowedKeys.size === 0) return jsonResponse({ error: "Request has no supported missing details" }, 422);
+
+  const prompt = `Extract only job details explicitly stated in this vendor email reply. Return strict JSON only, without markdown.
+Use null or [] when absent. Do not infer or guess. Include: confidence (0 to 1), experience_years, employment_type, work_type, visa_types, locations, skills, hourly_rate_min, hourly_rate_max, salary_range.
+The originally requested fields are: ${Array.from(allowedKeys).join(", ")}.
+Subject: ${String(body.subject ?? "").slice(0, 500)}
+From: ${fromEmail.slice(0, 320)}
+Email:
+${emailContent.slice(0, 12_000)}`;
+  const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
+  const aiResult = await env.AI.run(model, {
+    messages: [
+      { role: "system", content: "Extract explicit job details from vendor email replies. Never infer missing facts. Return strict JSON only." },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0,
+    max_tokens: 1200,
+  });
+  const details = normalizeReplyExtraction(parseModelText((aiResult as Record<string, unknown>)?.response ?? aiResult), allowedKeys);
+  if (Object.keys(details).length === 0) return jsonResponse({ error: "Reply did not contain any requested details" }, 422);
+
+  const radarRows = await supabaseJson(
+    env,
+    `radar_match_results?job_id=eq.${encodeURIComponent(jobId)}&job_source=eq.social&select=id,score_breakdown`,
+  ) as Array<{ id: string; score_breakdown: unknown }>;
+  for (const radarRow of radarRows) {
+    await supabaseJson(env, `radar_match_results?id=eq.${encodeURIComponent(radarRow.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ score_breakdown: updatedBreakdown(radarRow.score_breakdown, details) }),
+    });
+  }
+
+  const socialPatch: Record<string, unknown> = {
+    verification_status: "verified",
+    verified_at: new Date().toISOString(),
+    reply_extracted_details: details,
+  };
+  if (details.experience_years != null) socialPatch.extracted_experience_years = details.experience_years;
+  if (details.employment_type) socialPatch.employment_type = details.employment_type;
+  if (Array.isArray(details.visa_types)) socialPatch.extracted_visa_types = details.visa_types;
+  if (Array.isArray(details.locations) && details.locations.length > 0) socialPatch.location = details.locations.join(", ");
+  if (Array.isArray(details.skills)) socialPatch.extracted_skills = details.skills;
+  if (details.hourly_rate_min != null) socialPatch.extracted_hourly_rate_min = details.hourly_rate_min;
+  if (details.hourly_rate_max != null) socialPatch.extracted_hourly_rate_max = details.hourly_rate_max;
+  if (details.salary_range) socialPatch.salary_range = details.salary_range;
+
+  await supabaseJson(env, `social_jobs?id=eq.${encodeURIComponent(jobId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify(socialPatch),
+  });
+
+  return jsonResponse({ ok: true, job_id: jobId, fulfilled_requests: requests.map((request) => request.request_id), status: "Verified", extracted_details: details });
 }
 
 function normalizeSingleParsedResult(parsed: unknown, message: QueueMessageBody): ParserResult {
@@ -294,14 +475,21 @@ async function processMessage(env: Env, message: QueueMessageBody): Promise<void
 }
 
 export default {
-  async fetch(req: Request): Promise<Response> {
+  async fetch(req: Request, env: Env): Promise<Response> {
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 200, headers: corsHeaders });
     }
 
-    if (req.method !== "GET") {
-      return jsonResponse({ error: "Method not allowed" }, 405);
+    if (req.method === "POST") {
+      try {
+        return await handleVendorReply(req, env);
+      } catch (error) {
+        console.error("Vendor reply webhook failed", error);
+        return jsonResponse({ error: (error as Error).message }, 500);
+      }
     }
+
+    if (req.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405);
 
     return jsonResponse({ ok: true, worker: "social-job-queue-consumer" });
   },
