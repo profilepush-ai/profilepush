@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import { supabase } from '../lib/supabase';
@@ -337,6 +337,26 @@ export default function AdminDashboard() {
     } else {
       setLinkedinScraperConfig(data.config as LinkedinScraperConfig);
       setLinkedinGroupsNotice('Scraper settings saved.');
+    }
+    setSavingScraperConfig(false);
+  }
+
+  async function setLinkedinSchedulerEnabled(isEnabled: boolean) {
+    setSavingScraperConfig(true);
+    setLinkedinGroupsError('');
+    setLinkedinGroupsNotice('');
+    const { data, error } = await supabase.functions.invoke('admin-linkedin-groups', {
+      body: {
+        action: 'set_scheduler_enabled',
+        password: sessionStorage.getItem('admin_authed') || password,
+        is_enabled: isEnabled,
+      },
+    });
+    if (error) {
+      setLinkedinGroupsError(error.message);
+    } else {
+      setLinkedinScraperConfig(data.config as LinkedinScraperConfig);
+      setLinkedinGroupsNotice(isEnabled ? 'Scheduler resumed.' : 'Scheduler paused.');
     }
     setSavingScraperConfig(false);
   }
@@ -1492,10 +1512,23 @@ export default function AdminDashboard() {
               <h2 className="text-sm font-semibold text-gray-900">Scraping Settings</h2>
             </div>
             <div className="space-y-4 p-4">
-              <label className="flex items-center justify-between gap-3">
-                <span className="text-xs font-semibold text-gray-700">Scheduled scraping</span>
-                <input type="checkbox" checked={linkedinScraperConfig.is_enabled} onChange={(event) => setLinkedinScraperConfig((current) => ({ ...current, is_enabled: event.target.checked }))} className="h-4 w-4 accent-blue-600" />
-              </label>
+              <div className="flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5">
+                <div>
+                  <p className="text-xs font-semibold text-gray-700">Scheduler</p>
+                  <p className={`mt-0.5 text-[11px] font-medium ${linkedinScraperConfig.is_enabled ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {linkedinScraperConfig.is_enabled ? 'Active' : 'Paused'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void setLinkedinSchedulerEnabled(!linkedinScraperConfig.is_enabled)}
+                  disabled={savingScraperConfig || triggeringScraper}
+                  className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${linkedinScraperConfig.is_enabled ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                >
+                  {linkedinScraperConfig.is_enabled ? <Pause size={13} /> : <Play size={13} />}
+                  {linkedinScraperConfig.is_enabled ? 'Pause Scheduler' : 'Resume Scheduler'}
+                </button>
+              </div>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-gray-700">Maximum pages per group</span>
                 <input type="number" min={1} max={20} value={linkedinScraperConfig.max_pages} onChange={(event) => setLinkedinScraperConfig((current) => ({ ...current, max_pages: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-gray-300 px-2.5 text-xs outline-none focus:border-blue-500" />

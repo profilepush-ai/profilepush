@@ -99,6 +99,18 @@ Deno.serve(async (request: Request) => {
       return respond({ success: true, config: data });
     }
 
+    if (action === "set_scheduler_enabled") {
+      if (typeof body?.is_enabled !== "boolean") return respond({ error: "is_enabled must be boolean" }, 400);
+      const { data, error } = await supabase
+        .from("linkedin_scraper_config")
+        .update({ is_enabled: body.is_enabled, updated_at: new Date().toISOString() })
+        .eq("id", true)
+        .select("is_enabled,max_pages,max_posts_per_group,posted_limit,sort_by,schedule_interval_hours,last_scheduled_at,updated_at")
+        .single();
+      if (error) return respond({ error: error.message }, 400);
+      return respond({ success: true, config: data });
+    }
+
     if (action === "trigger_scrape") {
       const { data: config, error: configError } = await supabase
         .from("linkedin_scraper_config")
