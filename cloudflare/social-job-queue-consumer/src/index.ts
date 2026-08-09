@@ -3,6 +3,7 @@ export interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   INBOUND_REPLY_TOKEN?: string;
+  ASK_VENDOR_AI_TOKEN?: string;
   PARSER_WORKER_URL?: string;
   PARSER_WORKER_TOKEN?: string;
   PARSER_MODEL?: string;
@@ -26,6 +27,19 @@ type VendorReplyRequest = {
   email_content?: string;
   subject?: string;
   from_email?: string;
+};
+
+type AskVendorEmailRequest = {
+  job_title?: string;
+  job_location?: string;
+  vendor_name?: string;
+  missing_data_type?: string;
+  bench_recruiter_first_name?: string;
+};
+
+type AskVendorEmailCopy = {
+  subject: string;
+  email_content: string;
 };
 
 type RadarMatchRow = {
@@ -79,10 +93,68 @@ function parseModelText(raw: unknown): unknown {
   return raw;
 }
 
+function normalizeAskVendorEmailCopy(raw: unknown): AskVendorEmailCopy {
+  const parsed = parseModelText(raw);
+  if (!parsed || typeof parsed !== "object") throw new Error("AI response is not a JSON object");
+
+  const source = parsed as Record<string, unknown>;
+  const subject = String(source.subject ?? "").trim().replace(/^subject:\s*/i, "").slice(0, 200);
+  const emailContent = String(source.email_content ?? "").trim().slice(0, 2_000);
+  const wordCount = emailContent.split(/\s+/).filter(Boolean).length;
+  if (!subject || !emailContent) throw new Error("AI response did not include subject and email content");
+  if (wordCount >= 40) throw new Error("AI email content exceeded 40 words");
+  if (/profilepush/i.test(`${subject}\n${emailContent}`)) throw new Error("AI email content included prohibited branding");
+
+  return { subject, email_content: emailContent };
+}
+
 function getBearerToken(req: Request): string {
   const header = req.headers.get("Authorization") ?? "";
   const [scheme, token] = header.split(" ");
   return scheme?.toLowerCase() === "bearer" ? (token ?? "").trim() : "";
+}
+
+async function handleAskVendorEmailCopy(req: Request, env: Env): Promise<Response> {
+  const expectedToken = (env.ASK_VENDOR_AI_TOKEN ?? "").trim();
+  if (!expectedToken) return jsonResponse({ error: "Ask Vendor AI is not configured" }, 503);
+  if (getBearerToken(req) !== expectedToken) return jsonResponse({ error: "Unauthorized" }, 401);
+
+  const body = await req.json() as AskVendorEmailRequest;
+  const jobTitle = String(body.job_title ?? "").trim().slice(0, 500);
+  const jobLocation = String(body.job_location ?? "").trim().slice(0, 500) || "Not specified";
+  const vendorName = String(body.vendor_name ?? "").trim().slice(0, 200) || "there";
+  const missingDataType = String(body.missing_data_type ?? "").trim().slice(0, 1_000);
+  const recruiterFirstName = String(body.bench_recruiter_first_name ?? "").trim().split(/\s+/)[0]?.slice(0, 100);
+  if (!jobTitle || !missingDataType || !recruiterFirstName) {
+    return jsonResponse({ error: "Job title, missing data type, and recruiter first name are required" }, 400);
+  }
+
+  const systemPrompt = `You are a fast-paced, highly transactional IT bench sales recruiter. Your goal is to write a strictly text-based, plain-text email to a vendor asking for missing details about a job they just posted.
+
+Rules for the Email:
+1. Zero Fluff: Do not use corporate greetings like "I hope this email finds you well" or "Good morning."
+2. Extreme Brevity: Keep the entire email under 40 words.
+3. The Hook: Always imply you have a candidate actively on your bench who perfectly fits the role and is ready to be submitted right now.
+4. The Ask: Ask explicitly for the missing data point provided in the variables.
+5. Tone: Casual, urgent, and professional. Use natural phrasing like "Hey," or "Hi [Name]," and sign off simply with the sender's name.
+
+Generate only the email body and subject line. Do not include any explanations. Return strict JSON with exactly these keys: "subject" and "email_content".`;
+  const userPrompt = `Job Title: ${jobTitle}
+Job Location: ${jobLocation}
+Vendor Name: ${vendorName}
+Missing Detail to Ask For: ${missingDataType}
+Sender Name: ${recruiterFirstName}`;
+  const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
+  const aiResult = await env.AI.run(model, {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0.4,
+    max_tokens: 250,
+  });
+  const copy = normalizeAskVendorEmailCopy((aiResult as Record<string, unknown>)?.response ?? aiResult);
+  return jsonResponse(copy);
 }
 
 function requestedDetailKeys(missingDetails: unknown): Set<string> {
@@ -478,6 +550,16 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 200, headers: corsHeaders });
+    }
+
+    const pathname = new URL(req.url).pathname;
+    if (req.method === "POST" && pathname === "/ask-vendor-email-copy") {
+      try {
+        return await handleAskVendorEmailCopy(req, env);
+      } catch (error) {
+        console.error("Ask Vendor email generation failed", error);
+        return jsonResponse({ error: "Could not generate vendor email copy" }, 502);
+      }
     }
 
     if (req.method === "POST") {

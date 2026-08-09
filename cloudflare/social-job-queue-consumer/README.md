@@ -9,6 +9,7 @@ Queue consumer that parses social jobs with Cloudflare Workers AI parser and wri
 - Upserts extraction rows to `radar_match_results`
 - Marks `social_jobs.extracted_at`
 - Accepts authenticated vendor email replies, extracts requested details with Workers AI, and marks the job Verified
+- Generates authenticated Ask Vendor email copy with Workers AI
 
 ## Setup
 
@@ -29,6 +30,7 @@ npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 npx wrangler secret put PARSER_WORKER_URL
 npx wrangler secret put PARSER_WORKER_TOKEN
 npx wrangler secret put INBOUND_REPLY_TOKEN
+npx wrangler secret put ASK_VENDOR_AI_TOKEN
 ```
 
 3. Deploy:
@@ -51,6 +53,10 @@ Send a `POST` to the deployed worker URL with `Authorization: Bearer <INBOUND_RE
 ```
 
 The worker verifies that `from_email` matches the vendor attached to `job_id`, then only writes fields that were requested and explicitly present in the reply. Configure the bearer token as a request header; it is not part of the custom data payload.
+
+## Ask Vendor email writer
+
+The Supabase `ask-ai-vendor-email` function sends an authenticated `POST` to `/ask-vendor-email-copy` using the shared `ASK_VENDOR_AI_TOKEN`. The Worker returns a plain-text subject and email body generated from the job, missing details, vendor name, and requester's first name. Generated bodies are under 40 words and cannot mention ProfilePush.
 
 ## Queue behavior
 

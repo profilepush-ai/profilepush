@@ -8,7 +8,9 @@ const corsHeaders = {
 };
 
 const CRM_WEBHOOK_URL = "https://services.leadconnectorhq.com/hooks/48XyGfN1WxneooOcHGHn/webhook-trigger/5acdf9f6-c8e2-44ea-91be-163a46cf83fd";
+const ASK_VENDOR_AI_URL = "https://profilepush-social-job-queue-consumer.profilepush-ai.workers.dev/ask-vendor-email-copy";
 const ASK_AI_COST = 0.01;
+const SENDER_NAME_TOKEN = "{{sender_name}}";
 
 function respond(payload: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -19,6 +21,23 @@ function respond(payload: Record<string, unknown>, status = 200) {
 
 function asString(value: unknown, maxLength = 10_000) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function asVendorName(value: unknown) {
+  const name = asString(value, 200);
+  return /^(vendor contact|unknown poster|unknown|n\/a)$/i.test(name) ? "" : name;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function toSharedDraft(value: string, senderName: string) {
+  return value.replace(new RegExp(escapeRegExp(senderName), "g"), SENDER_NAME_TOKEN);
+}
+
+function hydrateSharedDraft(value: unknown, senderName: string, maxLength: number) {
+  return asString(value, maxLength).replaceAll(SENDER_NAME_TOKEN, senderName);
 }
 
 Deno.serve(async (req: Request) => {
@@ -41,18 +60,22 @@ Deno.serve(async (req: Request) => {
     if (userError || !user) return respond({ error: "Unauthorized" }, 401);
 
     const body = await req.json() as Record<string, unknown>;
+    const action = asString(body.action, 20);
     const requestId = asString(body.request_id, 100);
     const accountId = asString(body.account_id, 100);
     const jobId = asString(body.job_id, 100);
-    const emailSubject = asString(body.email_subject, 300);
-    const emailContent = asString(body.email_content, 20_000);
     const missingDetails = Array.isArray(body.missing_details)
       ? body.missing_details.map((item) => asString(item, 100)).filter(Boolean).slice(0, 20)
       : [];
+    const missingDetailsKey = JSON.stringify(
+      [...new Set(missingDetails.map((detail) => detail.toLowerCase()))].sort(),
+    );
 
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)
-      || !accountId || !jobId || !emailSubject || !emailContent || missingDetails.length === 0) {
-      return respond({ error: "Job, missing details, subject, and email content are required" }, 400);
+    if (!['preview', 'send'].includes(action) || !accountId || !jobId || missingDetails.length === 0) {
+      return respond({ error: "Job and missing details are required" }, 400);
+    }
+    if (action === 'send' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+      return respond({ error: "A valid request ID is required" }, 400);
     }
 
     const { data: membership } = await supabaseAdmin
@@ -83,10 +106,109 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "This job does not have a valid vendor email" }, 400);
     }
 
+    const { data: vendor } = job.vendor_id
+      ? await supabaseAdmin
+        .from("social_vendors")
+        .select("name")
+        .eq("id", job.vendor_id)
+        .maybeSingle()
+      : { data: null };
+    const vendorName = asVendorName(vendor?.name) || asVendorName(job.posted_by_name);
+    const vendorDisplayName = vendorName || vendorEmail;
+
     const requesterName = asString(user.user_metadata?.full_name ?? user.user_metadata?.name, 200)
       || user.email?.split("@")[0]
-      || "ProfilePush user";
+      || "Recruiter";
+    const requesterFirstName = requesterName.split(/\s+/)[0] || "Recruiter";
     const requesterPhone = asString(user.phone ?? user.user_metadata?.phone, 50) || null;
+
+    let emailSubject = asString(body.email_subject, 300);
+    let emailContent = asString(body.email_content, 2_000);
+    if (action === 'preview') {
+      const { data: cachedDraft, error: cachedDraftError } = await supabaseAdmin
+        .from("pulse_ask_ai_drafts")
+        .select("email_subject, email_content_template")
+        .eq("job_id", jobId)
+        .eq("missing_details_key", missingDetailsKey)
+        .maybeSingle();
+      if (cachedDraftError) throw cachedDraftError;
+
+      if (cachedDraft) {
+        emailSubject = hydrateSharedDraft(cachedDraft.email_subject, requesterFirstName, 300);
+        emailContent = hydrateSharedDraft(cachedDraft.email_content_template, requesterFirstName, 2_000);
+        return respond({
+          ok: true,
+          preview: true,
+          cached: true,
+          vendor_name: vendorDisplayName,
+          vendor_email: vendorEmail,
+          missing_details: missingDetails,
+          email_subject: emailSubject,
+          email_content: emailContent,
+        });
+      }
+
+      const askVendorAiToken = Deno.env.get("ASK_VENDOR_AI_TOKEN")?.trim();
+      if (!askVendorAiToken) return respond({ error: "Could not generate the vendor request" }, 503);
+
+      try {
+        const aiResponse = await fetch(ASK_VENDOR_AI_URL, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${askVendorAiToken}`,
+            "Content-Type": "application/json",
+          },
+          signal: AbortSignal.timeout(20_000),
+          body: JSON.stringify({
+            job_title: asString(job.job_title, 500) || "Open role",
+            job_location: asString(job.location, 500) || "Not specified",
+            vendor_name: vendorName || "there",
+            missing_data_type: missingDetails.join(", "),
+            bench_recruiter_first_name: requesterFirstName,
+          }),
+        });
+        const aiPayload = await aiResponse.json().catch(() => null) as Record<string, unknown> | null;
+        emailSubject = asString(aiPayload?.subject, 300);
+        emailContent = asString(aiPayload?.email_content, 2_000);
+        if (!aiResponse.ok || !emailSubject || !emailContent || /profilepush/i.test(`${emailSubject}\n${emailContent}`)) {
+          throw new Error(`Ask Vendor AI HTTP ${aiResponse.status}`);
+        }
+      } catch (error) {
+        console.error("Could not generate Ask Vendor email", error);
+        return respond({ error: "Could not generate the vendor request" }, 502);
+      }
+
+      const { error: draftInsertError } = await supabaseAdmin
+        .from("pulse_ask_ai_drafts")
+        .upsert({
+          job_id: jobId,
+          missing_details: missingDetails,
+          missing_details_key: missingDetailsKey,
+          email_subject: toSharedDraft(emailSubject, requesterFirstName),
+          email_content_template: toSharedDraft(emailContent, requesterFirstName),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "job_id,missing_details_key" });
+      if (draftInsertError) {
+        console.error("Could not save shared Ask Vendor draft", draftInsertError);
+        return respond({ error: "Could not save the generated vendor request" }, 500);
+      }
+
+      return respond({
+        ok: true,
+        preview: true,
+        cached: false,
+        vendor_name: vendorDisplayName,
+        vendor_email: vendorEmail,
+        missing_details: missingDetails,
+        email_subject: emailSubject,
+        email_content: emailContent,
+      });
+    }
+
+    const emailWordCount = emailContent.split(/\s+/).filter(Boolean).length;
+    if (!emailSubject || !emailContent || emailWordCount >= 40 || /profilepush/i.test(`${emailSubject}\n${emailContent}`)) {
+      return respond({ error: "Approved email must be under 40 words and cannot mention ProfilePush" }, 400);
+    }
 
     const { error: requestInsertError } = await supabaseAdmin
       .from("pulse_ask_ai_requests")
@@ -115,7 +237,7 @@ Deno.serve(async (req: Request) => {
           ok: true,
           email_sent: true,
           charged: Number(existingRequest.charged_amount ?? ASK_AI_COST),
-          vendor_name: asString(job.posted_by_name, 200) || "Vendor contact",
+          vendor_name: vendorDisplayName,
           vendor_email: vendorEmail,
           missing_details: missingDetails,
         });
@@ -198,7 +320,7 @@ Deno.serve(async (req: Request) => {
           requester_name: requesterName,
           requester_email: user.email ?? null,
           vendor_id: job.vendor_id,
-          vendor_name: asString(job.posted_by_name, 200) || "Vendor contact",
+          vendor_name: vendorDisplayName,
           vendor_email: vendorEmail,
           job: {
             id: job.id,
@@ -241,7 +363,7 @@ Deno.serve(async (req: Request) => {
       ok: true,
       email_sent: true,
       charged: ASK_AI_COST,
-      vendor_name: asString(job.posted_by_name, 200) || "Vendor contact",
+      vendor_name: vendorDisplayName,
       vendor_email: vendorEmail,
       missing_details: missingDetails,
     });

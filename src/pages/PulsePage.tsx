@@ -255,9 +255,13 @@ type AskedJobState = {
 
 type GlobalAskedJobState = 'asked' | 'verified';
 type EmailDraftTabId = 'pitching' | 'requestDetails';
-type AskAIConfirmation = {
+type AskAIPreview = {
+  leadId: string;
+  requestId: string;
   vendorName: string;
   missingDetails: string[];
+  emailSubject: string;
+  emailContent: string;
 };
 type FeedSearchFilters = {
   experienceRange: string;
@@ -1275,7 +1279,7 @@ export default function PulsePage() {
   const [expandedMobileProfileCardIds, setExpandedMobileProfileCardIds] = useState<Set<string>>(new Set());
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
   const [processingAskAILeadId, setProcessingAskAILeadId] = useState<string | null>(null);
-  const [askAIConfirmation, setAskAIConfirmation] = useState<AskAIConfirmation | null>(null);
+  const [askAIPreview, setAskAIPreview] = useState<AskAIPreview | null>(null);
   const [generatedEmailDrafts, setGeneratedEmailDrafts] = useState<{ pitching: string; requestDetails: string }>({
     pitching: '',
     requestDetails: '',
@@ -2223,9 +2227,9 @@ export default function PulsePage() {
     })();
 
     return (
-      <div key={lead.id} className={`mb-1.5 break-inside-avoid rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
-        <div className="flex items-start justify-between gap-1.5">
-          <div className="min-w-0 flex-1">
+      <div key={lead.id} className={`relative mb-1.5 break-inside-avoid rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
+        <div>
+          <div className="min-w-0 pr-12">
             <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || 'Job Opportunity'}</p>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
               <span>{lead.postedAgo}</span>
@@ -2261,11 +2265,13 @@ export default function PulsePage() {
             onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
             disabled={!canAskAI || processingAskAILeadId === lead.id}
             title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Missing details have already been requested' : !lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Ask AI to request the missing details'}
-            className="inline-flex shrink-0 items-center gap-1 bg-transparent px-1 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-45"
+            className={`absolute right-3 top-2.5 inline-flex items-center justify-center bg-transparent font-semibold transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-45 ${isAskPending ? 'flex-row gap-1 text-[10px]' : isVerified ? 'w-11 flex-col gap-0.5' : 'w-5 flex-col gap-0.5'}`}
             style={{ color: isDark ? `color-mix(in srgb, ${accentColor} 82%, black)` : '#1D4ED8' }}
           >
-            {isVerified ? <BadgeCheck size={12} strokeWidth={2} /> : <Mail size={12} strokeWidth={2} />}
-            {processingAskAILeadId === lead.id ? 'Sending...' : isVerified ? 'Verified' : isAskPending ? 'Asked' : 'Ask'}
+            {isVerified ? <BadgeCheck size={18} strokeWidth={2} /> : <Mail size={isAskPending ? 12 : 18} strokeWidth={2} />}
+            <span className={isAskPending ? 'leading-none' : 'w-full truncate text-center text-[9px] uppercase leading-none'}>
+              {processingAskAILeadId === lead.id ? '...' : isVerified ? 'Verified' : isAskPending ? 'Asked' : 'Ask'}
+            </span>
           </button>
         </div>
         {inlineBreakdownItems.length > 0 && (
@@ -3698,14 +3704,56 @@ export default function PulsePage() {
 
     setProcessingAskAILeadId(lead.id);
     try {
-      const emailSubject = `Additional details requested for ${lead.title || 'your job post'}`;
-      const emailContent = generateRequestDetailsEmailDraft(lead);
+      const requestId = crypto.randomUUID();
       const { data, error } = await supabase.functions.invoke('ask-ai-vendor-email', {
         body: {
-          request_id: crypto.randomUUID(),
+          action: 'preview',
+          request_id: requestId,
           account_id: account.id,
           job_id: lead.id,
           missing_details: missingDetails,
+        },
+      });
+
+      if (error || !data?.ok) {
+        throw new Error(data?.error || error?.message || 'Could not generate the request');
+      }
+
+      setAskAIPreview({
+        leadId: lead.id,
+        requestId,
+        vendorName: data.vendor_name || lead.posterName || 'the vendor',
+        missingDetails,
+        emailSubject: data.email_subject || '',
+        emailContent: data.email_content || '',
+      });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not generate the vendor email request', 'error');
+    } finally {
+      setProcessingAskAILeadId(null);
+    }
+  }, [account?.id, processingAskAILeadId, showToast]);
+
+  const handleSubmitAskAI = useCallback(async () => {
+    if (!account?.id || !askAIPreview || processingAskAILeadId) return;
+
+    const emailSubject = askAIPreview.emailSubject.trim();
+    const emailContent = askAIPreview.emailContent.trim();
+    const emailWordCount = emailContent.split(/\s+/).filter(Boolean).length;
+    if (!emailSubject || !emailContent || emailWordCount >= 40) {
+      showToast('Email subject and content are required, and the email must be under 40 words', 'error');
+      return;
+    }
+
+    setProcessingAskAILeadId(askAIPreview.leadId);
+    try {
+      const { data, error } = await supabase.functions.invoke('ask-ai-vendor-email', {
+        body: {
+          action: 'send',
+          request_id: askAIPreview.requestId,
+          account_id: account.id,
+          job_id: askAIPreview.leadId,
+          missing_details: askAIPreview.missingDetails,
           email_subject: emailSubject,
           email_content: emailContent,
         },
@@ -3718,19 +3766,17 @@ export default function PulsePage() {
       await refreshAccount();
       setAskedJobStateByLeadId((prev) => ({
         ...prev,
-        [lead.id]: { requestedAt: new Date().toISOString(), fulfilledAt: null },
+        [askAIPreview.leadId]: { requestedAt: new Date().toISOString(), fulfilledAt: null },
       }));
-      setGlobalAskedJobStateByLeadId((prev) => ({ ...prev, [lead.id]: 'asked' }));
-      setAskAIConfirmation({
-        vendorName: data.vendor_name || lead.posterName || 'the vendor',
-        missingDetails,
-      });
+      setGlobalAskedJobStateByLeadId((prev) => ({ ...prev, [askAIPreview.leadId]: 'asked' }));
+      setAskAIPreview(null);
+      showToast(`Request sent to ${data.vendor_name || askAIPreview.vendorName}`, 'success');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not send the vendor email request', 'error');
     } finally {
       setProcessingAskAILeadId(null);
     }
-  }, [account?.id, generateRequestDetailsEmailDraft, processingAskAILeadId, refreshAccount, showToast]);
+  }, [account?.id, askAIPreview, processingAskAILeadId, refreshAccount, showToast]);
 
   useEffect(() => {
     if (!selectedLead) {
@@ -4804,46 +4850,80 @@ export default function PulsePage() {
         </div>
       </main>
 
-      {askAIConfirmation && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setAskAIConfirmation(null)}>
+      {askAIPreview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => !processingAskAILeadId && setAskAIPreview(null)}>
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby="ask-ai-confirmation-title"
+            aria-labelledby="ask-ai-preview-title"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-5 shadow-xl"
+            className="w-full max-w-lg rounded-lg border border-gray-200 bg-white p-5 shadow-xl"
           >
             <div className="flex items-start gap-3">
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                <Check size={18} />
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600">
+                <Mail size={18} />
               </span>
               <div className="min-w-0 flex-1">
-                <h2 id="ask-ai-confirmation-title" className="text-sm font-semibold text-gray-900">Request sent</h2>
+                <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">Review vendor email</h2>
                 <p className="mt-1 text-xs leading-relaxed text-gray-600">
-                  Ask AI sent an email to {askAIConfirmation.vendorName} requesting the missing job details.
+                  Review the generated email to {askAIPreview.vendorName}. It will only be sent after you click Send.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setAskAIConfirmation(null)}
+                onClick={() => setAskAIPreview(null)}
+                disabled={Boolean(processingAskAILeadId)}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
-                aria-label="Close confirmation"
+                aria-label="Close email preview"
               >
                 <X size={14} />
               </button>
             </div>
-            <div className="mt-4 rounded-md bg-gray-50 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Requested details</p>
-              <p className="mt-1 text-xs text-gray-700">{askAIConfirmation.missingDetails.join(', ')}</p>
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Subject</span>
+                <input
+                  value={askAIPreview.emailSubject}
+                  onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailSubject: event.target.value } : current)}
+                  disabled={Boolean(processingAskAILeadId)}
+                  className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Email</span>
+                <textarea
+                  value={askAIPreview.emailContent}
+                  onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailContent: event.target.value } : current)}
+                  disabled={Boolean(processingAskAILeadId)}
+                  rows={6}
+                  className="mt-1 w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <span className="mt-1 block text-right text-[10px] text-gray-500">
+                  {askAIPreview.emailContent.trim().split(/\s+/).filter(Boolean).length}/39 words
+                </span>
+              </label>
             </div>
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <span className="text-[11px] text-gray-500">$0.01 AI credits charged</span>
+            <div className="mt-3 rounded-md bg-gray-50 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Requested details</p>
+              <p className="mt-1 text-xs text-gray-700">{askAIPreview.missingDetails.join(', ')}</p>
+            </div>
+            <div className="mt-4 flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setAskAIConfirmation(null)}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                onClick={() => setAskAIPreview(null)}
+                disabled={Boolean(processingAskAILeadId)}
+                className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >
-                Done
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSubmitAskAI()}
+                disabled={Boolean(processingAskAILeadId) || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim() || askAIPreview.emailContent.trim().split(/\s+/).filter(Boolean).length >= 40}
+                className="inline-flex min-w-20 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Mail size={12} />
+                {processingAskAILeadId ? 'Sending...' : 'Send'}
               </button>
             </div>
           </div>
