@@ -82,18 +82,6 @@ export default function SignIn() {
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? DEFAULT_GOOGLE_CLIENT_ID).trim();
   const showPasswordStep = email.trim().length > 0;
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <LogoSpinner size={20} />
-      </div>
-    );
-  }
-
-  if (user) {
-    return <Navigate to={from} replace />;
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim() || !password) {
@@ -270,6 +258,18 @@ export default function SignIn() {
     }
 
     setResettingPassword(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <LogoSpinner size={20} />
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Navigate to={from} replace />;
   }
 
   return (

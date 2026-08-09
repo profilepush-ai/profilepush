@@ -18,6 +18,17 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+const EMAIL_PATTERN = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
+const EMAIL_IN_TEXT_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+const MIN_JOB_CONTENT_LENGTH = 80;
+const MIN_AI_CONFIDENCE = 0.8;
+
+function extractEmail(explicitValue: unknown, content: string): string {
+  const explicit = asString(explicitValue).trim().toLowerCase();
+  if (EMAIL_PATTERN.test(explicit)) return explicit;
+  return content.match(EMAIL_IN_TEXT_PATTERN)?.[0]?.toLowerCase() ?? "";
+}
+
 function asIsoOrNull(value: unknown): string | null {
   if (!value) return null;
   if (typeof value === "string") {
@@ -43,9 +54,18 @@ function normalizeSocialJobItems(items: Array<Record<string, unknown>>) {
     const postId = asString(item.post_id ?? item.external_id ?? item.id ?? item.postId).trim();
     const platform = asString(item.platform ?? item.source ?? item.provider).trim().toLowerCase();
     const postContent = asString(item.post_content ?? item.body ?? item.description ?? item.content).trim();
+    const posterEmail = extractEmail(item.poster_email ?? item.email ?? item.posterEmail, postContent);
 
     if (!postId || !platform || !postContent) {
       errors.push("Each item requires: post_id, platform, post_content");
+      continue;
+    }
+    if (!posterEmail) {
+      errors.push(`${platform}:${postId} rejected: valid poster email is required`);
+      continue;
+    }
+    if (postContent.length < MIN_JOB_CONTENT_LENGTH) {
+      errors.push(`${platform}:${postId} rejected: job content is too short`);
       continue;
     }
 
@@ -57,7 +77,7 @@ function normalizeSocialJobItems(items: Array<Record<string, unknown>>) {
       posted_by_name: asString(item.posted_by_name ?? item.poster_name ?? item.recruiter_name),
       posted_at: asIsoOrNull(item.posted_at ?? item.created_at ?? item.timestamp),
       profile_link: asString(item.profile_link ?? item.profileUrl ?? item.profile_url),
-      poster_email: asString(item.poster_email ?? item.email ?? item.posterEmail),
+      poster_email: posterEmail,
       poster_phone: asString(item.poster_phone ?? item.phone ?? item.posterPhone),
       post_url: asString(item.post_url ?? item.url ?? item.postUrl),
       job_title: asString(item.job_title ?? item.title ?? item.role),
@@ -72,6 +92,89 @@ function normalizeSocialJobItems(items: Array<Record<string, unknown>>) {
   }
 
   return { rows, errors };
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => asString(item).trim()).filter(Boolean)
+    : [];
+}
+
+function asBoolean(value: unknown): boolean {
+  return value === true || (typeof value === "string" && value.toLowerCase() === "true");
+}
+
+async function classifySocialJobs(
+  workerUrl: string,
+  workerToken: string,
+  rows: Array<Record<string, unknown>>,
+): Promise<{ accepted: Array<Record<string, unknown>>; rejected: string[]; error?: string }> {
+  if (!workerUrl) return { accepted: [], rejected: [], error: "CLOUDFLARE_WORKER_URL is not set" };
+  if (rows.length === 0) return { accepted: [], rejected: [] };
+
+  const jobs = rows.map((row) => ({
+    id: `${asString(row.platform)}:${asString(row.post_id)}`,
+    title: asString(row.job_title),
+    description: asString(row.post_content),
+    location: asString(row.location),
+  }));
+
+  try {
+    const response = await fetch(workerUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(workerToken ? { "Authorization": `Bearer ${workerToken}` } : {}),
+      },
+      body: JSON.stringify({ jobs }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { accepted: [], rejected: [], error: `Cloudflare classifier HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 240)}` };
+    }
+
+    const results = Array.isArray(payload?.results)
+      ? payload.results as Array<Record<string, unknown>>
+      : [];
+    const resultById = new Map(results.map((result) => [asString(result.job_id), result]));
+    const accepted: Array<Record<string, unknown>> = [];
+    const rejected: string[] = [];
+
+    for (const row of rows) {
+      const rowId = `${asString(row.platform)}:${asString(row.post_id)}`;
+      const result = resultById.get(rowId);
+      const confidence = Number(result?.confidence ?? 0);
+      const roleTitle = asString(result?.role_title).trim();
+      const locations = asStringArray(result?.locations);
+      const coreSkills = asStringArray(result?.core_skills);
+      const hasJobDetails = Boolean(
+        roleTitle
+        && (locations.length > 0
+          || coreSkills.length > 0
+          || asString(result?.employment_type).trim()
+          || asString(result?.work_type).trim()),
+      );
+
+      if (!result || !asBoolean(result.is_job_posting) || confidence < MIN_AI_CONFIDENCE || !hasJobDetails) {
+        const reason = asString(result?.rejection_reason).trim()
+          || (!result ? "classifier returned no result" : "AI confidence or job details below threshold");
+        rejected.push(`${rowId} rejected: ${reason}`);
+        continue;
+      }
+
+      accepted.push({
+        ...row,
+        job_title: roleTitle,
+        company_name: asString(result.company_name).trim() || row.company_name,
+        location: locations.join(", ") || row.location,
+        employment_type: asString(result.employment_type).trim() || row.employment_type,
+      });
+    }
+
+    return { accepted, rejected };
+  } catch (error) {
+    return { accepted: [], rejected: [], error: `Cloudflare classifier failed: ${(error as Error).message}` };
+  }
 }
 
 async function logSocialJobPayload(insertLog: (payload: Record<string, unknown>) => Promise<unknown>, payload: Record<string, unknown>, normalizedRows: Array<Record<string, unknown>>, errors: string[], insertedCount: number, status: string) {
@@ -143,23 +246,41 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const CLOUDFLARE_QUEUE_PRODUCER_URL = (Deno.env.get("CLOUDFLARE_QUEUE_PRODUCER_URL") ?? "").trim();
     const CLOUDFLARE_QUEUE_PRODUCER_TOKEN = (Deno.env.get("CLOUDFLARE_QUEUE_PRODUCER_TOKEN") ?? "").trim();
+    const CLOUDFLARE_WORKER_URL = (Deno.env.get("CLOUDFLARE_WORKER_URL") ?? "").trim();
+    const CLOUDFLARE_WORKER_TOKEN = (Deno.env.get("CLOUDFLARE_WORKER_TOKEN") ?? "").trim();
     const { rows, errors } = normalizeSocialJobItems(items);
-    const normalizedRows: Array<Record<string, unknown>> = rows.map((row) => ({
-      ...row,
-      posted_at: row.posted_at,
-    }));
+
+    const classification = await classifySocialJobs(
+      CLOUDFLARE_WORKER_URL,
+      CLOUDFLARE_WORKER_TOKEN,
+      rows,
+    );
+    if (classification.error) {
+      await logSocialJobPayload(
+        async (payload) => supabase.from("social_job_payload_logs").insert(payload),
+        body,
+        rows,
+        [...errors, classification.error],
+        0,
+        "classifier_error",
+      );
+      return respond({ error: classification.error }, 502);
+    }
+
+    const normalizedRows = classification.accepted;
+    const rejectionErrors = [...errors, ...classification.rejected];
 
     await logSocialJobPayload(
       async (payload) => supabase.from("social_job_payload_logs").insert(payload),
       body,
       normalizedRows,
-      errors,
+      rejectionErrors,
       normalizedRows.length,
-      rows.length > 0 ? "received" : "rejected",
+      normalizedRows.length > 0 ? "accepted" : "rejected",
     );
 
-    if (rows.length === 0) {
-      return respond({ error: errors[0] ?? "Each item requires: post_id, platform, post_content" }, 400);
+    if (normalizedRows.length === 0) {
+      return respond({ success: true, inserted: 0, ids: [], enqueued_count: 0, skipped: rejectionErrors });
     }
 
     const { data, error } = await supabase
@@ -203,7 +324,7 @@ Deno.serve(async (req: Request) => {
       ids: insertedIds,
       enqueued_count: queueResult.accepted,
       enqueue_error: queueResult.error ?? null,
-      skipped: errors,
+      skipped: rejectionErrors,
     });
   } catch (err) {
     return respond({ error: (err as Error).message }, 500);

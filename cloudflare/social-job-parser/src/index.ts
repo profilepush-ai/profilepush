@@ -63,9 +63,10 @@ function buildPrompt(jobs: JobInput[]) {
     })
     .join("\n---\n");
 
-  return `Extract structured fields from each job posting. Return ONLY valid JSON, no markdown.
+  return `Classify each input as a genuine job posting and extract structured fields. Return ONLY valid JSON, no markdown.
 Return one result per input job and preserve job_id from input. If a field is unknown, use null (or [] for arrays).
-For each job include: job_id, role_title, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).
+Set is_job_posting=true only when the text advertises a specific open role with enough actionable details to apply. Reject resumes, candidate marketing, generic staffing promotions, discussions, event posts, news, and vague hiring claims.
+For each job include: job_id, is_job_posting (boolean), confidence (0 to 1), rejection_reason (string or null), role_title, company_name, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).
 
 JOBS:
 ${blocks}
@@ -121,7 +122,7 @@ export default {
         messages: [
           {
             role: "system",
-            content: "You extract structured job fields and must respond with strict JSON only.",
+            content: "You classify genuine job openings and extract structured fields. Be conservative and respond with strict JSON only.",
           },
           {
             role: "user",
@@ -129,7 +130,7 @@ export default {
           },
         ],
         temperature: 0.1,
-        max_tokens: 1200,
+        max_tokens: 3000,
       });
 
       const rawText = (aiResult as Record<string, unknown>)?.response ?? aiResult;

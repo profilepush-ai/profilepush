@@ -49,9 +49,10 @@ function jsonResponse(body: unknown, status = 200) {
 
 function buildPrompt(job: QueueMessageBody): string {
   const safeDescription = (job.description ?? "").slice(0, 1500);
-  return `Extract structured fields from this job posting. Return ONLY valid JSON, no markdown.
+  return `Classify this input as a genuine job posting and extract structured fields. Return ONLY valid JSON, no markdown.
 Preserve job_id exactly as provided. If a field is unknown, use null (or [] for arrays).
-Include: job_id, role_title, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).
+Set is_job_posting=true only when the text advertises a specific open role with enough actionable details to apply. Reject resumes, candidate marketing, generic staffing promotions, discussions, event posts, news, and vague hiring claims.
+Include: job_id, is_job_posting (boolean), confidence (0 to 1), rejection_reason (string or null), role_title, company_name, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).
 
 JOB:
 id: ${job.job_id}
@@ -79,6 +80,20 @@ function normalizeSingleParsedResult(parsed: unknown, message: QueueMessageBody)
   return obj;
 }
 
+function isAcceptedJobPosting(parsed: ParserResult): boolean {
+  const isJobPosting = parsed.is_job_posting === true
+    || (typeof parsed.is_job_posting === "string" && parsed.is_job_posting.toLowerCase() === "true");
+  const confidence = Number(parsed.confidence ?? 0);
+  const roleTitle = String(parsed.role_title ?? "").trim();
+  const hasDetails = Boolean(
+    (Array.isArray(parsed.core_skills) && parsed.core_skills.length > 0)
+    || (Array.isArray(parsed.locations) && parsed.locations.length > 0)
+    || String(parsed.employment_type ?? "").trim()
+    || String(parsed.work_type ?? "").trim(),
+  );
+  return isJobPosting && confidence >= 0.8 && Boolean(roleTitle) && hasDetails;
+}
+
 async function parseWithWorkersAi(env: Env, message: QueueMessageBody): Promise<ParserResult> {
   const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
   const prompt = buildPrompt(message);
@@ -87,7 +102,7 @@ async function parseWithWorkersAi(env: Env, message: QueueMessageBody): Promise<
     messages: [
       {
         role: "system",
-        content: "You extract structured job fields and must respond with strict JSON only.",
+        content: "You classify genuine job openings and extract structured fields. Be conservative and respond with strict JSON only.",
       },
       {
         role: "user",
@@ -263,6 +278,16 @@ async function markJobExtracted(env: Env, jobId: string): Promise<void> {
 
 async function processMessage(env: Env, message: QueueMessageBody): Promise<void> {
   const parsed = await parseWithWorker(env, message);
+  if (!isAcceptedJobPosting(parsed)) {
+    console.warn(JSON.stringify({
+      event: "social_job_rejected_by_ai",
+      job_id: message.job_id,
+      confidence: parsed.confidence ?? null,
+      reason: parsed.rejection_reason ?? "AI confidence or job details below threshold",
+    }));
+    await markJobExtracted(env, message.job_id);
+    return;
+  }
   const row = toRadarMatchRow(parsed, message);
   await upsertRadarMatch(env, row);
   await markJobExtracted(env, message.job_id);
