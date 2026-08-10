@@ -1,0 +1,51 @@
+name = "profilepush-vendor-mail"
+main = "src/index.ts"
+compatibility_date = "2026-08-10"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+MAILGUN_DOMAIN = "ask.profilepush.ai"
+MAILGUN_BASE_URL = "https://api.mailgun.net"
+SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
+REPLY_PROCESSOR_URL = "https://profilepush-social-job-queue-consumer.profilepush-ai.workers.dev"
+
+[[r2_buckets]]
+binding = "VENDOR_MAIL_BUCKET"
+bucket_name = "profilepush-vendor-mail"
+
+[[queues.producers]]
+binding = "OUTBOUND_QUEUE"
+queue = "vendor-mail-outbound"
+
+[[queues.producers]]
+binding = "INBOUND_QUEUE"
+queue = "vendor-mail-inbound"
+
+[[queues.producers]]
+binding = "EXTRACTION_QUEUE"
+queue = "vendor-reply-extraction"
+
+[[queues.consumers]]
+queue = "vendor-mail-outbound"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "vendor-mail-outbound-dlq"
+
+[[queues.consumers]]
+queue = "vendor-mail-inbound"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "vendor-mail-inbound-dlq"
+
+[[queues.consumers]]
+queue = "vendor-reply-extraction"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "vendor-reply-extraction-dlq"

@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Users, Bookmark, ChevronDown, LogOut, Settings,
-  Building2, LifeBuoy, Map, CreditCard, AlertTriangle, FileText,
-  Bell, BellRing, Check, ArrowRight, X,
-  Activity, ShieldCheck, Briefcase, MoonStar, SunMedium,
+  Bookmark, ChevronDown, LogOut, Settings,
+  Building2, Map, CreditCard, AlertTriangle, FileText,
+  Bell, BellRing, Check, X,
+  Activity, ShieldCheck, Briefcase, MoonStar, SunMedium, Mail,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -16,6 +16,7 @@ import { NOTIFICATION_TYPES } from '../lib/notifications';
 const navItems = [
   { path: '/jobs',          label: 'Jobs',           mobileLabel: 'Jobs',    icon: Briefcase, hideOnMobile: false },
   { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
+  { path: '/inbox',        label: 'Inbox',          mobileLabel: 'Inbox',   icon: Mail,      hideOnMobile: false },
   { path: '/watchlist-profiles', label: 'Watchlist', mobileLabel: 'Watch',   icon: Bookmark, hideOnMobile: false },
   { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
 ];
@@ -83,7 +84,7 @@ const TYPE_COLORS: Record<string, string> = {
   Reports:  'bg-gray-100 text-gray-600',
 };
 
-function NotificationBell({ userId, accountId }: { userId: string; accountId: string | null }) {
+function NotificationBell({ userId }: { userId: string }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -163,7 +164,7 @@ function NotificationBell({ userId, accountId }: { userId: string; accountId: st
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
+        <div className="fixed inset-x-2 top-10 mt-1.5 w-auto bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:w-80">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
@@ -201,7 +202,9 @@ function NotificationBell({ userId, accountId }: { userId: string; accountId: st
                   className={`w-full text-left flex gap-3 px-4 py-3 hover:bg-gray-50 transition-colors ${!n.read ? 'bg-blue-50/40' : ''}`}
                 >
                   <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 ${groupColor(n.type)}`}>
-                    {(NOTIFICATION_TYPES[n.type as NotificationType]?.label?.[0] ?? '?')}
+                    {n.type === 'vendor_reply_received'
+                      ? <Mail size={12} />
+                      : NOTIFICATION_TYPES[n.type as NotificationType]?.label?.[0] ?? <Bell size={12} />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
@@ -218,15 +221,6 @@ function NotificationBell({ userId, accountId }: { userId: string; accountId: st
             )}
           </div>
 
-          {/* Footer */}
-          <div className="border-t border-gray-100 px-4 py-2.5">
-            <button
-              onClick={() => { setOpen(false); navigate('/account?section=notifications'); }}
-              className="w-full flex items-center justify-center gap-1.5 text-[11px] text-blue-600 hover:text-blue-700 font-semibold"
-            >
-              Notification preferences <ArrowRight size={10} />
-            </button>
-          </div>
         </div>
       )}
     </div>
@@ -239,6 +233,7 @@ export default function AppNav() {
   const { isDark, toggleTheme } = useTheme();
   const { user, account, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [inboxUnread, setInboxUnread] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -250,6 +245,20 @@ export default function AppNav() {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const loadUnread = async () => {
+      const { data } = await supabase.from('vendor_conversations').select('unread_count');
+      setInboxUnread((data ?? []).reduce((sum, row) => sum + Number(row.unread_count || 0), 0));
+    };
+    void loadUnread();
+    const channel = supabase
+      .channel('inbox-nav-unread')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_conversations' }, () => { void loadUnread(); })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [user]);
 
   async function handleSignOut() {
     await signOut();
@@ -286,6 +295,7 @@ export default function AppNav() {
             {isDark ? <SunMedium size={12} /> : <MoonStar size={12} />}
           </button>
           {account != null && <CreditsChip balance={account.credits_balance} />}
+          <NotificationBell userId={user.id} />
           <Link
             to="/account"
             className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white"
@@ -309,6 +319,7 @@ export default function AppNav() {
             >
               <Icon size={12} />
               <span className="hidden sm:inline">{label}</span>
+              {path === '/inbox' && inboxUnread > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[9px] font-bold text-white">{inboxUnread > 99 ? '99+' : inboxUnread}</span>}
               {!hideOnMobile && <span className="sm:hidden">{mobileLabel}</span>}
             </Link>
           );
@@ -364,7 +375,7 @@ export default function AppNav() {
 
           {/* Notification bell */}
           <span className="hidden sm:block">
-            <NotificationBell userId={user.id} accountId={account?.id ?? null} />
+            <NotificationBell userId={user.id} />
           </span>
 
           {/* Profile avatar menu */}
@@ -448,6 +459,14 @@ export default function AppNav() {
             <span>Pulse</span>
           </Link>
           <Link
+            to="/inbox"
+            className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <Mail size={18} />
+            <span>Inbox</span>
+            {inboxUnread > 0 && <span className="absolute right-[28%] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
+          </Link>
+          <Link
             to="/tracker"
             className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/tracker' ? 'text-blue-600' : 'text-gray-500'}`}
           >
@@ -460,13 +479,6 @@ export default function AppNav() {
           >
             <Bookmark size={18} />
             <span>Watchlist</span>
-          </Link>
-          <Link
-            to="/alerts"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/alerts' ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <Bell size={18} />
-            <span>Alerts</span>
           </Link>
         </nav>
       )}

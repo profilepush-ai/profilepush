@@ -7,7 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const CRM_WEBHOOK_URL = "https://services.leadconnectorhq.com/hooks/48XyGfN1WxneooOcHGHn/webhook-trigger/5acdf9f6-c8e2-44ea-91be-163a46cf83fd";
 const ASK_VENDOR_AI_URL = "https://profilepush-social-job-queue-consumer.profilepush-ai.workers.dev/ask-vendor-email-copy";
 const ASK_AI_COST = 0.01;
 const SENDER_NAME_TOKEN = "{{sender_name}}";
@@ -80,7 +79,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: membership } = await supabaseAdmin
       .from("account_members")
-      .select("account_id")
+      .select("account_id, display_name")
       .eq("account_id", accountId)
       .eq("user_id", user.id)
       .eq("status", "active")
@@ -116,12 +115,11 @@ Deno.serve(async (req: Request) => {
     const vendorName = asVendorName(vendor?.name) || asVendorName(job.posted_by_name);
     const vendorDisplayName = vendorName || vendorEmail;
 
-    const requesterName = asString(user.user_metadata?.full_name ?? user.user_metadata?.name, 200)
+    const requesterName = asString(membership.display_name, 200)
+      || asString(user.user_metadata?.full_name ?? user.user_metadata?.name, 200)
       || user.email?.split("@")[0]
       || "Recruiter";
     const requesterFirstName = requesterName.split(/\s+/)[0] || "Recruiter";
-    const requesterPhone = asString(user.phone ?? user.user_metadata?.phone, 50) || null;
-
     let emailSubject = asString(body.email_subject, 300);
     let emailContent = asString(body.email_content, 2_000);
     if (action === 'preview') {
@@ -226,7 +224,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: existingRequest } = await supabaseAdmin
         .from("pulse_ask_ai_requests")
-        .select("status, charged_amount")
+        .select("status, charged_amount, conversation_id")
         .eq("request_id", requestId)
         .eq("account_id", accountId)
         .eq("user_id", user.id)
@@ -240,6 +238,7 @@ Deno.serve(async (req: Request) => {
           vendor_name: vendorDisplayName,
           vendor_email: vendorEmail,
           missing_details: missingDetails,
+          conversation_id: existingRequest.conversation_id,
         });
       }
       return respond({
@@ -279,78 +278,101 @@ Deno.serve(async (req: Request) => {
       return respond({ error: refundError ? "Could not start the request; contact support about the credit charge" : "Could not start the request; the credit charge was refunded" }, 500);
     }
 
-    const refundWebhookFailure = async (webhookError: string) => {
-      console.error("Ask AI CRM webhook failed", webhookError);
+    const refundDeliveryFailure = async (deliveryError: string) => {
+      console.error("Ask AI Mailgun queue failed", deliveryError);
       const { error: refundError } = await supabaseAdmin.rpc("refund_feature_credit", {
         p_account_id: accountId,
         p_amount: ASK_AI_COST,
-        p_feature: "pulse_ask_ai_webhook_failed",
+        p_feature: "pulse_ask_ai_delivery_failed",
       });
       await supabaseAdmin
         .from("pulse_ask_ai_requests")
         .update({
           status: refundError ? "failed" : "refunded",
-          error_message: refundError ? `${webhookError}; refund failed: ${refundError.message}` : webhookError,
+          error_message: refundError ? `${deliveryError}; refund failed: ${refundError.message}` : deliveryError,
           updated_at: new Date().toISOString(),
         })
         .eq("request_id", requestId);
       return respond({ error: refundError ? "Could not send the request; contact support about the credit charge" : "Could not send the request; the credit charge was refunded" }, 502);
     };
 
-    let webhookResponse: Response;
-    try {
-      webhookResponse = await fetch(CRM_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(30_000),
-        body: JSON.stringify({
-          action: "Ask Vendor",
-          event: "ask_ai.vendor_email",
-          request_id: requestId,
-          job_id: job.id,
-          timestamp: new Date().toISOString(),
-          platform: "profilepush",
-          account_id: account.id,
-          owner_id: account.owner_id,
-          user_id: user.id,
-          full_name: requesterName,
-          business_name: asString(account.name, 300),
-          email: user.email ?? null,
-          phone: requesterPhone,
-          requester_name: requesterName,
-          requester_email: user.email ?? null,
-          vendor_id: job.vendor_id,
-          vendor_name: vendorDisplayName,
-          vendor_email: vendorEmail,
-          job: {
-            id: job.id,
-            title: asString(job.job_title, 500),
-            company: asString(job.company_name, 500),
-            location: asString(job.location, 500),
-            platform: asString(job.platform, 100),
-            details: asString(job.post_content, 10_000),
-          },
-          missing_details: missingDetails,
-          email_subject: emailSubject,
-          email_content: emailContent,
-          credit_charge: ASK_AI_COST,
-        }),
-      });
-    } catch (error) {
-      return await refundWebhookFailure(`CRM webhook request failed: ${(error as Error).message}`);
+    const { data: conversation, error: conversationError } = await supabaseAdmin
+      .from("vendor_conversations")
+      .insert({
+        request_id: requestId,
+        account_id: account.id,
+        user_id: user.id,
+        job_id: job.id,
+        vendor_id: job.vendor_id,
+        vendor_name: vendorDisplayName,
+        vendor_email: vendorEmail,
+        sender_name: requesterName,
+        subject: emailSubject,
+      })
+      .select("id")
+      .single();
+    if (conversationError || !conversation) {
+      return await refundDeliveryFailure(`Could not create conversation: ${conversationError?.message ?? "unknown error"}`);
     }
 
-    const webhookResponseText = (await webhookResponse.text()).slice(0, 2_000);
-    if (!webhookResponse.ok) {
-      return await refundWebhookFailure(`CRM webhook HTTP ${webhookResponse.status}: ${webhookResponseText.slice(0, 300)}`);
+    const { data: outboundMessage, error: messageError } = await supabaseAdmin
+      .from("vendor_messages")
+      .insert({
+        conversation_id: conversation.id,
+        direction: "outbound",
+        sender_type: "user",
+        from_email: `${requesterName.replace(/[\r\n"]/g, "")} via ProfilePush <requests@ask.profilepush.ai>`,
+        to_email: vendorEmail,
+        subject: emailSubject,
+        text_body: emailContent,
+        status: "queued",
+      })
+      .select("id")
+      .single();
+    if (messageError || !outboundMessage) {
+      return await refundDeliveryFailure(`Could not create outbound message: ${messageError?.message ?? "unknown error"}`);
+    }
+
+    const { error: requestConversationError } = await supabaseAdmin
+      .from("pulse_ask_ai_requests")
+      .update({ conversation_id: conversation.id, updated_at: new Date().toISOString() })
+      .eq("request_id", requestId);
+    if (requestConversationError) {
+      return await refundDeliveryFailure(`Could not link conversation: ${requestConversationError.message}`);
+    }
+
+    const vendorMailWorkerUrl = Deno.env.get("VENDOR_MAIL_WORKER_URL")?.trim();
+    const vendorMailWorkerToken = Deno.env.get("VENDOR_MAIL_WORKER_TOKEN")?.trim();
+    if (!vendorMailWorkerUrl || !vendorMailWorkerToken) {
+      return await refundDeliveryFailure("Vendor mail worker is not configured");
+    }
+
+    let queueResponse: Response;
+    try {
+      queueResponse = await fetch(`${vendorMailWorkerUrl.replace(/\/$/, "")}/vendor-mail/send`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${vendorMailWorkerToken}`,
+          "Content-Type": "application/json",
+        },
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify({ message_id: outboundMessage.id }),
+      });
+    } catch (error) {
+      return await refundDeliveryFailure(`Vendor mail queue request failed: ${(error as Error).message}`);
+    }
+
+    const queueResponseText = (await queueResponse.text()).slice(0, 2_000);
+    if (!queueResponse.ok) {
+      return await refundDeliveryFailure(`Vendor mail queue HTTP ${queueResponse.status}: ${queueResponseText.slice(0, 300)}`);
     }
 
     const { error: completedStatusError } = await supabaseAdmin
       .from("pulse_ask_ai_requests")
       .update({
         status: "completed",
-        delivery_http_status: webhookResponse.status,
-        delivery_response: webhookResponseText || null,
+        delivery_http_status: queueResponse.status,
+        delivery_response: queueResponseText || null,
         delivered_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -366,6 +388,7 @@ Deno.serve(async (req: Request) => {
       vendor_name: vendorDisplayName,
       vendor_email: vendorEmail,
       missing_details: missingDetails,
+      conversation_id: conversation.id,
     });
   } catch (error) {
     console.error("ask-ai-vendor-email error", error);

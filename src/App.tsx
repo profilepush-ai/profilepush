@@ -14,8 +14,6 @@ import { initializeOneSignal, setOneSignalExternalUserId } from './lib/onesignal
 const SignUp = lazy(() => import('./pages/SignUp'));
 const SignIn = lazy(() => import('./pages/SignIn'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
-const Dashboard = lazy(() => import('./pages/Desk'));
-const ProfilesDirectory = lazy(() => import('./pages/ProfilesDirectory'));
 const ProfileDetails = lazy(() => import('./pages/ProfileDetails'));
 const JobFinder = lazy(() => import('./pages/JobFinder'));
 const WishlistPage = lazy(() => import('./pages/WishlistPage'));
@@ -29,7 +27,6 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsAndConditions = lazy(() => import('./pages/TermsAndConditions'));
 const SecurityPage = lazy(() => import('./pages/SecurityPage'));
 const TrackerPage = lazy(() => import('./pages/TrackerPage'));
-const AIBenchMatch = lazy(() => import('./pages/AIBenchMatch'));
 const AboutUs = lazy(() => import('./pages/AboutUs'));
 const ContactUs = lazy(() => import('./pages/ContactUs'));
 const CancellationRefundPolicy = lazy(() => import('./pages/CancellationRefundPolicy'));
@@ -39,10 +36,10 @@ const AdminCommands = lazy(() => import('./pages/AdminCommands'));
 const BookDemo = lazy(() => import('./pages/BookDemo'));
 const WhyAICopilot = lazy(() => import('./pages/WhyAICopilot'));
 const HowItWorks = lazy(() => import('./pages/HowItWorks'));
-const RadarPage = lazy(() => import('./pages/RadarPage'));
 const PulsePage = lazy(() => import('./pages/PulsePage'));
 const ProfilesPage = lazy(() => import('./pages/ProfilesPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const InboxPage = lazy(() => import('./pages/InboxPage'));
 const WatchlistProfilesPage = lazy(() => import('./pages/WatchlistProfilesPage'));
 const OnboardingVideo = lazy(() => import('./pages/OnboardingVideo'));
 
@@ -187,6 +184,8 @@ export default function App() {
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/alerts" element={<ProtectedRoute><ErrorBoundary><AlertsPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/inbox" element={<ProtectedRoute><ErrorBoundary><InboxPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/inbox/:conversationId" element={<ProtectedRoute><ErrorBoundary><InboxPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/jd-ai" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
             <Route path="/job-watch-ai" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
             <Route path="/jobs" element={<ProtectedRoute><ErrorBoundary><PulsePage /></ErrorBoundary></ProtectedRoute>} />

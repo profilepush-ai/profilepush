@@ -6,6 +6,7 @@ export const NOTIFICATION_TYPES = {
   job_matches_found:     { label: 'Job Matches Found',      group: 'Pipeline', description: 'When AI finds new job matches for a candidate' },
   submission_added:      { label: 'Submission Logged',      group: 'Pipeline', description: 'When a new job submission is recorded' },
   submission_confirmed:  { label: 'Candidate Confirmed',    group: 'Pipeline', description: 'When a candidate confirms they have applied' },
+  vendor_reply_received: { label: 'Vendor Reply',           group: 'Pipeline', description: 'When a vendor replies to an asked job' },
   // AI
   resume_rewritten:      { label: 'Resume Rewritten',       group: 'AI',       description: 'When an AI resume rewrite completes successfully' },
   job_score_complete:    { label: 'Job Score Ready',         group: 'AI',       description: 'When AI job match scoring finishes for a candidate' },

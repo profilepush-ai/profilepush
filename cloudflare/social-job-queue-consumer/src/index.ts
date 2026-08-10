@@ -23,6 +23,7 @@ type QueueMessageBody = {
 type ParserResult = Record<string, unknown>;
 
 type VendorReplyRequest = {
+  request_id?: string;
   job_id?: string;
   email_content?: string;
   subject?: string;
@@ -108,6 +109,23 @@ function normalizeAskVendorEmailCopy(raw: unknown): AskVendorEmailCopy {
   return { subject, email_content: emailContent };
 }
 
+function fallbackAskVendorEmailCopy(
+  jobTitle: string,
+  vendorName: string,
+  missingDataType: string,
+  recruiterFirstName: string,
+): AskVendorEmailCopy {
+  const requestedDetails = missingDataType.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 3).join(", ");
+  const emailContent = `Hi ${vendorName}, I have a matching ${jobTitle} candidate ready. Could you share ${requestedDetails}? Thanks, ${recruiterFirstName}`;
+  if (emailContent.split(/\s+/).filter(Boolean).length < 40) {
+    return { subject: `Quick question: ${jobTitle}`.slice(0, 200), email_content: emailContent };
+  }
+  return {
+    subject: "Quick question about your job post",
+    email_content: `Hi ${vendorName.split(/\s+/)[0]}, I have a matching candidate ready. Could you share the missing job details? Thanks, ${recruiterFirstName}`,
+  };
+}
+
 function getBearerToken(req: Request): string {
   const header = req.headers.get("Authorization") ?? "";
   const [scheme, token] = header.split(" ");
@@ -145,15 +163,21 @@ Vendor Name: ${vendorName}
 Missing Detail to Ask For: ${missingDataType}
 Sender Name: ${recruiterFirstName}`;
   const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
-  const aiResult = await env.AI.run(model, {
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.4,
-    max_tokens: 250,
-  });
-  const copy = normalizeAskVendorEmailCopy((aiResult as Record<string, unknown>)?.response ?? aiResult);
+  let copy: AskVendorEmailCopy;
+  try {
+    const aiResult = await env.AI.run(model, {
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.4,
+      max_tokens: 250,
+    });
+    copy = normalizeAskVendorEmailCopy((aiResult as Record<string, unknown>)?.response ?? aiResult);
+  } catch (error) {
+    console.error("Ask Vendor AI output was invalid; using fallback", error);
+    copy = fallbackAskVendorEmailCopy(jobTitle, vendorName, missingDataType, recruiterFirstName);
+  }
   return jsonResponse(copy);
 }
 
@@ -210,6 +234,23 @@ function normalizeReplyExtraction(parsed: unknown, allowedKeys: Set<string>): Re
   return result;
 }
 
+function normalizeReplyDisplayText(parsed: unknown, privateReferences: string[]): string {
+  if (!parsed || typeof parsed !== "object") throw new Error("AI response is not a JSON object");
+  const value = String((parsed as Record<string, unknown>).display_text ?? "").trim();
+  if (!value) throw new Error("AI response did not include display_text");
+  let sanitized = value.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, "");
+  for (const reference of privateReferences) {
+    const trimmed = reference.trim();
+    if (trimmed.length < 2) continue;
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    sanitized = sanitized.replace(new RegExp(escaped, "gi"), "");
+  }
+  return sanitized
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 12_000);
+}
+
 async function supabaseJson(env: Env, path: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/${path}`, {
     ...init,
@@ -244,17 +285,18 @@ async function handleVendorReply(req: Request, env: Env): Promise<Response> {
   if (getBearerToken(req) !== expectedToken) return jsonResponse({ error: "Unauthorized" }, 401);
 
   const body = await req.json() as VendorReplyRequest;
+  const requestId = String(body.request_id ?? "").trim();
   const jobId = String(body.job_id ?? "").trim();
   const fromEmail = String(body.from_email ?? "").trim().toLowerCase();
   const emailContent = String(body.email_content ?? "").trim();
-  if (!/^[0-9a-f-]{36}$/i.test(jobId) || !/^\S+@\S+\.\S+$/.test(fromEmail) || !emailContent) {
-    return jsonResponse({ error: "job_id, from_email, and email_content are required" }, 400);
+  if (!/^[0-9a-f-]{36}$/i.test(requestId) || !/^[0-9a-f-]{36}$/i.test(jobId) || !/^\S+@\S+\.\S+$/.test(fromEmail) || !emailContent) {
+    return jsonResponse({ error: "request_id, job_id, from_email, and email_content are required" }, 400);
   }
 
   const jobs = await supabaseJson(
     env,
-    `social_jobs?id=eq.${encodeURIComponent(jobId)}&select=id,poster_email&limit=1`,
-  ) as Array<{ id: string; poster_email: string }>;
+    `social_jobs?id=eq.${encodeURIComponent(jobId)}&select=id,poster_email,posted_by_name,company_name&limit=1`,
+  ) as Array<{ id: string; poster_email: string; posted_by_name: string | null; company_name: string | null }>;
   const job = jobs[0];
   if (!job) return jsonResponse({ error: "Job not found" }, 404);
   if (String(job.poster_email ?? "").trim().toLowerCase() !== fromEmail) {
@@ -263,15 +305,16 @@ async function handleVendorReply(req: Request, env: Env): Promise<Response> {
 
   const requests = await supabaseJson(
     env,
-    `pulse_ask_ai_requests?job_id=eq.${encodeURIComponent(jobId)}&status=eq.completed&select=request_id,job_id,missing_details`,
+    `pulse_ask_ai_requests?request_id=eq.${encodeURIComponent(requestId)}&job_id=eq.${encodeURIComponent(jobId)}&status=eq.completed&select=request_id,job_id,missing_details`,
   ) as Array<{ request_id: string; job_id: string; missing_details: unknown }>;
   if (requests.length === 0) return jsonResponse({ error: "No pending Ask requests were found for this job" }, 404);
 
   const allowedKeys = requestedDetailKeys(requests.flatMap((request) => Array.isArray(request.missing_details) ? request.missing_details : []));
   if (allowedKeys.size === 0) return jsonResponse({ error: "Request has no supported missing details" }, 422);
 
-  const prompt = `Extract only job details explicitly stated in this vendor email reply. Return strict JSON only, without markdown.
-Use null or [] when absent. Do not infer or guess. Include: confidence (0 to 1), experience_years, employment_type, work_type, visa_types, locations, skills, hourly_rate_min, hourly_rate_max, salary_range.
+  const prompt = `Process this vendor email reply and return strict JSON only, without markdown.
+Create display_text containing only the vendor's substantive reply. Remove greetings, signatures, names, email addresses, company or agency names, contact details, email headers, disclaimers, and quoted prior messages. Preserve the original wording, order, intent, facts, and tone of the remaining reply. Do not summarize, infer, add facts, or rewrite beyond the minimum grammar needed after removals.
+Also extract only explicitly stated job details. Use null or [] when absent. Do not infer or guess. Include: display_text, confidence (0 to 1), experience_years, employment_type, work_type, visa_types, locations, skills, hourly_rate_min, hourly_rate_max, salary_range.
 The originally requested fields are: ${Array.from(allowedKeys).join(", ")}.
 Subject: ${String(body.subject ?? "").slice(0, 500)}
 From: ${fromEmail.slice(0, 320)}
@@ -280,48 +323,56 @@ ${emailContent.slice(0, 12_000)}`;
   const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
   const aiResult = await env.AI.run(model, {
     messages: [
-      { role: "system", content: "Extract explicit job details from vendor email replies. Never infer missing facts. Return strict JSON only." },
+      { role: "system", content: "Privacy-clean vendor replies without changing their meaning, and extract explicit job details. Never infer facts. Return strict JSON only." },
       { role: "user", content: prompt },
     ],
     temperature: 0,
     max_tokens: 1200,
   });
-  const details = normalizeReplyExtraction(parseModelText((aiResult as Record<string, unknown>)?.response ?? aiResult), allowedKeys);
-  if (Object.keys(details).length === 0) return jsonResponse({ error: "Reply did not contain any requested details" }, 422);
+  const parsedReply = parseModelText((aiResult as Record<string, unknown>)?.response ?? aiResult);
+  const displayText = normalizeReplyDisplayText(parsedReply, [fromEmail, job.posted_by_name ?? "", job.company_name ?? ""]);
+  let details: Record<string, unknown> = {};
+  try {
+    details = normalizeReplyExtraction(parsedReply, allowedKeys);
+  } catch (error) {
+    console.error("Reply contained no confident structured details", error);
+  }
 
-  const radarRows = await supabaseJson(
-    env,
-    `radar_match_results?job_id=eq.${encodeURIComponent(jobId)}&job_source=eq.social&select=id,score_breakdown`,
-  ) as Array<{ id: string; score_breakdown: unknown }>;
-  for (const radarRow of radarRows) {
-    await supabaseJson(env, `radar_match_results?id=eq.${encodeURIComponent(radarRow.id)}`, {
+  if (Object.keys(details).length > 0) {
+    const radarRows = await supabaseJson(
+      env,
+      `radar_match_results?job_id=eq.${encodeURIComponent(jobId)}&job_source=eq.social&select=id,score_breakdown`,
+    ) as Array<{ id: string; score_breakdown: unknown }>;
+    for (const radarRow of radarRows) {
+      await supabaseJson(env, `radar_match_results?id=eq.${encodeURIComponent(radarRow.id)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ score_breakdown: updatedBreakdown(radarRow.score_breakdown, details) }),
+      });
+    }
+
+    const socialPatch: Record<string, unknown> = {
+      verification_status: "verified",
+      verified_at: new Date().toISOString(),
+      reply_extracted_details: details,
+    };
+    if (details.experience_years != null) socialPatch.extracted_experience_years = details.experience_years;
+    if (details.employment_type) socialPatch.employment_type = details.employment_type;
+    if (Array.isArray(details.visa_types)) socialPatch.extracted_visa_types = details.visa_types;
+    if (Array.isArray(details.locations) && details.locations.length > 0) socialPatch.location = details.locations.join(", ");
+    if (Array.isArray(details.skills)) socialPatch.extracted_skills = details.skills;
+    if (details.hourly_rate_min != null) socialPatch.extracted_hourly_rate_min = details.hourly_rate_min;
+    if (details.hourly_rate_max != null) socialPatch.extracted_hourly_rate_max = details.hourly_rate_max;
+    if (details.salary_range) socialPatch.salary_range = details.salary_range;
+
+    await supabaseJson(env, `social_jobs?id=eq.${encodeURIComponent(jobId)}`, {
       method: "PATCH",
       headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ score_breakdown: updatedBreakdown(radarRow.score_breakdown, details) }),
+      body: JSON.stringify(socialPatch),
     });
   }
 
-  const socialPatch: Record<string, unknown> = {
-    verification_status: "verified",
-    verified_at: new Date().toISOString(),
-    reply_extracted_details: details,
-  };
-  if (details.experience_years != null) socialPatch.extracted_experience_years = details.experience_years;
-  if (details.employment_type) socialPatch.employment_type = details.employment_type;
-  if (Array.isArray(details.visa_types)) socialPatch.extracted_visa_types = details.visa_types;
-  if (Array.isArray(details.locations) && details.locations.length > 0) socialPatch.location = details.locations.join(", ");
-  if (Array.isArray(details.skills)) socialPatch.extracted_skills = details.skills;
-  if (details.hourly_rate_min != null) socialPatch.extracted_hourly_rate_min = details.hourly_rate_min;
-  if (details.hourly_rate_max != null) socialPatch.extracted_hourly_rate_max = details.hourly_rate_max;
-  if (details.salary_range) socialPatch.salary_range = details.salary_range;
-
-  await supabaseJson(env, `social_jobs?id=eq.${encodeURIComponent(jobId)}`, {
-    method: "PATCH",
-    headers: { Prefer: "return=minimal" },
-    body: JSON.stringify(socialPatch),
-  });
-
-  return jsonResponse({ ok: true, job_id: jobId, fulfilled_requests: requests.map((request) => request.request_id), status: "Verified", extracted_details: details });
+  return jsonResponse({ ok: true, job_id: jobId, display_text: displayText, extracted_details: details });
 }
 
 function normalizeSingleParsedResult(parsed: unknown, message: QueueMessageBody): ParserResult {

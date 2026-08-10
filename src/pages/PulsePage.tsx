@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   Activity,
   AtSign,
@@ -262,6 +262,7 @@ type AskAIPreview = {
   missingDetails: string[];
   emailSubject: string;
   emailContent: string;
+  isGenerating: boolean;
 };
 type FeedSearchFilters = {
   experienceRange: string;
@@ -274,6 +275,19 @@ type FeedSearchFilters = {
   rateMin: string;
   rateMax: string;
 };
+
+async function getFunctionErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === 'object' && 'context' in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      const payload = await context.clone().json().catch(() => null) as { error?: unknown } | null;
+      if (typeof payload?.error === 'string' && payload.error.trim()) return payload.error;
+    }
+  }
+  return error instanceof Error && error.message !== 'Edge Function returned a non-2xx status code'
+    ? error.message
+    : fallback;
+}
 
 const DEFAULT_FEED_SEARCH_FILTERS: FeedSearchFilters = {
   experienceRange: 'all',
@@ -997,7 +1011,19 @@ function formatRevealedAt(dateIso: string) {
 function maskPosterName(name: string) {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return 'Posted by hidden';
-  return `Posted by ${trimmed.slice(0, 3)}**`;
+  return `Posted by ${trimmed.slice(0, 3)}***`;
+}
+
+function maskName(name: string) {
+  const trimmed = (name ?? '').trim();
+  return trimmed ? `${trimmed.slice(0, 3)}***` : 'Hidden';
+}
+
+function removeNameFromEmail(text: string, name: string) {
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) return text;
+  const escapedName = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text.replace(new RegExp(escapedName, 'gi'), 'there');
 }
 
 function hasDirectContact(row: SocialJobRow) {
@@ -1239,7 +1265,6 @@ function buildHotlistRolePayloadFromPersona(accountId: string, persona: PulsePer
 export default function PulsePage() {
   const { account, subscription, user, refreshAccount } = useAuth();
   const { isDark } = useTheme();
-  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1253,7 +1278,7 @@ export default function PulsePage() {
   const [searchParams] = useSearchParams();
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
-  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('3d');
+  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('7d');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
@@ -2515,9 +2540,11 @@ export default function PulsePage() {
   }, [account?.id, showToast]);
 
   const loadLeadActionState = useCallback(async () => {
+    if (!user?.id) return;
     const { data, error } = await supabase
       .from('pulse_lead_actions')
       .select('lead_id, action_type, created_at')
+      .eq('user_id', user.id)
       .in('action_type', ['revealed', 'breakdown']);
 
     if (error) {
@@ -2538,7 +2565,7 @@ export default function PulsePage() {
     setRevealedLeadIds(revealed);
     setBreakdownChargedLeadIds(breakdown);
     setRevealedAtByLeadId(revealedAt);
-  }, []);
+  }, [user?.id]);
 
   const loadAskedJobState = useCallback(async () => {
     if (!account?.id || !user?.id) {
@@ -3654,7 +3681,7 @@ export default function PulsePage() {
     ];
 
     return [
-      `Hi ${lead.posterName || 'there'},`,
+      'Hi there,',
       '',
       `Saw your post about the ${lead.title || 'requirement'}${lead.company ? ` at ${lead.company}` : ''}.`,
       'I have a profile that looks highly relevant to this requirement.',
@@ -3678,7 +3705,7 @@ export default function PulsePage() {
     const detailsLine = `${signedInUserName} is requesting the following missing details regarding your job post: ${uniqueMissingFields.join(', ')}.`;
 
     return [
-      `Hi ${lead.posterName || 'there'},`,
+      'Hi there,',
       '',
       `Thanks for posting the ${lead.title || 'role'}${lead.company ? ` at ${lead.company}` : ''}.`,
       detailsLine,
@@ -3702,9 +3729,18 @@ export default function PulsePage() {
       return;
     }
 
+    const requestId = crypto.randomUUID();
+    setAskAIPreview({
+      leadId: lead.id,
+      requestId,
+      vendorName: lead.posterName || 'the vendor',
+      missingDetails,
+      emailSubject: '',
+      emailContent: '',
+      isGenerating: true,
+    });
     setProcessingAskAILeadId(lead.id);
     try {
-      const requestId = crypto.randomUUID();
       const { data, error } = await supabase.functions.invoke('ask-ai-vendor-email', {
         body: {
           action: 'preview',
@@ -3716,23 +3752,29 @@ export default function PulsePage() {
       });
 
       if (error || !data?.ok) {
-        throw new Error(data?.error || error?.message || 'Could not generate the request');
+        throw new Error(data?.error || await getFunctionErrorMessage(error, 'Could not generate the request'));
       }
 
+      const vendorName = data.vendor_name || lead.posterName || 'the vendor';
+      const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
+        || user?.email?.split('@')[0]
+        || '';
       setAskAIPreview({
         leadId: lead.id,
         requestId,
-        vendorName: data.vendor_name || lead.posterName || 'the vendor',
+        vendorName,
         missingDetails,
-        emailSubject: data.email_subject || '',
-        emailContent: data.email_content || '',
+        emailSubject: removeNameFromEmail(data.email_subject || '', vendorName),
+        emailContent: removeNameFromEmail(data.email_content || '', vendorName),
+        isGenerating: false,
       });
     } catch (error) {
+      setAskAIPreview(null);
       showToast(error instanceof Error ? error.message : 'Could not generate the vendor email request', 'error');
     } finally {
       setProcessingAskAILeadId(null);
     }
-  }, [account?.id, processingAskAILeadId, showToast]);
+  }, [account?.id, processingAskAILeadId, showToast, user?.email, user?.user_metadata?.full_name]);
 
   const handleSubmitAskAI = useCallback(async () => {
     if (!account?.id || !askAIPreview || processingAskAILeadId) return;
@@ -3770,7 +3812,7 @@ export default function PulsePage() {
       }));
       setGlobalAskedJobStateByLeadId((prev) => ({ ...prev, [askAIPreview.leadId]: 'asked' }));
       setAskAIPreview(null);
-      showToast(`Request sent to ${data.vendor_name || askAIPreview.vendorName}`, 'success');
+      showToast('Request email sent. You will be notified if the vendor replies in the Inbox.', 'success');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not send the vendor email request', 'error');
     } finally {
@@ -3906,7 +3948,7 @@ export default function PulsePage() {
           action_type: actionType,
         },
         {
-          onConflict: 'account_id,lead_id,action_type',
+          onConflict: 'account_id,user_id,lead_id,action_type',
           ignoreDuplicates: true,
         },
       );
@@ -4883,10 +4925,8 @@ export default function PulsePage() {
                 <Mail size={18} />
               </span>
               <div className="min-w-0 flex-1">
-                <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">Review vendor email</h2>
-                <p className="mt-1 text-xs leading-relaxed text-gray-600">
-                  Review the generated email to {askAIPreview.vendorName}. It will only be sent after you click Send.
-                </p>
+                <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">{askAIPreview.isGenerating ? 'Generating vendor email' : 'Review vendor email'}</h2>
+                {askAIPreview.isGenerating && <p className="mt-1 text-xs leading-relaxed text-gray-600">Preparing an email to {maskName(askAIPreview.vendorName)}.</p>}
               </div>
               <button
                 type="button"
@@ -4898,6 +4938,13 @@ export default function PulsePage() {
                 <X size={14} />
               </button>
             </div>
+            {askAIPreview.isGenerating ? (
+              <div className="flex min-h-56 flex-col items-center justify-center px-6 text-center">
+                <LogoSpinner size={28} />
+                <p className="mt-4 text-sm font-semibold text-gray-900">Generating your email</p>
+                <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-500">Using the job and missing details to prepare a concise message.</p>
+              </div>
+            ) : <>
             <div className="mt-4 space-y-3">
               <label className="block">
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Subject</span>
@@ -4926,25 +4973,18 @@ export default function PulsePage() {
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Requested details</p>
               <p className="mt-1 text-xs text-gray-700">{askAIPreview.missingDetails.join(', ')}</p>
             </div>
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setAskAIPreview(null)}
-                disabled={Boolean(processingAskAILeadId)}
-                className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-              >
-                Cancel
-              </button>
+            <div className="mt-4 flex justify-end">
               <button
                 type="button"
                 onClick={() => void handleSubmitAskAI()}
                 disabled={Boolean(processingAskAILeadId) || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim() || askAIPreview.emailContent.trim().split(/\s+/).filter(Boolean).length >= 40}
-                className="inline-flex min-w-20 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-20"
               >
                 <Mail size={12} />
                 {processingAskAILeadId ? 'Sending...' : 'Send'}
               </button>
             </div>
+            </>}
           </div>
         </div>
       )}
@@ -4959,7 +4999,7 @@ export default function PulsePage() {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-gray-900">{selectedLead.title}</p>
                 {selectedLead.company && <p className="text-[12px] text-gray-600">{[selectedLead.company, selectedLead.location].filter(Boolean).join(' • ')}</p>}
-                <p className="mt-0.5 text-[11px] text-gray-500">{revealedLeadIds.has(selectedLead.id) ? selectedLead.posterName : 'Posted by hidden'}{selectedLead.postedAgo ? ` • ${selectedLead.postedAgo}` : ''}</p>
+                <p className="mt-0.5 text-[11px] text-gray-500">{maskPosterName(selectedLead.posterName)}{selectedLead.postedAgo ? ` • ${selectedLead.postedAgo}` : ''}</p>
               </div>
               <button
                 onClick={() => setSelectedLead(null)}

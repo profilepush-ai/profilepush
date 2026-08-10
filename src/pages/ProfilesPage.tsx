@@ -579,10 +579,14 @@ function formatAgo(dateIso: string) {
   return `${Math.floor(hrs / 24)} days ago`;
 }
 
+function maskName(name: string) {
+  const trimmed = (name ?? '').trim();
+  return trimmed ? `${trimmed.slice(0, 3)}***` : 'Hidden';
+}
+
 function maskPosterName(name: string) {
   const trimmed = (name ?? '').trim();
-  if (!trimmed) return 'Posted by hidden';
-  return `Posted by ${trimmed.slice(0, 3)}**`;
+  return trimmed ? `Posted by ${maskName(trimmed)}` : 'Posted by hidden';
 }
 
 function hasDirectContact(row: SocialJobRow) {
@@ -1738,9 +1742,11 @@ export default function ProfilesPage() {
   }, [account?.id, showToast]);
 
   const loadLeadActionState = useCallback(async () => {
+    if (!user?.id) return;
     const { data, error } = await supabase
       .from('pulse_lead_actions')
       .select('lead_id, action_type')
+      .eq('user_id', user.id)
       .in('action_type', ['revealed', 'breakdown']);
 
     if (error) {
@@ -1756,7 +1762,7 @@ export default function ProfilesPage() {
 
     setRevealedLeadIds(revealed);
     setBreakdownChargedLeadIds(breakdown);
-  }, []);
+  }, [user?.id]);
 
   const loadLeaderboard = useCallback(async () => {
     const { data, error } = await supabase.rpc('get_pulse_persona_leaderboard', { limit_count: LEADERBOARD_RPC_LIMIT });
@@ -2517,7 +2523,7 @@ export default function ProfilesPage() {
     ];
 
     return [
-      `Hi ${lead.posterName || 'there'},`,
+      'Hi there,',
       '',
       `Saw your post about the ${lead.title || 'requirement'}${lead.company ? ` at ${lead.company}` : ''}.`,
       'I have a profile that looks highly relevant to this requirement.',
@@ -2658,7 +2664,7 @@ export default function ProfilesPage() {
           action_type: actionType,
         },
         {
-          onConflict: 'account_id,lead_id,action_type',
+          onConflict: 'account_id,user_id,lead_id,action_type',
           ignoreDuplicates: true,
         },
       );
@@ -3398,7 +3404,7 @@ export default function ProfilesPage() {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-gray-900">{selectedLead.title}</p>
                 {selectedLead.company && <p className="text-[12px] text-gray-600">{[selectedLead.company, selectedLead.location].filter(Boolean).join(' • ')}</p>}
-                <p className="mt-0.5 text-[11px] text-gray-500">{revealedLeadIds.has(selectedLead.id) ? selectedLead.posterName : 'Posted by hidden'}{selectedLead.postedAgo ? ` • ${selectedLead.postedAgo}` : ''}</p>
+                <p className="mt-0.5 text-[11px] text-gray-500">{maskPosterName(selectedLead.posterName)}{selectedLead.postedAgo ? ` • ${selectedLead.postedAgo}` : ''}</p>
               </div>
               <button
                 onClick={() => setSelectedLead(null)}

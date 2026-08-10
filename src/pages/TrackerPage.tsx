@@ -17,6 +17,13 @@ import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
 
 interface Vendor { id: string; name: string; contact_person: string; email: string; contact: string; location: string; created_at: string; }
 interface Client { id: string; name: string; contact_person: string; email: string; phone: string; location: string; created_at: string; }
+interface RevealedContactJob {
+  id: string;
+  company_name: string | null;
+  posted_by_name: string | null;
+  poster_email: string | null;
+  poster_phone: string | null;
+}
 interface VendorHistoryJob {
   id: string;
   job_title: string;
@@ -286,18 +293,48 @@ export default function TrackerPage() {
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [vRes, cRes, sRes, pRes] = await Promise.all([
+    const loadOwnRevealedContacts = async (): Promise<RevealedContactJob[]> => {
+      if (!user?.id) return [];
+      const { data: actions } = await supabase
+        .from('pulse_lead_actions')
+        .select('lead_id')
+        .eq('user_id', user.id)
+        .eq('action_type', 'revealed');
+      const leadIds = [...new Set((actions ?? []).map((action) => action.lead_id))];
+      if (leadIds.length === 0) return [];
+      const { data: jobs } = await supabase
+        .from('social_jobs')
+        .select('id, company_name, posted_by_name, poster_email, poster_phone')
+        .in('id', leadIds);
+      return (jobs ?? []) as RevealedContactJob[];
+    };
+
+    const [vRes, cRes, sRes, pRes, revealedContacts] = await Promise.all([
       supabase.from('vendors').select('*').order('created_at', { ascending: false }),
       supabase.from('clients').select('*').order('created_at', { ascending: false }),
       supabase.from('submissions').select('*').order('submission_date', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('profiles').select('id,candidate_name,core_skills,preferred_locations,location,city,state,desired_salary_min').order('created_at', { ascending: false }),
+      loadOwnRevealedContacts(),
     ]);
-    if (!vRes.error) setVendors(vRes.data ?? []);
+    if (!vRes.error) {
+      const normalized = (value: string | null | undefined) => value?.trim().toLowerCase() ?? '';
+      const ownVendors = (vRes.data ?? []).filter((vendor) => revealedContacts.some((job) => {
+        const vendorEmail = normalized(vendor.email);
+        const vendorPhone = normalized(vendor.contact);
+        const vendorName = normalized(vendor.name);
+        const contactPerson = normalized(vendor.contact_person);
+        return (vendorEmail && vendorEmail === normalized(job.poster_email))
+          || (vendorPhone && vendorPhone === normalized(job.poster_phone))
+          || (contactPerson && contactPerson === normalized(job.posted_by_name))
+          || (vendorName && [normalized(job.company_name), normalized(job.posted_by_name)].includes(vendorName));
+      }));
+      setVendors(ownVendors);
+    }
     if (!cRes.error) setClients(cRes.data ?? []);
     if (!sRes.error) setSubmissions(sRes.data ?? []);
     if (!pRes.error) setProfiles((pRes.data ?? []) as Profile[]);
     setLoading(false);
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -526,7 +563,7 @@ export default function TrackerPage() {
     setHistoryLoading(true);
     setVendorHistory([]);
 
-    if (vendorsToMatch.length === 0) {
+    if (!user?.id || vendorsToMatch.length === 0) {
       setHistoryLoading(false);
       return;
     }
@@ -535,6 +572,7 @@ export default function TrackerPage() {
     const { data: actions, error: actionsErr } = await supabase
       .from('pulse_lead_actions')
       .select('lead_id, created_at')
+      .eq('user_id', user.id)
       .eq('action_type', 'revealed');
 
     if (actionsErr || !actions?.length) {
@@ -605,7 +643,7 @@ export default function TrackerPage() {
     const allJobs = (await Promise.all(vendorsToMatch.map(fetchJobsForVendor))).flat();
     setVendorHistory(Array.from(new Map(allJobs.map((job) => [job.id, job])).values()));
     setHistoryLoading(false);
-  }, []);
+  }, [user?.id]);
 
   const loadVendorHistory = useCallback(async (vendor: Vendor) => {
     await loadVendorHistoryForVendors([vendor]);
@@ -860,7 +898,7 @@ export default function TrackerPage() {
                 {isSearching ? 'No vendors match your search.' : `No vendors in ${dateLabel}.`}
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-100 dark:divide-white/10">
                 {filteredVendors.map((v) => {
                   const subCount = submissions.filter(s => s.vendor_name === v.name).length;
                   const isActive = activeVendorId === v.id;
@@ -868,10 +906,10 @@ export default function TrackerPage() {
                     <div
                       key={v.id}
                       onClick={() => handleVendorRowClick(v)}
-                      className={`px-2.5 sm:px-3.5 py-2.5 sm:py-3 cursor-pointer transition-colors ${isActive ? 'bg-amber-50/70' : 'bg-white hover:bg-amber-50/30'}`}
+                      className={`px-2.5 sm:px-3.5 py-2.5 sm:py-3 cursor-pointer transition-colors ${isActive ? 'bg-amber-50/70 dark:bg-[#30353D]' : 'bg-white hover:bg-amber-50/30 dark:bg-[#1F2328] dark:hover:bg-[#272C33]'}`}
                     >
                       <div className="flex items-center justify-between gap-1.5">
-                        <p className="text-xs sm:text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{v.name}</p>
+                        <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-slate-100 break-words whitespace-normal leading-snug">{v.name}</p>
                         <div className="flex items-center gap-1 shrink-0">
                           {subCount > 0 && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{subCount}</span>}
                           <button onClick={(e) => { e.stopPropagation(); openEditVendor(v); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors" title="Edit"><Pencil size={10} /></button>
@@ -879,12 +917,12 @@ export default function TrackerPage() {
                         </div>
                       </div>
                       {v.contact_person && (
-                        <div className="flex items-center gap-1 mt-1 text-[11px] sm:text-xs text-gray-600">
-                          <User size={10} className="text-gray-400 shrink-0" />
+                        <div className="flex items-center gap-1 mt-1 text-[11px] sm:text-xs text-gray-600 dark:text-slate-300">
+                          <User size={10} className="text-gray-400 dark:text-slate-500 shrink-0" />
                           {revealedFields.has(`cp-${v.id}`) ? (
                             <span className="truncate">{v.contact_person}</span>
                           ) : (
-                            <span className="text-gray-400 truncate">{v.contact_person.slice(0, 3)}•••</span>
+                            <span className="text-gray-400 dark:text-slate-400 truncate">{v.contact_person.slice(0, 3)}•••</span>
                           )}
                           <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `cp-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0">
                             {revealedFields.has(`cp-${v.id}`) ? <EyeOff size={9} /> : <Eye size={9} />}
@@ -893,11 +931,11 @@ export default function TrackerPage() {
                       )}
                       {v.email && (
                         <div className="flex items-center gap-1 mt-0.5 sm:mt-1 text-[11px] sm:text-xs">
-                          <Mail size={10} className="text-gray-400 shrink-0" />
+                          <Mail size={10} className="text-gray-400 dark:text-slate-500 shrink-0" />
                           {revealedFields.has(`email-${v.id}`) ? (
-                            <a href={`mailto:${v.email}`} onClick={e => e.stopPropagation()} className="text-blue-600 hover:underline truncate">{v.email}</a>
+                            <a href={`mailto:${v.email}`} onClick={e => e.stopPropagation()} className="text-blue-600 dark:text-cyan-400 hover:underline truncate">{v.email}</a>
                           ) : (
-                            <span className="text-gray-400 truncate">{v.email.slice(0, 3)}@•••</span>
+                            <span className="text-gray-400 dark:text-slate-400 truncate">{v.email.slice(0, 3)}@•••</span>
                           )}
                           <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `email-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0">
                             {revealedFields.has(`email-${v.id}`) ? <EyeOff size={9} /> : <Eye size={9} />}
@@ -913,7 +951,7 @@ export default function TrackerPage() {
                               setCopiedField(`email-${v.id}`);
                               setTimeout(() => setCopiedField(null), 1500);
                             }}
-                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/15 dark:bg-[#20242A] dark:text-slate-200 dark:hover:bg-[#292E35]"
                           >
                             {copiedField === `email-${v.id}` ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
                             {copiedField === `email-${v.id}` ? 'Copied' : 'Email ID'}

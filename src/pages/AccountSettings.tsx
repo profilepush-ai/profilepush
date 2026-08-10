@@ -3,19 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Building2, Users, User, Shield, CreditCard, AlertTriangle,
   Copy, Check, Plus, Trash2, Pencil, X, Save, Mail,
-  Crown, Eye, EyeOff, Lock, LogOut, KeyRound,
-  ChevronDown, ChevronRight, RefreshCw, Info, Zap,
-  UserCheck, Bell, Phone, Smartphone,
+  Crown, Eye, EyeOff, Lock, LogOut,
+  ArrowRight, ChevronDown, ChevronRight, RefreshCw, Info, Zap,
+  UserCheck,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
-import {
-  NOTIFICATION_TYPES, NOTIFICATION_GROUPS,
-  type NotificationType, type NotificationPreference,
-} from '../lib/notifications';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,7 +22,7 @@ interface Member {
   data_access: 'full' | 'assigned_only';
 }
 
-type Section = 'profile' | 'workspace' | 'team' | 'watch_schedule' | 'security' | 'billing' | 'notifications' | 'danger';
+type Section = 'profile' | 'workspace' | 'team' | 'watch_schedule' | 'billing' | 'danger';
 
 interface WatchSchedule {
   id: string;
@@ -69,9 +65,7 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ElementType; danger?:
   { id: 'profile',       label: 'My Profile',        icon: User      },
   { id: 'workspace',     label: 'Workspace',          icon: Building2 },
   { id: 'team',          label: 'Team Members',       icon: Users     },
-  { id: 'security',      label: 'Security',           icon: KeyRound  },
   { id: 'billing',       label: 'Plan & Billing',     icon: CreditCard },
-  { id: 'notifications', label: 'Notifications',      icon: Bell      },
   { id: 'danger',        label: 'Danger Zone',        icon: AlertTriangle, danger: true },
 ];
 
@@ -123,24 +117,6 @@ function CardHeader({ icon: Icon, title, description, action }: {
   );
 }
 
-function Toggle({ checked, onChange, disabled, title }: { checked: boolean; onChange: () => void; disabled?: boolean; title?: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-      disabled={disabled}
-      title={title}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none ${
-        checked ? 'bg-blue-600' : 'bg-gray-200'
-      } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:opacity-90'}`}
-    >
-      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
-    </button>
-  );
-}
-
 function PermCell({ val }: { val: boolean | 'own' }) {  if (val === true)  return <span className="text-emerald-500 font-bold text-sm">✓</span>;
   if (val === 'own') return <span className="text-amber-500 font-bold text-xs">Own</span>;
   return <span className="text-gray-300 text-sm">—</span>;
@@ -149,15 +125,17 @@ function PermCell({ val }: { val: boolean | 'own' }) {  if (val === true)  retur
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AccountSettings() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, account, membership, subscription, refreshAccount, signOut } = useAuth();
 
   const isOwner = membership?.role === 'owner';
+  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
 
   // ── Global ──────────────────────────────────────────────────
   const [section, setSection] = useState<Section>(() => {
     const s = searchParams.get('section');
-    return (s as Section | null) ?? 'profile';
+    return NAV_ITEMS.some((item) => item.id === s) ? s as Section : 'profile';
   });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const showToast = (message: string, type: 'success' | 'error' = 'success') => setToast({ message, type });
@@ -165,12 +143,6 @@ export default function AccountSettings() {
   // ── Watch Schedule ──────────────────────────────────────────
   const [globalWatch, setGlobalWatch] = useState<WatchSchedule | null>(null);
   const [savingWatch, setSavingWatch] = useState(false);
-
-  // ── Notifications ────────────────────────────────────────────
-  const [notifPrefs, setNotifPrefs] = useState<Record<string, NotificationPreference>>({});
-  const [notifLoading, setNotifLoading] = useState(false);
-  const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [savingWa, setSavingWa] = useState(false);
 
   // ── Members ──────────────────────────────────────────────────
   const [members, setMembers]       = useState<Member[]>([]);
@@ -202,14 +174,6 @@ export default function AccountSettings() {
   const [editAccess, setEditAccess] = useState<'full' | 'assigned_only'>('full');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // ── Security ─────────────────────────────────────────────────
-  const [newPw, setNewPw]       = useState('');
-  const [confirmPw, setConfirmPw] = useState('');
-  const [showNewPw, setShowNewPw]     = useState(false);
-  const [showConfirmPw, setShowConfirmPw] = useState(false);
-  const [pwError, setPwError]   = useState('');
-  const [savingPw, setSavingPw] = useState(false);
-
   // ── Danger ───────────────────────────────────────────────────
   const [confirmLeave, setConfirmLeave]   = useState(false);
   const [leavingWs, setLeavingWs]         = useState(false);
@@ -222,10 +186,7 @@ export default function AccountSettings() {
     if (membership) setProfileName(membership.display_name ?? '');
     if (account)    setAccountName(account.name);
     if (account)    loadMembers();
-    if (account)    loadNotifPrefs();
     if (account)    loadWatchSchedule();
-    // Load whatsapp number from member record
-    if (membership) setWhatsappNumber((membership as any).whatsapp_number ?? '');
   }, [account, membership]);
 
   async function loadWatchSchedule() {
@@ -314,59 +275,6 @@ export default function AccountSettings() {
       .order('created_at', { ascending: true });
     setMembers((data ?? []) as Member[]);
     setMembersLoading(false);
-  }
-
-  // ── Notification handlers ─────────────────────────────────────
-  async function loadNotifPrefs() {
-    if (!account || !user) return;
-    setNotifLoading(true);
-    const { data } = await supabase
-      .from('notification_preferences')
-      .select('notif_type, in_app_enabled, email_enabled, whatsapp_enabled')
-      .eq('user_id', user.id);
-    if (data) {
-      const map: Record<string, NotificationPreference> = {};
-      data.forEach(row => { map[row.notif_type] = row as NotificationPreference; });
-      setNotifPrefs(map);
-    }
-    setNotifLoading(false);
-  }
-
-  function getPref(type: NotificationType): NotificationPreference {
-    return notifPrefs[type] ?? {
-      notif_type: type,
-      in_app_enabled: true,
-      email_enabled: true,
-      whatsapp_enabled: false,
-    };
-  }
-
-  async function togglePref(type: NotificationType, channel: 'in_app_enabled' | 'email_enabled' | 'whatsapp_enabled') {
-    if (!account || !user) return;
-    const current = getPref(type);
-    const updated = { ...current, [channel]: !current[channel] };
-    setNotifPrefs(prev => ({ ...prev, [type]: updated }));
-    await supabase.from('notification_preferences').upsert({
-      user_id: user.id,
-      account_id: account.id,
-      notif_type: type,
-      in_app_enabled: updated.in_app_enabled,
-      email_enabled: updated.email_enabled,
-      whatsapp_enabled: updated.whatsapp_enabled,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,notif_type' });
-  }
-
-  async function saveWhatsappNumber(e: React.FormEvent) {
-    e.preventDefault();
-    if (!membership) return;
-    setSavingWa(true);
-    const { error } = await supabase.from('account_members')
-      .update({ whatsapp_number: whatsappNumber.trim() || null })
-      .eq('id', membership.id);
-    if (error) showToast('Failed to save WhatsApp number', 'error');
-    else showToast('WhatsApp number saved');
-    setSavingWa(false);
   }
 
   // ── Profile handlers ──────────────────────────────────────────
@@ -468,19 +376,6 @@ export default function AccountSettings() {
     if (error) showToast('Failed to remove member', 'error');
     else { setMembers(prev => prev.filter(x => x.id !== m.id)); showToast('Member removed'); }
     setRemovingId(null);
-  }
-
-  // ── Security ──────────────────────────────────────────────────
-  async function changePassword(e: React.FormEvent) {
-    e.preventDefault();
-    setPwError('');
-    if (newPw.length < 8)    { setPwError('Password must be at least 8 characters'); return; }
-    if (newPw !== confirmPw) { setPwError('Passwords do not match'); return; }
-    setSavingPw(true);
-    const { error } = await supabase.auth.updateUser({ password: newPw });
-    if (error) setPwError(error.message);
-    else { setNewPw(''); setConfirmPw(''); showToast('Password changed successfully'); }
-    setSavingPw(false);
   }
 
   // ── Danger ────────────────────────────────────────────────────
@@ -894,75 +789,6 @@ export default function AccountSettings() {
             </>
           )}
 
-          {/* ── SECURITY ── */}
-          {section === 'security' && (
-            <>
-              <Card>
-                <CardHeader icon={KeyRound} title="Change Password" description="Choose a strong password of at least 8 characters" />
-                <div className="px-6 py-5">
-                  <form onSubmit={changePassword} className="space-y-4 max-w-sm">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1.5">New Password</label>
-                      <div className="relative">
-                        <input type={showNewPw ? 'text' : 'password'} value={newPw}
-                          onChange={e => { setNewPw(e.target.value); setPwError(''); }}
-                          placeholder="Min. 8 characters" autoComplete="new-password"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors" />
-                        <button type="button" onClick={() => setShowNewPw(v => !v)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                          {showNewPw ? <EyeOff size={14} /> : <Eye size={14} />}
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1.5">Confirm New Password</label>
-                      <div className="relative">
-                        <input type={showConfirmPw ? 'text' : 'password'} value={confirmPw}
-                          onChange={e => { setConfirmPw(e.target.value); setPwError(''); }}
-                          placeholder="Repeat new password" autoComplete="new-password"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors" />
-                        <button type="button" onClick={() => setShowConfirmPw(v => !v)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                          {showConfirmPw ? <EyeOff size={14} /> : <Eye size={14} />}
-                        </button>
-                      </div>
-                      {confirmPw && newPw === confirmPw && (
-                        <p className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1"><Check size={10} />Passwords match</p>
-                      )}
-                    </div>
-                    {pwError && <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{pwError}</p>}
-                    <button type="submit" disabled={savingPw || !newPw || !confirmPw}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors">
-                      {savingPw ? <LogoSpinner size={13} /> : <KeyRound size={13} />}Update Password
-                    </button>
-                  </form>
-                </div>
-              </Card>
-
-              <Card>
-                <CardHeader icon={Shield} title="Current Session" />
-                <div className="px-6 py-4 space-y-3">
-                  <div className="flex items-center justify-between py-2 border-b border-gray-50">
-                    <span className="text-xs text-gray-500">Signed in as</span>
-                    <span className="text-xs font-semibold text-gray-800">{user?.email}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-gray-50">
-                    <span className="text-xs text-gray-500">Last sign in</span>
-                    <span className="text-xs font-semibold text-gray-800">
-                      {user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-xs text-gray-500">Provider</span>
-                    <span className="text-xs font-semibold text-gray-800 capitalize">
-                      {user?.app_metadata?.provider ?? 'email'}
-                    </span>
-                  </div>
-                </div>
-              </Card>
-            </>
-          )}
-
           {/* ── BILLING ── */}
           {section === 'billing' && (
             <>
@@ -1001,7 +827,7 @@ export default function AccountSettings() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-gray-50 rounded-xl p-4">
                       <p className="text-[10px] text-gray-400 mb-1">AI Credits Balance</p>
-                      <p className="text-2xl font-black text-gray-900">${account?.credits_balance?.toFixed(2) ?? '0.00'}</p>
+                      <p className="text-2xl font-black text-gray-900">${Number(account?.credits_balance ?? 0).toFixed(2)}</p>
                       <p className="text-[10px] text-gray-400 mt-0.5">Available for AI features</p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
@@ -1030,155 +856,6 @@ export default function AccountSettings() {
                     </div>
                   ))}
                 </div>
-              </Card>
-            </>
-          )}
-
-          {/* ── NOTIFICATIONS ── */}
-          {section === 'notifications' && (
-            <>
-              {/* Delivery channels info */}
-              <Card>
-                <CardHeader icon={Bell} title="Delivery Channels" description="Configure how notifications reach you" />
-                <div className="px-6 py-5 space-y-5">
-                  {/* Email */}
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
-                      <Mail size={15} className="text-blue-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900">Email</p>
-                      <p className="text-[11px] text-gray-400 truncate">{user?.email}</p>
-                    </div>
-                    <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">Active</span>
-                  </div>
-
-                  {/* In-App */}
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <div className="w-9 h-9 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0">
-                      <Bell size={15} className="text-orange-600" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-gray-900">In-App Bell</p>
-                      <p className="text-[11px] text-gray-400">Shown in the notification bell in the top bar</p>
-                    </div>
-                    <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">Active</span>
-                  </div>
-
-                  {/* WhatsApp */}
-                  <div className="border border-gray-100 rounded-xl overflow-hidden">
-                    <div className="flex items-center gap-3 p-3 bg-gray-50">
-                      <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-                        <Smartphone size={15} className="text-emerald-600" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-900">WhatsApp</p>
-                        <p className="text-[11px] text-gray-400">Get notified via WhatsApp message</p>
-                      </div>
-                      {whatsappNumber ? (
-                        <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">Configured</span>
-                      ) : (
-                        <span className="text-[10px] bg-gray-100 text-gray-500 border border-gray-200 px-2 py-0.5 rounded-full font-semibold">Not set</span>
-                      )}
-                    </div>
-                    <form onSubmit={saveWhatsappNumber} className="px-4 py-4">
-                      <label className="block text-xs font-medium text-gray-500 mb-1.5">Your WhatsApp Number</label>
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
-                          <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                          <input
-                            type="tel"
-                            value={whatsappNumber}
-                            onChange={e => setWhatsappNumber(e.target.value)}
-                            placeholder="+1 555 000 0000"
-                            className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors"
-                          />
-                        </div>
-                        <button type="submit" disabled={savingWa}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-1.5">
-                          {savingWa ? <LogoSpinner size={13} /> : <Save size={13} />}Save
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-gray-400 mt-1.5 flex items-center gap-1">
-                        <Info size={9} />Include country code (e.g. +1 for USA). WhatsApp Business API required.
-                      </p>
-                    </form>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Preferences table */}
-              <Card>
-                <CardHeader icon={Bell} title="Notification Types" description="Toggle which events trigger a notification and via which channel" />
-                {notifLoading ? (
-                  <div className="flex justify-center py-10"><LogoSpinner size={16} /></div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-gray-100">
-                          <th className="text-left px-6 py-3 text-gray-500 font-medium">Event</th>
-                          <th className="text-center px-4 py-3 text-gray-500 font-medium w-20">
-                            <div className="flex flex-col items-center gap-0.5">
-                              <Bell size={11} />
-                              <span>In-App</span>
-                            </div>
-                          </th>
-                          <th className="text-center px-4 py-3 text-gray-500 font-medium w-20">
-                            <div className="flex flex-col items-center gap-0.5">
-                              <Mail size={11} />
-                              <span>Email</span>
-                            </div>
-                          </th>
-                          <th className="text-center px-4 py-3 text-gray-500 font-medium w-24">
-                            <div className="flex flex-col items-center gap-0.5">
-                              <Smartphone size={11} />
-                              <span>WhatsApp</span>
-                            </div>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {NOTIFICATION_GROUPS.map(group => {
-                          const types = (Object.entries(NOTIFICATION_TYPES) as [NotificationType, typeof NOTIFICATION_TYPES[NotificationType]][])
-                            .filter(([, meta]) => meta.group === group);
-                          return (
-                            <>
-                              <tr key={group} className="bg-gray-50/60">
-                                <td colSpan={4} className="px-6 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">{group}</td>
-                              </tr>
-                              {types.map(([type, meta]) => {
-                                const pref = getPref(type);
-                                return (
-                                  <tr key={type} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/40 transition-colors">
-                                    <td className="px-6 py-3">
-                                      <p className="font-semibold text-gray-800">{meta.label}</p>
-                                      <p className="text-[10px] text-gray-400 mt-0.5">{meta.description}</p>
-                                    </td>
-                                    <td className="text-center px-4 py-3">
-                                      <Toggle checked={pref.in_app_enabled} onChange={() => togglePref(type, 'in_app_enabled')} />
-                                    </td>
-                                    <td className="text-center px-4 py-3">
-                                      <Toggle checked={pref.email_enabled} onChange={() => togglePref(type, 'email_enabled')} />
-                                    </td>
-                                    <td className="text-center px-4 py-3">
-                                      <Toggle checked={pref.whatsapp_enabled} onChange={() => togglePref(type, 'whatsapp_enabled')} disabled={!whatsappNumber} title={!whatsappNumber ? 'Set a WhatsApp number first' : undefined} />
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    <div className="px-6 py-3 border-t border-gray-100 bg-gray-50/40 flex items-center gap-2 text-[11px] text-gray-400">
-                      <Info size={11} className="shrink-0" />
-                      Preferences are saved automatically when you toggle them.
-                      {!whatsappNumber && <span className="text-amber-600">Set a WhatsApp number above to enable WhatsApp notifications.</span>}
-                    </div>
-                  </div>
-                )}
               </Card>
             </>
           )}
