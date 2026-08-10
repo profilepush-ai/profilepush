@@ -4313,7 +4313,17 @@ export default function PulsePage() {
                 </div>
 
               {/* Mobile search/filter row — controls job feed search */}
-              <div className={isMobileViewport ? 'sticky top-0 z-30 bg-white px-0 pt-1.5 pb-1' : 'px-2 py-2'}>
+              <div
+                className={isMobileViewport ? 'sticky top-0 z-30 shrink-0 overflow-hidden bg-white px-0 transition-[max-height,opacity,transform] duration-200 ease-out dark:bg-[#1B1D21]' : 'px-2 py-2'}
+                style={isMobileViewport ? {
+                  maxHeight: isMobileTopCollapsed ? '0px' : '52px',
+                  opacity: isMobileTopCollapsed ? 0 : 1,
+                  transform: isMobileTopCollapsed ? 'translateY(-8px)' : 'translateY(0)',
+                  pointerEvents: isMobileTopCollapsed ? 'none' : 'auto',
+                  paddingTop: isMobileTopCollapsed ? 0 : '0.375rem',
+                  paddingBottom: isMobileTopCollapsed ? 0 : '0.25rem',
+                } : undefined}
+              >
                 <div className="flex items-center gap-2">
                   <div ref={recentSearchesRef} className="relative flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
                     <Search size={11} className="text-gray-400" />
@@ -4739,7 +4749,16 @@ export default function PulsePage() {
               </section>}
 
               {isMobileViewport && (
-                <div className="sticky top-0 z-40 shrink-0 bg-[rgba(255,255,255,0.90)] px-1.5 pt-0 pb-1 backdrop-blur transform-gpu backface-hidden dark:bg-transparent">
+                <div
+                  className="sticky top-0 z-40 shrink-0 overflow-hidden bg-white px-1.5 transition-[max-height,opacity,transform] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
+                  style={{
+                    maxHeight: isMobileTopCollapsed ? '0px' : '40px',
+                    opacity: isMobileTopCollapsed ? 0 : 1,
+                    transform: isMobileTopCollapsed ? 'translateY(-8px)' : 'translateY(0)',
+                    pointerEvents: isMobileTopCollapsed ? 'none' : 'auto',
+                    paddingBottom: isMobileTopCollapsed ? 0 : '0.25rem',
+                  }}
+                >
                   <div className="grid w-full grid-cols-4 gap-1">
                     {([
                       { id: 'queued', label: 'Recent' },
