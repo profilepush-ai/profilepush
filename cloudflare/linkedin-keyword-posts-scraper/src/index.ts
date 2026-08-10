@@ -161,6 +161,7 @@ async function fetchHarvestPage(job: KeywordScrapeJob, env: Env): Promise<Harves
   const params = new URLSearchParams({
     search: job.keyword,
     postedLimit: job.postedLimit,
+    scrapePostedLimit: "24h",
     sortBy: job.sortBy,
     page: String(job.page),
   });

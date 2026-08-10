@@ -203,6 +203,7 @@ async function fetchHarvestPage(job: GroupScrapeJob, env: Env): Promise<HarvestR
   const params = new URLSearchParams({
     group: job.group,
     postedLimit: job.postedLimit,
+    scrapePostedLimit: "24h",
     sortBy: job.sortBy,
     page: String(job.page),
   });
