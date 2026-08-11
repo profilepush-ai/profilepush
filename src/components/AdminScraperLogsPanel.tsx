@@ -10,8 +10,9 @@ type ScraperLogRow = {
   hour_start: string;
   scraped_posts_count: number;
   social_jobs_count: number;
+  hotlist_count: number;
   radar_results_count: number;
-  harvest_cost: number;
+  cost: number;
 };
 
 const RANGE_HOURS: Record<Exclude<LogsRange, 'custom'>, number> = {
@@ -41,7 +42,7 @@ function formatHour(value: string) {
   });
 }
 
-function formatHarvestCost(value: number) {
+function formatCost(value: number) {
   return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 }
 
@@ -89,14 +90,15 @@ export default function AdminScraperLogsPanel() {
 
   const totals = useMemo(() => {
     const initial = {
-      group: { scraped: 0, jobs: 0, radar: 0, cost: 0 },
-      keyword: { scraped: 0, jobs: 0, radar: 0, cost: 0 },
+      group: { scraped: 0, jobs: 0, hotlist: 0, radar: 0, cost: 0 },
+      keyword: { scraped: 0, jobs: 0, hotlist: 0, radar: 0, cost: 0 },
     };
     return rows.reduce((result, row) => {
       result[row.scraper_type].scraped += row.scraped_posts_count;
       result[row.scraper_type].jobs += row.social_jobs_count;
+      result[row.scraper_type].hotlist += row.hotlist_count;
       result[row.scraper_type].radar += row.radar_results_count;
-      result[row.scraper_type].cost += row.harvest_cost;
+      result[row.scraper_type].cost += row.cost;
       return result;
     }, initial);
   }, [rows]);
@@ -107,11 +109,11 @@ export default function AdminScraperLogsPanel() {
   }), [rows]);
 
   return (
-    <div className="mt-4 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+    <div className="mt-4 flex flex-col rounded-lg border border-gray-200 bg-white">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-gray-200 px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-gray-900">Hourly scraper pipeline</p>
-          <p className="mt-0.5 text-[11px] text-gray-500">Raw posts, accepted social jobs, and radar results by ingestion hour.</p>
+          <p className="mt-0.5 text-[11px] text-gray-500">Raw posts, accepted social jobs, Hotlist entries, and radar results by ingestion hour.</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <label className="block">
@@ -156,44 +158,47 @@ export default function AdminScraperLogsPanel() {
       {loading && rows.length === 0 ? (
         <div className="flex min-h-0 flex-1 items-center justify-center"><LogoSpinner size={18} /></div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 divide-y divide-gray-200 overflow-hidden lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+        <div className="grid grid-cols-1 gap-6 p-4 lg:grid-cols-2">
           {(['group', 'keyword'] as const).map((scraperType) => (
-            <section key={scraperType} className="flex min-h-0 min-w-0 flex-col">
-              <div className="shrink-0 border-b border-gray-200 px-4 py-3">
+            <section key={scraperType} className="min-w-0">
+              <div className="pb-3">
                 <div className="mb-2 flex items-center gap-2">
                   {scraperType === 'group' ? <Database size={13} className="text-blue-600" /> : <CalendarRange size={13} className="text-amber-600" />}
                   <h2 className="text-xs font-semibold capitalize text-gray-800">{scraperType} scraper</h2>
                 </div>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-5 gap-3">
                   <div><p className="text-[10px] uppercase text-gray-400">Raw posts</p><p className="text-lg font-semibold tabular-nums text-gray-900">{totals[scraperType].scraped.toLocaleString()}</p></div>
                   <div><p className="text-[10px] uppercase text-gray-400">Social jobs</p><p className="text-lg font-semibold tabular-nums text-blue-700">{totals[scraperType].jobs.toLocaleString()}</p></div>
+                  <div><p className="text-[10px] uppercase text-gray-400">Hotlist</p><p className="text-lg font-semibold tabular-nums text-orange-700">{totals[scraperType].hotlist.toLocaleString()}</p></div>
                   <div><p className="text-[10px] uppercase text-gray-400">Radar</p><p className="text-lg font-semibold tabular-nums text-emerald-700">{totals[scraperType].radar.toLocaleString()}</p></div>
-                  <div><p className="text-[10px] uppercase text-gray-400">Harvest cost</p><p className="text-lg font-semibold tabular-nums text-amber-700">{formatHarvestCost(totals[scraperType].cost)}</p></div>
+                  <div><p className="text-[10px] uppercase text-gray-400">Cost</p><p className="text-lg font-semibold tabular-nums text-amber-700">{formatCost(totals[scraperType].cost)}</p></div>
                 </div>
               </div>
-              <div className="min-h-0 flex-1 overflow-auto">
-                <table className="w-full min-w-[650px] table-fixed text-left text-xs">
-                  <thead className="sticky top-0 z-[2] bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500">
-                    <tr className="border-b border-gray-200">
-                      <th className="w-[170px] px-3 py-2.5">Hour</th>
-                      <th className="px-3 py-2.5 text-right">Raw posts</th>
-                      <th className="px-3 py-2.5 text-right">Social jobs</th>
-                      <th className="px-3 py-2.5 text-right">Radar</th>
-                      <th className="px-3 py-2.5 text-right">Harvest cost</th>
+              <div>
+                <table className="w-full table-fixed text-left text-xs">
+                  <thead className="bg-gray-50 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                    <tr>
+                      <th className="w-[30%] px-2 py-2.5 font-medium">Hour</th>
+                      <th className="px-2 py-2.5 text-right font-medium">Raw posts</th>
+                      <th className="px-2 py-2.5 text-right font-medium">Social jobs</th>
+                      <th className="px-2 py-2.5 text-right font-medium">Hotlist</th>
+                      <th className="px-2 py-2.5 text-right font-medium">Radar</th>
+                      <th className="px-2 py-2.5 text-right font-medium">Cost</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody>
                     {rowsByScraper[scraperType].map((row) => (
                       <tr key={row.hour_start} className="hover:bg-gray-50">
-                        <td className="px-3 py-2.5 font-medium text-gray-700">{formatHour(row.hour_start)}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-gray-900">{row.scraped_posts_count.toLocaleString()}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-blue-700">{row.social_jobs_count.toLocaleString()}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-emerald-700">{row.radar_results_count.toLocaleString()}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-amber-700">{formatHarvestCost(row.harvest_cost)}</td>
+                        <td className="px-2 py-2.5 text-gray-600">{formatHour(row.hour_start)}</td>
+                        <td className="px-2 py-2.5 text-right font-normal tabular-nums text-gray-600">{row.scraped_posts_count.toLocaleString()}</td>
+                        <td className="px-2 py-2.5 text-right font-normal tabular-nums text-blue-600">{row.social_jobs_count.toLocaleString()}</td>
+                        <td className="px-2 py-2.5 text-right font-normal tabular-nums text-orange-600">{row.hotlist_count.toLocaleString()}</td>
+                        <td className="px-2 py-2.5 text-right font-normal tabular-nums text-emerald-600">{row.radar_results_count.toLocaleString()}</td>
+                        <td className="px-2 py-2.5 text-right font-normal tabular-nums text-amber-600">{formatCost(row.cost)}</td>
                       </tr>
                     ))}
                     {rowsByScraper[scraperType].length === 0 && !loading && (
-                      <tr><td colSpan={5} className="px-4 py-10 text-center text-xs text-gray-500">No {scraperType} scraper activity in this range.</td></tr>
+                      <tr><td colSpan={6} className="px-4 py-10 text-center text-xs text-gray-500">No {scraperType} scraper activity in this range.</td></tr>
                     )}
                   </tbody>
                 </table>
