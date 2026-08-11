@@ -429,6 +429,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/admin-linkedin-groups/index.ts"
 
+[functions.admin-scraper-logs]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/admin-scraper-logs/index.ts"
+
 [functions.backfill-social-hotlists]
 enabled = true
 verify_jwt = false

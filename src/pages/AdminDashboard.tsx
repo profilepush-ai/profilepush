@@ -3,6 +3,7 @@ import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Data
 import LogoSpinner from '../components/LogoSpinner';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
+import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
 import { supabase } from '../lib/supabase';
 import { triggerRoleEmbedding } from '../lib/embeddings';
 import { filterAndSortAccountStats, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
@@ -97,7 +98,7 @@ function canRetryMatchRun(row: HotlistMatchRunRow) {
   return hasStatusFailure || hasErrorMessage;
 }
 
-type AdminView = 'stats' | 'hotlist' | 'scraper' | 'keyword-scraper' | 'history';
+type AdminView = 'stats' | 'hotlist' | 'scraper' | 'keyword-scraper' | 'scraper-logs' | 'history';
 type LinkedinStatsRange = '24h' | '7d' | '30d' | 'all' | 'custom';
 
 type DatePreset = '7d' | '30d' | '90d' | 'all' | 'custom';
@@ -1045,7 +1046,9 @@ export default function AdminDashboard() {
                         ? `${linkedinGroups.filter((group) => group.is_active).length} active of ${linkedinGroups.length} LinkedIn groups`
                       : adminView === 'keyword-scraper'
                         ? 'LinkedIn keyword search configuration'
-                      : `${historyRows.length} match runs`}
+                        : adminView === 'scraper-logs'
+                          ? 'Hourly group and keyword pipeline logs'
+                          : `${historyRows.length} match runs`}
                 </p>
               </div>
             </div>
@@ -1073,6 +1076,12 @@ export default function AdminDashboard() {
                 className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'keyword-scraper' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
               >
                 Keyword Scraper
+              </button>
+              <button
+                onClick={() => setAdminView('scraper-logs')}
+                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'scraper-logs' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
+              >
+                Scraper Logs
               </button>
               <button
                 onClick={() => setAdminView('history')}
@@ -1741,6 +1750,8 @@ export default function AdminDashboard() {
         )}
 
         {adminView === 'keyword-scraper' && <LinkedinKeywordScraperPanel />}
+
+  {adminView === 'scraper-logs' && <AdminScraperLogsPanel />}
 
         {adminView === 'history' && (
         <div className="mt-4 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
