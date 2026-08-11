@@ -51,6 +51,7 @@ Deno.serve(async (request: Request) => {
       scraped_posts_count: Number(row.scraped_posts_count ?? 0),
       social_jobs_count: Number(row.social_jobs_count ?? 0),
       radar_results_count: Number(row.radar_results_count ?? 0),
+      harvest_cost: Number(row.harvest_cost ?? 0),
     }));
     return respond({ rows, start: new Date(startTime).toISOString(), end: new Date(endTime).toISOString() });
   } catch (error) {
