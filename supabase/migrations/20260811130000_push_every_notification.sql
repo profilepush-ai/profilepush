@@ -1,4 +1,4 @@
--- Forward every in-app notification to the push delivery function.
+-- Forward every in-app notification to the durable push queue bridge.
 CREATE OR REPLACE FUNCTION public.push_inserted_notification()
 RETURNS trigger
 LANGUAGE plpgsql

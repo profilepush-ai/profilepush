@@ -1,0 +1,15 @@
+name = "profilepush-push-notifications"
+main = "src/index.ts"
+compatibility_date = "2026-08-11"
+workers_dev = true
+
+[[queues.producers]]
+binding = "PUSH_QUEUE"
+queue = "push-notifications"
+
+[[queues.consumers]]
+queue = "push-notifications"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "push-notifications-dlq"

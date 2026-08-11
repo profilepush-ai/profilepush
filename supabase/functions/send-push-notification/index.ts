@@ -1,8 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const ONESIGNAL_APP_ID = "fbf333e8-0931-4545-ac03-c532cc07d225";
-const ONESIGNAL_API_URL = "https://api.onesignal.com/notifications";
-
 type NotificationPayload = {
   id?: unknown;
   user_id?: unknown;
@@ -31,10 +28,11 @@ Deno.serve(async (req: Request) => {
     return respond({ error: "Unauthorized" }, 401);
   }
 
-  const oneSignalApiKey = Deno.env.get("ONESIGNAL_REST_API_KEY");
-  if (!oneSignalApiKey) {
-    console.error("ONESIGNAL_REST_API_KEY is not configured");
-    return respond({ error: "Push delivery is not configured" }, 503);
+  const pushQueueUrl = Deno.env.get("PUSH_QUEUE_URL");
+  const pushQueueToken = Deno.env.get("PUSH_QUEUE_TOKEN");
+  if (!pushQueueUrl || !pushQueueToken) {
+    console.error("PUSH_QUEUE_URL or PUSH_QUEUE_TOKEN is not configured");
+    return respond({ error: "Push queue is not configured" }, 503);
   }
 
   try {
@@ -42,7 +40,7 @@ Deno.serve(async (req: Request) => {
     const id = asString(notification.id, 100);
     const userId = asString(notification.user_id, 100);
     const title = asString(notification.title, 200);
-    const body = asString(notification.body, 2_000) || title;
+    const body = asString(notification.body, 2_000);
     const link = asString(notification.link, 2_000);
     const type = asString(notification.type, 100);
 
@@ -50,31 +48,30 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "id, user_id, and title are required" }, 400);
     }
 
-    const oneSignalResponse = await fetch(ONESIGNAL_API_URL, {
+    const queueResponse = await fetch(pushQueueUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Key ${oneSignalApiKey}`,
+        "Authorization": `Bearer ${pushQueueToken}`,
         "Content-Type": "application/json",
       },
       signal: AbortSignal.timeout(15_000),
       body: JSON.stringify({
-        app_id: ONESIGNAL_APP_ID,
-        include_aliases: { external_id: [userId] },
-        target_channel: "push",
-        headings: { en: title },
-        contents: { en: body },
-        data: { notification_id: id, link: link || null, type: type || null },
-        idempotency_key: id,
+        id,
+        user_id: userId,
+        title,
+        body: body || null,
+        link: link || null,
+        type: type || null,
       }),
     });
 
-    const result = await oneSignalResponse.json().catch(() => ({}));
-    if (!oneSignalResponse.ok) {
-      console.error("OneSignal delivery failed", oneSignalResponse.status, result);
-      return respond({ error: "OneSignal delivery failed", details: result }, 502);
+    const result = await queueResponse.json().catch(() => ({}));
+    if (!queueResponse.ok) {
+      console.error("Push enqueue failed", queueResponse.status, result);
+      return respond({ error: "Push enqueue failed", details: result }, 502);
     }
 
-    return respond({ ok: true, one_signal_id: result.id ?? null });
+    return respond({ ok: true, queued: true, notification_id: id }, 202);
   } catch (error) {
     console.error("send-push-notification error", error);
     return respond({ error: "Internal server error" }, 500);
