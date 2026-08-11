@@ -13,6 +13,8 @@
     "mobile:sync": "npm run build && npx cap sync",
     "mobile:sync:android": "npm run build && npx cap sync android",
     "mobile:android:bundle": "npm run mobile:sync:android && cd android && ./gradlew bundleRelease",
+    "mobile:android:signing:setup": "./scripts/setup-android-signing.sh",
+    "mobile:android:bundle:signed": "./scripts/build-android-release.sh",
     "mobile:android:apk": "npm run mobile:sync:android && cd android && ./gradlew assembleRelease",
     "mobile:android:open": "npx cap open android",
     "mobile:ios:open": "npx cap open ios",

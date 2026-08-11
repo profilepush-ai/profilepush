@@ -8,15 +8,19 @@
 
 ## Android release steps
 1. In Google Play Console, note the highest uploaded version code.
-2. Set release env vars from .env.mobile.release.example in your shell. `ANDROID_VERSION_CODE` must be higher than the Play Console value.
-3. Confirm all four signing variables are set; unsigned bundles cannot be uploaded.
-4. Build bundle:
+2. Store signing credentials in macOS Keychain once:
 
    ```bash
-   npm run mobile:android:bundle
+   npm run mobile:android:signing:setup
    ```
 
-5. Verify output and signature:
+3. Build a signed bundle without re-entering credentials. The version code must exceed the highest value in Play Console:
+
+   ```bash
+   ANDROID_VERSION_CODE=3 ANDROID_VERSION_NAME=1.0.2 npm run mobile:android:bundle:signed
+   ```
+
+4. Verify output and signature:
 
    ```bash
    ls -lh android/app/build/outputs/bundle/release/app-release.aab
@@ -24,8 +28,8 @@
    ```
 
    The output must not say `jar is unsigned`.
-6. Upload the AAB to an internal, closed, or open testing track and confirm Play reports target API 36.
-7. Promote the tested release to production before the Google Play deadline.
+5. Upload the AAB to an internal, closed, or open testing track and confirm Play reports target API 36.
+6. Promote the tested release to production before the Google Play deadline.
 
 ## iOS release steps
 1. Install full Xcode from App Store.
