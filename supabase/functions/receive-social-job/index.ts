@@ -25,6 +25,12 @@ const EMAIL_IN_TEXT_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const MIN_JOB_CONTENT_LENGTH = 80;
 const MIN_AI_CONFIDENCE = 0.8;
 
+type HotlistExtraction = {
+  source: Record<string, unknown>;
+  classificationConfidence: number;
+  result: Record<string, unknown>;
+};
+
 function extractEmail(explicitValue: unknown, content: string): string {
   const explicit = asString(explicitValue).trim().toLowerCase();
   if (EMAIL_PATTERN.test(explicit)) return explicit;
@@ -61,10 +67,6 @@ function normalizeSocialJobItems(items: Array<Record<string, unknown>>) {
 
     if (!postId || !platform || !postContent) {
       errors.push("Each item requires: post_id, platform, post_content");
-      continue;
-    }
-    if (!posterEmail) {
-      errors.push(`${platform}:${postId} rejected: valid poster email is required`);
       continue;
     }
     if (postContent.length < MIN_JOB_CONTENT_LENGTH) {
@@ -108,13 +110,53 @@ function asBoolean(value: unknown): boolean {
   return value === true || (typeof value === "string" && value.toLowerCase() === "true");
 }
 
+function isExplicitDemandSideJobPost(content: string): boolean {
+  const text = content.toLowerCase().replace(/\s+/g, " ");
+  const supplySignals = [
+    /\b(?:we|i) (?:have|represent|market) (?:available )?(?:candidates|consultants|resources)\b/,
+    /\b(?:our|my) (?:bench|hotlist)\b/,
+    /\b(?:updated|latest) hotlist\b/,
+    /\b(?:bench|available) (?:candidates|consultants|resources)\b/,
+    /\bplease share (?:your )?(?:open |client )?requirements\b/,
+    /\bopen to (?:new )?(?:c2c |contract )?(?:opportunities|projects)\b/,
+  ];
+  if (supplySignals.some((pattern) => pattern.test(text))) return false;
+
+  const applicationCtas = [
+    /\b(?:please |kindly )?(?:send|share|submit) (?:your )?(?:updated |latest )?resumes?\b/,
+    /\binterested candidates?\b/,
+    /\bapply (?:now|today|before|at|via|here)\b/,
+    /\bresume submission\b/,
+    /\bwe want to hear from you\b/,
+    /\bwe(?:'re| are) looking for\b/,
+  ];
+  if (applicationCtas.some((pattern) => pattern.test(text))) return true;
+
+  const demandSignals = [
+    /\bwe(?:'re| are) hiring\b/,
+    /\bwe are looking for\b/,
+    /\blooking for an? experienced\b/,
+    /\burgent (?:hiring|requirement|opening)\b/,
+    /\bjob requirements?\b/,
+    /\bjob title\s*:/,
+    /\bjd\s*:/,
+    /\bjoin our (?:growing )?team\b/,
+    /\binterview(?:ing)? immediately\b/,
+    /\binterview process\b/,
+    /\brequired (?:experience|skills|qualifications)\b/,
+    /\bideal candidate\b/,
+    /\bhiring manager interview\b/,
+  ];
+  return demandSignals.filter((pattern) => pattern.test(text)).length >= 2;
+}
+
 async function classifySocialJobs(
   workerUrl: string,
   workerToken: string,
   rows: Array<Record<string, unknown>>,
-): Promise<{ accepted: Array<Record<string, unknown>>; rejected: string[]; error?: string }> {
-  if (!workerUrl) return { accepted: [], rejected: [], error: "CLOUDFLARE_WORKER_URL is not set" };
-  if (rows.length === 0) return { accepted: [], rejected: [] };
+): Promise<{ accepted: Array<Record<string, unknown>>; hotlists: HotlistExtraction[]; rejected: string[]; error?: string }> {
+  if (!workerUrl) return { accepted: [], hotlists: [], rejected: [], error: "CLOUDFLARE_WORKER_URL is not set" };
+  if (rows.length === 0) return { accepted: [], hotlists: [], rejected: [] };
 
   const jobs = rows.map((row) => ({
     id: `${asString(row.platform)}:${asString(row.post_id)}`,
@@ -124,29 +166,60 @@ async function classifySocialJobs(
   }));
 
   try {
-    const response = await fetch(workerUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(workerToken ? { "Authorization": `Bearer ${workerToken}` } : {}),
-      },
-      body: JSON.stringify({ jobs }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      return { accepted: [], rejected: [], error: `Cloudflare classifier HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 240)}` };
-    }
+    const callParser = async (route: string, routeJobs: typeof jobs) => {
+      const response = await fetch(`${workerUrl.replace(/\/$/, "")}/${route}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(workerToken ? { "Authorization": `Bearer ${workerToken}` } : {}),
+        },
+        body: JSON.stringify({ jobs: routeJobs }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(`${route} HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 240)}`);
+      }
+      return Array.isArray(payload?.results) ? payload.results as Array<Record<string, unknown>> : [];
+    };
 
-    const results = Array.isArray(payload?.results)
-      ? payload.results as Array<Record<string, unknown>>
-      : [];
-    const resultById = new Map(results.map((result) => [asString(result.job_id), result]));
-    const accepted: Array<Record<string, unknown>> = [];
+    const classifications = await callParser("classify", jobs);
+    const classificationById = new Map(classifications.map((result) => [asString(result.job_id ?? result.post_id), result]));
+    const jobInputs: typeof jobs = [];
+    const hotlistInputs: typeof jobs = [];
+    const classificationConfidenceById = new Map<string, number>();
     const rejected: string[] = [];
 
-    for (const row of rows) {
-      const rowId = `${asString(row.platform)}:${asString(row.post_id)}`;
-      const result = resultById.get(rowId);
+    for (const job of jobs) {
+      const classification = classificationById.get(job.id);
+      const confidence = Number(classification?.confidence ?? 0);
+      const postType = asString(classification?.post_type).trim().toLowerCase();
+      classificationConfidenceById.set(job.id, confidence);
+      if (confidence < MIN_AI_CONFIDENCE || (postType !== "job" && postType !== "hotlist")) {
+        rejected.push(`${job.id} rejected: ${asString(classification?.reason).trim() || "not a job or hotlist"}`);
+      } else if (postType === "hotlist") {
+        hotlistInputs.push(job);
+      } else {
+        jobInputs.push(job);
+      }
+    }
+
+    const [jobResults, hotlistResults] = await Promise.all([
+      jobInputs.length > 0 ? callParser("extract-job", jobInputs) : Promise.resolve([]),
+      hotlistInputs.length > 0 ? callParser("extract-hotlist", hotlistInputs) : Promise.resolve([]),
+    ]);
+    const resultById = new Map(jobResults.map((result) => [asString(result.job_id), result]));
+    const hotlistResultById = new Map(hotlistResults.map((result) => [asString(result.job_id ?? result.post_id), result]));
+    const sourceById = new Map(rows.map((row) => [`${asString(row.platform)}:${asString(row.post_id)}`, row]));
+    const accepted: Array<Record<string, unknown>> = [];
+    const hotlists: HotlistExtraction[] = [];
+
+    for (const job of jobInputs) {
+      const row = sourceById.get(job.id)!;
+      if (!asString(row.poster_email).trim()) {
+        rejected.push(`${job.id} rejected: valid poster email is required`);
+        continue;
+      }
+      const result = resultById.get(job.id);
       const confidence = Number(result?.confidence ?? 0);
       const roleTitle = asString(result?.role_title).trim();
       const locations = asStringArray(result?.locations);
@@ -161,8 +234,8 @@ async function classifySocialJobs(
 
       if (!result || !asBoolean(result.is_job_posting) || confidence < MIN_AI_CONFIDENCE || !hasJobDetails) {
         const reason = asString(result?.rejection_reason).trim()
-          || (!result ? "classifier returned no result" : "AI confidence or job details below threshold");
-        rejected.push(`${rowId} rejected: ${reason}`);
+          || (!result ? "extractor returned no result" : "AI confidence or job details below threshold");
+        rejected.push(`${job.id} rejected: ${reason}`);
         continue;
       }
 
@@ -175,10 +248,150 @@ async function classifySocialJobs(
       });
     }
 
-    return { accepted, rejected };
+    for (const job of hotlistInputs) {
+      if (isExplicitDemandSideJobPost(job.description)) {
+        rejected.push(`${job.id} rejected: deterministic demand-side job signals`);
+        continue;
+      }
+      const result = hotlistResultById.get(job.id);
+      const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
+      if (!result || !asBoolean(result.is_hotlist) || Number(result.confidence ?? 0) < MIN_AI_CONFIDENCE || candidates.length === 0) {
+        rejected.push(`${job.id} rejected: ${asString(result?.rejection_reason).trim() || "hotlist extractor did not confirm available consultants"}`);
+        continue;
+      }
+      hotlists.push({
+        source: sourceById.get(job.id)!,
+        classificationConfidence: classificationConfidenceById.get(job.id) ?? 0,
+        result,
+      });
+    }
+
+    return { accepted, hotlists, rejected };
   } catch (error) {
-    return { accepted: [], rejected: [], error: `Cloudflare classifier failed: ${(error as Error).message}` };
+    return { accepted: [], hotlists: [], rejected: [], error: `Cloudflare parser failed: ${(error as Error).message}` };
   }
+}
+
+async function persistSocialHotlists(
+  supabase: ReturnType<typeof createClient>,
+  extractions: HotlistExtraction[],
+): Promise<number> {
+  const sourceCandidateCounts: Array<{ platform: string; sourcePostId: string; candidateCount: number }> = [];
+  const hotlistRows = extractions.flatMap(({ source, classificationConfidence, result }) => {
+    const candidates = Array.isArray(result.candidates) ? result.candidates as Array<Record<string, unknown>> : [];
+    const validCandidates = candidates.filter((candidate) => asString(candidate.role_title).trim());
+    const platform = asString(source.platform);
+    const sourcePostId = asString(source.post_id);
+    const consultantCount = validCandidates.length;
+    const recruiterDetails = {
+      bench_sales_recruiter_name: asString(result.bench_sales_recruiter_name).trim() || asString(source.posted_by_name),
+      bench_sales_recruiter_email: asString(result.bench_sales_recruiter_email).trim().toLowerCase() || asString(source.poster_email),
+      bench_sales_recruiter_phone: asString(result.bench_sales_recruiter_phone).trim() || asString(source.poster_phone),
+      bench_sales_company_name: asString(result.bench_sales_company_name).trim(),
+      recruiter_profile_link: asString(source.profile_link),
+    };
+    sourceCandidateCounts.push({ platform, sourcePostId, candidateCount: consultantCount });
+
+    return validCandidates.map((candidate, candidateIndex) => {
+      const roleTitle = asString(candidate.role_title).trim();
+      const numericValue = (value: unknown) => value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
+      return {
+        source_post_id: sourcePostId,
+        candidate_index: candidateIndex,
+        consultant_count: consultantCount,
+        post_scope: consultantCount === 1 ? "single" : "multiple",
+        platform,
+        group_id: asString(source.group_id),
+        posted_at: source.posted_at ?? null,
+        post_url: asString(source.post_url),
+        raw_post_content: asString(source.post_content),
+        ...recruiterDetails,
+        candidate_name: asString(candidate.candidate_name),
+        role_title: roleTitle,
+        core_skills: asStringArray(candidate.core_skills),
+        years_experience: numericValue(candidate.years_experience),
+        visa_type: asString(candidate.visa_type),
+        employment_type: asString(candidate.employment_type),
+        work_type: asString(candidate.work_type),
+        locations: asStringArray(candidate.locations),
+        hourly_rate_min: numericValue(candidate.hourly_rate_min),
+        hourly_rate_max: numericValue(candidate.hourly_rate_max),
+        availability: asString(candidate.availability),
+        candidate_summary: asString(candidate.candidate_summary),
+        classification_confidence: classificationConfidence,
+      };
+    });
+  });
+  if (hotlistRows.length === 0) return 0;
+
+  const { data, error } = await supabase
+    .from("social_hotlist")
+    .upsert(hotlistRows, { onConflict: "platform,source_post_id,candidate_index", ignoreDuplicates: false })
+    .select("id, candidate_index, role_title, core_skills, years_experience, visa_type, employment_type, work_type, locations, hourly_rate_min, hourly_rate_max, consultant_count, post_scope");
+  if (error) throw new Error(`social_hotlist upsert failed: ${error.message}`);
+
+  for (const source of sourceCandidateCounts) {
+    const { error: staleRowsError } = await supabase
+      .from("social_hotlist")
+      .delete()
+      .eq("platform", source.platform)
+      .eq("source_post_id", source.sourcePostId)
+      .gte("candidate_index", source.candidateCount);
+    if (staleRowsError) throw new Error(`stale social_hotlist cleanup failed: ${staleRowsError.message}`);
+  }
+
+  const radarRows = (data ?? []).map((row) => {
+    const visaTypes = row.visa_type ? [row.visa_type] : [];
+    const rate = row.hourly_rate_min != null || row.hourly_rate_max != null
+      ? `$${row.hourly_rate_min ?? "?"}-$${row.hourly_rate_max ?? "?"}/hr`
+      : "Not specified";
+    const extractedFields = {
+      role_title: row.role_title,
+      core_skills: row.core_skills,
+      years_experience: row.years_experience,
+      visa_types: visaTypes,
+      employment_type: row.employment_type,
+      work_type: row.work_type,
+      locations: row.locations,
+      hourly_rate_min: row.hourly_rate_min,
+      hourly_rate_max: row.hourly_rate_max,
+      consultant_count: row.consultant_count,
+      post_scope: row.post_scope,
+    };
+    return {
+      hotlist_id: row.id,
+      role_title: row.role_title,
+      core_skills: row.core_skills,
+      years_experience: row.years_experience,
+      visa_types: visaTypes,
+      employment_type: row.employment_type,
+      work_type: row.work_type,
+      locations: row.locations,
+      hourly_rate_min: row.hourly_rate_min,
+      hourly_rate_max: row.hourly_rate_max,
+      extracted_fields: extractedFields,
+      score_breakdown: {
+        hotlist_source: {
+          consultant_count: row.consultant_count,
+          post_scope: row.post_scope,
+          candidate_index: row.candidate_index,
+        },
+        role_match: { score: 0, candidate_value: "", job_value: row.role_title, rule: "Available consultant role" },
+        skills_match: { score: 0, candidate_value: "", job_value: row.core_skills.join(", ") || "Not specified", rule: "Consultant skills" },
+        experience_match: { score: 0, candidate_value: "", job_value: row.years_experience != null ? `${row.years_experience}+ years` : "Not specified", rule: "Consultant experience" },
+        visa_match: { score: 0, candidate_value: "", job_value: visaTypes.join(", ") || "Not specified", rule: "Consultant visa" },
+        work_type_match: { score: 0, candidate_value: "", job_value: row.work_type || "Not specified", rule: "Preferred work arrangement" },
+        employment_type_match: { score: 0, candidate_value: "", job_value: row.employment_type || "Not specified", rule: "Engagement type" },
+        location_match: { score: 0, candidate_value: "", job_value: row.locations.join(", ") || "Not specified", rule: "Consultant location" },
+        rate_match: { score: 0, candidate_value: "", job_value: rate, rule: "Consultant rate" },
+      },
+    };
+  });
+  const { error: radarError } = await supabase
+    .from("radar_match_hotlist")
+    .upsert(radarRows, { onConflict: "hotlist_id", ignoreDuplicates: false });
+  if (radarError) throw new Error(`radar_match_hotlist upsert failed: ${radarError.message}`);
+  return data?.length ?? 0;
 }
 
 async function logSocialJobPayload(insertLog: (payload: Record<string, unknown>) => Promise<unknown>, payload: Record<string, unknown>, normalizedRows: Array<Record<string, unknown>>, errors: string[], insertedCount: number, status: string) {
@@ -254,17 +467,46 @@ Deno.serve(async (req: Request) => {
     const CLOUDFLARE_WORKER_TOKEN = (Deno.env.get("CLOUDFLARE_WORKER_TOKEN") ?? "").trim();
     const { rows, errors } = normalizeSocialJobItems(items);
 
+    const sourcePostIds = [...new Set(rows.map((row) => asString(row.post_id)).filter(Boolean))];
+    const [existingJobsResult, existingHotlistsResult] = sourcePostIds.length > 0
+      ? await Promise.all([
+        supabase
+          .from("social_jobs")
+          .select("post_id,platform,extracted_at")
+          .in("post_id", sourcePostIds),
+        supabase
+          .from("social_hotlist")
+          .select("source_post_id,platform")
+          .in("source_post_id", sourcePostIds),
+      ])
+      : [{ data: [], error: null }, { data: [], error: null }];
+    if (existingJobsResult.error) return respond({ error: existingJobsResult.error.message }, 500);
+    if (existingHotlistsResult.error) return respond({ error: existingHotlistsResult.error.message }, 500);
+
+    const completedSourceKeys = new Set<string>([
+      ...(existingJobsResult.data ?? [])
+        .filter((row) => Boolean(row.extracted_at))
+        .map((row) => `${asString(row.platform)}:${asString(row.post_id)}`),
+      ...(existingHotlistsResult.data ?? [])
+        .map((row) => `${asString(row.platform)}:${asString(row.source_post_id)}`),
+    ]);
+    const duplicateRows = rows.filter((row) => completedSourceKeys.has(`${asString(row.platform)}:${asString(row.post_id)}`));
+    const rowsToClassify = rows.filter((row) => !completedSourceKeys.has(`${asString(row.platform)}:${asString(row.post_id)}`));
+    const duplicateSkips = duplicateRows.map((row) => (
+      `${asString(row.platform)}:${asString(row.post_id)} skipped: source post already processed`
+    ));
+
     const classification = await classifySocialJobs(
       CLOUDFLARE_WORKER_URL,
       CLOUDFLARE_WORKER_TOKEN,
-      rows,
+      rowsToClassify,
     );
     if (classification.error) {
       await logSocialJobPayload(
         async (payload) => supabase.from("social_job_payload_logs").insert(payload),
         body,
-        rows,
-        [...errors, classification.error],
+        rowsToClassify,
+        [...errors, ...duplicateSkips, classification.error],
         0,
         "classifier_error",
       );
@@ -272,6 +514,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const normalizedRows = classification.accepted;
+    const hotlistCandidateCount = await persistSocialHotlists(supabase, classification.hotlists);
     const acceptedPostIds = [...new Set(normalizedRows.map((row) => asString(row.post_id)).filter(Boolean))];
     const { data: existingJobs, error: existingJobsError } = acceptedPostIds.length > 0
       ? await supabase
@@ -291,7 +534,7 @@ Deno.serve(async (req: Request) => {
         group_id: asString(databaseRow.group_id) || existingGroupBySourceKey.get(sourceKey) || "",
       };
     });
-    const rejectionErrors = [...errors, ...classification.rejected];
+    const rejectionErrors = [...errors, ...duplicateSkips, ...classification.rejected];
 
     await logSocialJobPayload(
       async (payload) => supabase.from("social_job_payload_logs").insert(payload),
@@ -299,11 +542,19 @@ Deno.serve(async (req: Request) => {
       normalizedRows,
       rejectionErrors,
       normalizedRows.length,
-      normalizedRows.length > 0 ? "accepted" : "rejected",
+        normalizedRows.length > 0 || hotlistCandidateCount > 0 ? "accepted" : "rejected",
     );
 
     if (normalizedRows.length === 0) {
-      return respond({ success: true, inserted: 0, ids: [], enqueued_count: 0, skipped: rejectionErrors });
+      return respond({
+        success: true,
+        inserted: 0,
+        hotlist_candidates_inserted: hotlistCandidateCount,
+        ids: [],
+        enqueued_count: 0,
+        duplicates_skipped: duplicateRows.length,
+        skipped: rejectionErrors,
+      });
     }
 
     const { data, error } = await supabase
@@ -358,8 +609,10 @@ Deno.serve(async (req: Request) => {
     return respond({
       success: true,
       inserted: data.length,
+      hotlist_candidates_inserted: hotlistCandidateCount,
       ids: insertedIds,
       enqueued_count: queueResult.accepted,
+      duplicates_skipped: duplicateRows.length,
       enqueue_error: queueResult.error ?? null,
       skipped: rejectionErrors,
     });

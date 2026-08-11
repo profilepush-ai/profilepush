@@ -7,8 +7,12 @@ workers_dev = true
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 PROCESSOR_WORKER_URL = "https://profilepush-linkedin-group-posts-processor.profilepush-ai.workers.dev"
 
+[[services]]
+binding = "PROCESSOR_WORKER"
+service = "profilepush-linkedin-group-posts-processor"
+
 [triggers]
-crons = [ "0 * * * *" ]
+crons = [ "30 11-19 * * *" ]
 
 [[queues.producers]]
 binding = "KEYWORD_SCRAPE_QUEUE"

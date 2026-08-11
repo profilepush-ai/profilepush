@@ -428,3 +428,8 @@ entrypoint = "./functions/health-check/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/admin-linkedin-groups/index.ts"
+
+[functions.backfill-social-hotlists]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/backfill-social-hotlists/index.ts"

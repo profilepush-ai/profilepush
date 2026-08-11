@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Bookmark, ChevronDown, LogOut, Settings,
+  ChevronDown, HelpCircle, LogOut, Settings,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, ShieldCheck, Briefcase, MoonStar, SunMedium, Mail,
+  Activity, ShieldCheck, Briefcase, UserRound, MoonStar, SunMedium, Mail,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -14,9 +14,9 @@ import type { AppNotification } from '../lib/notifications';
 
 const navItems = [
   { path: '/jobs',          label: 'Jobs',           mobileLabel: 'Jobs',    icon: Briefcase, hideOnMobile: false },
+  { path: '/hotlist',       label: 'Hotlist',        mobileLabel: 'Hotlist', icon: UserRound, hideOnMobile: false },
   { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
   { path: '/inbox',        label: 'Inbox',          mobileLabel: 'Inbox',   icon: Mail,      hideOnMobile: false },
-  { path: '/watchlist-profiles', label: 'Watchlist', mobileLabel: 'Watch',   icon: Bookmark, hideOnMobile: false },
   { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
 ];
 
@@ -316,11 +316,13 @@ export default function AppNav() {
 
         <Link
           to="/support"
-          className={`hidden sm:flex items-center px-3 py-1 rounded text-xs font-medium transition-colors ${
+          className={`hidden sm:inline-flex h-7 w-7 items-center justify-center rounded transition-colors ${
             location.pathname === '/support' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
           }`}
+          aria-label="Help"
+          title="Help"
         >
-          ? Help
+          <HelpCircle size={14} />
         </Link>
 
         <Link
@@ -432,6 +434,13 @@ export default function AppNav() {
             <span>Jobs</span>
           </Link>
           <Link
+            to="/hotlist"
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/hotlist' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <UserRound size={18} />
+            <span>Hotlist</span>
+          </Link>
+          <Link
             to="/pulse"
             className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
           >
@@ -452,13 +461,6 @@ export default function AppNav() {
           >
             <ShieldCheck size={18} />
             <span>Tracker</span>
-          </Link>
-          <Link
-            to="/watchlist-profiles"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/watchlist-profiles' ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <Bookmark size={18} />
-            <span>Watchlist</span>
           </Link>
         </nav>
       )}

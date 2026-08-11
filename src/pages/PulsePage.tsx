@@ -75,6 +75,8 @@ type SocialLead = {
   posterEmail: string;
   posterPhone: string;
   postedAt: string;
+  createdAt: string;
+  matchedAt?: string;
   postedAgo: string;
   platform: string;
   matchScore: number | null;
@@ -88,7 +90,39 @@ type SocialLead = {
   experienceYears: number | null;
   visaTypes: string[];
   hourlyRate: string;
+  consultantCount?: number;
+  candidateIndex?: number;
 };
+
+function compareDetailsAndPostedDate(a: SocialLead, b: SocialLead): number {
+  const hasMeaningfulValue = (value: string | null | undefined) => {
+    const normalized = (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return Boolean(normalized) && ![
+      '-',
+      'unknown',
+      'not specified',
+      'not available',
+      'location not specified',
+      'n/a',
+      'na',
+      'none',
+      'null',
+      'tbd',
+    ].includes(normalized);
+  };
+  const rateAvailabilityDelta = Number(Boolean(b.hourlyRate.trim())) - Number(Boolean(a.hourlyRate.trim()));
+  if (rateAvailabilityDelta !== 0) return rateAvailabilityDelta;
+  const experienceAvailabilityDelta = Number(b.experienceYears != null) - Number(a.experienceYears != null);
+  if (experienceAvailabilityDelta !== 0) return experienceAvailabilityDelta;
+  const employmentTypeAvailabilityDelta = Number(hasMeaningfulValue(b.employmentType)) - Number(hasMeaningfulValue(a.employmentType));
+  if (employmentTypeAvailabilityDelta !== 0) return employmentTypeAvailabilityDelta;
+  const locationAvailabilityDelta = Number(hasMeaningfulValue(b.location)) - Number(hasMeaningfulValue(a.location));
+  if (locationAvailabilityDelta !== 0) return locationAvailabilityDelta;
+  const workTypeAvailabilityDelta = Number(hasMeaningfulValue(getBreakdownJobValue(b.scoreBreakdown, 'work_type_match')))
+    - Number(hasMeaningfulValue(getBreakdownJobValue(a.scoreBreakdown, 'work_type_match')));
+  if (workTypeAvailabilityDelta !== 0) return workTypeAvailabilityDelta;
+  return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
+}
 
 type HotlistRoleRow = {
   id: string;
@@ -246,6 +280,7 @@ type ProfileCategoryTab = {
 };
 
 type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'asked' | 'verified' | 'queued';
+type FeedTimeBasis = 'posted' | 'created';
 type LeadActionType = 'revealed' | 'breakdown';
 
 type AskedJobState = {
@@ -1262,9 +1297,15 @@ function buildHotlistRolePayloadFromPersona(accountId: string, persona: PulsePer
 }
 
 
-export default function PulsePage() {
+type PulsePageProps = {
+  feedKind?: 'jobs' | 'hotlist';
+};
+
+export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const { account, subscription, user, refreshAccount } = useAuth();
   const { isDark } = useTheme();
+  const isHotlistFeed = feedKind === 'hotlist';
+  const canSelectFeedTimeBasis = user?.email?.toLowerCase() === 'poornapotluri27@gmail.com';
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1278,7 +1319,7 @@ export default function PulsePage() {
   const [searchParams] = useSearchParams();
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
-  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('7d');
+  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('24h');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
@@ -1313,6 +1354,7 @@ export default function PulsePage() {
   const [showGeneratedEmailDraft, setShowGeneratedEmailDraft] = useState(false);
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
+  const [feedTimeBasis, setFeedTimeBasis] = useState<FeedTimeBasis>('posted');
   const [visibleMatchesCount, setVisibleMatchesCount] = useState(MATCHES_PAGE_SIZE);
   const [desktopRecentVisibleCount, setDesktopRecentVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [desktopRevealedVisibleCount, setDesktopRevealedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
@@ -1353,7 +1395,8 @@ export default function PulsePage() {
   const pulseRowsCacheRef = useRef<PulseSocialFeedRpcRow[] | null>(null);
   const pulseRowsCacheAtRef = useRef(0);
   const pulseRowsCacheRangeHoursRef = useRef<number | null>(null);
-  const pulseRowsRequestRef = useRef<{ hours: number; request: Promise<PulseSocialFeedRpcRow[]> } | null>(null);
+  const pulseRowsCacheTimeBasisRef = useRef<FeedTimeBasis | null>(null);
+  const pulseRowsRequestRef = useRef<{ hours: number; timeBasis: FeedTimeBasis; request: Promise<PulseSocialFeedRpcRow[]> } | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -1371,7 +1414,7 @@ export default function PulsePage() {
   }, [leaderboard]);
 
   const selectedProfileRange = useMemo(
-    () => PROFILE_RANGE_OPTIONS.find((item) => item.id === profileRangeId) ?? PROFILE_RANGE_OPTIONS[1],
+    () => PROFILE_RANGE_OPTIONS.find((item) => item.id === profileRangeId) ?? PROFILE_RANGE_OPTIONS[0],
     [profileRangeId],
   );
 
@@ -1421,7 +1464,7 @@ export default function PulsePage() {
       .from('job_search_history')
       .select('search_query')
       .eq('user_id', user.id)
-      .eq('page', '/jobs')
+      .eq('page', isHotlistFeed ? '/hotlist' : '/jobs')
       .order('created_at', { ascending: false })
       .limit(5);
 
@@ -1431,7 +1474,7 @@ export default function PulsePage() {
         .map((row) => (row.search_query ?? '').trim())
         .filter(Boolean),
     );
-  }, [user?.id]);
+  }, [isHotlistFeed, user?.id]);
 
   const zeroStats: ProfileStats = useMemo(() => ({
     uniqueCompanies: 0,
@@ -1741,28 +1784,34 @@ export default function PulsePage() {
         continue;
       }
 
-      const existingTs = new Date(existing.postedAt).getTime();
-      const nextTs = new Date(lead.postedAt).getTime();
+      const existingTs = new Date(feedTimeBasis === 'created' ? existing.createdAt : existing.postedAt).getTime();
+      const nextTs = new Date(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt).getTime();
       if (nextTs > existingTs) {
         byKey.set(key, lead);
       }
     }
 
     return Array.from(byKey.values());
-  }, [scopedFeed]);
+  }, [feedTimeBasis, scopedFeed]);
 
   const recentVisibleFeed = useMemo(() => {
     const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id));
     return recent.sort((a, b) => {
-      const aTs = new Date(a.postedAt).getTime();
-      const bTs = new Date(b.postedAt).getTime();
+      if (isHotlistFeed) return compareDetailsAndPostedDate(a, b);
+      const aTs = new Date(!isHotlistFeed && a.matchedAt
+        ? a.matchedAt
+        : (feedTimeBasis === 'created' ? a.createdAt : a.postedAt)).getTime();
+      const bTs = new Date(!isHotlistFeed && b.matchedAt
+        ? b.matchedAt
+        : (feedTimeBasis === 'created' ? b.createdAt : b.postedAt)).getTime();
       return bTs - aTs;
     });
-  }, [dedupedScopedFeed, revealedLeadIds]);
+  }, [dedupedScopedFeed, feedTimeBasis, isHotlistFeed, revealedLeadIds]);
 
   const revealedVisibleFeed = useMemo(() => {
     const revealed = dedupedScopedFeed.filter((lead) => revealedLeadIds.has(lead.id));
     return revealed.sort((a, b) => {
+      if (isHotlistFeed) return compareDetailsAndPostedDate(a, b);
       const aTs = revealedAtByLeadId[a.id] ? new Date(revealedAtByLeadId[a.id]).getTime() : 0;
       const bTs = revealedAtByLeadId[b.id] ? new Date(revealedAtByLeadId[b.id]).getTime() : 0;
       if (aTs !== bTs) return bTs - aTs;
@@ -1802,41 +1851,40 @@ export default function PulsePage() {
   }), [filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, watchingRoles]);
 
   const filteredFeed = useMemo(() => {
+    let selectedFeed: SocialLead[];
     if (selectedMatchesTab === 'breakdown') {
-      return dedupedScopedFeed.filter((lead) => breakdownChargedLeadIds.has(lead.id));
+      selectedFeed = dedupedScopedFeed.filter((lead) => breakdownChargedLeadIds.has(lead.id));
+    } else if (selectedMatchesTab === 'revealed') {
+      selectedFeed = revealedVisibleFeed;
+    } else if (selectedMatchesTab === 'asked') {
+      selectedFeed = askedVisibleFeed;
+    } else if (selectedMatchesTab === 'verified') {
+      selectedFeed = verifiedVisibleFeed;
+    } else if (selectedMatchesTab === 'queued') {
+      selectedFeed = recentVisibleFeed;
+    } else {
+      selectedFeed = dedupedScopedFeed;
     }
-    if (selectedMatchesTab === 'revealed') {
-      return revealedVisibleFeed;
-    }
-    if (selectedMatchesTab === 'asked') {
-      return askedVisibleFeed;
-    }
-    if (selectedMatchesTab === 'verified') {
-      return verifiedVisibleFeed;
-    }
-    if (selectedMatchesTab === 'queued') {
-      return recentVisibleFeed;
-    }
-    return dedupedScopedFeed;
+    return [...selectedFeed].sort(compareDetailsAndPostedDate);
   }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed, revealedVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
 
   const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
 
   const visibleDesktopRecentFeed = useMemo(
-    () => recentVisibleFeed.slice(0, desktopRecentVisibleCount),
+    () => [...recentVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopRecentVisibleCount),
     [desktopRecentVisibleCount, recentVisibleFeed],
   );
   const visibleDesktopRevealedFeed = useMemo(
-    () => revealedVisibleFeed.slice(0, desktopRevealedVisibleCount),
+    () => [...revealedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopRevealedVisibleCount),
     [desktopRevealedVisibleCount, revealedVisibleFeed],
   );
   const visibleDesktopAskedFeed = useMemo(
-    () => askedVisibleFeed.slice(0, desktopAskedVisibleCount),
+    () => [...askedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopAskedVisibleCount),
     [askedVisibleFeed, desktopAskedVisibleCount],
   );
   const visibleDesktopVerifiedFeed = useMemo(
-    () => verifiedVisibleFeed.slice(0, desktopVerifiedVisibleCount),
+    () => [...verifiedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopVerifiedVisibleCount),
     [desktopVerifiedVisibleCount, verifiedVisibleFeed],
   );
   const canLoadMoreDesktopRecent = desktopRecentVisibleCount < recentVisibleFeed.length;
@@ -2154,7 +2202,7 @@ export default function PulsePage() {
     const isAskPending = globalAskedJobState === 'asked';
     const isVerified = globalAskedJobState === 'verified';
     const missingJobDetails = getMissingJobDetails(lead);
-    const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim()) && missingJobDetails.length > 0;
+    const canAskAI = !isHotlistFeed && !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim()) && missingJobDetails.length > 0;
     const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
       lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
       undefined,
@@ -2216,6 +2264,13 @@ export default function PulsePage() {
       });
       return normalizeDisplayValue(found?.detail?.job_value);
     };
+    const normalizeHotlistWorkType = (value: string) => {
+      const normalized = value.trim().toLowerCase().replace(/[-_]+/g, ' ');
+      if (/\bhybrid\b/.test(normalized)) return 'Hybrid';
+      if (/\bremote\b/.test(normalized)) return 'Remote';
+      if (/\bon\s*site\b|\bonsite\b/.test(normalized)) return 'Onsite';
+      return '-';
+    };
     const renderMissingAwareValue = (value: string) => {
       if (value === '-') {
         return <PersonaMissingTag />;
@@ -2223,7 +2278,8 @@ export default function PulsePage() {
       return value;
     };
     const expValue = getBreakdownValue(['experience', 'exp']);
-    const workTypeValue = getBreakdownValue(['work_type', 'work type']);
+    const rawWorkTypeValue = getBreakdownValue(['work_type', 'work type']);
+    const workTypeValue = isHotlistFeed ? normalizeHotlistWorkType(rawWorkTypeValue) : rawWorkTypeValue;
     const employmentTypeValue = getBreakdownValue(['employment_type', 'employment type']);
     const rateValue = getBreakdownValue(['rate', 'hourly']);
     const visaValue = getBreakdownValue(['visa']);
@@ -2250,14 +2306,24 @@ export default function PulsePage() {
       const ext = domainPart.includes('.') ? domainPart.split('.').pop()?.trim() : '';
       return ext ? `${prefix}**@***.${ext}` : `${prefix}**@***`;
     })();
+    const consultantPositionLabel = isHotlistFeed && lead.consultantCount
+      ? lead.consultantCount === 1
+        ? 'Single consultant'
+        : `Consultant ${(lead.candidateIndex ?? 0) + 1} of ${lead.consultantCount}`
+      : null;
 
     return (
       <div key={lead.id} className={`relative mb-1.5 break-inside-avoid rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
         <div>
           <div className="min-w-0 pr-12">
-            <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || 'Job Opportunity'}</p>
+            <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
+            {consultantPositionLabel && (
+              <span className="mt-0.5 inline-flex rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-300">
+                {consultantPositionLabel}
+              </span>
+            )}
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
-              <span>{lead.postedAgo}</span>
+              <span>{feedTimeBasis === 'created' ? 'Added' : 'Posted'} {formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
               <span>•</span>
               <span>{isLeadRevealed ? `Posted by ${lead.posterName}` : maskPosterName(lead.posterName)}</span>
               {(lead.company || lead.platform) && (
@@ -2289,7 +2355,7 @@ export default function PulsePage() {
             type="button"
             onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
             disabled={!canAskAI || processingAskAILeadId === lead.id}
-            title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Missing details have already been requested' : !lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Ask AI to request the missing details'}
+            title={isHotlistFeed ? 'Bench Sales Recruiter contact' : isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Missing details have already been requested' : !lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Ask AI to request the missing details'}
             className={`absolute right-3 top-2.5 inline-flex items-center justify-center bg-transparent font-semibold transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-45 ${isAskPending ? 'flex-row gap-1 text-[10px]' : isVerified ? 'w-11 flex-col gap-0.5' : 'w-5 flex-col gap-0.5'}`}
             style={{ color: isDark ? `color-mix(in srgb, ${accentColor} 82%, black)` : '#1D4ED8' }}
           >
@@ -2305,15 +2371,15 @@ export default function PulsePage() {
               <div className="grid grid-cols-3 gap-x-3 gap-y-2">
                 <div className="min-w-0">
                   <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Exp</div>
-                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{expValue}</div>
+                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(expValue)}</div>
                 </div>
                 <div className="min-w-0">
                   <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Work Type</div>
-                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{workTypeValue}</div>
+                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(workTypeValue)}</div>
                 </div>
                 <div className="min-w-0">
                   <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Emp Type</div>
-                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{employmentTypeValue}</div>
+                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(employmentTypeValue)}</div>
                 </div>
                 <div className="min-w-0">
                   <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Rate</div>
@@ -2325,7 +2391,7 @@ export default function PulsePage() {
                 </div>
                 <div className="min-w-0">
                   <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Location</div>
-                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{locationValue}</div>
+                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(locationValue)}</div>
                 </div>
               </div>
               <button
@@ -2342,7 +2408,7 @@ export default function PulsePage() {
               >
                 <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Skills</div>
                 <div className={`text-[9px] leading-tight break-words transition-all duration-200 ${isExpandedBreakdownVisible ? skillsValueClass : `blur-sm select-none ${metaLabelClass} pr-5`}`}>
-                  {normalizeDisplayValue(skillsValue)}
+                  {renderMissingAwareValue(normalizeDisplayValue(skillsValue))}
                 </div>
               </button>
             </div>
@@ -2354,7 +2420,7 @@ export default function PulsePage() {
                   {inlineBreakdownItems.map((item) => (
                     <tr key={item.key}>
                       <td className={`bg-transparent px-2 py-1 break-words whitespace-normal ${revealedTableLabelClass}`}>{formatBreakdownFieldName(item.key)}</td>
-                      <td className={`bg-transparent px-2 py-1 break-words whitespace-normal ${revealedTableValueClass}`}>{normalizeDisplayValue(item.detail?.job_value)}</td>
+                      <td className={`bg-transparent px-2 py-1 break-words whitespace-normal ${revealedTableValueClass}`}>{renderMissingAwareValue(normalizeDisplayValue(item.detail?.job_value))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2378,7 +2444,7 @@ export default function PulsePage() {
                   {(isExpandedBreakdownVisible ? inlineBreakdownItems : collapsedInlineBreakdownItems).map((item, idx) => (
                     <tr key={item.key}>
                       <td className={`px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>{formatBreakdownFieldName(item.key)}</td>
-                      <td className={`px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>{normalizeDisplayValue(item.detail?.job_value)}</td>
+                      <td className={`px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>{renderMissingAwareValue(normalizeDisplayValue(item.detail?.job_value))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2400,7 +2466,7 @@ export default function PulsePage() {
           {isLeadRevealed ? (
             <div className="col-span-7 grid grid-cols-2 gap-1.5">
               <button
-                onClick={(e) => { e.stopPropagation(); void copyText(lead.posterEmail, 'Vendor email'); }}
+                onClick={(e) => { e.stopPropagation(); void copyText(lead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email'); }}
                 className={`inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2 py-1.5 text-[10px] font-semibold transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)] ${isDark ? 'text-[var(--accent-hex)]' : 'text-blue-600'}`}
                 style={{ borderColor: 'rgb(var(--accent-rgb) / 0.30)' }}
               >
@@ -2568,6 +2634,12 @@ export default function PulsePage() {
   }, [user?.id]);
 
   const loadAskedJobState = useCallback(async () => {
+    if (isHotlistFeed) {
+      setAskedJobStateByLeadId({});
+      setGlobalAskedJobStateByLeadId({});
+      setAskedLeadsById({});
+      return;
+    }
     if (!account?.id || !user?.id) {
       setAskedJobStateByLeadId({});
       setGlobalAskedJobStateByLeadId({});
@@ -2629,6 +2701,7 @@ export default function PulsePage() {
         posterEmail: row.poster_email?.trim() || '',
         posterPhone: row.poster_phone?.trim() || '',
         postedAt: eventTime,
+        createdAt: row.created_at,
         postedAgo: formatAgo(eventTime),
         platform: row.platform,
         matchScore: null,
@@ -2647,7 +2720,7 @@ export default function PulsePage() {
       };
     }
     setAskedLeadsById(nextLeads);
-  }, [account?.id, user?.id]);
+  }, [account?.id, isHotlistFeed, user?.id]);
 
   const loadLeaderboard = useCallback(async () => {
     const { data, error } = await supabase.rpc('get_pulse_persona_leaderboard', { limit_count: LEADERBOARD_RPC_LIMIT });
@@ -2722,10 +2795,12 @@ export default function PulsePage() {
     await Promise.all([loadLeaderboard(), loadWatchingRoles(), loadLeadActionState(), loadAskedJobState()]);
 
     try {
-      const { data: latestRows } = await supabase.rpc('get_pulse_social_feed', {
-        p_since: '1970-01-01T00:00:00.000Z',
-        p_limit: 1,
-      } as never);
+      const { data: latestRows } = await supabase.rpc(
+        isHotlistFeed ? 'get_social_hotlist_feed_page' : 'get_pulse_social_feed',
+        isHotlistFeed
+          ? { p_since: '1970-01-01T00:00:00.000Z', p_before_posted_at: null, p_before_lead_id: null, p_limit: 1 }
+          : { p_since: '1970-01-01T00:00:00.000Z', p_limit: 1 } as never,
+      );
       const latest = (latestRows?.[0] as PulseSocialFeedRpcRow | undefined)?.match_created_at;
       if (latest) setLastMatchAt(latest);
     } catch {
@@ -2733,13 +2808,14 @@ export default function PulsePage() {
     }
 
     setLoading(false);
-  }, [loadAskedJobState, loadLeaderboard, loadWatchingRoles, loadLeadActionState]);
+  }, [isHotlistFeed, loadAskedJobState, loadLeaderboard, loadWatchingRoles, loadLeadActionState]);
 
   useEffect(() => {
     void loadInitial();
   }, [loadInitial]);
 
   const loadGlobalPulseRowsFromCacheWorker = useCallback(async (rangeHours: number) => {
+    if (isHotlistFeed) return null;
     if (!PULSE_CACHE_WORKER_URL) return null;
 
     try {
@@ -2766,15 +2842,20 @@ export default function PulsePage() {
     } catch {
       return null;
     }
-  }, []);
+  }, [isHotlistFeed]);
 
   const loadGlobalPulseRows = useCallback(async (rangeHours: number) => {
-    const workerRows = await loadGlobalPulseRowsFromCacheWorker(rangeHours);
+    const useCreatedTime = canSelectFeedTimeBasis && feedTimeBasis === 'created';
+    const workerRows = useCreatedTime ? null : await loadGlobalPulseRowsFromCacheWorker(rangeHours);
     if (workerRows) {
       return workerRows;
     }
 
     const since = new Date(Date.now() - (rangeHours * 60 * 60 * 1000)).toISOString();
+    const rpcSince = useCreatedTime ? '1970-01-01T00:00:00.000Z' : since;
+    const filterBySelectedTime = (rows: PulseSocialFeedRpcRow[]) => useCreatedTime
+      ? rows.filter((row) => new Date(row.social_created_at).getTime() >= new Date(since).getTime())
+      : rows;
 
     const pagedRows: PulseSocialFeedRpcRow[] = [];
     let beforePostedAt: string | null = null;
@@ -2782,8 +2863,8 @@ export default function PulsePage() {
     let pagedRpcAvailable = true;
 
     while (pagedRows.length < 25000) {
-      const pageResult = await supabase.rpc('get_pulse_social_feed_page', {
-        p_since: since,
+      const pageResult = await supabase.rpc(isHotlistFeed ? 'get_social_hotlist_feed_page' : 'get_pulse_social_feed_page', {
+        p_since: rpcSince,
         p_before_posted_at: beforePostedAt,
         p_before_lead_id: beforeLeadId,
         p_limit: 1000,
@@ -2795,7 +2876,7 @@ export default function PulsePage() {
 
       const page = (pageResult.data ?? []) as PulseSocialFeedRpcRow[];
       pagedRows.push(...page);
-      if (page.length < 1000) return pagedRows;
+      if (page.length < 1000) return filterBySelectedTime(pagedRows);
 
       const last = page[page.length - 1];
       if (!last?.effective_posted_at || !last.lead_id) break;
@@ -2803,15 +2884,16 @@ export default function PulsePage() {
       beforeLeadId = last.lead_id;
     }
 
-    if (pagedRpcAvailable && pagedRows.length > 0) return pagedRows;
+    if (pagedRpcAvailable) return filterBySelectedTime(pagedRows);
+    if (isHotlistFeed) return [];
 
     // Preferred path: global SECURITY DEFINER RPC (all-account feed).
     const rpcResult = await supabase.rpc('get_pulse_social_feed', {
-      p_since: since,
+      p_since: rpcSince,
       p_limit: 5000,
     } as never);
     if (!rpcResult.error) {
-      const rows = (rpcResult.data ?? []) as PulseSocialFeedRpcRow[];
+      const rows = filterBySelectedTime((rpcResult.data ?? []) as PulseSocialFeedRpcRow[]);
       if (rows.length > 0) {
         const socialLeadIds = rows.map((row) => row.lead_id).filter(Boolean);
         const { data: matchRows, error: matchError } = await supabase
@@ -2863,7 +2945,7 @@ export default function PulsePage() {
               years_experience: (extra.years_experience as number | null | undefined) ?? (extractedFields?.years_experience as number | null | undefined) ?? row.extracted_experience_years ?? null,
               visa_types: normalizedVisaTypes,
               employment_type: (extra.employment_type as string | null | undefined) ?? (extractedFields?.employment_type as string | null | undefined) ?? row.employment_type ?? null,
-              work_type: (extra.work_type as string | null | undefined) ?? (extractedFields?.work_type as string | null | undefined) ?? row.employment_type ?? null,
+              work_type: (extra.work_type as string | null | undefined) ?? (extractedFields?.work_type as string | null | undefined) ?? row.work_type ?? null,
               locations: normalizedLocations,
               hourly_rate_min: (extra.hourly_rate_min as number | null | undefined) ?? (extractedFields?.hourly_rate_min as number | null | undefined) ?? row.extracted_hourly_rate_min ?? null,
               hourly_rate_max: (extra.hourly_rate_max as number | null | undefined) ?? (extractedFields?.hourly_rate_max as number | null | undefined) ?? row.extracted_hourly_rate_max ?? null,
@@ -2975,19 +3057,22 @@ export default function PulsePage() {
         extracted_hourly_rate_max: social?.extracted_hourly_rate_max ?? null,
       } as PulseSocialFeedRpcRow;
     });
-  }, [loadGlobalPulseRowsFromCacheWorker]);
+  }, [canSelectFeedTimeBasis, feedTimeBasis, isHotlistFeed, loadGlobalPulseRowsFromCacheWorker]);
 
   const getGlobalPulseRows = useCallback(async (rangeHours: number, forceRefresh = false) => {
     const now = Date.now();
     const hasFreshCache = pulseRowsCacheRef.current
       && pulseRowsCacheRangeHoursRef.current === rangeHours
+      && pulseRowsCacheTimeBasisRef.current === feedTimeBasis
       && (now - pulseRowsCacheAtRef.current) <= PULSE_ROWS_CACHE_TTL_MS;
 
     if (!forceRefresh && hasFreshCache) {
       return pulseRowsCacheRef.current;
     }
 
-    if (!forceRefresh && pulseRowsRequestRef.current && pulseRowsRequestRef.current.hours === rangeHours) {
+    if (!forceRefresh && pulseRowsRequestRef.current
+      && pulseRowsRequestRef.current.hours === rangeHours
+      && pulseRowsRequestRef.current.timeBasis === feedTimeBasis) {
       return pulseRowsRequestRef.current.request;
     }
 
@@ -2996,15 +3081,16 @@ export default function PulsePage() {
         pulseRowsCacheRef.current = rows;
         pulseRowsCacheAtRef.current = Date.now();
         pulseRowsCacheRangeHoursRef.current = rangeHours;
+        pulseRowsCacheTimeBasisRef.current = feedTimeBasis;
         return rows;
       })
       .finally(() => {
         pulseRowsRequestRef.current = null;
       });
 
-    pulseRowsRequestRef.current = { hours: rangeHours, request };
+    pulseRowsRequestRef.current = { hours: rangeHours, timeBasis: feedTimeBasis, request };
     return request;
-  }, [loadGlobalPulseRows]);
+  }, [feedTimeBasis, loadGlobalPulseRows]);
 
   const loadProfileStats = useCallback(async (rowsOverride?: PulseSocialFeedRpcRow[]) => {
     if (sortedLeaderboard.length === 0) {
@@ -3157,7 +3243,6 @@ export default function PulsePage() {
     }
 
     const nowMs = Date.now();
-    const last24HoursMs = 24 * 60 * 60 * 1000;
     const NON_MEANINGFUL_TEXT = new Set([
       'unknown',
       'not specified',
@@ -3181,7 +3266,9 @@ export default function PulsePage() {
       return true;
     };
     const hasValues = (value: string[] | null | undefined) => Array.isArray(value) && value.some((item) => isMeaningfulText(item));
-    const getPostedTimestamp = (row: SocialJobRow) => new Date(row.posted_at || row.created_at || 0).getTime();
+    const getPostedTimestamp = (row: SocialJobRow) => new Date(
+      feedTimeBasis === 'created' ? row.created_at : (row.posted_at || row.created_at || 0),
+    ).getTime();
     const BREAKDOWN_QUALITY_KEYS = [
       'experience_match',
       'work_type_match',
@@ -3191,37 +3278,6 @@ export default function PulsePage() {
       'location_match',
       'skills_match',
     ];
-    const hasFullyPopulatedFields = (row: SocialJobRow) => {
-      const breakdown = newestMatchByJobId.get(row.id)?.score_breakdown;
-      const hasRequiredBreakdownValues = BREAKDOWN_QUALITY_KEYS.every((key) => isMeaningfulText(getBreakdownJobValue(breakdown, key)));
-
-      const hasRole = isMeaningfulText(row.job_title) || isMeaningfulText(row.extracted_role_normalized);
-      const hasCompany = isMeaningfulText(row.company_name);
-      const hasPosterName = isMeaningfulText(row.posted_by_name);
-      const hasPosterEmail = /^\S+@\S+\.\S+$/.test((row.poster_email ?? '').trim());
-      const hasLocation = isMeaningfulText(row.location);
-      const hasEmploymentType = isMeaningfulText(row.employment_type);
-      const hasSkills = hasValues(row.core_skills) || hasValues(row.extracted_skills);
-      const hasExperience = row.years_experience != null || row.extracted_experience_years != null;
-      const hasVisa = hasValues(row.visa_types) || hasValues(row.extracted_visa_types);
-      const hasRate = row.hourly_rate_min != null
-        || row.hourly_rate_max != null
-        || row.extracted_hourly_rate_min != null
-        || row.extracted_hourly_rate_max != null
-        || isMeaningfulText(row.salary_range);
-
-      return hasRole
-        && hasCompany
-        && hasPosterName
-        && hasPosterEmail
-        && hasLocation
-        && hasEmploymentType
-        && hasSkills
-        && hasExperience
-        && hasVisa
-        && hasRate
-        && hasRequiredBreakdownValues;
-    };
 
     const getCompletenessScore = (row: SocialJobRow) => {
       let score = 0;
@@ -3251,13 +3307,6 @@ export default function PulsePage() {
       return score;
     };
 
-    const isPriorityComplete24hLead = (row: SocialJobRow) => {
-      const postedTs = getPostedTimestamp(row);
-      if (!Number.isFinite(postedTs) || postedTs <= 0) return false;
-      const ageMs = nowMs - postedTs;
-      return ageMs >= 0 && ageMs <= last24HoursMs && hasFullyPopulatedFields(row);
-    };
-
     const rangeCutoffMs = nowMs - (selectedProfileRange.hours * 60 * 60 * 1000);
     const finalFiltered = socialData
       .filter((row) => {
@@ -3268,33 +3317,35 @@ export default function PulsePage() {
           && postedTs >= rangeCutoffMs;
       })
       .sort((a, b) => {
-        const aPriority = isPriorityComplete24hLead(a);
-        const bPriority = isPriorityComplete24hLead(b);
-        if (aPriority !== bPriority) return aPriority ? -1 : 1;
+        const aMatchTs = new Date(newestMatchByJobId.get(a.id)?.created_at ?? 0).getTime();
+        const bMatchTs = new Date(newestMatchByJobId.get(b.id)?.created_at ?? 0).getTime();
+        if (bMatchTs !== aMatchTs) return bMatchTs - aMatchTs;
 
         const aCompleteness = getCompletenessScore(a);
         const bCompleteness = getCompletenessScore(b);
         if (aCompleteness !== bCompleteness) return bCompleteness - aCompleteness;
 
-        const aMatchTs = new Date(newestMatchByJobId.get(a.id)?.created_at ?? 0).getTime();
-        const bMatchTs = new Date(newestMatchByJobId.get(b.id)?.created_at ?? 0).getTime();
-        if (bMatchTs !== aMatchTs) return bMatchTs - aMatchTs;
-
         return getPostedTimestamp(b) - getPostedTimestamp(a);
       })
       .map((row) => {
         const matchedAt = newestMatchByJobId.get(row.id)?.created_at;
+        const breakdown = newestMatchByJobId.get(row.id)?.score_breakdown;
+        const hotlistSource = breakdown?.hotlist_source && typeof breakdown.hotlist_source === 'object'
+          ? breakdown.hotlist_source as Record<string, unknown>
+          : null;
         const eventTime = row.posted_at || row.created_at || matchedAt;
         return {
           id: row.id,
-          title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || 'Untitled Job',
+          title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || (isHotlistFeed ? 'Available Consultant' : 'Untitled Job'),
           roleTitle: (row as SocialJobRow & Record<string, unknown>).role_title?.trim() || row.job_title?.trim() || row.extracted_role_normalized?.trim() || '',
           location: row.location?.trim() || 'Location not specified',
           company: row.company_name?.trim() || '',
-          posterName: row.posted_by_name?.trim() || 'Vendor contact',
+          posterName: row.posted_by_name?.trim() || (isHotlistFeed ? 'Bench Sales Recruiter' : 'Vendor contact'),
           posterEmail: row.poster_email?.trim() || '',
           posterPhone: row.poster_phone?.trim() || '',
           postedAt: eventTime,
+          createdAt: row.created_at || matchedAt || eventTime,
+          matchedAt,
           postedAgo: formatAgo(eventTime),
           platform: row.platform,
           matchScore: (() => { const s = newestMatchByJobId.get(row.id)?.final_average_score; return (typeof s === 'number' && Number.isFinite(s) && s > 0) ? s : null; })(),
@@ -3316,6 +3367,12 @@ export default function PulsePage() {
             : ((row.extracted_hourly_rate_min || row.extracted_hourly_rate_max)
               ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
               : ''),
+          consultantCount: hotlistSource && Number.isInteger(Number(hotlistSource.consultant_count))
+            ? Number(hotlistSource.consultant_count)
+            : undefined,
+          candidateIndex: hotlistSource && Number.isInteger(Number(hotlistSource.candidate_index))
+            ? Number(hotlistSource.candidate_index)
+            : undefined,
         } as SocialLead;
       });
 
@@ -3359,7 +3416,7 @@ export default function PulsePage() {
     }
 
     setFeedLoading(false);
-  }, [getGlobalPulseRows, selectedProfileRange.hours, showToast]);
+  }, [feedTimeBasis, getGlobalPulseRows, isHotlistFeed, selectedProfileRange.hours, showToast]);
 
   useEffect(() => {
     void loadFeed(null);
@@ -3959,6 +4016,7 @@ export default function PulsePage() {
   }, [account?.id, showToast, user?.id]);
 
   const saveVendorToTracker = useCallback(async (lead: SocialLead) => {
+    if (isHotlistFeed) return true;
     const email = lead.posterEmail.trim();
     const phone = lead.posterPhone.trim();
     const company = lead.company.trim();
@@ -4030,7 +4088,7 @@ export default function PulsePage() {
     }
 
     return true;
-  }, [showToast]);
+  }, [isHotlistFeed, showToast]);
 
   const isFreePlanRevealLimitReached = useCallback(async () => {
     if (!account?.id || isPaidPlan) return false;
@@ -4117,7 +4175,7 @@ export default function PulsePage() {
           next.add(lead.id);
           return next;
         });
-        showToast('Vendor auto-saved to Tracker', 'success');
+        showToast(isHotlistFeed ? 'Bench Sales Recruiter contact revealed' : 'Vendor auto-saved to Tracker', 'success');
       }
 
       setSelectedLead(lead);
@@ -4125,7 +4183,7 @@ export default function PulsePage() {
     } finally {
       setProcessingLeadId(null);
     }
-  }, [consumeCredits, isFreePlanRevealLimitReached, isPaidPlan, persistLeadAction, revealedLeadIds, saveVendorToTracker, showToast, user]);
+  }, [consumeCredits, isFreePlanRevealLimitReached, isHotlistFeed, isPaidPlan, persistLeadAction, revealedLeadIds, saveVendorToTracker, showToast, user]);
 
   const handleOpenBreakdown = useCallback(async (lead: SocialLead) => {
     setProcessingBreakdownLeadId(lead.id);
@@ -4172,13 +4230,19 @@ export default function PulsePage() {
         .insert({
           user_id: user.id,
           account_id: account?.id ?? null,
-          page: '/jobs',
+          page: isHotlistFeed ? '/hotlist' : '/jobs',
           search_query: rawQuery,
         });
       void loadRecentSearches();
     }
 
     if (!appliedQuery) {
+      setVectorSearchLeadIds(null);
+      setVectorSearchLoading(false);
+      return;
+    }
+
+    if (isHotlistFeed) {
       setVectorSearchLeadIds(null);
       setVectorSearchLoading(false);
       return;
@@ -4222,7 +4286,7 @@ export default function PulsePage() {
     }
 
     setVectorSearchLoading(false);
-  }, [account?.id, loadRecentSearches, pendingFeedSearchQuery, selectedProfileRange.hours, user?.id]);
+  }, [account?.id, isHotlistFeed, loadRecentSearches, pendingFeedSearchQuery, selectedProfileRange.hours, user?.id]);
 
   useEffect(() => {
     const queryFromParams = (searchParams.get('q') ?? '').trim();
@@ -4471,6 +4535,21 @@ export default function PulsePage() {
                     </div>
                   )}
 
+                  {!isMobileViewport && canSelectFeedTimeBasis && (
+                    <div className="flex shrink-0 items-center rounded-md border border-gray-200 bg-gray-50 p-0.5" aria-label="Feed time basis">
+                      {(['posted', 'created'] as FeedTimeBasis[]).map((basis) => (
+                        <button
+                          key={basis}
+                          type="button"
+                          onClick={() => setFeedTimeBasis(basis)}
+                          className={`rounded px-2 py-1 text-[10px] font-semibold capitalize transition ${feedTimeBasis === basis ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                          {basis}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   <div ref={rangeMenuRef} className="relative shrink-0">
                     <button
                       onClick={() => {
@@ -4603,8 +4682,8 @@ export default function PulsePage() {
                             </div>
                             <div className="mt-1 space-y-1.5">
                               <div className="flex items-center gap-1.5">
-                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
-                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
+                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
+                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
                               </div>
                               <div className="grid grid-cols-10 gap-1.5">
                                 <button
@@ -4687,8 +4766,8 @@ export default function PulsePage() {
                                 </div>
                                 <div className="mt-1 space-y-1.5">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
                                   </div>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
@@ -4748,8 +4827,8 @@ export default function PulsePage() {
                                 </div>
                                 <div className="mt-1 space-y-1.5">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
                                   </div>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
@@ -4794,7 +4873,7 @@ export default function PulsePage() {
                 <div
                   className="sticky top-0 z-40 shrink-0 overflow-hidden bg-white px-1.5 transition-[max-height,opacity,transform] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
                   style={{
-                    maxHeight: isMobileTopCollapsed ? '0px' : '40px',
+                    maxHeight: isMobileTopCollapsed ? '0px' : (canSelectFeedTimeBasis ? '72px' : '40px'),
                     opacity: isMobileTopCollapsed ? 0 : 1,
                     transform: isMobileTopCollapsed ? 'translateY(-8px)' : 'translateY(0)',
                     pointerEvents: isMobileTopCollapsed ? 'none' : 'auto',
@@ -4823,6 +4902,22 @@ export default function PulsePage() {
                       );
                     })}
                   </div>
+                  {canSelectFeedTimeBasis && (
+                    <div className="mt-1 flex justify-end">
+                      <div className="flex items-center rounded-md border border-gray-200 bg-gray-50 p-0.5" aria-label="Feed time basis">
+                        {(['posted', 'created'] as FeedTimeBasis[]).map((basis) => (
+                          <button
+                            key={basis}
+                            type="button"
+                            onClick={() => setFeedTimeBasis(basis)}
+                            className={`rounded px-2 py-0.5 text-[9px] font-semibold capitalize transition ${feedTimeBasis === basis ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500'}`}
+                          >
+                            {basis}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -4890,7 +4985,7 @@ export default function PulsePage() {
                             )
                           ) : (
                             recentVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No recent jobs.</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.'}</div>
                             ) : (
                               <div className="columns-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopRecentFeed, 3)}
@@ -4999,7 +5094,7 @@ export default function PulsePage() {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-gray-900">{selectedLead.title}</p>
                 {selectedLead.company && <p className="text-[12px] text-gray-600">{[selectedLead.company, selectedLead.location].filter(Boolean).join(' • ')}</p>}
-                <p className="mt-0.5 text-[11px] text-gray-500">{maskPosterName(selectedLead.posterName)}{selectedLead.postedAgo ? ` • ${selectedLead.postedAgo}` : ''}</p>
+                <p className="mt-0.5 text-[11px] text-gray-500">{maskPosterName(selectedLead.posterName)} • {feedTimeBasis === 'created' ? 'Added' : 'Posted'} {formatAgo(feedTimeBasis === 'created' ? selectedLead.createdAt : selectedLead.postedAt)}</p>
               </div>
               <button
                 onClick={() => setSelectedLead(null)}
@@ -5068,7 +5163,7 @@ export default function PulsePage() {
               </button>
 
               <button
-                onClick={() => void copyText(selectedLead.posterEmail, 'Vendor email')}
+                onClick={() => void copyText(selectedLead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email')}
                 disabled={!revealedLeadIds.has(selectedLead.id) || !selectedLead.posterEmail}
                 className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-300 bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
               >

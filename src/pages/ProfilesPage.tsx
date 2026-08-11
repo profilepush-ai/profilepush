@@ -33,6 +33,7 @@ import {
   Flame,
   Workflow,
   User,
+  UserRound,
   Users,
   Wrench,
   X,
@@ -220,8 +221,40 @@ type PulseSocialFeedRpcRow = {
 type ProfileStats = {
   uniqueCompanies: number;
   uniqueVendors: number;
+  uniqueHotlists: number;
   uniqueJobs: number;
+  avgRate: number | null;
   avgMatchScore: number | null;
+};
+
+type PulseDirectorySnapshot = {
+  cachedAt: number;
+  rangeId: ProfileRangeOption['id'];
+  leaderboard: PulsePersona[];
+  stats: Record<string, ProfileStats>;
+};
+
+type PulseDirectoryReadModelRow = {
+  target_role: string;
+  summary: string;
+  active_watchers: number;
+  avatar_url: string | null;
+  rank: number;
+  min_years_exp: number | null;
+  max_years_exp: number | null;
+  visa_status: string | null;
+  employment_type: string | null;
+  work_type: string | null;
+  preferred_locations: string | null;
+  min_rate_usd_per_hr: number | null;
+  max_rate_usd_per_hr: number | null;
+  priority_skills: string | null;
+  relocation_open: boolean | null;
+  unique_hotlists: number;
+  unique_jobs: number;
+  unique_vendors: number;
+  avg_rate: number | null;
+  refreshed_at: string;
 };
 
 type ProfileRangeOption = {
@@ -238,13 +271,13 @@ type ProfileCategoryTab = {
 
 type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'queued';
 type LeadActionType = 'revealed' | 'breakdown';
-type ProfilesListingMode = 'roles' | 'domains';
 
 type DomainLeaderboardRow = {
   id: string;
   label: string;
   icon: LucideIcon;
   rank: number;
+  uniqueHotlists: number;
   uniqueJobs: number;
   uniqueVendors: number;
 };
@@ -266,10 +299,11 @@ type PulseFeedCacheWorkerResponse = {
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
 const PULSE_ROWS_CACHE_TTL_MS = 30_000;
+const PULSE_DIRECTORY_CACHE_KEY = 'profilepush:pulse-directory:v2:30d';
+const PULSE_DIRECTORY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const PULSE_CACHE_WORKER_URL = (import.meta.env.VITE_PULSE_CACHE_WORKER_URL ?? '').trim();
 const PULSE_CACHE_WORKER_TOKEN = (import.meta.env.VITE_PULSE_CACHE_WORKER_TOKEN ?? '').trim();
-const TOP_PROFILES_PAGE_SIZE = 5;
-const TABLE_PROFILES_PAGE_SIZE = 25;
+const MOBILE_ROLES_BATCH_SIZE = 30;
 const MATCHES_PAGE_SIZE = 5;
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
@@ -287,6 +321,33 @@ const PROFILE_RANGE_SHORT_LABELS: Record<ProfileRangeOption['id'], string> = {
   '15d': '15d',
   '30d': '30d',
 };
+
+function readPulseDirectorySnapshot(): PulseDirectorySnapshot | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const snapshot = JSON.parse(window.localStorage.getItem(PULSE_DIRECTORY_CACHE_KEY) ?? '') as PulseDirectorySnapshot;
+    if (snapshot.rangeId !== '30d' || !Array.isArray(snapshot.leaderboard) || !snapshot.stats || typeof snapshot.cachedAt !== 'number') {
+      return null;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function writePulseDirectorySnapshot(leaderboard: PulsePersona[], stats: Record<string, ProfileStats>) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PULSE_DIRECTORY_CACHE_KEY, JSON.stringify({
+      cachedAt: Date.now(),
+      rangeId: '30d',
+      leaderboard,
+      stats,
+    } satisfies PulseDirectorySnapshot));
+  } catch {
+    // Cache storage is best-effort.
+  }
+}
 
 const PERSONA_SUMMARY_BY_ROLE = new Map(
   HOTLIST_AI_SUGGESTIONS.map((item) => [normalize(item.title), item.summary]),
@@ -828,11 +889,12 @@ function buildHotlistRolePayloadFromPersona(accountId: string, persona: PulsePer
 export default function ProfilesPage() {
   const { account, user, refreshAccount } = useAuth();
   const navigate = useNavigate();
+  const [initialDirectorySnapshot] = useState(readPulseDirectorySnapshot);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialDirectorySnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const [activatingRole, setActivatingRole] = useState<string | null>(null);
-  const [leaderboard, setLeaderboard] = useState<PulsePersona[]>([]);
+  const [leaderboard, setLeaderboard] = useState<PulsePersona[]>(initialDirectorySnapshot?.leaderboard ?? []);
   const [watchingRoles, setWatchingRoles] = useState<Set<string>>(new Set());
   const [activePersona, setActivePersona] = useState<PulsePersona | null>(null);
   const [feed, setFeed] = useState<SocialLead[]>([]);
@@ -846,7 +908,7 @@ export default function ProfilesPage() {
     setView(searchParams.get('view') === 'feed' ? 'feed' : 'board');
   }, [searchParams]);
 
-  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('7d');
+  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('30d');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
@@ -854,20 +916,15 @@ export default function ProfilesPage() {
   const [pendingProfileSearchQuery, setPendingProfileSearchQuery] = useState('');
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
   const [feedSearchScope, setFeedSearchScope] = useState<PulseFeedSearchScope>('all');
-  const [selectedProfilesView, setSelectedProfilesView] = useState<'all' | 'watching'>('all');
-  const profilesLayoutMode: 'table' = 'table';
-  const [profilesListingMode, setProfilesListingMode] = useState<ProfilesListingMode>('roles');
-  const [profilePage, setProfilePage] = useState(1);
-  const [tableProfilePage, setTableProfilePage] = useState(1);
-  const visibleProfilesCount = profilePage * TOP_PROFILES_PAGE_SIZE;
+  const [mobileVisibleRolesCount, setMobileVisibleRolesCount] = useState(MOBILE_ROLES_BATCH_SIZE);
   const [isMobileViewport, setIsMobileViewport] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.matchMedia('(max-width: 639px)').matches;
   });
   const profileListScrollRef = useRef<HTMLDivElement | null>(null);
-  const mobileProfilesLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const [profileStatsLoading, setProfileStatsLoading] = useState(false);
-  const [profileStatsByRole, setProfileStatsByRole] = useState<Record<string, ProfileStats>>({});
+  const [profileStatsByRole, setProfileStatsByRole] = useState<Record<string, ProfileStats>>(initialDirectorySnapshot?.stats ?? {});
+  const [directoryCachedAt, setDirectoryCachedAt] = useState<number | null>(initialDirectorySnapshot?.cachedAt ?? null);
   const [expandedMobileProfileCardIds, setExpandedMobileProfileCardIds] = useState<Set<string>>(new Set());
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
   const [generatedEmailDraft, setGeneratedEmailDraft] = useState('');
@@ -942,7 +999,9 @@ export default function ProfilesPage() {
   const zeroStats: ProfileStats = useMemo(() => ({
     uniqueCompanies: 0,
     uniqueVendors: 0,
+    uniqueHotlists: 0,
     uniqueJobs: 0,
+    avgRate: null,
     avgMatchScore: null,
   }), []);
 
@@ -1015,13 +1074,6 @@ export default function ProfilesPage() {
     return [...watched, ...unwatched].map((item, idx) => ({ ...item, rank: idx + 1 }));
   }, [filteredJobsRankedLeaderboard, watchingRoles]);
 
-  const profilesForActiveView = useMemo(() => {
-    if (selectedProfilesView === 'watching') {
-      return orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role)));
-    }
-    return filteredJobsRankedLeaderboard;
-  }, [filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, selectedProfilesView, watchingRoles]);
-
   const filteredDomainLeaderboard = useMemo(() => {
     const query = normalize(profileSearchQuery);
 
@@ -1029,6 +1081,7 @@ export default function ProfilesPage() {
       .filter((category) => category.id !== 'all')
       .map((category) => {
         const categoryProfiles = jobsRankedLeaderboard.filter((persona) => isPersonaInCategory(persona, category.id));
+        const uniqueHotlists = categoryProfiles.reduce((sum, persona) => sum + (profileStatsByRole[normalize(persona.target_role)]?.uniqueHotlists ?? 0), 0);
         const uniqueJobs = categoryProfiles.reduce((sum, persona) => sum + (profileStatsByRole[normalize(persona.target_role)]?.uniqueJobs ?? 0), 0);
         const uniqueVendors = categoryProfiles.reduce((sum, persona) => sum + (profileStatsByRole[normalize(persona.target_role)]?.uniqueVendors ?? 0), 0);
         return {
@@ -1036,6 +1089,7 @@ export default function ProfilesPage() {
           label: category.label,
           icon: category.icon,
           rank: 0,
+          uniqueHotlists,
           uniqueJobs,
           uniqueVendors,
         } as DomainLeaderboardRow;
@@ -1051,36 +1105,10 @@ export default function ProfilesPage() {
 
   const domainsForActiveView = useMemo(() => filteredDomainLeaderboard, [filteredDomainLeaderboard]);
 
-  const visibleJobsRankedLeaderboard = useMemo(
-    () => {
-      if (profilesLayoutMode === 'table') {
-        return profilesForActiveView.slice((tableProfilePage - 1) * TABLE_PROFILES_PAGE_SIZE, tableProfilePage * TABLE_PROFILES_PAGE_SIZE);
-      }
-
-      if (isMobileViewport) {
-        return profilesForActiveView.slice(0, visibleProfilesCount);
-      }
-      return profilesForActiveView.slice((profilePage - 1) * TOP_PROFILES_PAGE_SIZE, profilePage * TOP_PROFILES_PAGE_SIZE);
-    },
-    [isMobileViewport, profilePage, profilesForActiveView, profilesLayoutMode, tableProfilePage, visibleProfilesCount],
+  const mobileVisibleRoles = useMemo(
+    () => filteredJobsRankedLeaderboard.slice(0, mobileVisibleRolesCount),
+    [filteredJobsRankedLeaderboard, mobileVisibleRolesCount],
   );
-
-  const visibleDomainLeaderboard = useMemo(() => {
-    if (profilesLayoutMode === 'table') {
-      return domainsForActiveView.slice((tableProfilePage - 1) * TABLE_PROFILES_PAGE_SIZE, tableProfilePage * TABLE_PROFILES_PAGE_SIZE);
-    }
-
-    if (isMobileViewport) {
-      return domainsForActiveView.slice(0, visibleProfilesCount);
-    }
-
-    return domainsForActiveView;
-  }, [domainsForActiveView, isMobileViewport, profilesLayoutMode, tableProfilePage, visibleProfilesCount]);
-
-  const totalProfilePages = Math.max(1, Math.ceil(profilesForActiveView.length / TOP_PROFILES_PAGE_SIZE));
-  const canLoadMoreProfiles = profilePage < totalProfilePages;
-  const activeTableTotalCount = profilesListingMode === 'domains' ? domainsForActiveView.length : profilesForActiveView.length;
-  const totalTableProfilePages = Math.max(1, Math.ceil(activeTableTotalCount / TABLE_PROFILES_PAGE_SIZE));
 
   const scopedFeed = useMemo(() => {
     let next = feed;
@@ -1185,12 +1213,6 @@ export default function ProfilesPage() {
     queued: recentVisibleFeed.length,
   }), [breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed.length, revealedVisibleFeed.length]);
 
-  const profileViewCounts = useMemo(() => ({
-    all: filteredJobsRankedLeaderboard.length,
-    watching: orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length,
-    domains: domainsForActiveView.length,
-  }), [domainsForActiveView.length, filteredJobsRankedLeaderboard, orderedJobsRankedLeaderboard, watchingRoles]);
-
   const filteredFeed = useMemo(() => {
     if (selectedMatchesTab === 'breakdown') {
       return dedupedScopedFeed.filter((lead) => breakdownChargedLeadIds.has(lead.id));
@@ -1261,16 +1283,10 @@ export default function ProfilesPage() {
 
     mobileRightPaneLastScrollTopRef.current = Math.max(0, nextTop);
 
-    // Load next batch of profiles when scrolled within 200px of the bottom.
-    const container = event.currentTarget;
-    if (canLoadMoreProfiles && container.scrollTop + container.clientHeight >= container.scrollHeight - 200) {
-      setProfilePage((prev) => Math.min(totalProfilePages, prev + 1));
-    }
-
     maybeLoadMoreMatches(event.currentTarget, canLoadMoreMatches, () => {
       setVisibleMatchesCount((prev) => Math.min(filteredFeed.length, prev + MATCHES_PAGE_SIZE));
     });
-  }, [canLoadMoreMatches, canLoadMoreProfiles, filteredFeed.length, maybeLoadMoreMatches, totalProfilePages]);
+  }, [canLoadMoreMatches, filteredFeed.length, maybeLoadMoreMatches]);
 
   const handleDesktopRecentScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopRecent, () => {
@@ -1367,29 +1383,55 @@ export default function ProfilesPage() {
     );
   }
 
-  const renderProfilesTable = (profiles: PulsePersona[], emptyMessage: string, keyPrefix: string) => {
+  function getMetricHeatmapColor(value: number, maxValue: number) {
+    if (value <= 0 || maxValue <= 0) return undefined;
+    const palette = ['#C084FC', '#FB7185', '#FB923C', '#FACC15', '#38BDF8', '#34D399'];
+    const paletteIndex = Math.min(palette.length - 1, Math.ceil((value / maxValue) * palette.length) - 1);
+    return palette[Math.max(0, paletteIndex)];
+  }
+
+  const renderProfilesTable = (
+    profiles: PulsePersona[],
+    emptyMessage: string,
+    keyPrefix: string,
+    onScroll?: React.UIEventHandler<HTMLDivElement>,
+  ) => {
     if (profiles.length === 0) {
       return <div className="px-3 py-6 text-center text-xs text-gray-400">{emptyMessage}</div>;
     }
 
     const compact = isMobileViewport;
+    const visibleStats = profiles.map((persona) => profileStatsByRole[normalize(persona.target_role)] ?? zeroStats);
+    const maxRates = Math.max(0, ...visibleStats.map((stats) => stats.avgRate ?? 0));
+    const maxHotlists = Math.max(0, ...visibleStats.map((stats) => stats.uniqueHotlists));
+    const maxJobs = Math.max(0, ...visibleStats.map((stats) => stats.uniqueJobs));
+    const maxVendors = Math.max(0, ...visibleStats.map((stats) => stats.uniqueVendors));
 
     return (
-      <div className="h-full min-h-0 rounded-md border border-gray-200 bg-white flex flex-col">
-        <div className="flex-1 min-h-0 overflow-y-auto slim-scrollbar">
-          <table className="w-full table-fixed border-collapse text-left text-[9px] sm:text-[10px]">
+      <div className={`${compact ? 'min-h-0 flex-1' : 'h-full min-h-0'} flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-gray-200 bg-white`}>
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-gutter:stable] slim-scrollbar" onScroll={onScroll}>
+          <table className={`w-full max-w-full table-fixed border-collapse text-left text-[9px] sm:text-[10px] ${compact ? '[&_th]:!border-b-0 [&_td]:!border-b-0' : ''}`}>
             <thead>
               <tr>
-                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[54%] px-1.5 py-1' : 'w-[58%] px-2 py-1.5'}`}>Role</th>
-                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[14%] px-1 py-1' : 'w-[14%] px-2 py-1.5'}`}>Jobs</th>
-                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[18%] px-1 py-1' : 'w-[16%] px-2 py-1.5'}`}>Vendors</th>
-                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[14%] px-1 py-1' : 'w-[12%] px-2 py-1.5'}`}>Watch</th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[39%] px-1.5 py-1' : 'w-[46%] px-2 py-1.5'}`}>
+                  Role
+                </th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[13%] px-0.5 py-1' : 'w-[12%] px-1 py-1.5'}`}>
+                  {compact ? <><DollarSign size={11} className="mx-auto" aria-hidden="true" /><span className="sr-only">Average rate</span></> : 'Rate'}
+                </th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[16%] px-0.5 py-1' : 'w-[13%] px-1 py-1.5'}`}>
+                  {compact ? <><UserRound size={11} className="mx-auto" aria-hidden="true" /><span className="sr-only">Hotlist</span></> : 'Hotlist'}
+                </th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[12%] px-0.5 py-1' : 'w-[11%] px-1 py-1.5'}`}>
+                  {compact ? <><Briefcase size={11} className="mx-auto" aria-hidden="true" /><span className="sr-only">Jobs</span></> : 'Jobs'}
+                </th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[20%] pl-0.5 pr-2 py-1' : 'w-[18%] px-2 py-1.5'}`}>
+                  {compact ? <><Handshake size={12} className="mx-auto" aria-hidden="true" /><span className="sr-only">Vendors</span></> : 'Vendors'}
+                </th>
               </tr>
             </thead>
             <tbody>
               {profiles.map((persona) => {
-                const isWatching = watchingRoles.has(normalize(persona.target_role));
-                const isActivating = activatingRole === persona.target_role;
                 const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
                 const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
 
@@ -1405,18 +1447,30 @@ export default function ProfilesPage() {
                         <ChevronRight size={compact ? 11 : 12} className="shrink-0 text-[#6B7280]" aria-hidden="true" />
                       </span>
                     </td>
-                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{stats.uniqueJobs}</td>
-                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{stats.uniqueVendors}</td>
-                    <td className={`border-b border-gray-100 text-center ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-0.5 py-1' : 'px-1 py-1.5'}`}>
+                      <span
+                        style={{ color: getMetricHeatmapColor(stats.avgRate ?? 0, maxRates) }}
+                        title={stats.avgRate != null ? `Average $${Math.round(stats.avgRate)}/hr` : 'No rate available'}
+                      >
+                        {stats.avgRate != null ? `$${Math.round(stats.avgRate)}` : '-'}
+                      </span>
+                    </td>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>
                       <button
                         type="button"
-                        onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
-                        disabled={isActivating}
-                        className={`pulse-table-watch-button inline-flex items-center justify-center rounded-md border transition ${compact ? 'h-5 w-5' : 'h-6 w-6'} ${isWatching ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-blue-300 bg-blue-50 text-blue-600 hover:bg-blue-100'} disabled:opacity-60`}
-                        aria-label={isWatching ? `Watching ${persona.target_role}` : `Watch ${persona.target_role}`}
+                        onClick={(event) => { event.stopPropagation(); openHotlistForRole(persona.target_role); }}
+                        className="w-full hover:underline"
+                        style={{ color: getMetricHeatmapColor(stats.uniqueHotlists, maxHotlists) }}
+                        aria-label={`Open ${stats.uniqueHotlists} Hotlist candidates for ${persona.target_role}`}
                       >
-                        {isActivating ? '…' : isWatching ? <Check size={compact ? 11 : 12} /> : <span className={`${compact ? 'text-xs' : 'text-sm'} leading-none`}>+</span>}
+                        {stats.uniqueHotlists}
                       </button>
+                    </td>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>
+                      <span style={{ color: getMetricHeatmapColor(stats.uniqueJobs, maxJobs) }}>{stats.uniqueJobs}</span>
+                    </td>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'pl-0.5 pr-2 py-1' : 'px-2 py-1.5'}`}>
+                      <span style={{ color: getMetricHeatmapColor(stats.uniqueVendors, maxVendors) }}>{stats.uniqueVendors}</span>
                     </td>
                   </tr>
                 );
@@ -1428,22 +1482,39 @@ export default function ProfilesPage() {
     );
   };
 
-  const renderDomainsTable = (domains: DomainLeaderboardRow[], emptyMessage: string, keyPrefix: string) => {
+  const renderDomainsTable = (
+    domains: DomainLeaderboardRow[],
+    emptyMessage: string,
+    keyPrefix: string,
+    onScroll?: React.UIEventHandler<HTMLDivElement>,
+  ) => {
     if (domains.length === 0) {
       return <div className="px-3 py-6 text-center text-xs text-gray-400">{emptyMessage}</div>;
     }
 
     const compact = isMobileViewport;
+    const maxHotlists = Math.max(0, ...domains.map((domain) => domain.uniqueHotlists));
+    const maxJobs = Math.max(0, ...domains.map((domain) => domain.uniqueJobs));
+    const maxVendors = Math.max(0, ...domains.map((domain) => domain.uniqueVendors));
 
     return (
-      <div className="h-full min-h-0 rounded-md border border-gray-200 bg-white flex flex-col">
-        <div className="flex-1 min-h-0 overflow-y-auto slim-scrollbar">
-          <table className="w-full table-fixed border-collapse text-left text-[9px] sm:text-[10px]">
+      <div className={`${compact ? 'h-[150px]' : 'h-full min-h-0'} flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-gray-200 bg-white`}>
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-gutter:stable] slim-scrollbar" onScroll={onScroll}>
+          <table className={`w-full max-w-full table-fixed border-collapse text-left text-[9px] sm:text-[10px] ${compact ? '[&_th]:!border-b-0 [&_td]:!border-b-0' : ''}`}>
             <thead>
               <tr>
-                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[62%] px-1.5 py-1' : 'w-[64%] px-2 py-1.5'}`}>Domain</th>
-                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[18%] px-1 py-1' : 'w-[18%] px-2 py-1.5'}`}>Jobs</th>
-                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-gray-50 text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[20%] px-1 py-1' : 'w-[18%] px-2 py-1.5'}`}>Vendors</th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[44%] px-1.5 py-1' : 'w-[50%] px-2 py-1.5'}`}>
+                  Domain
+                </th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[20%] px-0.5 py-1' : 'w-[16%] px-2 py-1.5'}`}>
+                  {compact ? <><UserRound size={11} className="mx-auto" aria-hidden="true" /><span className="sr-only">Hotlist</span></> : 'Hotlist'}
+                </th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[14%] px-0.5 py-1' : 'w-[16%] px-2 py-1.5'}`}>
+                  {compact ? <><Briefcase size={11} className="mx-auto" aria-hidden="true" /><span className="sr-only">Jobs</span></> : 'Jobs'}
+                </th>
+                <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] text-center font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[22%] pl-0.5 pr-2 py-1' : 'w-[18%] px-2 py-1.5'}`}>
+                  {compact ? <><Handshake size={12} className="mx-auto" aria-hidden="true" /><span className="sr-only">Vendors</span></> : 'Vendors'}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1456,8 +1527,6 @@ export default function ProfilesPage() {
                       setSelectedCategoryId(domain.id);
                       setSelectedTechStacks([]);
                       setActivePersona(null);
-                      setProfilesListingMode('roles');
-                      setSelectedProfilesView('all');
                     }}
                     className="cursor-pointer bg-white hover:bg-gray-50"
                   >
@@ -1470,8 +1539,15 @@ export default function ProfilesPage() {
                         <ChevronRight size={compact ? 11 : 12} className="shrink-0 text-[#6B7280]" aria-hidden="true" />
                       </span>
                     </td>
-                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{domain.uniqueJobs}</td>
-                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>{domain.uniqueVendors}</td>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>
+                      <span style={{ color: getMetricHeatmapColor(domain.uniqueHotlists, maxHotlists) }}>{domain.uniqueHotlists}</span>
+                    </td>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'px-1 py-1' : 'px-2 py-1.5'}`}>
+                      <span style={{ color: getMetricHeatmapColor(domain.uniqueJobs, maxJobs) }}>{domain.uniqueJobs}</span>
+                    </td>
+                    <td className={`border-b border-gray-100 text-center font-semibold text-gray-700 ${compact ? 'pl-0.5 pr-2 py-1' : 'px-2 py-1.5'}`}>
+                      <span style={{ color: getMetricHeatmapColor(domain.uniqueVendors, maxVendors) }}>{domain.uniqueVendors}</span>
+                    </td>
                   </tr>
                 );
               })}
@@ -1486,6 +1562,10 @@ export default function ProfilesPage() {
     if (domains.length === 0) {
       return <div className="px-3 py-8 text-center text-xs text-gray-400">No domains found.</div>;
     }
+
+    const maxHotlists = Math.max(0, ...domains.map((domain) => domain.uniqueHotlists));
+    const maxJobs = Math.max(0, ...domains.map((domain) => domain.uniqueJobs));
+    const maxVendors = Math.max(0, ...domains.map((domain) => domain.uniqueVendors));
 
     return domains.map((domain) => {
       const DomainIcon = domain.icon;
@@ -1502,8 +1582,9 @@ export default function ProfilesPage() {
             </p>
           </div>
           <div className="mt-2 flex items-center gap-1.5">
-            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{domain.uniqueJobs} Jobs</span>
-            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{domain.uniqueVendors} Vendors</span>
+            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700"><span style={{ color: getMetricHeatmapColor(domain.uniqueHotlists, maxHotlists) }}>{domain.uniqueHotlists}</span> Hotlist</span>
+            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700"><span style={{ color: getMetricHeatmapColor(domain.uniqueJobs, maxJobs) }}>{domain.uniqueJobs}</span> Jobs</span>
+            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700"><span style={{ color: getMetricHeatmapColor(domain.uniqueVendors, maxVendors) }}>{domain.uniqueVendors}</span> Vendors</span>
           </div>
         </div>
       );
@@ -1650,19 +1731,8 @@ export default function ProfilesPage() {
   });
 
   useEffect(() => {
-    setProfilePage(1);
-    setTableProfilePage(1);
-  }, [profileRangeId, profileSearchQuery, selectedCategoryId, selectedProfilesView]);
-
-  useEffect(() => {
-    if (profilesLayoutMode === 'table') {
-      setTableProfilePage(1);
-    }
-  }, [profilesLayoutMode]);
-
-  useEffect(() => {
-    setTableProfilePage((prev) => Math.min(prev, totalTableProfilePages));
-  }, [totalTableProfilePages]);
+    setMobileVisibleRolesCount(MOBILE_ROLES_BATCH_SIZE);
+  }, [profileRangeId, profileSearchQuery, selectedCategoryId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1687,19 +1757,6 @@ export default function ProfilesPage() {
       mobileCollapseLockUntilRef.current = 0;
     }
   }, [isMobileViewport]);
-
-  // Auto-advance pages until the scroll container actually overflows.
-  useEffect(() => {
-    if (!isMobileViewport || !canLoadMoreProfiles) return;
-    const container = profileListScrollRef.current;
-    if (!container) return;
-    const id = requestAnimationFrame(() => {
-      if (container.scrollHeight <= container.clientHeight + 50) {
-        setProfilePage((prev) => Math.min(totalProfilePages, prev + 1));
-      }
-    });
-    return () => cancelAnimationFrame(id);
-  }, [canLoadMoreProfiles, isMobileViewport, profilePage, totalProfilePages]);
 
   const loadWatchingRoles = useCallback(async () => {
     if (!account?.id) return;
@@ -1832,9 +1889,79 @@ export default function ProfilesPage() {
     showToast('Could not load market board yet', 'error');
   }, [showToast]);
 
+  const loadDirectoryReadModel = useCallback(async (forceRefresh = false) => {
+    if (forceRefresh) {
+      const { error: refreshError } = await supabase.rpc(
+        'refresh_pulse_directory_30d_snapshot' as never,
+        { p_force: true } as never,
+      );
+      if (refreshError) return false;
+    }
+
+    const { data, error } = await supabase
+      .from('pulse_directory_30d' as never)
+      .select('target_role, summary, active_watchers, avatar_url, rank, min_years_exp, max_years_exp, visa_status, employment_type, work_type, preferred_locations, min_rate_usd_per_hr, max_rate_usd_per_hr, priority_skills, relocation_open, unique_hotlists, unique_jobs, unique_vendors, avg_rate, refreshed_at')
+      .order('rank', { ascending: true });
+
+    if (error || !Array.isArray(data) || data.length === 0) return false;
+
+    const rows = data as unknown as PulseDirectoryReadModelRow[];
+    const nextLeaderboard: PulsePersona[] = rows.map((row) => {
+      const bucket = getPersonaBucket(row.target_role);
+      return {
+        target_role: row.target_role,
+        summary: row.summary || bucket.summary,
+        active_watchers: Number(row.active_watchers ?? 0),
+        avatar_url: row.avatar_url,
+        rank: Number(row.rank ?? 0),
+        min_years_exp: row.min_years_exp,
+        max_years_exp: row.max_years_exp,
+        visa_status: row.visa_status,
+        employment_type: row.employment_type,
+        work_type: row.work_type,
+        preferred_locations: row.preferred_locations,
+        min_rate_usd_per_hr: row.min_rate_usd_per_hr,
+        max_rate_usd_per_hr: row.max_rate_usd_per_hr,
+        priority_skills: row.priority_skills,
+        relocation_open: row.relocation_open ?? undefined,
+      };
+    });
+    const nextStats = Object.fromEntries(rows.map((row) => [normalize(row.target_role), {
+      uniqueCompanies: 0,
+      uniqueVendors: Number(row.unique_vendors ?? 0),
+      uniqueHotlists: Number(row.unique_hotlists ?? 0),
+      uniqueJobs: Number(row.unique_jobs ?? 0),
+      avgRate: row.avg_rate == null ? null : Number(row.avg_rate),
+      avgMatchScore: null,
+    }])) as Record<string, ProfileStats>;
+    const refreshedAt = new Date(rows[0].refreshed_at).getTime();
+    const cachedAt = Number.isFinite(refreshedAt) ? refreshedAt : Date.now();
+
+    setLeaderboard(nextLeaderboard);
+    setProfileStatsByRole(nextStats);
+    setDirectoryCachedAt(cachedAt);
+    writePulseDirectorySnapshot(nextLeaderboard, nextStats);
+    return true;
+  }, []);
+
   const loadInitial = useCallback(async () => {
-    setLoading(true);
-    await Promise.all([loadLeaderboard(), loadWatchingRoles(), loadLeadActionState()]);
+    const hasFreshSnapshot = initialDirectorySnapshot
+      && Date.now() - initialDirectorySnapshot.cachedAt <= PULSE_DIRECTORY_CACHE_TTL_MS;
+    if (!hasFreshSnapshot) setLoading(true);
+
+    const loadedReadModel = hasFreshSnapshot
+      ? true
+      : await loadDirectoryReadModel();
+    await Promise.all([
+      ...(!loadedReadModel ? [loadLeaderboard()] : []),
+      loadWatchingRoles(),
+      loadLeadActionState(),
+    ]);
+
+    if (loadedReadModel) {
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data: latestRows } = await supabase.rpc('get_pulse_social_feed', {
@@ -1848,7 +1975,7 @@ export default function ProfilesPage() {
     }
 
     setLoading(false);
-  }, [loadLeaderboard, loadWatchingRoles, loadLeadActionState]);
+  }, [initialDirectorySnapshot, loadDirectoryReadModel, loadLeaderboard, loadWatchingRoles, loadLeadActionState]);
 
   useEffect(() => {
     void loadInitial();
@@ -1963,7 +2090,7 @@ export default function ProfilesPage() {
               years_experience: (extra.years_experience as number | null | undefined) ?? (extractedFields?.years_experience as number | null | undefined) ?? row.extracted_experience_years ?? null,
               visa_types: normalizedVisaTypes,
               employment_type: (extra.employment_type as string | null | undefined) ?? (extractedFields?.employment_type as string | null | undefined) ?? row.employment_type ?? null,
-              work_type: (extra.work_type as string | null | undefined) ?? (extractedFields?.work_type as string | null | undefined) ?? row.employment_type ?? null,
+              work_type: (extra.work_type as string | null | undefined) ?? (extractedFields?.work_type as string | null | undefined) ?? row.work_type ?? null,
               locations: normalizedLocations,
               hourly_rate_min: (extra.hourly_rate_min as number | null | undefined) ?? (extractedFields?.hourly_rate_min as number | null | undefined) ?? row.extracted_hourly_rate_min ?? null,
               hourly_rate_max: (extra.hourly_rate_max as number | null | undefined) ?? (extractedFields?.hourly_rate_max as number | null | undefined) ?? row.extracted_hourly_rate_max ?? null,
@@ -2089,15 +2216,91 @@ export default function ProfilesPage() {
     return fallbackRows;
   }, [loadGlobalPulseRowsFromCacheWorker]);
 
-  const loadProfileStats = useCallback(async () => {
+  const loadProfileStats = useCallback(async (forceRefresh = false) => {
     if (sortedLeaderboard.length === 0) {
       setProfileStatsByRole({});
       return;
     }
 
+    if (!forceRefresh && profileRangeId === '30d') {
+      const snapshot = readPulseDirectorySnapshot();
+      if (snapshot && Date.now() - snapshot.cachedAt <= PULSE_DIRECTORY_CACHE_TTL_MS) {
+        setProfileStatsByRole(snapshot.stats);
+        setDirectoryCachedAt(snapshot.cachedAt);
+        return;
+      }
+    }
+
     setProfileStatsLoading(true);
 
     const targetRoles = sortedLeaderboard.map((p) => p.target_role);
+    const since = new Date(Date.now() - (selectedProfileRange.hours * 60 * 60 * 1000)).toISOString();
+    const commitStats = (stats: Record<string, ProfileStats>) => {
+      setProfileStatsByRole(stats);
+      if (profileRangeId === '30d') {
+        writePulseDirectorySnapshot(leaderboard, stats);
+        setDirectoryCachedAt(Date.now());
+      }
+    };
+
+    const { data: hotlistData } = await supabase
+      .from('radar_match_hotlist')
+      .select('hotlist_id, role_title, core_skills, hourly_rate_min, hourly_rate_max')
+      .gte('created_at', since)
+      .limit(5000);
+    const { data: radarData } = await supabase
+      .from('radar_match_results')
+      .select('job_id, job_source, role_title, core_skills, hourly_rate_min, hourly_rate_max')
+      .eq('job_source', 'social')
+      .gte('created_at', since)
+      .limit(5000);
+    const hotlistRows = (hotlistData ?? []) as Array<{
+      hotlist_id: string;
+      role_title: string;
+      core_skills: string[] | null;
+      hourly_rate_min: number | null;
+      hourly_rate_max: number | null;
+    }>;
+    const radarRows = (radarData ?? []) as Array<{
+      job_id: string;
+      job_source: string;
+      role_title: string;
+      core_skills: string[] | null;
+      hourly_rate_min: number | null;
+      hourly_rate_max: number | null;
+    }>;
+    const hotlistCountsByRole = new Map<string, number>();
+    const avgRatesByRole = new Map<string, number | null>();
+    for (const persona of sortedLeaderboard) {
+      const skills = getPersonaSkillList(persona.target_role, persona.priority_skills);
+      const matchingHotlistRows = hotlistRows.filter((row) => roleMatchesPersona({
+        job_title: row.role_title,
+        extracted_role_normalized: row.role_title,
+        extracted_skills: row.core_skills ?? [],
+        post_content: '',
+      } as SocialJobRow, persona.target_role, skills));
+      const matchingRadarRows = radarRows.filter((row) => roleMatchesPersona({
+        job_title: row.role_title,
+        extracted_role_normalized: row.role_title,
+        extracted_skills: row.core_skills ?? [],
+        post_content: '',
+      } as SocialJobRow, persona.target_role, skills));
+      const uniqueHotlistRows = new Map(matchingHotlistRows.map((row) => [row.hotlist_id, row]));
+      const uniqueRadarRows = new Map(matchingRadarRows.map((row) => [`${row.job_source}:${row.job_id}`, row]));
+      const rates = [...uniqueHotlistRows.values(), ...uniqueRadarRows.values()].flatMap((row) => {
+        const endpoints = [row.hourly_rate_min, row.hourly_rate_max]
+          .filter((rate): rate is number => typeof rate === 'number' && Number.isFinite(rate) && rate > 0);
+        return endpoints.length > 0
+          ? [endpoints.reduce((sum, rate) => sum + rate, 0) / endpoints.length]
+          : [];
+      });
+      const roleKey = normalize(persona.target_role);
+      hotlistCountsByRole.set(roleKey, uniqueHotlistRows.size);
+      avgRatesByRole.set(
+        roleKey,
+        rates.length > 0 ? rates.reduce((sum, rate) => sum + rate, 0) / rates.length : null,
+      );
+    }
 
     // Primary path: vector similarity via hotlist_ai_roles.role_embedding ↔ social_jobs.job_embedding.
     const { data: vectorData, error: vectorError } = await supabase.rpc(
@@ -2115,12 +2318,14 @@ export default function ProfilesPage() {
           stats[key] = {
             uniqueCompanies: 0,
             uniqueVendors: row.vendor_count ?? 0,
+            uniqueHotlists: hotlistCountsByRole.get(key) ?? 0,
             uniqueJobs: row.job_count ?? 0,
+            avgRate: avgRatesByRole.get(key) ?? null,
             avgMatchScore: null,
           };
         }
       }
-      setProfileStatsByRole(stats);
+      commitStats(stats);
       setProfileStatsLoading(false);
       return;
     }
@@ -2139,7 +2344,7 @@ export default function ProfilesPage() {
       const emptyStats = Object.fromEntries(
         sortedLeaderboard.map((item) => [normalize(item.target_role), { ...zeroStats }]),
       ) as Record<string, ProfileStats>;
-      setProfileStatsByRole(emptyStats);
+      commitStats(emptyStats);
       setProfileStatsLoading(false);
       return;
     }
@@ -2189,18 +2394,32 @@ export default function ProfilesPage() {
       stats[roleKey] = {
         uniqueCompanies: companies.size,
         uniqueVendors: vendors.size,
+        uniqueHotlists: hotlistCountsByRole.get(roleKey) ?? 0,
         uniqueJobs: jobs.size,
+        avgRate: avgRatesByRole.get(roleKey) ?? null,
         avgMatchScore: matchScoreCount > 0 ? (matchScoreSum / matchScoreCount) : null,
       };
     }
 
-    setProfileStatsByRole(stats);
+    commitStats(stats);
     setProfileStatsLoading(false);
-  }, [loadGlobalPulseRows, selectedProfileRange.hours, showToast, sortedLeaderboard, zeroStats]);
+  }, [leaderboard, loadGlobalPulseRows, profileRangeId, selectedProfileRange.hours, showToast, sortedLeaderboard, zeroStats]);
 
   useEffect(() => {
     void loadProfileStats();
   }, [loadProfileStats]);
+
+  const refreshDirectory = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      window.localStorage.removeItem(PULSE_DIRECTORY_CACHE_KEY);
+      const loadedReadModel = await loadDirectoryReadModel(true);
+      if (!loadedReadModel) await loadProfileStats(true);
+      showToast('30-day Pulse numbers refreshed');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadDirectoryReadModel, loadProfileStats, showToast]);
 
   const loadFeed = useCallback(async (_persona: PulsePersona | null, _personaFilters: PulsePersona[] = [], forceRefresh = false) => {
     setFeedLoading(true);
@@ -2436,6 +2655,12 @@ export default function ProfilesPage() {
     const query = role.trim();
     if (!query) return;
     navigate(`/jobs?q=${encodeURIComponent(query)}`);
+  }, [navigate]);
+
+  const openHotlistForRole = useCallback((role: string) => {
+    const query = role.trim();
+    if (!query) return;
+    navigate(`/hotlist?q=${encodeURIComponent(query)}`);
   }, [navigate]);
 
   const refreshFeed = useCallback(async () => {
@@ -2928,7 +3153,7 @@ export default function ProfilesPage() {
                   )}
                   <button
                     onClick={() => {
-                      void loadProfileStats();
+                      void loadProfileStats(true);
                       void refreshFeed();
                     }}
                     disabled={profileStatsLoading || refreshing || feedLoading}
@@ -2983,38 +3208,6 @@ export default function ProfilesPage() {
                     <Search size={12} />
                   </button>
 
-                  {!isMobileViewport && (
-                    <>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => { setProfilesListingMode('domains'); setSelectedProfilesView('all'); }}
-                          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'domains' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
-                        >
-                          <span>Domains</span>
-                          <span>{profileViewCounts.domains}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setProfilesListingMode('roles'); setSelectedProfilesView('all'); }}
-                          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'roles' && selectedProfilesView === 'all' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
-                        >
-                          <span>Roles</span>
-                          <span>{profileViewCounts.all}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setProfilesListingMode('roles'); setSelectedProfilesView('watching'); }}
-                          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'roles' && selectedProfilesView === 'watching' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
-                        >
-                          <span>Watching</span>
-                          <span>{profileViewCounts.watching}</span>
-                        </button>
-                      </div>
-
-                    </>
-                  )}
-
                   <div ref={rangeMenuRef} className="relative shrink-0">
                     <button
                       onClick={() => {
@@ -3049,208 +3242,64 @@ export default function ProfilesPage() {
                       </div>
                     )}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void refreshDirectory()}
+                    disabled={profileStatsLoading || refreshing}
+                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                    aria-label="Refresh Pulse numbers"
+                    title={directoryCachedAt
+                      ? `Refresh 30-day numbers. Cached ${formatAgo(new Date(directoryCachedAt).toISOString())}`
+                      : 'Refresh 30-day numbers'}
+                  >
+                    <RefreshCw size={12} className={profileStatsLoading || refreshing ? 'animate-spin' : ''} />
+                  </button>
                 </div>
               </div>
 
               <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white">
               <div
                 ref={isMobileViewport ? profileListScrollRef : undefined}
-                className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-white slim-scrollbar' : 'overflow-hidden'}`}
+                className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-hidden bg-white' : 'overflow-hidden'}`}
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
               >
-                {isMobileViewport ? (
-                  <div className="sticky top-0 z-40 shrink-0 flex items-start gap-1.5 bg-white px-1.5 pt-0 pb-1">
-                    <div className="grid flex-1 min-w-0 grid-cols-3 gap-1">
-                      <button
-                        type="button"
-                        onClick={() => { setProfilesListingMode('domains'); setSelectedProfilesView('all'); }}
-                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'domains' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                      >
-                        <span>Domains</span>
-                        <span>{profileViewCounts.domains}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setProfilesListingMode('roles'); setSelectedProfilesView('all'); }}
-                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'roles' && selectedProfilesView === 'all' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                      >
-                        <span>Roles</span>
-                        <span>{profileViewCounts.all}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setProfilesListingMode('roles'); setSelectedProfilesView('watching'); }}
-                        className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${profilesListingMode === 'roles' && selectedProfilesView === 'watching' ? 'border border-blue-500 bg-white text-blue-600' : 'border border-transparent bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                      >
-                        <span>Watching</span>
-                        <span>{profileViewCounts.watching}</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-
-              <section className={isMobileViewport ? 'min-w-0 flex-none' : 'min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col'}>
+              <section className="min-w-0 flex-1 min-h-0 overflow-hidden flex flex-col">
                 {/* Profile list */}
                 {isMobileViewport ? (
-                  <div className="w-full">
-                    <div className={`flex flex-col gap-2 px-1.5 pt-1 pb-2 ${profilesLayoutMode === 'table' ? 'h-full' : ''}`}>
-                      {profilesListingMode === 'domains' ? (
-                        profilesLayoutMode === 'table'
-                          ? renderDomainsTable(visibleDomainLeaderboard, 'No domains found.', 'mobile-domains')
-                          : <>{renderDomainCards(visibleDomainLeaderboard, 'mobile-domains')}</>
-                      ) : (
-                        profilesLayoutMode === 'table' ? (
-                          renderProfilesTable(visibleJobsRankedLeaderboard, 'No profiles found.', 'mobile')
-                        ) : (
-                        <>
-                          {visibleJobsRankedLeaderboard.length === 0 && (
-                            <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
-                          )}
-                          {visibleJobsRankedLeaderboard.map((persona) => {
-                        const isWatching = watchingRoles.has(normalize(persona.target_role));
-                        const isActivating = activatingRole === persona.target_role;
-                        const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
-                        const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
-                        const profilePulseVisual = getMarketPulseVisual(stats.uniqueJobs);
-                        const details = getPersonaDetailColumns(persona);
-                        const isExpanded = expandedMobileProfileCardIds.has(persona.target_role);
-
-                        return (
-                          <div
-                            key={persona.target_role}
-                            onClick={() => openJobsForRole(persona.target_role)}
-                            className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${persona.rank <= 10 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
-                          >
-                            <div className="flex items-start gap-2">
-                              <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${persona.rank <= 10 ? 'text-emerald-600' : 'text-gray-400'}`}>#{persona.rank}</span>
-                              <p className="flex-1 text-[11px] font-semibold text-blue-700 leading-snug">{persona.target_role}</p>
-                              {persona.active_watchers > 0 && (
-                                <span className="shrink-0 text-[8px] text-gray-400 mt-0.5">{persona.active_watchers} watching</span>
-                              )}
-                            </div>
-                            <div className="mt-2 flex items-center gap-1.5">
-                              <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
-                              <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
-                                disabled={isActivating}
-                                className={`ml-auto inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'}`}
-                              >
-                                {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                          })}
-                        </>
-                        )
+                  <div className="flex h-full min-h-0 w-full flex-col gap-3 px-1.5 pb-1 pt-1">
+                    <div className="min-w-0 flex-none">
+                      {renderDomainsTable(
+                        domainsForActiveView,
+                        'No domains found.',
+                        'mobile-domains',
                       )}
-                      {profilesListingMode === 'roles' && canLoadMoreProfiles && profilesLayoutMode !== 'table' && (
-                        <div ref={mobileProfilesLoadMoreRef} className="h-2" />
+                    </div>
+                    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                      {renderProfilesTable(
+                        mobileVisibleRoles,
+                        'No profiles found.',
+                        'mobile-roles',
+                        (event) => {
+                          const table = event.currentTarget;
+                          if (table.scrollTop + table.clientHeight >= table.scrollHeight - 40) {
+                            setMobileVisibleRolesCount((count) => Math.min(filteredJobsRankedLeaderboard.length, count + MOBILE_ROLES_BATCH_SIZE));
+                          }
+                        },
                       )}
                     </div>
                   </div>
                 ) : (
-                  <div className="px-2 pb-2 pt-0 flex-1 min-h-0 flex flex-col">
-                    <div className="min-w-0 rounded-md bg-transparent flex flex-1 flex-col min-h-0">
-                      <div className={`${profilesLayoutMode === 'table' ? 'flex-1 min-h-0 overflow-hidden' : 'overflow-y-auto overflow-x-hidden flex-1 slim-scrollbar'}`}>
-                        <div className={`${profilesLayoutMode === 'table' ? 'h-full min-h-0 px-1.5 pb-2 pt-0' : 'flex flex-col gap-2 px-1.5 py-2'}`}>
-                          {(() => {
-                            if (profilesListingMode === 'domains') {
-                              if (profilesLayoutMode === 'table') {
-                                return renderDomainsTable(
-                                  visibleDomainLeaderboard,
-                                  'No domains found.',
-                                  'desktop-domains',
-                                );
-                              }
-
-                              return <>{renderDomainCards(domainsForActiveView, 'desktop-domains')}</>;
-                            }
-
-                            const showingWatching = selectedProfilesView === 'watching';
-                            const desktopProfiles = showingWatching
-                              ? orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role)))
-                              : filteredJobsRankedLeaderboard;
-                            const desktopTableProfiles = desktopProfiles.slice((tableProfilePage - 1) * TABLE_PROFILES_PAGE_SIZE, tableProfilePage * TABLE_PROFILES_PAGE_SIZE);
-
-                            if (profilesLayoutMode === 'table') {
-                              return renderProfilesTable(
-                                desktopTableProfiles,
-                                showingWatching ? 'No watching profiles yet.' : 'No profiles found.',
-                                showingWatching ? 'watching' : 'all',
-                              );
-                            }
-
-                            return (
-                              <>
-                                {desktopProfiles.length === 0 && (
-                                  <div className="px-3 py-6 text-center text-xs text-gray-400">
-                                    {showingWatching ? 'No watching profiles yet.' : 'No profiles found.'}
-                                  </div>
-                                )}
-                                {desktopProfiles.map((persona) => {
-                                  const isWatching = watchingRoles.has(normalize(persona.target_role));
-                                  const isActivating = activatingRole === persona.target_role;
-                                  const isSelected = normalize(activePersona?.target_role) === normalize(persona.target_role);
-                                  const stats = profileStatsByRole[normalize(persona.target_role)] ?? zeroStats;
-
-                                  return (
-                                    <div
-                                      key={`${showingWatching ? 'watching' : 'all'}-${persona.target_role}`}
-                                      onClick={() => openJobsForRole(persona.target_role)}
-                                      className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${persona.rank <= 10 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
-                                    >
-                                      <div className="flex items-start gap-2">
-                                        <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${persona.rank <= 10 ? 'text-emerald-600' : 'text-gray-400'}`}>#{persona.rank}</span>
-                                        <p className="flex-1 text-[11px] font-semibold text-blue-700 leading-snug">{persona.target_role}</p>
-                                        {persona.active_watchers > 0 && (
-                                          <span className="shrink-0 text-[8px] text-gray-400 mt-0.5">{persona.active_watchers} watching</span>
-                                        )}
-                                      </div>
-                                      <div className="mt-2 flex items-center gap-1.5">
-                                        <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} Jobs</span>
-                                        <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} Vendors</span>
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
-                                          disabled={isActivating}
-                                          className={`ml-auto inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'}`}
-                                        >
-                                          {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </>
-                            );
-                          })()}
-                        </div>
+                  <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 px-2 pb-2">
+                    <div className="flex min-h-0 min-w-0 flex-col">
+                      <div className="min-h-0 flex-1">
+                        {renderProfilesTable(filteredJobsRankedLeaderboard, 'No profiles found.', 'desktop-roles')}
                       </div>
                     </div>
-                  </div>
-                )}
-                {profilesLayoutMode === 'table' && (
-                  <div className="shrink-0 flex items-center justify-between gap-2 border-t border-gray-200 bg-white px-2 py-1.5">
-                    <p className="text-[10px] text-gray-500">
-                      {Math.min((tableProfilePage - 1) * TABLE_PROFILES_PAGE_SIZE + 1, activeTableTotalCount)}-{Math.min(tableProfilePage * TABLE_PROFILES_PAGE_SIZE, activeTableTotalCount)} of {activeTableTotalCount}
-                    </p>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => setTableProfilePage((p) => Math.max(1, p - 1))}
-                        disabled={tableProfilePage <= 1}
-                        className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-                      >
-                        Prev
-                      </button>
-                      <span className="px-1 text-[10px] text-gray-500">{tableProfilePage}/{totalTableProfilePages}</span>
-                      <button
-                        onClick={() => setTableProfilePage((p) => Math.min(totalTableProfilePages, p + 1))}
-                        disabled={tableProfilePage >= totalTableProfilePages}
-                        className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-                      >
-                        Next
-                      </button>
+                    <div className="flex min-h-0 min-w-0 flex-col">
+                      <div className="min-h-0 flex-1">
+                        {renderDomainsTable(domainsForActiveView, 'No domains found.', 'desktop-domains')}
+                      </div>
                     </div>
                   </div>
                 )}

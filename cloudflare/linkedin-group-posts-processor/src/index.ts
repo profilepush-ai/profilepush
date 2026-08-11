@@ -52,6 +52,7 @@ function getBearerToken(request: Request): string {
 }
 
 function isAuthorized(request: Request, expectedToken?: string): boolean {
+  if (new URL(request.url).hostname === "processor.internal") return true;
   const expected = (expectedToken ?? "").trim();
   return expected.length === 0 || getBearerToken(request) === expected;
 }
@@ -103,13 +104,14 @@ function toIsoDate(value: unknown): string | null {
   return null;
 }
 
-function isLikelyJobText(value: string): boolean {
+function isLikelyStaffingPost(value: string): boolean {
   const text = value.toLowerCase();
   if (!text.trim()) return false;
   const signals = [
     "hiring", "opening", "position", "role", "requirements", "experience",
     "c2c", "w2", "contract", "full-time", "onsite", "remote", "hybrid",
-    "rate", "resume", "skills",
+    "rate", "resume", "skills", "hotlist", "bench", "consultant",
+    "availability", "available", "marketing", "open roles", "share requirements",
   ];
   let hits = 0;
   for (const signal of signals) {
@@ -149,7 +151,7 @@ async function generatedPostId(post: RawPost, sourceId: string, content: string)
 
 async function normalizePost(post: RawPost, globalGroupId: string, keywordId: string): Promise<SocialJobRow | null> {
   const content = firstString(post.text, post.content, post.post_content, post.description);
-  if (!isLikelyJobText(content)) return null;
+  if (!isLikelyStaffingPost(content)) return null;
 
   const postUrl = firstString(post.linkedinUrl, post.post_url, post.url, post.postUrl, post["post URL"]);
   const explicitPostId = firstString(post.id, post.post_id, post.postId);
@@ -219,6 +221,11 @@ async function sendBatch(env: Env, rows: SocialJobRow[]): Promise<number> {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (request.method === "HEAD") {
+      return isAuthorized(request, env.WORKER_AUTH_TOKEN)
+        ? new Response(null, { status: 204 })
+        : new Response(null, { status: 401 });
+    }
     if (request.method === "GET") return jsonResponse({ status: "ok" });
     if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
     if (!isAuthorized(request, env.WORKER_AUTH_TOKEN)) return jsonResponse({ error: "Unauthorized" }, 401);

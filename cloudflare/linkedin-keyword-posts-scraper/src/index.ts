@@ -1,5 +1,6 @@
 export interface Env {
   KEYWORD_SCRAPE_QUEUE: Queue<KeywordScrapeJob>;
+  PROCESSOR_WORKER?: Fetcher;
   HARVEST_API_KEY: string;
   PROCESSOR_WORKER_URL: string;
   PROCESSOR_WORKER_TOKEN?: string;
@@ -35,6 +36,7 @@ type ScrapeRequest = {
   sortBy?: SortBy;
   maxPostsPerKeyword?: number;
   maxPages?: number;
+  force?: boolean;
 };
 
 type ScraperConfig = {
@@ -87,6 +89,47 @@ function serviceHeaders(env: Env, json = false): Record<string, string> {
   };
 }
 
+function fetchProcessor(env: Env, init: RequestInit): Promise<Response> {
+  if (env.PROCESSOR_WORKER) {
+    return env.PROCESSOR_WORKER.fetch("https://processor.internal", init);
+  }
+  return fetch(env.PROCESSOR_WORKER_URL, init);
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+}
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    const text = asString(value);
+    if (text) return text;
+  }
+  return "";
+}
+
+function extractPostId(url: string): string {
+  return url.match(/urn:li:groupPost:\d+-(\d+)/i)?.[1]
+    ?? url.match(/(?:activity|urn:li:activity)[:-](\d+)/i)?.[1]
+    ?? "";
+}
+
+async function getSourcePostId(post: Record<string, unknown>, keywordId: string): Promise<string> {
+  const explicitId = firstString(post.id, post.post_id, post.postId);
+  if (explicitId) return explicitId;
+
+  const postUrl = firstString(post.linkedinUrl, post.post_url, post.url, post.postUrl, post["post URL"]);
+  const urlId = extractPostId(postUrl);
+  if (urlId) return urlId;
+
+  const content = firstString(post.text, post.content, post.post_content, post.description);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${keywordId}\n${postUrl}\n${content}`),
+  );
+  return `gen_${Array.from(new Uint8Array(digest)).slice(0, 12).map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
 async function fetchActiveKeywords(env: Env): Promise<KeywordRow[]> {
   const response = await fetch(
     `${env.SUPABASE_URL}/rest/v1/linkedin_keywords?select=id,keyword&is_active=eq.true&order=keyword.asc&limit=${MAX_KEYWORDS_PER_REQUEST}`,
@@ -95,6 +138,27 @@ async function fetchActiveKeywords(env: Env): Promise<KeywordRow[]> {
   if (!response.ok) throw new Error(`LinkedIn keywords query ${response.status}: ${(await response.text()).slice(0, 500)}`);
   const rows = await response.json<KeywordRow[]>();
   return rows.filter((row) => row.id && row.keyword?.trim());
+}
+
+async function claimKeywordsForScrape(
+  env: Env,
+  keywordIds: string[],
+  intervalHours: number,
+  force = false,
+): Promise<string[]> {
+  if (keywordIds.length === 0) return [];
+  const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/claim_linkedin_keywords_for_scrape`, {
+    method: "POST",
+    headers: serviceHeaders(env, true),
+    body: JSON.stringify({
+      p_keyword_ids: keywordIds,
+      p_interval_hours: intervalHours,
+      p_force: force,
+    }),
+  });
+  if (!response.ok) throw new Error(`LinkedIn keyword claim ${response.status}: ${(await response.text()).slice(0, 500)}`);
+  const rows = await response.json<Array<{ id?: unknown }>>();
+  return rows.map((row) => asString(row.id)).filter(Boolean);
 }
 
 async function fetchScraperConfig(env: Env): Promise<ScraperConfig> {
@@ -106,6 +170,16 @@ async function fetchScraperConfig(env: Env): Promise<ScraperConfig> {
   const rows = await response.json<ScraperConfig[]>();
   if (!rows[0]) throw new Error("LinkedIn keyword scraper config is missing");
   return rows[0];
+}
+
+async function verifyProcessorAccess(env: Env): Promise<void> {
+  const response = await fetchProcessor(env, {
+    method: "HEAD",
+    headers: env.PROCESSOR_WORKER_TOKEN
+      ? { Authorization: `Bearer ${env.PROCESSOR_WORKER_TOKEN}` }
+      : {},
+  });
+  if (!response.ok) throw new Error(`Processor Worker preflight failed (${response.status})`);
 }
 
 async function claimScheduledRun(env: Env, config: ScraperConfig): Promise<boolean> {
@@ -175,26 +249,80 @@ async function fetchHarvestPage(job: KeywordScrapeJob, env: Env): Promise<Harves
 
 async function logScrapedPosts(env: Env, job: KeywordScrapeJob, posts: Array<Record<string, unknown>>): Promise<void> {
   if (posts.length === 0) return;
-  const response = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/linkedin_keyword_posts?on_conflict=scrape_run_id,keyword_id,harvest_page,item_index`,
-    {
-      method: "POST",
-      headers: { ...serviceHeaders(env, true), Prefer: "resolution=ignore-duplicates,return=minimal" },
-      body: JSON.stringify(posts.map((post, itemIndex) => ({
-        scrape_run_id: job.scrapeRunId,
-        keyword_id: job.keywordId,
-        harvest_page: job.page,
-        item_index: itemIndex,
-        raw_post: post,
-      }))),
-    },
-  );
+  const observedAt = new Date().toISOString();
+  const identifiedPosts = await Promise.all(posts.map(async (post, itemIndex) => ({
+    source_post_id: await getSourcePostId(post, job.keywordId),
+    scrape_run_id: job.scrapeRunId,
+    keyword_id: job.keywordId,
+    harvest_page: job.page,
+    item_index: itemIndex,
+    raw_post: post,
+    observed_at: observedAt,
+    seen_increment: 1,
+  })));
+  const uniquePosts = new Map<string, typeof identifiedPosts[number]>();
+  for (const post of identifiedPosts) {
+    const existing = uniquePosts.get(post.source_post_id);
+    uniquePosts.set(post.source_post_id, {
+      ...post,
+      seen_increment: (existing?.seen_increment ?? 0) + 1,
+    });
+  }
+
+  const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/upsert_linkedin_keyword_posts`, {
+    method: "POST",
+    headers: serviceHeaders(env, true),
+    body: JSON.stringify({ p_posts: [...uniquePosts.values()] }),
+  });
   if (!response.ok) throw new Error(`Keyword post log ${response.status}: ${(await response.text()).slice(0, 500)}`);
+}
+
+async function markPostsDelivery(
+  env: Env,
+  keywordId: string,
+  sourcePostIds: string[],
+  status: "delivered" | "not_selected" | "failed",
+  error?: string,
+): Promise<void> {
+  if (sourcePostIds.length === 0) return;
+  const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/mark_linkedin_keyword_posts_delivery`, {
+    method: "POST",
+    headers: serviceHeaders(env, true),
+    body: JSON.stringify({
+      p_keyword_id: keywordId,
+      p_source_post_ids: sourcePostIds,
+      p_status: status,
+      p_error: error ?? null,
+    }),
+  });
+  if (!response.ok) throw new Error(`Keyword delivery status ${response.status}: ${(await response.text()).slice(0, 500)}`);
+}
+
+async function logScrapeRun(
+  env: Env,
+  job: KeywordScrapeJob,
+  postsFetched: number,
+  uniquePostsSeen: number,
+  harvestCost: number | null,
+): Promise<void> {
+  const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/record_linkedin_keyword_scrape_run`, {
+    method: "POST",
+    headers: serviceHeaders(env, true),
+    body: JSON.stringify({
+      p_scrape_run_id: job.scrapeRunId,
+      p_keyword_id: job.keywordId,
+      p_page: job.page,
+      p_posts_fetched: postsFetched,
+      p_unique_posts_seen: uniquePostsSeen,
+      p_harvest_cost: harvestCost,
+    }),
+  });
+  if (!response.ok) throw new Error(`LinkedIn keyword scrape run log ${response.status}: ${(await response.text()).slice(0, 500)}`);
 }
 
 async function deliverPosts(env: Env, job: KeywordScrapeJob, posts: Array<Record<string, unknown>>): Promise<void> {
   if (posts.length === 0) return;
-  const response = await fetch(env.PROCESSOR_WORKER_URL, {
+  const response = await fetchProcessor(env, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -203,6 +331,31 @@ async function deliverPosts(env: Env, job: KeywordScrapeJob, posts: Array<Record
     body: JSON.stringify({ keywordId: job.keywordId, posts }),
   });
   if (!response.ok) throw new Error(`Processor Worker ${response.status}: ${(await response.text()).slice(0, 500)}`);
+}
+
+async function retryFailedDeliveries(env: Env): Promise<number> {
+  const response = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/linkedin_keyword_posts?select=keyword_id,source_post_id,raw_post&delivery_status=eq.failed&order=last_seen_at.asc&limit=200`,
+    { headers: serviceHeaders(env) },
+  );
+  if (!response.ok) throw new Error(`Failed keyword delivery query ${response.status}: ${(await response.text()).slice(0, 500)}`);
+  const rows = await response.json<Array<{ keyword_id: string; source_post_id: string; raw_post: Record<string, unknown> }>>();
+  const byKeyword = new Map<string, typeof rows>();
+  for (const row of rows) byKeyword.set(row.keyword_id, [...(byKeyword.get(row.keyword_id) ?? []), row]);
+
+  let delivered = 0;
+  for (const [keywordId, keywordRows] of byKeyword) {
+    const retryJob = { keywordId } as KeywordScrapeJob;
+    try {
+      await deliverPosts(env, retryJob, keywordRows.map((row) => row.raw_post));
+      await markPostsDelivery(env, keywordId, keywordRows.map((row) => row.source_post_id), "delivered");
+      delivered += keywordRows.length;
+    } catch (error) {
+      await markPostsDelivery(env, keywordId, keywordRows.map((row) => row.source_post_id), "failed", (error as Error).message);
+      throw error;
+    }
+  }
+  return delivered;
 }
 
 async function markKeywordScraped(env: Env, keywordId: string): Promise<void> {
@@ -218,9 +371,20 @@ async function processScrapeJob(job: KeywordScrapeJob, env: Env): Promise<void> 
   const result = await fetchHarvestPage(job, env);
   const posts = Array.isArray(result.elements) ? result.elements : [];
   await logScrapedPosts(env, job, posts);
+  const sourcePostIds = await Promise.all(posts.map((post) => getSourcePostId(post, job.keywordId)));
   const remaining = Math.max(0, job.maxPostsPerKeyword - job.postsDelivered);
   const selected = posts.slice(0, remaining);
-  await deliverPosts(env, job, selected);
+  const selectedSourcePostIds = sourcePostIds.slice(0, selected.length);
+  const notSelectedSourcePostIds = sourcePostIds.slice(selected.length);
+  await markPostsDelivery(env, job.keywordId, notSelectedSourcePostIds, "not_selected");
+  try {
+    await deliverPosts(env, job, selected);
+    await markPostsDelivery(env, job.keywordId, selectedSourcePostIds, "delivered");
+  } catch (error) {
+    await markPostsDelivery(env, job.keywordId, selectedSourcePostIds, "failed", (error as Error).message);
+    throw error;
+  }
+  await logScrapeRun(env, job, posts.length, new Set(sourcePostIds).size, result.cost ?? null);
   const postsDelivered = job.postsDelivered + selected.length;
   const pagination = result.pagination ?? {};
   const hasAnotherPage = typeof pagination.totalPages === "number" ? job.page < pagination.totalPages : posts.length > 0;
@@ -249,40 +413,78 @@ async function processScrapeJob(job: KeywordScrapeJob, env: Env): Promise<void> 
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === "GET") return jsonResponse({ status: "ok" });
+    if (request.method === "GET") {
+      try {
+        await verifyProcessorAccess(env);
+        return jsonResponse({ status: "ok", processor: "ok" });
+      } catch (error) {
+        return jsonResponse({ status: "degraded", processor: (error as Error).message }, 503);
+      }
+    }
     if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
     if (!isAuthorized(request, env.WORKER_AUTH_TOKEN)) return jsonResponse({ error: "Unauthorized" }, 401);
 
     try {
       const payload = await request.json<ScrapeRequest>();
+      await verifyProcessorAccess(env);
+      const config = await fetchScraperConfig(env);
       const activeKeywords = await fetchActiveKeywords(env);
       const requestedIds = new Set((Array.isArray(payload.keywordIds) ? payload.keywordIds : []).map(String));
       const selected = requestedIds.size > 0
         ? activeKeywords.filter((row) => requestedIds.has(row.id))
         : activeKeywords;
-      const jobs = buildInitialJobs(selected, payload);
+      const claimedIds = new Set(await claimKeywordsForScrape(
+        env,
+        selected.map((row) => row.id),
+        config.schedule_interval_hours,
+        payload.force === true,
+      ));
+      const claimedKeywords = selected.filter((row) => claimedIds.has(row.id));
+      const jobs = buildInitialJobs(claimedKeywords, payload);
       await enqueueJobs(env.KEYWORD_SCRAPE_QUEUE, jobs);
-      return jsonResponse({ success: true, keywordsQueued: jobs.length }, 202);
+      return jsonResponse({
+        success: true,
+        keywordsQueued: jobs.length,
+        keywordsSkippedAsRecentlyScraped: selected.length - claimedKeywords.length,
+        inactiveOrUnknownKeywordIds: [...requestedIds].filter((id) => !activeKeywords.some((row) => row.id === id)),
+      }, 202);
     } catch (error) {
       return jsonResponse({ error: (error as Error).message }, 400);
     }
   },
 
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+    await verifyProcessorAccess(env);
+    const retriedPosts = await retryFailedDeliveries(env);
+    if (retriedPosts > 0) console.log(JSON.stringify({ event: "failed_keyword_deliveries_retried", posts: retriedPosts }));
     const config = await fetchScraperConfig(env);
     if (!await claimScheduledRun(env, config)) {
       console.log(JSON.stringify({ event: "scheduled_keyword_scrape_skipped", enabled: config.is_enabled }));
       return;
     }
     const keywords = await fetchActiveKeywords(env);
-    const jobs = buildInitialJobs(keywords, {
+    const claimedIds = new Set(await claimKeywordsForScrape(
+      env,
+      keywords.map((row) => row.id),
+      config.schedule_interval_hours,
+    ));
+    const claimedKeywords = keywords.filter((row) => claimedIds.has(row.id));
+    if (claimedKeywords.length === 0) {
+      console.log(JSON.stringify({ event: "scheduled_keyword_scrape_skipped", reason: "no_keywords_due" }));
+      return;
+    }
+    const jobs = buildInitialJobs(claimedKeywords, {
       postedLimit: config.posted_limit,
       sortBy: config.sort_by,
       maxPostsPerKeyword: config.max_posts_per_keyword,
       maxPages: config.max_pages,
     });
     await enqueueJobs(env.KEYWORD_SCRAPE_QUEUE, jobs);
-    console.log(JSON.stringify({ event: "scheduled_keywords_queued", keywords: jobs.length }));
+    console.log(JSON.stringify({
+      event: "scheduled_keywords_queued",
+      keywords: jobs.length,
+      keywordsSkippedAsRecentlyScraped: keywords.length - claimedKeywords.length,
+    }));
   },
 
   async queue(batch: MessageBatch<KeywordScrapeJob>, env: Env): Promise<void> {
