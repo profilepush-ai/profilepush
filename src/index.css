@@ -137,6 +137,10 @@
     background-color: transparent !important;
     border-color: currentColor !important;
   }
+
+  html.dark .account-settings-label {
+    background-color: transparent !important;
+  }
 }
 
 @layer utilities {
