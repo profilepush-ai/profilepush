@@ -10,8 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
 import { supabase } from '../lib/supabase';
-import type { AppNotification, NotificationType } from '../lib/notifications';
-import { NOTIFICATION_TYPES } from '../lib/notifications';
+import type { AppNotification } from '../lib/notifications';
 
 const navItems = [
   { path: '/jobs',          label: 'Jobs',           mobileLabel: 'Jobs',    icon: Briefcase, hideOnMobile: false },
@@ -75,15 +74,6 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  Pipeline: 'bg-blue-100 text-blue-600',
-  AI:       'bg-orange-100 text-orange-600',
-  Usage:    'bg-amber-100 text-amber-600',
-  Team:     'bg-emerald-100 text-emerald-600',
-  Billing:  'bg-violet-100 text-violet-600',
-  Reports:  'bg-gray-100 text-gray-600',
-};
-
 function NotificationBell({ userId }: { userId: string }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -143,11 +133,6 @@ function NotificationBell({ userId }: { userId: string }) {
     setOpen(false);
   }
 
-  const groupColor = (type: string) => {
-    const group = NOTIFICATION_TYPES[type as NotificationType]?.group ?? 'Reports';
-    return TYPE_COLORS[group] ?? TYPE_COLORS.Reports;
-  };
-
   return (
     <div className="relative" ref={ref}>
       <button
@@ -164,14 +149,14 @@ function NotificationBell({ userId }: { userId: string }) {
       </button>
 
       {open && (
-        <div className="fixed inset-x-2 top-10 mt-1.5 w-auto bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:w-80">
+        <div className="fixed inset-x-2 top-10 z-50 mt-1.5 flex max-h-[calc(100dvh-7rem)] w-auto flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-white/10 dark:bg-[#20242A] sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:max-h-[calc(100dvh-4rem)] sm:w-80">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-white/10">
             <div className="flex items-center gap-2">
-              <Bell size={13} className="text-gray-500" />
-              <span className="text-xs font-semibold text-gray-900">Notifications</span>
+              <Bell size={13} className="text-gray-500 dark:text-slate-400" />
+              <span className="text-xs font-semibold text-gray-900 dark:text-slate-100">Notifications</span>
               {unreadCount > 0 && (
-                <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.5 rounded-full">{unreadCount} new</span>
+                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">{unreadCount} new</span>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -180,14 +165,14 @@ function NotificationBell({ userId }: { userId: string }) {
                   <Check size={10} />Mark all read
                 </button>
               )}
-              <button onClick={() => setOpen(false)} className="p-0.5 rounded text-gray-400 hover:text-gray-600">
+              <button onClick={() => setOpen(false)} className="rounded p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
                 <X size={13} />
               </button>
             </div>
           </div>
 
           {/* List */}
-          <div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
+          <div className="min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto overscroll-contain dark:divide-white/10">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-gray-400">
                 <Bell size={22} className="mb-2 opacity-40" />
@@ -199,22 +184,17 @@ function NotificationBell({ userId }: { userId: string }) {
                 <button
                   key={n.id}
                   onClick={() => handleNotifClick(n)}
-                  className={`w-full text-left flex gap-3 px-4 py-3 hover:bg-gray-50 transition-colors ${!n.read ? 'bg-blue-50/40' : ''}`}
+                  className={`w-full px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-white/5 ${!n.read ? 'bg-blue-50/40 dark:bg-blue-500/[0.07]' : ''}`}
                 >
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 ${groupColor(n.type)}`}>
-                    {n.type === 'vendor_reply_received'
-                      ? <Mail size={12} />
-                      : NOTIFICATION_TYPES[n.type as NotificationType]?.label?.[0] ?? <Bell size={12} />}
-                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <p className={`text-[11px] leading-snug ${!n.read ? 'font-semibold text-gray-900' : 'font-medium text-gray-700'}`}>
+                      <p className={`text-[11px] leading-snug ${!n.read ? 'font-semibold text-gray-900 dark:text-slate-100' : 'font-medium text-gray-700 dark:text-slate-300'}`}>
                         {n.title}
                       </p>
                       {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-1" />}
                     </div>
-                    {n.body && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{n.body}</p>}
-                    <p className="text-[10px] text-gray-400 mt-0.5">{timeAgo(n.created_at)}</p>
+                    {n.body && <p className="mt-0.5 truncate text-[10px] text-gray-400 dark:text-slate-400">{n.body}</p>}
+                    <p className="mt-0.5 text-[10px] text-gray-400 dark:text-slate-500">{timeAgo(n.created_at)}</p>
                   </div>
                 </button>
               ))

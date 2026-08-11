@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  AlertCircle, ArrowLeft, CheckCheck, Inbox,
-  Copy, Loader2, Mail, RefreshCcw, Search,
+  AlertCircle, ArrowLeft, Check, CheckCheck, Clock3, Inbox,
+  Copy, Loader2, Mail, Search, X,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 
 type ConversationStatus = 'pending' | 'open' | 'replied' | 'closed' | 'failed';
+type InboxRangeId = '24h' | '3d' | '7d' | '15d' | '30d';
+
+const INBOX_RANGE_OPTIONS: Array<{ id: InboxRangeId; label: string; hours: number }> = [
+  { id: '24h', label: 'Last 24 hours', hours: 24 },
+  { id: '3d', label: 'Last 3 days', hours: 72 },
+  { id: '7d', label: 'Last 7 days', hours: 168 },
+  { id: '15d', label: 'Last 15 days', hours: 360 },
+  { id: '30d', label: 'Last 30 days', hours: 720 },
+];
 
 type RadarBreakdownEntry = {
   job_value?: string;
@@ -201,6 +211,7 @@ export default function InboxPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const { user, account, refreshAccount } = useAuth();
+  const { isDark } = useTheme();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(conversationId ?? null);
@@ -208,7 +219,10 @@ export default function InboxPage() {
   const threadScrollRef = useRef<HTMLDivElement>(null);
   const lastAutoScrolledConversationId = useRef<string | null>(null);
   const [query, setQuery] = useState('');
+  const [pendingQuery, setPendingQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'asked' | 'replied'>('all');
+  const [rangeId, setRangeId] = useState<InboxRangeId>('7d');
+  const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [revealedJobIds, setRevealedJobIds] = useState<Set<string>>(new Set());
@@ -252,7 +266,7 @@ export default function InboxPage() {
       setRevealedJobIds(new Set((actionRows ?? []).map((row) => row.lead_id)));
     }
     setConversations(rows);
-    setSelectedId((current) => current ?? rows[0]?.id ?? null);
+    setSelectedId((current) => current ?? (window.matchMedia('(min-width: 640px)').matches ? rows[0]?.id ?? null : null));
   }, [user?.id]);
 
   const loadMessages = useCallback(async (id: string) => {
@@ -320,23 +334,35 @@ export default function InboxPage() {
   }, [loadConversations, loadMessages, selectedId]);
 
   useEffect(() => {
-    if (conversationId && conversationId !== selectedId) setSelectedId(conversationId);
-  }, [conversationId, selectedId]);
+    setSelectedId(conversationId ?? null);
+  }, [conversationId]);
 
   const selected = conversations.find((item) => item.id === selectedId) ?? null;
-  const filtered = useMemo(() => {
+  const scopedConversations = useMemo(() => {
     const normalized = query.trim().toLowerCase();
+    const range = INBOX_RANGE_OPTIONS.find((option) => option.id === rangeId) ?? INBOX_RANGE_OPTIONS[2];
+    const cutoff = Date.now() - range.hours * 60 * 60 * 1000;
     return conversations.filter((item) => {
-      if (filter === 'asked' && !['pending', 'open'].includes(item.status)) return false;
-      if (filter === 'replied' && item.status !== 'replied') return false;
+      if (new Date(item.last_message_at).getTime() < cutoff) return false;
       if (!normalized) return true;
       return [item.vendor_name, item.vendor_email, item.subject, item.social_jobs?.job_title]
         .some((value) => value?.toLowerCase().includes(normalized));
     });
-  }, [conversations, filter, query]);
+  }, [conversations, query, rangeId]);
+
+  const tabCounts = useMemo(() => ({
+    all: scopedConversations.length,
+    asked: scopedConversations.filter((item) => ['pending', 'open'].includes(item.status)).length,
+    replied: scopedConversations.filter((item) => item.status === 'replied').length,
+  }), [scopedConversations]);
+
+  const filtered = useMemo(() => scopedConversations.filter((item) => {
+    if (filter === 'asked') return ['pending', 'open'].includes(item.status);
+    if (filter === 'replied') return item.status === 'replied';
+    return true;
+  }), [filter, scopedConversations]);
 
   function selectConversation(id: string) {
-    setSelectedId(id);
     navigate(`/inbox/${id}`, { replace: true });
   }
 
@@ -426,20 +452,63 @@ export default function InboxPage() {
       <AppNav />
       <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden sm:grid-cols-[290px_minmax(0,1fr)] xl:grid-cols-[310px_minmax(0,1fr)]">
         <aside className={`${selectedId ? 'hidden sm:flex' : 'flex'} min-h-0 flex-col border-r border-gray-200 bg-white`}>
-          <div className="border-b border-gray-200">
-            <div className="flex h-12 items-center gap-2 px-3">
-              <div className="relative min-w-0 flex-1">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search vendor or job" className="h-8 w-full rounded-md border border-gray-300 bg-white pl-8 pr-3 text-xs outline-none focus:border-blue-500" />
+          <div className="border-b border-gray-200 bg-white px-1.5 pb-1.5 pt-1.5 dark:border-white/10 dark:bg-[#1B1D21]">
+            <div className="flex items-center gap-2">
+              <div className="relative flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+                <Search size={11} className="shrink-0 text-gray-400" />
+                <input
+                  value={pendingQuery}
+                  onChange={(event) => setPendingQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      setQuery(pendingQuery.trim());
+                    }
+                  }}
+                  placeholder="Search vendor or job"
+                  className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                />
+                {pendingQuery && (
+                  <button type="button" onClick={() => { setPendingQuery(''); setQuery(''); }} className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600" aria-label="Clear search field">
+                    <X size={11} />
+                  </button>
+                )}
               </div>
-              <button type="button" onClick={() => void loadConversations()} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100" title="Refresh inbox">
-                <RefreshCcw size={14} />
+              <button type="button" onClick={() => setQuery(pendingQuery.trim())} className="rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700" aria-label="Search">
+                <Search size={12} />
               </button>
+              <div className="relative shrink-0">
+                <button type="button" onClick={() => setIsRangeMenuOpen((open) => !open)} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100" aria-label="Change date range">
+                  <Clock3 size={11} />
+                  <span>{rangeId}</span>
+                </button>
+                {isRangeMenuOpen && (
+                  <div className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[116px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+                    {INBOX_RANGE_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => { setRangeId(option.id); setIsRangeMenuOpen(false); }}
+                        className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${option.id === rangeId ? (isDark ? 'bg-[#2A2E35] text-slate-100' : 'bg-gray-100 text-gray-800') : 'text-gray-600 hover:bg-gray-50'}`}
+                      >
+                        <span>{option.label}</span>
+                        {option.id === rangeId && <Check size={11} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="mx-3 mb-2 grid grid-cols-3 gap-1 rounded-md bg-gray-100 p-1">
+            <div className="mt-1.5 grid w-full grid-cols-3 gap-1">
               {(['all', 'asked', 'replied'] as const).map((option) => (
-                <button key={option} type="button" onClick={() => setFilter(option)} className={`h-7 rounded text-[10px] font-semibold capitalize ${filter === option ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}>
-                  {option}
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setFilter(option)}
+                  className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold capitalize transition ${filter === option ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
+                >
+                  <span>{option}</span>
+                  <span>{tabCounts[option]}</span>
                 </button>
               ))}
             </div>
@@ -471,24 +540,23 @@ export default function InboxPage() {
           </div>
         </aside>
 
-        <section className={`${selectedId ? 'flex' : 'hidden sm:flex'} min-h-0 min-w-0 flex-col bg-white`}>
+        <section className={`${selectedId ? 'flex' : 'hidden sm:flex'} min-h-0 min-w-0 flex-col overflow-hidden bg-white`}>
           {!selected ? (
             <div className="flex flex-1 flex-col items-center justify-center text-gray-400">
               <Mail size={32} />
               <p className="mt-3 text-sm font-semibold text-gray-600">Select a conversation</p>
             </div>
           ) : (
-            <>
-              <header className="flex h-12 shrink-0 items-center gap-1 border-b border-gray-200 px-2 sm:px-3">
-                <button type="button" onClick={() => { setSelectedId(null); navigate('/inbox', { replace: true }); }} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
+            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-white">
+              <header className="sticky top-0 z-10 flex h-12 items-center gap-1 border-b border-gray-200 bg-white px-2 sm:px-3">
+                <button type="button" onClick={() => navigate('/inbox', { replace: true })} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
                   <ArrowLeft size={16} />
                 </button>
                 <div className="flex-1" />
                 <span className={`rounded px-2 py-1 text-[10px] font-semibold ${selected.status === 'failed' ? 'bg-red-50 text-red-700' : selected.status === 'replied' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selected.status]}</span>
               </header>
 
-              <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-white">
-                <div className="mx-auto max-w-5xl px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
+              <div className="mx-auto max-w-5xl px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
                   <JobReferenceCard conversation={selected} revealed={revealedJobIds.has(selected.job_id)} />
                   {loadingMessages ? (
                     <div className="flex h-32 items-center justify-center"><Loader2 size={18} className="animate-spin text-blue-600" /></div>
@@ -540,9 +608,8 @@ export default function InboxPage() {
                     );
                   })}
 
-                </div>
               </div>
-            </>
+            </div>
           )}
         </section>
       </main>
