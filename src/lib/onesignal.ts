@@ -7,10 +7,17 @@ const DIALOG_SHOWN_KEY = 'onesignal_integration_dialog_shown';
 let oneSignalInitialized = false;
 let pendingExternalId: string | null = null;
 let hasRegisteredSubscriptionObserver = false;
+let hasRegisteredNotificationClickListener = false;
 
 type PushSubscriptionChangedState = {
   current: {
     id?: string | null;
+  };
+};
+
+type NotificationClickEvent = {
+  notification?: {
+    additionalData?: Record<string, unknown>;
   };
 };
 
@@ -68,6 +75,20 @@ function registerPushSubscriptionObserver(): void {
     });
 }
 
+function registerNotificationClickListener(): void {
+  if (hasRegisteredNotificationClickListener) {
+    return;
+  }
+
+  OneSignal.Notifications.addEventListener('click', (event: NotificationClickEvent) => {
+    const link = event.notification?.additionalData?.link;
+    if (typeof link === 'string' && link.startsWith('/')) {
+      window.location.assign(link);
+    }
+  });
+  hasRegisteredNotificationClickListener = true;
+}
+
 function applyPendingIdentity(): void {
   try {
     if (pendingExternalId) {
@@ -87,6 +108,7 @@ export function initializeOneSignal(): void {
 
   OneSignal.initialize(ONESIGNAL_APP_ID);
   registerPushSubscriptionObserver();
+  registerNotificationClickListener();
 
   oneSignalInitialized = true;
   applyPendingIdentity();
