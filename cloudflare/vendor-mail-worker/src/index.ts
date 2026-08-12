@@ -566,11 +566,36 @@ async function queuePendingExtractions(env: Env): Promise<void> {
   }
 }
 
+async function handleAttachmentDownload(request: Request, env: Env): Promise<Response> {
+  if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
+  const objectKey = new URL(request.url).searchParams.get("key") ?? "";
+  if (!objectKey.startsWith("inbound/")) return jsonResponse({ error: "A valid object key is required" }, 400);
+
+  const object = await env.VENDOR_MAIL_BUCKET.get(objectKey);
+  if (!object) return jsonResponse({ error: "File not found" }, 404);
+
+  return new Response(object.body, {
+    status: 200,
+    headers: {
+      "Content-Type": object.httpMetadata?.contentType ?? "application/octet-stream",
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "GET" && pathname === "/vendor-mail/attachment") {
+      try {
+        return await handleAttachmentDownload(request, env);
+      } catch (error) {
+        console.error("Attachment download failed", error);
+        return jsonResponse({ error: (error as Error).message }, 500);
+      }
+    }
     if (request.method === "GET") return jsonResponse({ status: "ok" });
     if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
-    const pathname = new URL(request.url).pathname;
     try {
       if (pathname === "/vendor-mail/send") return await handleOutboundRequest(request, env);
       if (pathname === "/mailgun/inbound") return await handleInboundWebhook(request, env);

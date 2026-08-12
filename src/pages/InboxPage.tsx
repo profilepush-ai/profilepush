@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  AlertCircle, ArrowLeft, Check, CheckCheck, Clock3, Inbox,
-  Copy, Loader2, Mail, Search, X,
+  AlertCircle, ArrowLeft, Check, CheckCheck, Clock3, Download, Inbox,
+  Copy, Loader2, Mail, Paperclip, Search, X,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -84,7 +84,19 @@ type Message = {
     event_type: string;
     occurred_at: string;
   }>;
+  vendor_message_attachments: Array<{
+    id: string;
+    original_filename: string;
+    content_type: string;
+    size_bytes: number;
+  }>;
 };
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function messageDeliveryState(message: Message) {
   const opened = message.vendor_message_events.find((event) => event.event_type === 'opened');
@@ -247,6 +259,7 @@ export default function InboxPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [revealedJobIds, setRevealedJobIds] = useState<Set<string>>(new Set());
   const [revealingJobId, setRevealingJobId] = useState<string | null>(null);
+  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const loadConversations = useCallback(async () => {
@@ -307,7 +320,7 @@ export default function InboxPage() {
     setLoadingMessages(true);
     const { data, error } = await supabase
       .from('vendor_messages')
-      .select('id, direction, sender_type, from_email, to_email, subject, text_body, display_text, display_text_status, status, error_message, sent_at, received_at, created_at, vendor_message_events(event_type, occurred_at)')
+      .select('id, direction, sender_type, from_email, to_email, subject, text_body, display_text, display_text_status, status, error_message, sent_at, received_at, created_at, vendor_message_events(event_type, occurred_at), vendor_message_attachments(id, original_filename, content_type, size_bytes)')
       .eq('conversation_id', id)
       .order('created_at', { ascending: true });
     setLoadingMessages(false);
@@ -482,6 +495,40 @@ export default function InboxPage() {
     }
   }
 
+  async function downloadAttachment(attachmentId: string, filename: string) {
+    if (downloadingAttachmentId) return;
+    setDownloadingAttachmentId(attachmentId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        setToast({ message: 'Please sign in to download attachments', type: 'error' });
+        return;
+      }
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vendor-attachment-download?id=${encodeURIComponent(attachmentId)}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error || `Download failed (HTTP ${response.status})`);
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      setToast({ message: (error as Error).message || 'Could not download attachment', type: 'error' });
+    } finally {
+      setDownloadingAttachmentId(null);
+    }
+  }
+
   return (
     <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-gray-50 text-gray-900">
       <AppNav />
@@ -615,6 +662,28 @@ export default function InboxPage() {
                       <article key={message.id} className={`mb-3 flex last:mb-0 ${outbound ? 'justify-end' : 'justify-start'}`}>
                         <div className={`w-fit max-w-[92%] rounded-lg border px-3 py-3 sm:max-w-2xl ${outbound ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
                           <p className="whitespace-pre-wrap break-words text-[13px] leading-5 text-gray-800">{messageText}</p>
+                          {message.vendor_message_attachments.length > 0 && (
+                            <div className="mt-2 flex flex-col gap-1.5">
+                              {message.vendor_message_attachments.map((attachment) => (
+                                <button
+                                  key={attachment.id}
+                                  type="button"
+                                  onClick={() => void downloadAttachment(attachment.id, attachment.original_filename)}
+                                  disabled={downloadingAttachmentId === attachment.id}
+                                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-left text-[11px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {downloadingAttachmentId === attachment.id ? (
+                                    <Loader2 size={12} className="shrink-0 animate-spin text-gray-400" />
+                                  ) : (
+                                    <Paperclip size={12} className="shrink-0 text-gray-400" />
+                                  )}
+                                  <span className="min-w-0 flex-1 truncate">{attachment.original_filename}</span>
+                                  <span className="shrink-0 text-gray-400">{formatFileSize(attachment.size_bytes)}</span>
+                                  <Download size={11} className="shrink-0 text-gray-400" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           <div className="mt-3 flex flex-col gap-2 border-t border-gray-200/80 pt-2.5 sm:flex-row sm:items-center">
                             <div className="flex items-center justify-between gap-2 sm:justify-start">
                               <span className="inline-flex min-w-0 items-center gap-1 text-[10px] font-medium text-gray-500">
