@@ -539,8 +539,12 @@ export default {
 
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
     await verifyProcessorAccess(env);
-    const retriedPosts = await retryFailedDeliveries(env);
-    if (retriedPosts > 0) console.log(JSON.stringify({ event: "failed_group_deliveries_retried", posts: retriedPosts }));
+    try {
+      const retriedPosts = await retryFailedDeliveries(env);
+      if (retriedPosts > 0) console.log(JSON.stringify({ event: "failed_group_deliveries_retried", posts: retriedPosts }));
+    } catch (error) {
+      console.error(`Failed delivery retry errored: ${(error as Error).message}`);
+    }
     const config = await fetchScraperConfig(env);
     if (!await claimScheduledRun(env, config)) {
       console.log(JSON.stringify({ event: "scheduled_scrape_skipped", enabled: config.is_enabled }));
