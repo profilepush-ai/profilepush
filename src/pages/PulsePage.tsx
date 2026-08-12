@@ -2626,18 +2626,93 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
   const loadAskedJobState = useCallback(async () => {
     if (isHotlistFeed) {
-      setAskedJobStateByLeadId({});
-      setAskedLeadsById({});
-      const { data: hotlistStates, error: hotlistStatesError } = await supabase.rpc('get_hotlist_asked_states' as never);
-      if (hotlistStatesError) {
+      if (!account?.id || !user?.id) {
+        setAskedJobStateByLeadId({});
         setGlobalAskedJobStateByLeadId({});
+        setAskedLeadsById({});
         return;
       }
+
+      const [ownHotlistRequestsResult, hotlistStatesResult] = await Promise.all([
+        supabase
+          .from('pulse_ask_ai_requests' as never)
+          .select('hotlist_id, status, created_at, fulfilled_at')
+          .eq('account_id', account.id)
+          .eq('user_id', user.id)
+          .not('hotlist_id', 'is', null)
+          .in('status', ['completed', 'fulfilled'])
+          .order('created_at', { ascending: false }),
+        supabase.rpc('get_hotlist_asked_states' as never),
+      ]);
+
+      if (ownHotlistRequestsResult.error) return;
+
+      const nextState: Record<string, AskedJobState> = {};
+      for (const row of (ownHotlistRequestsResult.data ?? []) as Array<{ hotlist_id: string; created_at: string; fulfilled_at: string | null }>) {
+        if (!nextState[row.hotlist_id]) {
+          nextState[row.hotlist_id] = { requestedAt: row.created_at, fulfilledAt: row.fulfilled_at };
+        }
+      }
+      setAskedJobStateByLeadId(nextState);
+
       const nextHotlistGlobalState: Record<string, GlobalAskedJobState> = {};
-      for (const row of (hotlistStates ?? []) as Array<{ hotlist_id: string; state: GlobalAskedJobState }>) {
-        if (row.state === 'asked' || row.state === 'verified') nextHotlistGlobalState[row.hotlist_id] = row.state;
+      if (!hotlistStatesResult.error) {
+        for (const row of (hotlistStatesResult.data ?? []) as Array<{ hotlist_id: string; state: GlobalAskedJobState }>) {
+          if (row.state === 'asked' || row.state === 'verified') nextHotlistGlobalState[row.hotlist_id] = row.state;
+        }
       }
       setGlobalAskedJobStateByLeadId(nextHotlistGlobalState);
+
+      const hotlistIds = Array.from(new Set([...Object.keys(nextState), ...Object.keys(nextHotlistGlobalState)]));
+      if (hotlistIds.length === 0) {
+        setAskedLeadsById({});
+        return;
+      }
+
+      const { data: hotlistRows, error: hotlistRowsError } = await supabase
+        .from('social_hotlist')
+        .select('id, platform, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_company_name, role_title, core_skills, years_experience, visa_type, employment_type, locations, hourly_rate_min, hourly_rate_max, raw_post_content, posted_at, created_at')
+        .in('id', hotlistIds);
+      if (hotlistRowsError) return;
+
+      const nextHotlistLeads: Record<string, SocialLead> = {};
+      for (const row of (hotlistRows ?? []) as Array<{
+        id: string; platform: string; bench_sales_recruiter_name: string | null; bench_sales_recruiter_email: string | null;
+        bench_sales_recruiter_phone: string | null; bench_sales_company_name: string | null; role_title: string | null;
+        core_skills: string[] | null; years_experience: number | null; visa_type: string | null; employment_type: string | null;
+        locations: string[] | null; hourly_rate_min: number | null; hourly_rate_max: number | null; raw_post_content: string | null;
+        posted_at: string | null; created_at: string;
+      }>) {
+        const eventTime = row.posted_at || row.created_at;
+        nextHotlistLeads[row.id] = {
+          id: row.id,
+          title: row.role_title?.trim() || 'Available Consultant',
+          roleTitle: row.role_title?.trim() || '',
+          location: Array.isArray(row.locations) && row.locations.length > 0 ? row.locations.join(', ') : 'Location not specified',
+          company: row.bench_sales_company_name?.trim() || '',
+          posterName: row.bench_sales_recruiter_name?.trim() || 'Bench Sales Recruiter',
+          posterEmail: row.bench_sales_recruiter_email?.trim() || '',
+          posterPhone: row.bench_sales_recruiter_phone?.trim() || '',
+          postedAt: eventTime,
+          createdAt: row.created_at,
+          postedAgo: formatAgo(eventTime),
+          platform: row.platform,
+          matchScore: null,
+          profileId: null,
+          scoreBreakdown: null,
+          snippet: row.raw_post_content?.trim().slice(0, 150) || '',
+          employmentType: row.employment_type?.trim() || '',
+          seniority: '',
+          salaryRange: '',
+          skills: Array.isArray(row.core_skills) ? row.core_skills : [],
+          experienceYears: row.years_experience ?? null,
+          visaTypes: row.visa_type ? [row.visa_type] : [],
+          hourlyRate: (row.hourly_rate_min != null || row.hourly_rate_max != null)
+            ? `$${row.hourly_rate_min ?? '?'}–$${row.hourly_rate_max ?? '?'}/hr`
+            : '',
+        };
+      }
+      setAskedLeadsById(nextHotlistLeads);
       return;
     }
     if (!account?.id || !user?.id) {
