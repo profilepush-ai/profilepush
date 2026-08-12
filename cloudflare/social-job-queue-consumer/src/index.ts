@@ -25,6 +25,7 @@ type ParserResult = Record<string, unknown>;
 type VendorReplyRequest = {
   request_id?: string;
   job_id?: string;
+  hotlist_id?: string;
   email_content?: string;
   subject?: string;
   from_email?: string;
@@ -313,6 +314,55 @@ function updatedBreakdown(existing: unknown, details: Record<string, unknown>): 
   return breakdown;
 }
 
+const UUID_PATTERN = /^[0-9a-f-]{36}$/i;
+
+// Hotlist leads (consultant resume asks) have no verification/reply-extraction
+// pipeline — a reply just needs its privacy-sanitized display_text so the inbox
+// can show it, unlike job leads which also extract structured details.
+async function handleHotlistVendorReply(
+  env: Env,
+  params: { requestId: string; hotlistId: string; fromEmail: string; subject: string; emailContent: string },
+): Promise<Response> {
+  const { requestId, hotlistId, fromEmail, subject, emailContent } = params;
+
+  const hotlists = await supabaseJson(
+    env,
+    `social_hotlist?id=eq.${encodeURIComponent(hotlistId)}&select=id,bench_sales_recruiter_email,role_title&limit=1`,
+  ) as Array<{ id: string; bench_sales_recruiter_email: string | null; role_title: string | null }>;
+  const hotlist = hotlists[0];
+  if (!hotlist) return jsonResponse({ error: "Hotlist lead not found" }, 404);
+  if (String(hotlist.bench_sales_recruiter_email ?? "").trim().toLowerCase() !== fromEmail) {
+    return jsonResponse({ error: "Sender email does not match this lead's recruiter" }, 403);
+  }
+
+  const requests = await supabaseJson(
+    env,
+    `pulse_ask_ai_requests?request_id=eq.${encodeURIComponent(requestId)}&hotlist_id=eq.${encodeURIComponent(hotlistId)}&status=eq.completed&select=request_id`,
+  ) as Array<{ request_id: string }>;
+  if (requests.length === 0) return jsonResponse({ error: "No pending Ask requests were found for this lead" }, 404);
+
+  const prompt = `Process this vendor email reply and return strict JSON only, without markdown.
+Create display_text containing only the vendor's substantive reply. Remove greetings, signatures, names, email addresses, company or agency names, contact details, email headers, disclaimers, and quoted prior messages. Preserve the original wording, order, intent, facts, and tone of the remaining reply. Do not summarize, infer, add facts, or rewrite beyond the minimum grammar needed after removals.
+Return strict JSON with exactly one key: "display_text".
+Subject: ${subject.slice(0, 500)}
+From: ${fromEmail.slice(0, 320)}
+Email:
+${emailContent.slice(0, 12_000)}`;
+  const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
+  const aiResult = await env.AI.run(model, {
+    messages: [
+      { role: "system", content: "Privacy-clean vendor replies without changing their meaning. Return strict JSON only." },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0,
+    max_tokens: 800,
+  });
+  const parsedReply = parseModelText((aiResult as Record<string, unknown>)?.response ?? aiResult);
+  const displayText = normalizeReplyDisplayText(parsedReply, [fromEmail, hotlist.role_title ?? ""]);
+
+  return jsonResponse({ ok: true, hotlist_id: hotlistId, display_text: displayText });
+}
+
 async function handleVendorReply(req: Request, env: Env): Promise<Response> {
   const expectedToken = (env.INBOUND_REPLY_TOKEN ?? "").trim();
   if (!expectedToken) return jsonResponse({ error: "Inbound reply webhook is not configured" }, 503);
@@ -321,10 +371,16 @@ async function handleVendorReply(req: Request, env: Env): Promise<Response> {
   const body = await req.json() as VendorReplyRequest;
   const requestId = String(body.request_id ?? "").trim();
   const jobId = String(body.job_id ?? "").trim();
+  const hotlistId = String(body.hotlist_id ?? "").trim();
   const fromEmail = String(body.from_email ?? "").trim().toLowerCase();
   const emailContent = String(body.email_content ?? "").trim();
-  if (!/^[0-9a-f-]{36}$/i.test(requestId) || !/^[0-9a-f-]{36}$/i.test(jobId) || !/^\S+@\S+\.\S+$/.test(fromEmail) || !emailContent) {
-    return jsonResponse({ error: "request_id, job_id, from_email, and email_content are required" }, 400);
+  const subject = String(body.subject ?? "");
+  if (!UUID_PATTERN.test(requestId) || (!UUID_PATTERN.test(jobId) && !UUID_PATTERN.test(hotlistId)) || !/^\S+@\S+\.\S+$/.test(fromEmail) || !emailContent) {
+    return jsonResponse({ error: "request_id, job_id or hotlist_id, from_email, and email_content are required" }, 400);
+  }
+
+  if (!UUID_PATTERN.test(jobId) && UUID_PATTERN.test(hotlistId)) {
+    return await handleHotlistVendorReply(env, { requestId, hotlistId, fromEmail, subject, emailContent });
   }
 
   const jobs = await supabaseJson(

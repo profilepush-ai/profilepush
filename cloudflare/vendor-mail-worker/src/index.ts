@@ -20,7 +20,8 @@ type ExtractionJob = {
   kind: "extraction";
   messageId: string;
   requestId: string;
-  jobId: string;
+  jobId: string | null;
+  hotlistId: string | null;
   sender: string;
   subject: string;
   textBody: string;
@@ -478,8 +479,8 @@ async function processInbound(job: InboundJob, env: Env): Promise<void> {
   });
   if (!conversationResponse.ok) throw new Error(`Conversation update ${conversationResponse.status}`);
 
-  const conversationLookup = await supabaseRequest(env, `vendor_conversations?id=eq.${encodeURIComponent(job.conversationId)}&select=user_id,account_id,vendor_name,subject,request_id,job_id&limit=1`);
-  const conversation = (await conversationLookup.json<Array<{ user_id: string; account_id: string; vendor_name: string; subject: string; request_id: string; job_id: string }>>())[0];
+  const conversationLookup = await supabaseRequest(env, `vendor_conversations?id=eq.${encodeURIComponent(job.conversationId)}&select=user_id,account_id,vendor_name,subject,request_id,job_id,hotlist_id&limit=1`);
+  const conversation = (await conversationLookup.json<Array<{ user_id: string; account_id: string; vendor_name: string; subject: string; request_id: string; job_id: string | null; hotlist_id: string | null }>>())[0];
   if (conversation) {
     await supabaseRequest(env, "notifications", {
       method: "POST",
@@ -498,6 +499,7 @@ async function processInbound(job: InboundJob, env: Env): Promise<void> {
       messageId,
       requestId: conversation.request_id,
       jobId: conversation.job_id,
+      hotlistId: conversation.hotlist_id,
       sender: job.sender,
       subject: job.subject,
       textBody: job.textBody,
@@ -515,6 +517,7 @@ async function processExtraction(job: ExtractionJob, env: Env): Promise<void> {
     body: JSON.stringify({
       request_id: job.requestId,
       job_id: job.jobId,
+      hotlist_id: job.hotlistId,
       from_email: job.sender,
       subject: job.subject,
       email_content: job.textBody,
@@ -532,9 +535,13 @@ async function processExtraction(job: ExtractionJob, env: Env): Promise<void> {
 }
 
 async function queuePendingExtractions(env: Env): Promise<void> {
+  // Also re-claim rows stuck in "processing" — a permanently-failing extraction
+  // (e.g. exhausted queue retries into the DLQ) leaves display_text_status there
+  // forever otherwise, since only this sweep or a successful run advances it.
+  const staleBefore = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const response = await supabaseRequest(
     env,
-    "vendor_messages?direction=eq.inbound&display_text_status=eq.pending&select=id,from_email,subject,text_body,vendor_conversations!inner(request_id,job_id)&order=created_at.asc&limit=25",
+    `vendor_messages?direction=eq.inbound&or=(display_text_status.eq.pending,and(display_text_status.eq.processing,updated_at.lt.${encodeURIComponent(staleBefore)}))&select=id,from_email,subject,text_body,vendor_conversations!inner(request_id,job_id,hotlist_id)&order=created_at.asc&limit=25`,
   );
   if (!response.ok) throw new Error(`Pending reply lookup ${response.status}: ${(await response.text()).slice(0, 300)}`);
   const rows = await response.json<Array<{
@@ -542,7 +549,7 @@ async function queuePendingExtractions(env: Env): Promise<void> {
     from_email: string;
     subject: string;
     text_body: string;
-    vendor_conversations: { request_id: string; job_id: string };
+    vendor_conversations: { request_id: string; job_id: string | null; hotlist_id: string | null };
   }>>();
   for (const row of rows) {
     await env.EXTRACTION_QUEUE.send({
@@ -550,6 +557,7 @@ async function queuePendingExtractions(env: Env): Promise<void> {
       messageId: row.id,
       requestId: row.vendor_conversations.request_id,
       jobId: row.vendor_conversations.job_id,
+      hotlistId: row.vendor_conversations.hotlist_id,
       sender: row.from_email,
       subject: row.subject,
       textBody: row.text_body,
