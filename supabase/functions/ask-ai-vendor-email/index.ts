@@ -217,7 +217,7 @@ Deno.serve(async (req: Request) => {
           email_subject: toSharedDraft(emailSubject, requesterFirstName),
           email_content_template: toSharedDraft(emailContent, requesterFirstName),
           updated_at: new Date().toISOString(),
-        }, { onConflict: leadType === "hotlist" ? "hotlist_id,missing_details_key" : "job_id,missing_details_key" });
+        }, { onConflict: "lead_key,missing_details_key" });
       if (draftInsertError) {
         console.error("Could not save shared Ask Vendor draft", draftInsertError);
         return respond({ error: "Could not save the generated vendor request" }, 500);
