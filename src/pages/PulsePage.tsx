@@ -4952,8 +4952,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
               {isMobileViewport && (
                 <div
-                  className="sticky top-0 z-40 shrink-0 overflow-hidden bg-white px-1.5 transition-[max-height,opacity,transform] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
+                  className="sticky z-40 shrink-0 overflow-hidden bg-white px-1.5 transition-[max-height,opacity,transform,top] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
                   style={{
+                    top: isMobileTopCollapsed ? '0px' : '52px',
                     maxHeight: isMobileTopCollapsed ? '0px' : (canSelectFeedTimeBasis ? '72px' : '40px'),
                     opacity: isMobileTopCollapsed ? 0 : 1,
                     transform: isMobileTopCollapsed ? 'translateY(-8px)' : 'translateY(0)',
