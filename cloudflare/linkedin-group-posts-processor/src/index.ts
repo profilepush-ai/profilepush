@@ -36,7 +36,7 @@ type SocialJobRow = {
   source_keyword_id?: string;
 };
 
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 5;
 const MAX_POSTS_PER_REQUEST = 200;
 
 function jsonResponse(body: unknown, status = 200): Response {

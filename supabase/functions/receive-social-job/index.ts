@@ -174,6 +174,7 @@ async function classifySocialJobs(
           ...(workerToken ? { "Authorization": `Bearer ${workerToken}` } : {}),
         },
         body: JSON.stringify({ jobs: routeJobs }),
+        signal: AbortSignal.timeout(60_000),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {

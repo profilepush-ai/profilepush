@@ -136,12 +136,51 @@ ${blocks}
 Return ONLY valid JSON array:`;
 }
 
-function parseModelText(raw: unknown): unknown {
-  if (typeof raw === "string") {
-    const trimmed = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    return JSON.parse(trimmed);
+// The model occasionally gets cut off mid-output on large batches (hits max_tokens
+// before finishing the JSON array). Recover whatever complete elements precede the
+// truncation point instead of discarding the entire batch on a parse error.
+function recoverTruncatedJsonArray(text: string): unknown[] {
+  const start = text.indexOf("[");
+  if (start === -1) throw new Error("No JSON array found in model output");
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let lastCompleteEnd = -1;
+
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (char === "\\") escape = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') { inString = true; continue; }
+    if (char === "{" || char === "[") depth++;
+    else if (char === "}" || char === "]") {
+      depth--;
+      if (depth === 1 && char === "}") lastCompleteEnd = i;
+      if (depth === 0) { lastCompleteEnd = i; break; }
+    }
   }
-  return raw;
+
+  if (lastCompleteEnd === -1) throw new Error("No complete JSON element found in model output");
+  return JSON.parse(`${text.slice(start, lastCompleteEnd + 1)}]`);
+}
+
+function parseModelText(raw: unknown): unknown {
+  if (typeof raw !== "string") return raw;
+  const trimmed = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch (parseError) {
+    try {
+      return recoverTruncatedJsonArray(trimmed);
+    } catch {
+      throw parseError;
+    }
+  }
 }
 
 function getBearerToken(req: Request) {
@@ -195,20 +234,35 @@ export default {
           ? "You extract available consultants from bench sales hotlists. Preserve each distinct candidate and respond with strict JSON only."
           : "You classify genuine job openings and extract structured fields. Be conservative and respond with strict JSON only.";
 
-      const aiResult = await env.AI.run(model, {
-        messages: [
-          {
-            role: "system",
-            content: systemContent,
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 3000,
-      });
+      // Hotlist posts can carry several candidates per post, which needs materially
+      // more output room than a single job or a bare classification does.
+      const maxTokens = route === "extract-hotlist" ? 4096 : route === "extract-job" ? 3500 : 2000;
+
+      let aiResult: unknown;
+      let aiError: unknown;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          aiResult = await env.AI.run(model, {
+            messages: [
+              {
+                role: "system",
+                content: systemContent,
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            temperature: 0.1,
+            max_tokens: maxTokens,
+          });
+          aiError = undefined;
+          break;
+        } catch (error) {
+          aiError = error;
+        }
+      }
+      if (aiError) throw aiError;
 
       const rawText = (aiResult as Record<string, unknown>)?.response ?? aiResult;
       const parsed = parseModelText(rawText);
