@@ -4501,7 +4501,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
               {/* Mobile search/filter row — controls job feed search */}
               <div
-                className={isMobileViewport ? 'sticky top-0 z-30 shrink-0 overflow-hidden bg-white px-0 transition-[max-height,opacity,transform] duration-200 ease-out dark:bg-[#1B1D21]' : 'px-2 py-2'}
+                className={isMobileViewport ? `sticky top-0 z-30 shrink-0 bg-white px-0 transition-[max-height,opacity,transform] duration-200 ease-out dark:bg-[#1B1D21] ${isRangeMenuOpen || isRecentSearchesOpen ? 'overflow-visible' : 'overflow-hidden'}` : 'px-2 py-2'}
                 style={isMobileViewport ? {
                   maxHeight: isMobileTopCollapsed ? '0px' : '52px',
                   opacity: isMobileTopCollapsed ? 0 : 1,
@@ -4952,9 +4952,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
               {isMobileViewport && (
                 <div
-                  className="sticky z-40 shrink-0 overflow-hidden bg-white px-1.5 transition-[max-height,opacity,transform,top] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
+                  className="sticky top-0 z-40 shrink-0 overflow-hidden bg-white px-1.5 transition-[max-height,opacity,transform] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
                   style={{
-                    top: isMobileTopCollapsed ? '0px' : '52px',
                     maxHeight: isMobileTopCollapsed ? '0px' : (canSelectFeedTimeBasis ? '72px' : '40px'),
                     opacity: isMobileTopCollapsed ? 0 : 1,
                     transform: isMobileTopCollapsed ? 'translateY(-8px)' : 'translateY(0)',
