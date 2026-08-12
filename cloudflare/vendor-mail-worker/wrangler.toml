@@ -17,6 +17,10 @@ REPLY_PROCESSOR_URL = "https://profilepush-social-job-queue-consumer.profilepush
 binding = "VENDOR_MAIL_BUCKET"
 bucket_name = "profilepush-vendor-mail"
 
+[[services]]
+binding = "REPLY_PROCESSOR"
+service = "profilepush-social-job-queue-consumer"
+
 [[queues.producers]]
 binding = "OUTBOUND_QUEUE"
 queue = "vendor-mail-outbound"

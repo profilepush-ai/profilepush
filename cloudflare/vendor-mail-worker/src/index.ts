@@ -3,6 +3,7 @@ export interface Env {
   INBOUND_QUEUE: Queue<InboundJob>;
   EXTRACTION_QUEUE: Queue<ExtractionJob>;
   VENDOR_MAIL_BUCKET: R2Bucket;
+  REPLY_PROCESSOR?: Fetcher;
   MAILGUN_API_KEY: string;
   MAILGUN_SIGNING_KEY: string;
   MAILGUN_DOMAIN: string;
@@ -12,6 +13,17 @@ export interface Env {
   WORKER_AUTH_TOKEN: string;
   REPLY_PROCESSOR_URL: string;
   REPLY_PROCESSOR_TOKEN: string;
+}
+
+// Cloudflare rejects/rate-limits a Worker calling another Worker's *.workers.dev
+// route directly over the public network (error 1042). Prefer the service
+// binding, which routes internally; fall back to the raw URL only if the
+// binding isn't configured (e.g. local dev).
+function fetchReplyProcessor(env: Env, init: RequestInit): Promise<Response> {
+  if (env.REPLY_PROCESSOR) {
+    return env.REPLY_PROCESSOR.fetch("https://reply-processor.internal", init);
+  }
+  return fetch(env.REPLY_PROCESSOR_URL, init);
 }
 
 type OutboundJob = { kind: "outbound"; messageId: string };
@@ -508,7 +520,7 @@ async function processInbound(job: InboundJob, env: Env): Promise<void> {
 }
 
 async function processExtraction(job: ExtractionJob, env: Env): Promise<void> {
-  const response = await fetch(env.REPLY_PROCESSOR_URL, {
+  const response = await fetchReplyProcessor(env, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${env.REPLY_PROCESSOR_TOKEN}`,
