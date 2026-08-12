@@ -2642,7 +2642,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           .not('hotlist_id', 'is', null)
           .in('status', ['completed', 'fulfilled'])
           .order('created_at', { ascending: false }),
-        supabase.rpc('get_hotlist_asked_states' as never),
+        supabase.rpc('get_hotlist_asked_states' as never, { p_account_id: account.id }),
       ]);
 
       if (ownHotlistRequestsResult.error) return;
@@ -2730,7 +2730,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         .eq('user_id', user.id)
         .in('status', ['completed', 'fulfilled'])
         .order('created_at', { ascending: false }),
-      supabase.rpc('get_pulse_asked_job_states' as never),
+      supabase.rpc('get_pulse_asked_job_states' as never, { p_account_id: account.id }),
     ]);
 
     if (ownRequestsResult.error) return;
