@@ -3840,6 +3840,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const handleSubmitAskAI = useCallback(async () => {
     if (!account?.id || !askAIPreview || processingAskAILeadId) return;
 
+    const leadType = askAIPreview.leadType;
     const emailSubject = askAIPreview.emailSubject.trim();
     const emailContent = askAIPreview.emailContent.trim();
     const emailWordCount = emailContent.split(/\s+/).filter(Boolean).length;
@@ -3874,9 +3875,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       }));
       setGlobalAskedJobStateByLeadId((prev) => ({ ...prev, [askAIPreview.leadId]: 'asked' }));
       setAskAIPreview(null);
-      showToast('Request email sent. You will be notified if the vendor replies in the Inbox.', 'success');
+      showToast(leadType === 'hotlist' ? 'Request email sent. You will be notified if the recruiter replies in the Inbox.' : 'Request email sent. You will be notified if the vendor replies in the Inbox.', 'success');
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not send the vendor email request', 'error');
+      showToast(error instanceof Error ? error.message : (leadType === 'hotlist' ? 'Could not send the recruiter email request' : 'Could not send the vendor email request'), 'error');
     } finally {
       setProcessingAskAILeadId(null);
     }

@@ -35,6 +35,15 @@ type SocialJobDetails = {
   created_at: string;
 };
 
+type SocialHotlistDetails = {
+  role_title: string | null;
+  platform: string | null;
+  bench_sales_recruiter_name: string | null;
+  bench_sales_company_name: string | null;
+  posted_at: string | null;
+  created_at: string;
+};
+
 type Conversation = {
   id: string;
   vendor_name: string;
@@ -45,10 +54,16 @@ type Conversation = {
   unread_count: number;
   last_message_at: string;
   created_at: string;
-  job_id: string;
+  job_id: string | null;
+  hotlist_id: string | null;
   social_jobs: SocialJobDetails | null;
+  social_hotlist: SocialHotlistDetails | null;
   radar_job_details: Record<string, RadarBreakdownEntry | number> | null;
 };
+
+function leadIdOf(conversation: Pick<Conversation, 'id' | 'job_id' | 'hotlist_id'>): string {
+  return conversation.job_id ?? conversation.hotlist_id ?? conversation.id;
+}
 
 type Message = {
   id: string;
@@ -187,18 +202,23 @@ function JobDetailGrid({ details }: { details: DisplayJobDetail[] }) {
 
 function JobReferenceCard({ conversation, revealed }: { conversation: Conversation; revealed: boolean }) {
   const job = conversation.social_jobs;
+  const hotlist = conversation.social_hotlist;
   const details = getJobDisplayDetails(conversation.radar_job_details, true);
-  const posterName = job?.posted_by_name?.trim() || conversation.vendor_name;
+  const title = job?.job_title || hotlist?.role_title || (conversation.hotlist_id ? 'Available Consultant' : 'Job opportunity');
+  const posterName = job?.posted_by_name?.trim() || hotlist?.bench_sales_recruiter_name?.trim() || conversation.vendor_name;
+  const companyName = job?.company_name || hotlist?.bench_sales_company_name || '';
+  const platform = job?.platform || hotlist?.platform || '';
+  const postedAt = job?.posted_at || hotlist?.posted_at || job?.created_at || hotlist?.created_at || conversation.created_at;
 
   return (
     <section className="mb-5 rounded-lg border border-gray-300 bg-white px-3 py-2.5 shadow-sm">
-      <p className="text-xs font-semibold leading-snug text-gray-900">{job?.job_title || 'Job opportunity'}</p>
+      <p className="text-xs font-semibold leading-snug text-gray-900">{title}</p>
       <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-gray-500">
-        <span>{formatRelative(job?.posted_at || job?.created_at || conversation.created_at)}</span>
+        <span>{formatRelative(postedAt)}</span>
         <span>•</span>
         <span>Posted by {revealed ? posterName : maskName(posterName)}</span>
-        {job?.company_name && <><span>•</span><span>{revealed ? job.company_name : `${job.company_name.slice(0, 3)}***`}</span></>}
-        {job?.platform && <><span>•</span><span className="font-bold uppercase text-gray-500">{job.platform}</span></>}
+        {companyName && <><span>•</span><span>{revealed ? companyName : `${companyName.slice(0, 3)}***`}</span></>}
+        {platform && <><span>•</span><span className="font-bold uppercase text-gray-500">{platform}</span></>}
       </div>
       <div className="mt-2">
       <JobDetailGrid details={details} />
@@ -232,35 +252,49 @@ export default function InboxPage() {
   const loadConversations = useCallback(async () => {
     const { data, error } = await supabase
       .from('vendor_conversations')
-      .select('id, vendor_name, vendor_email, sender_name, subject, status, unread_count, last_message_at, created_at, job_id, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at)')
+      .select('id, vendor_name, vendor_email, sender_name, subject, status, unread_count, last_message_at, created_at, job_id, hotlist_id, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
       .order('last_message_at', { ascending: false });
     if (error) {
       setToast({ message: 'Could not load inbox', type: 'error' });
       return;
     }
     const conversationRows = (data ?? []) as unknown as Omit<Conversation, 'radar_job_details'>[];
-    const jobIds = [...new Set(conversationRows.map((row) => row.job_id))];
-    const { data: radarRows } = jobIds.length > 0
-      ? await supabase
-        .from('radar_match_results')
-        .select('job_id, score_breakdown, created_at')
-        .eq('job_source', 'social')
-        .in('job_id', jobIds)
-        .order('created_at', { ascending: false })
-      : { data: [] };
-    const breakdownByJobId = new Map<string, Conversation['radar_job_details']>();
+    const jobIds = [...new Set(conversationRows.map((row) => row.job_id).filter((id): id is string => Boolean(id)))];
+    const hotlistIds = [...new Set(conversationRows.map((row) => row.hotlist_id).filter((id): id is string => Boolean(id)))];
+    const [{ data: radarRows }, { data: hotlistRadarRows }] = await Promise.all([
+      jobIds.length > 0
+        ? supabase
+          .from('radar_match_results')
+          .select('job_id, score_breakdown, created_at')
+          .eq('job_source', 'social')
+          .in('job_id', jobIds)
+          .order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] }),
+      hotlistIds.length > 0
+        ? supabase
+          .from('radar_match_hotlist')
+          .select('hotlist_id, score_breakdown, created_at')
+          .in('hotlist_id', hotlistIds)
+          .order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] }),
+    ]);
+    const breakdownByLeadId = new Map<string, Conversation['radar_job_details']>();
     for (const row of (radarRows ?? []) as Array<{ job_id: string; score_breakdown: Conversation['radar_job_details'] }>) {
-      if (!breakdownByJobId.has(row.job_id)) breakdownByJobId.set(row.job_id, row.score_breakdown);
+      if (!breakdownByLeadId.has(row.job_id)) breakdownByLeadId.set(row.job_id, row.score_breakdown);
+    }
+    for (const row of (hotlistRadarRows ?? []) as Array<{ hotlist_id: string; score_breakdown: Conversation['radar_job_details'] }>) {
+      if (!breakdownByLeadId.has(row.hotlist_id)) breakdownByLeadId.set(row.hotlist_id, row.score_breakdown);
     }
     const rows: Conversation[] = conversationRows.map((row) => ({
       ...row,
-      radar_job_details: breakdownByJobId.get(row.job_id) ?? null,
+      radar_job_details: breakdownByLeadId.get(leadIdOf(row)) ?? null,
     }));
-    if (jobIds.length > 0 && user?.id) {
+    const leadIds = [...new Set(rows.map((row) => leadIdOf(row)))];
+    if (leadIds.length > 0 && user?.id) {
       const { data: actionRows } = await supabase
         .from('pulse_lead_actions')
         .select('lead_id')
-        .in('lead_id', jobIds)
+        .in('lead_id', leadIds)
         .eq('user_id', user.id)
         .eq('action_type', 'revealed');
       setRevealedJobIds(new Set((actionRows ?? []).map((row) => row.lead_id)));
@@ -345,7 +379,7 @@ export default function InboxPage() {
     return conversations.filter((item) => {
       if (new Date(item.last_message_at).getTime() < cutoff) return false;
       if (!normalized) return true;
-      return [item.vendor_name, item.vendor_email, item.subject, item.social_jobs?.job_title]
+      return [item.vendor_name, item.vendor_email, item.subject, item.social_jobs?.job_title, item.social_hotlist?.role_title]
         .some((value) => value?.toLowerCase().includes(normalized));
     });
   }, [conversations, query, rangeId]);
@@ -372,12 +406,13 @@ export default function InboxPage() {
       return;
     }
 
-    setRevealingJobId(conversation.job_id);
+    const leadId = leadIdOf(conversation);
+    setRevealingJobId(leadId);
     try {
       const metadata = {
-        lead_id: conversation.job_id,
+        lead_id: leadId,
         platform: 'social',
-        title: conversation.social_jobs?.job_title || conversation.subject,
+        title: conversation.social_jobs?.job_title || conversation.social_hotlist?.role_title || conversation.subject,
       };
       let { data, error } = await supabase.rpc('consume_feature_credit', {
         p_account_id: account.id,
@@ -433,13 +468,13 @@ export default function InboxPage() {
       await supabase.from('pulse_lead_actions').upsert({
         account_id: account.id,
         user_id: user.id,
-        lead_id: conversation.job_id,
+        lead_id: leadId,
         action_type: 'revealed',
       }, {
         onConflict: 'account_id,user_id,lead_id,action_type',
         ignoreDuplicates: true,
       });
-      setRevealedJobIds((current) => new Set(current).add(conversation.job_id));
+      setRevealedJobIds((current) => new Set(current).add(leadId));
       await refreshAccount();
       setToast({ message: '$0.25 credits consumed for reveal', type: 'success' });
     } finally {
@@ -527,7 +562,7 @@ export default function InboxPage() {
               <button key={item.id} type="button" onClick={() => selectConversation(item.id)} className={`flex w-full border-b border-gray-100 px-3 py-3 text-left transition-colors ${selectedId === item.id ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
-                    <span className={`truncate text-xs ${item.unread_count > 0 ? 'font-bold text-gray-950' : 'font-semibold text-gray-800'}`}>{item.social_jobs?.job_title || 'Vendor request'}</span>
+                    <span className={`truncate text-xs ${item.unread_count > 0 ? 'font-bold text-gray-950' : 'font-semibold text-gray-800'}`}>{item.social_jobs?.job_title || item.social_hotlist?.role_title || 'Vendor request'}</span>
                     <span className="shrink-0 text-[10px] text-gray-400">{formatRelative(item.last_message_at)}</span>
                   </span>
                   <span className="mt-1 flex items-center justify-between gap-2">
@@ -557,13 +592,13 @@ export default function InboxPage() {
               </header>
 
               <div className="mx-auto max-w-5xl px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
-                  <JobReferenceCard conversation={selected} revealed={revealedJobIds.has(selected.job_id)} />
+                  <JobReferenceCard conversation={selected} revealed={revealedJobIds.has(leadIdOf(selected))} />
                   {loadingMessages ? (
                     <div className="flex h-32 items-center justify-center"><Loader2 size={18} className="animate-spin text-blue-600" /></div>
                   ) : messages.map((message) => {
                     const outbound = message.direction === 'outbound';
                     const deliveryState = outbound ? messageDeliveryState(message) : null;
-                    const emailRevealed = revealedJobIds.has(selected.job_id);
+                    const emailRevealed = revealedJobIds.has(leadIdOf(selected));
                     const outboundText = restoreSenderName(emailRevealed ? message.text_body : maskNameInText(message.text_body, selected.vendor_name), selected.sender_name);
                     const messageText = outbound
                       ? outboundText
@@ -595,10 +630,10 @@ export default function InboxPage() {
                               <button
                                 type="button"
                                 onClick={() => void revealEmail(selected)}
-                                disabled={revealingJobId === selected.job_id}
+                                disabled={revealingJobId === leadIdOf(selected)}
                                 className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] disabled:cursor-not-allowed disabled:opacity-70 dark:border-cyan-500/30 dark:text-cyan-400 sm:ml-auto sm:w-auto sm:px-2.5"
                               >
-                                {revealingJobId === selected.job_id ? '...' : <><Copy size={11} /><span>{maskedEmailHint(selected.vendor_email)}</span></>}
+                                {revealingJobId === leadIdOf(selected) ? '...' : <><Copy size={11} /><span>{maskedEmailHint(selected.vendor_email)}</span></>}
                               </button>
                             )}
                           </div>
