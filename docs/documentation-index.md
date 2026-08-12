@@ -39,12 +39,25 @@ Date: 2026-08-01
 - Analytics Event Taxonomy
   - docs/analytics-event-taxonomy.md
 
-## 4. Enablement
+## 4. Page-Level Technical Documentation
+
+- Jobs Page
+  - docs/jobs-page-documentation.md
+- Hotlist Page
+  - docs/hotlist-page-documentation.md
+- Pulse Page (Market Pulse Directory)
+  - docs/pulse-page-documentation.md
+- Inbox Page
+  - docs/inbox-page-documentation.md
+- Tracker Page
+  - docs/tracker-page-documentation.md
+
+## 5. Enablement
 
 - Recruiter Onboarding Playbook
   - docs/recruiter-onboarding-playbook.md
 
-## 5. Suggested Reading Order
+## 6. Suggested Reading Order
 
 For product and design:
 1. docs/ui-ux-design-spec.md
@@ -68,7 +81,7 @@ For operations and onboarding:
 2. docs/information-architecture.md
 3. docs/ui-ux-design-spec.md
 
-## 6. Maintenance Notes
+## 7. Maintenance Notes
 
 - Update the index whenever a documentation file is added, removed, or renamed.
 - Keep version/date headers in all docs current.

@@ -1,8 +1,10 @@
 # Pulse Page — Technical Documentation
 
-> **File**: `src/pages/PulsePage.tsx` (~1,228 lines)
+> **File**: `src/pages/ProfilesPage.tsx` (~3,570 lines)
 > **Route**: `/pulse`
-> **Purpose**: AI-powered social job lead matching feed for bench sales recruiters. Monitors social media platforms for job postings, matches them against watched role profiles, and surfaces actionable leads with contact details.
+> **Purpose**: The Market Pulse directory — a market-intelligence dashboard that ranks technology role profiles (personas) by market activity (unique hotlists, jobs, and vendors) within a 30-day window. Users browse role profiles by category, search, and click through to the Jobs (`/jobs`) or Hotlist (`/hotlist`) feeds pre-filtered by the selected role. Supports one-click "watch" that syncs a role into the user's watchlist and bench profiles.
+
+> **⚠️ Note on naming**: Historically, the "Pulse" terminology was applied to the lead-matching feed engine in `PulsePage.tsx`. In the current routing, `/pulse` renders **`ProfilesPage.tsx`** (the Market Pulse directory), while `/jobs` and `/hotlist` render `PulsePage.tsx`. See `docs/jobs-page-documentation.md` and `docs/hotlist-page-documentation.md` for the feed pages.
 
 ---
 
@@ -18,20 +20,24 @@
 8. [Core Functions](#core-functions)
 9. [UI Layout & Components](#ui-layout--components)
 10. [Feature Details](#feature-details)
-11. [Database Tables Used](#database-tables-used)
-12. [Credit System](#credit-system)
+11. [Credit System](#credit-system)
+12. [Database Tables & RPCs Used](#database-tables--rpcs-used)
 13. [Dependencies](#dependencies)
 
 ---
 
 ## Overview
 
-The Pulse page is the primary matching engine UI for ProfilePush. It operates as a two-panel layout:
+The Pulse page is a **market directory** that shows:
 
-- **Left panel (Profiles Board)**: A leaderboard of role profiles (personas) the user watches, organized by technology category. Each persona aggregates job matches from social platforms.
-- **Right panel (Matches Feed)**: A scrollable feed of social job leads matching the currently selected persona, with actions to reveal contact info, view AI score breakdowns, and queue leads.
+- A **role leaderboard** (personas) ranked by market activity within a 30-day window.
+- Per-role **market stats**: unique hotlists, unique jobs, unique vendors, and average rate.
+- **Category tabs** (All, Front-End, Backend, Data, Security, CRM, QA, Biz Dev, AI, ML, DevOps) with **tech-stack sub-filters**.
+- A **domain table** aggregating market activity by technology category.
+- **Watch** action that syncs a role into the user's `watchlist_profiles` and creates a bench profile in `profiles`.
+- **Deep-links** to the Jobs (`/jobs?q=<role>`) and Hotlist (`/hotlist?q=<role>`) feeds pre-filtered by role.
 
-The page pulls data from multiple Supabase tables and RPCs, deduplicates results, and presents them with privacy-masked contact info that costs credits to reveal.
+The page is optimized for **fast initial load** via a 30-day directory read-model (`pulse_directory_30d`) cached in `localStorage` (6-hour TTL), with a vector-similarity fallback for stats.
 
 ---
 
@@ -40,25 +46,26 @@ The page pulls data from multiple Supabase tables and RPCs, deduplicates results
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                          AppNav (top bar)                        │
-├───────────────────────────────────────┬──────────────────────────┤
-│          Category Tabs (horizontal)   │                          │
-├───────────────────────────────────────┤                          │
-│  Search + Time Range + Refresh        │   Matches Tabs           │
-├───────────────────────────────────────┤  (All/Breakdown/         │
-│                                       │   Revealed/Queued)       │
-│  Profiles Table                       ├──────────────────────────┤
-│  ┌─ Watching section ──────────────┐  │                          │
-│  │  Watched personas (sorted)      │  │  Match Cards             │
-│  └─────────────────────────────────┘  │  ┌────────────────────┐  │
-│  ┌─ Top Profiles section ──────────┐  │  │ Job Title           │  │
-│  │  Other personas (ranked)        │  │  │ Company • Location  │  │
-│  └─────────────────────────────────┘  │  │ Platform badge      │  │
-│                                       │  │ Poster • Time ago   │  │
-│                                       │  │ [Breakdown][Reveal]  │  │
-│                                       │  └────────────────────┘  │
-│                                       │  ... more cards ...      │
-│                                       │  [Load More]             │
-└───────────────────────────────────────┴──────────────────────────┘
+├──────────────────────────────────────────────────────────────────┤
+│  Category Pills (desktop, vendor + job counts)                   │
+├──────────────────────────────────────────────────────────────────┤
+│  Tech-stack sub-filter pills (when a category is selected)       │
+├──────────────────────────────────────────────────────────────────┤
+│  Search (profiles) | Range | Last-refreshed | Refresh            │
+│  Mobile: search pill + range menu + refresh icon                 │
+├──────────────────────────────────────────────────────────────────┤
+│  Desktop (2-col)          │  Mobile (stacked)                    │
+│  ┌─────────────────────┐  │  ┌──────────────────────┐           │
+│  │ Profiles Table      │  │  │ Domains Table        │           │
+│  │ Role|Rate|Hot|Jobs  │  │  │ (150px scroll)       │           │
+│  │ |Vendors            │  │  └──────────────────────┘           │
+│  └─────────────────────┘  │  ┌──────────────────────┐           │
+│  ┌─────────────────────┐  │  │ Profiles Table       │           │
+│  │ Domains Table       │  │  │ (infinite scroll)    │           │
+│  └─────────────────────┘  │  └──────────────────────┘           │
+├──────────────────────────────────────────────────────────────────┤
+│  Modals: Lead detail + score breakdown + email drafts            │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -69,129 +76,115 @@ The page pulls data from multiple Supabase tables and RPCs, deduplicates results
 
 | Table | Purpose |
 |-------|---------|
-| `hotlist_ai_roles` | User's watched roles with settings (frequency, active status, avatar, detail fields) |
-| `social_jobs` | Scraped social media job postings (LinkedIn, Facebook, Dice, Indeed, etc.) |
-| `radar_match_results` | AI-computed match scores between profiles and jobs |
-| `pulse_lead_actions` | Tracks user actions on leads (revealed, breakdown) |
-| `accounts` / `account_members` | Multi-tenant account system |
-| `vendors` | Auto-populated vendor records from revealed leads |
+| `pulse_directory_30d` | Materialized 30-day directory read-model (personas + market stats) |
+| `radar_match_hotlist` | Pre-computed hotlist match scores (for hotlist counts + avg rate) |
+| `radar_match_results` | Pre-computed social job match scores (for job/vendor counts) |
+| `social_jobs` | Scraped job postings (fallback stat source) |
+| `hotlist_ai_roles` | User's watched roles (watch state + fallback leaderboard) |
+| `watchlist_profiles` | User's watchlist (primary watch state source) |
+| `profiles` | Bench profiles (created when a role is watched) |
+| `radar_match_results` | Vector similarity stats source |
+| `accounts` | Account context |
 
 ### Supabase RPCs
 
 | RPC | Purpose |
 |-----|---------|
 | `get_pulse_persona_leaderboard` | Aggregated leaderboard with watcher counts |
-| `consume_feature_credit` | Deduct credits for reveal/breakdown actions |
+| `refresh_pulse_directory_30d_snapshot` | Force-refresh the 30-day directory read-model |
+| `get_profile_stats_by_vector` | Vector-similarity stats (role_embedding ↔ job_embedding) |
+| `get_pulse_social_feed` | Global social feed (fallback stat source) |
+| `consume_feature_credit` | Deduct credits for reveal/breakdown |
 
 ---
 
 ## Types & Interfaces
 
 ### `PulsePersona`
-The core display type for a role profile on the board.
+A role profile on the directory board.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `target_role` | `string` | Role title (e.g., "Senior Full Stack Engineer") |
-| `summary` | `string` | One-line description of the role |
+| `summary` | `string` | One-line description |
 | `active_watchers` | `number` | Count of users watching this role |
 | `avatar_url` | `string \| null` | Profile avatar URL |
 | `rank` | `number` | Leaderboard position |
-| `min_years_exp` | `number \| null` | Minimum years of experience |
-| `max_years_exp` | `number \| null` | Maximum years of experience |
+| `min_years_exp` / `max_years_exp` | `number \| null` | Experience range |
 | `visa_status` | `string \| null` | e.g., "H1B", "US Citizen", "GC" |
 | `employment_type` | `string \| null` | e.g., "C2C", "W2", "1099" |
 | `work_type` | `string \| null` | "Remote", "Hybrid", "Onsite" |
 | `preferred_locations` | `string \| null` | Comma-separated locations |
-| `min_rate_usd_per_hr` | `number \| null` | Min hourly rate |
-| `max_rate_usd_per_hr` | `number \| null` | Max hourly rate |
-| `priority_skills` | `string \| null` | Comma-separated skill list |
-| `relocation_open` | `boolean \| null` | Whether open to relocation |
+| `min_rate_usd_per_hr` / `max_rate_usd_per_hr` | `number \| null` | Rate range |
+| `priority_skills` | `string \| null` | Comma-separated skills |
+| `relocation_open` | `boolean \| null` | Relocation open to |
 
-### `SocialLead`
-A matched job lead displayed in the feed.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `string` | Social job ID |
-| `title` | `string` | Job title |
-| `location` | `string` | Job location |
-| `company` | `string` | Company name |
-| `posterName` | `string` | Name of person who posted |
-| `posterEmail` | `string` | Poster's email (revealed on action) |
-| `posterPhone` | `string` | Poster's phone (revealed on action) |
-| `postedAt` | `string` | ISO timestamp |
-| `postedAgo` | `string` | Human-readable time ago |
-| `platform` | `string` | Source platform (LinkedIn, Dice, etc.) |
-| `matchScore` | `number \| null` | AI match score (0–100) |
-| `profileId` | `string \| null` | Linked profile ID |
-| `scoreBreakdown` | `Record<string, unknown> \| null` | Detailed score breakdown |
-
-### `HotlistRoleRow`
-Database row from `hotlist_ai_roles`.
+### `ProfileStats`
+Per-role market stats.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `string` | UUID |
-| `target_role` | `string` | Role being watched |
-| `account_id` | `string` | Owner account |
-| `avatar_url` | `string \| null` | Custom avatar |
-| `category` | `string \| null` | Role category |
-| `is_active` | `boolean` | Whether actively watching |
-| `schedule_frequency` | `string` | Scraping frequency |
+| `uniqueCompanies` | `number` | Unique companies |
+| `uniqueVendors` | `number` | Unique vendors |
+| `uniqueHotlists` | `number` | Unique hotlists |
+| `uniqueJobs` | `number` | Unique jobs |
+| `avgRate` | `number \| null` | Average hourly rate |
+| `avgMatchScore` | `number \| null` | Average match score |
+
+### `PulseDirectorySnapshot`
+The localStorage cache shape.
+
+| Field | Type |
+|-------|------|
+| `cachedAt` | `number` |
+| `rangeId` | `'30d'` |
+| `leaderboard` | `PulsePersona[]` |
+| `stats` | `Record<string, ProfileStats>` |
+
+### `PulseDirectoryReadModelRow`
+A row from the `pulse_directory_30d` table (persona + `unique_hotlists`, `unique_jobs`, `unique_vendors`, `avg_rate`, `refreshed_at`).
+
+### `DomainLeaderboardRow`
+Aggregated category stats (`id`, `label`, `icon`, `rank`, `uniqueHotlists`, `uniqueJobs`, `uniqueVendors`).
 
 ### Other Types
-
-- **`FallbackRoleRow`** — Extended role row with demographic fields for building leaderboard from DB
-- **`SocialJobRow`** — Raw social_jobs table row
-- **`RadarSocialMatchRow`** — Match result with scores
-- **`ProfileStats`** — Counts of companies, vendors, and jobs per role
-- **`ProfileRangeOption`** — Time range filter config (`{ id, label, hours }`)
-- **`ProfileCategoryTab`** — Category tab config (`{ id, label, icon, pattern }`)
+- **`PulseSocialFeedRpcRow`** — Raw feed row from `get_pulse_social_feed`
+- **`SocialJobRow`** — Raw `social_jobs` table row
 - **`MatchesTabId`** — `'all' | 'breakdown' | 'revealed' | 'queued'`
 - **`LeadActionType`** — `'revealed' | 'breakdown'`
-- **`PulseLeadActionRow`** — `{ lead_id, action_type }`
+- **`ProfileRangeOption`** — `{ id, label, hours }` for time range
+- **`ProfileCategoryTab`** — Category tab config with icon
 
 ---
 
 ## Constants
 
-### `LEADERBOARD_RPC_LIMIT = 500`
-Max roles fetched from the leaderboard RPC.
-
-### `FEED_WINDOW_HOURS = 48`
-Time window (in hours) for fetching social job matches.
-
-### `TOP_PROFILES_PAGE_SIZE = 100`
-Page size for the top profiles section.
-
-### `MATCHES_PAGE_SIZE = 10`
-Number of match cards shown before "Load More" pagination.
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `LEADERBOARD_RPC_LIMIT` | `500` | Max roles from leaderboard RPC |
+| `FEED_WINDOW_HOURS` | `48` | Feed window (fallback stat source) |
+| `PULSE_ROWS_CACHE_TTL_MS` | `30_000` | In-memory feed cache TTL |
+| `PULSE_DIRECTORY_CACHE_KEY` | `'profilepush:pulse-directory:v2:30d'` | localStorage key |
+| `PULSE_DIRECTORY_CACHE_TTL_MS` | `6 * 60 * 60 * 1000` | 6-hour directory cache TTL |
+| `MOBILE_ROLES_BATCH_SIZE` | `30` | Mobile infinite-scroll batch |
+| `MATCHES_PAGE_SIZE` | `5` | Matches page size |
+| `REVEAL_CONTACT_COST` | `0.25` | Credits to reveal contact |
+| `BREAKDOWN_COST` | `0.1` | Credits to view breakdown |
 
 ### `PROFILE_RANGE_OPTIONS`
-Time range filters: 1h, 24h, 48h, 3d.
+Time ranges: 24h, 3d, 7d, 15d, 30d (default `30d`).
 
 ### `PROFILE_CATEGORY_TABS`
-10 technology categories with icons and regex patterns for role classification:
+11 category tabs with icons and per-category accent colors.
 
-| Category | Icon | Pattern Example |
-|----------|------|-----------------|
-| Front-End | `Code2` | `react\|angular\|vue\|front.?end\|ui/ux` |
-| Backend | `Server` | `backend\|java\|node\|python\|go\|ruby\|\.net\|api` |
-| Data | `Database` | `data\|analytics\|etl\|sql\|spark\|warehouse` |
-| Security | `Shield` | `security\|soc\|iam\|cyber\|penetration` |
-| CRM | `Handshake` | `salesforce\|crm\|hubspot\|dynamics` |
-| QA | `CheckSquare` | `qa\|quality\|test\|sdet\|automation` |
-| Biz Dev | `Briefcase` | `product\|business\|analyst\|scrum\|project` |
-| AI | `Sparkles` | `ai\|artificial\|nlp\|generative\|llm\|gpt` |
-| ML | `Brain` | `machine.learn\|ml\|deep.learn\|model` |
-| DevOps | `Cloud` | `devops\|cloud\|infra\|sre\|platform\|kubernetes` |
-
-### `PERSONA_SUMMARY_BY_ROLE`
-Map of role titles to pre-written summaries.
+### `CATEGORY_TECH_STACKS`
+Per-category tech-stack sub-filters (e.g. Front-End → React, Angular, Vue…).
 
 ### `DEFAULT_PERSONA_AVATARS`
-Map of role keywords to Pravatar avatar URLs.
+Maps role keywords to Unsplash avatar URLs; fallback to stable pravatar URLs via `getStablePortraitUrl(seed)`.
+
+### `zeroStats`
+Default `ProfileStats` object (all zeros, null rates).
 
 ---
 
@@ -201,32 +194,41 @@ Map of role keywords to Pravatar avatar URLs.
 
 | Variable | Type | Purpose |
 |----------|------|---------|
-| `leaderboard` | `PulsePersona[]` | All personas on the board |
-| `watchingRoles` | `Set<string>` | Normalized names of roles user is watching |
-| `activePersona` | `PulsePersona \| null` | Currently selected persona |
-| `feed` | `SocialLead[]` | Matched leads for active persona |
-| `feedLoading` | `boolean` | Feed loading state |
-| `profileStatsByRole` | `Record<string, ProfileStats>` | Vendor/company/job stats per role |
+| `initialDirectorySnapshot` | `PulseDirectorySnapshot \| null` | Snapshot read from localStorage on mount |
+| `loading` | `boolean` | Initial load state (false if fresh snapshot exists) |
+| `refreshing` | `boolean` | Directory refresh state |
+| `leaderboard` | `PulsePersona[]` | All personas |
+| `watchingRoles` | `Set<string>` | Normalized watched role names |
+| `activePersona` | `PulsePersona \| null` | Selected persona |
+| `feed` | `SocialLead[]` | Matched leads (for inline display) |
+| `profileStatsByRole` | `Record<string, ProfileStats>` | Market stats per role |
+| `directoryCachedAt` | `number \| null` | Directory cache timestamp |
 
-### User Action Tracking
-
-| Variable | Type | Purpose |
-|----------|------|---------|
-| `revealedLeadIds` | `Set<string>` | Lead IDs where contact was revealed |
-| `breakdownChargedLeadIds` | `Set<string>` | Lead IDs where breakdown was charged |
-| `queuedLeadIds` | `Set<string>` | Lead IDs queued for later |
-
-### UI State
+### Filters & UI
 
 | Variable | Type | Purpose |
 |----------|------|---------|
+| `profileRangeId` | `ProfileRangeOption['id']` | Time range (default `30d`) |
+| `selectedCategoryId` | `string` | Active category (default `all`) |
+| `selectedTechStacks` | `string[]` | Active tech-stack sub-filter |
+| `profileSearchQuery` | `string` | Profile search query |
+| `feedSearchQuery` | `string` | Feed search query |
+| `feedSearchScope` | `PulseFeedSearchScope` | Feed search scope |
 | `view` | `'board' \| 'feed'` | Mobile view toggle |
-| `profileRangeId` | `string` | Selected time range |
-| `selectedCategoryId` | `string \| null` | Active category filter |
-| `profileSearchQuery` | `string` | Profile search input |
-| `selectedMatchesTab` | `MatchesTabId` | Active matches tab |
+| `mobileVisibleRolesCount` | `number` | Mobile infinite-scroll cursor |
+| `isMobileViewport` | `boolean` | Responsive breakpoint state |
+
+### Action Tracking
+
+| Variable | Type | Purpose |
+|----------|------|---------|
+| `revealedLeadIds` | `Set<string>` | Revealed lead IDs |
+| `breakdownChargedLeadIds` | `Set<string>` | Breakdown-charged lead IDs |
+| `queuedLeadIds` | `Set<string>` | Queued lead IDs |
 | `selectedLead` | `SocialLead \| null` | Lead detail modal |
-| `visibleMatchesCount` | `number` | Pagination cursor for matches |
+| `showBreakdown` | `boolean` | Whether breakdown is shown in modal |
+| `generatedEmailDraft` | `string` | Generated email draft |
+| `showGeneratedEmailDraft` | `boolean` | Email draft visibility |
 
 ---
 
@@ -235,200 +237,216 @@ Map of role keywords to Pravatar avatar URLs.
 ### 1. Initial Load (`useEffect` on mount)
 
 ```
-loadLeaderboard() → get_pulse_persona_leaderboard RPC
-  ├── Success → merge with DB roles → set leaderboard
-  └── Fallback → hotlist_ai_roles query → buildFallbackLeaderboardFromRoles()
-                                        → merge with HOTLIST_AI_SUGGESTIONS
-
-loadWatchState() → hotlist_ai_roles WHERE is_active=true
-  └── Set watchingRoles
-
-loadLeadActionState() → pulse_lead_actions WHERE action_type IN ('revealed','breakdown')
-  └── Set revealedLeadIds, breakdownChargedLeadIds
+loadInitial()
+  ├── readPulseDirectorySnapshot() from localStorage
+  │     └── If fresh (≤6h) → use cached leaderboard/stats, skip loading
+  ├── If not fresh → loadDirectoryReadModel()
+  │     └── SELECT pulse_directory_30d ORDER BY rank
+  │           └── Build leaderboard + stats + writePulseDirectorySnapshot()
+  ├── If read-model fails → loadLeaderboard() (RPC + fallback)
+  ├── loadWatchingRoles() → watchlist_profiles (then hotlist_ai_roles fallback)
+  ├── loadLeadActionState() → pulse_lead_actions
+  └── get_pulse_social_feed (limit 1) → set lastMatchAt
 ```
 
-### 2. Persona Selection
+### 2. Stats Loading
 
 ```
-User clicks persona row
-  └── setActivePersona(persona)
-      └── useEffect triggers loadFeed(persona)
-          ├── radar_match_results WHERE profile target_role matches
-          │   └── Hydrate with social_jobs data
-          └── social_jobs direct query (fallback/supplement)
-              └── Deduplicate → sort by score/date → set feed
+loadProfileStats()
+  ├── If profileRangeId === '30d' → check localStorage snapshot (fresh?)
+  ├── Load radar_match_hotlist + radar_match_results (last N hours)
+  │     └── Compute hotlist counts + avg rates per role
+  ├── Primary: get_profile_stats_by_vector RPC (role_embedding ↔ job_embedding)
+  │     └── If success → commit stats (jobs, vendors, hotlists, avgRate)
+  └── Fallback: loadGlobalPulseRows() → text-based roleMatchesPersona()
+        └── Compute companies, vendors, jobs, matchScore per role
 ```
 
-### 3. Match Card Actions
+### 3. Watch Activation
 
 ```
-User clicks "Reveal"
-  ├── chargeCredits(1, 'reveal')
-  │   └── consume_feature_credit RPC
-  ├── persistLeadAction(leadId, 'revealed')
-  │   └── UPSERT into pulse_lead_actions
-  ├── saveVendorToTracker(lead)
-  │   └── UPSERT into vendors table
-  └── Update revealedLeadIds state
-
-User clicks "Breakdown"
-  ├── chargeCredits(1, 'breakdown')
-  ├── persistLeadAction(leadId, 'breakdown')
-  └── Update breakdownChargedLeadIds state
+activatePersona(persona)
+  ├── syncWatchlistProfileFromHotlistRole(persona)
+  │     ├── Find matching hotlist_ai_roles (ILike target_role)
+  │     ├── If none → create via buildHotlistRolePayloadFromPersona()
+  │     └── Upsert into watchlist_profiles (buildWatchlistPayloadFromRole)
+  ├── ensureBenchProfileForWatchedRole(persona)
+  │     └── If no profiles row → insert "{role} Watch Profile"
+  ├── setWatchingRoles + setActivePersona + setView('feed')
+  ├── loadFeed(null) + loadLeaderboard()
+  └── Toast "Watching {role}"
 ```
 
-### 4. Profile Stats Loading
+### 4. Deep-Link Navigation
 
 ```
-loadProfileStats() → radar_match_results within time window
-  └── Join with social_jobs
-      └── Aggregate unique companies, vendors, job count per role
-          └── Set profileStatsByRole
+openJobsForRole(role)   → navigate(`/jobs?q=${encodeURIComponent(role)}`)
+openHotlistForRole(role) → navigate(`/hotlist?q=${encodeURIComponent(role)}`)
+```
+
+### 5. Directory Refresh
+
+```
+refreshDirectory()
+  ├── Remove localStorage cache
+  ├── loadDirectoryReadModel(true) → refresh_pulse_directory_30d_snapshot RPC
+  ├── If fails → loadProfileStats(true)
+  └── Toast "30-day Pulse numbers refreshed"
 ```
 
 ---
 
 ## Core Functions
 
-### Normalization & Display
+### Leaderboard & Directory
 
 | Function | Purpose |
 |----------|---------|
-| `normalize(input)` | Lowercase, trim, collapse whitespace |
-| `canonicalizeRoleForUniqueness(role)` | Strip seniority prefixes (Sr, Lead, Staff) for grouping |
-| `getPersonaBucket(role)` | Get canonical title, dedup key, and summary for a role |
-| `getPersonaDisplayTitle(role)` | Clean role title for display |
-| `inferRoleCategoryId(role, summary?)` | Match role to a category tab via regex |
-| `formatAgo(dateIso)` | Format ISO date to "5m ago", "3h ago", "2d ago" |
-| `maskPosterName(name)` | Privacy mask: "John Smith" → "Joh••• Smi•••" |
-| `getPersonaDetailColumns(persona)` | Extract detail columns (experience, visa, rate, etc.) from persona fields |
-| `getPersonaSkillList(role, personaSkills?)` | Parse comma-separated skills or infer from HOTLIST_AI_SUGGESTIONS |
+| `readPulseDirectorySnapshot()` | Read localStorage directory snapshot |
+| `writePulseDirectorySnapshot(leaderboard, stats)` | Write snapshot to localStorage |
+| `loadLeaderboard()` | Fetch leaderboard via RPC + merge fallback roles |
+| `loadDirectoryReadModel(forceRefresh?)` | Load `pulse_directory_30d` read-model |
+| `loadInitial()` | Bootstrap page (snapshot → read-model → leaderboard) |
+| `buildSeedLeaderboard()` | Create initial leaderboard from 10 seed suggestions |
+| `buildFallbackLeaderboardFromRoles(rows)` | Aggregate `hotlist_ai_roles` into personas |
+| `buildHotlistRolePayloadFromPersona(accountId, persona)` | Payload for creating a hotlist role |
+| `buildWatchlistPayloadFromRole(accountId, role, userId?)` | Payload for watchlist upsert |
 
-### Leaderboard Building
-
-| Function | Purpose |
-|----------|---------|
-| `buildSeedLeaderboard()` | Create initial leaderboard from 10 hardcoded HOTLIST_AI_SUGGESTIONS |
-| `buildFallbackLeaderboardFromRoles(rows)` | Aggregate `hotlist_ai_roles` DB rows into personas, carrying all detail fields |
-| `buildInsertPayload(accountId, targetRole, avatarUrl?)` | Create insert payload for adding a new watched role |
-
-### Feed & Matching
+### Stats
 
 | Function | Purpose |
 |----------|---------|
-| `dedupeText(input)` | Normalize text for dedup comparison |
-| `buildSocialLeadDedupKey(row)` | Create composite key from title+company+location+poster for dedup |
-| `roleMatchesPersona(row, personaRole, personaSkills)` | Check if a social job matches a persona by role/skills |
-| `loadFeed(persona)` | Load and deduplicate matches for a persona |
+| `loadProfileStats(forceRefresh?)` | Compute per-role market stats (vector + fallback) |
+| `getProfileStatsByVector(targetRoles)` | Vector-similarity stats RPC |
+| `commitStats(stats)` | Set stats + write snapshot (for 30d) |
 
-### Credit & Actions
+### Watch & Sync
 
 | Function | Purpose |
 |----------|---------|
-| `chargeCredits(amount, feature)` | Deduct credits via RPC, show error on insufficient balance |
-| `persistLeadAction(leadId, actionType)` | Upsert action record to `pulse_lead_actions` |
-| `saveVendorToTracker(lead)` | Auto-create/update vendor in Tracker from revealed lead |
+| `ensureBenchProfileForWatchedRole(persona)` | Create bench profile if missing |
+| `syncWatchlistProfileFromHotlistRole(persona)` | Create/upsert hotlist role + watchlist profile |
+| `activatePersona(persona)` | Full watch flow (sync + bench + state) |
+
+### Navigation
+
+| Function | Purpose |
+|----------|---------|
+| `openJobsForRole(role)` | Navigate to `/jobs?q=<role>` |
+| `openHotlistForRole(role)` | Navigate to `/hotlist?q=<role>` |
+| `refreshFeed()` | Reload feed + lastMatchAt |
+
+### Credits & Actions
+
+| Function | Purpose |
+|----------|---------|
+| `consumeCredits(amount, feature, metadata)` | Deduct via RPC with legacy fallback |
+| `consumeCreditsLegacy(amount, feature)` | Legacy direct balance update |
+| `persistLeadAction(leadId, actionType)` | Upsert into `pulse_lead_actions` |
+| `handleRevealContact(lead)` | Reveal contact + save vendor to Tracker |
+| `handleOpenBreakdown(lead)` | Charge + display AI breakdown |
+
+### Display Helpers
+
+| Function | Purpose |
+|----------|---------|
+| `normalize(text)` | Lowercase + trim + collapse whitespace |
+| `canonicalizeRoleForUniqueness(role)` | Strip seniority prefixes |
+| `getPersonaBucket(role)` | Bucket role into canonical persona |
+| `getPersonaSkillList(role, skills?)` | Parse skills or infer from suggestions |
+| `getPersonaDetailColumns(persona)` | Extract detail columns |
+| `inferRoleCategoryId(role)` | Match role to category via regex |
+| `roleMatchesPersona(row, role, skills)` | Check if a job matches a persona |
+| `getMetricHeatmapColor(value, max)` | Heatmap color for metric cells |
+| `getMarketPulseVisual(uniqueJobs)` | Map job count to High/Med/Low pulse level |
+| `getScoreVisual(score)` | Card tone/badge from match score |
+| `generateEmailDraft(lead)` | Build a pitching email draft |
+| `maskPosterName(name)` | Privacy mask poster name |
 
 ---
 
 ## UI Layout & Components
 
-### Top Navigation
-- `AppNav` component with global navigation
+### AppNav
+Top navigation bar with global nav.
 
-### Category Tabs Bar
-- Horizontal scrollable row of category buttons
-- Each shows icon + label + vendor count badge
-- Clicking filters the profiles table to that category
-- "All" tab shows unfiltered view
+### Category Pills (Desktop)
+- 11 category buttons with vendor + job count badges.
+- Selecting reveals tech-stack sub-filter pills.
 
-### Search & Filters Row
-- Text search input filters profiles by role name
-- Time range dropdown (1h, 24h, 48h, 3d)
-- Refresh button reloads leaderboard + stats
+### Search & Filter Row
+- **Profile search**: filters by role, summary, skills, location, visa, employment type, work type, experience, rate.
+- **Range picker**: 24h / 3d / 7d / 15d / 30d (default 30d).
+- **Last-refreshed** timestamp.
+- **Refresh button**: reloads stats + feed.
 
-### Profiles Table (Left Panel)
-Two sections separated by a divider:
+### Profiles Table
+Sortable table with heatmap-colored metric cells:
 
-**Watching Section**
-- Profiles the user is actively watching
-- Shows: avatar, role title, summary, detail columns, vendor/company/job stats
-- Click to select and load matches
-- Watch/unwatch toggle button
+| Column | Content |
+|--------|---------|
+| Role | Role title (blue, clickable) + ChevronRight |
+| Rate | Avg hourly rate (`$XX` heatmapped) |
+| Hotlist | Unique hotlist count (clickable → `/hotlist?q=`) |
+| Jobs | Unique job count |
+| Vendors | Unique vendor count |
 
-**Top Profiles Section**
-- Other popular profiles ranked by watcher count
-- Same layout as watching section
-- Paginated
+- Clicking a **Role** row → `openJobsForRole()` (navigates to `/jobs?q=`).
+- Clicking the **Hotlist** cell → `openHotlistForRole()` (navigates to `/hotlist?q=`).
 
-### Matches Feed (Right Panel)
-- **Tabs**: All / Breakdown / Revealed / Queued
-- **Match Cards**: Job title, company, location, platform badge, masked poster name, time ago
-- **Actions per card**:
-  - **Breakdown** (costs 1 credit): Shows AI score breakdown table
-  - **Reveal** (costs 1 credit): Unmasks contact info (name, email, phone) with copy buttons
-  - **Queue**: Saves lead to queue for later
-- **Pagination**: Shows 10 at a time with "Load More" button
+### Domains Table
+Aggregates market activity by technology category (Domain, Hotlist, Jobs, Vendors). Clicking a domain sets the category filter.
+
+### Mobile Layout
+- **Domains Table** (fixed 150px scroll) on top.
+- **Profiles Table** below with infinite scroll (30-per-batch).
+- Sticky search/filter bar with range menu.
 
 ### Lead Detail Modal
-- Full-screen overlay when a match card is clicked
-- Shows complete job details, score breakdown table, contact info
-- Copy buttons for email/phone
-- Link to full profile
-
-### Mobile Responsive
-- Below `lg` breakpoint: toggle between Board and Feed views
-- Single column layout on mobile
+- Full lead details + score breakdown table (Rule / Profile / Job columns).
+- Actions: **Generate Email**, **Copy Email ID**, **Copy Phone** (revealed only).
+- Editable generated email draft textarea.
 
 ---
 
 ## Feature Details
 
-### Role Watching
-- Users can watch/unwatch roles via toggle button on each persona row
-- Watching inserts a row into `hotlist_ai_roles` with `is_active=true`
-- Unwatching sets `is_active=false`
-- Watched roles appear in a separate "Watching" section at the top
+### 30-Day Directory Read-Model
+The page is backed by a materialized `pulse_directory_30d` table that pre-computes the leaderboard and per-role stats. This enables near-instant initial render:
+- Snapshot cached in `localStorage` (`profilepush:pulse-directory:v2:30d`) with a 6-hour TTL.
+- `refresh_pulse_directory_30d_snapshot` RPC force-refreshes the read-model.
+- If the read-model is unavailable, the page falls back to the leaderboard RPC + live stats.
 
-### AI Match Scoring
-- Scores come from `radar_match_results` table (pre-computed by background workers)
-- Score breakdown shows rule-by-rule scoring (skills, location, employment type, work type)
-- `buildScoreBreakdownDisplayItems()` from `radar-match-ui.ts` formats the breakdown
+### Market Pulse Visualization
+Each role shows a **Market Pulse** level (High/Med/Low) derived from the unique job count:
+- ≥15 jobs → **High** (emerald)
+- ≥6 jobs → **Medium** (amber)
+- <6 jobs → **Low** (red)
 
-### Privacy & Contact Masking
-- Poster names are masked by default: "John Smith" → "Joh••• Smi•••"
-- Email and phone are hidden until user pays credits to reveal
-- Revealed contacts auto-sync to the Tracker page as vendor records
+### Vector-Similarity Stats
+`get_profile_stats_by_vector` RPC uses `hotlist_ai_roles.role_embedding` ↔ `social_jobs.job_embedding` (cosine similarity, threshold 0.65) to compute unique job/vendor counts per role. This is the **primary** stats path; a text-based `roleMatchesPersona` fallback handles RPC unavailability.
 
-### Vendor Auto-Sync
-When a user reveals a lead:
-1. Extracts poster name, email, phone, company, location
-2. Checks if vendor already exists (by email or name match)
-3. Creates or updates vendor record in `vendors` table
-4. Vendor appears in Tracker page automatically
+### Heatmap Metrics
+Metric cells (Rate, Hotlist, Jobs, Vendors) are colorized using `getMetricHeatmapColor()` on a 6-color palette (`#C084FC → #34D399`) relative to the max value in view.
 
-### Deduplication
-- Social leads are deduplicated using a composite key of title + company + location + poster
-- Text normalization strips punctuation, collapses whitespace
-- Prevents showing duplicate job postings from different scrape runs
+### One-Click Watch
+Clicking **Watch** on a persona:
+1. Creates/updates a `hotlist_ai_roles` row (if missing).
+2. Upserts a `watchlist_profiles` row (is_watching=true).
+3. Creates a bench `profiles` row ("{Role} Watch Profile") if missing.
+4. Sets the persona active and loads the feed.
 
-### Category-Based Organization
-- 10 technology categories with regex-based role classification
-- Category cards show aggregated stats (vendor count with Building2 icon)
-- Filtering by category updates both the profiles table and stats
+### Deep Links to Jobs / Hotlist
+- Role row click → `/jobs?q=<role>`
+- Hotlist cell click → `/hotlist?q=<role>`
 
----
+These URLs are consumed by `PulsePage.tsx` (via `useSearchParams`) to pre-filter the feed.
 
-## Database Tables Used
-
-| Table | Operations | Purpose |
-|-------|-----------|---------|
-| `hotlist_ai_roles` | SELECT, INSERT, UPDATE | Role watching state & settings |
-| `social_jobs` | SELECT | Scraped job postings source |
-| `radar_match_results` | SELECT | Pre-computed AI match scores |
-| `pulse_lead_actions` | SELECT, UPSERT | Track reveal/breakdown actions |
-| `vendors` | SELECT, UPSERT | Auto-sync revealed contacts |
-| `accounts` | SELECT | Account context |
+### Directive / Lead Modal
+The page includes a lead-detail modal (accessible from the feed view) with:
+- AI score breakdown table
+- Email-draft generation (pitching email)
+- Copy Email / Copy Phone (revealed only)
 
 ---
 
@@ -436,10 +454,33 @@ When a user reveals a lead:
 
 | Action | Cost | What Happens |
 |--------|------|-------------|
-| Reveal Contact | 1 credit | Unmasks name, email, phone; syncs to Tracker |
-| Score Breakdown | 1 credit | Shows detailed AI scoring table |
+| Reveal Contact | **$0.25** | Unmasks name/email/phone; syncs vendor to Tracker |
+| Breakdown | **$0.10** | Shows detailed AI scoring table |
 
-Credits are consumed via `consume_feature_credit` RPC. On insufficient balance, a toast error is shown. The legacy fallback `consumeCreditsLegacy` is also supported.
+> Note: The reveal cost here is `$0.25`, which differs from the Jobs/Hotlist feed pages (`$0.10`).
+
+---
+
+## Database Tables & RPCs Used
+
+| Object | Operations | Purpose |
+|--------|-----------|---------|
+| `pulse_directory_30d` | SELECT | 30-day directory read-model |
+| `radar_match_hotlist` | SELECT | Hotlist counts + avg rate |
+| `radar_match_results` | SELECT | Job/vendor counts + fallback |
+| `social_jobs` | SELECT | Fallback stat source |
+| `hotlist_ai_roles` | SELECT, INSERT, UPDATE | Watch state + fallback leaderboard |
+| `watchlist_profiles` | SELECT, INSERT, UPSERT | User watchlist |
+| `profiles` | SELECT, INSERT | Bench profiles (watch sync) |
+| `accounts` | SELECT | Account context |
+| `get_pulse_persona_leaderboard` | RPC | Leaderboard with watcher counts |
+| `refresh_pulse_directory_30d_snapshot` | RPC | Force-refresh directory read-model |
+| `get_profile_stats_by_vector` | RPC | Vector-similarity stats |
+| `get_pulse_social_feed` | RPC | Global social feed (fallback) |
+| `consume_feature_credit` | RPC | Credit deduction |
+
+### Row-Level Security
+All tables use RLS policies scoped to the user's account via `account_members`. The directory read-model and feed RPCs are SECURITY DEFINER so authenticated users can read global cross-account market data while direct table access remains restricted.
 
 ---
 
@@ -447,12 +488,14 @@ Credits are consumed via `consume_feature_credit` RPC. On insufficient balance, 
 
 | Dependency | Usage |
 |------------|-------|
-| `react`, `react-router-dom` | Core framework, navigation |
-| `lucide-react` | All icons (30+ icons used) |
+| `react`, `react-router-dom` | Core framework, navigation, URL params (`useSearchParams`, `useNavigate`) |
+| `lucide-react` | 40+ icons (Activity, Briefcase, Building2, UserRound, Handshake, DollarSign, Radar, etc.) |
 | `AppNav` | Top navigation bar |
 | `Toast` | Notification toasts |
 | `LogoSpinner` | Loading spinner |
 | `useAuth` | Authentication context (user, account, credits) |
-| `supabase` | Database client |
-| `HOTLIST_AI_SUGGESTIONS` | 10 seed role suggestions |
+| `useTheme` | Dark mode styling |
+| `supabase` | Database client + RPC invocation |
+| `HOTLIST_AI_SUGGESTIONS` | Seed role suggestions |
 | `buildScoreBreakdownDisplayItems` | Score breakdown display formatting |
+| `matchesPulseFeedSearch` | Feed search matching |
