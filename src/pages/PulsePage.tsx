@@ -15,6 +15,7 @@ import {
   Clock3,
   DollarSign,
   Eye,
+  FileText,
   Handshake,
   Hash,
   Mail,
@@ -292,6 +293,7 @@ type GlobalAskedJobState = 'asked' | 'verified';
 type EmailDraftTabId = 'pitching' | 'requestDetails';
 type AskAIPreview = {
   leadId: string;
+  leadType: 'job' | 'hotlist';
   requestId: string;
   vendorName: string;
   missingDetails: string[];
@@ -2202,7 +2204,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const isAskPending = globalAskedJobState === 'asked';
     const isVerified = globalAskedJobState === 'verified';
     const missingJobDetails = getMissingJobDetails(lead);
-    const canAskAI = !isHotlistFeed && !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim()) && missingJobDetails.length > 0;
+    const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim()) && (isHotlistFeed || missingJobDetails.length > 0);
     const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
       lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
       undefined,
@@ -2306,22 +2308,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       const ext = domainPart.includes('.') ? domainPart.split('.').pop()?.trim() : '';
       return ext ? `${prefix}**@***.${ext}` : `${prefix}**@***`;
     })();
-    const consultantPositionLabel = isHotlistFeed && lead.consultantCount
-      ? lead.consultantCount === 1
-        ? 'Single consultant'
-        : `Consultant ${(lead.candidateIndex ?? 0) + 1} of ${lead.consultantCount}`
-      : null;
-
     return (
       <div key={lead.id} className={`relative mb-1.5 break-inside-avoid rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
         <div>
           <div className="min-w-0 pr-12">
             <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
-            {consultantPositionLabel && (
-              <span className="mt-0.5 inline-flex rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-300">
-                {consultantPositionLabel}
-              </span>
-            )}
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
               <span>{feedTimeBasis === 'created' ? 'Added' : 'Posted'} {formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
               <span>•</span>
@@ -2355,11 +2346,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             type="button"
             onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
             disabled={!canAskAI || processingAskAILeadId === lead.id}
-            title={isHotlistFeed ? 'Bench Sales Recruiter contact' : isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Missing details have already been requested' : !lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Ask AI to request the missing details'}
+            title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? (isHotlistFeed ? 'Resume has already been requested' : 'Missing details have already been requested') : !lead.posterEmail ? 'Vendor email is unavailable' : (!isHotlistFeed && missingJobDetails.length === 0) ? 'No missing job details detected' : isHotlistFeed ? "Ask AI to request the consultant's resume" : 'Ask AI to request the missing details'}
             className={`absolute right-3 top-2.5 inline-flex items-center justify-center bg-transparent font-semibold transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-45 ${isAskPending ? 'flex-row gap-1 text-[10px]' : isVerified ? 'w-11 flex-col gap-0.5' : 'w-5 flex-col gap-0.5'}`}
             style={{ color: isDark ? `color-mix(in srgb, ${accentColor} 82%, black)` : '#1D4ED8' }}
           >
-            {isVerified ? <BadgeCheck size={18} strokeWidth={2} /> : <Mail size={isAskPending ? 12 : 18} strokeWidth={2} />}
+            {isVerified ? <BadgeCheck size={18} strokeWidth={2} /> : isHotlistFeed ? <FileText size={isAskPending ? 12 : 18} strokeWidth={2} /> : <Mail size={isAskPending ? 12 : 18} strokeWidth={2} />}
             <span className={isAskPending ? 'leading-none' : 'w-full truncate text-center text-[9px] uppercase leading-none'}>
               {processingAskAILeadId === lead.id ? '...' : isVerified ? 'Verified' : isAskPending ? 'Asked' : 'Ask'}
             </span>
@@ -2636,8 +2627,17 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const loadAskedJobState = useCallback(async () => {
     if (isHotlistFeed) {
       setAskedJobStateByLeadId({});
-      setGlobalAskedJobStateByLeadId({});
       setAskedLeadsById({});
+      const { data: hotlistStates, error: hotlistStatesError } = await supabase.rpc('get_hotlist_asked_states' as never);
+      if (hotlistStatesError) {
+        setGlobalAskedJobStateByLeadId({});
+        return;
+      }
+      const nextHotlistGlobalState: Record<string, GlobalAskedJobState> = {};
+      for (const row of (hotlistStates ?? []) as Array<{ hotlist_id: string; state: GlobalAskedJobState }>) {
+        if (row.state === 'asked' || row.state === 'verified') nextHotlistGlobalState[row.hotlist_id] = row.state;
+      }
+      setGlobalAskedJobStateByLeadId(nextHotlistGlobalState);
       return;
     }
     if (!account?.id || !user?.id) {
@@ -3776,19 +3776,21 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const handleAskAI = useCallback(async (lead: SocialLead) => {
     if (!account?.id || processingAskAILeadId) return;
 
-    const missingDetails = getMissingJobDetails(lead);
+    const leadType: 'job' | 'hotlist' = isHotlistFeed ? 'hotlist' : 'job';
+    const missingDetails = leadType === 'hotlist' ? ['resume'] : getMissingJobDetails(lead);
     if (missingDetails.length === 0) {
       showToast('No missing job details were detected', 'error');
       return;
     }
     if (!/^\S+@\S+\.\S+$/.test(lead.posterEmail.trim())) {
-      showToast('This job does not have a valid vendor email', 'error');
+      showToast(leadType === 'hotlist' ? 'This consultant does not have a valid recruiter email' : 'This job does not have a valid vendor email', 'error');
       return;
     }
 
     const requestId = crypto.randomUUID();
     setAskAIPreview({
       leadId: lead.id,
+      leadType,
       requestId,
       vendorName: lead.posterName || 'the vendor',
       missingDetails,
@@ -3804,6 +3806,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           request_id: requestId,
           account_id: account.id,
           job_id: lead.id,
+          lead_type: leadType,
           missing_details: missingDetails,
         },
       });
@@ -3818,6 +3821,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         || '';
       setAskAIPreview({
         leadId: lead.id,
+        leadType,
         requestId,
         vendorName,
         missingDetails,
@@ -3831,7 +3835,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } finally {
       setProcessingAskAILeadId(null);
     }
-  }, [account?.id, processingAskAILeadId, showToast, user?.email, user?.user_metadata?.full_name]);
+  }, [account?.id, isHotlistFeed, processingAskAILeadId, showToast, user?.email, user?.user_metadata?.full_name]);
 
   const handleSubmitAskAI = useCallback(async () => {
     if (!account?.id || !askAIPreview || processingAskAILeadId) return;
@@ -3852,6 +3856,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           request_id: askAIPreview.requestId,
           account_id: account.id,
           job_id: askAIPreview.leadId,
+          lead_type: askAIPreview.leadType,
           missing_details: askAIPreview.missingDetails,
           email_subject: emailSubject,
           email_content: emailContent,
@@ -5017,10 +5022,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           >
             <div className="flex items-start gap-3">
               <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600">
-                <Mail size={18} />
+                {askAIPreview.leadType === 'hotlist' ? <FileText size={18} /> : <Mail size={18} />}
               </span>
               <div className="min-w-0 flex-1">
-                <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">{askAIPreview.isGenerating ? 'Generating vendor email' : 'Review vendor email'}</h2>
+                <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating resume request' : 'Generating vendor email') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review vendor email')}</h2>
                 {askAIPreview.isGenerating && <p className="mt-1 text-xs leading-relaxed text-gray-600">Preparing an email to {maskName(askAIPreview.vendorName)}.</p>}
               </div>
               <button
@@ -5037,7 +5042,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               <div className="flex min-h-56 flex-col items-center justify-center px-6 text-center">
                 <LogoSpinner size={28} />
                 <p className="mt-4 text-sm font-semibold text-gray-900">Generating your email</p>
-                <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-500">Using the job and missing details to prepare a concise message.</p>
+                <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-500">{askAIPreview.leadType === 'hotlist' ? "Using the consultant's profile to prepare a resume request." : 'Using the job and missing details to prepare a concise message.'}</p>
               </div>
             ) : <>
             <div className="mt-4 space-y-3">
@@ -5065,8 +5070,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               </label>
             </div>
             <div className="mt-3 rounded-md bg-gray-50 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Requested details</p>
-              <p className="mt-1 text-xs text-gray-700">{askAIPreview.missingDetails.join(', ')}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{askAIPreview.leadType === 'hotlist' ? 'Requesting' : 'Requested details'}</p>
+              <p className="mt-1 text-xs text-gray-700">{askAIPreview.leadType === 'hotlist' ? "Consultant's resume" : askAIPreview.missingDetails.join(', ')}</p>
             </div>
             <div className="mt-4 flex justify-end">
               <button
@@ -5075,7 +5080,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 disabled={Boolean(processingAskAILeadId) || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim() || askAIPreview.emailContent.trim().split(/\s+/).filter(Boolean).length >= 40}
                 className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-20"
               >
-                <Mail size={12} />
+                {askAIPreview.leadType === 'hotlist' ? <FileText size={12} /> : <Mail size={12} />}
                 {processingAskAILeadId ? 'Sending...' : 'Send'}
               </button>
             </div>

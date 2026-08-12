@@ -36,6 +36,7 @@ type AskVendorEmailRequest = {
   vendor_name?: string;
   missing_data_type?: string;
   bench_recruiter_first_name?: string;
+  request_type?: "missing_details" | "resume";
 };
 
 type AskVendorEmailCopy = {
@@ -126,6 +127,21 @@ function fallbackAskVendorEmailCopy(
   };
 }
 
+function fallbackAskResumeEmailCopy(
+  roleTitle: string,
+  vendorName: string,
+  recruiterFirstName: string,
+): AskVendorEmailCopy {
+  const emailContent = `Hi ${vendorName}, I've got a client interested in your ${roleTitle} consultant. Could you send over their resume? Thanks, ${recruiterFirstName}`;
+  if (emailContent.split(/\s+/).filter(Boolean).length < 40) {
+    return { subject: `Resume request: ${roleTitle}`.slice(0, 200), email_content: emailContent };
+  }
+  return {
+    subject: "Quick resume request",
+    email_content: `Hi ${vendorName.split(/\s+/)[0]}, I've got a client interested in your consultant. Could you send over their resume? Thanks, ${recruiterFirstName}`,
+  };
+}
+
 function getBearerToken(req: Request): string {
   const header = req.headers.get("Authorization") ?? "";
   const [scheme, token] = header.split(" ");
@@ -138,16 +154,28 @@ async function handleAskVendorEmailCopy(req: Request, env: Env): Promise<Respons
   if (getBearerToken(req) !== expectedToken) return jsonResponse({ error: "Unauthorized" }, 401);
 
   const body = await req.json() as AskVendorEmailRequest;
+  const requestType = body.request_type === "resume" ? "resume" : "missing_details";
   const jobTitle = String(body.job_title ?? "").trim().slice(0, 500);
   const jobLocation = String(body.job_location ?? "").trim().slice(0, 500) || "Not specified";
   const vendorName = String(body.vendor_name ?? "").trim().slice(0, 200) || "there";
   const missingDataType = String(body.missing_data_type ?? "").trim().slice(0, 1_000);
   const recruiterFirstName = String(body.bench_recruiter_first_name ?? "").trim().split(/\s+/)[0]?.slice(0, 100);
-  if (!jobTitle || !missingDataType || !recruiterFirstName) {
-    return jsonResponse({ error: "Job title, missing data type, and recruiter first name are required" }, 400);
+  if (!jobTitle || !recruiterFirstName || (requestType === "missing_details" && !missingDataType)) {
+    return jsonResponse({ error: "Role title, recruiter first name, and (for missing-detail requests) missing data type are required" }, 400);
   }
 
-  const systemPrompt = `You are a fast-paced, highly transactional IT bench sales recruiter. Your goal is to write a strictly text-based, plain-text email to a vendor asking for missing details about a job they just posted.
+  const systemPrompt = requestType === "resume"
+    ? `You are a fast-paced, highly transactional IT bench sales recruiter. Your goal is to write a strictly text-based, plain-text email to a fellow bench-sales recruiter asking them to share the resume/CV of a specific consultant they posted about on social media.
+
+Rules for the Email:
+1. Zero Fluff: Do not use corporate greetings like "I hope this email finds you well" or "Good morning."
+2. Extreme Brevity: Keep the entire email under 40 words.
+3. The Hook: Always imply you have a client actively interested in submitting this specific consultant right now.
+4. The Ask: Ask explicitly for the consultant's resume/CV, referencing the consultant's role.
+5. Tone: Casual, urgent, and professional. Use natural phrasing like "Hey," or "Hi [Name]," and sign off simply with the sender's name.
+
+Generate only the email body and subject line. Do not include any explanations. Return strict JSON with exactly these keys: "subject" and "email_content".`
+    : `You are a fast-paced, highly transactional IT bench sales recruiter. Your goal is to write a strictly text-based, plain-text email to a vendor asking for missing details about a job they just posted.
 
 Rules for the Email:
 1. Zero Fluff: Do not use corporate greetings like "I hope this email finds you well" or "Good morning."
@@ -157,7 +185,11 @@ Rules for the Email:
 5. Tone: Casual, urgent, and professional. Use natural phrasing like "Hey," or "Hi [Name]," and sign off simply with the sender's name.
 
 Generate only the email body and subject line. Do not include any explanations. Return strict JSON with exactly these keys: "subject" and "email_content".`;
-  const userPrompt = `Job Title: ${jobTitle}
+  const userPrompt = requestType === "resume"
+    ? `Consultant Role: ${jobTitle}
+Recruiter Name: ${vendorName}
+Sender Name: ${recruiterFirstName}`
+    : `Job Title: ${jobTitle}
 Job Location: ${jobLocation}
 Vendor Name: ${vendorName}
 Missing Detail to Ask For: ${missingDataType}
@@ -176,7 +208,9 @@ Sender Name: ${recruiterFirstName}`;
     copy = normalizeAskVendorEmailCopy((aiResult as Record<string, unknown>)?.response ?? aiResult);
   } catch (error) {
     console.error("Ask Vendor AI output was invalid; using fallback", error);
-    copy = fallbackAskVendorEmailCopy(jobTitle, vendorName, missingDataType, recruiterFirstName);
+    copy = requestType === "resume"
+      ? fallbackAskResumeEmailCopy(jobTitle, vendorName, recruiterFirstName)
+      : fallbackAskVendorEmailCopy(jobTitle, vendorName, missingDataType, recruiterFirstName);
   }
   return jsonResponse(copy);
 }

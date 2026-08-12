@@ -63,6 +63,7 @@ Deno.serve(async (req: Request) => {
     const requestId = asString(body.request_id, 100);
     const accountId = asString(body.account_id, 100);
     const jobId = asString(body.job_id, 100);
+    const leadType = asString(body.lead_type, 20) === "hotlist" ? "hotlist" : "job";
     const missingDetails = Array.isArray(body.missing_details)
       ? body.missing_details.map((item) => asString(item, 100)).filter(Boolean).slice(0, 20)
       : [];
@@ -71,7 +72,7 @@ Deno.serve(async (req: Request) => {
     );
 
     if (!['preview', 'send'].includes(action) || !accountId || !jobId || missingDetails.length === 0) {
-      return respond({ error: "Job and missing details are required" }, 400);
+      return respond({ error: leadType === "hotlist" ? "Consultant is required" : "Job and missing details are required" }, 400);
     }
     if (action === 'send' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
       return respond({ error: "A valid request ID is required" }, 400);
@@ -93,26 +94,47 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (accountError || !account) return respond({ error: "Account not found" }, 404);
 
-    const { data: job, error: jobError } = await supabaseAdmin
-      .from("social_jobs")
-      .select("id, vendor_id, platform, posted_by_name, poster_email, job_title, company_name, location, post_content")
-      .eq("id", jobId)
-      .maybeSingle();
-    if (jobError || !job) return respond({ error: "Job not found" }, 404);
+    let job: Record<string, unknown> | null = null;
+    let hotlist: Record<string, unknown> | null = null;
 
-    const vendorEmail = asString(job.poster_email, 320).toLowerCase();
-    if (!/^\S+@\S+\.\S+$/.test(vendorEmail)) {
-      return respond({ error: "This job does not have a valid vendor email" }, 400);
+    if (leadType === "hotlist") {
+      const { data, error } = await supabaseAdmin
+        .from("social_hotlist")
+        .select("id, bench_sales_recruiter_name, bench_sales_recruiter_email, role_title, candidate_name")
+        .eq("id", jobId)
+        .maybeSingle();
+      if (error || !data) return respond({ error: "Consultant not found" }, 404);
+      hotlist = data;
+    } else {
+      const { data, error } = await supabaseAdmin
+        .from("social_jobs")
+        .select("id, vendor_id, platform, posted_by_name, poster_email, job_title, company_name, location, post_content")
+        .eq("id", jobId)
+        .maybeSingle();
+      if (error || !data) return respond({ error: "Job not found" }, 404);
+      job = data;
     }
 
-    const { data: vendor } = job.vendor_id
-      ? await supabaseAdmin
-        .from("social_vendors")
-        .select("name")
-        .eq("id", job.vendor_id)
-        .maybeSingle()
-      : { data: null };
-    const vendorName = asVendorName(vendor?.name) || asVendorName(job.posted_by_name);
+    const vendorEmail = asString(leadType === "hotlist" ? hotlist!.bench_sales_recruiter_email : job!.poster_email, 320).toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(vendorEmail)) {
+      return respond({
+        error: leadType === "hotlist" ? "This consultant does not have a valid recruiter email" : "This job does not have a valid vendor email",
+      }, 400);
+    }
+
+    let vendorName = "";
+    if (leadType === "hotlist") {
+      vendorName = asVendorName(hotlist!.bench_sales_recruiter_name);
+    } else {
+      const { data: vendor } = job!.vendor_id
+        ? await supabaseAdmin
+          .from("social_vendors")
+          .select("name")
+          .eq("id", job!.vendor_id as string)
+          .maybeSingle()
+        : { data: null };
+      vendorName = asVendorName(vendor?.name) || asVendorName(job!.posted_by_name);
+    }
     const vendorDisplayName = vendorName || vendorEmail;
 
     const requesterName = asString(membership.display_name, 200)
@@ -123,12 +145,20 @@ Deno.serve(async (req: Request) => {
     let emailSubject = asString(body.email_subject, 300);
     let emailContent = asString(body.email_content, 2_000);
     if (action === 'preview') {
-      const { data: cachedDraft, error: cachedDraftError } = await supabaseAdmin
-        .from("pulse_ask_ai_drafts")
-        .select("email_subject, email_content_template")
-        .eq("job_id", jobId)
-        .eq("missing_details_key", missingDetailsKey)
-        .maybeSingle();
+      const draftLookup = leadType === "hotlist"
+        ? supabaseAdmin
+          .from("pulse_ask_ai_drafts")
+          .select("email_subject, email_content_template")
+          .eq("hotlist_id", jobId)
+          .eq("missing_details_key", missingDetailsKey)
+          .maybeSingle()
+        : supabaseAdmin
+          .from("pulse_ask_ai_drafts")
+          .select("email_subject, email_content_template")
+          .eq("job_id", jobId)
+          .eq("missing_details_key", missingDetailsKey)
+          .maybeSingle();
+      const { data: cachedDraft, error: cachedDraftError } = await draftLookup;
       if (cachedDraftError) throw cachedDraftError;
 
       if (cachedDraft) {
@@ -158,11 +188,12 @@ Deno.serve(async (req: Request) => {
           },
           signal: AbortSignal.timeout(20_000),
           body: JSON.stringify({
-            job_title: asString(job.job_title, 500) || "Open role",
-            job_location: asString(job.location, 500) || "Not specified",
+            job_title: (leadType === "hotlist" ? asString(hotlist!.role_title, 500) : asString(job!.job_title, 500)) || "Open role",
+            job_location: leadType === "hotlist" ? "Not specified" : (asString(job!.location, 500) || "Not specified"),
             vendor_name: vendorName || "there",
             missing_data_type: missingDetails.join(", "),
             bench_recruiter_first_name: requesterFirstName,
+            request_type: leadType === "hotlist" ? "resume" : "missing_details",
           }),
         });
         const aiPayload = await aiResponse.json().catch(() => null) as Record<string, unknown> | null;
@@ -179,13 +210,14 @@ Deno.serve(async (req: Request) => {
       const { error: draftInsertError } = await supabaseAdmin
         .from("pulse_ask_ai_drafts")
         .upsert({
-          job_id: jobId,
+          job_id: leadType === "job" ? jobId : null,
+          hotlist_id: leadType === "hotlist" ? jobId : null,
           missing_details: missingDetails,
           missing_details_key: missingDetailsKey,
           email_subject: toSharedDraft(emailSubject, requesterFirstName),
           email_content_template: toSharedDraft(emailContent, requesterFirstName),
           updated_at: new Date().toISOString(),
-        }, { onConflict: "job_id,missing_details_key" });
+        }, { onConflict: leadType === "hotlist" ? "hotlist_id,missing_details_key" : "job_id,missing_details_key" });
       if (draftInsertError) {
         console.error("Could not save shared Ask Vendor draft", draftInsertError);
         return respond({ error: "Could not save the generated vendor request" }, 500);
@@ -214,7 +246,8 @@ Deno.serve(async (req: Request) => {
         request_id: requestId,
         account_id: accountId,
         user_id: user.id,
-        job_id: jobId,
+        job_id: leadType === "job" ? jobId : null,
+        hotlist_id: leadType === "hotlist" ? jobId : null,
         status: "processing",
         missing_details: missingDetails,
       });
@@ -253,7 +286,13 @@ Deno.serve(async (req: Request) => {
       p_account_id: accountId,
       p_amount: ASK_AI_COST,
       p_feature: "pulse_ask_ai",
-      p_metadata: { request_id: requestId, job_id: jobId, vendor_email: vendorEmail, missing_details: missingDetails },
+      p_metadata: {
+        request_id: requestId,
+        job_id: leadType === "job" ? jobId : null,
+        hotlist_id: leadType === "hotlist" ? jobId : null,
+        vendor_email: vendorEmail,
+        missing_details: missingDetails,
+      },
     });
     const creditResult = Array.isArray(creditRows) ? creditRows[0] : null;
     if (creditError || !creditResult?.success) {
@@ -302,8 +341,9 @@ Deno.serve(async (req: Request) => {
         request_id: requestId,
         account_id: account.id,
         user_id: user.id,
-        job_id: job.id,
-        vendor_id: job.vendor_id,
+        job_id: leadType === "job" ? jobId : null,
+        hotlist_id: leadType === "hotlist" ? jobId : null,
+        vendor_id: leadType === "job" ? (job!.vendor_id as string | null) : null,
         vendor_name: vendorDisplayName,
         vendor_email: vendorEmail,
         sender_name: requesterName,
