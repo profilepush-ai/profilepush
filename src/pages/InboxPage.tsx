@@ -562,7 +562,10 @@ export default function InboxPage() {
               <button key={item.id} type="button" onClick={() => selectConversation(item.id)} className={`flex w-full border-b border-gray-100 px-3 py-3 text-left transition-colors ${selectedId === item.id ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
-                    <span className={`truncate text-xs ${item.unread_count > 0 ? 'font-bold text-gray-950' : 'font-semibold text-gray-800'}`}>{item.social_jobs?.job_title || item.social_hotlist?.role_title || 'Vendor request'}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide ${item.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{item.hotlist_id ? 'Hotlist' : 'Job'}</span>
+                      <span className={`truncate text-xs ${item.unread_count > 0 ? 'font-bold text-gray-950' : 'font-semibold text-gray-800'}`}>{item.social_jobs?.job_title || item.social_hotlist?.role_title || 'Vendor request'}</span>
+                    </span>
                     <span className="shrink-0 text-[10px] text-gray-400">{formatRelative(item.last_message_at)}</span>
                   </span>
                   <span className="mt-1 flex items-center justify-between gap-2">
@@ -588,6 +591,7 @@ export default function InboxPage() {
                   <ArrowLeft size={16} />
                 </button>
                 <div className="flex-1" />
+                <span className={`rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${selected.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{selected.hotlist_id ? 'Hotlist' : 'Job'}</span>
                 <span className={`rounded px-2 py-1 text-[10px] font-semibold ${selected.status === 'failed' ? 'bg-red-50 text-red-700' : selected.status === 'replied' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selected.status]}</span>
               </header>
 
