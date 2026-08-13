@@ -412,6 +412,18 @@ async function deliverPosts(
   }
 }
 
+// Cap how many posts go to the processor in one request. A single request
+// carrying a large backlog (e.g. after an outage) can exceed the processor's
+// own execution time and hang without ever returning a response — which,
+// left unbounded, can strand that same backlog on every future retry too.
+const RETRY_DELIVERY_CHUNK_SIZE = 5;
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 async function retryFailedDeliveries(env: Env): Promise<number> {
   const response = await fetch(
     `${env.SUPABASE_URL}/rest/v1/linkedin_groups_posts?select=group_id,source_post_id,raw_post&delivery_status=eq.failed&order=last_seen_at.asc&limit=200`,
@@ -429,13 +441,17 @@ async function retryFailedDeliveries(env: Env): Promise<number> {
 
   let delivered = 0;
   for (const [groupId, groupRows] of byGroup) {
-    try {
-      await deliverPosts(env, groupId, groupRows.map((row) => row.raw_post));
-      await markPostsDelivery(env, groupRows.map((row) => row.source_post_id), "delivered");
-      delivered += groupRows.length;
-    } catch (error) {
-      await markPostsDelivery(env, groupRows.map((row) => row.source_post_id), "failed", (error as Error).message);
-      throw error;
+    for (const chunk of chunkArray(groupRows, RETRY_DELIVERY_CHUNK_SIZE)) {
+      try {
+        await deliverPosts(env, groupId, chunk.map((row) => row.raw_post));
+        await markPostsDelivery(env, chunk.map((row) => row.source_post_id), "delivered");
+        delivered += chunk.length;
+      } catch (error) {
+        // Per-chunk isolation: one stuck chunk must never block the remaining
+        // chunks (same group or others), nor the rest of the scheduled run.
+        await markPostsDelivery(env, chunk.map((row) => row.source_post_id), "failed", (error as Error).message).catch(() => {});
+        console.error(`Retry delivery chunk failed for group ${groupId}: ${(error as Error).message}`);
+      }
     }
   }
   return delivered;

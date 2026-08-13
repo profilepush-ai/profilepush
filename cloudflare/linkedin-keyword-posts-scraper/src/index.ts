@@ -333,6 +333,18 @@ async function deliverPosts(env: Env, job: KeywordScrapeJob, posts: Array<Record
   if (!response.ok) throw new Error(`Processor Worker ${response.status}: ${(await response.text()).slice(0, 500)}`);
 }
 
+// Cap how many posts go to the processor in one request. A single request
+// carrying a large backlog (e.g. after an outage) can exceed the processor's
+// own execution time and hang without ever returning a response — which,
+// left unbounded, can strand that same backlog on every future retry too.
+const RETRY_DELIVERY_CHUNK_SIZE = 5;
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 async function retryFailedDeliveries(env: Env): Promise<number> {
   const response = await fetch(
     `${env.SUPABASE_URL}/rest/v1/linkedin_keyword_posts?select=keyword_id,source_post_id,raw_post&delivery_status=eq.failed&order=last_seen_at.asc&limit=200`,
@@ -346,13 +358,17 @@ async function retryFailedDeliveries(env: Env): Promise<number> {
   let delivered = 0;
   for (const [keywordId, keywordRows] of byKeyword) {
     const retryJob = { keywordId } as KeywordScrapeJob;
-    try {
-      await deliverPosts(env, retryJob, keywordRows.map((row) => row.raw_post));
-      await markPostsDelivery(env, keywordId, keywordRows.map((row) => row.source_post_id), "delivered");
-      delivered += keywordRows.length;
-    } catch (error) {
-      await markPostsDelivery(env, keywordId, keywordRows.map((row) => row.source_post_id), "failed", (error as Error).message);
-      throw error;
+    for (const chunk of chunkArray(keywordRows, RETRY_DELIVERY_CHUNK_SIZE)) {
+      try {
+        await deliverPosts(env, retryJob, chunk.map((row) => row.raw_post));
+        await markPostsDelivery(env, keywordId, chunk.map((row) => row.source_post_id), "delivered");
+        delivered += chunk.length;
+      } catch (error) {
+        // Per-chunk isolation: one stuck chunk must never block the remaining
+        // chunks (same keyword or others), nor the rest of the scheduled run.
+        await markPostsDelivery(env, keywordId, chunk.map((row) => row.source_post_id), "failed", (error as Error).message).catch(() => {});
+        console.error(`Retry delivery chunk failed for keyword ${keywordId}: ${(error as Error).message}`);
+      }
     }
   }
   return delivered;
@@ -455,8 +471,12 @@ export default {
 
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
     await verifyProcessorAccess(env);
-    const retriedPosts = await retryFailedDeliveries(env);
-    if (retriedPosts > 0) console.log(JSON.stringify({ event: "failed_keyword_deliveries_retried", posts: retriedPosts }));
+    try {
+      const retriedPosts = await retryFailedDeliveries(env);
+      if (retriedPosts > 0) console.log(JSON.stringify({ event: "failed_keyword_deliveries_retried", posts: retriedPosts }));
+    } catch (error) {
+      console.error(`Failed delivery retry errored: ${(error as Error).message}`);
+    }
     const config = await fetchScraperConfig(env);
     if (!await claimScheduledRun(env, config)) {
       console.log(JSON.stringify({ event: "scheduled_keyword_scrape_skipped", enabled: config.is_enabled }));
