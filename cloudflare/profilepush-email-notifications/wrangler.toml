@@ -1,0 +1,27 @@
+name = "profilepush-email-notifications"
+main = "src/index.ts"
+compatibility_date = "2026-08-13"
+workers_dev = true
+
+[triggers]
+crons = ["30 13 * * *"]
+
+[vars]
+MAILGUN_DOMAIN = "alerts.profilepush.ai"
+MAILGUN_BASE_URL = "https://api.mailgun.net"
+MAILGUN_FROM_ADDRESS = "alerts@alerts.profilepush.ai"
+SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5od3FjcXp2b3RnZG5ndHh1bHdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NjY3NDQsImV4cCI6MjA5NjQ0Mjc0NH0.DCPM9hZwqEsfmStT1beaUtp3P-uDVkCZL8xv0ZFpCss"
+APP_BASE_URL = "https://profilepush.ai"
+WORKER_BASE_URL = "https://profilepush-email-notifications.profilepush-ai.workers.dev"
+
+[[queues.producers]]
+binding = "EMAIL_QUEUE"
+queue = "email-notifications"
+
+[[queues.consumers]]
+queue = "email-notifications"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "email-notifications-dlq"

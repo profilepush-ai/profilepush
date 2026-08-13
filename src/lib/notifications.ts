@@ -21,6 +21,7 @@ export const NOTIFICATION_TYPES = {
   plan_expiring:         { label: 'Plan Expiring Soon',      group: 'Billing',  description: 'When the subscription is within 7 days of expiry' },
   // Reports
   weekly_summary:        { label: 'Weekly Digest',           group: 'Reports',  description: 'Weekly summary of activity and output' },
+  daily_digest:          { label: 'Daily Digest',            group: 'Reports',  description: 'Daily summary of new jobs and hotlist profiles added' },
 } as const;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;
