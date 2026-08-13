@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +9,10 @@ const corsHeaders = {
 };
 
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+
+const DEFAULT_PARSE_INSTRUCTIONS = "You are an expert recruiter. Extract structured data from this job description.";
+const DEFAULT_MATCH_INSTRUCTIONS = "You are an expert technical recruiter evaluating a candidate's fit for a job listing.";
+const DEFAULT_RANK_INSTRUCTIONS = "You are an expert recruiter. Rank these candidates by fit for the job below. Return the TOP 20 best matches.";
 
 function normalizeEmploymentType(value: string): string {
   const text = (value ?? "").toLowerCase().trim();
@@ -89,7 +94,10 @@ Deno.serve(async (req: Request) => {
         throw new Error("Job description is too short");
       }
 
-      const prompt = `You are an expert recruiter. Extract structured data from this job description.
+      const parseOverride = await getPromptOverride(supabase, "bench-match-extract");
+      const parseInstructions = parseOverride?.userPrompt?.trim() || DEFAULT_PARSE_INSTRUCTIONS;
+
+      const prompt = `${parseInstructions}
 
 JOB DESCRIPTION:
 ${raw_description.slice(0, 4000)}
@@ -170,7 +178,10 @@ Return ONLY a valid JSON object (no markdown):
           ).join(", ")
         : "No education provided";
 
-      const prompt = `You are an expert technical recruiter evaluating a candidate's fit for a job listing.
+      const matchOverride = await getPromptOverride(supabase, "bench-match-score");
+      const matchInstructions = matchOverride?.userPrompt?.trim() || DEFAULT_MATCH_INSTRUCTIONS;
+
+      const prompt = `${matchInstructions}
 
 CANDIDATE PROFILE:
 - Name: ${profile.candidate_name ?? "Unknown"}
@@ -277,7 +288,10 @@ Return ONLY a valid JSON object (no markdown):
         return `[${i}] ${p.candidate_name} | Role: ${p.target_role ?? "N/A"} | Skills: ${skills.slice(0, 150)} | Exp: ${exp}yr | Visa: ${p.visa_status ?? "N/A"} | WorkType: ${p.work_type ?? "Any"} | Locations: ${p.preferred_locations ?? "N/A"} | Rate: ${p.desired_salary_min ?? "?"}–${p.desired_salary_max ?? "?"}/hr | Relocation: ${p.relocation_open ? "Yes" : "No"}`;
       }).join("\n");
 
-      const prompt = `You are an expert recruiter. Rank these candidates by fit for the job below. Return the TOP 20 best matches.
+      const rankOverride = await getPromptOverride(supabase, "bench-match-rank");
+      const rankInstructions = rankOverride?.userPrompt?.trim() || DEFAULT_RANK_INSTRUCTIONS;
+
+      const prompt = `${rankInstructions}
 
 JOB:
 - Title: ${jobPost.title}

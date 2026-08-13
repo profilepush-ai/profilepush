@@ -4,6 +4,7 @@ import {
   computeCost, geminiUrl, fetchWithRetry,
   isCircuitOpen, recordCircuitSuccess, recordCircuitFailure,
 } from "../_shared/llm-router.ts";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,8 @@ const corsHeaders = {
 };
 
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+
+const DEFAULT_INSTRUCTIONS = "Be concise, professional, and ATS-optimized. Use plain text — no markdown symbols.";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -116,7 +119,10 @@ Deno.serve(async (req: Request) => {
     const originalValue = (current_value as string) ?? "";
     const contextNote   = (context as string) ?? "";
 
-    const prompt = `You are an expert resume writer. Rewrite ONLY the ${fieldLabel} section below, tailored specifically for the target job. Be concise, professional, and ATS-optimized. Use plain text — no markdown symbols.
+    const promptOverride = await getPromptOverride(supabase, "rewrite-field");
+    const instructions = promptOverride?.userPrompt?.trim() || DEFAULT_INSTRUCTIONS;
+
+    const prompt = `You are an expert resume writer. Rewrite ONLY the ${fieldLabel} section below, tailored specifically for the target job. ${instructions}
 
 CANDIDATE:
 Name: ${profile.candidate_name}

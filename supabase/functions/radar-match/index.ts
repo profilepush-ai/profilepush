@@ -1,8 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { filterRelevantJobs } from "./relevance.ts";
 import { scoreEmploymentTypeMatch, scoreWorkTypeMatch } from "./match-utils.ts";
 import { hasMeaningfulJobContent } from "./content-utils.ts";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,8 @@ const corsHeaders = {
 };
 
 const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+
+const DEFAULT_INSTRUCTIONS = "Extract structured fields from each job posting.";
 const FREE_PLAN_MATCH_TOTAL_LIMIT = 5;
 const FREE_PLAN_LIVE_MATCH_TOTAL_LIMIT = 5;
 const FREE_PLAN_LIVE_MATCH_CANDIDATE_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -572,7 +575,7 @@ Deno.serve(async (req: Request) => {
             if (!isPaidPlan && freePlanSavedCount >= FREE_PLAN_MATCH_TOTAL_LIMIT) break;
 
             const batch = effectiveJobs.slice(i, i + batchSize);
-            const extractedJobs = await extractJobFields(batch, GEMINI_API_KEY);
+            const extractedJobs = await extractJobFields(batch, GEMINI_API_KEY, supabase);
             if (extractedJobs.length === 0) {
               emit({ type: "batch", matched: 0, total_so_far: totalMatched, progress: Math.min(i + batchSize, effectiveJobs.length), total_jobs: effectiveJobs.length });
               continue;
@@ -739,7 +742,11 @@ Deno.serve(async (req: Request) => {
 async function extractJobFields(
   jobs: Array<{ id: string; source: string; title: string; description: string; location: string; extracted_skills: string; extracted_experience_years: number | null; extracted_visa_types: string; extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null }>,
   apiKey: string,
+  supabase: SupabaseClient,
 ): Promise<ExtractedJob[]> {
+  const promptOverride = await getPromptOverride(supabase, "radar-match");
+  const instructions = promptOverride?.userPrompt?.trim() || DEFAULT_INSTRUCTIONS;
+
   const jobTexts = jobs.map((j, idx) => `
 [Job ${idx}] (id: ${j.id})
 Title: ${j.title}
@@ -751,7 +758,7 @@ Pre-extracted rate: ${j.extracted_hourly_rate_min ?? "?"}–${j.extracted_hourly
 Description: ${j.description.slice(0, 1200)}
 `).join("\n---\n");
 
-  const prompt = `Extract structured fields from each job posting. For each job, extract:
+  const prompt = `${instructions} For each job, extract:
 - role_title: the actual role title
 - core_skills: array of required technical skills (max 15)
 - years_experience: minimum years required (number or null)

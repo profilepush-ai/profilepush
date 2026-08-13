@@ -132,6 +132,10 @@
     background-color: rgba(139, 92, 246, 0.16) !important;
   }
 
+  html.dark .bg-red-50 {
+    background-color: rgba(239, 68, 68, 0.16) !important;
+  }
+
   html.dark .pulse-table-watch-button,
   html.dark .pulse-table-watch-button:hover {
     background-color: transparent !important;

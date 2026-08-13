@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { computeCost, geminiUrl, fetchWithRetry } from "../_shared/llm-router.ts";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,6 +10,9 @@ const corsHeaders = {
 };
 
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+
+const DEFAULT_INSTRUCTIONS =
+  "You are a technical recruiter expert. Given a candidate's profile, suggest exactly 5 high-priority skills that would best match job postings and increase placement chances.";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -70,7 +74,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const prompt = `You are a technical recruiter expert. Given a candidate's profile, suggest exactly 5 high-priority skills that would best match job postings and increase placement chances.
+    const promptOverride = await getPromptOverride(supabase, "suggest-priority-skills");
+    const instructions = promptOverride?.userPrompt?.trim() || DEFAULT_INSTRUCTIONS;
+
+    const prompt = `${instructions}
 
 Candidate profile:
 - Target Role: ${target_role || "Not specified"}

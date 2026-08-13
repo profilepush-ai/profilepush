@@ -72,12 +72,16 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function buildPrompt(job: QueueMessageBody): string {
-  const safeDescription = (job.description ?? "").slice(0, 1500);
-  return `Classify this input as a genuine job posting and extract structured fields. Return ONLY valid JSON, no markdown.
+const DEFAULT_QUEUE_CLASSIFY_SYSTEM_PROMPT = "You classify genuine job openings and extract structured fields. Be conservative and respond with strict JSON only.";
+
+const DEFAULT_QUEUE_CLASSIFY_INSTRUCTIONS = `Classify this input as a genuine job posting and extract structured fields. Return ONLY valid JSON, no markdown.
 Preserve job_id exactly as provided. If a field is unknown, use null (or [] for arrays).
 Set is_job_posting=true only when the text advertises a specific open role with enough actionable details to apply. Reject resumes, candidate marketing, generic staffing promotions, discussions, event posts, news, and vague hiring claims.
-Include: job_id, is_job_posting (boolean), confidence (0 to 1), rejection_reason (string or null), role_title, company_name, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).
+Include: job_id, is_job_posting (boolean), confidence (0 to 1), rejection_reason (string or null), role_title, company_name, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).`;
+
+function buildPrompt(job: QueueMessageBody, instructions: string): string {
+  const safeDescription = (job.description ?? "").slice(0, 1500);
+  return `${instructions}
 
 JOB:
 id: ${job.job_id}
@@ -165,7 +169,7 @@ async function handleAskVendorEmailCopy(req: Request, env: Env): Promise<Respons
     return jsonResponse({ error: "Role title, recruiter first name, and (for missing-detail requests) missing data type are required" }, 400);
   }
 
-  const systemPrompt = requestType === "resume"
+  const defaultSystemPrompt = requestType === "resume"
     ? `You are a fast-paced, highly transactional IT bench sales recruiter. Your goal is to write a strictly text-based, plain-text email to a fellow bench-sales recruiter asking them to share the resume/CV of a specific consultant they posted about on social media.
 
 Rules for the Email:
@@ -186,15 +190,16 @@ Rules for the Email:
 5. Tone: Casual, urgent, and professional. Use natural phrasing like "Hey," or "Hi [Name]," and sign off simply with the sender's name.
 
 Generate only the email body and subject line. Do not include any explanations. Return strict JSON with exactly these keys: "subject" and "email_content".`;
-  const userPrompt = requestType === "resume"
-    ? `Consultant Role: ${jobTitle}
-Recruiter Name: ${vendorName}
-Sender Name: ${recruiterFirstName}`
-    : `Job Title: ${jobTitle}
-Job Location: ${jobLocation}
-Vendor Name: ${vendorName}
-Missing Detail to Ask For: ${missingDataType}
-Sender Name: ${recruiterFirstName}`;
+  const defaultUserTemplate = requestType === "resume"
+    ? "Consultant Role: {jobTitle}\nRecruiter Name: {vendorName}\nSender Name: {recruiterFirstName}"
+    : "Job Title: {jobTitle}\nJob Location: {jobLocation}\nVendor Name: {vendorName}\nMissing Detail to Ask For: {missingDataType}\nSender Name: {recruiterFirstName}";
+  const promptKey = requestType === "resume" ? "cf-ask-resume-email" : "cf-ask-vendor-email";
+  const override = await getPromptOverride(env, promptKey);
+  const systemPrompt = override?.systemPrompt?.trim() || defaultSystemPrompt;
+  const userTemplate = override?.userPrompt?.trim() || defaultUserTemplate;
+  const userPrompt = applyTemplateTokens(userTemplate, {
+    jobTitle, jobLocation, vendorName, missingDataType, recruiterFirstName,
+  });
   const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
   let copy: AskVendorEmailCopy;
   try {
@@ -296,6 +301,37 @@ async function supabaseJson(env: Env, path: string, init?: RequestInit): Promise
   return payload;
 }
 
+type PromptOverride = { systemPrompt?: string | null; userPrompt?: string | null };
+
+const promptCache = new Map<string, { value: PromptOverride | null; expiresAt: number }>();
+const PROMPT_CACHE_TTL_MS = 60_000;
+
+async function getPromptOverride(env: Env, promptKey: string): Promise<PromptOverride | null> {
+  const cached = promptCache.get(promptKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  try {
+    const rows = await supabaseJson(
+      env,
+      `ai_prompts?prompt_key=eq.${encodeURIComponent(promptKey)}&select=system_prompt,user_prompt&limit=1`,
+    ) as Array<{ system_prompt: string | null; user_prompt: string | null }>;
+    const value: PromptOverride | null = rows[0]
+      ? { systemPrompt: rows[0].system_prompt, userPrompt: rows[0].user_prompt }
+      : null;
+    promptCache.set(promptKey, { value, expiresAt: Date.now() + PROMPT_CACHE_TTL_MS });
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function applyTemplateTokens(template: string, tokens: Record<string, string>): string {
+  let result = template;
+  for (const [key, value] of Object.entries(tokens)) {
+    result = result.split(`{${key}}`).join(value);
+  }
+  return result;
+}
+
 function updatedBreakdown(existing: unknown, details: Record<string, unknown>): Record<string, unknown> {
   const breakdown = existing && typeof existing === "object" ? { ...(existing as Record<string, unknown>) } : {};
   const setJobValue = (key: string, value: string) => {
@@ -341,9 +377,13 @@ async function handleHotlistVendorReply(
   ) as Array<{ request_id: string }>;
   if (requests.length === 0) return jsonResponse({ error: "No pending Ask requests were found for this lead" }, 404);
 
-  const prompt = `Process this vendor email reply and return strict JSON only, without markdown.
+  const hotlistReplyOverride = await getPromptOverride(env, "cf-hotlist-vendor-reply");
+  const hotlistInstructions = hotlistReplyOverride?.userPrompt?.trim() || `Process this vendor email reply and return strict JSON only, without markdown.
 Create display_text containing only the vendor's substantive reply. Remove greetings, signatures, names, email addresses, company or agency names, contact details, email headers, disclaimers, and quoted prior messages. Preserve the original wording, order, intent, facts, and tone of the remaining reply. Do not summarize, infer, add facts, or rewrite beyond the minimum grammar needed after removals.
-Return strict JSON with exactly one key: "display_text".
+Return strict JSON with exactly one key: "display_text".`;
+  const hotlistSystemPrompt = hotlistReplyOverride?.systemPrompt?.trim() || "Privacy-clean vendor replies without changing their meaning. Return strict JSON only.";
+
+  const prompt = `${hotlistInstructions}
 Subject: ${subject.slice(0, 500)}
 From: ${fromEmail.slice(0, 320)}
 Email:
@@ -351,7 +391,7 @@ ${emailContent.slice(0, 12_000)}`;
   const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
   const aiResult = await env.AI.run(model, {
     messages: [
-      { role: "system", content: "Privacy-clean vendor replies without changing their meaning. Return strict JSON only." },
+      { role: "system", content: hotlistSystemPrompt },
       { role: "user", content: prompt },
     ],
     temperature: 0,
@@ -402,9 +442,13 @@ async function handleVendorReply(req: Request, env: Env): Promise<Response> {
   const allowedKeys = requestedDetailKeys(requests.flatMap((request) => Array.isArray(request.missing_details) ? request.missing_details : []));
   if (allowedKeys.size === 0) return jsonResponse({ error: "Request has no supported missing details" }, 422);
 
-  const prompt = `Process this vendor email reply and return strict JSON only, without markdown.
+  const vendorReplyOverride = await getPromptOverride(env, "cf-vendor-reply");
+  const vendorReplyInstructions = vendorReplyOverride?.userPrompt?.trim() || `Process this vendor email reply and return strict JSON only, without markdown.
 Create display_text containing only the vendor's substantive reply. Remove greetings, signatures, names, email addresses, company or agency names, contact details, email headers, disclaimers, and quoted prior messages. Preserve the original wording, order, intent, facts, and tone of the remaining reply. Do not summarize, infer, add facts, or rewrite beyond the minimum grammar needed after removals.
-Also extract only explicitly stated job details. Use null or [] when absent. Do not infer or guess. Include: display_text, confidence (0 to 1), experience_years, employment_type, work_type, visa_types, locations, skills, hourly_rate_min, hourly_rate_max, salary_range.
+Also extract only explicitly stated job details. Use null or [] when absent. Do not infer or guess. Include: display_text, confidence (0 to 1), experience_years, employment_type, work_type, visa_types, locations, skills, hourly_rate_min, hourly_rate_max, salary_range.`;
+  const vendorReplySystemPrompt = vendorReplyOverride?.systemPrompt?.trim() || "Privacy-clean vendor replies without changing their meaning, and extract explicit job details. Never infer facts. Return strict JSON only.";
+
+  const prompt = `${vendorReplyInstructions}
 The originally requested fields are: ${Array.from(allowedKeys).join(", ")}.
 Subject: ${String(body.subject ?? "").slice(0, 500)}
 From: ${fromEmail.slice(0, 320)}
@@ -413,7 +457,7 @@ ${emailContent.slice(0, 12_000)}`;
   const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
   const aiResult = await env.AI.run(model, {
     messages: [
-      { role: "system", content: "Privacy-clean vendor replies without changing their meaning, and extract explicit job details. Never infer facts. Return strict JSON only." },
+      { role: "system", content: vendorReplySystemPrompt },
       { role: "user", content: prompt },
     ],
     temperature: 0,
@@ -490,13 +534,16 @@ function isAcceptedJobPosting(parsed: ParserResult): boolean {
 
 async function parseWithWorkersAi(env: Env, message: QueueMessageBody): Promise<ParserResult> {
   const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
-  const prompt = buildPrompt(message);
+  const override = await getPromptOverride(env, "cf-queue-job-classify");
+  const systemPrompt = override?.systemPrompt?.trim() || DEFAULT_QUEUE_CLASSIFY_SYSTEM_PROMPT;
+  const instructions = override?.userPrompt?.trim() || DEFAULT_QUEUE_CLASSIFY_INSTRUCTIONS;
+  const prompt = buildPrompt(message, instructions);
 
   const aiResult = await env.AI.run(model, {
     messages: [
       {
         role: "system",
-        content: "You classify genuine job openings and extract structured fields. Be conservative and respond with strict JSON only.",
+        content: systemPrompt,
       },
       {
         role: "user",

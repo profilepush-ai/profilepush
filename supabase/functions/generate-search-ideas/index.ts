@@ -4,6 +4,7 @@ import {
   computeCost, geminiUrl, fetchWithRetry,
   isCircuitOpen, recordCircuitSuccess, recordCircuitFailure,
 } from "../_shared/llm-router.ts";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,6 +29,9 @@ const IDEA_SCHEMA = {
     required: ["label", "keyword", "location", "jobTypes", "experienceLevel", "rationale"],
   },
 };
+
+const DEFAULT_INSTRUCTIONS =
+  "You are a job search strategist. Based on the candidate profile below, generate exactly 8 diverse and creative job search filter combinations they should try. Each idea should target a distinct angle: different job titles, industries, seniority levels, or specialisations.";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -102,7 +106,10 @@ Deno.serve(async (req: Request) => {
       `- ${e.degree ?? ""} in ${e.field ?? ""} from ${e.institution ?? ""} (${e.end_year ?? ""})`
     ).join("\n") || "No education listed";
 
-    const prompt = `You are a job search strategist. Based on the candidate profile below, generate exactly 8 diverse and creative job search filter combinations they should try. Each idea should target a distinct angle: different job titles, industries, seniority levels, or specialisations.
+    const promptOverride = await getPromptOverride(supabase, "generate-search-ideas");
+    const instructions = promptOverride?.userPrompt?.trim() || DEFAULT_INSTRUCTIONS;
+
+    const prompt = `${instructions}
 
 CANDIDATE PROFILE:
 Name: ${profile.candidate_name ?? ""}

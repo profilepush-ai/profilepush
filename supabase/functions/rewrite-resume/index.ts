@@ -5,6 +5,7 @@ import {
   isCircuitOpen, recordCircuitSuccess, recordCircuitFailure,
   enqueueJob,
 } from "../_shared/llm-router.ts";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +14,11 @@ const corsHeaders = {
 };
 
 const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+
+const DEFAULT_INSTRUCTIONS = `You are an expert resume writer. Rewrite the candidate's resume tailored specifically for the job below.
+Produce a complete, professional, ATS-optimized resume in clean plain text (no markdown symbols like **, ##, or --).
+Use clear section headers in ALL CAPS followed by a line of dashes.
+Keep it to 1-2 pages worth of content. Quantify achievements where possible. Mirror keywords from the job description.`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -122,10 +128,10 @@ Deno.serve(async (req: Request) => {
         ).join("\n")
       : "No education listed.";
 
-    const prompt = `You are an expert resume writer. Rewrite the candidate's resume tailored specifically for the job below.
-Produce a complete, professional, ATS-optimized resume in clean plain text (no markdown symbols like **, ##, or --).
-Use clear section headers in ALL CAPS followed by a line of dashes.
-Keep it to 1-2 pages worth of content. Quantify achievements where possible. Mirror keywords from the job description.
+    const promptOverride = await getPromptOverride(supabase, "rewrite-resume");
+    const instructions = promptOverride?.userPrompt?.trim() || DEFAULT_INSTRUCTIONS;
+
+    const prompt = `${instructions}
 
 === TARGET JOB ===
 Title: ${wjob.job_title}

@@ -6,6 +6,7 @@ import {
   isCircuitOpen, recordCircuitSuccess, recordCircuitFailure,
   enqueueJob,
 } from "../_shared/llm-router.ts";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 async function extractTextFromDocx(arrayBuffer: ArrayBuffer): Promise<string> {
   const blob = new Blob([arrayBuffer]);
@@ -103,6 +104,9 @@ const SYSTEM_INSTRUCTION =
   "For core_skills, extract all distinct technical skills, tools, languages, frameworks, and " +
   "certifications mentioned anywhere in the resume.";
 
+const DEFAULT_USER_INSTRUCTION =
+  "Extract the candidate profile from the attached resume according to your system instructions and strict JSON schema.";
+
 function jsonError(message: string, status = 400) {
   return new Response(JSON.stringify({ error: message }), {
     status,
@@ -124,6 +128,10 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  const promptOverride = await getPromptOverride(supabase, "parse-resume");
+  const systemInstruction = promptOverride?.systemPrompt?.trim() || SYSTEM_INSTRUCTION;
+  const userInstruction = promptOverride?.userPrompt?.trim() || DEFAULT_USER_INSTRUCTION;
 
   // Resolve user/account from auth header
   let userId: string | null = null;
@@ -231,10 +239,10 @@ Deno.serve(async (req: Request) => {
   if (!fileIsText || (base64 && filename.toLowerCase().endsWith(".pdf"))) {
     // PDF: send as inline binary
     geminiPayload = {
-      system_instruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      system_instruction: { parts: [{ text: systemInstruction }] },
       contents: [{
         parts: [
-          { text: "Extract the candidate profile from the attached resume according to your system instructions and strict JSON schema." },
+          { text: userInstruction },
           { inline_data: { mime_type: "application/pdf", data: base64 } },
         ],
       }],
@@ -247,10 +255,10 @@ Deno.serve(async (req: Request) => {
   } else if (plainText) {
     // Plain text content (from .txt or pasted text)
     geminiPayload = {
-      system_instruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      system_instruction: { parts: [{ text: systemInstruction }] },
       contents: [{
         parts: [
-          { text: `Extract the candidate profile from the following resume text according to your system instructions and strict JSON schema.\n\n--- RESUME TEXT ---\n${plainText}\n--- END ---` },
+          { text: `${userInstruction}\n\n--- RESUME TEXT ---\n${plainText}\n--- END ---` },
         ],
       }],
       generationConfig: {
@@ -270,10 +278,10 @@ Deno.serve(async (req: Request) => {
     const mimeType = mimeMap[ext] || "application/octet-stream";
 
     geminiPayload = {
-      system_instruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      system_instruction: { parts: [{ text: systemInstruction }] },
       contents: [{
         parts: [
-          { text: "Extract the candidate profile from the attached resume document according to your system instructions and strict JSON schema." },
+          { text: userInstruction },
           { inline_data: { mime_type: mimeType, data: base64 } },
         ],
       }],

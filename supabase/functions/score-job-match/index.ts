@@ -5,6 +5,7 @@ import {
   isCircuitOpen, recordCircuitSuccess, recordCircuitFailure,
   enqueueJob,
 } from "../_shared/llm-router.ts";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +14,8 @@ const corsHeaders = {
 };
 
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+
+const DEFAULT_INSTRUCTIONS = "You are an expert technical recruiter evaluating a candidate's fit for a job listing.";
 
 type ScoreBreakdownValue = number | {
   score: number;
@@ -243,7 +246,10 @@ Deno.serve(async (req: Request) => {
         ).join(", ")
       : "No education provided";
 
-    const prompt = `You are an expert technical recruiter evaluating a candidate's fit for a job listing.
+    const promptOverride = await getPromptOverride(supabase, "score-job-match");
+    const instructions = promptOverride?.userPrompt?.trim() || DEFAULT_INSTRUCTIONS;
+
+    const prompt = `${instructions}
 
 CANDIDATE PROFILE:
 - Name: ${profile.candidate_name ?? "Unknown"}

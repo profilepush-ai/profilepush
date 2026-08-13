@@ -4,6 +4,7 @@ import LogoSpinner from '../components/LogoSpinner';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
+import AdminAiPromptsPanel from '../components/AdminAiPromptsPanel';
 import { supabase } from '../lib/supabase';
 import { triggerRoleEmbedding } from '../lib/embeddings';
 import { filterAndSortAccountStats, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
@@ -98,7 +99,7 @@ function canRetryMatchRun(row: HotlistMatchRunRow) {
   return hasStatusFailure || hasErrorMessage;
 }
 
-type AdminView = 'stats' | 'hotlist' | 'scraper' | 'keyword-scraper' | 'scraper-logs' | 'history';
+type AdminView = 'stats' | 'hotlist' | 'scraper' | 'keyword-scraper' | 'scraper-logs' | 'history' | 'ai-prompts';
 type LinkedinStatsRange = '24h' | '7d' | '30d' | 'all' | 'custom';
 
 type DatePreset = '7d' | '30d' | '90d' | 'all' | 'custom';
@@ -1089,6 +1090,12 @@ export default function AdminDashboard() {
               >
                 Match History
               </button>
+              <button
+                onClick={() => setAdminView('ai-prompts')}
+                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'ai-prompts' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
+              >
+                AI Prompts
+              </button>
             </nav>
             <div className="ml-auto flex shrink-0 items-center gap-1 lg:ml-2">
               <button
@@ -1866,6 +1873,8 @@ export default function AdminDashboard() {
           )}
         </div>
         )}
+
+        {adminView === 'ai-prompts' && <AdminAiPromptsPanel />}
       </div>
 
       {adminView === 'hotlist' && showAddRoleModal && (

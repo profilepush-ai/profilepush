@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { computeCost, geminiUrl, fetchWithRetry } from "../_shared/llm-router.ts";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,6 +10,16 @@ const corsHeaders = {
 };
 
 const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+
+const DEFAULT_INSTRUCTIONS = `You are a recruitment operations analyst. Analyze the metrics below and respond with EXACTLY 5 bullet points.
+
+Rules:
+- Exactly 5 lines, each starting with "• "
+- Each point: one short sentence, max 10 words
+- Total response under 50 words
+- Be specific — use the actual numbers
+- Focus on what matters most: health, gaps, wins, risks, next action
+- If the user asked a question, answer it within the same 5-point format`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -98,15 +109,10 @@ COMMUNICATIONS & SUBMISSIONS (Period: ${date_label}):
       ? `\n\nUser question: ${custom_prompt}`
       : "";
 
-    const prompt = `You are a recruitment operations analyst. Analyze the metrics below and respond with EXACTLY 5 bullet points.
+    const promptOverride = await getPromptOverride(supabase, "dashboard-summary");
+    const instructions = promptOverride?.userPrompt?.trim() || DEFAULT_INSTRUCTIONS;
 
-Rules:
-- Exactly 5 lines, each starting with "• "
-- Each point: one short sentence, max 10 words
-- Total response under 50 words
-- Be specific — use the actual numbers
-- Focus on what matters most: health, gaps, wins, risks, next action
-- If the user asked a question, answer it within the same 5-point format
+    const prompt = `${instructions}
 
 Period: ${date_label}
 ${metricsText}${userQuestion}

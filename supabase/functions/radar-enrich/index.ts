@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +9,8 @@ const corsHeaders = {
 };
 
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+
+const DEFAULT_INSTRUCTIONS = "Extract structured data from these job postings.";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -39,12 +42,15 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const promptOverride = await getPromptOverride(supabase, "radar-enrich");
+    const instructions = promptOverride?.userPrompt?.trim() || DEFAULT_INSTRUCTIONS;
+
     let enrichedCount = 0;
     const batchSize = 5;
 
     for (let i = 0; i < jobs.length; i += batchSize) {
       const batch = jobs.slice(i, i + batchSize);
-      const prompt = `Extract structured data from these job postings. For each job, return a JSON array with objects:
+      const prompt = `${instructions} For each job, return a JSON array with objects:
 {
   "job_id": "uuid",
   "extracted_skills": ["skill1", "skill2"],

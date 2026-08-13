@@ -4,6 +4,7 @@ import {
   computeCost, geminiUrl, fetchWithRetry,
   isCircuitOpen, recordCircuitSuccess, recordCircuitFailure,
 } from "../_shared/llm-router.ts";
+import { getPromptOverride } from "../_shared/prompts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,6 +72,9 @@ Rules:
 If data for a field is not present in the row, return empty string for text, 0 for integers, false for booleans.
 Parse ALL rows — do not skip any. If a row has minimal info, still create a profile with whatever is available.`;
 
+const DEFAULT_USER_INSTRUCTION =
+  "Parse the following spreadsheet data (tab-separated, first row is headers) into an array of candidate profile objects. Return ALL candidates.";
+
 function jsonError(message: string, status = 400) {
   return new Response(JSON.stringify({ error: message }), {
     status,
@@ -120,11 +124,15 @@ Deno.serve(async (req: Request) => {
     const rawText: string = body.spreadsheet_text ?? "";
     if (!rawText.trim()) return jsonError("Missing spreadsheet_text in request body");
 
+    const promptOverride = await getPromptOverride(supabase, "bulk-parse-profiles");
+    const systemInstruction = promptOverride?.systemPrompt?.trim() || SYSTEM_INSTRUCTION;
+    const userInstruction = promptOverride?.userPrompt?.trim() || DEFAULT_USER_INSTRUCTION;
+
     const geminiPayload = {
-      system_instruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      system_instruction: { parts: [{ text: systemInstruction }] },
       contents: [{
         parts: [{
-          text: `Parse the following spreadsheet data (tab-separated, first row is headers) into an array of candidate profile objects. Return ALL candidates.\n\n--- SPREADSHEET DATA ---\n${rawText}\n--- END ---`,
+          text: `${userInstruction}\n\n--- SPREADSHEET DATA ---\n${rawText}\n--- END ---`,
         }],
       }],
       generationConfig: {
