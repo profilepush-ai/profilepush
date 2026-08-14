@@ -1413,6 +1413,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [predictedAtByLeadId, setPredictedAtByLeadId] = useState<Record<string, string>>({});
   const [predictSubmitting, setPredictSubmitting] = useState(false);
   const [predictProcessingStep, setPredictProcessingStep] = useState(0);
+  const [recentPredictTexts, setRecentPredictTexts] = useState<string[]>([]);
   const [bulkPredictLeadIds, setBulkPredictLeadIds] = useState<Set<string>>(new Set());
   const [isBulkPredictModalOpen, setIsBulkPredictModalOpen] = useState(false);
   const [bulkPredictInput, setBulkPredictInput] = useState('');
@@ -1469,7 +1470,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const REVEAL_CONTACT_COST = 0.05;
   const BREAKDOWN_COST = 0.1;
   const PREDICT_COST = 0.01;
+  // Display-only — the actual submit charge is computed server-side in the
+  // ask-ai-vendor-email edge function's JOB_SUBMIT_COST constant.
+  const SUBMIT_COST_DISPLAY = 0.05;
   const MAX_BULK_PREDICT = 5;
+  const formatCentsCost = (amount: number) => `${Math.round(amount * 100)}c`;
   const FREE_PLAN_DAILY_REVEAL_LIMIT = 10;
   const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
 
@@ -1541,6 +1546,28 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         .filter(Boolean),
     );
   }, [isHotlistFeed, user?.id]);
+
+  const loadRecentPredictTexts = useCallback(async () => {
+    if (!user?.id) {
+      setRecentPredictTexts([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('job_search_history')
+      .select('search_query')
+      .eq('user_id', user.id)
+      .eq('page', '/predict')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (error) return;
+    setRecentPredictTexts(
+      ((data ?? []) as Array<{ search_query: string | null }>)
+        .map((row) => (row.search_query ?? '').trim())
+        .filter(Boolean),
+    );
+  }, [user?.id]);
 
   const zeroStats: ProfileStats = useMemo(() => ({
     uniqueCompanies: 0,
@@ -2469,6 +2496,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setPredictLead(lead);
     setPredictInput('');
     setPredictResult(predictResultByLeadId[lead.id] ?? null);
+    void loadRecentPredictTexts();
   };
 
   const closePredictModal = () => {
@@ -2487,6 +2515,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setPredictLead(lead);
     setPredictInput('');
     setPredictResult(null);
+    void loadRecentPredictTexts();
   };
 
   const handleCalculateMatch = async () => {
@@ -2500,6 +2529,18 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         title: predictLead.title,
       });
       if (!consumed) return;
+
+      if (user?.id) {
+        void supabase
+          .from('job_search_history')
+          .insert({
+            user_id: user.id,
+            account_id: account?.id ?? null,
+            page: '/predict',
+            search_query: predictInput.trim(),
+          })
+          .then(() => loadRecentPredictTexts());
+      }
 
       const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(predictLead);
       const { data, error } = await supabase.functions.invoke('predict-match', {
@@ -2644,8 +2685,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       '--accent-rgb': accentRgb,
       '--accent-hex': accentColor,
     } as React.CSSProperties;
-    const cardBorderColor = isDark ? 'rgb(255 255 255 / 0.25)' : `rgb(${accentRgb} / 0.45)`;
-    const titleToneStyle = { color: isDark ? accentColor : '#2563EB' };
+    const cardBorderColor = `rgb(${accentRgb} / 0.45)`;
+    const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
     const isLeadRevealed = revealedLeadIds.has(lead.id);
     const askedJobState = askedJobStateByLeadId[lead.id];
     const globalAskedJobState = globalAskedJobStateByLeadId[lead.id];
@@ -2711,6 +2752,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       return ext ? `${prefix}**@***.${ext}` : `${prefix}**@***`;
     })();
 
+    const costLabelClass = 'text-[8px] font-medium leading-none text-gray-400/80 dark:text-slate-600';
     const actionButtonsRail = isHotlistFeed ? null : (
       <div className="flex w-9 shrink-0 flex-col gap-1.5">
         {(() => {
@@ -2719,19 +2761,21 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
-              title={`Predicted ${cachedPredict.score}% — tap to retry`}
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-[10px] font-extrabold transition-colors ${predictToneClass(cachedPredict.score)}`}
+              title="Retry prediction"
+              className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-[11px] font-extrabold text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400"
             >
               {cachedPredict.score}
+              <span className={costLabelClass}>{formatCentsCost(PREDICT_COST)}</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
-              title="Predict submission acceptance"
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors ${isDark ? 'border-orange-400/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
+              title="Predict score"
+              className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400"
             >
               <Gauge size={16} strokeWidth={2} />
+              <span className={costLabelClass}>{formatCentsCost(PREDICT_COST)}</span>
             </button>
           );
         })()}
@@ -2739,15 +2783,16 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           type="button"
           onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, 'Vendor email') : void handleRevealContact(lead); }}
           disabled={processingLeadId === lead.id}
-          title={isLeadRevealed ? 'Copy the vendor email' : `Reveal the vendor email for $${REVEAL_CONTACT_COST.toFixed(2)} — skip Submit and reach out yourself`}
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${isDark ? 'border-white/15 bg-white/5 text-slate-300 hover:bg-white/10' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+          title={isLeadRevealed ? 'Copy email' : 'Reveal email'}
+          className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
         >
           {processingLeadId === lead.id ? '...' : isLeadRevealed ? <Copy size={15} strokeWidth={2} /> : <AtSign size={16} strokeWidth={2} />}
+          {!isLeadRevealed && <span className={costLabelClass}>{formatCentsCost(REVEAL_CONTACT_COST)}</span>}
         </button>
         {isAskPending || isVerified ? (
           <span
-            title={isVerified ? 'Vendor-supplied details verified' : 'Submission already sent'}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${isVerified ? (isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700') : (isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-blue-100 text-blue-700')}`}
+            title={isVerified ? 'Verified' : 'Submitted'}
+            className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-blue-600 dark:text-blue-400"
           >
             {isVerified ? <BadgeCheck size={16} strokeWidth={2} /> : <Check size={16} strokeWidth={2} />}
           </span>
@@ -2756,10 +2801,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             type="button"
             onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
             disabled={!canAskAI || processingAskAILeadId === lead.id}
-            title={!lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Submit a candidate for this role'}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+            title={!lead.posterEmail ? 'No email' : missingJobDetails.length === 0 ? 'Nothing missing' : 'Submit candidate'}
+            className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-blue-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400"
           >
             {processingAskAILeadId === lead.id ? '...' : <Mail size={16} strokeWidth={2} />}
+            <span className={costLabelClass}>{formatCentsCost(SUBMIT_COST_DISPLAY)}</span>
           </button>
         )}
       </div>
@@ -2779,7 +2825,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   <span>•</span>
                   {lead.company && (
                     <>
-                      <Building2 size={10} className="shrink-0 text-slate-500" />
+                      <Building2 size={10} className="shrink-0" style={{ color: accentColor }} />
                       <span className="text-[#94A3B8]">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
                     </>
                   )}
@@ -3061,8 +3107,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const tableMutedClass = isDark ? 'text-[#94A3B8]' : 'text-gray-500';
     const cellClass = `px-2 py-2 align-top whitespace-normal break-words ${tableValueClass}`;
     const linkClass = isDark ? 'text-blue-300 hover:text-blue-200' : 'text-blue-600 hover:text-blue-700';
-    const askButtonClass = `inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border px-2 text-[10px] font-semibold leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`;
-    const predictButtonClass = `inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border px-2 text-[10px] font-semibold leading-none transition-colors ${isDark ? 'border-orange-400/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`;
+    const askButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-blue-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400';
+    const predictButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400';
+    const emailButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400';
+    const submitStatusClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-blue-600 dark:text-blue-400';
     const postedLabel = feedTimeBasis === 'created' ? 'Added' : 'Posted';
 
     const rows = leads.map((lead) => {
@@ -3140,7 +3188,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               <button
                 type="button"
                 onClick={() => setIsBulkPredictModalOpen(true)}
-                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-white ${isDark ? 'bg-orange-500 hover:bg-orange-400' : 'bg-orange-600 hover:bg-orange-700'}`}
+                className="inline-flex items-center gap-1 font-bold text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400"
               >
                 <Gauge size={11} strokeWidth={2.5} />
                 Predict Selected
@@ -3219,7 +3267,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
                         title={`Predicted ${cachedPredict.score}% — click to retry`}
-                        className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border px-2 text-[10px] font-semibold leading-none transition-colors ${predictToneClass(cachedPredict.score)}`}
+                        className={predictButtonClass}
                       >
                         <span className="font-extrabold">{cachedPredict.score}%</span>
                         <RotateCcw size={11} strokeWidth={2.5} />
@@ -3242,7 +3290,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, 'Vendor email') : void handleRevealContact(lead); }}
                     disabled={processingLeadId === lead.id}
                     title={isLeadRevealed ? 'Copy the vendor email' : `Reveal the vendor email for $${REVEAL_CONTACT_COST.toFixed(2)} — skip Submit and reach out yourself`}
-                    className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border px-2 text-[10px] font-semibold leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${isDark ? 'border-white/15 bg-white/5 text-slate-300 hover:bg-white/10' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                    className={emailButtonClass}
                   >
                     {processingLeadId === lead.id ? (
                       <span>...</span>
@@ -3263,7 +3311,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   {isAskPending || isVerified ? (
                     <span
                       title={isVerified ? 'Vendor-supplied details verified' : 'Submission already sent'}
-                      className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-md px-2 text-[10px] font-semibold leading-none ${isVerified ? (isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700') : (isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-blue-100 text-blue-700')}`}
+                      className={submitStatusClass}
                     >
                       {isVerified ? <BadgeCheck size={12} strokeWidth={2} className="shrink-0" /> : <Check size={12} strokeWidth={2} className="shrink-0" />}
                       <span className="truncate">
@@ -6175,11 +6223,29 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
+                {recentPredictTexts.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Recent</div>
+                    <div className="mt-1 flex flex-col gap-1">
+                      {recentPredictTexts.map((text, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setPredictInput(text)}
+                          className="truncate rounded-md border border-gray-200 px-2 py-1.5 text-left text-[11px] text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                          title={text}
+                        >
+                          {text.length > 90 ? `${text.slice(0, 90)}…` : text}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => void handleCalculateMatch()}
                   disabled={!predictInput.trim()}
-                  className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 px-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-blue-500/30 transition-all hover:shadow-xl hover:shadow-orange-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                  className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 text-sm font-bold uppercase tracking-wide text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
                 >
                   <Gauge size={16} strokeWidth={2.5} />
                   Predict Submission Acceptance
@@ -6288,7 +6354,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   type="button"
                   onClick={() => void handleRunBulkPredict()}
                   disabled={!bulkPredictInput.trim()}
-                  className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 px-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-blue-500/30 transition-all hover:shadow-xl hover:shadow-orange-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                  className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 text-sm font-bold uppercase tracking-wide text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
                 >
                   <Gauge size={16} strokeWidth={2.5} />
                   Predict {bulkPredictLeadIds.size} Jobs (${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})
