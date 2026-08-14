@@ -1401,7 +1401,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
   const [feedTimeBasis, setFeedTimeBasis] = useState<FeedTimeBasis>('posted');
   const [layoutMode, setLayoutMode] = useState<PulseLayoutMode>(getInitialPulseLayoutMode);
-  const isTableLayout = layoutMode === 'table' && !isHotlistFeed && !isMobileViewport;
+  const isTableLayout = layoutMode === 'table' && !isMobileViewport;
   const [tableSortKey, setTableSortKey] = useState<LeadTableSortKey | null>('posted');
   const [tableSortDirection, setTableSortDirection] = useState<'asc' | 'desc'>('desc');
   const [expandedSkillsLeadIds, setExpandedSkillsLeadIds] = useState<Set<string>>(new Set());
@@ -1473,6 +1473,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   // Display-only — the actual submit charge is computed server-side in the
   // ask-ai-vendor-email edge function's JOB_SUBMIT_COST constant.
   const SUBMIT_COST_DISPLAY = 0.05;
+  // Display-only — mirrors ask-ai-vendor-email edge function's ASK_AI_COST for the hotlist "Ask Resume" action.
+  const ASK_RESUME_COST_DISPLAY = 0.05;
   const MAX_BULK_PREDICT = 5;
   const formatCentsCost = (amount: number) => `${Math.round(amount * 100)}c`;
   const FREE_PLAN_DAILY_REVEAL_LIMIT = 10;
@@ -2630,7 +2632,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           body: {
             lead_id: lead.id,
             platform: lead.platform,
-            feed_kind: 'job',
+            feed_kind: isHotlistFeed ? 'hotlist' : 'job',
             role_title: lead.title,
             consultant_text: bulkPredictInput,
             account_id: account?.id ?? '',
@@ -2681,14 +2683,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const cardFillClass = cardPalette.fill;
     const accentColor = cardPalette.titleColor;
     const accentRgb = hexToRgbChannels(accentColor);
-    const accentVars = {
-      '--accent-rgb': accentRgb,
-      '--accent-hex': accentColor,
-    } as React.CSSProperties;
     const cardBorderColor = `rgb(${accentRgb} / 0.45)`;
     const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
     const isLeadRevealed = revealedLeadIds.has(lead.id);
-    const askedJobState = askedJobStateByLeadId[lead.id];
     const globalAskedJobState = globalAskedJobStateByLeadId[lead.id];
     const isAskPending = globalAskedJobState === 'asked';
     const isVerified = globalAskedJobState === 'verified';
@@ -2743,17 +2740,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const revealedTableLabelClass = isDark ? 'text-[#64748B]' : 'text-slate-500';
     const revealedTableValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
 
-    const maskedEmailHint = (() => {
-      const email = (lead.posterEmail || '').trim();
-      if (!email) return '***@';
-      const [localPart = '', domainPart = ''] = email.split('@');
-      const prefix = (localPart.slice(0, 3) || '***').replace(/\s+/g, '');
-      const ext = domainPart.includes('.') ? domainPart.split('.').pop()?.trim() : '';
-      return ext ? `${prefix}**@***.${ext}` : `${prefix}**@***`;
-    })();
-
     const costLabelClass = 'text-[8px] font-medium leading-none text-gray-400/80 dark:text-slate-600';
-    const actionButtonsRail = isHotlistFeed ? null : (
+    const actionButtonsRail = (
       <div className="flex w-9 shrink-0 flex-col gap-1.5">
         {(() => {
           const cachedPredict = predictResultByLeadId[lead.id];
@@ -2771,7 +2759,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
-              title="Predict score"
+              title={isHotlistFeed ? 'Match rate' : 'Predict score'}
               className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400"
             >
               <Gauge size={16} strokeWidth={2} />
@@ -2781,7 +2769,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         })()}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, 'Vendor email') : void handleRevealContact(lead); }}
+          onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email') : void handleRevealContact(lead); }}
           disabled={processingLeadId === lead.id}
           title={isLeadRevealed ? 'Copy email' : 'Reveal email'}
           className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
@@ -2791,7 +2779,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         </button>
         {isAskPending || isVerified ? (
           <span
-            title={isVerified ? 'Verified' : 'Submitted'}
+            title={isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted')}
             className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-blue-600 dark:text-blue-400"
           >
             {isVerified ? <BadgeCheck size={16} strokeWidth={2} /> : <Check size={16} strokeWidth={2} />}
@@ -2801,11 +2789,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             type="button"
             onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
             disabled={!canAskAI || processingAskAILeadId === lead.id}
-            title={!lead.posterEmail ? 'No email' : missingJobDetails.length === 0 ? 'Nothing missing' : 'Submit candidate'}
+            title={!lead.posterEmail ? 'No email' : isHotlistFeed ? 'Ask for resume' : (missingJobDetails.length === 0 ? 'Nothing missing' : 'Submit candidate')}
             className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-blue-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400"
           >
-            {processingAskAILeadId === lead.id ? '...' : <Mail size={16} strokeWidth={2} />}
-            <span className={costLabelClass}>{formatCentsCost(SUBMIT_COST_DISPLAY)}</span>
+            {processingAskAILeadId === lead.id ? '...' : isHotlistFeed ? <FileText size={16} strokeWidth={2} /> : <Mail size={16} strokeWidth={2} />}
+            <span className={costLabelClass}>{formatCentsCost(isHotlistFeed ? ASK_RESUME_COST_DISPLAY : SUBMIT_COST_DISPLAY)}</span>
           </button>
         )}
       </div>
@@ -2814,7 +2802,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       <div key={lead.id} className="mb-1.5 flex items-stretch gap-1.5 break-inside-avoid">
       <div className={`relative min-w-0 flex-1 rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
         <div>
-          <div className={isHotlistFeed ? 'min-w-0 pr-12' : 'min-w-0'}>
+          <div className="min-w-0">
             <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
               <span>{feedTimeBasis === 'created' ? 'Added' : 'Posted'} {formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
@@ -2834,22 +2822,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 </span>
               )}
             </div>
-            {isHotlistFeed && selectedMatchesTab === 'revealed' && revealedAtByLeadId[lead.id] && (
-              <div className="mt-0.5 text-[10px] font-medium text-emerald-700">
-                Revealed {formatRevealedAt(revealedAtByLeadId[lead.id])}
-              </div>
-            )}
-            {isHotlistFeed && selectedMatchesTab === 'asked' && askedJobState && (
-              <div className={`mt-0.5 text-[10px] font-medium ${askedJobState.fulfilledAt ? 'text-emerald-700' : 'text-amber-700'}`}>
-                {askedJobState.fulfilledAt ? `Details updated ${formatRevealedAt(askedJobState.fulfilledAt)}` : 'Awaiting details'}
-              </div>
-            )}
-            {!isHotlistFeed && (predictResultByLeadId[lead.id] || isAskPending || isVerified || isLeadRevealed) && (
+            {(predictResultByLeadId[lead.id] || isAskPending || isVerified || isLeadRevealed) && (
               <div className="mt-1 flex flex-wrap items-center gap-1">
                 {predictResultByLeadId[lead.id] && (
                   <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${predictToneClass(predictResultByLeadId[lead.id].score)}`}>
                     <Gauge size={9} strokeWidth={2.5} />
-                    Predicted {predictResultByLeadId[lead.id].score}%
+                    {isHotlistFeed ? 'Match rate' : 'Predicted'} {predictResultByLeadId[lead.id].score}%
                   </span>
                 )}
                 {(isAskPending || isVerified) && (
@@ -2857,7 +2835,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     {isVerified ? <BadgeCheck size={9} strokeWidth={2.5} /> : <Check size={9} strokeWidth={2.5} />}
                     {(() => {
                       const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
-                      const label = isVerified ? 'Verified' : 'Submitted';
+                      const label = isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted');
                       return stampIso ? `${label} ${formatAgoCompact(stampIso)}` : label;
                     })()}
                   </span>
@@ -2871,25 +2849,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               </div>
             )}
           </div>
-          {isHotlistFeed && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
-            disabled={!canAskAI || processingAskAILeadId === lead.id}
-            title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Resume has already been requested' : !lead.posterEmail ? 'Vendor email is unavailable' : "Ask AI to request the consultant's resume"}
-            className={`absolute right-3 top-2.5 inline-flex items-center justify-center bg-transparent font-semibold transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-45 ${isAskPending ? 'flex-row gap-1 text-[10px]' : isVerified ? 'w-11 flex-col gap-0.5' : 'w-5 flex-col gap-0.5'}`}
-            style={{ color: isDark ? `color-mix(in srgb, ${accentColor} 82%, black)` : '#1D4ED8' }}
-          >
-            {isVerified ? <BadgeCheck size={18} strokeWidth={2} /> : <FileText size={isAskPending ? 12 : 18} strokeWidth={2} />}
-            <span className={isAskPending ? 'leading-none' : 'w-full truncate text-center text-[9px] uppercase leading-none'}>
-              {processingAskAILeadId === lead.id ? '...' : isVerified ? 'Verified' : isAskPending ? 'Asked' : 'Ask'}
-            </span>
-          </button>
-          )}
         </div>
         {inlineBreakdownItems.length > 0 && (
           useFourColumnBreakdown ? (
-            !isHotlistFeed ? (
                 <div className={`mt-1.5 min-w-0 rounded-md px-2.5 py-2 text-left ${metaSurfaceClass}`}>
                   <div className="grid grid-cols-3 gap-x-3 gap-y-2">
                     <div className="min-w-0">
@@ -2935,53 +2897,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     </div>
                   </button>
                 </div>
-            ) : (
-            <div className={`mt-1.5 w-full rounded-md px-2.5 py-2 text-left ${metaSurfaceClass}`}>
-              <div className="grid grid-cols-3 gap-x-3 gap-y-2">
-                <div className="min-w-0">
-                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Exp</div>
-                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(expValue)}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Work Type</div>
-                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(workTypeValue)}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Emp Type</div>
-                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(employmentTypeValue)}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Rate</div>
-                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(rateValue)}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Visa</div>
-                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(visaValue)}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Location</div>
-                  <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(locationValue)}</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setExpandedInlineBreakdownLeadIds((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(lead.id)) next.delete(lead.id);
-                    else next.add(lead.id);
-                    return next;
-                  });
-                }}
-                className={`mt-2 w-full rounded-md px-2 py-1.5 text-left focus:outline-none ${metaSurfaceClass}`}
-              >
-                <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Skills</div>
-                <div className={`text-[9px] leading-tight break-words ${skillsValueClass}`}>
-                  {renderClampedSkills(lead.id, skillsValue, 8, isDark ? 'text-blue-300' : 'text-blue-600')}
-                </div>
-              </button>
-            </div>
-            )
           ) : (
           (isLeadRevealed && selectedMatchesTab !== 'revealed') ? (
             <div className={`mt-1.5 w-full overflow-hidden rounded-md text-left ring-1 ring-inset ${revealedTableSurfaceClass}`}>
@@ -3027,58 +2942,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             </button>
           )
         ))}
-        {isHotlistFeed && (
-        <div className="mt-1.5 grid grid-cols-10 gap-1.5" style={accentVars}>
-          <div className="col-span-3 inline-flex items-center px-1">
-            <span className="text-[11px] font-semibold text-[#94A3B8]">
-              {revealCountsByLeadId[lead.id] ?? 0} reveals
-            </span>
-          </div>
-          {isLeadRevealed ? (
-            <div className="col-span-7 grid grid-cols-2 gap-1.5">
-              <button
-                onClick={(e) => { e.stopPropagation(); void copyText(lead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email'); }}
-                className={`inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2 py-1.5 text-[10px] font-semibold transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)] ${isDark ? 'text-[var(--accent-hex)]' : 'text-blue-600'}`}
-                style={{ borderColor: 'rgb(var(--accent-rgb) / 0.30)' }}
-              >
-                <Copy size={11} />
-                Email
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedLead(lead);
-                  setGeneratedEmailDrafts({
-                    pitching: generateEmailDraft(lead),
-                    requestDetails: generateRequestDetailsEmailDraft(lead),
-                  });
-                  setSelectedEmailDraftTab('pitching');
-                  setShowGeneratedEmailDraft(true);
-                }}
-                className={`inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2 py-1.5 text-[10px] font-semibold transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)] ${isDark ? 'text-[var(--accent-hex)]' : 'text-blue-600'}`}
-                style={{ borderColor: 'rgb(var(--accent-rgb) / 0.30)' }}
-              >
-                <Mail size={11} />
-                Draft
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => void handleRevealContact(lead)}
-              disabled={processingLeadId === lead.id}
-              className={`col-span-7 inline-flex items-center justify-center gap-1 rounded-md border bg-transparent px-2.5 py-1.5 text-[10px] font-semibold transition-all hover:bg-transparent hover:shadow-[0_0_0_1px_rgb(var(--accent-rgb)/0.30),0_0_14px_rgb(var(--accent-rgb)/0.22)] disabled:cursor-not-allowed disabled:opacity-70 ${isDark ? 'text-[var(--accent-hex)]' : 'text-blue-600'}`}
-              style={{ borderColor: 'rgb(var(--accent-rgb) / 0.30)' }}
-            >
-              {processingLeadId === lead.id ? '...' : (
-                <>
-                  <Copy size={11} />
-                  <span>{maskedEmailHint}</span>
-                </>
-              )}
-            </button>
-          )}
-        </div>
-        )}
       </div>
       {actionButtonsRail}
       </div>
@@ -3224,9 +3087,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             {renderSortableHeader('Location', 'location')}
             <th className="px-2 py-2 whitespace-normal">Skills</th>
             {renderSortableHeader(postedLabel, 'posted')}
-            <th className="px-2 py-2 whitespace-normal">Predict</th>
-            <th className="px-2 py-2 whitespace-normal">Email</th>
-            <th className="px-2 py-2 whitespace-normal">Submit</th>
+            <th className="px-2 py-2 whitespace-normal">{isHotlistFeed ? 'Match Rate' : 'Predict'}</th>
+            <th className="px-2 py-2 whitespace-normal">{isHotlistFeed ? 'Reveal' : 'Email'}</th>
+            <th className="px-2 py-2 whitespace-normal">{isHotlistFeed ? 'Ask Resume' : 'Submit'}</th>
           </tr>
         </thead>
         <tbody>
@@ -3266,7 +3129,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
-                        title={`Predicted ${cachedPredict.score}% — click to retry`}
+                        title={`${isHotlistFeed ? 'Match rate' : 'Predicted'} ${cachedPredict.score}% — click to retry`}
                         className={predictButtonClass}
                       >
                         <span className="font-extrabold">{cachedPredict.score}%</span>
@@ -3279,7 +3142,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         className={predictButtonClass}
                       >
                         <Gauge size={12} strokeWidth={2} />
-                        <span>Predict</span>
+                        <span>{isHotlistFeed ? 'Match Rate' : 'Predict'}</span>
                       </button>
                     );
                   })()}
@@ -3287,9 +3150,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 <td className="px-1.5 py-2 align-top">
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, 'Vendor email') : void handleRevealContact(lead); }}
+                    onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email') : void handleRevealContact(lead); }}
                     disabled={processingLeadId === lead.id}
-                    title={isLeadRevealed ? 'Copy the vendor email' : `Reveal the vendor email for $${REVEAL_CONTACT_COST.toFixed(2)} — skip Submit and reach out yourself`}
+                    title={isLeadRevealed ? 'Copy email' : 'Reveal email'}
                     className={emailButtonClass}
                   >
                     {processingLeadId === lead.id ? (
@@ -3302,7 +3165,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     ) : (
                       <>
                         <AtSign size={12} strokeWidth={2} />
-                        <span>Email</span>
+                        <span>{isHotlistFeed ? 'Reveal' : 'Email'}</span>
                       </>
                     )}
                   </button>
@@ -3310,14 +3173,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 <td className="px-1.5 py-2 align-top">
                   {isAskPending || isVerified ? (
                     <span
-                      title={isVerified ? 'Vendor-supplied details verified' : 'Submission already sent'}
+                      title={isVerified ? 'Verified' : (isHotlistFeed ? 'Resume already requested' : 'Submission already sent')}
                       className={submitStatusClass}
                     >
                       {isVerified ? <BadgeCheck size={12} strokeWidth={2} className="shrink-0" /> : <Check size={12} strokeWidth={2} className="shrink-0" />}
                       <span className="truncate">
                         {(() => {
                           const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
-                          const label = isVerified ? 'Verified' : 'Submitted';
+                          const label = isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted');
                           return stampIso ? `${label} ${formatAgoCompact(stampIso)}` : label;
                         })()}
                       </span>
@@ -3327,11 +3190,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       type="button"
                       onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
                       disabled={!canAskAI || processingAskAILeadId === lead.id}
-                      title={!lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Submit a candidate for this role'}
+                      title={!lead.posterEmail ? 'No email' : isHotlistFeed ? "Ask for the consultant's resume" : (missingJobDetails.length === 0 ? 'No missing job details detected' : 'Submit a candidate for this role')}
                       className={`${askButtonClass} truncate`}
                     >
                       <Mail size={12} strokeWidth={2} className="shrink-0" />
-                      <span className="truncate">{processingAskAILeadId === lead.id ? '...' : 'Submit'}</span>
+                      <span className="truncate">{processingAskAILeadId === lead.id ? '...' : (isHotlistFeed ? 'Ask Resume' : 'Submit')}</span>
                     </button>
                   )}
                 </td>
@@ -3655,7 +3518,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   }, [account?.id, isHotlistFeed, user?.id]);
 
   const loadPredictedJobState = useCallback(async () => {
-    if (isHotlistFeed || !account?.id || !user?.id) {
+    if (!account?.id || !user?.id) {
       setPredictResultByLeadId({});
       setPredictedAtByLeadId({});
       return;
@@ -3666,7 +3529,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       .select('lead_id, score, verdict, categories, created_at')
       .eq('account_id', account.id)
       .eq('user_id', user.id)
-      .eq('feed_kind', 'job')
+      .eq('feed_kind', isHotlistFeed ? 'hotlist' : 'job')
       .order('created_at', { ascending: false });
     if (error) return;
 
@@ -3688,6 +3551,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const leadIds = Object.keys(nextResults);
     if (leadIds.length === 0) return;
+    if (isHotlistFeed) return;
 
     const { data: jobRows, error: jobsError } = await supabase
       .from('social_jobs')
@@ -5573,7 +5437,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     </div>
                   )}
 
-                  {!isMobileViewport && !isHotlistFeed && (
+                  {!isMobileViewport && (
                     <div className="flex shrink-0 items-center rounded-md border border-gray-200 bg-gray-50 p-0.5" aria-label="Layout view">
                       {([
                         { id: 'card' as PulseLayoutMode, label: 'Cards', icon: LayoutGrid },
