@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowRight, ChevronRight, Upload, ImagePlus, Plus, Minus, Zap,
+  ArrowRight, BarChart3, Building2, ChevronRight, Upload, ImagePlus, Plus, Minus, Target, Zap,
 } from 'lucide-react';
 import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
@@ -25,8 +25,8 @@ const FEATURES = [
   {
     key: 'pulse',
     slug: 'jobs',
-    headline: 'Live in seconds. Every requirement.',
-    subline: 'Jobs watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards 24/7, surfacing every client requirement the moment it\'s posted and lining it up against your bench — so you never miss a fit.',
+    headline: 'Predict the fit. Then submit it.',
+    subline: 'Jobs watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards 24/7. Predict scores your consultant\'s acceptance odds against the requirement before you spend a submission, then Submit sends the resume and opens a real conversation with the vendor.',
     accent: 'from-blue-100 to-white',
     badge: 'bg-blue-100 text-blue-700',
     badgeLabel: 'Jobs',
@@ -45,8 +45,8 @@ const FEATURES = [
   {
     key: 'inbox',
     slug: 'inbox',
-    headline: '1 click. Outreach sent instantly.',
-    subline: 'One click drafts and sends a personalized outreach email — for a job detail or a resume — then tracks opens and replies so nothing goes cold. Identities stay masked until you reveal them.',
+    headline: '1 submission. A real conversation.',
+    subline: 'Every submission opens a live thread with the vendor — resume attached, reply and message right from your Inbox, and track opens so nothing goes cold.',
     accent: 'from-purple-50 to-white',
     badge: 'bg-purple-100 text-purple-700',
     badgeLabel: 'Inbox',
@@ -424,7 +424,7 @@ export default function LandingPage() {
               {[
                 { n: '1', t: 'See what\'s hot', d: 'Pulse ranks every tech stack by live demand and rate, so you know where to focus before you spend a submission.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
                 { n: '2', t: 'Jobs & Hotlist go live', d: 'Jobs and Hotlist scan 500+ groups and job boards in real-time — new requirements and available consultants show up the moment they post.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
-                { n: '3', t: 'AI drafts the outreach', d: 'Inbox writes and sends the ask, tracks opens and replies, and keeps identities masked until you reveal them.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
+                { n: '3', t: 'Predict, then submit', d: 'Predict scores the acceptance odds before you spend the send. Submit drafts the outreach, attaches the resume, and opens a real conversation in Inbox.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
                 { n: '4', t: 'Close it in Tracker', d: 'Log every submission, avoid double-submittals, and export your pipeline anytime.', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
               ].map((step) => (
                 <div key={step.n} className="relative flex gap-8 pb-10 last:pb-0">
@@ -439,6 +439,66 @@ export default function LandingPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── SUBMIT VS REVEAL ── */}
+      <section id="submit" className="py-24 px-6 bg-gray-50 border-y border-gray-100">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-14">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Why Submit, not Reveal</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
+              Stop paying to peek. Start submitting to close.
+            </h2>
+            <p className="mt-4 max-w-2xl mx-auto text-gray-500 leading-relaxed">
+              Revealing a contact just tells you who to email — you still have to write the pitch and hope it lands. Submitting tells the vendor you already have the right consultant: resume attached, a data-driven fit score behind it, and a real conversation started before you've spent a single send.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6 mb-16">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">The old way — Reveal</p>
+              <ul className="space-y-3 text-sm text-gray-600">
+                <li>Pay to unmask a name and email address</li>
+                <li>You still write the pitch yourself, from scratch</li>
+                <li>No signal on whether the fit is actually strong</li>
+                <li>Vendor gets one more cold email to sift through</li>
+              </ul>
+            </div>
+            <div className="rounded-2xl border-2 border-blue-600 bg-white p-6 shadow-lg shadow-blue-100">
+              <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-4">The ProfilePush way — Submit</p>
+              <ul className="space-y-3 text-sm text-gray-700">
+                <li>Predict scores the acceptance odds before you act</li>
+                <li>AI drafts the outreach, resume attached automatically</li>
+                <li>Opens a real conversation thread in your Inbox</li>
+                <li>Vendor gets a pre-qualified candidate, not a cold ask</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mb-3">
+                <Target className="w-5 h-5 text-blue-700" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-1">For recruiters</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">Know your odds before you spend the ask. Submit with a resume already attached and a real thread started — no more guessing which lead is worth chasing.</p>
+            </div>
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center mb-3">
+                <Building2 className="w-5 h-5 text-amber-700" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-1">For vendors &amp; clients</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">Every submission lands pre-matched against your requirement with a resume in hand, not a generic cold pitch — less noise, faster decisions on both sides.</p>
+            </div>
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center mb-3">
+                <BarChart3 className="w-5 h-5 text-emerald-700" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-1">For agency owners</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">See every submission, every prediction, every user on your team — one dashboard, real accountability for what you're paying to power.</p>
             </div>
           </div>
         </div>

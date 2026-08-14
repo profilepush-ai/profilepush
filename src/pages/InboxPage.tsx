@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle, ArrowLeft, Check, CheckCheck, Clock3, Download, Inbox,
-  Copy, Loader2, Mail, Paperclip, Search, X,
+  Copy, Loader2, Mail, Paperclip, Search, Send, X,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -261,6 +261,8 @@ export default function InboxPage() {
   const [revealingJobId, setRevealingJobId] = useState<string | null>(null);
   const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
 
   const loadConversations = useCallback(async () => {
     const { data, error } = await supabase
@@ -382,6 +384,7 @@ export default function InboxPage() {
 
   useEffect(() => {
     setSelectedId(conversationId ?? null);
+    setReplyText('');
   }, [conversationId]);
 
   const selected = conversations.find((item) => item.id === selectedId) ?? null;
@@ -529,6 +532,29 @@ export default function InboxPage() {
     }
   }
 
+  async function sendReply() {
+    const text = replyText.trim();
+    if (!text || !selected || sendingReply) return;
+    setSendingReply(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-vendor-message', {
+        body: {
+          conversation_id: selected.id,
+          text_body: text,
+          client_request_id: crypto.randomUUID(),
+        },
+      });
+      if (error || !data?.ok) {
+        throw new Error(data?.error || (error as Error)?.message || 'Could not send message');
+      }
+      setReplyText('');
+    } catch (error) {
+      setToast({ message: (error as Error).message || 'Could not send message', type: 'error' });
+    } finally {
+      setSendingReply(false);
+    }
+  }
+
   return (
     <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-gray-50 text-gray-900">
       <AppNav />
@@ -632,6 +658,7 @@ export default function InboxPage() {
               <p className="mt-3 text-sm font-semibold text-gray-600">Select a conversation</p>
             </div>
           ) : (
+            <>
             <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-white">
               <header className="sticky top-0 z-10 flex h-12 items-center gap-1 border-b border-gray-200 bg-white px-2 sm:px-3">
                 <button type="button" onClick={() => navigate('/inbox', { replace: true })} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
@@ -718,6 +745,40 @@ export default function InboxPage() {
 
               </div>
             </div>
+            {selected.status === 'closed' ? (
+              <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 py-3 text-center text-[11px] text-gray-500">
+                This conversation is closed. Reopen it to send a message.
+              </div>
+            ) : (
+              <div className="shrink-0 border-t border-gray-200 bg-white p-2.5 sm:p-3">
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={replyText}
+                    onChange={(event) => setReplyText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        void sendReply();
+                      }
+                    }}
+                    disabled={sendingReply}
+                    rows={2}
+                    placeholder="Write a reply..."
+                    className="min-h-[2.5rem] flex-1 resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void sendReply()}
+                    disabled={sendingReply || !replyText.trim()}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Send reply"
+                  >
+                    {sendingReply ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </section>
       </main>

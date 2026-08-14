@@ -9,6 +9,7 @@ const corsHeaders = {
 
 const ASK_VENDOR_AI_URL = "https://profilepush-social-job-queue-consumer.profilepush-ai.workers.dev/ask-vendor-email-copy";
 const ASK_AI_COST = 0.01;
+const JOB_SUBMIT_COST = 0.10;
 const SENDER_NAME_TOKEN = "{{sender_name}}";
 
 function respond(payload: Record<string, unknown>, status = 200) {
@@ -64,6 +65,9 @@ Deno.serve(async (req: Request) => {
     const accountId = asString(body.account_id, 100);
     const jobId = asString(body.job_id, 100);
     const leadType = asString(body.lead_type, 20) === "hotlist" ? "hotlist" : "job";
+    const chargeAmount = leadType === "job" ? JOB_SUBMIT_COST : ASK_AI_COST;
+    const resumeUrl = asString(body.resume_url, 2000);
+    const resumeFileName = asString(body.resume_file_name, 255);
     const missingDetails = Array.isArray(body.missing_details)
       ? body.missing_details.map((item) => asString(item, 100)).filter(Boolean).slice(0, 20)
       : [];
@@ -240,6 +244,10 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "Approved email must be under 40 words and cannot mention ProfilePush" }, 400);
     }
 
+    const finalEmailContent = resumeUrl
+      ? `${emailContent}\n\nI've attached my resume as well.`
+      : emailContent;
+
     const { error: requestInsertError } = await supabaseAdmin
       .from("pulse_ask_ai_requests")
       .insert({
@@ -267,7 +275,7 @@ Deno.serve(async (req: Request) => {
         return respond({
           ok: true,
           email_sent: true,
-          charged: Number(existingRequest.charged_amount ?? ASK_AI_COST),
+          charged: Number(existingRequest.charged_amount ?? chargeAmount),
           vendor_name: vendorDisplayName,
           vendor_email: vendorEmail,
           missing_details: missingDetails,
@@ -284,7 +292,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: creditRows, error: creditError } = await supabaseUser.rpc("consume_feature_credit", {
       p_account_id: accountId,
-      p_amount: ASK_AI_COST,
+      p_amount: chargeAmount,
       p_feature: "pulse_ask_ai",
       p_metadata: {
         request_id: requestId,
@@ -305,12 +313,12 @@ Deno.serve(async (req: Request) => {
 
     const { error: chargedStatusError } = await supabaseAdmin
       .from("pulse_ask_ai_requests")
-      .update({ status: "charged", charged_amount: ASK_AI_COST, updated_at: new Date().toISOString() })
+      .update({ status: "charged", charged_amount: chargeAmount, updated_at: new Date().toISOString() })
       .eq("request_id", requestId);
     if (chargedStatusError) {
       const { error: refundError } = await supabaseAdmin.rpc("refund_feature_credit", {
         p_account_id: accountId,
-        p_amount: ASK_AI_COST,
+        p_amount: chargeAmount,
         p_feature: "pulse_ask_ai_state_failed",
       });
       console.error("Could not persist Ask AI charged state", chargedStatusError, refundError);
@@ -321,7 +329,7 @@ Deno.serve(async (req: Request) => {
       console.error("Ask AI Mailgun queue failed", deliveryError);
       const { error: refundError } = await supabaseAdmin.rpc("refund_feature_credit", {
         p_account_id: accountId,
-        p_amount: ASK_AI_COST,
+        p_amount: chargeAmount,
         p_feature: "pulse_ask_ai_delivery_failed",
       });
       await supabaseAdmin
@@ -364,7 +372,7 @@ Deno.serve(async (req: Request) => {
         from_email: `${requesterName.replace(/[\r\n"]/g, "")} via ProfilePush <requests@ask.profilepush.ai>`,
         to_email: vendorEmail,
         subject: emailSubject,
-        text_body: emailContent,
+        text_body: finalEmailContent,
         status: "queued",
       })
       .select("id")
@@ -396,7 +404,10 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         signal: AbortSignal.timeout(30_000),
-        body: JSON.stringify({ message_id: outboundMessage.id }),
+        body: JSON.stringify({
+          message_id: outboundMessage.id,
+          ...(resumeUrl ? { resume_url: resumeUrl, resume_file_name: resumeFileName || "resume.pdf" } : {}),
+        }),
       });
     } catch (error) {
       return await refundDeliveryFailure(`Vendor mail queue request failed: ${(error as Error).message}`);
@@ -424,7 +435,7 @@ Deno.serve(async (req: Request) => {
     return respond({
       ok: true,
       email_sent: true,
-      charged: ASK_AI_COST,
+      charged: chargeAmount,
       vendor_name: vendorDisplayName,
       vendor_email: vendorEmail,
       missing_details: missingDetails,

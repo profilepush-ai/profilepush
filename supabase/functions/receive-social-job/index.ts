@@ -92,6 +92,7 @@ function normalizeSocialJobItems(items: Array<Record<string, unknown>>) {
       seniority_level: asString(item.seniority_level ?? item.seniorityLevel),
       job_description: asString(item.job_description ?? item.description ?? item.body ?? item.post_content),
       salary_range: asString(item.salary_range ?? item.salaryRange),
+      image_urls: asStringArray(item.image_urls ?? item.imageUrls),
       account_id: item.account_id ? String(item.account_id) : null,
       _source_keyword_id: UUID_PATTERN.test(sourceKeywordId) ? sourceKeywordId : null,
     });
@@ -163,6 +164,7 @@ async function classifySocialJobs(
     title: asString(row.job_title),
     description: asString(row.post_content),
     location: asString(row.location),
+    image_urls: asStringArray(row.image_urls),
   }));
 
   try {
@@ -292,6 +294,7 @@ async function persistSocialHotlists(
       recruiter_profile_link: asString(source.profile_link),
     };
     sourceCandidateCounts.push({ platform, sourcePostId, candidateCount: consultantCount });
+    const sourceImageUrls = asStringArray(result.source_image_urls);
 
     return validCandidates.map((candidate, candidateIndex) => {
       const roleTitle = asString(candidate.role_title).trim();
@@ -306,6 +309,7 @@ async function persistSocialHotlists(
         posted_at: source.posted_at ?? null,
         post_url: asString(source.post_url),
         raw_post_content: asString(source.post_content),
+        source_image_urls: sourceImageUrls,
         ...recruiterDetails,
         candidate_name: asString(candidate.candidate_name),
         role_title: roleTitle,

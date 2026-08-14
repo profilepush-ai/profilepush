@@ -67,11 +67,28 @@ function timingSafeEqual(left: string, right: string): boolean {
   return mismatch === 0;
 }
 
-function chunkArray<T>(items: T[], chunkSize: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += chunkSize) {
-    chunks.push(items.slice(index, index + chunkSize));
+// Cloudflare Queues caps sendBatch() at 100 messages AND 256KB combined per
+// call. Digest emails are full HTML pages, so message count alone isn't a
+// safe chunk boundary — a batch of well under 100 rich emails can still blow
+// past the size cap. Chunk by both, with headroom below the 256KB ceiling.
+const MAX_BATCH_MESSAGES = 100;
+const MAX_BATCH_BYTES = 200_000;
+
+function chunkEmailJobsForQueue(jobs: EmailJob[]): EmailJob[][] {
+  const chunks: EmailJob[][] = [];
+  let current: EmailJob[] = [];
+  let currentBytes = 0;
+  for (const job of jobs) {
+    const jobBytes = new TextEncoder().encode(JSON.stringify(job)).length;
+    if (current.length > 0 && (current.length >= MAX_BATCH_MESSAGES || currentBytes + jobBytes > MAX_BATCH_BYTES)) {
+      chunks.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(job);
+    currentBytes += jobBytes;
   }
+  if (current.length > 0) chunks.push(current);
   return chunks;
 }
 
@@ -292,7 +309,7 @@ async function notifyInAppAndPush(env: Env, recipients: DigestRecipient[], jobsC
 async function runDailyDigest(env: Env): Promise<{ jobsCount: number; hotlistCount: number; recipients: number }> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const [jobsCount, hotlistCount, recipients, topRoles] = await Promise.all([
-    countSince(env, "social_jobs", since),
+    countSince(env, "radar_match_results", since),
     countSince(env, "radar_match_hotlist", since),
     fetchRecipients(env),
     fetchTopRoles(env),
@@ -303,7 +320,7 @@ async function runDailyDigest(env: Env): Promise<{ jobsCount: number; hotlistCou
     jobs.push(await buildDigestJob(env, recipient, jobsCount, hotlistCount, topRoles));
   }
 
-  for (const chunk of chunkArray(jobs, 100)) {
+  for (const chunk of chunkEmailJobsForQueue(jobs)) {
     await env.EMAIL_QUEUE.sendBatch(chunk.map((job) => ({ body: job })));
   }
 
@@ -353,6 +370,14 @@ async function handleSendRequest(request: Request, env: Env): Promise<Response> 
   return jsonResponse({ queued: true }, 202);
 }
 
+// Manually runs the exact same digest send as the daily cron, for catch-up
+// after a missed or failed scheduled run.
+async function handleRunDigest(request: Request, env: Env): Promise<Response> {
+  if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
+  const result = await runDailyDigest(env);
+  return jsonResponse(result);
+}
+
 // Sends a real, fully-rendered digest (real counts, real signed unsubscribe link)
 // to one specific recipient immediately, bypassing the queue for synchronous
 // feedback. Useful for previewing/testing before relying on the daily cron.
@@ -364,7 +389,7 @@ async function handleTestDigest(request: Request, env: Env): Promise<Response> {
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const [jobsCount, hotlistCount, recipients, topRoles] = await Promise.all([
-    countSince(env, "social_jobs", since),
+    countSince(env, "radar_match_results", since),
     countSince(env, "radar_match_hotlist", since),
     fetchRecipients(env),
     fetchTopRoles(env),
@@ -422,6 +447,7 @@ export default {
       if (request.method === "GET") return jsonResponse({ status: "ok" });
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
       if (pathname === "/send") return await handleSendRequest(request, env);
+      if (pathname === "/run-digest") return await handleRunDigest(request, env);
       if (pathname === "/test-digest") return await handleTestDigest(request, env);
       return jsonResponse({ error: "Not found" }, 404);
     } catch (error) {
@@ -443,7 +469,12 @@ export default {
   },
 
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
-    const result = await runDailyDigest(env);
-    console.log(`Daily digest queued for ${result.recipients} recipients (${result.jobsCount} jobs, ${result.hotlistCount} hotlist profiles)`);
+    try {
+      const result = await runDailyDigest(env);
+      console.log(`Daily digest queued for ${result.recipients} recipients (${result.jobsCount} jobs, ${result.hotlistCount} hotlist profiles)`);
+    } catch (error) {
+      console.error("Daily digest cron run failed", error);
+      throw error;
+    }
   },
 };

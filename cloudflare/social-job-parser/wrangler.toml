@@ -6,5 +6,11 @@ workers_dev = true
 [ai]
 binding = "AI"
 
+[[r2_buckets]]
+binding = "HOTLIST_IMAGES"
+bucket_name = "profilepush-social-hotlist-images"
+
 [vars]
 PARSER_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
+PARSER_VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct"
+HOTLIST_IMAGES_PUBLIC_BASE_URL = "https://pub-9371f70fa7504aac8cf2c332105fbad9.r2.dev"

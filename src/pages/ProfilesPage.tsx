@@ -18,10 +18,13 @@ import {
   Handshake,
   Hash,
   Mail,
+  MessageSquare,
+  Percent,
   Phone,
   Radar,
   RefreshCw,
   Search,
+  Send,
   Shield,
   CheckSquare,
   ChevronRight,
@@ -29,6 +32,7 @@ import {
   ChevronUp,
   Server,
   Sparkles,
+  Target,
   GraduationCap,
   Flame,
   Workflow,
@@ -232,6 +236,24 @@ type PulseDirectorySnapshot = {
   rangeId: ProfileRangeOption['id'];
   leaderboard: PulsePersona[];
   stats: Record<string, ProfileStats>;
+};
+
+type PulseDashboardUserRow = {
+  user_id: string;
+  display_name: string;
+  submissions_today: number;
+  jobs_submitted_today: number;
+  avg_prediction_score_today: number;
+  predictions_made_today: number;
+  replies_today: number;
+};
+type PulseDashboardStats = {
+  submissions_today: number;
+  avg_prediction_score_today: number;
+  predictions_made_today: number;
+  replies_today: number;
+  total_vendors_today: number;
+  by_user: PulseDashboardUserRow[];
 };
 
 type PulseDirectoryReadModelRow = {
@@ -921,6 +943,8 @@ export default function ProfilesPage() {
     if (typeof window === 'undefined') return false;
     return window.matchMedia('(max-width: 639px)').matches;
   });
+  const [dashboardStats, setDashboardStats] = useState<PulseDashboardStats | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
   const profileListScrollRef = useRef<HTMLDivElement | null>(null);
   const [profileStatsLoading, setProfileStatsLoading] = useState(false);
   const [profileStatsByRole, setProfileStatsByRole] = useState<Record<string, ProfileStats>>(initialDirectorySnapshot?.stats ?? {});
@@ -973,6 +997,24 @@ export default function ProfilesPage() {
   const applyProfileSearch = useCallback(() => {
     setProfileSearchQuery(pendingProfileSearchQuery);
   }, [pendingProfileSearchQuery]);
+
+  const refreshDashboardStats = useCallback(async () => {
+    if (!account?.id) return;
+    setDashboardLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('get_pulse_dashboard_stats', { p_account_id: account.id });
+      if (error) throw error;
+      setDashboardStats(data as PulseDashboardStats);
+    } catch (error) {
+      console.error('Could not load Pulse dashboard stats', error);
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, [account?.id]);
+
+  useEffect(() => {
+    void refreshDashboardStats();
+  }, [refreshDashboardStats]);
 
   useEffect(() => {
     setPendingProfileSearchQuery(profileSearchQuery);
@@ -1475,6 +1517,44 @@ export default function ProfilesPage() {
                   </tr>
                 );
               })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const renderUsersTable = () => {
+    const byUser = dashboardStats?.by_user ?? [];
+    if (byUser.length === 0) {
+      return <div className="px-3 py-6 text-center text-xs text-gray-400">No user activity yet today.</div>;
+    }
+
+    return (
+      <div className="h-full min-h-0 flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [scrollbar-gutter:stable] slim-scrollbar">
+          <table className="w-max min-w-full table-auto border-collapse text-left text-[9px] sm:text-[10px]">
+            <thead>
+              <tr>
+                <th className="sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500 dark:border-white/10 dark:bg-[#1B1D21] dark:text-[#94A3B8]">User</th>
+                <th className="sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] px-2 py-1.5 text-center font-semibold uppercase tracking-wide text-gray-500 dark:border-white/10 dark:bg-[#1B1D21] dark:text-[#94A3B8]">Subs</th>
+                <th className="sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] px-2 py-1.5 text-center font-semibold uppercase tracking-wide text-gray-500 dark:border-white/10 dark:bg-[#1B1D21] dark:text-[#94A3B8]">Jobs</th>
+                <th className="sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] px-2 py-1.5 text-center font-semibold uppercase tracking-wide text-gray-500 dark:border-white/10 dark:bg-[#1B1D21] dark:text-[#94A3B8]">Avg %</th>
+                <th className="sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] px-2 py-1.5 text-center font-semibold uppercase tracking-wide text-gray-500 dark:border-white/10 dark:bg-[#1B1D21] dark:text-[#94A3B8]">Predicts</th>
+                <th className="sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] px-2 py-1.5 text-center font-semibold uppercase tracking-wide text-gray-500 dark:border-white/10 dark:bg-[#1B1D21] dark:text-[#94A3B8]">Replies</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byUser.map((row) => (
+                <tr key={row.user_id}>
+                  <td className="border-b border-gray-100 px-2 py-1.5 font-semibold text-gray-900 dark:border-white/10 dark:text-slate-100">{row.display_name}</td>
+                  <td className="border-b border-gray-100 px-2 py-1.5 text-center text-gray-700 dark:border-white/10 dark:text-[#CBD5E1]">{row.submissions_today}</td>
+                  <td className="border-b border-gray-100 px-2 py-1.5 text-center text-gray-700 dark:border-white/10 dark:text-[#CBD5E1]">{row.jobs_submitted_today}</td>
+                  <td className="border-b border-gray-100 px-2 py-1.5 text-center text-gray-700 dark:border-white/10 dark:text-[#CBD5E1]">{row.avg_prediction_score_today}%</td>
+                  <td className="border-b border-gray-100 px-2 py-1.5 text-center text-gray-700 dark:border-white/10 dark:text-[#CBD5E1]">{row.predictions_made_today}</td>
+                  <td className="border-b border-gray-100 px-2 py-1.5 text-center text-gray-700 dark:border-white/10 dark:text-[#CBD5E1]">{row.replies_today}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -3061,6 +3141,41 @@ export default function ProfilesPage() {
             </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
+              {!isMobileViewport && account?.id && (
+                <div className="shrink-0">
+                  <div className="grid grid-cols-3 lg:grid-cols-5 gap-2">
+                    {([
+                      { number: 1, label: 'Predictions Made', value: dashboardStats?.predictions_made_today ?? 0, icon: Target, tone: 'emerald' },
+                      { number: 2, label: 'Avg Prediction Rate', value: `${dashboardStats?.avg_prediction_score_today ?? 0}%`, icon: Percent, tone: 'violet' },
+                      { number: 3, label: 'Submissions Today', value: dashboardStats?.submissions_today ?? 0, icon: Send, tone: 'blue' },
+                      { number: 4, label: 'Replies Received', value: dashboardStats?.replies_today ?? 0, icon: MessageSquare, tone: 'pink' },
+                      { number: 5, label: 'Total Vendors', value: dashboardStats?.total_vendors_today ?? 0, icon: Users, tone: 'slate' },
+                    ] as Array<{ number: number; label: string; value: string | number; icon: LucideIcon; tone: 'blue' | 'orange' | 'violet' | 'emerald' | 'pink' | 'slate' }>).map((card) => {
+                      const toneClass = {
+                        blue: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
+                        orange: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300',
+                        violet: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
+                        emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+                        pink: 'bg-pink-50 text-pink-700 dark:bg-pink-500/10 dark:text-pink-300',
+                        slate: 'bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300',
+                      }[card.tone];
+                      return (
+                        <div key={card.number} className="relative rounded-lg border border-gray-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-[#171A1F]">
+                          <span className="absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-gray-100 text-[9px] font-bold text-gray-500 dark:bg-white/10 dark:text-slate-300">{card.number}</span>
+                          <span className={`inline-flex h-7 w-7 items-center justify-center rounded-md ${toneClass}`}>
+                            <card.icon size={14} />
+                          </span>
+                          <div className="mt-1.5 text-xl font-bold text-gray-900 dark:text-slate-100">
+                            {(dashboardLoading || !dashboardStats) ? <span className="inline-block h-5 w-8 animate-pulse rounded bg-gray-200 dark:bg-white/10" /> : card.value}
+                          </div>
+                          <div className="text-[10px] font-medium text-gray-500 dark:text-[#94A3B8]">{card.label}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Category Pills (desktop horizontal scroll) */}
               <div className="hidden shrink-0 hide-scrollbar w-full overflow-x-auto">
                 <div className="flex w-max min-w-full gap-1.5">
@@ -3290,13 +3405,27 @@ export default function ProfilesPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 px-2 pb-2">
-                    <div className="flex min-h-0 min-w-0 flex-col">
+                  <div className="grid min-h-0 flex-1 grid-cols-3 gap-3 px-2 pb-2">
+                    <div className="flex min-h-0 min-w-0 flex-col gap-1.5">
+                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                        <Users size={10} /> Business Pulse
+                      </span>
+                      <div className="min-h-0 flex-1">
+                        {renderUsersTable()}
+                      </div>
+                    </div>
+                    <div className="flex min-h-0 min-w-0 flex-col gap-1.5">
+                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                        <Activity size={10} /> Market Pulse — Roles
+                      </span>
                       <div className="min-h-0 flex-1">
                         {renderProfilesTable(filteredJobsRankedLeaderboard, 'No profiles found.', 'desktop-roles')}
                       </div>
                     </div>
-                    <div className="flex min-h-0 min-w-0 flex-col">
+                    <div className="flex min-h-0 min-w-0 flex-col gap-1.5">
+                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                        <Activity size={10} /> Market Pulse — Domains
+                      </span>
                       <div className="min-h-0 flex-1">
                         {renderDomainsTable(domainsForActiveView, 'No domains found.', 'desktop-domains')}
                       </div>

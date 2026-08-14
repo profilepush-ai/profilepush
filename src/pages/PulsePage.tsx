@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Activity,
   AtSign,
@@ -18,10 +18,13 @@ import {
   FileText,
   Handshake,
   Hash,
+  LayoutGrid,
   Mail,
+  Paperclip,
   Phone,
   Radar,
   RefreshCw,
+  RotateCcw,
   Search,
   Shield,
   CheckSquare,
@@ -29,6 +32,8 @@ import {
   ChevronUp,
   Server,
   Sparkles,
+  Table2,
+  Target,
   GraduationCap,
   Flame,
   Workflow,
@@ -280,7 +285,7 @@ type ProfileCategoryTab = {
   icon: LucideIcon;
 };
 
-type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'asked' | 'verified' | 'queued';
+type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'asked' | 'verified' | 'queued' | 'predicted';
 type FeedTimeBasis = 'posted' | 'created';
 type LeadActionType = 'revealed' | 'breakdown';
 
@@ -300,6 +305,8 @@ type AskAIPreview = {
   emailSubject: string;
   emailContent: string;
   isGenerating: boolean;
+  resumeUrl?: string;
+  resumeFileName?: string;
 };
 type FeedSearchFilters = {
   experienceRange: string;
@@ -369,6 +376,28 @@ const PULSE_CACHE_WORKER_TOKEN = (import.meta.env.VITE_PULSE_CACHE_WORKER_TOKEN 
 const TOP_PROFILES_PAGE_SIZE = 10;
 const MATCHES_PAGE_SIZE = 5;
 const DESKTOP_MATCHES_PAGE_SIZE = 12;
+
+type PulseLayoutMode = 'card' | 'table';
+type LeadTableSortKey = 'role' | 'exp' | 'workType' | 'empType' | 'rate' | 'visa' | 'location' | 'posted';
+
+type PredictCategory = { label: string; earned: number; max: number; note: string };
+type PredictResult = { score: number; categories: PredictCategory[]; verdict: string; verdictClass: string };
+
+const PREDICT_PROCESSING_LABELS = ['Skills', 'Experience', 'Visa', 'Work Type', 'Location', 'Employment Type'];
+
+const PREDICT_MIN_PROCESSING_MS = 2300;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const PULSE_LAYOUT_MODE_STORAGE_KEY = 'profilepush-jobs-layout-mode';
+
+function getInitialPulseLayoutMode(): PulseLayoutMode {
+  if (typeof window === 'undefined') return 'card';
+  const stored = window.localStorage.getItem(PULSE_LAYOUT_MODE_STORAGE_KEY);
+  return stored === 'table' ? 'table' : 'card';
+}
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
   { id: '24h', label: 'Last 24 hours', hours: 24 },
@@ -1034,6 +1063,18 @@ function formatAgo(dateIso: string) {
   return `${Math.floor(hrs / 24)} days ago`;
 }
 
+function formatAgoCompact(dateIso: string) {
+  const ts = new Date(dateIso).getTime();
+  if (Number.isNaN(ts)) return 'now';
+  const diffMs = Date.now() - ts;
+  const mins = Math.max(0, Math.floor(diffMs / 60000));
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
 function formatRevealedAt(dateIso: string) {
   const ts = new Date(dateIso);
   if (Number.isNaN(ts.getTime())) return '';
@@ -1319,6 +1360,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [feedLoading, setFeedLoading] = useState(false);
   const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
   const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('24h');
@@ -1348,6 +1390,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
   const [processingAskAILeadId, setProcessingAskAILeadId] = useState<string | null>(null);
   const [askAIPreview, setAskAIPreview] = useState<AskAIPreview | null>(null);
+  const [resumeUploading, setResumeUploading] = useState(false);
   const [generatedEmailDrafts, setGeneratedEmailDrafts] = useState<{ pitching: string; requestDetails: string }>({
     pitching: '',
     requestDetails: '',
@@ -1357,11 +1400,24 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
   const [feedTimeBasis, setFeedTimeBasis] = useState<FeedTimeBasis>('posted');
+  const [layoutMode, setLayoutMode] = useState<PulseLayoutMode>(getInitialPulseLayoutMode);
+  const isTableLayout = layoutMode === 'table' && !isHotlistFeed && !isMobileViewport;
+  const [tableSortKey, setTableSortKey] = useState<LeadTableSortKey | null>('posted');
+  const [tableSortDirection, setTableSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [expandedSkillsLeadIds, setExpandedSkillsLeadIds] = useState<Set<string>>(new Set());
+  const [predictLead, setPredictLead] = useState<SocialLead | null>(null);
+  const [predictInput, setPredictInput] = useState('');
+  const [predictResult, setPredictResult] = useState<PredictResult | null>(null);
+  const [predictResultByLeadId, setPredictResultByLeadId] = useState<Record<string, PredictResult>>({});
+  const [predictedAtByLeadId, setPredictedAtByLeadId] = useState<Record<string, string>>({});
+  const [predictSubmitting, setPredictSubmitting] = useState(false);
+  const [predictProcessingStep, setPredictProcessingStep] = useState(0);
   const [visibleMatchesCount, setVisibleMatchesCount] = useState(MATCHES_PAGE_SIZE);
   const [desktopRecentVisibleCount, setDesktopRecentVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [desktopRevealedVisibleCount, setDesktopRevealedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [desktopAskedVisibleCount, setDesktopAskedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [desktopVerifiedVisibleCount, setDesktopVerifiedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
+  const [desktopPredictedVisibleCount, setDesktopPredictedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [revealedLeadIds, setRevealedLeadIds] = useState<Set<string>>(new Set());
   const [askedJobStateByLeadId, setAskedJobStateByLeadId] = useState<Record<string, AskedJobState>>({});
   const [globalAskedJobStateByLeadId, setGlobalAskedJobStateByLeadId] = useState<Record<string, GlobalAskedJobState>>({});
@@ -1838,6 +1894,18 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
   }, [askedLeadsById, dedupedScopedFeed, globalAskedJobStateByLeadId]);
 
+  const predictedVisibleFeed = useMemo(() => {
+    const scopedById = new Map(dedupedScopedFeed.map((lead) => [lead.id, lead]));
+    return Object.keys(predictResultByLeadId)
+      .map((leadId) => scopedById.get(leadId) ?? askedLeadsById[leadId])
+      .filter((lead): lead is SocialLead => Boolean(lead))
+      .sort((a, b) => {
+        const aTs = predictedAtByLeadId[a.id] ? new Date(predictedAtByLeadId[a.id]).getTime() : 0;
+        const bTs = predictedAtByLeadId[b.id] ? new Date(predictedAtByLeadId[b.id]).getTime() : 0;
+        return bTs - aTs;
+      });
+  }, [askedLeadsById, dedupedScopedFeed, predictResultByLeadId, predictedAtByLeadId]);
+
   const matchesTabCounts = useMemo(() => ({
     all: dedupedScopedFeed.length,
     breakdown: dedupedScopedFeed.filter((lead) => breakdownChargedLeadIds.has(lead.id)).length,
@@ -1845,7 +1913,24 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     asked: askedVisibleFeed.length,
     verified: verifiedVisibleFeed.length,
     queued: recentVisibleFeed.length,
-  }), [askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed.length, revealedVisibleFeed.length, verifiedVisibleFeed.length]);
+    predicted: predictedVisibleFeed.length,
+  }), [askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, predictedVisibleFeed.length, recentVisibleFeed.length, revealedVisibleFeed.length, verifiedVisibleFeed.length]);
+
+  const matchesTabDefinitions = useMemo((): Array<{ id: MatchesTabId; label: string }> => (
+    isHotlistFeed
+      ? [
+        { id: 'queued', label: 'Recent' },
+        { id: 'revealed', label: 'Revealed' },
+        { id: 'asked', label: 'Asked' },
+        { id: 'verified', label: 'Verified' },
+      ]
+      : [
+        { id: 'queued', label: 'Recent' },
+        { id: 'predicted', label: 'Predicted' },
+        { id: 'asked', label: 'Submitted' },
+        { id: 'verified', label: 'Replied' },
+      ]
+  ), [isHotlistFeed]);
 
   const profileViewCounts = useMemo(() => ({
     all: filteredJobsRankedLeaderboard.length,
@@ -1864,11 +1949,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       selectedFeed = verifiedVisibleFeed;
     } else if (selectedMatchesTab === 'queued') {
       selectedFeed = recentVisibleFeed;
+    } else if (selectedMatchesTab === 'predicted') {
+      selectedFeed = predictedVisibleFeed;
     } else {
       selectedFeed = dedupedScopedFeed;
     }
     return [...selectedFeed].sort(compareDetailsAndPostedDate);
-  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, recentVisibleFeed, revealedVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
+  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, predictedVisibleFeed, recentVisibleFeed, revealedVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
 
   const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
@@ -1889,10 +1976,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     () => [...verifiedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopVerifiedVisibleCount),
     [desktopVerifiedVisibleCount, verifiedVisibleFeed],
   );
+  const visibleDesktopPredictedFeed = useMemo(
+    () => [...predictedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopPredictedVisibleCount),
+    [desktopPredictedVisibleCount, predictedVisibleFeed],
+  );
   const canLoadMoreDesktopRecent = desktopRecentVisibleCount < recentVisibleFeed.length;
   const canLoadMoreDesktopRevealed = desktopRevealedVisibleCount < revealedVisibleFeed.length;
   const canLoadMoreDesktopAsked = desktopAskedVisibleCount < askedVisibleFeed.length;
   const canLoadMoreDesktopVerified = desktopVerifiedVisibleCount < verifiedVisibleFeed.length;
+  const canLoadMoreDesktopPredicted = desktopPredictedVisibleCount < predictedVisibleFeed.length;
 
   const maybeLoadMoreMatches = useCallback((container: HTMLDivElement, canLoadMore: boolean, onLoadMore: () => void) => {
     if (!canLoadMore) return;
@@ -1966,6 +2058,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     });
   }, [canLoadMoreDesktopVerified, maybeLoadMoreMatches, verifiedVisibleFeed.length]);
 
+  const handleDesktopPredictedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopPredicted, () => {
+      setDesktopPredictedVisibleCount((prev) => Math.min(predictedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
+    });
+  }, [canLoadMoreDesktopPredicted, maybeLoadMoreMatches, predictedVisibleFeed.length]);
+
   useEffect(() => {
     if (isMobileViewport) return;
     const container = desktopMatchesScrollRef.current;
@@ -1991,14 +2089,21 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     if (selectedMatchesTab === 'queued' && canLoadMoreDesktopRecent) {
       setDesktopRecentVisibleCount((prev) => Math.min(recentVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
+      return;
+    }
+
+    if (selectedMatchesTab === 'predicted' && canLoadMoreDesktopPredicted) {
+      setDesktopPredictedVisibleCount((prev) => Math.min(predictedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
     }
   }, [
     askedVisibleFeed.length,
     canLoadMoreDesktopAsked,
+    canLoadMoreDesktopPredicted,
     canLoadMoreDesktopRecent,
     canLoadMoreDesktopRevealed,
     canLoadMoreDesktopVerified,
     isMobileViewport,
+    predictedVisibleFeed.length,
     recentVisibleFeed.length,
     revealedVisibleFeed.length,
     selectedMatchesTab,
@@ -2006,6 +2111,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     visibleDesktopRevealedFeed.length,
     visibleDesktopAskedFeed.length,
     visibleDesktopVerifiedFeed.length,
+    visibleDesktopPredictedFeed.length,
     verifiedVisibleFeed.length,
   ]);
 
@@ -2181,6 +2287,184 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       .map((item) => formatBreakdownFieldName(item.key))));
   };
 
+  const normalizeBreakdownDisplayValue = (value: string | null | undefined) => {
+    const cleaned = (value ?? '').trim();
+    const normalized = cleaned.toLowerCase().replace(/\s+/g, ' ');
+    if (!cleaned) return '-';
+    if (
+      normalized === 'unknown'
+      || normalized === 'not specified'
+      || normalized === 'not available'
+      || normalized === 'n/a'
+      || normalized === 'na'
+      || normalized === 'none'
+      || normalized === 'null'
+      || normalized === '-'
+      || normalized === '--'
+      || normalized === 'tbd'
+    ) {
+      return '-';
+    }
+    return cleaned;
+  };
+
+  const normalizeHotlistWorkType = (value: string) => {
+    const normalized = value.trim().toLowerCase().replace(/[-_]+/g, ' ');
+    if (/\bhybrid\b/.test(normalized)) return 'Hybrid';
+    if (/\bremote\b/.test(normalized)) return 'Remote';
+    if (/\bon\s*site\b|\bonsite\b/.test(normalized)) return 'Onsite';
+    return '-';
+  };
+
+  const renderMissingAwareValue = (value: string) => {
+    if (value === '-') {
+      return <PersonaMissingTag />;
+    }
+    return value;
+  };
+
+  const renderClampedSkills = (leadId: string, skillsValue: string, itemCap: number, linkClassName: string) => {
+    const skillsList = skillsValue === '-' ? [] : skillsValue.split(',').map((skill) => skill.trim()).filter(Boolean);
+    if (skillsList.length === 0) return <PersonaMissingTag />;
+    const isExpanded = expandedSkillsLeadIds.has(leadId);
+    const visibleSkills = isExpanded ? skillsList : skillsList.slice(0, itemCap);
+    const hiddenCount = skillsList.length - visibleSkills.length;
+    return (
+      <>
+        <span className={isExpanded ? '' : 'line-clamp-2'}>{visibleSkills.join(', ')}</span>
+        {!isExpanded && hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedSkillsLeadIds((prev) => new Set(prev).add(leadId));
+            }}
+            className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}
+          >
+            +{hiddenCount} more
+          </button>
+        )}
+        {isExpanded && skillsList.length > itemCap && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedSkillsLeadIds((prev) => {
+                const next = new Set(prev);
+                next.delete(leadId);
+                return next;
+              });
+            }}
+            className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}
+          >
+            Show less
+          </button>
+        )}
+      </>
+    );
+  };
+
+  const getLeadBreakdownFieldValues = (lead: SocialLead) => {
+    const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
+      lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+      undefined,
+      {
+        employment_type: lead.employmentType || null,
+        work_type: null,
+      },
+    ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
+    const getBreakdownValue = (matchers: string[]) => {
+      const found = inlineBreakdownItems.find((item) => {
+        const key = item.key.toLowerCase();
+        return matchers.some((matcher) => key.includes(matcher));
+      });
+      return normalizeBreakdownDisplayValue(found?.detail?.job_value);
+    };
+    const expValue = getBreakdownValue(['experience', 'exp']);
+    const rawWorkTypeValue = getBreakdownValue(['work_type', 'work type']);
+    const workTypeValue = isHotlistFeed ? normalizeHotlistWorkType(rawWorkTypeValue) : rawWorkTypeValue;
+    const employmentTypeValue = getBreakdownValue(['employment_type', 'employment type']);
+    const rateValue = getBreakdownValue(['rate', 'hourly']);
+    const visaValue = getBreakdownValue(['visa']);
+    const locationValue = getBreakdownValue(['location']);
+    const skillsValue = getBreakdownValue(['skill']);
+    return { inlineBreakdownItems, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue };
+  };
+
+  const verdictClassForScore = (score: number) => (
+    score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-blue-600' : score >= 40 ? 'text-amber-600' : 'text-red-600'
+  );
+
+  const openPredictModal = (lead: SocialLead) => {
+    setPredictLead(lead);
+    setPredictInput('');
+    setPredictResult(predictResultByLeadId[lead.id] ?? null);
+  };
+
+  const closePredictModal = () => {
+    if (predictSubmitting) return;
+    setPredictLead(null);
+    setPredictInput('');
+    setPredictResult(null);
+  };
+
+  const handleRunAnotherPrediction = () => {
+    setPredictInput('');
+    setPredictResult(null);
+  };
+
+  const handleRetryPredict = (lead: SocialLead) => {
+    setPredictLead(lead);
+    setPredictInput('');
+    setPredictResult(null);
+  };
+
+  const handleCalculateMatch = async () => {
+    if (!predictLead || !predictInput.trim() || predictSubmitting) return;
+    setPredictSubmitting(true);
+    const startedAt = Date.now();
+    try {
+      const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(predictLead);
+      const { data, error } = await supabase.functions.invoke('predict-match', {
+        body: {
+          lead_id: predictLead.id,
+          platform: predictLead.platform,
+          feed_kind: isHotlistFeed ? 'hotlist' : 'job',
+          role_title: predictLead.title,
+          consultant_text: predictInput,
+          account_id: account?.id ?? '',
+          job_context: {
+            skills: skillsValue,
+            exp: expValue,
+            visa: visaValue,
+            workType: workTypeValue,
+            employmentType: employmentTypeValue,
+            location: locationValue,
+          },
+        },
+      });
+
+      if (error || data?.error) {
+        throw new Error(data?.error || await getFunctionErrorMessage(error, 'Could not calculate the match'));
+      }
+
+      const score = Math.max(0, Math.min(100, Math.round(Number(data.score) || 0)));
+      const categories: PredictCategory[] = Array.isArray(data.categories) ? data.categories : [];
+      const verdict = String(data.verdict || '').trim() || 'Submission likely to be accepted';
+
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < PREDICT_MIN_PROCESSING_MS) await sleep(PREDICT_MIN_PROCESSING_MS - elapsed);
+
+      const result = { score, categories, verdict, verdictClass: verdictClassForScore(score) };
+      setPredictResult(result);
+      setPredictResultByLeadId((prev) => ({ ...prev, [predictLead.id]: result }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not calculate the match', 'error');
+    } finally {
+      setPredictSubmitting(false);
+    }
+  };
+
   const renderLeadCards = (leads: SocialLead[], columns = 1) => leads.map((lead, idx) => {
     const safeColumns = Math.max(1, columns);
     const row = Math.floor(idx / safeColumns);
@@ -2205,14 +2489,16 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const isVerified = globalAskedJobState === 'verified';
     const missingJobDetails = getMissingJobDetails(lead);
     const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim()) && (isHotlistFeed || missingJobDetails.length > 0);
-    const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
-      lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
-      undefined,
-      {
-        employment_type: lead.employmentType || null,
-        work_type: null,
-      },
-    ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
+    const {
+      inlineBreakdownItems,
+      expValue,
+      workTypeValue,
+      employmentTypeValue,
+      rateValue,
+      visaValue,
+      locationValue,
+      skillsValue,
+    } = getLeadBreakdownFieldValues(lead);
     const isInlineBreakdownExpanded = expandedInlineBreakdownLeadIds.has(lead.id);
     const experienceInlineItem = inlineBreakdownItems.find((item) => {
       const key = item.key.toLowerCase();
@@ -2239,54 +2525,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
 
     const useFourColumnBreakdown = true;
-    const normalizeDisplayValue = (value: string | null | undefined) => {
-      const cleaned = (value ?? '').trim();
-      const normalized = cleaned.toLowerCase().replace(/\s+/g, ' ');
-      if (!cleaned) return '-';
-      if (
-        normalized === 'unknown'
-        || normalized === 'not specified'
-        || normalized === 'not available'
-        || normalized === 'n/a'
-        || normalized === 'na'
-        || normalized === 'none'
-        || normalized === 'null'
-        || normalized === '-'
-        || normalized === '--'
-        || normalized === 'tbd'
-      ) {
-        return '-';
-      }
-      return cleaned;
-    };
-    const getBreakdownValue = (matchers: string[]) => {
-      const found = inlineBreakdownItems.find((item) => {
-        const key = item.key.toLowerCase();
-        return matchers.some((matcher) => key.includes(matcher));
-      });
-      return normalizeDisplayValue(found?.detail?.job_value);
-    };
-    const normalizeHotlistWorkType = (value: string) => {
-      const normalized = value.trim().toLowerCase().replace(/[-_]+/g, ' ');
-      if (/\bhybrid\b/.test(normalized)) return 'Hybrid';
-      if (/\bremote\b/.test(normalized)) return 'Remote';
-      if (/\bon\s*site\b|\bonsite\b/.test(normalized)) return 'Onsite';
-      return '-';
-    };
-    const renderMissingAwareValue = (value: string) => {
-      if (value === '-') {
-        return <PersonaMissingTag />;
-      }
-      return value;
-    };
-    const expValue = getBreakdownValue(['experience', 'exp']);
-    const rawWorkTypeValue = getBreakdownValue(['work_type', 'work type']);
-    const workTypeValue = isHotlistFeed ? normalizeHotlistWorkType(rawWorkTypeValue) : rawWorkTypeValue;
-    const employmentTypeValue = getBreakdownValue(['employment_type', 'employment type']);
-    const rateValue = getBreakdownValue(['rate', 'hourly']);
-    const visaValue = getBreakdownValue(['visa']);
-    const locationValue = getBreakdownValue(['location']);
-    const skillsValue = getBreakdownValue(['skill']);
 
     const shouldForceExpandedBreakdown = isLeadRevealed && selectedMatchesTab !== 'revealed';
     const isExpandedBreakdownVisible = shouldForceExpandedBreakdown || isInlineBreakdownExpanded;
@@ -2311,7 +2549,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     return (
       <div key={lead.id} className={`relative mb-1.5 break-inside-avoid rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
         <div>
-          <div className="min-w-0 pr-12">
+          <div className={isHotlistFeed ? 'min-w-0 pr-12' : 'min-w-0'}>
             <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
               <span>{feedTimeBasis === 'created' ? 'Added' : 'Posted'} {formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
@@ -2342,22 +2580,120 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               </div>
             )}
           </div>
+          {isHotlistFeed && (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
             disabled={!canAskAI || processingAskAILeadId === lead.id}
-            title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? (isHotlistFeed ? 'Resume has already been requested' : 'Missing details have already been requested') : !lead.posterEmail ? 'Vendor email is unavailable' : (!isHotlistFeed && missingJobDetails.length === 0) ? 'No missing job details detected' : isHotlistFeed ? "Ask AI to request the consultant's resume" : 'Ask AI to request the missing details'}
+            title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Resume has already been requested' : !lead.posterEmail ? 'Vendor email is unavailable' : "Ask AI to request the consultant's resume"}
             className={`absolute right-3 top-2.5 inline-flex items-center justify-center bg-transparent font-semibold transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-45 ${isAskPending ? 'flex-row gap-1 text-[10px]' : isVerified ? 'w-11 flex-col gap-0.5' : 'w-5 flex-col gap-0.5'}`}
             style={{ color: isDark ? `color-mix(in srgb, ${accentColor} 82%, black)` : '#1D4ED8' }}
           >
-            {isVerified ? <BadgeCheck size={18} strokeWidth={2} /> : isHotlistFeed ? <FileText size={isAskPending ? 12 : 18} strokeWidth={2} /> : <Mail size={isAskPending ? 12 : 18} strokeWidth={2} />}
+            {isVerified ? <BadgeCheck size={18} strokeWidth={2} /> : <FileText size={isAskPending ? 12 : 18} strokeWidth={2} />}
             <span className={isAskPending ? 'leading-none' : 'w-full truncate text-center text-[9px] uppercase leading-none'}>
               {processingAskAILeadId === lead.id ? '...' : isVerified ? 'Verified' : isAskPending ? 'Asked' : 'Ask'}
             </span>
           </button>
+          )}
         </div>
         {inlineBreakdownItems.length > 0 && (
           useFourColumnBreakdown ? (
+            !isHotlistFeed ? (
+              <div className="mt-1.5 flex items-start gap-1.5">
+                <div className={`min-w-0 flex-1 rounded-md px-2.5 py-2 text-left ${metaSurfaceClass}`}>
+                  <div className="grid grid-cols-3 gap-x-3 gap-y-2">
+                    <div className="min-w-0">
+                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Exp</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(expValue)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Work Type</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(workTypeValue)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Emp Type</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(employmentTypeValue)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Rate</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(rateValue)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Visa</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(visaValue)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Location</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(locationValue)}</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExpandedInlineBreakdownLeadIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(lead.id)) next.delete(lead.id);
+                        else next.add(lead.id);
+                        return next;
+                      });
+                    }}
+                    className={`mt-2 w-full rounded-md px-2 py-1.5 text-left focus:outline-none ${metaSurfaceClass}`}
+                  >
+                    <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Skills</div>
+                    <div className={`text-[9px] leading-tight break-words ${skillsValueClass}`}>
+                      {renderClampedSkills(lead.id, skillsValue, 8, isDark ? 'text-blue-300' : 'text-blue-600')}
+                    </div>
+                  </button>
+                </div>
+                <div className="flex w-14 shrink-0 flex-col gap-1.5">
+                  {(() => {
+                    const cachedPredict = predictResultByLeadId[lead.id];
+                    return cachedPredict ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
+                        title={`Predicted ${cachedPredict.score}% — tap to retry`}
+                        className={`flex flex-col items-center justify-center gap-0.5 rounded-md border py-1.5 text-[8px] font-bold uppercase leading-none transition-colors ${isDark ? 'border-orange-400/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
+                      >
+                        <span className={`text-[11px] font-extrabold normal-case ${cachedPredict.verdictClass}`}>{cachedPredict.score}%</span>
+                        <span className="inline-flex items-center gap-0.5"><RotateCcw size={8} strokeWidth={2.5} />Retry</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
+                        className={`flex flex-col items-center justify-center gap-0.5 rounded-md border py-1.5 text-[8px] font-bold uppercase leading-none transition-colors ${isDark ? 'border-orange-400/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
+                      >
+                        <Target size={14} strokeWidth={2} />
+                        <span>Predict</span>
+                      </button>
+                    );
+                  })()}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
+                    disabled={!canAskAI || processingAskAILeadId === lead.id}
+                    title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Submission already sent' : !lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Submit a candidate for this role'}
+                    className={`flex flex-col items-center justify-center gap-0.5 rounded-md border py-1.5 text-[8px] font-bold uppercase leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                  >
+                    {isVerified ? <BadgeCheck size={14} strokeWidth={2} /> : <Mail size={14} strokeWidth={2} />}
+                    {processingAskAILeadId === lead.id ? (
+                      <span>...</span>
+                    ) : isVerified || isAskPending ? (
+                      <span className="flex flex-col items-center leading-none">
+                        <span>{isVerified ? 'Verified' : 'Submitted'}</span>
+                        {(() => {
+                          const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
+                          return stampIso ? <span className="mt-0.5 text-[7px] font-normal normal-case opacity-80">{formatAgoCompact(stampIso)}</span> : null;
+                        })()}
+                      </span>
+                    ) : (
+                      <span>Submit</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className={`mt-1.5 w-full rounded-md px-2.5 py-2 text-left ${metaSurfaceClass}`}>
               <div className="grid grid-cols-3 gap-x-3 gap-y-2">
                 <div className="min-w-0">
@@ -2398,11 +2734,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 className={`mt-2 w-full rounded-md px-2 py-1.5 text-left focus:outline-none ${metaSurfaceClass}`}
               >
                 <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Skills</div>
-                <div className={`text-[9px] leading-tight break-words transition-all duration-200 ${isExpandedBreakdownVisible ? skillsValueClass : `blur-sm select-none ${metaLabelClass} pr-5`}`}>
-                  {renderMissingAwareValue(normalizeDisplayValue(skillsValue))}
+                <div className={`text-[9px] leading-tight break-words ${skillsValueClass}`}>
+                  {renderClampedSkills(lead.id, skillsValue, 8, isDark ? 'text-blue-300' : 'text-blue-600')}
                 </div>
               </button>
             </div>
+            )
           ) : (
           (isLeadRevealed && selectedMatchesTab !== 'revealed') ? (
             <div className={`mt-1.5 w-full overflow-hidden rounded-md text-left ring-1 ring-inset ${revealedTableSurfaceClass}`}>
@@ -2411,7 +2748,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   {inlineBreakdownItems.map((item) => (
                     <tr key={item.key}>
                       <td className={`bg-transparent px-2 py-1 break-words whitespace-normal ${revealedTableLabelClass}`}>{formatBreakdownFieldName(item.key)}</td>
-                      <td className={`bg-transparent px-2 py-1 break-words whitespace-normal ${revealedTableValueClass}`}>{renderMissingAwareValue(normalizeDisplayValue(item.detail?.job_value))}</td>
+                      <td className={`bg-transparent px-2 py-1 break-words whitespace-normal ${revealedTableValueClass}`}>{renderMissingAwareValue(normalizeBreakdownDisplayValue(item.detail?.job_value))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2435,7 +2772,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   {(isExpandedBreakdownVisible ? inlineBreakdownItems : collapsedInlineBreakdownItems).map((item, idx) => (
                     <tr key={item.key}>
                       <td className={`px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>{formatBreakdownFieldName(item.key)}</td>
-                      <td className={`px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>{renderMissingAwareValue(normalizeDisplayValue(item.detail?.job_value))}</td>
+                      <td className={`px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>{renderMissingAwareValue(normalizeBreakdownDisplayValue(item.detail?.job_value))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2448,6 +2785,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             </button>
           )
         ))}
+        {isHotlistFeed && (
         <div className="mt-1.5 grid grid-cols-10 gap-1.5" style={accentVars}>
           <div className="col-span-3 inline-flex items-center px-1">
             <span className="text-[11px] font-semibold text-[#94A3B8]">
@@ -2498,9 +2836,217 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             </button>
           )}
         </div>
+        )}
       </div>
     );
   });
+
+  const parseLeadingNumber = (value: string): number => {
+    const match = value.match(/-?\d+(\.\d+)?/);
+    return match ? parseFloat(match[0]) : Number.NaN;
+  };
+
+  const handleTableSortClick = (key: LeadTableSortKey) => {
+    if (tableSortKey === key) {
+      setTableSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setTableSortKey(key);
+      setTableSortDirection('asc');
+    }
+  };
+
+  const renderLeadTable = (leads: SocialLead[]) => {
+    const tableRowSurfaceClass = isDark ? 'bg-[#17181C]' : 'bg-white';
+    const tableHeadSurfaceClass = isDark ? 'bg-[#1B1D21]' : 'bg-gray-50';
+    const tableBorderClass = isDark ? 'border-white/10' : 'border-gray-200';
+    const tableValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
+    const tableMutedClass = isDark ? 'text-[#94A3B8]' : 'text-gray-500';
+    const cellClass = `px-2 py-2 align-top whitespace-normal break-words ${tableValueClass}`;
+    const linkClass = isDark ? 'text-blue-300 hover:text-blue-200' : 'text-blue-600 hover:text-blue-700';
+    const askButtonClass = `inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border px-2 text-[10px] font-semibold leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`;
+    const predictButtonClass = `inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border px-2 text-[10px] font-semibold leading-none transition-colors ${isDark ? 'border-orange-400/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`;
+    const postedLabel = feedTimeBasis === 'created' ? 'Added' : 'Posted';
+
+    const rows = leads.map((lead) => {
+      const globalAskedJobState = globalAskedJobStateByLeadId[lead.id];
+      const isAskPending = globalAskedJobState === 'asked';
+      const isVerified = globalAskedJobState === 'verified';
+      const missingJobDetails = getMissingJobDetails(lead);
+      const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim()) && (isHotlistFeed || missingJobDetails.length > 0);
+      const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
+      const postedTimestamp = new Date(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt).getTime();
+
+      const sortValues: Record<LeadTableSortKey, string | number> = {
+        role: (lead.title || '').toLowerCase(),
+        exp: parseLeadingNumber(expValue),
+        workType: workTypeValue.toLowerCase(),
+        empType: employmentTypeValue.toLowerCase(),
+        rate: parseLeadingNumber(rateValue),
+        visa: visaValue.toLowerCase(),
+        location: locationValue.toLowerCase(),
+        posted: Number.isNaN(postedTimestamp) ? Number.NEGATIVE_INFINITY : postedTimestamp,
+      };
+
+      return {
+        lead, isAskPending, isVerified, missingJobDetails, canAskAI,
+        expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue,
+        sortValues,
+      };
+    });
+
+    if (tableSortKey) {
+      rows.sort((a, b) => {
+        const aValue = a.sortValues[tableSortKey];
+        const bValue = b.sortValues[tableSortKey];
+        let delta: number;
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          const aIsMissing = Number.isNaN(aValue);
+          const bIsMissing = Number.isNaN(bValue);
+          if (aIsMissing && bIsMissing) delta = 0;
+          else if (aIsMissing) delta = 1;
+          else if (bIsMissing) delta = -1;
+          else delta = aValue - bValue;
+        } else {
+          delta = String(aValue).localeCompare(String(bValue));
+        }
+        return tableSortDirection === 'asc' ? delta : -delta;
+      });
+    }
+
+    const renderSortableHeader = (label: string, key: LeadTableSortKey) => (
+      <th className="px-2 py-2 whitespace-normal">
+        <button
+          type="button"
+          onClick={() => handleTableSortClick(key)}
+          className={`inline-flex items-center gap-0.5 transition-colors ${tableSortKey === key ? (isDark ? 'text-blue-300' : 'text-blue-700') : 'hover:text-gray-700 dark:hover:text-slate-200'}`}
+        >
+          <span>{label}</span>
+          {tableSortKey === key && (tableSortDirection === 'asc' ? <ChevronUp size={10} /> : <ChevronDown size={10} />)}
+        </button>
+      </th>
+    );
+
+    return (
+      <table className="w-full table-fixed border-collapse border-spacing-0 text-left text-[11px]">
+        <colgroup>
+          <col style={{ width: '13%' }} />
+          <col style={{ width: '6%' }} />
+          <col style={{ width: '8%' }} />
+          <col style={{ width: '8%' }} />
+          <col style={{ width: '6%' }} />
+          <col style={{ width: '6%' }} />
+          <col style={{ width: '8%' }} />
+          <col style={{ width: '13%' }} />
+          <col style={{ width: '8%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '12%' }} />
+        </colgroup>
+        <thead className={`sticky top-0 z-[2] ${tableHeadSurfaceClass}`}>
+          <tr className={`border-b ${tableBorderClass} text-[10px] uppercase tracking-wide ${tableMutedClass}`}>
+            {renderSortableHeader('Role', 'role')}
+            {renderSortableHeader('Exp', 'exp')}
+            {renderSortableHeader('Work Type', 'workType')}
+            {renderSortableHeader('Emp Type', 'empType')}
+            {renderSortableHeader('Rate', 'rate')}
+            {renderSortableHeader('Visa', 'visa')}
+            {renderSortableHeader('Location', 'location')}
+            <th className="px-2 py-2 whitespace-normal">Skills</th>
+            {renderSortableHeader(postedLabel, 'posted')}
+            <th className="px-2 py-2 whitespace-normal">Predict</th>
+            <th className="px-2 py-2 whitespace-normal">Submit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ lead, isAskPending, isVerified, missingJobDetails, canAskAI, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue }) => {
+            return (
+              <tr key={lead.id} className={`border-b ${tableBorderClass} ${tableRowSurfaceClass} hover:bg-gray-50 dark:hover:bg-white/5`}>
+                <td className="px-2 py-2 align-top whitespace-normal break-words font-medium text-gray-900 dark:text-slate-100">
+                  {lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}
+                </td>
+                <td className={cellClass}>{renderMissingAwareValue(expValue)}</td>
+                <td className={cellClass}>{renderMissingAwareValue(workTypeValue)}</td>
+                <td className={cellClass}>{renderMissingAwareValue(employmentTypeValue)}</td>
+                <td className={cellClass}>{renderMissingAwareValue(rateValue)}</td>
+                <td className={cellClass}>{renderMissingAwareValue(visaValue)}</td>
+                <td className={cellClass}>{renderMissingAwareValue(locationValue)}</td>
+                <td className={cellClass}>
+                  {renderClampedSkills(lead.id, skillsValue, 4, linkClass)}
+                </td>
+                <td className={`px-2 py-2 align-top whitespace-normal break-words ${tableMutedClass}`}>
+                  {formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}
+                </td>
+                <td className="px-1.5 py-2 align-top">
+                  {(() => {
+                    const cachedPredict = predictResultByLeadId[lead.id];
+                    return cachedPredict ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
+                        title={`Predicted ${cachedPredict.score}% — click to retry`}
+                        className={predictButtonClass}
+                      >
+                        <span className={`font-extrabold ${cachedPredict.verdictClass}`}>{cachedPredict.score}%</span>
+                        <RotateCcw size={11} strokeWidth={2.5} />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
+                        className={predictButtonClass}
+                      >
+                        <Target size={12} strokeWidth={2} />
+                        <span>Predict</span>
+                      </button>
+                    );
+                  })()}
+                </td>
+                <td className="px-1.5 py-2 align-top">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
+                    disabled={!canAskAI || processingAskAILeadId === lead.id}
+                    title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Submission already sent' : !lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Submit a candidate for this role'}
+                    className={`${askButtonClass} truncate`}
+                  >
+                    {isVerified ? <BadgeCheck size={12} strokeWidth={2} className="shrink-0" /> : <Mail size={12} strokeWidth={2} className="shrink-0" />}
+                    <span className="truncate">
+                      {(() => {
+                        if (processingAskAILeadId === lead.id) return '...';
+                        if (isVerified) {
+                          const stampIso = askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt;
+                          return stampIso ? `Verified ${formatAgoCompact(stampIso)}` : 'Verified';
+                        }
+                        if (isAskPending) {
+                          const stampIso = askedJobStateByLeadId[lead.id]?.requestedAt;
+                          return stampIso ? `Submitted ${formatAgoCompact(stampIso)}` : 'Submitted';
+                        }
+                        return 'Submit';
+                      })()}
+                    </span>
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
+  };
+
+  useEffect(() => {
+    try { localStorage.setItem(PULSE_LAYOUT_MODE_STORAGE_KEY, layoutMode); } catch {}
+  }, [layoutMode]);
+
+  useEffect(() => {
+    if (!predictSubmitting) {
+      setPredictProcessingStep(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setPredictProcessingStep((step) => (step < PREDICT_PROCESSING_LABELS.length - 1 ? step + 1 : step));
+    }, 320);
+    return () => clearInterval(interval);
+  }, [predictSubmitting]);
 
   useEffect(() => {
     setProfilePage(1);
@@ -2797,6 +3343,81 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setAskedLeadsById(nextLeads);
   }, [account?.id, isHotlistFeed, user?.id]);
 
+  const loadPredictedJobState = useCallback(async () => {
+    if (isHotlistFeed || !account?.id || !user?.id) {
+      setPredictResultByLeadId({});
+      setPredictedAtByLeadId({});
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('pulse_predict_logs' as never)
+      .select('lead_id, score, verdict, categories, created_at')
+      .eq('account_id', account.id)
+      .eq('user_id', user.id)
+      .eq('feed_kind', 'job')
+      .order('created_at', { ascending: false });
+    if (error) return;
+
+    const nextResults: Record<string, PredictResult> = {};
+    const nextAt: Record<string, string> = {};
+    for (const row of (data ?? []) as Array<{ lead_id: string; score: number | null; verdict: string | null; categories: PredictCategory[] | null; created_at: string }>) {
+      if (!row.lead_id || nextResults[row.lead_id]) continue;
+      const score = Math.max(0, Math.min(100, Math.round(Number(row.score) || 0)));
+      nextResults[row.lead_id] = {
+        score,
+        categories: Array.isArray(row.categories) ? row.categories : [],
+        verdict: row.verdict?.trim() || 'Submission likely to be accepted',
+        verdictClass: verdictClassForScore(score),
+      };
+      nextAt[row.lead_id] = row.created_at;
+    }
+    setPredictResultByLeadId(nextResults);
+    setPredictedAtByLeadId(nextAt);
+
+    const leadIds = Object.keys(nextResults);
+    if (leadIds.length === 0) return;
+
+    const { data: jobRows, error: jobsError } = await supabase
+      .from('social_jobs')
+      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max')
+      .in('id', leadIds);
+    if (jobsError) return;
+
+    const nextLeads: Record<string, SocialLead> = {};
+    for (const row of (jobRows ?? []) as SocialJobRow[]) {
+      const eventTime = row.posted_at || row.created_at;
+      nextLeads[row.id] = {
+        id: row.id,
+        title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || 'Untitled Job',
+        roleTitle: row.job_title?.trim() || row.extracted_role_normalized?.trim() || '',
+        location: row.location?.trim() || 'Location not specified',
+        company: row.company_name?.trim() || '',
+        posterName: row.posted_by_name?.trim() || 'Vendor contact',
+        posterEmail: row.poster_email?.trim() || '',
+        posterPhone: row.poster_phone?.trim() || '',
+        postedAt: eventTime,
+        createdAt: row.created_at,
+        postedAgo: formatAgo(eventTime),
+        platform: row.platform,
+        matchScore: null,
+        profileId: null,
+        scoreBreakdown: null,
+        snippet: row.post_content?.trim().slice(0, 150) || '',
+        employmentType: row.employment_type?.trim() || '',
+        seniority: row.seniority_level?.trim() || '',
+        salaryRange: row.salary_range?.trim() || '',
+        skills: Array.isArray(row.extracted_skills) ? row.extracted_skills : [],
+        experienceYears: row.extracted_experience_years ?? null,
+        visaTypes: Array.isArray(row.extracted_visa_types) ? row.extracted_visa_types : [],
+        hourlyRate: (row.extracted_hourly_rate_min != null || row.extracted_hourly_rate_max != null)
+          ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
+          : '',
+      };
+    }
+    setAskedLeadsById((prev) => ({ ...prev, ...nextLeads }));
+  }, [account?.id, isHotlistFeed, user?.id]);
+
   const loadLeaderboard = useCallback(async () => {
     const { data, error } = await supabase.rpc('get_pulse_persona_leaderboard', { limit_count: LEADERBOARD_RPC_LIMIT });
 
@@ -2867,7 +3488,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
   const loadInitial = useCallback(async () => {
     setLoading(true);
-    await Promise.all([loadLeaderboard(), loadWatchingRoles(), loadLeadActionState(), loadAskedJobState()]);
+    await Promise.all([loadLeaderboard(), loadWatchingRoles(), loadLeadActionState(), loadAskedJobState(), loadPredictedJobState()]);
 
     try {
       const { data: latestRows } = await supabase.rpc(
@@ -2883,7 +3504,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
 
     setLoading(false);
-  }, [isHotlistFeed, loadAskedJobState, loadLeaderboard, loadWatchingRoles, loadLeadActionState]);
+  }, [isHotlistFeed, loadAskedJobState, loadLeaderboard, loadWatchingRoles, loadLeadActionState, loadPredictedJobState]);
 
   useEffect(() => {
     void loadInitial();
@@ -3716,7 +4337,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       && Math.abs(deltaX) > Math.abs(deltaY);
 
     if (isHorizontalSwipe) {
-      const nextTab: MatchesTabId = deltaX < 0 ? 'revealed' : 'queued';
+      const nextTab: MatchesTabId = deltaX < 0 ? (isHotlistFeed ? 'revealed' : 'predicted') : 'queued';
       if (nextTab !== selectedMatchesTab) {
         setSelectedMatchesTab(nextTab);
         setVisibleMatchesCount(MATCHES_PAGE_SIZE);
@@ -3744,7 +4365,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     mobileTouchStartYRef.current = null;
     mobilePullArmedRef.current = false;
     mobilePullStartYRef.current = null;
-  }, [isMobileViewport, isPullRefreshing, selectedMatchesTab, triggerMobilePullToRefresh]);
+  }, [isHotlistFeed, isMobileViewport, isPullRefreshing, selectedMatchesTab, triggerMobilePullToRefresh]);
 
   const copyText = useCallback(async (value: string, label: string) => {
     if (!value.trim()) {
@@ -3848,6 +4469,29 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     ].join('\n');
   }, [user?.email, user?.user_metadata?.full_name]);
 
+  const handleResumeFileSelected = useCallback(async (file: File) => {
+    if (!account?.id) return;
+    setResumeUploading(true);
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 150);
+      const path = `pulse-submit/${account.id}/${Date.now()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage.from('resumes').upload(path, file, {
+        contentType: file.type || 'application/octet-stream',
+      });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(path);
+      setAskAIPreview((current) => (current ? { ...current, resumeUrl: urlData.publicUrl, resumeFileName: file.name } : current));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not upload resume', 'error');
+    } finally {
+      setResumeUploading(false);
+    }
+  }, [account?.id, showToast]);
+
+  const handleRemoveResume = useCallback(() => {
+    setAskAIPreview((current) => (current ? { ...current, resumeUrl: undefined, resumeFileName: undefined } : current));
+  }, []);
+
   const handleAskAI = useCallback(async (lead: SocialLead) => {
     if (!account?.id || processingAskAILeadId) return;
 
@@ -3936,6 +4580,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           missing_details: askAIPreview.missingDetails,
           email_subject: emailSubject,
           email_content: emailContent,
+          ...(askAIPreview.resumeUrl ? { resume_url: askAIPreview.resumeUrl, resume_file_name: askAIPreview.resumeFileName } : {}),
         },
       });
 
@@ -3950,13 +4595,18 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       }));
       setGlobalAskedJobStateByLeadId((prev) => ({ ...prev, [askAIPreview.leadId]: 'asked' }));
       setAskAIPreview(null);
-      showToast(leadType === 'hotlist' ? 'Request email sent. You will be notified if the recruiter replies in the Inbox.' : 'Request email sent. You will be notified if the vendor replies in the Inbox.', 'success');
+      if (leadType === 'job' && data.conversation_id) {
+        showToast('Submitted. Opening the conversation...', 'success');
+        navigate(`/inbox/${data.conversation_id}`);
+      } else {
+        showToast(leadType === 'hotlist' ? 'Request email sent. You will be notified if the recruiter replies in the Inbox.' : 'Submitted. You will be notified if the vendor replies in the Inbox.', 'success');
+      }
     } catch (error) {
-      showToast(error instanceof Error ? error.message : (leadType === 'hotlist' ? 'Could not send the recruiter email request' : 'Could not send the vendor email request'), 'error');
+      showToast(error instanceof Error ? error.message : (leadType === 'hotlist' ? 'Could not send the recruiter email request' : 'Could not submit to the vendor'), 'error');
     } finally {
       setProcessingAskAILeadId(null);
     }
-  }, [account?.id, askAIPreview, processingAskAILeadId, refreshAccount, showToast]);
+  }, [account?.id, askAIPreview, navigate, processingAskAILeadId, refreshAccount, showToast]);
 
   useEffect(() => {
     if (!selectedLead) {
@@ -4586,12 +5236,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
                   {!isMobileViewport && (
                     <div className="flex shrink-0 items-center gap-1">
-                      {([
-                        { id: 'queued', label: 'Recent' },
-                        { id: 'revealed', label: 'Revealed' },
-                        { id: 'asked', label: 'Asked' },
-                        { id: 'verified', label: 'Verified' },
-                      ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
+                      {matchesTabDefinitions.map((tab) => {
                         const isSelected = selectedMatchesTab === tab.id;
                         const count = matchesTabCounts[tab.id];
                         return (
@@ -4605,6 +5250,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                               if (tab.id === 'asked') setDesktopAskedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'verified') setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+                              if (tab.id === 'predicted') setDesktopPredictedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                             }}
                             className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
                           >
@@ -4613,6 +5259,25 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           </button>
                         );
                       })}
+                    </div>
+                  )}
+
+                  {!isMobileViewport && !isHotlistFeed && (
+                    <div className="flex shrink-0 items-center rounded-md border border-gray-200 bg-gray-50 p-0.5" aria-label="Layout view">
+                      {([
+                        { id: 'card' as PulseLayoutMode, label: 'Cards', icon: LayoutGrid },
+                        { id: 'table' as PulseLayoutMode, label: 'Table', icon: Table2 },
+                      ]).map((view) => (
+                        <button
+                          key={view.id}
+                          type="button"
+                          onClick={() => setLayoutMode(view.id)}
+                          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold transition ${layoutMode === view.id ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                          <view.icon size={11} />
+                          {view.label}
+                        </button>
+                      ))}
                     </div>
                   )}
 
@@ -4962,12 +5627,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   }}
                 >
                   <div className="grid w-full grid-cols-4 gap-1">
-                    {([
-                      { id: 'queued', label: 'Recent' },
-                      { id: 'revealed', label: 'Revealed' },
-                      { id: 'asked', label: 'Asked' },
-                      { id: 'verified', label: 'Verified' },
-                    ] as Array<{ id: MatchesTabId; label: string }>).map((tab) => {
+                    {matchesTabDefinitions.map((tab) => {
                       const isSelected = selectedMatchesTab === tab.id;
                       const count = matchesTabCounts[tab.id];
                       return (
@@ -5037,20 +5697,34 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       <div className="min-h-0 h-full rounded-md bg-transparent p-1">
                         <div
                           ref={desktopMatchesScrollRef}
-                          className="min-h-0 h-full overflow-y-auto p-1.5 slim-scrollbar"
-                          onScroll={selectedMatchesTab === 'revealed' ? handleDesktopRevealedScroll : selectedMatchesTab === 'asked' ? handleDesktopAskedScroll : selectedMatchesTab === 'verified' ? handleDesktopVerifiedScroll : handleDesktopRecentScroll}
+                          className={`min-h-0 h-full overflow-y-auto slim-scrollbar ${isTableLayout ? 'px-1.5 pb-1.5' : 'p-1.5'}`}
+                          onScroll={selectedMatchesTab === 'revealed' ? handleDesktopRevealedScroll : selectedMatchesTab === 'asked' ? handleDesktopAskedScroll : selectedMatchesTab === 'verified' ? handleDesktopVerifiedScroll : selectedMatchesTab === 'predicted' ? handleDesktopPredictedScroll : handleDesktopRecentScroll}
                         >
                           {selectedMatchesTab === 'revealed' ? (
                             revealedVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No revealed jobs yet.</div>
+                            ) : isTableLayout ? (
+                              renderLeadTable(visibleDesktopRevealedFeed)
                             ) : (
                               <div className="columns-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopRevealedFeed, 3)}
                               </div>
                             )
+                          ) : selectedMatchesTab === 'predicted' ? (
+                            predictedVisibleFeed.length === 0 ? (
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No predictions run yet.</div>
+                            ) : isTableLayout ? (
+                              renderLeadTable(visibleDesktopPredictedFeed)
+                            ) : (
+                              <div className="columns-3 gap-1.5">
+                                {renderLeadCards(visibleDesktopPredictedFeed, 3)}
+                              </div>
+                            )
                           ) : selectedMatchesTab === 'asked' ? (
                             askedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No asked jobs yet.</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No asked jobs yet.' : 'No submissions yet.'}</div>
+                            ) : isTableLayout ? (
+                              renderLeadTable(visibleDesktopAskedFeed)
                             ) : (
                               <div className="columns-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopAskedFeed, 3)}
@@ -5058,7 +5732,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             )
                           ) : selectedMatchesTab === 'verified' ? (
                             verifiedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No verified jobs yet.</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No verified jobs yet.' : 'No replies yet.'}</div>
+                            ) : isTableLayout ? (
+                              renderLeadTable(visibleDesktopVerifiedFeed)
                             ) : (
                               <div className="columns-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopVerifiedFeed, 3)}
@@ -5067,6 +5743,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           ) : (
                             recentVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.'}</div>
+                            ) : isTableLayout ? (
+                              renderLeadTable(visibleDesktopRecentFeed)
                             ) : (
                               <div className="columns-3 gap-1.5">
                                 {renderLeadCards(visibleDesktopRecentFeed, 3)}
@@ -5101,7 +5779,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 {askAIPreview.leadType === 'hotlist' ? <FileText size={18} /> : <Mail size={18} />}
               </span>
               <div className="min-w-0 flex-1">
-                <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating resume request' : 'Generating vendor email') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review vendor email')}</h2>
+                <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating resume request' : 'Generating submission') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review submission')}</h2>
                 {askAIPreview.isGenerating && <p className="mt-1 text-xs leading-relaxed text-gray-600">Preparing an email to {maskName(askAIPreview.vendorName)}.</p>}
               </div>
               <button
@@ -5149,18 +5827,161 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{askAIPreview.leadType === 'hotlist' ? 'Requesting' : 'Requested details'}</p>
               <p className="mt-1 text-xs text-gray-700">{askAIPreview.leadType === 'hotlist' ? "Consultant's resume" : askAIPreview.missingDetails.join(', ')}</p>
             </div>
+            {askAIPreview.leadType === 'job' && (
+              <div className="mt-3">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Resume</span>
+                {askAIPreview.resumeFileName ? (
+                  <div className="mt-1 flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                    <Paperclip size={13} className="shrink-0 text-gray-500" />
+                    <span className="min-w-0 flex-1 truncate text-xs text-gray-700">{askAIPreview.resumeFileName}</span>
+                    <button
+                      type="button"
+                      onClick={handleRemoveResume}
+                      disabled={Boolean(processingAskAILeadId)}
+                      className="shrink-0 text-gray-400 hover:text-gray-600"
+                      aria-label="Remove resume"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className={`mt-1 flex items-center justify-center gap-1.5 rounded-md border border-dashed border-gray-300 px-3 py-2.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 ${resumeUploading ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                    {resumeUploading ? <LogoSpinner size={14} /> : <Paperclip size={13} />}
+                    <span>{resumeUploading ? 'Uploading...' : 'Attach resume (optional)'}</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      disabled={resumeUploading || Boolean(processingAskAILeadId)}
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = '';
+                        if (file) void handleResumeFileSelected(file);
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
             <div className="mt-4 flex justify-end">
               <button
                 type="button"
                 onClick={() => void handleSubmitAskAI()}
-                disabled={Boolean(processingAskAILeadId) || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim() || askAIPreview.emailContent.trim().split(/\s+/).filter(Boolean).length >= 40}
+                disabled={Boolean(processingAskAILeadId) || resumeUploading || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim() || askAIPreview.emailContent.trim().split(/\s+/).filter(Boolean).length >= 40}
                 className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-20"
               >
                 {askAIPreview.leadType === 'hotlist' ? <FileText size={12} /> : <Mail size={12} />}
-                {processingAskAILeadId ? 'Sending...' : 'Send'}
+                {askAIPreview.leadType === 'job'
+                  ? (processingAskAILeadId ? 'Submitting...' : 'Submit')
+                  : (processingAskAILeadId ? 'Sending...' : 'Send')}
               </button>
             </div>
             </>}
+          </div>
+        </div>
+      )}
+
+      {predictLead && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={closePredictModal}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Predict submission chance"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl"
+          >
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={closePredictModal}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+                aria-label="Close predict modal"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            {!predictSubmitting && !predictResult && (
+              <>
+                <div className="mt-1">
+                  <textarea
+                    value={predictInput}
+                    onChange={(event) => setPredictInput(event.target.value)}
+                    rows={6}
+                    placeholder="Paste consultant resume, skills, or a quick summary here..."
+                    className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleCalculateMatch()}
+                  disabled={!predictInput.trim()}
+                  className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 px-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-blue-500/30 transition-all hover:shadow-xl hover:shadow-orange-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                >
+                  <Target size={16} strokeWidth={2.5} />
+                  Predict Submission Acceptance
+                </button>
+              </>
+            )}
+
+            {predictSubmitting && (
+              <div className="mt-1 py-4">
+                <p className="text-center text-xs font-semibold text-gray-500">Analyzing submission fit...</p>
+                <div className="mt-4 space-y-2.5">
+                  {PREDICT_PROCESSING_LABELS.map((label, index) => {
+                    const isDone = index < predictProcessingStep || (index === predictProcessingStep && index === PREDICT_PROCESSING_LABELS.length - 1);
+                    const isActive = index === predictProcessingStep && !isDone;
+                    return (
+                      <div key={label} className="flex items-center gap-2.5">
+                        {isDone ? (
+                          <Check size={14} className="shrink-0 text-emerald-500" />
+                        ) : isActive ? (
+                          <LogoSpinner size={14} />
+                        ) : (
+                          <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                            <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
+                          </span>
+                        )}
+                        <span className={`text-xs font-medium ${isDone ? 'text-gray-900' : isActive ? 'text-gray-700' : 'text-gray-400'}`}>
+                          Checking {label.toLowerCase()} match
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {!predictSubmitting && predictResult && (
+              <div className="mt-1">
+                <div className="flex flex-col items-center justify-center gap-1 rounded-md bg-gray-50 px-4 py-4">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Submission acceptance score</span>
+                  <div className={`text-4xl font-bold ${predictResult.verdictClass}`}>{predictResult.score}%</div>
+                  <div className={`text-xs font-semibold leading-snug ${predictResult.verdictClass}`}>{predictResult.verdict}</div>
+                </div>
+                <div className="mt-3 space-y-1.5">
+                  {predictResult.categories.map((category) => (
+                    <div key={category.label} className="flex items-center gap-2">
+                      <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{category.label}</span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                        <div
+                          className={`h-full rounded-full ${category.earned === category.max ? 'bg-emerald-500' : category.earned === 0 ? 'bg-red-400' : 'bg-amber-400'}`}
+                          style={{ width: `${(category.earned / category.max) * 100}%` }}
+                        />
+                      </div>
+                      <span className="w-24 shrink-0 truncate text-right text-[10px] text-gray-500" title={category.note}>{category.note}</span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRunAnotherPrediction}
+                  className="mt-3 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-gray-200 px-4 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Try another candidate
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

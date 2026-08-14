@@ -34,10 +34,16 @@ type SocialJobRow = {
   job_description: string;
   salary_range: string;
   source_keyword_id?: string;
+  image_urls: string[];
 };
 
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 1;
+const BATCH_DELAY_MS = 250;
 const MAX_POSTS_PER_REQUEST = 200;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -121,6 +127,14 @@ function isLikelyStaffingPost(value: string): boolean {
   return false;
 }
 
+function extractImageUrls(post: RawPost): string[] {
+  const images = post.postImages ?? post.images ?? post.media;
+  if (!Array.isArray(images)) return [];
+  return images
+    .map((image) => (image && typeof image === "object" ? asString((image as Record<string, unknown>).url) : asString(image)))
+    .filter(Boolean);
+}
+
 function getAuthor(post: RawPost): { name: string; profileUrl: string } {
   const author = post.author && typeof post.author === "object"
     ? post.author as Record<string, unknown>
@@ -180,6 +194,7 @@ async function normalizePost(post: RawPost, globalGroupId: string, keywordId: st
     seniority_level: asString(post.seniority_level),
     job_description: content,
     salary_range: asString(post.salary_range),
+    image_urls: extractImageUrls(post),
     ...(keywordId ? { source_keyword_id: keywordId } : {}),
   };
 }
@@ -252,6 +267,7 @@ export default {
       let enqueued = 0;
 
       for (let index = 0; index < rows.length; index += BATCH_SIZE) {
+        if (index > 0) await sleep(BATCH_DELAY_MS);
         enqueued += await sendBatch(env, rows.slice(index, index + BATCH_SIZE));
       }
 

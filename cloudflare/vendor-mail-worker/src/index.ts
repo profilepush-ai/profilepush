@@ -26,7 +26,7 @@ function fetchReplyProcessor(env: Env, init: RequestInit): Promise<Response> {
   return fetch(env.REPLY_PROCESSOR_URL, init);
 }
 
-type OutboundJob = { kind: "outbound"; messageId: string };
+type OutboundJob = { kind: "outbound"; messageId: string; resumeUrl?: string; resumeFileName?: string };
 
 type ExtractionJob = {
   kind: "extraction";
@@ -206,10 +206,16 @@ async function findConversationByRecipient(env: Env, recipient: string): Promise
 
 async function handleOutboundRequest(request: Request, env: Env): Promise<Response> {
   if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
-  const body = await request.json<{ message_id?: unknown }>();
+  const body = await request.json<{ message_id?: unknown; resume_url?: unknown; resume_file_name?: unknown }>();
   const messageId = typeof body.message_id === "string" ? body.message_id.trim() : "";
   if (!/^[0-9a-f-]{36}$/i.test(messageId)) return jsonResponse({ error: "A valid message_id is required" }, 400);
-  await env.OUTBOUND_QUEUE.send({ kind: "outbound", messageId });
+  const resumeUrl = typeof body.resume_url === "string" ? body.resume_url.trim().slice(0, 2000) : "";
+  const resumeFileName = typeof body.resume_file_name === "string" ? body.resume_file_name.trim().slice(0, 255) : "";
+  await env.OUTBOUND_QUEUE.send({
+    kind: "outbound",
+    messageId,
+    ...(resumeUrl ? { resumeUrl, resumeFileName: resumeFileName || "resume.pdf" } : {}),
+  });
   return jsonResponse({ queued: true, message_id: messageId }, 202);
 }
 
@@ -413,6 +419,26 @@ async function processOutbound(job: OutboundJob, env: Env): Promise<void> {
   form.set("v:conversation-id", conversation.id);
   form.set("v:message-id", message.id);
 
+  let attachment: { objectKey: string; filename: string; contentType: string; size: number } | null = null;
+  if (job.resumeUrl) {
+    try {
+      const resumeResponse = await fetch(job.resumeUrl);
+      if (resumeResponse.ok) {
+        const contentType = resumeResponse.headers.get("content-type") ?? "application/octet-stream";
+        const bytes = await resumeResponse.arrayBuffer();
+        if (bytes.byteLength > 0 && bytes.byteLength <= MAX_ATTACHMENT_BYTES) {
+          const filename = job.resumeFileName || "resume.pdf";
+          const objectKey = `outbound/${conversation.id}/${message.id}/${crypto.randomUUID()}-${filename}`;
+          await env.VENDOR_MAIL_BUCKET.put(objectKey, bytes, { httpMetadata: { contentType } });
+          form.append("attachment", new File([bytes], filename, { type: contentType }));
+          attachment = { objectKey, filename, contentType, size: bytes.byteLength };
+        }
+      }
+    } catch (error) {
+      console.error(`Resume attachment fetch failed for message ${message.id}: ${(error as Error).message}`);
+    }
+  }
+
   const response = await fetch(`${env.MAILGUN_BASE_URL}/v3/${env.MAILGUN_DOMAIN}/messages`, {
     method: "POST",
     headers: { Authorization: `Basic ${btoa(`api:${env.MAILGUN_API_KEY}`)}` },
@@ -435,6 +461,21 @@ async function processOutbound(job: OutboundJob, env: Env): Promise<void> {
     sent_at: new Date().toISOString(),
     error_message: null,
   });
+  if (attachment) {
+    const attachmentResponse = await supabaseRequest(env, "vendor_message_attachments", {
+      method: "POST",
+      headers: { ...serviceHeaders(env, true), Prefer: "return=minimal" },
+      body: JSON.stringify([{
+        message_id: message.id,
+        r2_object_key: attachment.objectKey,
+        original_filename: attachment.filename,
+        content_type: attachment.contentType,
+        size_bytes: attachment.size,
+        scan_status: "clean",
+      }]),
+    });
+    if (!attachmentResponse.ok) console.error(`Outbound attachment insert failed: ${attachmentResponse.status}`);
+  }
   const conversationResponse = await supabaseRequest(env, `vendor_conversations?id=eq.${encodeURIComponent(conversation.id)}`, {
     method: "PATCH",
     headers: { ...serviceHeaders(env, true), Prefer: "return=minimal" },

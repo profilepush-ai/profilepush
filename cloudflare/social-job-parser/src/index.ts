@@ -1,7 +1,10 @@
 export interface Env {
   AI: Ai;
+  HOTLIST_IMAGES: R2Bucket;
   WORKER_AUTH_TOKEN?: string;
   PARSER_MODEL?: string;
+  PARSER_VISION_MODEL?: string;
+  HOTLIST_IMAGES_PUBLIC_BASE_URL?: string;
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
 }
@@ -11,6 +14,7 @@ type JobInput = {
   title: string;
   description: string;
   location: string;
+  image_urls?: string[];
 };
 
 type ParserRequest = {
@@ -20,11 +24,59 @@ type ParserRequest = {
 
 type ParserRoute = "classify" | "extract-job" | "extract-hotlist";
 
+type PredictMatchJobContext = {
+  skills?: string;
+  exp?: string;
+  visa?: string;
+  workType?: string;
+  location?: string;
+  employmentType?: string;
+};
+
+type PredictMatchRequest = {
+  roleTitle?: string;
+  jobContext?: PredictMatchJobContext;
+  consultantText?: string;
+};
+
+const PREDICT_MATCH_SYSTEM_PROMPT = "You are a staffing-industry submission-acceptance predictor. Estimate the likelihood a vendor will ACCEPT this candidate submission for this job, based purely on how well the candidate's background matches the job's stated requirements. Be honest and conservative, not encouraging. Respond with strict JSON only.";
+
+function buildPredictMatchPrompt(roleTitle: string, jobContext: PredictMatchJobContext, consultantText: string) {
+  return `Estimate the SUBMISSION ACCEPTANCE SCORE (0-100): the likelihood a vendor accepts this candidate submission, based purely on how well the CONSULTANT TEXT matches the JOB REQUIREMENTS below. Do not consider anything outside these fields.
+Weigh categories as: Skills max 35, Experience max 20, Visa max 15, Work Type max 10, Location max 10, Employment Type max 10 (total 100).
+For each category return earned (integer, 0 to its max) and a short note (max 12 words) explaining the match or gap. If a job requirement field is "Not specified", award full points for that category and note "Not specified".
+Return ONLY valid JSON in this exact shape, no markdown, no explanation:
+{"score": number, "verdict": string, "categories": [{"label": string, "earned": number, "max": number, "note": string}]}
+The verdict must be one short punchy phrase (max 8 words) about submission acceptance chances, reflecting the score band: 80-100 "highly likely to be accepted", 60-79 "good chance of acceptance", 40-59 "moderate chance, gaps to address", 0-39 "unlikely to be accepted".
+
+JOB: ${roleTitle || "Untitled role"}
+Skills required: ${jobContext.skills || "Not specified"}
+Experience required: ${jobContext.exp || "Not specified"}
+Visa requirement: ${jobContext.visa || "Not specified"}
+Work type: ${jobContext.workType || "Not specified"}
+Location: ${jobContext.location || "Not specified"}
+Employment type: ${jobContext.employmentType || "Not specified"}
+
+CONSULTANT TEXT:
+${consultantText.slice(0, 4000)}
+
+Return ONLY the JSON object:`;
+}
+
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return message.includes("429") || message.includes("rate limit") || message.includes("too many requests");
+}
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -150,6 +202,57 @@ ${blocks}
 Return ONLY valid JSON array:`;
 }
 
+// Bench sales hotlists are frequently posted as a table screenshot rather than
+// (or in addition to) plain text, so the real candidate list only exists in the
+// image. Cap images per post to bound Workers AI cost/latency on a single request.
+const MAX_HOTLIST_IMAGES_PER_POST = 3;
+
+const HOTLIST_IMAGE_EXTRACT_PROMPT = `This image is a screenshot of a bench sales hotlist table listing available consultants. Read every row and extract each distinct consultant as one JSON object.
+Each item must include: candidate_index (zero-based, in row order), candidate_name, role_title, core_skills (array max 12), years_experience (number or null), visa_type, employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null), availability, and candidate_summary.
+Use null for unknown scalar values and [] for unknown arrays. Only include rows that clearly represent a distinct consultant/candidate. Do not invent rows that are not visible in the image. If the image is not a consultant/candidate table, return [].
+Do not explain your reasoning, do not describe the image, do not use markdown code fences. Your entire response must be a single JSON array and nothing else, starting with [ and ending with ].`;
+
+async function extractCandidatesFromImages(
+  env: Env,
+  imageUrls: string[],
+): Promise<{ candidates: unknown[]; sourceImageUrls: string[] }> {
+  const model = (env.PARSER_VISION_MODEL ?? "@cf/meta/llama-3.2-11b-vision-instruct").trim();
+  const publicBaseUrl = (env.HOTLIST_IMAGES_PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+  const candidates: unknown[] = [];
+  const sourceImageUrls: string[] = [];
+
+  for (const imageUrl of imageUrls.slice(0, MAX_HOTLIST_IMAGES_PER_POST)) {
+    try {
+      const imageResponse = await fetch(imageUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; ProfilePushBot/1.0; +https://profilepush.ai)" },
+      });
+      if (!imageResponse.ok) continue;
+      const bytes = new Uint8Array(await imageResponse.arrayBuffer());
+
+      const key = `hotlist/${crypto.randomUUID()}.jpg`;
+      await env.HOTLIST_IMAGES.put(key, bytes, {
+        httpMetadata: { contentType: imageResponse.headers.get("content-type") ?? "image/jpeg" },
+      });
+      if (publicBaseUrl) sourceImageUrls.push(`${publicBaseUrl}/${key}`);
+
+      const visionResult = await env.AI.run(model, {
+        image: [...bytes],
+        prompt: HOTLIST_IMAGE_EXTRACT_PROMPT,
+        max_tokens: 4096,
+        temperature: 0,
+      });
+      const rawText = (visionResult as Record<string, unknown>)?.response ?? visionResult;
+      const parsed = parseModelText(rawText);
+      const rows = Array.isArray(parsed) ? parsed : [];
+      candidates.push(...rows);
+    } catch (error) {
+      console.error(`Hotlist image extraction failed for ${imageUrl}: ${(error as Error).message}`);
+    }
+  }
+
+  return { candidates, sourceImageUrls };
+}
+
 // The model occasionally gets cut off mid-output on large batches (hits max_tokens
 // before finishing the JSON array). Recover whatever complete elements precede the
 // truncation point instead of discarding the entire batch on a parse error.
@@ -257,6 +360,70 @@ export default {
       }
     }
 
+    if (new URL(req.url).pathname.replace(/\/+$/, "") === "/predict-match") {
+      try {
+        const body = (await req.json()) as PredictMatchRequest;
+        const consultantText = (body.consultantText ?? "").trim();
+        if (!consultantText) {
+          return jsonResponse({ error: "consultantText is required" }, 400);
+        }
+        const roleTitle = (body.roleTitle ?? "").trim();
+        const jobContext = body.jobContext ?? {};
+        const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
+        const prompt = buildPredictMatchPrompt(roleTitle, jobContext, consultantText);
+
+        let aiResult: unknown;
+        let aiError: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            aiResult = await env.AI.run(model, {
+              messages: [
+                { role: "system", content: PREDICT_MATCH_SYSTEM_PROMPT },
+                { role: "user", content: prompt },
+              ],
+              temperature: 0.2,
+              max_tokens: 800,
+            });
+            aiError = undefined;
+            break;
+          } catch (error) {
+            aiError = error;
+            if (attempt < 2 && isRateLimitError(error)) {
+              await sleep(1000 * (attempt + 1));
+              continue;
+            }
+            break;
+          }
+        }
+        if (aiError) throw aiError;
+
+        const rawText = (aiResult as Record<string, unknown>)?.response ?? aiResult;
+        const parsed = parseModelText(rawText) as Record<string, unknown>;
+        const categoriesRaw = Array.isArray(parsed?.categories) ? parsed.categories : [];
+        const categories = categoriesRaw.map((item) => {
+          const record = item as Record<string, unknown>;
+          const max = Number(record.max) || 0;
+          const earnedRaw = Number(record.earned);
+          const earned = Number.isFinite(earnedRaw) ? Math.max(0, Math.min(max, earnedRaw)) : 0;
+          return {
+            label: String(record.label ?? "").trim() || "Category",
+            earned,
+            max,
+            note: String(record.note ?? "").trim().slice(0, 160),
+          };
+        });
+        const scoreFromCategories = categories.reduce((sum, category) => sum + category.earned, 0);
+        const parsedScore = Number(parsed?.score);
+        const score = Number.isFinite(parsedScore) ? Math.max(0, Math.min(100, Math.round(parsedScore))) : scoreFromCategories;
+        const verdict = String(parsed?.verdict ?? "").trim()
+          || (score >= 80 ? "Strong match" : score >= 60 ? "Good match" : score >= 40 ? "Moderate match" : "Weak match");
+
+        return jsonResponse({ score, verdict, categories });
+      } catch (error) {
+        return jsonResponse({ error: (error as Error).message }, 500);
+      }
+    }
+
     try {
       const body = (await req.json()) as ParserRequest;
       const jobs = Array.isArray(body.jobs) ? body.jobs : [];
@@ -301,7 +468,7 @@ export default {
 
       let aiResult: unknown;
       let aiError: unknown;
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; attempt < 3; attempt++) {
         try {
           aiResult = await env.AI.run(model, {
             messages: [
@@ -321,6 +488,11 @@ export default {
           break;
         } catch (error) {
           aiError = error;
+          if (attempt < 2 && isRateLimitError(error)) {
+            await sleep(1000 * (attempt + 1));
+            continue;
+          }
+          break;
         }
       }
       if (aiError) throw aiError;
@@ -331,6 +503,32 @@ export default {
 
       if (results.length === 0) {
         return jsonResponse({ error: "Model returned no usable extraction rows", raw: rawText }, 422);
+      }
+
+      // Bench hotlists are often posted as a table screenshot with little or no
+      // candidate detail in the text body, so the image is the authoritative
+      // source when present — it replaces (rather than merges with) text-derived
+      // candidates to avoid duplicating/hallucinating entries across the two.
+      if (route === "extract-hotlist") {
+        for (const result of results) {
+          const job = jobs.find((candidate) => candidate.id === result.job_id);
+          const imageUrls = job?.image_urls ?? [];
+          if (imageUrls.length === 0 || result.is_hotlist === false) continue;
+
+          const { candidates: imageCandidates, sourceImageUrls } = await extractCandidatesFromImages(env, imageUrls);
+          if (imageCandidates.length === 0) continue;
+
+          const reindexed = imageCandidates.map((candidate, index) => ({
+            ...(candidate as Record<string, unknown>),
+            candidate_index: index,
+          }));
+          result.candidates = reindexed;
+          result.consultant_count = reindexed.length;
+          result.post_scope = reindexed.length === 1 ? "single" : "multiple";
+          result.source_image_urls = sourceImageUrls;
+          if (result.is_hotlist == null) result.is_hotlist = true;
+          if (result.confidence == null || Number(result.confidence) === 0) result.confidence = 0.9;
+        }
       }
 
       return jsonResponse({ results });
