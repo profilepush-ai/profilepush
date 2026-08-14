@@ -33,7 +33,7 @@ import {
   Server,
   Sparkles,
   Table2,
-  Target,
+  Gauge,
   GraduationCap,
   Flame,
   Workflow,
@@ -1405,6 +1405,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [tableSortKey, setTableSortKey] = useState<LeadTableSortKey | null>('posted');
   const [tableSortDirection, setTableSortDirection] = useState<'asc' | 'desc'>('desc');
   const [expandedSkillsLeadIds, setExpandedSkillsLeadIds] = useState<Set<string>>(new Set());
+  const [expandedFieldKeys, setExpandedFieldKeys] = useState<Set<string>>(new Set());
   const [predictLead, setPredictLead] = useState<SocialLead | null>(null);
   const [predictInput, setPredictInput] = useState('');
   const [predictResult, setPredictResult] = useState<PredictResult | null>(null);
@@ -1412,6 +1413,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [predictedAtByLeadId, setPredictedAtByLeadId] = useState<Record<string, string>>({});
   const [predictSubmitting, setPredictSubmitting] = useState(false);
   const [predictProcessingStep, setPredictProcessingStep] = useState(0);
+  const [bulkPredictLeadIds, setBulkPredictLeadIds] = useState<Set<string>>(new Set());
+  const [isBulkPredictModalOpen, setIsBulkPredictModalOpen] = useState(false);
+  const [bulkPredictInput, setBulkPredictInput] = useState('');
+  const [bulkPredictSubmitting, setBulkPredictSubmitting] = useState(false);
+  const [bulkPredictCompletedCount, setBulkPredictCompletedCount] = useState(0);
   const [visibleMatchesCount, setVisibleMatchesCount] = useState(MATCHES_PAGE_SIZE);
   const [desktopRecentVisibleCount, setDesktopRecentVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [desktopRevealedVisibleCount, setDesktopRevealedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
@@ -1460,8 +1466,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setToast({ message, type });
   }, []);
 
-  const REVEAL_CONTACT_COST = 0.10;
+  const REVEAL_CONTACT_COST = 0.05;
   const BREAKDOWN_COST = 0.1;
+  const PREDICT_COST = 0.01;
+  const MAX_BULK_PREDICT = 5;
   const FREE_PLAN_DAILY_REVEAL_LIMIT = 10;
   const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
 
@@ -1905,6 +1913,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         return bTs - aTs;
       });
   }, [askedLeadsById, dedupedScopedFeed, predictResultByLeadId, predictedAtByLeadId]);
+
+  const allLoadedLeadsById = useMemo(() => {
+    const map = new Map<string, SocialLead>();
+    for (const lead of dedupedScopedFeed) map.set(lead.id, lead);
+    for (const lead of Object.values(askedLeadsById)) map.set(lead.id, lead);
+    return map;
+  }, [askedLeadsById, dedupedScopedFeed]);
 
   const matchesTabCounts = useMemo(() => ({
     all: dedupedScopedFeed.length,
@@ -2364,6 +2379,54 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     );
   };
 
+  const renderClampedField = (leadId: string, fieldKey: string, value: string, linkClassName: string) => {
+    if (value === '-') return <PersonaMissingTag />;
+    const cellKey = `${leadId}:${fieldKey}`;
+    const isExpanded = expandedFieldKeys.has(cellKey);
+    const toggleExpanded = () => {
+      setExpandedFieldKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(cellKey)) next.delete(cellKey);
+        else next.add(cellKey);
+        return next;
+      });
+    };
+    const parts = value.split(',').map((part) => part.trim()).filter(Boolean);
+
+    if (parts.length > 1) {
+      const itemCap = 2;
+      const visibleParts = isExpanded ? parts : parts.slice(0, itemCap);
+      const hiddenCount = parts.length - visibleParts.length;
+      return (
+        <>
+          <span className={isExpanded ? '' : 'line-clamp-2'}>{visibleParts.join(', ')}</span>
+          {!isExpanded && hiddenCount > 0 && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); toggleExpanded(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+              +{hiddenCount} more
+            </button>
+          )}
+          {isExpanded && parts.length > itemCap && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); toggleExpanded(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+              Show less
+            </button>
+          )}
+        </>
+      );
+    }
+
+    const isLikelyOverflow = value.length > 36;
+    return (
+      <>
+        <span className={isExpanded ? '' : 'line-clamp-2'}>{value}</span>
+        {isLikelyOverflow && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); toggleExpanded(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+            {isExpanded ? 'less' : 'more'}
+          </button>
+        )}
+      </>
+    );
+  };
+
   const getLeadBreakdownFieldValues = (lead: SocialLead) => {
     const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
       lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
@@ -2395,6 +2458,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-blue-600' : score >= 40 ? 'text-amber-600' : 'text-red-600'
   );
 
+  const predictToneClass = (score: number) => {
+    if (score >= 80) return isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100';
+    if (score >= 60) return isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100';
+    if (score >= 40) return isDark ? 'border-amber-400/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20' : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100';
+    return isDark ? 'border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100';
+  };
+
   const openPredictModal = (lead: SocialLead) => {
     setPredictLead(lead);
     setPredictInput('');
@@ -2424,6 +2494,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setPredictSubmitting(true);
     const startedAt = Date.now();
     try {
+      const consumed = await consumeCredits(PREDICT_COST, 'pulse_predict_match', {
+        lead_id: predictLead.id,
+        platform: predictLead.platform,
+        title: predictLead.title,
+      });
+      if (!consumed) return;
+
       const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(predictLead);
       const { data, error } = await supabase.functions.invoke('predict-match', {
         body: {
@@ -2458,11 +2535,98 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       const result = { score, categories, verdict, verdictClass: verdictClassForScore(score) };
       setPredictResult(result);
       setPredictResultByLeadId((prev) => ({ ...prev, [predictLead.id]: result }));
+      setPredictedAtByLeadId((prev) => ({ ...prev, [predictLead.id]: new Date().toISOString() }));
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not calculate the match', 'error');
     } finally {
       setPredictSubmitting(false);
     }
+  };
+
+  const toggleBulkPredictLead = (leadId: string) => {
+    setBulkPredictLeadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(leadId)) {
+        next.delete(leadId);
+        return next;
+      }
+      if (next.size >= MAX_BULK_PREDICT) {
+        showToast(`You can predict up to ${MAX_BULK_PREDICT} jobs at a time`, 'error');
+        return prev;
+      }
+      next.add(leadId);
+      return next;
+    });
+  };
+
+  const handleRunBulkPredict = async () => {
+    if (!bulkPredictInput.trim() || bulkPredictSubmitting) return;
+    const leadIds = Array.from(bulkPredictLeadIds);
+    if (leadIds.length === 0) return;
+
+    setBulkPredictSubmitting(true);
+    setBulkPredictCompletedCount(0);
+    let successCount = 0;
+
+    for (const leadId of leadIds) {
+      const lead = allLoadedLeadsById.get(leadId);
+      if (!lead) {
+        setBulkPredictCompletedCount((count) => count + 1);
+        continue;
+      }
+
+      try {
+        const consumed = await consumeCredits(PREDICT_COST, 'pulse_predict_match', {
+          lead_id: lead.id,
+          platform: lead.platform,
+          title: lead.title,
+          bulk: true,
+        });
+        if (!consumed) break;
+
+        const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
+        const { data, error } = await supabase.functions.invoke('predict-match', {
+          body: {
+            lead_id: lead.id,
+            platform: lead.platform,
+            feed_kind: 'job',
+            role_title: lead.title,
+            consultant_text: bulkPredictInput,
+            account_id: account?.id ?? '',
+            job_context: {
+              skills: skillsValue,
+              exp: expValue,
+              visa: visaValue,
+              workType: workTypeValue,
+              employmentType: employmentTypeValue,
+              location: locationValue,
+            },
+          },
+        });
+
+        if (error || data?.error) {
+          throw new Error(data?.error || await getFunctionErrorMessage(error, 'Could not calculate the match'));
+        }
+
+        const score = Math.max(0, Math.min(100, Math.round(Number(data.score) || 0)));
+        const categories: PredictCategory[] = Array.isArray(data.categories) ? data.categories : [];
+        const verdict = String(data.verdict || '').trim() || 'Submission likely to be accepted';
+        const result = { score, categories, verdict, verdictClass: verdictClassForScore(score) };
+        setPredictResultByLeadId((prev) => ({ ...prev, [lead.id]: result }));
+        setPredictedAtByLeadId((prev) => ({ ...prev, [lead.id]: new Date().toISOString() }));
+        successCount += 1;
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : `Could not predict ${lead.title || 'a job'}`, 'error');
+      } finally {
+        setBulkPredictCompletedCount((count) => count + 1);
+      }
+    }
+
+    setBulkPredictSubmitting(false);
+    showToast(`${successCount} of ${leadIds.length} predictions complete`, successCount > 0 ? 'success' : 'error');
+    setIsBulkPredictModalOpen(false);
+    setBulkPredictInput('');
+    setBulkPredictLeadIds(new Set());
   };
 
   const renderLeadCards = (leads: SocialLead[], columns = 1) => leads.map((lead, idx) => {
@@ -2528,7 +2692,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const shouldForceExpandedBreakdown = isLeadRevealed && selectedMatchesTab !== 'revealed';
     const isExpandedBreakdownVisible = shouldForceExpandedBreakdown || isInlineBreakdownExpanded;
-    const metaSurfaceClass = isDark ? 'bg-[#272B31]/70' : 'bg-transparent';
+    const metaSurfaceClass = 'bg-transparent';
     const metaLabelClass = isDark ? 'text-[#64748B]' : 'text-slate-500';
     const metaValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
     const skillsValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
@@ -2546,8 +2710,63 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       const ext = domainPart.includes('.') ? domainPart.split('.').pop()?.trim() : '';
       return ext ? `${prefix}**@***.${ext}` : `${prefix}**@***`;
     })();
+
+    const actionButtonsRail = isHotlistFeed ? null : (
+      <div className="flex w-9 shrink-0 flex-col gap-1.5">
+        {(() => {
+          const cachedPredict = predictResultByLeadId[lead.id];
+          return cachedPredict ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
+              title={`Predicted ${cachedPredict.score}% — tap to retry`}
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-[10px] font-extrabold transition-colors ${predictToneClass(cachedPredict.score)}`}
+            >
+              {cachedPredict.score}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
+              title="Predict submission acceptance"
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors ${isDark ? 'border-orange-400/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
+            >
+              <Gauge size={16} strokeWidth={2} />
+            </button>
+          );
+        })()}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, 'Vendor email') : void handleRevealContact(lead); }}
+          disabled={processingLeadId === lead.id}
+          title={isLeadRevealed ? 'Copy the vendor email' : `Reveal the vendor email for $${REVEAL_CONTACT_COST.toFixed(2)} — skip Submit and reach out yourself`}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${isDark ? 'border-white/15 bg-white/5 text-slate-300 hover:bg-white/10' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+        >
+          {processingLeadId === lead.id ? '...' : isLeadRevealed ? <Copy size={15} strokeWidth={2} /> : <AtSign size={16} strokeWidth={2} />}
+        </button>
+        {isAskPending || isVerified ? (
+          <span
+            title={isVerified ? 'Vendor-supplied details verified' : 'Submission already sent'}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${isVerified ? (isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700') : (isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-blue-100 text-blue-700')}`}
+          >
+            {isVerified ? <BadgeCheck size={16} strokeWidth={2} /> : <Check size={16} strokeWidth={2} />}
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
+            disabled={!canAskAI || processingAskAILeadId === lead.id}
+            title={!lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Submit a candidate for this role'}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+          >
+            {processingAskAILeadId === lead.id ? '...' : <Mail size={16} strokeWidth={2} />}
+          </button>
+        )}
+      </div>
+    );
     return (
-      <div key={lead.id} className={`relative mb-1.5 break-inside-avoid rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
+      <div key={lead.id} className="mb-1.5 flex items-stretch gap-1.5 break-inside-avoid">
+      <div className={`relative min-w-0 flex-1 rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
         <div>
           <div className={isHotlistFeed ? 'min-w-0 pr-12' : 'min-w-0'}>
             <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
@@ -2569,14 +2788,40 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 </span>
               )}
             </div>
-            {selectedMatchesTab === 'revealed' && revealedAtByLeadId[lead.id] && (
+            {isHotlistFeed && selectedMatchesTab === 'revealed' && revealedAtByLeadId[lead.id] && (
               <div className="mt-0.5 text-[10px] font-medium text-emerald-700">
                 Revealed {formatRevealedAt(revealedAtByLeadId[lead.id])}
               </div>
             )}
-            {selectedMatchesTab === 'asked' && askedJobState && (
+            {isHotlistFeed && selectedMatchesTab === 'asked' && askedJobState && (
               <div className={`mt-0.5 text-[10px] font-medium ${askedJobState.fulfilledAt ? 'text-emerald-700' : 'text-amber-700'}`}>
                 {askedJobState.fulfilledAt ? `Details updated ${formatRevealedAt(askedJobState.fulfilledAt)}` : 'Awaiting details'}
+              </div>
+            )}
+            {!isHotlistFeed && (predictResultByLeadId[lead.id] || isAskPending || isVerified || isLeadRevealed) && (
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                {predictResultByLeadId[lead.id] && (
+                  <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${predictToneClass(predictResultByLeadId[lead.id].score)}`}>
+                    <Gauge size={9} strokeWidth={2.5} />
+                    Predicted {predictResultByLeadId[lead.id].score}%
+                  </span>
+                )}
+                {(isAskPending || isVerified) && (
+                  <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isVerified ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700')}`}>
+                    {isVerified ? <BadgeCheck size={9} strokeWidth={2.5} /> : <Check size={9} strokeWidth={2.5} />}
+                    {(() => {
+                      const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
+                      const label = isVerified ? 'Verified' : 'Submitted';
+                      return stampIso ? `${label} ${formatAgoCompact(stampIso)}` : label;
+                    })()}
+                  </span>
+                )}
+                {isLeadRevealed && (
+                  <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                    <AtSign size={9} strokeWidth={2.5} />
+                    Revealed{revealedAtByLeadId[lead.id] ? ` ${formatAgoCompact(revealedAtByLeadId[lead.id])}` : ''}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -2599,32 +2844,31 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         {inlineBreakdownItems.length > 0 && (
           useFourColumnBreakdown ? (
             !isHotlistFeed ? (
-              <div className="mt-1.5 flex items-start gap-1.5">
-                <div className={`min-w-0 flex-1 rounded-md px-2.5 py-2 text-left ${metaSurfaceClass}`}>
+                <div className={`mt-1.5 min-w-0 rounded-md px-2.5 py-2 text-left ${metaSurfaceClass}`}>
                   <div className="grid grid-cols-3 gap-x-3 gap-y-2">
                     <div className="min-w-0">
                       <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Exp</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(expValue)}</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'exp', expValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
                     </div>
                     <div className="min-w-0">
                       <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Work Type</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(workTypeValue)}</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'workType', workTypeValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
                     </div>
                     <div className="min-w-0">
                       <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Emp Type</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(employmentTypeValue)}</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'empType', employmentTypeValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
                     </div>
                     <div className="min-w-0">
                       <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Rate</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(rateValue)}</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'rate', rateValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
                     </div>
                     <div className="min-w-0">
                       <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Visa</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(visaValue)}</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'visa', visaValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
                     </div>
                     <div className="min-w-0">
                       <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Location</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderMissingAwareValue(locationValue)}</div>
+                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'location', locationValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
                     </div>
                   </div>
                   <button
@@ -2645,54 +2889,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     </div>
                   </button>
                 </div>
-                <div className="flex w-14 shrink-0 flex-col gap-1.5">
-                  {(() => {
-                    const cachedPredict = predictResultByLeadId[lead.id];
-                    return cachedPredict ? (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
-                        title={`Predicted ${cachedPredict.score}% — tap to retry`}
-                        className={`flex flex-col items-center justify-center gap-0.5 rounded-md border py-1.5 text-[8px] font-bold uppercase leading-none transition-colors ${isDark ? 'border-orange-400/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
-                      >
-                        <span className={`text-[11px] font-extrabold normal-case ${cachedPredict.verdictClass}`}>{cachedPredict.score}%</span>
-                        <span className="inline-flex items-center gap-0.5"><RotateCcw size={8} strokeWidth={2.5} />Retry</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
-                        className={`flex flex-col items-center justify-center gap-0.5 rounded-md border py-1.5 text-[8px] font-bold uppercase leading-none transition-colors ${isDark ? 'border-orange-400/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
-                      >
-                        <Target size={14} strokeWidth={2} />
-                        <span>Predict</span>
-                      </button>
-                    );
-                  })()}
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
-                    disabled={!canAskAI || processingAskAILeadId === lead.id}
-                    title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Submission already sent' : !lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Submit a candidate for this role'}
-                    className={`flex flex-col items-center justify-center gap-0.5 rounded-md border py-1.5 text-[8px] font-bold uppercase leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
-                  >
-                    {isVerified ? <BadgeCheck size={14} strokeWidth={2} /> : <Mail size={14} strokeWidth={2} />}
-                    {processingAskAILeadId === lead.id ? (
-                      <span>...</span>
-                    ) : isVerified || isAskPending ? (
-                      <span className="flex flex-col items-center leading-none">
-                        <span>{isVerified ? 'Verified' : 'Submitted'}</span>
-                        {(() => {
-                          const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
-                          return stampIso ? <span className="mt-0.5 text-[7px] font-normal normal-case opacity-80">{formatAgoCompact(stampIso)}</span> : null;
-                        })()}
-                      </span>
-                    ) : (
-                      <span>Submit</span>
-                    )}
-                  </button>
-                </div>
-              </div>
             ) : (
             <div className={`mt-1.5 w-full rounded-md px-2.5 py-2 text-left ${metaSurfaceClass}`}>
               <div className="grid grid-cols-3 gap-x-3 gap-y-2">
@@ -2838,6 +3034,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         </div>
         )}
       </div>
+      {actionButtonsRail}
+      </div>
     );
   });
 
@@ -2927,22 +3125,48 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     );
 
     return (
-      <table className="w-full table-fixed border-collapse border-spacing-0 text-left text-[11px]">
+      <>
+        {bulkPredictLeadIds.size > 0 && (
+          <div className={`sticky top-0 z-[3] mb-1.5 flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-[11px] font-semibold ${isDark ? 'border-orange-400/30 bg-[#1B1D21]' : 'border-orange-200 bg-orange-50'}`}>
+            <span className={isDark ? 'text-orange-300' : 'text-orange-700'}>{bulkPredictLeadIds.size} of {MAX_BULK_PREDICT} selected for bulk predict</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setBulkPredictLeadIds(new Set())}
+                className={isDark ? 'text-slate-400 hover:text-slate-200' : 'text-gray-500 hover:text-gray-700'}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsBulkPredictModalOpen(true)}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-white ${isDark ? 'bg-orange-500 hover:bg-orange-400' : 'bg-orange-600 hover:bg-orange-700'}`}
+              >
+                <Gauge size={11} strokeWidth={2.5} />
+                Predict Selected
+              </button>
+            </div>
+          </div>
+        )}
+        <table className="w-full table-fixed border-collapse border-spacing-0 text-left text-[11px]">
         <colgroup>
-          <col style={{ width: '13%' }} />
-          <col style={{ width: '6%' }} />
-          <col style={{ width: '8%' }} />
-          <col style={{ width: '8%' }} />
-          <col style={{ width: '6%' }} />
-          <col style={{ width: '6%' }} />
-          <col style={{ width: '8%' }} />
-          <col style={{ width: '13%' }} />
-          <col style={{ width: '8%' }} />
+          <col style={{ width: '3%' }} />
           <col style={{ width: '12%' }} />
-          <col style={{ width: '12%' }} />
+          <col style={{ width: '6%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '6%' }} />
+          <col style={{ width: '5%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '13%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '9%' }} />
         </colgroup>
         <thead className={`sticky top-0 z-[2] ${tableHeadSurfaceClass}`}>
           <tr className={`border-b ${tableBorderClass} text-[10px] uppercase tracking-wide ${tableMutedClass}`}>
+            <th className="px-2 py-2 whitespace-normal" aria-label="Select for bulk predict" />
             {renderSortableHeader('Role', 'role')}
             {renderSortableHeader('Exp', 'exp')}
             {renderSortableHeader('Work Type', 'workType')}
@@ -2953,22 +3177,34 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             <th className="px-2 py-2 whitespace-normal">Skills</th>
             {renderSortableHeader(postedLabel, 'posted')}
             <th className="px-2 py-2 whitespace-normal">Predict</th>
+            <th className="px-2 py-2 whitespace-normal">Email</th>
             <th className="px-2 py-2 whitespace-normal">Submit</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(({ lead, isAskPending, isVerified, missingJobDetails, canAskAI, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue }) => {
+            const isLeadRevealed = revealedLeadIds.has(lead.id);
             return (
               <tr key={lead.id} className={`border-b ${tableBorderClass} ${tableRowSurfaceClass} hover:bg-gray-50 dark:hover:bg-white/5`}>
-                <td className="px-2 py-2 align-top whitespace-normal break-words font-medium text-gray-900 dark:text-slate-100">
-                  {lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}
+                <td className="px-2 py-2 align-top">
+                  <input
+                    type="checkbox"
+                    checked={bulkPredictLeadIds.has(lead.id)}
+                    onChange={(e) => { e.stopPropagation(); toggleBulkPredictLead(lead.id); }}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label="Select for bulk predict"
+                    className="h-3.5 w-3.5 accent-orange-600"
+                  />
                 </td>
-                <td className={cellClass}>{renderMissingAwareValue(expValue)}</td>
-                <td className={cellClass}>{renderMissingAwareValue(workTypeValue)}</td>
-                <td className={cellClass}>{renderMissingAwareValue(employmentTypeValue)}</td>
-                <td className={cellClass}>{renderMissingAwareValue(rateValue)}</td>
-                <td className={cellClass}>{renderMissingAwareValue(visaValue)}</td>
-                <td className={cellClass}>{renderMissingAwareValue(locationValue)}</td>
+                <td className="px-2 py-2 align-top whitespace-normal break-words font-medium text-gray-900 dark:text-slate-100">
+                  {renderClampedField(lead.id, 'role', lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity'), linkClass)}
+                </td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'exp', expValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'workType', workTypeValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'empType', employmentTypeValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'rate', rateValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'visa', visaValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'location', locationValue, linkClass)}</td>
                 <td className={cellClass}>
                   {renderClampedSkills(lead.id, skillsValue, 4, linkClass)}
                 </td>
@@ -2983,9 +3219,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
                         title={`Predicted ${cachedPredict.score}% — click to retry`}
-                        className={predictButtonClass}
+                        className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border px-2 text-[10px] font-semibold leading-none transition-colors ${predictToneClass(cachedPredict.score)}`}
                       >
-                        <span className={`font-extrabold ${cachedPredict.verdictClass}`}>{cachedPredict.score}%</span>
+                        <span className="font-extrabold">{cachedPredict.score}%</span>
                         <RotateCcw size={11} strokeWidth={2.5} />
                       </button>
                     ) : (
@@ -2994,7 +3230,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
                         className={predictButtonClass}
                       >
-                        <Target size={12} strokeWidth={2} />
+                        <Gauge size={12} strokeWidth={2} />
                         <span>Predict</span>
                       </button>
                     );
@@ -3003,33 +3239,60 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 <td className="px-1.5 py-2 align-top">
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
-                    disabled={!canAskAI || processingAskAILeadId === lead.id}
-                    title={isVerified ? 'Vendor-supplied details verified' : isAskPending ? 'Submission already sent' : !lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Submit a candidate for this role'}
-                    className={`${askButtonClass} truncate`}
+                    onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, 'Vendor email') : void handleRevealContact(lead); }}
+                    disabled={processingLeadId === lead.id}
+                    title={isLeadRevealed ? 'Copy the vendor email' : `Reveal the vendor email for $${REVEAL_CONTACT_COST.toFixed(2)} — skip Submit and reach out yourself`}
+                    className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-md border px-2 text-[10px] font-semibold leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${isDark ? 'border-white/15 bg-white/5 text-slate-300 hover:bg-white/10' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
                   >
-                    {isVerified ? <BadgeCheck size={12} strokeWidth={2} className="shrink-0" /> : <Mail size={12} strokeWidth={2} className="shrink-0" />}
-                    <span className="truncate">
-                      {(() => {
-                        if (processingAskAILeadId === lead.id) return '...';
-                        if (isVerified) {
-                          const stampIso = askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt;
-                          return stampIso ? `Verified ${formatAgoCompact(stampIso)}` : 'Verified';
-                        }
-                        if (isAskPending) {
-                          const stampIso = askedJobStateByLeadId[lead.id]?.requestedAt;
-                          return stampIso ? `Submitted ${formatAgoCompact(stampIso)}` : 'Submitted';
-                        }
-                        return 'Submit';
-                      })()}
-                    </span>
+                    {processingLeadId === lead.id ? (
+                      <span>...</span>
+                    ) : isLeadRevealed ? (
+                      <>
+                        <Copy size={11} strokeWidth={2} />
+                        <span>Copy</span>
+                      </>
+                    ) : (
+                      <>
+                        <AtSign size={12} strokeWidth={2} />
+                        <span>Email</span>
+                      </>
+                    )}
                   </button>
+                </td>
+                <td className="px-1.5 py-2 align-top">
+                  {isAskPending || isVerified ? (
+                    <span
+                      title={isVerified ? 'Vendor-supplied details verified' : 'Submission already sent'}
+                      className={`inline-flex h-7 w-full items-center justify-center gap-1 rounded-md px-2 text-[10px] font-semibold leading-none ${isVerified ? (isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700') : (isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-blue-100 text-blue-700')}`}
+                    >
+                      {isVerified ? <BadgeCheck size={12} strokeWidth={2} className="shrink-0" /> : <Check size={12} strokeWidth={2} className="shrink-0" />}
+                      <span className="truncate">
+                        {(() => {
+                          const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
+                          const label = isVerified ? 'Verified' : 'Submitted';
+                          return stampIso ? `${label} ${formatAgoCompact(stampIso)}` : label;
+                        })()}
+                      </span>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
+                      disabled={!canAskAI || processingAskAILeadId === lead.id}
+                      title={!lead.posterEmail ? 'Vendor email is unavailable' : missingJobDetails.length === 0 ? 'No missing job details detected' : 'Submit a candidate for this role'}
+                      className={`${askButtonClass} truncate`}
+                    >
+                      <Mail size={12} strokeWidth={2} className="shrink-0" />
+                      <span className="truncate">{processingAskAILeadId === lead.id ? '...' : 'Submit'}</span>
+                    </button>
+                  )}
                 </td>
               </tr>
             );
           })}
         </tbody>
-      </table>
+        </table>
+      </>
     );
   };
 
@@ -4622,7 +4885,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
   const consumeCreditsLegacy = useCallback(async (
     amount: number,
-    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown',
+    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown' | 'pulse_predict_match',
   ) => {
     if (!account?.id) return false;
 
@@ -4675,7 +4938,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
   const consumeCredits = useCallback(async (
     amount: number,
-    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown',
+    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown' | 'pulse_predict_match',
     metadata: Record<string, unknown>,
   ) => {
     if (!account?.id) {
@@ -5918,7 +6181,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   disabled={!predictInput.trim()}
                   className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 px-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-blue-500/30 transition-all hover:shadow-xl hover:shadow-orange-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
                 >
-                  <Target size={16} strokeWidth={2.5} />
+                  <Gauge size={16} strokeWidth={2.5} />
                   Predict Submission Acceptance
                 </button>
               </>
@@ -5980,6 +6243,68 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 >
                   Try another candidate
                 </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isBulkPredictModalOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => { if (!bulkPredictSubmitting) { setIsBulkPredictModalOpen(false); setBulkPredictInput(''); } }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Bulk predict submission chance"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Predict {bulkPredictLeadIds.size} jobs</span>
+              <button
+                type="button"
+                onClick={() => { if (!bulkPredictSubmitting) { setIsBulkPredictModalOpen(false); setBulkPredictInput(''); } }}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+                aria-label="Close bulk predict modal"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            {!bulkPredictSubmitting ? (
+              <>
+                <div className="mt-2">
+                  <textarea
+                    value={bulkPredictInput}
+                    onChange={(event) => setBulkPredictInput(event.target.value)}
+                    rows={6}
+                    placeholder="Paste consultant resume, skills, or a quick summary here — we'll run it against all selected jobs..."
+                    className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleRunBulkPredict()}
+                  disabled={!bulkPredictInput.trim()}
+                  className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 px-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-blue-500/30 transition-all hover:shadow-xl hover:shadow-orange-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                >
+                  <Gauge size={16} strokeWidth={2.5} />
+                  Predict {bulkPredictLeadIds.size} Jobs (${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})
+                </button>
+              </>
+            ) : (
+              <div className="mt-2 py-4">
+                <p className="text-center text-xs font-semibold text-gray-500">
+                  Predicting {bulkPredictCompletedCount} of {bulkPredictLeadIds.size}...
+                </p>
+                <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 transition-all"
+                    style={{ width: `${(bulkPredictCompletedCount / Math.max(1, bulkPredictLeadIds.size)) * 100}%` }}
+                  />
+                </div>
               </div>
             )}
           </div>

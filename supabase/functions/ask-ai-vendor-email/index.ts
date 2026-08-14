@@ -9,7 +9,7 @@ const corsHeaders = {
 
 const ASK_VENDOR_AI_URL = "https://profilepush-social-job-queue-consumer.profilepush-ai.workers.dev/ask-vendor-email-copy";
 const ASK_AI_COST = 0.01;
-const JOB_SUBMIT_COST = 0.10;
+const JOB_SUBMIT_COST = 0.05;
 const SENDER_NAME_TOKEN = "{{sender_name}}";
 
 function respond(payload: Record<string, unknown>, status = 200) {
