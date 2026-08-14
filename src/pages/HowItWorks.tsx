@@ -80,8 +80,8 @@ tagline: 'Got a hot req from a vendor on LinkedIn? Find the candidate instantly.
 const HOW_IT_WORKS_JSONLD = {
   '@context': 'https://schema.org',
   '@type': 'HowTo',
-  name: 'How ProfilePush works for Bench Sales recruiters',
-  description: 'Seven-step workflow to source, qualify, and submit candidates faster with Pulse, Tracker, and AI recruiter workflows.',
+  name: 'How ProfilePush works for bench sales recruiters and vendor teams',
+  description: 'Seven-step workflow to source, qualify, and submit candidates faster with Pulse, Jobs, Hotlist, Inbox, Tracker, and AI recruiter workflows.',
   totalTime: 'PT30M',
   step: phases.map((phase, index) => ({
     '@type': 'HowToStep',
@@ -96,7 +96,7 @@ export default function HowItWorks() {
     <div className="min-h-screen bg-white">
       <SEO
         title="How it Works | ProfilePush"
-        description="See how ProfilePush AI Copilot helps bench sales recruiters hit 10X submissions in 7 phases."
+        description="See how ProfilePush AI Copilot helps bench sales recruiters and vendor teams hit 10X placements in 7 phases."
         canonical="https://profilepush.ai/how-it-works"
         jsonLd={HOW_IT_WORKS_JSONLD}
       />

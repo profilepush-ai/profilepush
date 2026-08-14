@@ -17,36 +17,31 @@ const TIERS = [
 ];
 
 const AI_FEATURES = [
-  { icon: FileText, label: 'AI Resume Parsing',       desc: 'Extract structured data from any PDF resume automatically' },
-  { icon: Brain,    label: 'AI Job Match Scoring',    desc: 'Rate candidate-to-job fit with % score and reasoning' },
-  { icon: Zap,      label: 'AI Resume Rewriter',      desc: 'Tailor resumes to specific job descriptions with one click' },
-  { icon: Zap,      label: 'AI Field Rewriter',       desc: 'Optimize individual resume sections with targeted AI edits' },
-  { icon: Star,     label: 'AI Search Ideas',         desc: 'Generate smart keyword and boolean search strings instantly' },
+  { icon: BarChart2, label: 'Pulse',    desc: 'Market-demand leaderboard ranking every tech stack by live job count, consultant count, and rate' },
+  { icon: Globe,     label: 'Jobs',     desc: 'Live feed of client requirements from 500+ social groups and job boards, lined up against your bench' },
+  { icon: Search,    label: 'Hotlist',  desc: 'Live feed of available bench consultants, lined up against your open requirements' },
+  { icon: Zap,       label: 'Inbox',    desc: 'AI-drafted outreach with delivery and reply tracking — identities stay masked until you reveal them' },
+  { icon: FileText,  label: 'Tracker',  desc: 'Vendor and client CRM — log submissions, avoid double-submittals, export to CSV' },
 ];
 
 const SEARCH_FEATURES = [
-  { icon: Globe, label: 'LinkedIn Jobs Search',   desc: 'Search and scrape LinkedIn job postings' },
-  { icon: Globe, label: 'Dice.com Search',        desc: 'Real-time Dice job board scraping' },
-  { icon: Globe, label: 'Indeed Search',          desc: 'Indeed job listings with salary data' },
-  { icon: Globe, label: 'Monster Search',         desc: 'Monster.com job search integration' },
-  { icon: Globe, label: 'CareerBuilder Search',   desc: 'CareerBuilder listings search' },
+  { icon: Globe, label: '500+ Social Groups', desc: 'LinkedIn, Facebook, WhatsApp, and Reddit groups scanned 24/7' },
+  { icon: Globe, label: 'Job Board Coverage', desc: 'Requirements and consultants pulled from job boards alongside social groups' },
+  { icon: Star,  label: 'Live Job Alerts',    desc: 'See new requirements and consultants the moment they post' },
 ];
 
 const PLATFORM_FEATURES = [
-  { icon: Users,     label: 'Unlimited Team Members',      desc: 'Add your entire team — credits are shared across all members' },
-  { icon: FileText,  label: 'Unlimited Candidate Bench',   desc: 'Store and manage as many candidate profiles as you need' },
-  { icon: BarChart2, label: 'Submissions Tracker',         desc: 'Track C2C, W2, and 1099 submissions end-to-end' },
-  { icon: Shield,    label: 'Vendor & Client Database',    desc: 'Maintain your vendor and client relationships in one place' },
-  { icon: Users,     label: 'Candidate Onboarding Portal', desc: 'Self-service profile submission via a shareable link' },
-  { icon: BarChart2, label: 'Usage Analytics',             desc: 'Detailed credit usage breakdown per feature and team member' },
-  { icon: Shield,    label: 'Role-based Access Control',   desc: 'Admin, member, and assigned-only data access levels' },
-  { icon: Search,    label: 'Activity Audit Log',          desc: 'Complete history of all actions across your team' },
+  { icon: Users,     label: 'Unlimited Team Members',    desc: 'Add your entire team — credits are shared across all members' },
+  { icon: Shield,    label: 'Contact Reveal',             desc: 'Unlock a poster\'s email or phone for $0.10 per reveal' },
+  { icon: BarChart2, label: 'Usage Analytics',            desc: 'Credit usage breakdown per feature and team member' },
+  { icon: Shield,    label: 'Role-based Access Control',  desc: 'Admin, member, and assigned-only data access levels' },
+  { icon: Search,    label: 'Activity Audit Log',         desc: 'Complete history of all actions across your team' },
 ];
 
 const FAQS = [
   {
     q: 'How do credits work?',
-    a: 'Your monthly plan adds that dollar amount as credits to your AI wallet. Credits are consumed each time you use an AI feature — resume rewrites, job match scores, field rewrites, and job board searches. Unused credits carry over until your next renewal.',
+    a: 'Your monthly plan adds that dollar amount as credits to your AI wallet. Credits are consumed each time you reveal a contact or ask AI to draft outreach in Inbox. Unused credits carry over until your next renewal.',
   },
   {
     q: 'Is there a free account?',
@@ -85,8 +80,8 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       <SEO
-        title="Pricing — ProfilePush AI Copilot for Bench Sales Recruiters"
-        description="ProfilePush pricing for Bench Sales teams: free plan with monthly AI credits, plus Pro at INR 2,500/month with higher credits, unlimited users, and live alerts."
+        title="Pricing — ProfilePush AI Copilot for US IT Staffing Teams"
+        description="ProfilePush pricing for bench sales recruiters and vendor teams: free plan with monthly AI credits, plus Pro at INR 2,500/month with higher credits, unlimited users, and live alerts."
         canonical="https://profilepush.ai/pricing"
       />
 
@@ -245,15 +240,13 @@ export default function PricingPage() {
             <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">How Credits Work</p>
             <h2 className="text-3xl font-bold text-white mb-4">Pay for what you use.</h2>
             <p className="text-gray-400 leading-relaxed">
-              Every plan comes with a credit balance that powers all AI features. Credits are deducted per operation — a $100/month plan covers roughly 25 resume rewrites, 100+ job match scores, or thousands of field edits.
+              Every plan comes with a credit balance that powers Jobs, Hotlist, and Inbox. Credits are deducted per operation — a $100/month plan covers roughly 1,000 contact reveals at $0.10 each, or a mix of reveals and AI-drafted outreach.
             </p>
           </div>
-          <div className="max-w-3xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="max-w-sm mx-auto grid grid-cols-2 gap-4">
             {[
-              { op: 'Resume Rewrite',   credits: '~2–8 credits' },
-              { op: 'Job Match Score',  credits: '~0.2 credits' },
-              { op: 'Field Rewrite',    credits: '~0.4 credits' },
-              { op: 'Job Board Search', credits: '~0.08 credits' },
+              { op: 'Contact Reveal', credits: '$0.10' },
+              { op: 'AI Outreach (Ask)', credits: 'per email' },
             ].map(row => (
               <div key={row.op} className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
                 <p className="text-xs font-semibold text-gray-400 mb-2">{row.op}</p>
@@ -279,7 +272,7 @@ export default function PricingPage() {
                   <div className="w-7 h-7 rounded-lg bg-blue-500/20 flex items-center justify-center">
                     <Brain size={14} className="text-blue-400" />
                   </div>
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">AI Features</h3>
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">Core Features</h3>
                 </div>
                 <ul className="space-y-4">
                   {AI_FEATURES.map(f => (
@@ -296,7 +289,7 @@ export default function PricingPage() {
                   <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center">
                     <Search size={14} className="text-emerald-400" />
                   </div>
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">Job Boards</h3>
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">Sourcing</h3>
                 </div>
                 <ul className="space-y-4">
                   {SEARCH_FEATURES.map(f => (

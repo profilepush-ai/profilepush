@@ -28,39 +28,44 @@ type FeatureRow = {
 };
 
 const FEATURES: FeatureRow[] = [
-  { category: 'Search', feature: 'LinkedIn job search', pp: true, them: false },
-  { category: 'Search', feature: 'Dice.com job search', pp: true, them: false },
-  { category: 'Search', feature: 'Indeed job search', pp: true, them: false },
-  { category: 'Search', feature: 'Monster job search', pp: true, them: false },
-  { category: 'Search', feature: 'CareerBuilder job search', pp: true, them: false },
-  { category: 'Search', feature: 'All 5 boards in one search', pp: true, them: false },
-  { category: 'AI', feature: 'AI resume parsing from PDF', pp: true, them: false },
-  { category: 'AI', feature: 'AI job match scoring (%)', pp: true, them: false },
-  { category: 'AI', feature: 'AI resume rewriting', pp: true, them: false },
-  { category: 'AI', feature: 'AI search idea generation', pp: true, them: false },
-  { category: 'Recruiting', feature: 'Candidate bench management', pp: true, them: 'partial' },
-  { category: 'Recruiting', feature: 'Submission tracking', pp: true, them: 'partial' },
-  { category: 'Recruiting', feature: 'Activity timeline per candidate', pp: true, them: false },
-  { category: 'Recruiting', feature: 'Candidate onboarding link', pp: true, them: false },
-  { category: 'Recruiting', feature: 'Apply confirmation tracking', pp: true, them: false },
+  { category: 'Sourcing', feature: 'Live requirement feed (Jobs)', pp: true, them: false },
+  { category: 'Sourcing', feature: 'Live available-consultant feed (Hotlist)', pp: true, them: false },
+  { category: 'Sourcing', feature: '500+ LinkedIn/Facebook/WhatsApp/Reddit groups scanned 24/7', pp: true, them: false },
+  { category: 'Sourcing', feature: 'Job board coverage', pp: true, them: 'partial' },
+  { category: 'AI', feature: 'Market-demand leaderboard by role (Pulse)', pp: true, them: false },
+  { category: 'AI', feature: 'AI-drafted outreach emails (Inbox)', pp: true, them: false },
+  { category: 'AI', feature: 'Delivery & reply tracking on outreach', pp: true, them: false },
+  { category: 'Recruiting', feature: 'Vendor & client CRM (Tracker)', pp: true, them: 'partial' },
+  { category: 'Recruiting', feature: 'Submission tracking (C2C/W2/Direct)', pp: true, them: 'partial' },
+  { category: 'Recruiting', feature: 'Double-submittal protection', pp: true, them: false },
+  { category: 'Recruiting', feature: 'CSV export', pp: true, them: 'partial' },
   { category: 'Team', feature: 'Multi-user team workspace', pp: true, them: 'partial' },
-  { category: 'Team', feature: 'Team usage analytics', pp: true, them: false },
-  { category: 'Team', feature: 'Built for Bench Sales (C2C/W2/1099)', pp: true, them: false },
-  { category: 'Pricing', feature: 'Starts under $30/month', pp: true, them: false },
-  { category: 'Pricing', feature: 'No per-user forced upsells', pp: true, them: false },
+  { category: 'Team', feature: 'Built for both sides of the desk (bench sales + vendor teams)', pp: true, them: false },
+  { category: 'Team', feature: 'Purpose-built for US IT staffing', pp: true, them: false },
+  { category: 'Pricing', feature: 'Free forever plan', pp: true, them: false },
+  { category: 'Pricing', feature: 'No forced per-user upsells', pp: true, them: false },
 ];
 
 const FEATURES_CEIPAL: FeatureRow[] = FEATURES.map(f => {
-  if (f.feature === 'Candidate bench management') return { ...f, them: 'partial' };
-  if (f.feature === 'Submission tracking') return { ...f, them: true };
+  if (f.feature === 'Submission tracking (C2C/W2/Direct)') return { ...f, them: true };
   if (f.feature === 'Multi-user team workspace') return { ...f, them: true };
-  if (f.feature === 'AI resume parsing from PDF') return { ...f, them: 'partial' };
+  if (f.feature === 'CSV export') return { ...f, them: true };
   return f;
 });
 
 const FEATURES_JOBRIGHT: FeatureRow[] = FEATURES.map(f => {
-  if (f.feature === 'AI job match scoring (%)') return { ...f, them: 'partial', note: 'Job-seeker side only' };
-  if (f.feature === 'AI search idea generation') return { ...f, them: 'partial' };
+  if (f.feature === 'Vendor & client CRM (Tracker)') return { ...f, them: false, note: 'Job-seeker side only' };
+  if (f.feature === 'Submission tracking (C2C/W2/Direct)') return { ...f, them: false };
+  if (f.feature === 'CSV export') return { ...f, them: false };
+  if (f.feature === 'Multi-user team workspace') return { ...f, them: false };
+  return f;
+});
+
+const FEATURES_APPLYNXT: FeatureRow[] = FEATURES.map(f => {
+  if (f.feature === 'Vendor & client CRM (Tracker)') return { ...f, them: false, note: 'Job-seeker side only' };
+  if (f.feature === 'Submission tracking (C2C/W2/Direct)') return { ...f, them: false };
+  if (f.feature === 'CSV export') return { ...f, them: false };
+  if (f.feature === 'Multi-user team workspace') return { ...f, them: false };
   return f;
 });
 
@@ -69,33 +74,33 @@ const COMPETITORS: Record<string, Competitor & { featureRows: FeatureRow[] }> = 
     slug: 'ceipal',
     name: 'Ceipal',
     tagline: 'Enterprise ATS & Staffing Platform',
-    whatItIs: 'Ceipal is a broad applicant tracking system built for staffing agencies — covering onboarding, compliance, payroll integrations, and candidate pipelines. It does a lot, but its AI layer is shallow and it wasn\'t built with Bench Sales recruiters\' day-to-day sourcing workflow in mind.',
+    whatItIs: 'Ceipal is a broad applicant tracking system built for staffing agencies — covering onboarding, compliance, payroll integrations, and candidate pipelines. It does a lot, but it wasn\'t built for the day-to-day sourcing and outreach grind that bench sales recruiters and vendor teams run every day.',
     heroHeadline: 'ProfilePush vs Ceipal',
-    heroSub: 'Ceipal manages your ATS pipeline. ProfilePush fills it — with AI job search across 5 boards, match scoring, and instant resume rewrites built specifically for Bench Sales recruiters.',
+    heroSub: 'Ceipal manages your ATS pipeline. ProfilePush fills it — watching 500+ LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7, surfacing matched requirements and consultants, and drafting your outreach automatically.',
     accentColor: 'text-blue-600',
     accentBg: 'bg-blue-50',
-    verdict: 'Ceipal is an enterprise ATS. ProfilePush is a recruiter\'s AI sourcing engine. The two solve different problems — but if your bottleneck is finding and qualifying candidates faster, ProfilePush is the clear choice.',
+    verdict: 'Ceipal is an enterprise ATS. ProfilePush is the AI copilot that feeds it — sourcing, matching, and outreach for both bench sales recruiters and vendor teams. The two solve different problems, but if your bottleneck is finding and reaching the right person faster, ProfilePush is the clear choice.',
     differentiators: [
       {
         icon: Search,
-        title: '5 boards. One click.',
-        body: 'Ceipal doesn\'t search LinkedIn, Dice, Indeed, Monster, and CareerBuilder simultaneously. ProfilePush does — from one query. Stop toggling tabs and start closing roles.',
+        title: 'Built to watch 500+ groups, not just boards.',
+        body: 'Ceipal doesn\'t scan LinkedIn, Facebook, WhatsApp, and Reddit groups for fresh requirements and consultants. ProfilePush does — 24/7, so you see new leads the moment they post instead of searching for them.',
       },
       {
         icon: Brain,
-        title: 'Real AI scoring, not keyword filters.',
-        body: 'Ceipal offers basic resume matching. ProfilePush gives you a percentage match score, skill gap analysis, and AI-written rewrite suggestions — before you ever call the candidate.',
+        title: 'Real AI outreach, not just a pipeline view.',
+        body: 'Ceipal shows you a pipeline. ProfilePush drafts and sends the outreach email for you — one click, with opens and replies tracked — so you\'re not writing the same email fifty times a day.',
       },
       {
         icon: Target,
-        title: 'Built for Bench Sales. Not just staffing.',
-        body: 'Ceipal serves every vertical. ProfilePush is purpose-built for Bench Sales recruiters placing C2C, W2, and 1099 technology professionals. Every feature was designed for that workflow.',
+        title: 'Built for both sides of the desk.',
+        body: 'Ceipal serves every vertical the same way. ProfilePush is purpose-built for US IT staffing — Jobs and Hotlist mirror the two real workflows: filling your bench with requirements, and filling a requirement with a consultant.',
       },
     ],
     faqs: [
-      { q: 'Can I use ProfilePush alongside Ceipal?', a: 'Yes. ProfilePush handles the sourcing and qualification layer — search, match, rewrite — and you can continue managing pipeline, compliance, and contracts in Ceipal. They complement each other well.' },
-      { q: 'Is ProfilePush cheaper than Ceipal?', a: 'ProfilePush starts at $29/month for up to 3 users. Ceipal pricing starts significantly higher and scales with seat count. For small to mid-size Bench Sales desks, ProfilePush delivers a better ROI at a fraction of the cost.' },
-      { q: 'Does Ceipal search multiple job boards at once?', a: 'No. Ceipal has job board integrations for posting, but it does not run simultaneous active searches across LinkedIn, Dice, Indeed, Monster, and CareerBuilder the way ProfilePush does.' },
+      { q: 'Can I use ProfilePush alongside Ceipal?', a: 'Yes. ProfilePush handles sourcing, matching, and outreach — Pulse, Jobs, Hotlist, and Inbox — while you continue managing compliance, payroll, and contracts in Ceipal. They complement each other well.' },
+      { q: 'Is ProfilePush cheaper than Ceipal?', a: 'ProfilePush has a free forever plan with monthly AI credits, and a Pro plan at ₹2,500/month with unlimited users. Ceipal is priced as enterprise ATS software and typically costs significantly more per seat.' },
+      { q: 'Does Ceipal watch social groups for new requirements?', a: 'No. Ceipal is built around job board postings and pipeline management, not real-time monitoring of LinkedIn, Facebook, WhatsApp, and Reddit groups the way ProfilePush\'s Jobs and Hotlist feeds do.' },
     ],
     featureRows: FEATURES_CEIPAL,
   },
@@ -104,33 +109,33 @@ const COMPETITORS: Record<string, Competitor & { featureRows: FeatureRow[] }> = 
     slug: 'jobright-ai',
     name: 'Jobright.ai',
     tagline: 'AI Job Search Platform for Job Seekers',
-    whatItIs: 'Jobright.ai is an AI tool designed to help job seekers find and track job opportunities. It aggregates listings, scores them against a candidate\'s own resume, and helps individuals manage their own job applications. It is a job seeker tool — not a recruiter tool.',
+    whatItIs: 'Jobright.ai is an AI tool designed to help individual job seekers find and track job opportunities for themselves. It\'s a job-seeker tool, not a recruiter or vendor-team tool — it has no concept of a bench, an open requirement, or a client relationship.',
     heroHeadline: 'ProfilePush vs Jobright.ai',
-    heroSub: 'Jobright.ai helps candidates find jobs for themselves. ProfilePush gives recruiters the AI engine to find, match, and place those candidates — faster than any tool in the market.',
+    heroSub: 'Jobright.ai helps a candidate find a job for themselves. ProfilePush is built for the other side of the desk — bench sales recruiters sourcing requirements and vendor teams sourcing consultants — with AI that watches 500+ groups and job boards for you.',
     accentColor: 'text-orange-600',
     accentBg: 'bg-orange-50',
-    verdict: 'Jobright.ai and ProfilePush serve opposite ends of the same pipeline. If you are a recruiter managing a bench of candidates, ProfilePush was built for exactly what you do — Jobright.ai was not.',
+    verdict: 'Jobright.ai and ProfilePush serve opposite ends of the same pipeline. If you\'re a recruiter or vendor team managing a bench or a requirement, ProfilePush was built for exactly what you do — Jobright.ai was not.',
     differentiators: [
       {
         icon: Users,
-        title: 'Built for recruiters, not candidates.',
-        body: 'Jobright.ai is a self-serve tool for job seekers tracking their own applications. ProfilePush is for recruiters managing multiple candidates, multiple clients, and multiple job boards simultaneously.',
+        title: 'Built for staffing desks, not solo job seekers.',
+        body: 'Jobright.ai is a self-serve tool for one person tracking their own applications. ProfilePush is for bench sales recruiters and vendor teams running multiple consultants, multiple clients, and multiple requirements at once.',
       },
       {
         icon: Search,
-        title: 'Recruiter-grade multi-board search.',
-        body: 'Jobright.ai aggregates jobs passively. ProfilePush actively searches LinkedIn, Dice, Indeed, Monster, and CareerBuilder on your behalf — with IT-specific filters and AI scoring per candidate.',
+        title: 'Two-sided matching, not one-sided search.',
+        body: 'Jobright.ai only matches jobs to a single candidate\'s resume. ProfilePush runs both directions — Jobs matches requirements to your bench, Hotlist matches available consultants to your open requirements.',
       },
       {
         icon: FileText,
-        title: 'Rewrite resumes for your candidates.',
-        body: 'Jobright.ai can help a job seeker polish their own resume. ProfilePush lets you rewrite your candidate\'s resume to match a specific job — instantly, from within the placement workflow.',
+        title: 'Outreach built in, not left to you.',
+        body: 'Jobright.ai stops at showing you a job. ProfilePush\'s Inbox drafts and sends the outreach email — requesting job details or a resume — and tracks the reply, so you\'re not starting from a blank compose window.',
       },
     ],
     faqs: [
-      { q: 'Is Jobright.ai useful for recruiters?', a: 'Jobright.ai is primarily designed for individual job seekers managing their personal job search. It was not built for staffing professionals placing multiple candidates across multiple roles simultaneously.' },
-      { q: 'What does ProfilePush do that Jobright.ai cannot?', a: 'ProfilePush manages a full candidate bench, runs simultaneous searches across 5 job boards per candidate, AI-scores every job against a candidate profile, rewrites resumes on demand, and logs every activity for your team — none of which Jobright.ai offers for recruiters.' },
-      { q: 'Is there a recruiter version of Jobright.ai?', a: 'As of now, Jobright.ai does not offer a dedicated recruiter or staffing agency product. ProfilePush was built from the ground up for exactly that use case.' },
+      { q: 'Is Jobright.ai useful for recruiters or vendor teams?', a: 'Jobright.ai is built for individual job seekers managing their own search. It has no workspace for a recruiting team, no CRM, and no concept of sourcing candidates for someone else.' },
+      { q: 'What does ProfilePush do that Jobright.ai cannot?', a: 'ProfilePush runs Pulse, Jobs, Hotlist, Inbox, and Tracker — market intelligence, two-sided AI matching, AI-drafted outreach, and a vendor/client CRM — all built for a staffing team, not a solo job seeker.' },
+      { q: 'Is there a recruiter version of Jobright.ai?', a: 'Not currently — Jobright.ai is positioned squarely as a job-seeker product. ProfilePush was built from the ground up for the recruiter and vendor-team side of the same pipeline.' },
     ],
     featureRows: FEATURES_JOBRIGHT,
   },
@@ -139,33 +144,33 @@ const COMPETITORS: Record<string, Competitor & { featureRows: FeatureRow[] }> = 
     slug: 'drivetube-ai',
     name: 'DriveTube.ai',
     tagline: 'AI Recruiting Assistant',
-    whatItIs: 'DriveTube.ai is an AI-powered recruiting assistant aimed at streamlining parts of the hiring workflow. While it applies AI to candidate screening tasks, it lacks the deep Bench Sales specificity, multi-board sourcing engine, and end-to-end placement workflow that Bench Sales recruiters need.',
+    whatItIs: 'DriveTube.ai is an AI-powered recruiting assistant aimed at streamlining parts of the hiring workflow. It applies AI to general recruiting tasks, but it lacks the IT-staffing-specific depth — social group monitoring, two-sided bench/requirement matching, and a vendor CRM — that US IT staffing desks run on.',
     heroHeadline: 'ProfilePush vs DriveTube.ai',
-    heroSub: 'DriveTube.ai brings AI to recruiting workflows. ProfilePush brings AI to the full Bench Sales lifecycle — five-board search, match scoring, resume rewriting, and candidate placement in one place.',
+    heroSub: 'DriveTube.ai brings general AI to recruiting workflows. ProfilePush brings AI to the specific US IT staffing loop — market intelligence, matched requirements and consultants, AI-drafted outreach, and a CRM built for vendors and clients.',
     accentColor: 'text-blue-600',
     accentBg: 'bg-blue-50',
-    verdict: 'DriveTube.ai covers recruiting AI broadly. ProfilePush goes deep on what Bench Sales recruiters need most — sourcing, matching, and placing technology professionals at speed and scale.',
+    verdict: 'DriveTube.ai covers recruiting AI broadly. ProfilePush goes deep on what US IT staffing teams need most — sourcing, matching, and outreach built specifically for bench sales recruiters and vendor teams.',
     differentiators: [
       {
         icon: Search,
-        title: 'Sourcing depth no general tool matches.',
-        body: 'ProfilePush searches LinkedIn, Dice, Indeed, Monster, and CareerBuilder simultaneously — the five platforms where IT contracts are actually posted. Most AI recruiting tools don\'t come close to this coverage.',
+        title: 'Sourcing depth built for IT staffing.',
+        body: 'ProfilePush watches 500+ LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards — the places IT requirements and available consultants actually get posted. Most general recruiting AI tools don\'t monitor social groups at all.',
       },
       {
         icon: Brain,
-        title: 'Match scoring tuned for IT skills.',
-        body: 'AI match scoring in ProfilePush understands tech stacks, frameworks, certifications, and contract types (C2C, W2, 1099) — not just generic keyword overlap that most AI tools default to.',
+        title: 'Matching that understands both sides.',
+        body: 'ProfilePush\'s Jobs and Hotlist feeds are built around the two real IT-staffing workflows: filling your bench with requirements, and filling a requirement with a consultant. A generic recruiting assistant isn\'t built around that split.',
       },
       {
         icon: Activity,
-        title: 'Every action logged. Every output visible.',
-        body: 'ProfilePush logs every search, match, and submission timestamped per recruiter. Your team\'s output is measurable and provable — no standups required.',
+        title: 'A CRM built for vendors, not just candidates.',
+        body: 'Tracker logs every vendor and client contact, tags submissions by type (C2C, W2, Direct), and stops double-submittals — purpose-built for how staffing desks actually operate.',
       },
     ],
     faqs: [
-      { q: 'How is ProfilePush different from DriveTube.ai?', a: 'ProfilePush is purpose-built for Bench Sales — with simultaneous multi-board job search, IT-aware AI match scoring, AI resume rewriting, and end-to-end candidate bench management. It solves the full placement workflow, not just one part of it.' },
-      { q: 'Does DriveTube.ai search multiple job boards?', a: 'DriveTube.ai focuses on AI-assisted recruiting tasks but does not offer the kind of simultaneous 5-board job search engine that ProfilePush provides to Bench Sales recruiters.' },
-      { q: 'Which tool is better for offshore Bench Sales teams?', a: 'ProfilePush is specifically designed for offshore Bench Sales recruiting pods managing US placements. Every search, match, and activity is logged and timestamped, giving full visibility to team output across time zones.' },
+      { q: 'How is ProfilePush different from DriveTube.ai?', a: 'ProfilePush is purpose-built for US IT staffing — with 24/7 social group monitoring, two-sided AI matching (Jobs and Hotlist), AI-drafted outreach (Inbox), and a vendor/client CRM (Tracker). It covers the full staffing loop, not general recruiting tasks.' },
+      { q: 'Does DriveTube.ai watch social groups for new leads?', a: 'DriveTube.ai focuses on general AI-assisted recruiting tasks; it does not offer the kind of real-time social-group monitoring across LinkedIn, Facebook, WhatsApp, and Reddit that ProfilePush\'s Jobs and Hotlist feeds provide.' },
+      { q: 'Which tool is better for offshore staffing teams?', a: 'ProfilePush is built for offshore bench sales and vendor teams working US placements — every match, reveal, and outreach is logged so team output stays visible across time zones.' },
     ],
     featureRows: FEATURES,
   },
@@ -174,35 +179,35 @@ const COMPETITORS: Record<string, Competitor & { featureRows: FeatureRow[] }> = 
     slug: 'apply-nxt',
     name: 'Apply.nxt',
     tagline: 'Automated Job Application Platform',
-    whatItIs: 'Apply.nxt automates the job application process — helping individuals submit applications to many jobs quickly. Like Jobright.ai, it is a job seeker automation tool, not a recruiter platform. It does not offer candidate management, multi-board sourcing, or AI match scoring for staffing professionals.',
+    whatItIs: 'Apply.nxt automates the job application process for individuals — helping a job seeker submit applications to many jobs quickly. Like Jobright.ai, it\'s a job-seeker automation tool, not a recruiter or vendor-team platform — it has no bench, no CRM, and no two-sided matching.',
     heroHeadline: 'ProfilePush vs Apply.nxt',
-    heroSub: 'Apply.nxt automates applying to jobs. ProfilePush automates finding, qualifying, and placing candidates — the full workflow a Bench Sales recruiter actually needs.',
+    heroSub: 'Apply.nxt automates applying to jobs for one person. ProfilePush automates the recruiter\'s and vendor team\'s side of the same pipeline — finding, matching, and reaching out — built for US IT staffing.',
     accentColor: 'text-orange-600',
     accentBg: 'bg-orange-50',
-    verdict: 'Apply.nxt solves auto-applying for job seekers. ProfilePush solves the recruiter\'s end of the same pipeline — finding the right jobs, qualifying candidates with AI, and tracking every placement from search to submission.',
+    verdict: 'Apply.nxt solves auto-applying for job seekers. ProfilePush solves the staffing desk\'s end of the same pipeline — finding the right requirements or consultants, and reaching out with AI, without dropping a submission.',
     differentiators: [
       {
         icon: Users,
-        title: 'The recruiter\'s side of the pipeline.',
-        body: 'Apply.nxt helps candidates send out applications en masse. ProfilePush helps you — the recruiter — identify the right roles, score fit with AI, rewrite the resume, and submit a qualified candidate to a client.',
+        title: 'The staffing desk\'s side of the pipeline.',
+        body: 'Apply.nxt helps one candidate send out applications en masse. ProfilePush helps the recruiter or vendor team behind them — surfacing matched requirements and consultants, and drafting the outreach that gets a response.',
       },
       {
         icon: Target,
-        title: 'Quality over volume.',
-        body: 'Mass applying is the job seeker\'s strategy. Recruiters win on qualified submissions. ProfilePush gives you AI match scores, skill gap reports, and rewritten resumes — so every submission you make is a confident one.',
+        title: 'Built for two-sided matching, not mass apply.',
+        body: 'Mass applying is a job seeker\'s strategy. Staffing desks win by matching the right consultant to the right requirement — that\'s exactly what Jobs and Hotlist do.',
       },
       {
         icon: Activity,
-        title: 'Manage an entire candidate bench.',
-        body: 'Apply.nxt tracks one person\'s applications. ProfilePush lets you manage a full bench of candidates — each with their own profile, resume, wishlist, and submission history — all in one workspace.',
+        title: 'A CRM, not just a tracker.',
+        body: 'Apply.nxt tracks one person\'s applications. Tracker manages your entire vendor and client pipeline — every contact, every submission, every double-submittal caught before it happens.',
       },
     ],
     faqs: [
-      { q: 'Is Apply.nxt built for recruiters?', a: 'No. Apply.nxt is a job seeker tool that automates the job application process for individuals. It is not designed for staffing agencies or recruiting professionals managing multiple candidates.' },
-      { q: 'Can ProfilePush replace Apply.nxt for my candidates?', a: 'ProfilePush handles the recruiter side of placements — finding jobs, scoring matches, rewriting resumes, and tracking submissions. Candidates can receive their confirm-applied links directly from your ProfilePush workflow.' },
-      { q: 'What makes ProfilePush better for Bench Sales?', a: 'ProfilePush searches the five job boards where IT contracts are actually posted (LinkedIn, Dice, Indeed, Monster, CareerBuilder), scores every match with IT-aware AI, and rewrites resumes to align with specific tech stack requirements — all in one workflow.' },
+      { q: 'Is Apply.nxt built for recruiters or vendor teams?', a: 'No. Apply.nxt automates job applications for individual job seekers. It has no workspace, CRM, or matching built for a staffing team.' },
+      { q: 'Can ProfilePush replace Apply.nxt for my candidates?', a: 'ProfilePush handles the staffing desk\'s side — sourcing matched requirements and consultants, drafting outreach, and tracking every submission in Tracker. It\'s a different tool solving a different half of the pipeline.' },
+      { q: 'What makes ProfilePush better for US IT staffing?', a: 'ProfilePush watches 500+ LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7, matches requirements and consultants both ways with Jobs and Hotlist, drafts outreach with Inbox, and keeps everything organized in Tracker — all in one workspace built for bench sales recruiters and vendor teams.' },
     ],
-    featureRows: FEATURES,
+    featureRows: FEATURES_APPLYNXT,
   },
 };
 
@@ -263,16 +268,28 @@ export default function ComparisonPage() {
   const categories = [...new Set(data.featureRows.map(f => f.category))];
 
   const canonicalUrl = `https://profilepush.ai/vs/${data.slug}`;
-  const metaTitle = `ProfilePush vs ${data.name} — Which is Better for Bench Sales Recruiters?`;
-  const metaDesc = `Compare ProfilePush and ${data.name} side by side. See which platform wins on AI job search, match scoring, resume rewriting, and Bench Sales features.`;
+  const metaTitle = `ProfilePush vs ${data.name} — Which Is Better for US IT Staffing Teams?`;
+  const metaDesc = `Compare ProfilePush and ${data.name} side by side for US IT staffing — AI-matched requirements and consultants, AI-drafted outreach, and a vendor CRM, built for bench sales recruiters and vendor teams.`;
 
   const jsonLd = {
     '@context': 'https://schema.org',
-    '@type': 'WebPage',
-    name: metaTitle,
-    description: metaDesc,
-    url: canonicalUrl,
-    publisher: { '@id': 'https://profilepush.ai/#organization' },
+    '@graph': [
+      {
+        '@type': 'WebPage',
+        name: metaTitle,
+        description: metaDesc,
+        url: canonicalUrl,
+        publisher: { '@id': 'https://profilepush.ai/#organization' },
+      },
+      {
+        '@type': 'FAQPage',
+        mainEntity: data.faqs.map(f => ({
+          '@type': 'Question',
+          name: f.q,
+          acceptedAnswer: { '@type': 'Answer', text: f.a },
+        })),
+      },
+    ],
   };
 
   const ppScore = data.featureRows.filter(r => r.pp === true).length;
@@ -478,7 +495,7 @@ export default function ComparisonPage() {
               Ready to see the difference?
             </h2>
             <p className="text-gray-500 text-base mb-8">
-              Join Bench Sales teams who use ProfilePush to source faster, match smarter, and close more placements — starting today.
+              Join bench sales recruiters and vendor teams who use ProfilePush to source faster, match smarter, and close more placements — starting today.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link

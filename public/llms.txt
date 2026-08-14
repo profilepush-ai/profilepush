@@ -1,0 +1,26 @@
+# ProfilePush
+
+> AI copilot for US IT staffing teams — bench sales recruiters and vendor/account management teams — built to 10X placements. It watches 500+ LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards in real time, surfaces matched requirements and consultants, drafts AI outreach, and keeps your submission pipeline organized.
+
+ProfilePush serves both sides of the IT staffing desk: recruiters who have bench consultants and need requirements (via Jobs), and vendor/account management teams who have open requirements and need consultants (via Hotlist).
+
+## Product
+
+- [Pulse](https://profilepush.ai/#pulse): Market-intelligence leaderboard ranking every tech stack by live job count, consultant count, and average rate — see which roles are hot before you spend a submission.
+- [Jobs](https://profilepush.ai/#jobs): Live feed of client requirements pulled from social groups and job boards, lined up against your bench, the moment they're posted.
+- [Hotlist](https://profilepush.ai/#hotlist): Live feed of available bench consultants posted by other recruiters, lined up against your open requirements — fill a role without cold-searching.
+- [Inbox](https://profilepush.ai/#inbox): AI-drafted outreach emails requesting job details or a resume, with delivery and reply tracking; identities stay masked until revealed.
+- [Tracker](https://profilepush.ai/#tracker): Vendor and client CRM for logging submissions with type badges (C2C, W2, Direct), filtering by date, and exporting to CSV — no double-submittals.
+
+## Company
+
+- [About](https://profilepush.ai/about): Company background and mission.
+- [Pricing](https://profilepush.ai/#pricing): Free plan with $5/month AI credits (10 reveals/day); Pro plan at ₹2,500/month with $25 credits, unlimited users, and live job alerts.
+- [Contact](https://profilepush.ai/contact): Support and sales contact.
+- [Book a demo](https://profilepush.ai/book-demo): Live walkthrough of Pulse, Jobs, Hotlist, Inbox, and Tracker.
+
+## Notes for AI assistants
+
+- ProfilePush is built for the US IT staffing market specifically, not generic HR or ATS software.
+- Serves both bench sales recruiters (own consultants, need requirements) and vendor/account management teams (own requirements, need consultants).
+- No numeric "match score" is shown to end users; matching is presented as a ranked, side-by-side comparison, not a percentage.

@@ -13,7 +13,18 @@ import { useAuth } from '../contexts/AuthContext';
 // ── Feature definitions ────────────────────────────────────────────────────────
 const FEATURES = [
   {
+    key: 'marketpulse',
+    slug: 'pulse',
+    headline: '1 leaderboard. Every hot role.',
+    subline: 'Pulse ranks every tech stack by live job count, consultant count, and average rate, so you know exactly where to focus before you spend a submission.',
+    accent: 'from-indigo-50 to-white',
+    badge: 'bg-indigo-100 text-indigo-700',
+    badgeLabel: 'Pulse',
+    topGlow: 'rgba(165,180,252,0.5)',
+  },
+  {
     key: 'pulse',
+    slug: 'jobs',
     headline: 'Live in seconds. Every requirement.',
     subline: 'Jobs watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards 24/7, surfacing every client requirement the moment it\'s posted and lining it up against your bench — so you never miss a fit.',
     accent: 'from-blue-100 to-white',
@@ -23,6 +34,7 @@ const FEATURES = [
   },
   {
     key: 'hotlist',
+    slug: 'hotlist',
     headline: 'Live in seconds. Every consultant.',
     subline: 'Hotlist surfaces available bench consultants posted by other recruiters the moment they\'re listed, lined up against your open requirements — so vendor teams can fill a role without cold-searching.',
     accent: 'from-amber-50 to-white',
@@ -31,16 +43,8 @@ const FEATURES = [
     topGlow: 'rgba(252,211,77,0.5)',
   },
   {
-    key: 'marketpulse',
-    headline: '1 leaderboard. Every hot role.',
-    subline: 'Pulse ranks every tech stack by live job count, consultant count, and average rate, so you know exactly where to focus before you spend a submission.',
-    accent: 'from-indigo-50 to-white',
-    badge: 'bg-indigo-100 text-indigo-700',
-    badgeLabel: 'Pulse',
-    topGlow: 'rgba(165,180,252,0.5)',
-  },
-  {
     key: 'inbox',
+    slug: 'inbox',
     headline: '1 click. Outreach sent instantly.',
     subline: 'One click drafts and sends a personalized outreach email — for a job detail or a resume — then tracks opens and replies so nothing goes cold. Identities stay masked until you reveal them.',
     accent: 'from-purple-50 to-white',
@@ -50,6 +54,7 @@ const FEATURES = [
   },
   {
     key: 'tracker',
+    slug: 'tracker',
     headline: '0 double-submittals. Ever.',
     subline: 'Manage every vendor and client contact in one place. Log submissions with type badges (C2C, W2, Direct), filter by date range, and export to CSV. Never risk a double-submittal again.',
     accent: 'from-emerald-50 to-white',
@@ -156,8 +161,9 @@ function GifSlot({
 
   return (
     <div className="relative w-full">
+      <div className="relative w-full aspect-[1866/968] p-px overflow-hidden shadow-2xl shadow-gray-300/40 gradient-border-frame">
       <div
-        className="relative w-full aspect-[1866/968] overflow-hidden border border-gray-200 shadow-2xl shadow-gray-300/40 ring-1 ring-gray-100/80 bg-white group"
+        className="relative w-full h-full overflow-hidden bg-white group"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
@@ -221,6 +227,7 @@ function GifSlot({
           </button>
         </>
       )}
+      </div>
       </div>
     </div>
   );
@@ -372,7 +379,8 @@ export default function LandingPage() {
         {FEATURES.map((f, idx) => (
           <section
             key={f.key}
-            className={`py-16 md:py-20 px-6 border-t border-gray-100 ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
+            id={f.slug}
+            className={`py-16 md:py-20 px-6 border-t border-gray-100 scroll-mt-16 ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
           >
             <div className="max-w-6xl mx-auto">
               <div className="text-left mb-10">
@@ -415,7 +423,7 @@ export default function LandingPage() {
             <div className="space-y-0">
               {[
                 { n: '1', t: 'See what\'s hot', d: 'Pulse ranks every tech stack by live demand and rate, so you know where to focus before you spend a submission.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
-                { n: '2', t: 'AI finds your match', d: 'Jobs and Hotlist scan 500+ groups and job boards in real-time, surfacing requirements and consultants that fit your stack the moment they post.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
+                { n: '2', t: 'Jobs & Hotlist go live', d: 'Jobs and Hotlist scan 500+ groups and job boards in real-time — new requirements and available consultants show up the moment they post.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
                 { n: '3', t: 'AI drafts the outreach', d: 'Inbox writes and sends the ask, tracks opens and replies, and keeps identities masked until you reveal them.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
                 { n: '4', t: 'Close it in Tracker', d: 'Log every submission, avoid double-submittals, and export your pipeline anytime.', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
               ].map((step) => (
@@ -475,7 +483,7 @@ export default function LandingPage() {
 
               <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
                 {[
-                  'All features unlocked',
+                  'Pulse, Jobs, Hotlist, Inbox & Tracker included',
                   'Up to 2 users',
                   '$5 AI credits reset each month',
                   'Limited to 10 reveals every day',
@@ -512,7 +520,7 @@ export default function LandingPage() {
 
               <ul className="space-y-3 text-sm text-white flex-1 mb-8">
                 {[
-                  'All features unlocked',
+                  'Pulse, Jobs, Hotlist, Inbox & Tracker included',
                   'Unlimited users',
                   'Full Tracker with CSV export',
                   'Live Job Alerts',

@@ -19,7 +19,7 @@ export default function BookDemo() {
     <>
       <SEO
         title="Book a Demo Call | ProfilePush"
-        description="Book a live ProfilePush demo to see Pulse AI job radar, contact reveals, Tracker CRM, and recruiter AI workflows tailored for Bench Sales teams."
+        description="Book a live ProfilePush demo to see Pulse, Jobs, Hotlist, Inbox, and Tracker in action — the AI copilot built to 10X placements for bench sales recruiters and vendor teams."
         canonical="https://profilepush.ai/book-demo"
       />
 

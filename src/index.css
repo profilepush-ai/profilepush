@@ -205,6 +205,37 @@
     animation: splash-text-pulse 1.2s ease-in-out infinite;
   }
 
+  @property --border-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+  }
+
+  @keyframes border-angle-spin {
+    to {
+      --border-angle: 360deg;
+    }
+  }
+
+  .gradient-border-frame {
+    --border-angle: 0deg;
+    background: conic-gradient(
+      from var(--border-angle),
+      transparent 0deg,
+      rgba(37, 99, 235, 0.5) 35deg,
+      rgba(249, 115, 22, 0.4) 80deg,
+      transparent 140deg,
+      transparent 360deg
+    );
+    animation: border-angle-spin 9s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gradient-border-frame {
+      animation: none;
+    }
+  }
+
   .hide-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;

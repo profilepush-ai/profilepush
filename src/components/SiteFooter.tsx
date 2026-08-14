@@ -5,13 +5,25 @@ export default function SiteFooter() {
   return (
     <footer className="border-t border-gray-100 bg-gray-50 pt-12 pb-8 px-6">
       <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col md:flex-row md:items-start gap-10 mb-10">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-8 mb-10">
           {/* Brand */}
-          <div className="flex-1">
+          <div className="col-span-2 sm:col-span-3 md:col-span-1">
             <Logo size="sm" />
-            <p className="mt-3 text-xs text-gray-500 leading-relaxed max-w-[200px]">
-              AI copilot built for Bench Sales recruiters and staffing desks.
+            <p className="mt-3 text-xs text-gray-500 leading-relaxed max-w-[220px]">
+              AI copilot for US IT staffing teams — bench sales recruiters and vendor teams — built to 10X placements.
             </p>
+          </div>
+
+          {/* Product */}
+          <div>
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-4">Product</p>
+            <ul className="space-y-2.5">
+              <li><a href="/#pulse" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Pulse</a></li>
+              <li><a href="/#jobs" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Jobs</a></li>
+              <li><a href="/#hotlist" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Hotlist</a></li>
+              <li><a href="/#inbox" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Inbox</a></li>
+              <li><a href="/#tracker" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Tracker</a></li>
+            </ul>
           </div>
 
           {/* Company */}
@@ -61,7 +73,7 @@ export default function SiteFooter() {
         {/* Bottom bar */}
         <div className="border-t border-gray-100 pt-6 flex flex-wrap items-center justify-between gap-4">
           <p className="text-xs text-gray-500">
-            © {new Date().getFullYear()} ProfilePush · Built for Bench Sales Recruiters
+            © {new Date().getFullYear()} ProfilePush · AI Copilot for US IT Staffing Teams
           </p>
 
           {/* Social icons */}

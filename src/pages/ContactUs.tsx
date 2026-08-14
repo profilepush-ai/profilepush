@@ -46,7 +46,7 @@ export default function ContactUs() {
   return (
     <div className="min-h-screen bg-white">
       <SEO
-        title="Contact ProfilePush — AI Copilot for Bench Sales Recruiters"
+        title="Contact ProfilePush — AI Copilot for US IT Staffing Teams"
         description="Get in touch with the ProfilePush team. Email us at poorna@profilepush.ai or use the contact form. We respond within 1 business day."
         canonical="https://profilepush.ai/contact"
       />
@@ -193,7 +193,7 @@ export default function ContactUs() {
       </main>
 
       <footer className="border-t border-gray-100 py-8 mt-12 px-6 text-center text-xs text-gray-400">
-        © {new Date().getFullYear()} ProfilePush · Built for Bench Sales Recruiters
+        © {new Date().getFullYear()} ProfilePush · AI Copilot for US IT Staffing Teams
       </footer>
     </div>
   );

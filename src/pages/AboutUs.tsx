@@ -11,8 +11,8 @@ const PILLARS = [
   },
   {
     icon: Target,
-    title: 'Built for Bench Sales',
-    body: 'Not a generic HR tool. ProfilePush is purpose-built for the specific workflows of Bench Sales recruiters — from C2C placements to direct hires across every major job board.',
+    title: 'Built for IT staffing',
+    body: 'Not a generic HR tool. ProfilePush is purpose-built for the specific workflows of US IT staffing — bench sales recruiters and vendor teams alike — from C2C placements to direct hires across every major job board.',
   },
   {
     icon: Users,
@@ -30,8 +30,8 @@ export default function AboutUs() {
   return (
     <div className="min-h-screen bg-white">
       <SEO
-        title="About ProfilePush — AI Copilot for Bench Sales Recruiters"
-        description="Learn about ProfilePush — the AI copilot purpose-built for Bench Sales recruiters and offshore recruiting teams. Our mission: make every recruiter on your team as effective as your best one."
+        title="About ProfilePush — AI Copilot for US IT Staffing Teams"
+        description="Learn about ProfilePush — the AI copilot purpose-built for bench sales recruiters and vendor teams in US IT staffing. Our mission: make every recruiter on your team as effective as your best one, built to 10X placements."
         canonical="https://profilepush.ai/about"
       />
       <header className="border-b border-gray-100 bg-white/90 backdrop-blur-md sticky top-0 z-50">
@@ -50,7 +50,7 @@ export default function AboutUs() {
             Built by recruiters,<br />for recruiters.
           </h1>
           <p className="text-lg text-gray-500 leading-relaxed">
-            ProfilePush is an AI copilot designed from the ground up for Bench Sales recruiters and staffing desks.
+            ProfilePush is an AI copilot designed from the ground up for US IT staffing — bench sales recruiters and vendor teams alike.
             We exist to eliminate the busywork that keeps great recruiters from doing what they do best — placing candidates.
           </p>
         </div>
@@ -103,7 +103,7 @@ export default function AboutUs() {
       </main>
 
       <footer className="border-t border-gray-100 py-8 mt-12 px-6 text-center text-xs text-gray-400">
-        © {new Date().getFullYear()} ProfilePush · Built for Bench Sales Recruiters
+        © {new Date().getFullYear()} ProfilePush · AI Copilot for US IT Staffing Teams
       </footer>
     </div>
   );
