@@ -14,16 +14,43 @@ import { useAuth } from '../contexts/AuthContext';
 const FEATURES = [
   {
     key: 'pulse',
-    headline: 'AI-matched jobs from social platforms.',
-    subline: 'Pulse watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards in real-time, matching jobs to your tech stacks with AI scores and pulling vendor emails.',
+    headline: 'Live in seconds. Every requirement.',
+    subline: 'Jobs watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards 24/7, surfacing every client requirement the moment it\'s posted and lining it up against your bench — so you never miss a fit.',
     accent: 'from-blue-100 to-white',
     badge: 'bg-blue-100 text-blue-700',
-    badgeLabel: 'Pulse',
+    badgeLabel: 'Jobs',
     topGlow: 'rgba(147,197,253,0.6)',
   },
   {
+    key: 'hotlist',
+    headline: 'Live in seconds. Every consultant.',
+    subline: 'Hotlist surfaces available bench consultants posted by other recruiters the moment they\'re listed, lined up against your open requirements — so vendor teams can fill a role without cold-searching.',
+    accent: 'from-amber-50 to-white',
+    badge: 'bg-amber-100 text-amber-700',
+    badgeLabel: 'Hotlist',
+    topGlow: 'rgba(252,211,77,0.5)',
+  },
+  {
+    key: 'marketpulse',
+    headline: '1 leaderboard. Every hot role.',
+    subline: 'Pulse ranks every tech stack by live job count, consultant count, and average rate, so you know exactly where to focus before you spend a submission.',
+    accent: 'from-indigo-50 to-white',
+    badge: 'bg-indigo-100 text-indigo-700',
+    badgeLabel: 'Pulse',
+    topGlow: 'rgba(165,180,252,0.5)',
+  },
+  {
+    key: 'inbox',
+    headline: '1 click. Outreach sent instantly.',
+    subline: 'One click drafts and sends a personalized outreach email — for a job detail or a resume — then tracks opens and replies so nothing goes cold. Identities stay masked until you reveal them.',
+    accent: 'from-purple-50 to-white',
+    badge: 'bg-purple-100 text-purple-700',
+    badgeLabel: 'Inbox',
+    topGlow: 'rgba(216,180,254,0.5)',
+  },
+  {
     key: 'tracker',
-    headline: 'Throw away your messy Excel sheets.',
+    headline: '0 double-submittals. Ever.',
     subline: 'Manage every vendor and client contact in one place. Log submissions with type badges (C2C, W2, Direct), filter by date range, and export to CSV. Never risk a double-submittal again.',
     accent: 'from-emerald-50 to-white',
     badge: 'bg-emerald-100 text-emerald-700',
@@ -35,11 +62,19 @@ const FEATURES = [
 const FAQS = [
   {
     q: 'What is ProfilePush?',
-    a: 'ProfilePush is an AI-powered platform built for Bench Sales recruiters. It watches job posts from social media groups and job boards in real-time, pulls vendor emails, and gives you a built-in vendor CRM to track every contact, submission, and rate in one place.',
+    a: 'ProfilePush is an AI copilot built for IT staffing — bench sales recruiters and vendor teams alike. It watches job posts and consultant listings across social platforms in real time, surfaces your best matches, drafts your outreach, and keeps your pipeline organized, so you can 10X your placements without 10x the headcount.',
   },
   {
     q: 'What is Pulse?',
-    a: 'Pulse is a real-time social job feed powered by AI. It watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards, scores each job against tech stack categories, and lets you reveal poster contact info (email, phone) to reach out directly.',
+    a: 'Pulse is your market-intelligence dashboard. It ranks every tech stack by live job count, consultant count, and average rate, so you know exactly which roles to chase before you spend a submission.',
+  },
+  {
+    q: 'What are Jobs and Hotlist?',
+    a: 'Jobs and Hotlist are live feeds pulled from LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards. Jobs surfaces client requirements lined up against your bench; Hotlist surfaces available consultants lined up against your open requirements — so whichever side of the desk you’re on, you see your best matches first, the moment they post.',
+  },
+  {
+    q: 'What is Inbox?',
+    a: 'Inbox is AI-drafted outreach. One click writes and sends a personalized email requesting job details or a resume, then tracks opens and replies — with identities kept masked until you reveal them.',
   },
   {
     q: 'What is Tracker?',
@@ -255,8 +290,8 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
       <main>
       <SEO
-        title="ProfilePush — AI Copilot for watching job posts from 500+ social media groups"
-        description="Our AI watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups and job boards 24/7, pulling vendor emails along with jobs so Bench Sales teams can stop scrolling and submit faster."
+        title="ProfilePush — AI Copilot Built to 10X Placements for IT Staffing Teams"
+        description="ProfilePush is the AI copilot for bench sales recruiters and vendor teams. It watches 500+ LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards, surfaces your best matches, drafts your outreach, and keeps your pipeline organized — so you 10X your placements without 10x the headcount."
         canonical="https://profilepush.ai/"
         jsonLd={LANDING_FAQ_JSONLD}
       />
@@ -290,11 +325,11 @@ export default function LandingPage() {
         <div className="relative max-w-3xl mx-auto">
 
           <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
-            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for watching job posts from 500+ social media groups</span>
+            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for US IT Staffing Teams to hit 10X placements.</span>
           </h1>
 
           <p className="text-base md:text-lg text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
-            Our AI watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups  and job boards 24/7 - pulling vendor emails along with jobs so you don't have to scroll through thousands of posts manually.
+            Built for both sides of the desk — whether you're filling your bench with requirements or filling a requirement with a consultant, one AI copilot runs the whole loop.
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4">
@@ -332,7 +367,36 @@ export default function LandingPage() {
         )}
       </section>
 
-      {/* ── FEATURES HEADLINE ── */}
+      {/* ── FEATURES ── */}
+      <div id="features">
+        {FEATURES.map((f, idx) => (
+          <section
+            key={f.key}
+            className={`py-16 md:py-20 px-6 border-t border-gray-100 ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
+          >
+            <div className="max-w-6xl mx-auto">
+              <div className="text-left mb-10">
+                <span className={`inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-4 ${f.badge} w-fit`}>
+                  {f.badgeLabel}
+                </span>
+                <h3 className="text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-[1.08] mb-4">
+                  <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">{f.headline}</span>
+                </h3>
+                <p className="text-base text-gray-500 leading-relaxed max-w-2xl">{f.subline}</p>
+              </div>
+
+              <GifSlot
+                featureKey={f.key}
+                imageUrl={screenshots[f.key] ?? null}
+                canEdit={canEdit}
+                onUploaded={handleUploaded}
+                accent={f.accent}
+                topGlow={f.topGlow}
+              />
+            </div>
+          </section>
+        ))}
+      </div>
 
       {/* ── HOW IT WORKS ── */}
       <section id="how-it-works" className="py-24 px-6 bg-white border-y border-gray-100">
@@ -340,7 +404,7 @@ export default function LandingPage() {
           <div className="text-center mb-16">
             <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">The workflow</p>
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-              From social post to submission
+              From market signal to placement
             </h2>
           </div>
 
@@ -350,10 +414,11 @@ export default function LandingPage() {
 
             <div className="space-y-0">
               {[
-                { n: '1', t: 'Browse the Pulse feed', d: 'AI scans LinkedIn, Reddit, and other social platforms — surfacing matched jobs with scores in real-time.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
-                { n: '2', t: 'Reveal contacts', d: 'Unlock poster emails and phone numbers to reach out directly from the feed.', dot: 'bg-orange-500', num: 'text-orange-500', ring: 'ring-orange-100' },
-                { n: '3', t: 'Track in Tracker', d: 'Log vendor contacts, submissions, and rates. Filter by date, export to CSV, and never double-submit.', dot: 'bg-yellow-500', num: 'text-yellow-500', ring: 'ring-yellow-100' },
-              ].map((step, i, arr) => (
+                { n: '1', t: 'See what\'s hot', d: 'Pulse ranks every tech stack by live demand and rate, so you know where to focus before you spend a submission.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
+                { n: '2', t: 'AI finds your match', d: 'Jobs and Hotlist scan 500+ groups and job boards in real-time, surfacing requirements and consultants that fit your stack the moment they post.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
+                { n: '3', t: 'AI drafts the outreach', d: 'Inbox writes and sends the ask, tracks opens and replies, and keeps identities masked until you reveal them.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
+                { n: '4', t: 'Close it in Tracker', d: 'Log every submission, avoid double-submittals, and export your pipeline anytime.', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
+              ].map((step) => (
                 <div key={step.n} className="relative flex gap-8 pb-10 last:pb-0">
                   {/* Circle */}
                   <div className={`relative z-10 w-12 h-12 shrink-0 rounded-full bg-white ring-4 ${step.ring} border border-gray-100 shadow-sm flex items-center justify-center`}>
@@ -496,12 +561,12 @@ export default function LandingPage() {
             <span className="h-1 w-2 rounded-full bg-yellow-400" />
           </div>
           <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 mb-4">
-            Ready to find
+            Ready to
             <br />
-            <span className="text-blue-600">your next match?</span>
+            <span className="text-blue-600">10X your placements?</span>
           </h2>
           <p className="text-gray-500 mb-10">
-            Stop scrolling job boards. Start closing roles.
+            Stop scrolling groups. Start closing.
           </p>
           <Link
             to="/signup"
