@@ -1094,8 +1094,8 @@ function formatRevealedAt(dateIso: string) {
 
 function maskPosterName(name: string) {
   const trimmed = (name ?? '').trim();
-  if (!trimmed) return 'Posted by hidden';
-  return `Posted by ${trimmed.slice(0, 3)}***`;
+  if (!trimmed) return 'hidden';
+  return `${trimmed.slice(0, 3)}***`;
 }
 
 function maskName(name: string) {
@@ -2857,15 +2857,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       </div>
     );
     return (
-      <div key={lead.id} className="mb-1.5 flex items-start gap-0.5 break-inside-avoid">
+      <div key={lead.id} className="flex items-start gap-0.5">
       <div className={`relative min-w-0 flex-1 rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
         <div>
           <div className="min-w-0">
             <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
-              <span>{feedTimeBasis === 'created' ? 'Added' : 'Posted'} {formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
+              <span>{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
               <span>•</span>
-              <span>{isLeadRevealed ? `Posted by ${lead.posterName}` : maskPosterName(lead.posterName)}</span>
+              <span>{isLeadRevealed ? lead.posterName : maskPosterName(lead.posterName)}</span>
               {(lead.company || lead.platform) && (
                 <span className="inline-flex items-center gap-1 whitespace-nowrap">
                   <span>•</span>
@@ -3028,13 +3028,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const tableMutedClass = isDark ? 'text-[#94A3B8]' : 'text-gray-500';
     const cellClass = `px-2 py-2 align-top whitespace-normal break-words ${tableValueClass}`;
     const linkClass = isDark ? 'text-blue-300 hover:text-blue-200' : 'text-blue-600 hover:text-blue-700';
-    const askButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400';
-    const predictButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-gray-500 transition-opacity hover:opacity-70 dark:text-gray-400';
-    const predictButtonUsedClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400';
-    const emailButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400';
-    const emailButtonUsedClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-blue-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400';
-    const submitStatusClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-blue-600 dark:text-blue-400';
-    const previewButtonUsedClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-cyan-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-cyan-400';
+    const askButtonClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400';
+    const predictButtonClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-500 transition-opacity hover:opacity-70 dark:text-gray-400';
+    const predictButtonUsedClass = 'inline-flex h-7 w-auto min-w-7 shrink-0 items-center justify-center gap-0.5 px-1 text-[10px] font-semibold leading-none text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400';
+    const emailButtonClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400';
+    const emailButtonUsedClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-blue-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400';
+    const submitStatusClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-blue-600 dark:text-blue-400';
+    const previewButtonUsedClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-cyan-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-cyan-400';
     const postedLabel = feedTimeBasis === 'created' ? 'Added' : 'Posted';
 
     const rows = leads.map((lead) => {
@@ -3122,20 +3122,16 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         <table className="w-full table-fixed border-collapse border-spacing-0 text-left text-[11px]">
         <colgroup>
           <col style={{ width: '3%' }} />
-          <col style={{ width: '12%' }} />
+          <col style={{ width: '17%' }} />
           <col style={{ width: '6%' }} />
           <col style={{ width: '7%' }} />
           <col style={{ width: '7%' }} />
           <col style={{ width: '6%' }} />
           <col style={{ width: '5%' }} />
-          <col style={{ width: '7%' }} />
-          <col style={{ width: '9%' }} />
+          <col style={{ width: '8%' }} />
+          <col style={{ width: '22%' }} />
           <col style={{ width: '6%' }} />
-          <col style={{ width: '7%' }} />
-          <col style={{ width: '7%' }} />
-          <col style={{ width: '7%' }} />
-          <col style={{ width: '5%' }} />
-          <col style={{ width: '6%' }} />
+          <col style={{ width: '13%' }} />
         </colgroup>
         <thead className={`sticky top-0 z-[2] ${tableHeadSurfaceClass}`}>
           <tr className={`border-b ${tableBorderClass} text-[10px] uppercase tracking-wide ${tableMutedClass}`}>
@@ -3149,11 +3145,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             {renderSortableHeader('Location', 'location')}
             <th className="px-2 py-2 whitespace-normal">Skills</th>
             {renderSortableHeader(postedLabel, 'posted')}
-            <th className="px-2 py-2 whitespace-normal">{isHotlistFeed ? 'Match' : 'Predict'}</th>
-            <th className="px-2 py-2 whitespace-normal">{isHotlistFeed ? 'Reveal' : 'Email'}</th>
-            <th className="px-2 py-2 whitespace-normal">{isHotlistFeed ? 'Ask Resume' : 'Submit'}</th>
-            <th className="px-2 py-2 whitespace-normal">Post</th>
-            <th className="px-2 py-2 whitespace-normal" aria-label="Remove" />
+            <th className="px-2 py-2 whitespace-normal">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -3187,103 +3179,86 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   {formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}
                 </td>
                 <td className="px-1.5 py-2 align-top">
-                  {(() => {
-                    const cachedPredict = predictResultByLeadId[lead.id];
-                    return cachedPredict ? (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
-                        title={`${isHotlistFeed ? 'Match' : 'Predicted'} ${cachedPredict.score}% — click to retry`}
-                        className={predictButtonUsedClass}
-                      >
-                        <span className="font-extrabold">{cachedPredict.score}%</span>
-                        <RotateCcw size={11} strokeWidth={2.5} />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
-                        className={predictButtonClass}
-                      >
-                        <Gauge size={12} strokeWidth={2} />
-                        <span>{isHotlistFeed ? 'Match' : 'Predict'}</span>
-                      </button>
-                    );
-                  })()}
-                </td>
-                <td className="px-1.5 py-2 align-top">
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email') : void handleRevealContact(lead); }}
-                    disabled={processingLeadId === lead.id}
-                    title={isLeadRevealed ? 'Copy email' : 'Reveal email'}
-                    className={isLeadRevealed ? emailButtonUsedClass : emailButtonClass}
-                  >
-                    {processingLeadId === lead.id ? (
-                      <span>...</span>
-                    ) : isLeadRevealed ? (
-                      <>
-                        <Copy size={11} strokeWidth={2} />
-                        <span>Copy</span>
-                      </>
-                    ) : (
-                      <>
-                        <AtSign size={12} strokeWidth={2} />
-                        <span>{isHotlistFeed ? 'Reveal' : 'Email'}</span>
-                      </>
-                    )}
-                  </button>
-                </td>
-                <td className="px-1.5 py-2 align-top">
-                  {isAskPending || isVerified ? (
-                    <span
-                      title={isVerified ? 'Verified' : (isHotlistFeed ? 'Resume already requested' : 'Submission already sent')}
-                      className={submitStatusClass}
-                    >
-                      {isVerified ? <BadgeCheck size={12} strokeWidth={2} className="shrink-0" /> : <Check size={12} strokeWidth={2} className="shrink-0" />}
-                      <span className="truncate">
-                        {(() => {
-                          const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
-                          const label = isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted');
-                          return stampIso ? `${label} ${formatAgoCompact(stampIso)}` : label;
-                        })()}
-                      </span>
-                    </span>
-                  ) : (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {(() => {
+                      const cachedPredict = predictResultByLeadId[lead.id];
+                      return cachedPredict ? (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
+                          title={`${isHotlistFeed ? 'Match' : 'Predicted'} ${cachedPredict.score}% — click to retry`}
+                          className={predictButtonUsedClass}
+                        >
+                          <span className="font-extrabold">{cachedPredict.score}%</span>
+                          <RotateCcw size={11} strokeWidth={2.5} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
+                          className={predictButtonClass}
+                          title={isHotlistFeed ? 'Match' : 'Predict score'}
+                        >
+                          <Gauge size={12} strokeWidth={2} />
+                        </button>
+                      );
+                    })()}
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
-                      disabled={!canAskAI || processingAskAILeadId === lead.id}
-                      title={!lead.posterEmail ? 'No email' : isHotlistFeed ? "Ask for the consultant's resume" : 'Submit a candidate for this role'}
-                      className={`${askButtonClass} truncate`}
+                      onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email') : void handleRevealContact(lead); }}
+                      disabled={processingLeadId === lead.id}
+                      title={isLeadRevealed ? 'Copy email' : 'Reveal email'}
+                      className={isLeadRevealed ? emailButtonUsedClass : emailButtonClass}
                     >
-                      <Mail size={12} strokeWidth={2} className="shrink-0" />
-                      <span className="truncate">{processingAskAILeadId === lead.id ? '...' : (isHotlistFeed ? 'Ask Resume' : 'Submit')}</span>
+                      {processingLeadId === lead.id ? (
+                        <span>...</span>
+                      ) : isLeadRevealed ? (
+                        <Copy size={11} strokeWidth={2} />
+                      ) : (
+                        <AtSign size={12} strokeWidth={2} />
+                      )}
                     </button>
-                  )}
-                </td>
-                <td className="px-1.5 py-2 align-top">
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); void handlePreviewPost(lead); }}
-                    disabled={loadingPostContentLeadId === lead.id}
-                    title="Preview original post"
-                    className={postContentViewedLeadIds.has(lead.id) ? previewButtonUsedClass : predictButtonClass}
-                  >
-                    <Eye size={12} strokeWidth={2} />
-                    <span>{loadingPostContentLeadId === lead.id ? '...' : 'Preview'}</span>
-                  </button>
-                </td>
-                <td className="px-1.5 py-2 align-top">
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); void handleIgnoreLead(lead); }}
-                    disabled={processingIgnoreLeadId === lead.id}
-                    title={isAdminUser ? 'Hide from platform (spam)' : 'Ignore — remove from my feed'}
-                    className="inline-flex h-7 w-full items-center justify-center text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400"
-                  >
-                    {processingIgnoreLeadId === lead.id ? <span className="text-[10px]">...</span> : <X size={14} strokeWidth={2.5} />}
-                  </button>
+                    {isAskPending || isVerified ? (
+                      <span
+                        title={(() => {
+                          const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
+                          const label = isVerified ? 'Verified' : (isHotlistFeed ? 'Resume already requested' : 'Submission already sent');
+                          return stampIso ? `${label} — ${formatAgoCompact(stampIso)}` : label;
+                        })()}
+                        className={submitStatusClass}
+                      >
+                        {isVerified ? <BadgeCheck size={14} strokeWidth={2} /> : <Check size={14} strokeWidth={2} />}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
+                        disabled={!canAskAI || processingAskAILeadId === lead.id}
+                        title={!lead.posterEmail ? 'No email' : isHotlistFeed ? "Ask for the consultant's resume" : 'Submit a candidate for this role'}
+                        className={askButtonClass}
+                      >
+                        {processingAskAILeadId === lead.id ? <span>...</span> : <Mail size={12} strokeWidth={2} />}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); void handlePreviewPost(lead); }}
+                      disabled={loadingPostContentLeadId === lead.id}
+                      title="Preview original post"
+                      className={postContentViewedLeadIds.has(lead.id) ? previewButtonUsedClass : predictButtonClass}
+                    >
+                      {loadingPostContentLeadId === lead.id ? <span>...</span> : <Eye size={12} strokeWidth={2} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); void handleIgnoreLead(lead); }}
+                      disabled={processingIgnoreLeadId === lead.id}
+                      title={isAdminUser ? 'Hide from platform (spam)' : 'Ignore — remove from my feed'}
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400"
+                    >
+                      {processingIgnoreLeadId === lead.id ? <span className="text-[10px]">...</span> : <X size={14} strokeWidth={2.5} />}
+                    </button>
+                  </div>
                 </td>
               </tr>
             );
@@ -6053,8 +6028,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopRevealedFeed)
                             ) : (
-                              <div className="columns-3 gap-1.5">
-                                {renderLeadCards(visibleDesktopRevealedFeed, 3)}
+                              <div className="grid grid-cols-4 items-start gap-1.5">
+                                {renderLeadCards(visibleDesktopRevealedFeed, 4)}
                               </div>
                             )
                           ) : selectedMatchesTab === 'predicted' ? (
@@ -6063,8 +6038,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopPredictedFeed)
                             ) : (
-                              <div className="columns-3 gap-1.5">
-                                {renderLeadCards(visibleDesktopPredictedFeed, 3)}
+                              <div className="grid grid-cols-4 items-start gap-1.5">
+                                {renderLeadCards(visibleDesktopPredictedFeed, 4)}
                               </div>
                             )
                           ) : selectedMatchesTab === 'asked' ? (
@@ -6073,8 +6048,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopAskedFeed)
                             ) : (
-                              <div className="columns-3 gap-1.5">
-                                {renderLeadCards(visibleDesktopAskedFeed, 3)}
+                              <div className="grid grid-cols-4 items-start gap-1.5">
+                                {renderLeadCards(visibleDesktopAskedFeed, 4)}
                               </div>
                             )
                           ) : selectedMatchesTab === 'verified' ? (
@@ -6083,8 +6058,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopVerifiedFeed)
                             ) : (
-                              <div className="columns-3 gap-1.5">
-                                {renderLeadCards(visibleDesktopVerifiedFeed, 3)}
+                              <div className="grid grid-cols-4 items-start gap-1.5">
+                                {renderLeadCards(visibleDesktopVerifiedFeed, 4)}
                               </div>
                             )
                           ) : (
@@ -6093,8 +6068,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopRecentFeed)
                             ) : (
-                              <div className="columns-3 gap-1.5">
-                                {renderLeadCards(visibleDesktopRecentFeed, 3)}
+                              <div className="grid grid-cols-4 items-start gap-1.5">
+                                {renderLeadCards(visibleDesktopRecentFeed, 4)}
                               </div>
                             )
                           )}
@@ -6428,7 +6403,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-gray-900">{selectedLead.title}</p>
                 {selectedLead.company && <p className="text-[12px] text-gray-600">{[selectedLead.company, selectedLead.location].filter(Boolean).join(' • ')}</p>}
-                <p className="mt-0.5 text-[11px] text-gray-500">{maskPosterName(selectedLead.posterName)} • {feedTimeBasis === 'created' ? 'Added' : 'Posted'} {formatAgo(feedTimeBasis === 'created' ? selectedLead.createdAt : selectedLead.postedAt)}</p>
+                <p className="mt-0.5 text-[11px] text-gray-500">{maskPosterName(selectedLead.posterName)} • {feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? selectedLead.createdAt : selectedLead.postedAt)}</p>
               </div>
               <button
                 onClick={() => setSelectedLead(null)}
