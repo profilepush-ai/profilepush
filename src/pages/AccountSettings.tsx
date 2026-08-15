@@ -5,13 +5,14 @@ import {
   Copy, Check, Plus, Trash2, Pencil, X, Save, Mail,
   Crown, Eye, EyeOff, Lock,
   ArrowRight, ChevronRight, RefreshCw, Info,
-  UserCheck,
+  UserCheck, Plug, Loader2,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
+import { isGmailFeatureEnabled } from '../lib/gmail-feature-flag';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,16 @@ interface Member {
   data_access: 'full' | 'assigned_only';
 }
 
-type Section = 'billing' | 'profile' | 'workspace';
+type Section = 'billing' | 'profile' | 'workspace' | 'integrations';
+
+type GmailIntegrationStatus = {
+  id: string;
+  gmail_address: string;
+  status: 'connected' | 'disconnected' | 'error' | 'revoked';
+  last_error: string | null;
+  last_synced_at: string | null;
+  connected_at: string;
+};
 
 interface WatchSchedule {
   id: string;
@@ -54,6 +64,7 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ElementType; danger?:
   { id: 'billing',       label: 'Billing',             icon: CreditCard },
   { id: 'profile',       label: 'Profile',             icon: User      },
   { id: 'workspace',     label: 'Workspace',          icon: Building2 },
+  { id: 'integrations',  label: 'Integrations',       icon: Plug      },
 ];
 
 // ─── Small reusable pieces ─────────────────────────────────────────────────────
@@ -113,16 +124,24 @@ export default function AccountSettings() {
 
   const isOwner = membership?.role === 'owner';
   const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+  const gmailFeatureEnabled = isGmailFeatureEnabled(user?.email);
 
   // ── Global ──────────────────────────────────────────────────
   const [section, setSection] = useState<Section>(() => {
     const s = searchParams.get('section');
     if (s === 'profile' || s === 'danger') return 'profile';
     if (s === 'workspace' || s === 'team') return 'workspace';
+    if (s === 'integrations') return 'integrations';
     return 'billing';
   });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const showToast = (message: string, type: 'success' | 'error' = 'success') => setToast({ message, type });
+
+  // ── Gmail integration ───────────────────────────────────────
+  const [gmailStatus, setGmailStatus] = useState<GmailIntegrationStatus | null>(null);
+  const [gmailLoading, setGmailLoading] = useState(false);
+  const [connectingGmail, setConnectingGmail] = useState(false);
+  const [disconnectingGmail, setDisconnectingGmail] = useState(false);
 
   // ── Watch Schedule ──────────────────────────────────────────
   const [globalWatch, setGlobalWatch] = useState<WatchSchedule | null>(null);
@@ -164,7 +183,56 @@ export default function AccountSettings() {
     if (account)    setAccountName(account.name);
     if (account)    loadMembers();
     if (account)    loadWatchSchedule();
+    if (account)    loadGmailStatus();
   }, [account, membership]);
+
+  useEffect(() => {
+    const gmailResult = searchParams.get('gmail');
+    if (!gmailResult) return;
+    if (gmailResult === 'connected') {
+      showToast('Gmail connected. You can now send from your own address.', 'success');
+      void loadGmailStatus();
+    } else {
+      showToast('Could not connect Gmail. Please try again.', 'error');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  async function loadGmailStatus() {
+    setGmailLoading(true);
+    const { data, error } = await supabase.from('gmail_integration_status').select('*').maybeSingle();
+    setGmailLoading(false);
+    if (error) return;
+    setGmailStatus(data as GmailIntegrationStatus | null);
+  }
+
+  async function connectGmail() {
+    if (!account?.id || connectingGmail) return;
+    setConnectingGmail(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: account.id } });
+      if (error || !data?.url) throw new Error(data?.error || 'Could not start Gmail connection');
+      window.location.href = data.url;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not start Gmail connection', 'error');
+      setConnectingGmail(false);
+    }
+  }
+
+  async function disconnectGmail() {
+    if (disconnectingGmail) return;
+    setDisconnectingGmail(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('gmail-oauth-disconnect', { body: {} });
+      if (error || !data?.ok) throw new Error(data?.error || 'Could not disconnect Gmail');
+      await loadGmailStatus();
+      showToast('Gmail disconnected', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not disconnect Gmail', 'error');
+    } finally {
+      setDisconnectingGmail(false);
+    }
+  }
 
   async function loadWatchSchedule() {
     if (!account) return;
@@ -444,6 +512,57 @@ export default function AccountSettings() {
                     </span>
                   )}
                 </div>
+              </div>
+            </Card>
+          )}
+
+          {/* ── INTEGRATIONS ── */}
+          {section === 'integrations' && (
+            <Card>
+              <CardHeader
+                icon={Mail}
+                title="Gmail"
+                description="Send vendor outreach and inbox replies from your own Gmail address instead of ProfilePush's."
+              />
+              <div className="px-4 sm:px-6 py-5">
+                {!gmailFeatureEnabled ? (
+                  <div className="flex items-center gap-3">
+                    <span className="shrink-0 px-2 py-1 rounded-md bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-wide">Coming Soon</span>
+                    <p className="text-xs text-gray-500">We're finishing Google's security review for this feature. It'll be available to everyone shortly.</p>
+                  </div>
+                ) : gmailLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400"><Loader2 size={13} className="animate-spin" />Loading...</div>
+                ) : gmailStatus && gmailStatus.status === 'connected' ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                        {gmailStatus.gmail_address}
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        Connected {new Date(gmailStatus.connected_at).toLocaleDateString()}
+                        {gmailStatus.last_synced_at && ` · Last synced ${new Date(gmailStatus.last_synced_at).toLocaleTimeString()}`}
+                      </p>
+                    </div>
+                    <button onClick={() => void disconnectGmail()} disabled={disconnectingGmail}
+                      className="shrink-0 px-3 py-1.5 border border-gray-200 hover:bg-gray-50 disabled:opacity-50 text-gray-600 text-xs font-semibold rounded-lg transition-colors">
+                      {disconnectingGmail ? 'Disconnecting...' : 'Disconnect'}
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    {gmailStatus && (gmailStatus.status === 'error' || gmailStatus.status === 'revoked') && (
+                      <p className="text-[11px] text-red-600 mb-3 flex items-center gap-1"><AlertTriangle size={11} />
+                        {gmailStatus.status === 'revoked' ? 'Gmail access was revoked. Reconnect to keep sending from your address.' : (gmailStatus.last_error || 'Gmail connection needs attention.')}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500 mb-3">Vendors will see replies come from your real Gmail address, not a shared ProfilePush inbox.</p>
+                    <button onClick={() => void connectGmail()} disabled={connectingGmail}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-1.5">
+                      {connectingGmail ? <LogoSpinner size={13} /> : <Plug size={13} />}Connect Gmail
+                    </button>
+                  </div>
+                )}
               </div>
             </Card>
           )}

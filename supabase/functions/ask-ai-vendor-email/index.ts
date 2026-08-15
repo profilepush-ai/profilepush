@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getValidAccessToken, sendViaGmail } from "../_shared/gmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,6 +66,7 @@ Deno.serve(async (req: Request) => {
     const accountId = asString(body.account_id, 100);
     const jobId = asString(body.job_id, 100);
     const leadType = asString(body.lead_type, 20) === "hotlist" ? "hotlist" : "job";
+    const channel = asString(body.channel, 20) === "gmail" ? "gmail" : "mailgun";
     const chargeAmount = leadType === "job" ? JOB_SUBMIT_COST : ASK_AI_COST;
     const resumeUrl = asString(body.resume_url, 2000);
     const resumeFileName = asString(body.resume_file_name, 255);
@@ -248,6 +250,18 @@ Deno.serve(async (req: Request) => {
       ? `${emailContent}\n\nI've attached my resume as well.`
       : emailContent;
 
+    let gmailAccessToken: string | null = null;
+    let gmailFromAddress: string | null = null;
+    if (channel === "gmail") {
+      try {
+        const token = await getValidAccessToken(supabaseAdmin, user.id);
+        gmailAccessToken = token.accessToken;
+        gmailFromAddress = token.gmailAddress;
+      } catch {
+        return respond({ error: "gmail_not_connected" }, 400);
+      }
+    }
+
     const { error: requestInsertError } = await supabaseAdmin
       .from("pulse_ask_ai_requests")
       .insert({
@@ -356,6 +370,7 @@ Deno.serve(async (req: Request) => {
         vendor_email: vendorEmail,
         sender_name: requesterName,
         subject: emailSubject,
+        channel,
       })
       .select("id")
       .single();
@@ -369,10 +384,13 @@ Deno.serve(async (req: Request) => {
         conversation_id: conversation.id,
         direction: "outbound",
         sender_type: "user",
-        from_email: `${requesterName.replace(/[\r\n"]/g, "")} via ProfilePush <requests@ask.profilepush.ai>`,
+        from_email: channel === "gmail"
+          ? `${requesterName.replace(/[\r\n"]/g, "")} <${gmailFromAddress}>`
+          : `${requesterName.replace(/[\r\n"]/g, "")} via ProfilePush <requests@ask.profilepush.ai>`,
         to_email: vendorEmail,
         subject: emailSubject,
         text_body: finalEmailContent,
+        channel,
         status: "queued",
       })
       .select("id")
@@ -389,41 +407,68 @@ Deno.serve(async (req: Request) => {
       return await refundDeliveryFailure(`Could not link conversation: ${requestConversationError.message}`);
     }
 
-    const vendorMailWorkerUrl = Deno.env.get("VENDOR_MAIL_WORKER_URL")?.trim();
-    const vendorMailWorkerToken = Deno.env.get("VENDOR_MAIL_WORKER_TOKEN")?.trim();
-    if (!vendorMailWorkerUrl || !vendorMailWorkerToken) {
-      return await refundDeliveryFailure("Vendor mail worker is not configured");
-    }
+    let deliveryHttpStatus: number | null = null;
+    let deliveryResponse: string | null = null;
+    if (channel === "gmail") {
+      try {
+        const sendResult = await sendViaGmail({
+          accessToken: gmailAccessToken!,
+          fromName: requesterName,
+          fromAddress: gmailFromAddress!,
+          toAddress: vendorEmail,
+          subject: emailSubject,
+          textBody: finalEmailContent,
+        });
+        await supabaseAdmin
+          .from("vendor_messages")
+          .update({ status: "accepted", gmail_message_id: sendResult.id, sent_at: new Date().toISOString(), error_message: null })
+          .eq("id", outboundMessage.id);
+        await supabaseAdmin
+          .from("vendor_conversations")
+          .update({ status: "open", gmail_thread_id: sendResult.threadId, last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", conversation.id);
+      } catch (error) {
+        return await refundDeliveryFailure(`Gmail send failed: ${(error as Error).message}`);
+      }
+    } else {
+      const vendorMailWorkerUrl = Deno.env.get("VENDOR_MAIL_WORKER_URL")?.trim();
+      const vendorMailWorkerToken = Deno.env.get("VENDOR_MAIL_WORKER_TOKEN")?.trim();
+      if (!vendorMailWorkerUrl || !vendorMailWorkerToken) {
+        return await refundDeliveryFailure("Vendor mail worker is not configured");
+      }
 
-    let queueResponse: Response;
-    try {
-      queueResponse = await fetch(`${vendorMailWorkerUrl.replace(/\/$/, "")}/vendor-mail/send`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${vendorMailWorkerToken}`,
-          "Content-Type": "application/json",
-        },
-        signal: AbortSignal.timeout(30_000),
-        body: JSON.stringify({
-          message_id: outboundMessage.id,
-          ...(resumeUrl ? { resume_url: resumeUrl, resume_file_name: resumeFileName || "resume.pdf" } : {}),
-        }),
-      });
-    } catch (error) {
-      return await refundDeliveryFailure(`Vendor mail queue request failed: ${(error as Error).message}`);
-    }
+      let queueResponse: Response;
+      try {
+        queueResponse = await fetch(`${vendorMailWorkerUrl.replace(/\/$/, "")}/vendor-mail/send`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${vendorMailWorkerToken}`,
+            "Content-Type": "application/json",
+          },
+          signal: AbortSignal.timeout(30_000),
+          body: JSON.stringify({
+            message_id: outboundMessage.id,
+            ...(resumeUrl ? { resume_url: resumeUrl, resume_file_name: resumeFileName || "resume.pdf" } : {}),
+          }),
+        });
+      } catch (error) {
+        return await refundDeliveryFailure(`Vendor mail queue request failed: ${(error as Error).message}`);
+      }
 
-    const queueResponseText = (await queueResponse.text()).slice(0, 2_000);
-    if (!queueResponse.ok) {
-      return await refundDeliveryFailure(`Vendor mail queue HTTP ${queueResponse.status}: ${queueResponseText.slice(0, 300)}`);
+      const queueResponseText = (await queueResponse.text()).slice(0, 2_000);
+      if (!queueResponse.ok) {
+        return await refundDeliveryFailure(`Vendor mail queue HTTP ${queueResponse.status}: ${queueResponseText.slice(0, 300)}`);
+      }
+      deliveryHttpStatus = queueResponse.status;
+      deliveryResponse = queueResponseText || null;
     }
 
     const { error: completedStatusError } = await supabaseAdmin
       .from("pulse_ask_ai_requests")
       .update({
         status: "completed",
-        delivery_http_status: queueResponse.status,
-        delivery_response: queueResponseText || null,
+        delivery_http_status: deliveryHttpStatus,
+        delivery_response: deliveryResponse,
         delivered_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

@@ -46,6 +46,9 @@ import {
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
+import GmailConnectPrompt from '../components/GmailConnectPrompt';
+import GmailIcon from '../components/GmailIcon';
+import { isPulseAdmin } from '../lib/pulse-admin';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -287,7 +290,7 @@ type ProfileCategoryTab = {
 
 type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'asked' | 'verified' | 'queued' | 'predicted';
 type FeedTimeBasis = 'posted' | 'created';
-type LeadActionType = 'revealed' | 'breakdown';
+type LeadActionType = 'revealed' | 'breakdown' | 'post_content_viewed' | 'ignored';
 
 type AskedJobState = {
   requestedAt: string;
@@ -301,12 +304,15 @@ type AskAIPreview = {
   leadType: 'job' | 'hotlist';
   requestId: string;
   vendorName: string;
+  jobTitle: string;
+  company: string;
   missingDetails: string[];
   emailSubject: string;
   emailContent: string;
   isGenerating: boolean;
   resumeUrl?: string;
   resumeFileName?: string;
+  channel: 'mailgun' | 'gmail';
 };
 type FeedSearchFilters = {
   experienceRange: string;
@@ -1391,6 +1397,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [processingAskAILeadId, setProcessingAskAILeadId] = useState<string | null>(null);
   const [askAIPreview, setAskAIPreview] = useState<AskAIPreview | null>(null);
   const [resumeUploading, setResumeUploading] = useState(false);
+  const [showGmailConnectPrompt, setShowGmailConnectPrompt] = useState(false);
+  const [connectingGmail, setConnectingGmail] = useState(false);
   const [generatedEmailDrafts, setGeneratedEmailDrafts] = useState<{ pitching: string; requestDetails: string }>({
     pitching: '',
     requestDetails: '',
@@ -1430,6 +1438,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [globalAskedJobStateByLeadId, setGlobalAskedJobStateByLeadId] = useState<Record<string, GlobalAskedJobState>>({});
   const [askedLeadsById, setAskedLeadsById] = useState<Record<string, SocialLead>>({});
   const [breakdownChargedLeadIds, setBreakdownChargedLeadIds] = useState<Set<string>>(new Set());
+  const [postContentViewedLeadIds, setPostContentViewedLeadIds] = useState<Set<string>>(new Set());
+  const [postContentPreview, setPostContentPreview] = useState<{ leadId: string; title: string; content: string } | null>(null);
+  const [loadingPostContentLeadId, setLoadingPostContentLeadId] = useState<string | null>(null);
+  const [ignoredLeadIds, setIgnoredLeadIds] = useState<Set<string>>(new Set());
+  const [processingIgnoreLeadId, setProcessingIgnoreLeadId] = useState<string | null>(null);
   const [queuedLeadIds, setQueuedLeadIds] = useState<Set<string>>(new Set());
   const [revealCountsByLeadId, setRevealCountsByLeadId] = useState<Record<string, number>>({});
   const [revealNamesByLeadId, setRevealNamesByLeadId] = useState<Record<string, string[]>>({});
@@ -1467,9 +1480,24 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setToast({ message, type });
   }, []);
 
+  const connectGmail = useCallback(async () => {
+    if (!account?.id || connectingGmail) return;
+    setConnectingGmail(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: account.id } });
+      if (error || !data?.url) throw new Error(data?.error || 'Could not start Gmail connection');
+      window.location.href = data.url;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not start Gmail connection', 'error');
+      setConnectingGmail(false);
+    }
+  }, [account?.id, connectingGmail, showToast]);
+
   const REVEAL_CONTACT_COST = 0.05;
   const BREAKDOWN_COST = 0.1;
   const PREDICT_COST = 0.01;
+  const POST_CONTENT_COST = 0.1;
+  const isAdminUser = isPulseAdmin(user?.email);
   // Display-only — the actual submit charge is computed server-side in the
   // ask-ai-vendor-email edge function's JOB_SUBMIT_COST constant.
   const SUBMIT_COST_DISPLAY = 0.05;
@@ -1886,8 +1914,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       }
     }
 
-    return Array.from(byKey.values());
-  }, [feedTimeBasis, scopedFeed]);
+    return Array.from(byKey.values()).filter((lead) => !ignoredLeadIds.has(lead.id));
+  }, [feedTimeBasis, ignoredLeadIds, scopedFeed]);
 
   const recentVisibleFeed = useMemo(() => {
     const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id));
@@ -2147,6 +2175,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     canLoadMoreDesktopRevealed,
     canLoadMoreDesktopVerified,
     isMobileViewport,
+    isTableLayout,
     predictedVisibleFeed.length,
     recentVisibleFeed.length,
     revealedVisibleFeed.length,
@@ -2483,6 +2512,31 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     return { inlineBreakdownItems, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue };
   };
 
+  // Hotlist leads ARE the consultant, so the pasted text is the job to match against —
+  // the opposite direction from the jobs feed (job_context=job, consultant_text=pasted candidate).
+  // Swap the payload so the worker's fixed "JOB vs CONSULTANT" prompt still lines up correctly.
+  const buildPredictMatchFields = (lead: SocialLead, pastedText: string) => {
+    const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
+    if (!isHotlistFeed) {
+      return {
+        consultantText: pastedText,
+        jobContext: { skills: skillsValue, exp: expValue, visa: visaValue, workType: workTypeValue, employmentType: employmentTypeValue, location: locationValue },
+      };
+    }
+    const consultantSummary = [
+      skillsValue && `Skills: ${skillsValue}`,
+      expValue && `Experience: ${expValue}`,
+      workTypeValue && `Work type: ${workTypeValue}`,
+      employmentTypeValue && `Employment type: ${employmentTypeValue}`,
+      visaValue && `Visa: ${visaValue}`,
+      locationValue && `Location: ${locationValue}`,
+    ].filter(Boolean).join('\n');
+    return {
+      consultantText: consultantSummary || 'No consultant details available.',
+      jobContext: { skills: pastedText, exp: '', visa: '', workType: '', employmentType: '', location: '' },
+    };
+  };
+
   const verdictClassForScore = (score: number) => (
     score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-blue-600' : score >= 40 ? 'text-amber-600' : 'text-red-600'
   );
@@ -2544,23 +2598,16 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           .then(() => loadRecentPredictTexts());
       }
 
-      const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(predictLead);
+      const { consultantText, jobContext } = buildPredictMatchFields(predictLead, predictInput);
       const { data, error } = await supabase.functions.invoke('predict-match', {
         body: {
           lead_id: predictLead.id,
           platform: predictLead.platform,
           feed_kind: isHotlistFeed ? 'hotlist' : 'job',
           role_title: predictLead.title,
-          consultant_text: predictInput,
+          consultant_text: consultantText,
           account_id: account?.id ?? '',
-          job_context: {
-            skills: skillsValue,
-            exp: expValue,
-            visa: visaValue,
-            workType: workTypeValue,
-            employmentType: employmentTypeValue,
-            location: locationValue,
-          },
+          job_context: jobContext,
         },
       });
 
@@ -2627,23 +2674,16 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         });
         if (!consumed) break;
 
-        const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
+        const { consultantText, jobContext } = buildPredictMatchFields(lead, bulkPredictInput);
         const { data, error } = await supabase.functions.invoke('predict-match', {
           body: {
             lead_id: lead.id,
             platform: lead.platform,
             feed_kind: isHotlistFeed ? 'hotlist' : 'job',
             role_title: lead.title,
-            consultant_text: bulkPredictInput,
+            consultant_text: consultantText,
             account_id: account?.id ?? '',
-            job_context: {
-              skills: skillsValue,
-              exp: expValue,
-              visa: visaValue,
-              workType: workTypeValue,
-              employmentType: employmentTypeValue,
-              location: locationValue,
-            },
+            job_context: jobContext,
           },
         });
 
@@ -2689,8 +2729,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const globalAskedJobState = globalAskedJobStateByLeadId[lead.id];
     const isAskPending = globalAskedJobState === 'asked';
     const isVerified = globalAskedJobState === 'verified';
-    const missingJobDetails = getMissingJobDetails(lead);
-    const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim()) && (isHotlistFeed || missingJobDetails.length > 0);
+    const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim());
     const {
       inlineBreakdownItems,
       expValue,
@@ -2742,7 +2781,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const costLabelClass = 'text-[8px] font-medium leading-none text-gray-400/80 dark:text-slate-600';
     const actionButtonsRail = (
-      <div className="flex w-9 shrink-0 flex-col gap-1.5">
+      <div className="flex w-9 shrink-0 flex-col gap-1">
         {(() => {
           const cachedPredict = predictResultByLeadId[lead.id];
           return cachedPredict ? (
@@ -2750,7 +2789,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               type="button"
               onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
               title="Retry prediction"
-              className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-[11px] font-extrabold text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400"
+              className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-[11px] font-extrabold text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400"
             >
               {cachedPredict.score}
               <span className={costLabelClass}>{formatCentsCost(PREDICT_COST)}</span>
@@ -2759,8 +2798,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
-              title={isHotlistFeed ? 'Match rate' : 'Predict score'}
-              className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400"
+              title={isHotlistFeed ? 'Match' : 'Predict score'}
+              className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-gray-500 transition-opacity hover:opacity-70 dark:text-gray-400"
             >
               <Gauge size={16} strokeWidth={2} />
               <span className={costLabelClass}>{formatCentsCost(PREDICT_COST)}</span>
@@ -2772,7 +2811,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email') : void handleRevealContact(lead); }}
           disabled={processingLeadId === lead.id}
           title={isLeadRevealed ? 'Copy email' : 'Reveal email'}
-          className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
+          className={`flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 ${isLeadRevealed ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}
         >
           {processingLeadId === lead.id ? '...' : isLeadRevealed ? <Copy size={15} strokeWidth={2} /> : <AtSign size={16} strokeWidth={2} />}
           {!isLeadRevealed && <span className={costLabelClass}>{formatCentsCost(REVEAL_CONTACT_COST)}</span>}
@@ -2780,7 +2819,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         {isAskPending || isVerified ? (
           <span
             title={isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted')}
-            className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-blue-600 dark:text-blue-400"
+            className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-blue-600 dark:text-blue-400"
           >
             {isVerified ? <BadgeCheck size={16} strokeWidth={2} /> : <Check size={16} strokeWidth={2} />}
           </span>
@@ -2789,17 +2828,36 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             type="button"
             onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
             disabled={!canAskAI || processingAskAILeadId === lead.id}
-            title={!lead.posterEmail ? 'No email' : isHotlistFeed ? 'Ask for resume' : (missingJobDetails.length === 0 ? 'Nothing missing' : 'Submit candidate')}
-            className="flex h-12 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-blue-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400"
+            title={!lead.posterEmail ? 'No email' : isHotlistFeed ? 'Ask for resume' : 'Submit candidate'}
+            className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400"
           >
             {processingAskAILeadId === lead.id ? '...' : isHotlistFeed ? <FileText size={16} strokeWidth={2} /> : <Mail size={16} strokeWidth={2} />}
             <span className={costLabelClass}>{formatCentsCost(isHotlistFeed ? ASK_RESUME_COST_DISPLAY : SUBMIT_COST_DISPLAY)}</span>
           </button>
         )}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); void handlePreviewPost(lead); }}
+          disabled={loadingPostContentLeadId === lead.id}
+          title="Preview original post"
+          className={`flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 ${postContentViewedLeadIds.has(lead.id) ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-500 dark:text-gray-400'}`}
+        >
+          {loadingPostContentLeadId === lead.id ? '...' : <Eye size={16} strokeWidth={2} />}
+          {!postContentViewedLeadIds.has(lead.id) && <span className={costLabelClass}>{formatCentsCost(POST_CONTENT_COST)}</span>}
+        </button>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); void handleIgnoreLead(lead); }}
+          disabled={processingIgnoreLeadId === lead.id}
+          title={isAdminUser ? 'Hide from platform (spam)' : 'Ignore — remove from my feed'}
+          className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400"
+        >
+          {processingIgnoreLeadId === lead.id ? '...' : <X size={16} strokeWidth={2.5} />}
+        </button>
       </div>
     );
     return (
-      <div key={lead.id} className="mb-1.5 flex items-stretch gap-1.5 break-inside-avoid">
+      <div key={lead.id} className="mb-1.5 flex items-start gap-0.5 break-inside-avoid">
       <div className={`relative min-w-0 flex-1 rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
         <div>
           <div className="min-w-0">
@@ -2827,7 +2885,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 {predictResultByLeadId[lead.id] && (
                   <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${predictToneClass(predictResultByLeadId[lead.id].score)}`}>
                     <Gauge size={9} strokeWidth={2.5} />
-                    {isHotlistFeed ? 'Match rate' : 'Predicted'} {predictResultByLeadId[lead.id].score}%
+                    {isHotlistFeed ? 'Match' : 'Predicted'} {predictResultByLeadId[lead.id].score}%
                   </span>
                 )}
                 {(isAskPending || isVerified) && (
@@ -2889,7 +2947,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         return next;
                       });
                     }}
-                    className={`mt-2 w-full rounded-md px-2 py-1.5 text-left focus:outline-none ${metaSurfaceClass}`}
+                    className={`mt-2 w-full rounded-md py-1.5 text-left focus:outline-none ${metaSurfaceClass}`}
                   >
                     <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Skills</div>
                     <div className={`text-[9px] leading-tight break-words ${skillsValueClass}`}>
@@ -2970,18 +3028,20 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const tableMutedClass = isDark ? 'text-[#94A3B8]' : 'text-gray-500';
     const cellClass = `px-2 py-2 align-top whitespace-normal break-words ${tableValueClass}`;
     const linkClass = isDark ? 'text-blue-300 hover:text-blue-200' : 'text-blue-600 hover:text-blue-700';
-    const askButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-blue-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400';
-    const predictButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400';
-    const emailButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400';
+    const askButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400';
+    const predictButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-gray-500 transition-opacity hover:opacity-70 dark:text-gray-400';
+    const predictButtonUsedClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400';
+    const emailButtonClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400';
+    const emailButtonUsedClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-blue-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400';
     const submitStatusClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-blue-600 dark:text-blue-400';
+    const previewButtonUsedClass = 'inline-flex h-7 w-full items-center justify-center gap-1 text-[10px] font-semibold leading-none text-cyan-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-cyan-400';
     const postedLabel = feedTimeBasis === 'created' ? 'Added' : 'Posted';
 
     const rows = leads.map((lead) => {
       const globalAskedJobState = globalAskedJobStateByLeadId[lead.id];
       const isAskPending = globalAskedJobState === 'asked';
       const isVerified = globalAskedJobState === 'verified';
-      const missingJobDetails = getMissingJobDetails(lead);
-      const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim()) && (isHotlistFeed || missingJobDetails.length > 0);
+      const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim());
       const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
       const postedTimestamp = new Date(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt).getTime();
 
@@ -2997,7 +3057,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       };
 
       return {
-        lead, isAskPending, isVerified, missingJobDetails, canAskAI,
+        lead, isAskPending, isVerified, canAskAI,
         expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue,
         sortValues,
       };
@@ -3054,7 +3114,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 className="inline-flex items-center gap-1 font-bold text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400"
               >
                 <Gauge size={11} strokeWidth={2.5} />
-                Predict Selected
+                {isHotlistFeed ? 'Match Selected' : 'Predict Selected'}
               </button>
             </div>
           </div>
@@ -3069,11 +3129,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           <col style={{ width: '6%' }} />
           <col style={{ width: '5%' }} />
           <col style={{ width: '7%' }} />
-          <col style={{ width: '13%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '6%' }} />
           <col style={{ width: '7%' }} />
-          <col style={{ width: '9%' }} />
-          <col style={{ width: '9%' }} />
-          <col style={{ width: '9%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '5%' }} />
+          <col style={{ width: '6%' }} />
         </colgroup>
         <thead className={`sticky top-0 z-[2] ${tableHeadSurfaceClass}`}>
           <tr className={`border-b ${tableBorderClass} text-[10px] uppercase tracking-wide ${tableMutedClass}`}>
@@ -3087,13 +3149,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             {renderSortableHeader('Location', 'location')}
             <th className="px-2 py-2 whitespace-normal">Skills</th>
             {renderSortableHeader(postedLabel, 'posted')}
-            <th className="px-2 py-2 whitespace-normal">{isHotlistFeed ? 'Match Rate' : 'Predict'}</th>
+            <th className="px-2 py-2 whitespace-normal">{isHotlistFeed ? 'Match' : 'Predict'}</th>
             <th className="px-2 py-2 whitespace-normal">{isHotlistFeed ? 'Reveal' : 'Email'}</th>
             <th className="px-2 py-2 whitespace-normal">{isHotlistFeed ? 'Ask Resume' : 'Submit'}</th>
+            <th className="px-2 py-2 whitespace-normal">Post</th>
+            <th className="px-2 py-2 whitespace-normal" aria-label="Remove" />
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ lead, isAskPending, isVerified, missingJobDetails, canAskAI, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue }) => {
+          {rows.map(({ lead, isAskPending, isVerified, canAskAI, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue }) => {
             const isLeadRevealed = revealedLeadIds.has(lead.id);
             return (
               <tr key={lead.id} className={`border-b ${tableBorderClass} ${tableRowSurfaceClass} hover:bg-gray-50 dark:hover:bg-white/5`}>
@@ -3129,8 +3193,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
-                        title={`${isHotlistFeed ? 'Match rate' : 'Predicted'} ${cachedPredict.score}% — click to retry`}
-                        className={predictButtonClass}
+                        title={`${isHotlistFeed ? 'Match' : 'Predicted'} ${cachedPredict.score}% — click to retry`}
+                        className={predictButtonUsedClass}
                       >
                         <span className="font-extrabold">{cachedPredict.score}%</span>
                         <RotateCcw size={11} strokeWidth={2.5} />
@@ -3142,7 +3206,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         className={predictButtonClass}
                       >
                         <Gauge size={12} strokeWidth={2} />
-                        <span>{isHotlistFeed ? 'Match Rate' : 'Predict'}</span>
+                        <span>{isHotlistFeed ? 'Match' : 'Predict'}</span>
                       </button>
                     );
                   })()}
@@ -3153,7 +3217,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email') : void handleRevealContact(lead); }}
                     disabled={processingLeadId === lead.id}
                     title={isLeadRevealed ? 'Copy email' : 'Reveal email'}
-                    className={emailButtonClass}
+                    className={isLeadRevealed ? emailButtonUsedClass : emailButtonClass}
                   >
                     {processingLeadId === lead.id ? (
                       <span>...</span>
@@ -3190,13 +3254,36 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       type="button"
                       onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
                       disabled={!canAskAI || processingAskAILeadId === lead.id}
-                      title={!lead.posterEmail ? 'No email' : isHotlistFeed ? "Ask for the consultant's resume" : (missingJobDetails.length === 0 ? 'No missing job details detected' : 'Submit a candidate for this role')}
+                      title={!lead.posterEmail ? 'No email' : isHotlistFeed ? "Ask for the consultant's resume" : 'Submit a candidate for this role'}
                       className={`${askButtonClass} truncate`}
                     >
                       <Mail size={12} strokeWidth={2} className="shrink-0" />
                       <span className="truncate">{processingAskAILeadId === lead.id ? '...' : (isHotlistFeed ? 'Ask Resume' : 'Submit')}</span>
                     </button>
                   )}
+                </td>
+                <td className="px-1.5 py-2 align-top">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handlePreviewPost(lead); }}
+                    disabled={loadingPostContentLeadId === lead.id}
+                    title="Preview original post"
+                    className={postContentViewedLeadIds.has(lead.id) ? previewButtonUsedClass : predictButtonClass}
+                  >
+                    <Eye size={12} strokeWidth={2} />
+                    <span>{loadingPostContentLeadId === lead.id ? '...' : 'Preview'}</span>
+                  </button>
+                </td>
+                <td className="px-1.5 py-2 align-top">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handleIgnoreLead(lead); }}
+                    disabled={processingIgnoreLeadId === lead.id}
+                    title={isAdminUser ? 'Hide from platform (spam)' : 'Ignore — remove from my feed'}
+                    className="inline-flex h-7 w-full items-center justify-center text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400"
+                  >
+                    {processingIgnoreLeadId === lead.id ? <span className="text-[10px]">...</span> : <X size={14} strokeWidth={2.5} />}
+                  </button>
                 </td>
               </tr>
             );
@@ -3322,7 +3409,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       .from('pulse_lead_actions')
       .select('lead_id, action_type, created_at')
       .eq('user_id', user.id)
-      .in('action_type', ['revealed', 'breakdown']);
+      .in('action_type', ['revealed', 'breakdown', 'post_content_viewed', 'ignored']);
 
     if (error) {
       return;
@@ -3330,6 +3417,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const revealed = new Set<string>();
     const breakdown = new Set<string>();
+    const postContentViewed = new Set<string>();
+    const ignored = new Set<string>();
     const revealedAt: Record<string, string> = {};
     for (const row of (data ?? []) as PulseLeadActionRow[]) {
       if (row.action_type === 'revealed') {
@@ -3337,10 +3426,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         if (row.created_at) revealedAt[row.lead_id] = row.created_at;
       }
       if (row.action_type === 'breakdown') breakdown.add(row.lead_id);
+      if (row.action_type === 'post_content_viewed') postContentViewed.add(row.lead_id);
+      if (row.action_type === 'ignored') ignored.add(row.lead_id);
     }
 
     setRevealedLeadIds(revealed);
     setBreakdownChargedLeadIds(breakdown);
+    setPostContentViewedLeadIds(postContentViewed);
+    setIgnoredLeadIds(ignored);
     setRevealedAtByLeadId(revealedAt);
   }, [user?.id]);
 
@@ -4671,11 +4764,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     if (!account?.id || processingAskAILeadId) return;
 
     const leadType: 'job' | 'hotlist' = isHotlistFeed ? 'hotlist' : 'job';
-    const missingDetails = leadType === 'hotlist' ? ['resume'] : getMissingJobDetails(lead);
-    if (missingDetails.length === 0) {
-      showToast('No missing job details were detected', 'error');
-      return;
-    }
+    // A job with every field already detected still has a valid "ask" — re-confirming
+    // rate is always a safe, relevant question, so we never block sending outreach.
+    const detectedMissingDetails = leadType === 'hotlist' ? ['resume'] : getMissingJobDetails(lead);
+    const missingDetails = detectedMissingDetails.length > 0 ? detectedMissingDetails : ['Rate'];
     if (!/^\S+@\S+\.\S+$/.test(lead.posterEmail.trim())) {
       showToast(leadType === 'hotlist' ? 'This consultant does not have a valid recruiter email' : 'This job does not have a valid vendor email', 'error');
       return;
@@ -4687,10 +4779,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       leadType,
       requestId,
       vendorName: lead.posterName || 'the vendor',
+      jobTitle: lead.title || lead.roleTitle || '',
+      company: lead.company || '',
       missingDetails,
       emailSubject: '',
       emailContent: '',
       isGenerating: true,
+      channel: 'mailgun',
     });
     setProcessingAskAILeadId(lead.id);
     try {
@@ -4713,16 +4808,19 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
         || user?.email?.split('@')[0]
         || '';
-      setAskAIPreview({
+      setAskAIPreview((current) => ({
         leadId: lead.id,
         leadType,
         requestId,
         vendorName,
+        jobTitle: current?.jobTitle ?? (lead.title || lead.roleTitle || ''),
+        company: current?.company ?? (lead.company || ''),
         missingDetails,
         emailSubject: removeNameFromEmail(data.email_subject || '', vendorName),
         emailContent: removeNameFromEmail(data.email_content || '', vendorName),
         isGenerating: false,
-      });
+        channel: current?.channel ?? 'mailgun',
+      }));
     } catch (error) {
       setAskAIPreview(null);
       showToast(error instanceof Error ? error.message : 'Could not generate the vendor email request', 'error');
@@ -4755,10 +4853,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           missing_details: askAIPreview.missingDetails,
           email_subject: emailSubject,
           email_content: emailContent,
+          channel: askAIPreview.channel,
           ...(askAIPreview.resumeUrl ? { resume_url: askAIPreview.resumeUrl, resume_file_name: askAIPreview.resumeFileName } : {}),
         },
       });
 
+      if (data?.error === 'gmail_not_connected') {
+        setShowGmailConnectPrompt(true);
+        return;
+      }
       if (error || !data?.ok) {
         throw new Error(data?.error || error?.message || 'Could not send the request');
       }
@@ -5090,6 +5193,75 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       setProcessingLeadId(null);
     }
   }, [consumeCredits, isFreePlanRevealLimitReached, isHotlistFeed, isPaidPlan, persistLeadAction, revealedLeadIds, saveVendorToTracker, showToast, user]);
+
+  const handlePreviewPost = useCallback(async (lead: SocialLead) => {
+    if (!user || loadingPostContentLeadId) return;
+    setLoadingPostContentLeadId(lead.id);
+    try {
+      const alreadyViewed = postContentViewedLeadIds.has(lead.id);
+      if (!alreadyViewed) {
+        const consumed = await consumeCredits(POST_CONTENT_COST, 'pulse_view_post_content', {
+          lead_id: lead.id,
+          platform: lead.platform,
+          title: lead.title,
+          company: lead.company,
+        });
+        if (!consumed) return;
+
+        setPostContentViewedLeadIds((prev) => {
+          const next = new Set(prev);
+          next.add(lead.id);
+          return next;
+        });
+        void persistLeadAction(lead.id, 'post_content_viewed');
+        showToast(`$${POST_CONTENT_COST.toFixed(2)} credits consumed for post preview`, 'success');
+      }
+
+      const { data, error } = await supabase
+        .from(isHotlistFeed ? 'social_hotlist' : 'social_jobs')
+        .select(isHotlistFeed ? 'raw_post_content' : 'post_content')
+        .eq('id', lead.id)
+        .maybeSingle();
+      if (error || !data) throw new Error(error?.message || 'Could not load the post');
+
+      const content = String((isHotlistFeed ? (data as { raw_post_content: string | null }).raw_post_content : (data as { post_content: string | null }).post_content) ?? '').trim();
+      setPostContentPreview({
+        leadId: lead.id,
+        title: lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity'),
+        content: content || 'No post content available.',
+      });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not load the post', 'error');
+    } finally {
+      setLoadingPostContentLeadId(null);
+    }
+  }, [consumeCredits, isHotlistFeed, loadingPostContentLeadId, persistLeadAction, postContentViewedLeadIds, showToast, user]);
+
+  const handleIgnoreLead = useCallback(async (lead: SocialLead) => {
+    if (!user || processingIgnoreLeadId) return;
+    setProcessingIgnoreLeadId(lead.id);
+    try {
+      if (isAdminUser) {
+        const { data, error } = await supabase.functions.invoke('pulse-hide-lead', {
+          body: { lead_id: lead.id, lead_type: isHotlistFeed ? 'hotlist' : 'job' },
+        });
+        if (error || !data?.ok) throw new Error(data?.error || (error as Error)?.message || 'Could not hide this post');
+        showToast('Removed from the platform for everyone', 'success');
+      } else {
+        showToast('Removed from your feed', 'success');
+      }
+      void persistLeadAction(lead.id, 'ignored');
+      setIgnoredLeadIds((prev) => {
+        const next = new Set(prev);
+        next.add(lead.id);
+        return next;
+      });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not remove this post', 'error');
+    } finally {
+      setProcessingIgnoreLeadId(null);
+    }
+  }, [isAdminUser, isHotlistFeed, persistLeadAction, processingIgnoreLeadId, showToast, user]);
 
   const handleOpenBreakdown = useCallback(async (lead: SocialLead) => {
     setProcessingBreakdownLeadId(lead.id);
@@ -5947,15 +6119,21 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             aria-modal="true"
             aria-labelledby="ask-ai-preview-title"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg rounded-lg border border-gray-200 bg-white p-5 shadow-xl"
+            className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-4 shadow-xl"
           >
-            <div className="flex items-start gap-3">
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600">
+            <div className="flex items-start gap-2.5">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600">
                 {askAIPreview.leadType === 'hotlist' ? <FileText size={18} /> : <Mail size={18} />}
               </span>
               <div className="min-w-0 flex-1">
                 <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating resume request' : 'Generating submission') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review submission')}</h2>
-                {askAIPreview.isGenerating && <p className="mt-1 text-xs leading-relaxed text-gray-600">Preparing an email to {maskName(askAIPreview.vendorName)}.</p>}
+                {askAIPreview.isGenerating ? (
+                  <p className="mt-1 text-xs leading-relaxed text-gray-600">Preparing an email to {maskName(askAIPreview.vendorName)}.</p>
+                ) : (askAIPreview.jobTitle || askAIPreview.company) && (
+                  <p className="mt-0.5 truncate text-xs text-gray-500">
+                    {askAIPreview.jobTitle}{askAIPreview.jobTitle && askAIPreview.company ? ' · ' : ''}{askAIPreview.company}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -5974,76 +6152,73 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-500">{askAIPreview.leadType === 'hotlist' ? "Using the consultant's profile to prepare a resume request." : 'Using the job and missing details to prepare a concise message.'}</p>
               </div>
             ) : <>
-            <div className="mt-4 space-y-3">
-              <label className="block">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Subject</span>
-                <input
-                  value={askAIPreview.emailSubject}
-                  onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailSubject: event.target.value } : current)}
-                  disabled={Boolean(processingAskAILeadId)}
-                  className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Email</span>
-                <textarea
-                  value={askAIPreview.emailContent}
-                  onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailContent: event.target.value } : current)}
-                  disabled={Boolean(processingAskAILeadId)}
-                  rows={6}
-                  className="mt-1 w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-                <span className="mt-1 block text-right text-[10px] text-gray-500">
+            <input
+              value={askAIPreview.emailSubject}
+              onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailSubject: event.target.value } : current)}
+              disabled={Boolean(processingAskAILeadId)}
+              placeholder="Subject"
+              className="mt-3 w-full rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+            <div className="relative mt-2">
+              <textarea
+                value={askAIPreview.emailContent}
+                onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailContent: event.target.value } : current)}
+                disabled={Boolean(processingAskAILeadId)}
+                rows={4}
+                placeholder="Write your message..."
+                className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 pb-7 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+              <div className="pointer-events-none absolute inset-x-2 bottom-1.5 flex items-center justify-between">
+                {askAIPreview.leadType === 'job' ? (
+                  askAIPreview.resumeFileName ? (
+                    <span className="pointer-events-auto inline-flex max-w-[65%] items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+                      <Paperclip size={10} className="shrink-0" />
+                      <span className="min-w-0 truncate">{askAIPreview.resumeFileName}</span>
+                      <button
+                        type="button"
+                        onClick={handleRemoveResume}
+                        disabled={Boolean(processingAskAILeadId)}
+                        className="shrink-0 text-gray-400 hover:text-gray-600"
+                        aria-label="Remove resume"
+                      >
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ) : (
+                    <label
+                      className={`pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 ${resumeUploading ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      title="Attach resume (optional)"
+                    >
+                      {resumeUploading ? <LogoSpinner size={12} /> : <Paperclip size={13} />}
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        disabled={resumeUploading || Boolean(processingAskAILeadId)}
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = '';
+                          if (file) void handleResumeFileSelected(file);
+                        }}
+                      />
+                    </label>
+                  )
+                ) : <span />}
+                <span className="text-[10px] text-gray-400">
                   {askAIPreview.emailContent.trim().split(/\s+/).filter(Boolean).length}/39 words
                 </span>
-              </label>
-            </div>
-            <div className="mt-3 rounded-md bg-gray-50 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{askAIPreview.leadType === 'hotlist' ? 'Requesting' : 'Requested details'}</p>
-              <p className="mt-1 text-xs text-gray-700">{askAIPreview.leadType === 'hotlist' ? "Consultant's resume" : askAIPreview.missingDetails.join(', ')}</p>
-            </div>
-            {askAIPreview.leadType === 'job' && (
-              <div className="mt-3">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Resume</span>
-                {askAIPreview.resumeFileName ? (
-                  <div className="mt-1 flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                    <Paperclip size={13} className="shrink-0 text-gray-500" />
-                    <span className="min-w-0 flex-1 truncate text-xs text-gray-700">{askAIPreview.resumeFileName}</span>
-                    <button
-                      type="button"
-                      onClick={handleRemoveResume}
-                      disabled={Boolean(processingAskAILeadId)}
-                      className="shrink-0 text-gray-400 hover:text-gray-600"
-                      aria-label="Remove resume"
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
-                ) : (
-                  <label className={`mt-1 flex items-center justify-center gap-1.5 rounded-md border border-dashed border-gray-300 px-3 py-2.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 ${resumeUploading ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
-                    {resumeUploading ? <LogoSpinner size={14} /> : <Paperclip size={13} />}
-                    <span>{resumeUploading ? 'Uploading...' : 'Attach resume (optional)'}</span>
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                      disabled={resumeUploading || Boolean(processingAskAILeadId)}
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = '';
-                        if (file) void handleResumeFileSelected(file);
-                      }}
-                    />
-                  </label>
-                )}
               </div>
-            )}
-            <div className="mt-4 flex justify-end">
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-400">
+                <GmailIcon size={12} />
+                Gmail connector — Coming soon
+              </span>
               <button
                 type="button"
                 onClick={() => void handleSubmitAskAI()}
                 disabled={Boolean(processingAskAILeadId) || resumeUploading || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim() || askAIPreview.emailContent.trim().split(/\s+/).filter(Boolean).length >= 40}
-                className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-20"
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {askAIPreview.leadType === 'hotlist' ? <FileText size={12} /> : <Mail size={12} />}
                 {askAIPreview.leadType === 'job'
@@ -6083,7 +6258,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     value={predictInput}
                     onChange={(event) => setPredictInput(event.target.value)}
                     rows={6}
-                    placeholder="Paste consultant resume, skills, or a quick summary here..."
+                    placeholder={isHotlistFeed ? 'Paste the job details or requirements here...' : 'Paste consultant resume, skills, or a quick summary here...'}
                     className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
@@ -6112,7 +6287,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 text-sm font-bold uppercase tracking-wide text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
                 >
                   <Gauge size={16} strokeWidth={2.5} />
-                  Predict Submission Acceptance
+                  {isHotlistFeed ? 'Match Score' : 'Predict Submission Acceptance'}
                 </button>
               </>
             )}
@@ -6148,7 +6323,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             {!predictSubmitting && predictResult && (
               <div className="mt-1">
                 <div className="flex flex-col items-center justify-center gap-1 rounded-md bg-gray-50 px-4 py-4">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Submission acceptance score</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{isHotlistFeed ? 'Match score' : 'Submission acceptance score'}</span>
                   <div className={`text-4xl font-bold ${predictResult.verdictClass}`}>{predictResult.score}%</div>
                   <div className={`text-xs font-semibold leading-snug ${predictResult.verdictClass}`}>{predictResult.verdict}</div>
                 </div>
@@ -6171,7 +6346,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   onClick={handleRunAnotherPrediction}
                   className="mt-3 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-gray-200 px-4 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                 >
-                  Try another candidate
+                  {isHotlistFeed ? 'Try another job' : 'Try another candidate'}
                 </button>
               </div>
             )}
@@ -6192,7 +6367,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl"
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Predict {bulkPredictLeadIds.size} jobs</span>
+              <span className="text-xs font-bold uppercase tracking-wide text-gray-500">{isHotlistFeed ? `Match ${bulkPredictLeadIds.size} consultants` : `Predict ${bulkPredictLeadIds.size} jobs`}</span>
               <button
                 type="button"
                 onClick={() => { if (!bulkPredictSubmitting) { setIsBulkPredictModalOpen(false); setBulkPredictInput(''); } }}
@@ -6210,7 +6385,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     value={bulkPredictInput}
                     onChange={(event) => setBulkPredictInput(event.target.value)}
                     rows={6}
-                    placeholder="Paste consultant resume, skills, or a quick summary here — we'll run it against all selected jobs..."
+                    placeholder={isHotlistFeed ? "Paste the job details or requirements here — we'll match all selected consultants against it..." : "Paste consultant resume, skills, or a quick summary here — we'll run it against all selected jobs..."}
                     className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
@@ -6221,7 +6396,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 text-sm font-bold uppercase tracking-wide text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
                 >
                   <Gauge size={16} strokeWidth={2.5} />
-                  Predict {bulkPredictLeadIds.size} Jobs (${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})
+                  {isHotlistFeed
+                    ? `Match Score for ${bulkPredictLeadIds.size} Consultants ($${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})`
+                    : `Predict ${bulkPredictLeadIds.size} Jobs ($${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})`}
                 </button>
               </>
             ) : (
@@ -6378,6 +6555,42 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         </div>
       )}
 
+      {showGmailConnectPrompt && (
+        <GmailConnectPrompt
+          connecting={connectingGmail}
+          onClose={() => setShowGmailConnectPrompt(false)}
+          onConnect={() => void connectGmail()}
+        />
+      )}
+      {postContentPreview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setPostContentPreview(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="post-content-preview-title"
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-lg border border-gray-200 bg-white shadow-xl"
+          >
+            <div className="flex items-start gap-2.5 border-b border-gray-100 p-4">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-50 text-slate-500">
+                <Eye size={16} />
+              </span>
+              <h2 id="post-content-preview-title" className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">{postContentPreview.title}</h2>
+              <button
+                type="button"
+                onClick={() => setPostContentPreview(null)}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+                aria-label="Close post preview"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-700">{postContentPreview.content}</p>
+            </div>
+          </div>
+        </div>
+      )}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );

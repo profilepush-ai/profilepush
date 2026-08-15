@@ -438,3 +438,11 @@ entrypoint = "./functions/admin-scraper-logs/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/backfill-social-hotlists/index.ts"
+
+# Google redirects the user's browser here directly after OAuth consent — there is no
+# Supabase session/Authorization header on that request, so this function must do its
+# own auth via the signed `state` param instead of Supabase's JWT check.
+[functions.gmail-oauth-callback]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/gmail-oauth-callback/index.ts"

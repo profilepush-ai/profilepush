@@ -50,6 +50,7 @@ type Conversation = {
   sender_name: string;
   subject: string;
   status: ConversationStatus;
+  channel: 'mailgun' | 'gmail';
   unread_count: number;
   last_message_at: string;
   created_at: string;
@@ -237,7 +238,7 @@ export default function InboxPage() {
   const loadConversations = useCallback(async () => {
     const { data, error } = await supabase
       .from('vendor_conversations')
-      .select('id, vendor_name, vendor_email, sender_name, subject, status, unread_count, last_message_at, created_at, job_id, hotlist_id, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
+      .select('id, vendor_name, vendor_email, sender_name, subject, status, channel, unread_count, last_message_at, created_at, job_id, hotlist_id, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
       .order('last_message_at', { ascending: false });
     if (error) {
       setToast({ message: 'Could not load inbox', type: 'error' });
@@ -543,6 +544,9 @@ export default function InboxPage() {
                   <ArrowLeft size={16} />
                 </button>
                 <div className="flex-1" />
+                {selected.channel === 'gmail' && (
+                  <span className="rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide bg-red-50 text-red-600" title="Sent from your connected Gmail address">Via Gmail</span>
+                )}
                 <span className={`rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${selected.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{selected.hotlist_id ? 'Hotlist' : 'Job'}</span>
                 <span className={`rounded px-2 py-1 text-[10px] font-semibold ${selected.status === 'failed' ? 'bg-red-50 text-red-700' : selected.status === 'replied' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selected.status]}</span>
               </header>
@@ -616,6 +620,9 @@ export default function InboxPage() {
               </div>
             ) : (
               <div className="shrink-0 border-t border-gray-200 bg-white p-2.5 sm:p-3">
+                <p className="mb-1.5 text-[10px] text-gray-400">
+                  {selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
+                </p>
                 <div className="flex items-end gap-2">
                   <textarea
                     value={replyText}

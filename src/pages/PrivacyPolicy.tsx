@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import Logo from '../components/Logo';
 import SEO from '../components/SEO';
 
-const LAST_UPDATED = 'July 10, 2026';
+const LAST_UPDATED = 'August 16, 2026';
 
 export default function PrivacyPolicy() {
   return (
@@ -47,11 +47,22 @@ export default function PrivacyPolicy() {
             </ul>
           </Section>
 
-          <Section title="4. Data Retention and Deletion">
+          <Section title="4. Google Gmail Integration (Optional Feature)">
+            <p>ProfilePush offers an optional feature that lets a recruiter connect their own Gmail account so outreach emails to job posters and vendors are sent from the recruiter's real Gmail address instead of a shared ProfilePush address, and so replies are automatically synced into the ProfilePush Inbox. This feature is off by default and only activates if you explicitly click "Connect Gmail" and grant permission through Google's own consent screen.</p>
+            <p>When you connect your Gmail account, we request the following Google OAuth scopes:</p>
+            <ul>
+              <li><strong>Send email on your behalf (gmail.send):</strong> used only to send the specific outreach or reply email you have reviewed and approved inside ProfilePush. We never send email without your direct action, and never send bulk or unsolicited email.</li>
+              <li><strong>View your email messages (gmail.readonly):</strong> used only to check for a reply on the single email thread ProfilePush created when you sent an outreach email. We do not browse, search, or read any other part of your Gmail inbox.</li>
+            </ul>
+            <p>ProfilePush's use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements. We do not use Gmail data for advertising or marketing purposes, do not sell Gmail data to third parties, and do not use Gmail data to train AI or machine learning models, whether generalized or personalized. Gmail data is accessed by automated systems only, except where necessary for security purposes, to comply with applicable law, or with your explicit consent (for example, if you request customer support).</p>
+            <p>Your Gmail OAuth tokens are encrypted at rest and are only ever decrypted by our backend systems to send a message or check the specific synced thread on your behalf. Synced email content is stored so it can be displayed in your ProfilePush Inbox, subject to the same retention terms as other account data described in Section 5. You can disconnect Gmail at any time from Account Settings → Integrations, or by revoking ProfilePush's access directly at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">myaccount.google.com/permissions</a> — either action immediately stops all further sending and syncing.</p>
+          </Section>
+
+          <Section title="5. Data Retention and Deletion">
             <p>Candidate data is retained on your organizational "Bench" as long as your account is active. If you cancel your subscription or fail to maintain an active tier, you have 30 days to export your data before it is permanently anonymized or deleted from our active databases.</p>
           </Section>
 
-          <Section title="5. Your Rights">
+          <Section title="6. Your Rights">
             <p>Since ProfilePush acts as a Data Processor, any requests regarding Candidate Data (access, deletion) must be managed by the Customer (the agency), and we will assist in fulfilling those requests.</p>
           </Section>
         </div>

@@ -122,13 +122,13 @@ function fallbackAskVendorEmailCopy(
   recruiterFirstName: string,
 ): AskVendorEmailCopy {
   const requestedDetails = missingDataType.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 3).join(", ");
-  const emailContent = `Hi ${vendorName}, I have a matching ${jobTitle} candidate ready. Could you share ${requestedDetails}? Thanks, ${recruiterFirstName}`;
+  const emailContent = `Hey ${vendorName}, got a candidate ready to go. What's ${requestedDetails}? — ${recruiterFirstName}`;
   if (emailContent.split(/\s+/).filter(Boolean).length < 40) {
     return { subject: `Quick question: ${jobTitle}`.slice(0, 200), email_content: emailContent };
   }
   return {
     subject: "Quick question about your job post",
-    email_content: `Hi ${vendorName.split(/\s+/)[0]}, I have a matching candidate ready. Could you share the missing job details? Thanks, ${recruiterFirstName}`,
+    email_content: `Hey ${vendorName.split(/\s+/)[0]}, got a candidate ready to go. What's the missing detail? — ${recruiterFirstName}`,
   };
 }
 
@@ -137,13 +137,13 @@ function fallbackAskResumeEmailCopy(
   vendorName: string,
   recruiterFirstName: string,
 ): AskVendorEmailCopy {
-  const emailContent = `Hi ${vendorName}, I've got a client interested in your ${roleTitle} consultant. Could you send over their resume? Thanks, ${recruiterFirstName}`;
+  const emailContent = `Hey ${vendorName}, got a client ready to submit. Can you send their resume? — ${recruiterFirstName}`;
   if (emailContent.split(/\s+/).filter(Boolean).length < 40) {
     return { subject: `Resume request: ${roleTitle}`.slice(0, 200), email_content: emailContent };
   }
   return {
     subject: "Quick resume request",
-    email_content: `Hi ${vendorName.split(/\s+/)[0]}, I've got a client interested in your consultant. Could you send over their resume? Thanks, ${recruiterFirstName}`,
+    email_content: `Hey ${vendorName.split(/\s+/)[0]}, got a client ready to submit. Can you send their resume? — ${recruiterFirstName}`,
   };
 }
 
@@ -170,26 +170,26 @@ async function handleAskVendorEmailCopy(req: Request, env: Env): Promise<Respons
   }
 
   const defaultSystemPrompt = requestType === "resume"
-    ? `You are a fast-paced, highly transactional IT bench sales recruiter. Your goal is to write a strictly text-based, plain-text email to a fellow bench-sales recruiter asking them to share the resume/CV of a specific consultant they posted about on social media.
+    ? `You are a fast-paced, highly transactional IT bench sales recruiter. Your goal is to write a strictly text-based, plain-text email to a fellow bench-sales recruiter asking them to share the resume/CV of a specific consultant they posted about on social media — and nothing else.
 
 Rules for the Email:
-1. Zero Fluff: Do not use corporate greetings like "I hope this email finds you well" or "Good morning."
-2. Extreme Brevity: Keep the entire email under 40 words.
-3. The Hook: Always imply you have a client actively interested in submitting this specific consultant right now.
-4. The Ask: Ask explicitly for the consultant's resume/CV, referencing the consultant's role.
-5. Tone: Casual, urgent, and professional. Use natural phrasing like "Hey," or "Hi [Name]," and sign off simply with the sender's name.
+1. Zero Fluff: No corporate greetings like "I hope this email finds you well." No restating the consultant's role, background, or other posting details back to them — they already know who they posted.
+2. Extreme Brevity: Keep the entire email under 20 words, as one single sentence.
+3. One Tight Ask: Combine the hook and the ask into a single sentence — e.g. "Got a client ready for your consultant — can you send their resume?" Do not add a separate closing sentence about being ready to submit; the urgency is already implied.
+4. No Ambiguous Pronouns: Never refer to the consultant as "them," "they," or "it" without an unambiguous, immediately preceding noun. Prefer dropping the pronoun entirely.
+5. Tone: Casual, direct, urgent. Use natural phrasing like "Hey," or "Hi [Name]," and sign off with just the sender's first name.
 
-Generate only the email body and subject line. Do not include any explanations. Return strict JSON with exactly these keys: "subject" and "email_content".`
-    : `You are a fast-paced, highly transactional IT bench sales recruiter. Your goal is to write a strictly text-based, plain-text email to a vendor asking for missing details about a job they just posted.
+Generate only the email body and subject line. The subject should reference the ask, not repeat the full consultant/job description. Do not include any explanations. Return strict JSON with exactly these keys: "subject" and "email_content".`
+    : `You are a fast-paced, highly transactional IT bench sales recruiter. Your goal is to write a strictly text-based, plain-text email to a vendor asking for exactly one missing detail about a job they already posted — and nothing else.
 
 Rules for the Email:
-1. Zero Fluff: Do not use corporate greetings like "I hope this email finds you well" or "Good morning."
-2. Extreme Brevity: Keep the entire email under 40 words.
-3. The Hook: Always imply you have a candidate actively on your bench who perfectly fits the role and is ready to be submitted right now.
-4. The Ask: Ask explicitly for the missing data point provided in the variables.
-5. Tone: Casual, urgent, and professional. Use natural phrasing like "Hey," or "Hi [Name]," and sign off simply with the sender's name.
+1. Zero Fluff: No corporate greetings like "I hope this email finds you well." No restating the job title, location, or other posting details back to them — they already know their own posting.
+2. Extreme Brevity: Keep the entire email under 20 words, as one single sentence.
+3. One Tight Ask: Combine the hook and the ask into a single sentence — e.g. "Got a candidate ready for this role — what's the rate?" Do not add a separate closing sentence about being ready to submit; the urgency is already implied by "ready."
+4. No Ambiguous Pronouns: Never refer to the candidate as "them," "they," or "it" without an unambiguous, immediately preceding noun (e.g. never "ready to submit them" with no clear antecedent). Prefer dropping the pronoun entirely.
+5. Tone: Casual, direct, urgent. Use natural phrasing like "Hey," or "Hi [Name]," and sign off with just the sender's first name.
 
-Generate only the email body and subject line. Do not include any explanations. Return strict JSON with exactly these keys: "subject" and "email_content".`;
+Generate only the email body and subject line. The subject should reference the missing detail, not repeat the full job posting. Do not include any explanations. Return strict JSON with exactly these keys: "subject" and "email_content".`;
   const defaultUserTemplate = requestType === "resume"
     ? "Consultant Role: {jobTitle}\nRecruiter Name: {vendorName}\nSender Name: {recruiterFirstName}"
     : "Job Title: {jobTitle}\nJob Location: {jobLocation}\nVendor Name: {vendorName}\nMissing Detail to Ask For: {missingDataType}\nSender Name: {recruiterFirstName}";
