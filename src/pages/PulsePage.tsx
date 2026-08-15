@@ -1964,15 +1964,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     isHotlistFeed
       ? [
         { id: 'queued', label: 'Recent' },
+        { id: 'predicted', label: 'Predicted' },
         { id: 'revealed', label: 'Revealed' },
         { id: 'asked', label: 'Asked' },
-        { id: 'verified', label: 'Verified' },
       ]
       : [
         { id: 'queued', label: 'Recent' },
         { id: 'predicted', label: 'Predicted' },
+        { id: 'revealed', label: 'Revealed' },
         { id: 'asked', label: 'Submitted' },
-        { id: 'verified', label: 'Replied' },
       ]
   ), [isHotlistFeed]);
 
@@ -4512,7 +4512,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       && Math.abs(deltaX) > Math.abs(deltaY);
 
     if (isHorizontalSwipe) {
-      const nextTab: MatchesTabId = deltaX < 0 ? (isHotlistFeed ? 'revealed' : 'predicted') : 'queued';
+      const nextTab: MatchesTabId = deltaX < 0 ? 'predicted' : 'queued';
       if (nextTab !== selectedMatchesTab) {
         setSelectedMatchesTab(nextTab);
         setVisibleMatchesCount(MATCHES_PAGE_SIZE);
@@ -5877,7 +5877,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         >
                           {selectedMatchesTab === 'revealed' ? (
                             revealedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No revealed jobs yet.</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No revealed consultants yet.' : 'No revealed jobs yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopRevealedFeed)
                             ) : (

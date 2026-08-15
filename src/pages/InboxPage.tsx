@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
-import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 
@@ -133,32 +132,6 @@ function formatMessageTime(value: string) {
   });
 }
 
-function maskName(name: string) {
-  const trimmed = name.trim();
-  return trimmed ? `${trimmed.slice(0, 3)}***` : 'Hidden';
-}
-
-function maskNameInText(text: string, name: string) {
-  const trimmed = name.trim();
-  if (!trimmed) return text;
-  const escapedName = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return text.replace(new RegExp(escapedName, 'gi'), maskName(trimmed));
-}
-
-function restoreSenderName(text: string, name: string) {
-  const trimmed = name.trim();
-  if (!trimmed) return text;
-  const masked = maskName(trimmed).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return text.replace(new RegExp(masked, 'gi'), trimmed);
-}
-
-function maskedEmailHint(value: string) {
-  const [localPart = '', domainPart = ''] = value.trim().split('@');
-  const prefix = (localPart.slice(0, 3) || '***').replace(/\s+/g, '');
-  const extension = domainPart.includes('.') ? domainPart.split('.').pop()?.trim() : '';
-  return extension ? `${prefix}**@***.${extension}` : `${prefix}**@***`;
-}
-
 const JOB_DETAIL_FIELDS = [
   { keys: ['experience_match'], label: 'Exp' },
   { keys: ['work_type_match'], label: 'Work Type' },
@@ -212,7 +185,7 @@ function JobDetailGrid({ details }: { details: DisplayJobDetail[] }) {
   );
 }
 
-function JobReferenceCard({ conversation, revealed }: { conversation: Conversation; revealed: boolean }) {
+function JobReferenceCard({ conversation }: { conversation: Conversation }) {
   const job = conversation.social_jobs;
   const hotlist = conversation.social_hotlist;
   const details = getJobDisplayDetails(conversation.radar_job_details, true);
@@ -228,8 +201,8 @@ function JobReferenceCard({ conversation, revealed }: { conversation: Conversati
       <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-gray-500">
         <span>{formatRelative(postedAt)}</span>
         <span>•</span>
-        <span>Posted by {revealed ? posterName : maskName(posterName)}</span>
-        {companyName && <><span>•</span><span>{revealed ? companyName : `${companyName.slice(0, 3)}***`}</span></>}
+        <span>Posted by {posterName}</span>
+        {companyName && <><span>•</span><span>{companyName}</span></>}
         {platform && <><span>•</span><span className="font-bold uppercase text-gray-500">{platform}</span></>}
       </div>
       <div className="mt-2">
@@ -242,7 +215,6 @@ function JobReferenceCard({ conversation, revealed }: { conversation: Conversati
 export default function InboxPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
-  const { user, account, refreshAccount } = useAuth();
   const { isDark } = useTheme();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -257,8 +229,6 @@ export default function InboxPage() {
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [revealedJobIds, setRevealedJobIds] = useState<Set<string>>(new Set());
-  const [revealingJobId, setRevealingJobId] = useState<string | null>(null);
   const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -304,19 +274,9 @@ export default function InboxPage() {
       ...row,
       radar_job_details: breakdownByLeadId.get(leadIdOf(row)) ?? null,
     }));
-    const leadIds = [...new Set(rows.map((row) => leadIdOf(row)))];
-    if (leadIds.length > 0 && user?.id) {
-      const { data: actionRows } = await supabase
-        .from('pulse_lead_actions')
-        .select('lead_id')
-        .in('lead_id', leadIds)
-        .eq('user_id', user.id)
-        .eq('action_type', 'revealed');
-      setRevealedJobIds(new Set((actionRows ?? []).map((row) => row.lead_id)));
-    }
     setConversations(rows);
     setSelectedId((current) => current ?? (window.matchMedia('(min-width: 640px)').matches ? rows[0]?.id ?? null : null));
-  }, [user?.id]);
+  }, []);
 
   const loadMessages = useCallback(async (id: string) => {
     setLoadingMessages(true);
@@ -414,88 +374,6 @@ export default function InboxPage() {
 
   function selectConversation(id: string) {
     navigate(`/inbox/${id}`, { replace: true });
-  }
-
-  async function revealEmail(conversation: Conversation) {
-    if (!user || !account?.id || revealingJobId) {
-      if (!user) setToast({ message: 'Please sign in to reveal contact details', type: 'error' });
-      return;
-    }
-
-    const leadId = leadIdOf(conversation);
-    setRevealingJobId(leadId);
-    try {
-      const metadata = {
-        lead_id: leadId,
-        platform: 'social',
-        title: conversation.social_jobs?.job_title || conversation.social_hotlist?.role_title || conversation.subject,
-      };
-      let { data, error } = await supabase.rpc('consume_feature_credit', {
-        p_account_id: account.id,
-        p_amount: 0.25,
-        p_feature: 'pulse_reveal_contact',
-        p_metadata: metadata,
-      });
-
-      if (error) {
-        const retry = await supabase.rpc('consume_feature_credit', {
-          p_account_id: account.id,
-          p_amount: 0.25,
-          p_feature: 'pulse_reveal_contact',
-        });
-        data = retry.data;
-        error = retry.error;
-      }
-
-      if (error) {
-        const { data: accountRow, error: accountError } = await supabase
-          .from('accounts')
-          .select('credits_balance')
-          .eq('id', account.id)
-          .maybeSingle();
-        const currentBalance = Number(accountRow?.credits_balance ?? 0);
-        if (accountError || currentBalance < 0.25) {
-          setToast({ message: accountError ? 'Could not load credits balance' : 'Insufficient credits', type: 'error' });
-          return;
-        }
-        const { error: updateError } = await supabase
-          .from('accounts')
-          .update({ credits_balance: Number((currentBalance - 0.25).toFixed(4)) })
-          .eq('id', account.id);
-        if (updateError) {
-          setToast({ message: 'Could not update credits balance', type: 'error' });
-          return;
-        }
-        await supabase.from('credit_transactions').insert({
-          account_id: account.id,
-          user_id: user.id,
-          type: 'usage',
-          amount: -0.25,
-          description: 'Pulse: pulse_reveal_contact',
-        });
-      } else {
-        const row = Array.isArray(data) ? data[0] : null;
-        if (!row?.success) {
-          setToast({ message: String(row?.message ?? 'Insufficient credits'), type: 'error' });
-          return;
-        }
-      }
-
-      await supabase.from('pulse_lead_actions').upsert({
-        account_id: account.id,
-        user_id: user.id,
-        lead_id: leadId,
-        action_type: 'revealed',
-      }, {
-        onConflict: 'account_id,user_id,lead_id,action_type',
-        ignoreDuplicates: true,
-      });
-      setRevealedJobIds((current) => new Set(current).add(leadId));
-      await refreshAccount();
-      setToast({ message: '$0.25 credits consumed for reveal', type: 'success' });
-    } finally {
-      setRevealingJobId(null);
-    }
   }
 
   async function downloadAttachment(attachmentId: string, filename: string) {
@@ -670,16 +548,14 @@ export default function InboxPage() {
               </header>
 
               <div className="mx-auto max-w-5xl px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
-                  <JobReferenceCard conversation={selected} revealed={revealedJobIds.has(leadIdOf(selected))} />
+                  <JobReferenceCard conversation={selected} />
                   {loadingMessages ? (
                     <div className="flex h-32 items-center justify-center"><Loader2 size={18} className="animate-spin text-blue-600" /></div>
                   ) : messages.map((message) => {
                     const outbound = message.direction === 'outbound';
                     const deliveryState = outbound ? messageDeliveryState(message) : null;
-                    const emailRevealed = revealedJobIds.has(leadIdOf(selected));
-                    const outboundText = restoreSenderName(emailRevealed ? message.text_body : maskNameInText(message.text_body, selected.vendor_name), selected.sender_name);
                     const messageText = outbound
-                      ? outboundText
+                      ? message.text_body
                       : message.display_text_status === 'complete' && message.display_text
                         ? message.display_text
                         : message.display_text_status === 'failed'
@@ -718,24 +594,13 @@ export default function InboxPage() {
                               </span>
                               <span className="shrink-0 text-[10px] text-gray-500">{formatMessageTime(message.sent_at || message.received_at || message.created_at)}</span>
                             </div>
-                            {emailRevealed ? (
-                              <button
-                                type="button"
-                                onClick={() => void navigator.clipboard.writeText(selected.vendor_email).then(() => setToast({ message: 'Vendor email copied', type: 'success' }))}
-                                className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400 sm:ml-auto sm:w-auto sm:px-2.5"
-                              >
-                                <Copy size={11} /> Email
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => void revealEmail(selected)}
-                                disabled={revealingJobId === leadIdOf(selected)}
-                                className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] disabled:cursor-not-allowed disabled:opacity-70 dark:border-cyan-500/30 dark:text-cyan-400 sm:ml-auto sm:w-auto sm:px-2.5"
-                              >
-                                {revealingJobId === leadIdOf(selected) ? '...' : <><Copy size={11} /><span>{maskedEmailHint(selected.vendor_email)}</span></>}
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => void navigator.clipboard.writeText(selected.vendor_email).then(() => setToast({ message: 'Vendor email copied', type: 'success' }))}
+                              className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400 sm:ml-auto sm:w-auto sm:px-2.5"
+                            >
+                              <Copy size={11} /> Email
+                            </button>
                           </div>
                           {message.error_message && <p className="mt-2 text-[10px] text-red-600">{message.error_message}</p>}
                         </div>

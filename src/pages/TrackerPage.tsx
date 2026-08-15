@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Plus, Search, Trash2, Pencil, X, Save, User, Briefcase,
   Building2, Mail, Phone, MapPin, DollarSign, Calendar,
@@ -17,27 +17,41 @@ import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
 
 interface Vendor { id: string; name: string; contact_person: string; email: string; contact: string; location: string; created_at: string; }
 interface Client { id: string; name: string; contact_person: string; email: string; phone: string; location: string; created_at: string; }
-interface RevealedContactJob {
+
+type TrackerLeadType = 'job' | 'hotlist';
+
+interface TrackerLead {
   id: string;
-  company_name: string | null;
-  posted_by_name: string | null;
-  poster_email: string | null;
-  poster_phone: string | null;
-}
-interface VendorHistoryJob {
-  id: string;
-  job_title: string;
-  company_name: string;
+  type: TrackerLeadType;
+  title: string;
+  company: string;
   location: string;
-  posted_by_name: string;
-  poster_email: string;
+  posterName: string;
+  posterEmail: string;
+  posterPhone: string;
   platform: string;
-  created_at: string;
-  revealed_at: string | null;
-  extracted_role_normalized: string | null;
-  match_score: number | null;
-  score_breakdown: Record<string, unknown> | null;
+  postedAt: string;
+  createdAt: string;
+  scoreBreakdown: Record<string, unknown> | null;
+  revealedAt: string | null;
+  submittedAt: string | null;
+  verifiedAt: string | null;
 }
+
+function vendorMatchesLead(vendor: Pick<Vendor, 'email' | 'contact' | 'name' | 'contact_person'>, lead: TrackerLead): boolean {
+  const normalize = (v?: string | null) => (v ?? '').trim().toLowerCase();
+  const vendorEmail = normalize(vendor.email);
+  const vendorPhone = normalize(vendor.contact);
+  const vendorName = normalize(vendor.name);
+  const contactPerson = normalize(vendor.contact_person);
+  return Boolean(
+    (vendorEmail && vendorEmail === normalize(lead.posterEmail))
+    || (vendorPhone && vendorPhone === normalize(lead.posterPhone))
+    || (contactPerson && contactPerson === normalize(lead.posterName))
+    || (vendorName && [normalize(lead.company), normalize(lead.posterName)].includes(vendorName)),
+  );
+}
+
 interface Submission {
   id: string; candidate_name: string; skill_set: string; vendor_name: string;
   vendor_email: string; vendor_contact: string; client_name: string; job_location: string;
@@ -213,7 +227,7 @@ const TYPE_BADGE: Record<string, string> = {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function TrackerPage() {
-  const { user } = useAuth();
+  const { user, account } = useAuth();
   const defaultSubmittedBy = (user?.user_metadata?.full_name as string | undefined) ?? '';
 
   const [vendors, setVendors]         = useState<Vendor[]>([]);
@@ -267,19 +281,20 @@ export default function TrackerPage() {
 
   // Vendor history
   const [activeVendorId, setActiveVendorId] = useState<string | null>(null);
-  const [vendorHistory, setVendorHistory] = useState<VendorHistoryJob[]>([]);
+  const [allLeads, setAllLeads] = useState<TrackerLead[]>([]);
+  const [jobsLayoutMode, setJobsLayoutMode] = useState<'card' | 'table'>('table');
   const [expandedHistoryBreakdownIds, setExpandedHistoryBreakdownIds] = useState<Set<string>>(new Set());
-  const [historyLoading, setHistoryLoading] = useState(false);
   const [revealedFields, setRevealedFields] = useState<Set<string>>(new Set());
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<{ existing: Submission[]; } | null>(null);
-  const [activeEmailJob, setActiveEmailJob] = useState<VendorHistoryJob | null>(null);
+  const [activeEmailJob, setActiveEmailJob] = useState<TrackerLead | null>(null);
   const [trackerEmailDrafts, setTrackerEmailDrafts] = useState<{ pitching: string; requestDetails: string }>({
     pitching: '',
     requestDetails: '',
   });
   const [selectedEmailDraftTab, setSelectedEmailDraftTab] = useState<EmailDraftTabId>('pitching');
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   // Close date picker on outside click
   useEffect(() => {
@@ -290,51 +305,165 @@ export default function TrackerPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 639px)');
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  }, []);
+
   // ── Fetch ──────────────────────────────────────────────────────────────────
+
+  // Combines revealed + submitted + verified job AND hotlist leads for the
+  // current user into one unified list, so a vendor contacted purely via
+  // Submit (no separate Reveal) or via a hotlist consultant still shows up.
+  const loadTrackerLeads = useCallback(async (): Promise<TrackerLead[]> => {
+    if (!user?.id) return [];
+
+    const [{ data: revealedActions }, askResult] = await Promise.all([
+      supabase
+        .from('pulse_lead_actions')
+        .select('lead_id, created_at')
+        .eq('user_id', user.id)
+        .eq('action_type', 'revealed'),
+      account?.id
+        ? supabase
+          .from('pulse_ask_ai_requests')
+          .select('job_id, hotlist_id, created_at')
+          .eq('account_id', account.id)
+          .eq('user_id', user.id)
+          .in('status', ['completed', 'fulfilled'])
+        : Promise.resolve({ data: [] as Array<{ job_id: string | null; hotlist_id: string | null; created_at: string }> }),
+    ]);
+
+    const revealedAtByLeadId = new Map<string, string>();
+    for (const row of (revealedActions ?? []) as Array<{ lead_id: string; created_at: string }>) {
+      if (!revealedAtByLeadId.has(row.lead_id)) revealedAtByLeadId.set(row.lead_id, row.created_at);
+    }
+
+    const submittedAtByLeadId = new Map<string, string>();
+    for (const row of (askResult.data ?? []) as Array<{ job_id: string | null; hotlist_id: string | null; created_at: string }>) {
+      const leadId = row.job_id ?? row.hotlist_id;
+      if (leadId && !submittedAtByLeadId.has(leadId)) submittedAtByLeadId.set(leadId, row.created_at);
+    }
+
+    const allLeadIds = [...new Set([...revealedAtByLeadId.keys(), ...submittedAtByLeadId.keys()])];
+    if (allLeadIds.length === 0) return [];
+
+    const verifiedAtByLeadId = new Map<string, string>();
+    if (account?.id) {
+      const [{ data: jobStates }, { data: hotlistStates }] = await Promise.all([
+        supabase.rpc('get_pulse_asked_job_states' as never, { p_account_id: account.id }),
+        supabase.rpc('get_hotlist_asked_states' as never, { p_account_id: account.id }),
+      ]);
+      for (const row of (jobStates ?? []) as Array<{ job_id: string; state: string }>) {
+        if (row.state === 'verified') verifiedAtByLeadId.set(row.job_id, submittedAtByLeadId.get(row.job_id) || revealedAtByLeadId.get(row.job_id) || '');
+      }
+      for (const row of (hotlistStates ?? []) as Array<{ hotlist_id: string; state: string }>) {
+        if (row.state === 'verified') verifiedAtByLeadId.set(row.hotlist_id, submittedAtByLeadId.get(row.hotlist_id) || revealedAtByLeadId.get(row.hotlist_id) || '');
+      }
+    }
+
+    const [{ data: jobRows }, { data: hotlistRows }] = await Promise.all([
+      supabase
+        .from('social_jobs')
+        .select('id, job_title, company_name, location, posted_by_name, poster_email, poster_phone, platform, created_at, posted_at, extracted_role_normalized')
+        .in('id', allLeadIds),
+      supabase
+        .from('social_hotlist')
+        .select('id, role_title, bench_sales_company_name, locations, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, platform, created_at, posted_at')
+        .in('id', allLeadIds),
+    ]);
+
+    const jobIds = ((jobRows ?? []) as Array<{ id: string }>).map((row) => row.id);
+    const hotlistIds = ((hotlistRows ?? []) as Array<{ id: string }>).map((row) => row.id);
+
+    const [{ data: jobMatches }, { data: hotlistMatches }] = await Promise.all([
+      jobIds.length > 0
+        ? supabase.from('radar_match_results').select('job_id, score_breakdown, created_at').in('job_id', jobIds).order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] as Array<{ job_id: string; score_breakdown: Record<string, unknown> | null }> }),
+      hotlistIds.length > 0
+        ? supabase.from('radar_match_hotlist').select('hotlist_id, score_breakdown, created_at').in('hotlist_id', hotlistIds).order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] as Array<{ hotlist_id: string; score_breakdown: Record<string, unknown> | null }> }),
+    ]);
+
+    const breakdownByJobId = new Map<string, Record<string, unknown> | null>();
+    for (const row of (jobMatches ?? []) as Array<{ job_id: string; score_breakdown: Record<string, unknown> | null }>) {
+      if (!breakdownByJobId.has(row.job_id)) breakdownByJobId.set(row.job_id, row.score_breakdown);
+    }
+    const breakdownByHotlistId = new Map<string, Record<string, unknown> | null>();
+    for (const row of (hotlistMatches ?? []) as Array<{ hotlist_id: string; score_breakdown: Record<string, unknown> | null }>) {
+      if (!breakdownByHotlistId.has(row.hotlist_id)) breakdownByHotlistId.set(row.hotlist_id, row.score_breakdown);
+    }
+
+    const jobLeads: TrackerLead[] = ((jobRows ?? []) as Array<{
+      id: string; job_title: string | null; company_name: string | null; location: string | null;
+      posted_by_name: string | null; poster_email: string | null; poster_phone: string | null;
+      platform: string | null; created_at: string; posted_at: string | null; extracted_role_normalized: string | null;
+    }>).map((row) => ({
+      id: row.id,
+      type: 'job' as const,
+      title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || 'Untitled Job',
+      company: row.company_name?.trim() || '',
+      location: row.location?.trim() || '',
+      posterName: row.posted_by_name?.trim() || '',
+      posterEmail: row.poster_email?.trim() || '',
+      posterPhone: row.poster_phone?.trim() || '',
+      platform: row.platform || '',
+      postedAt: row.posted_at || row.created_at,
+      createdAt: row.created_at,
+      scoreBreakdown: breakdownByJobId.get(row.id) ?? null,
+      revealedAt: revealedAtByLeadId.get(row.id) ?? null,
+      submittedAt: submittedAtByLeadId.get(row.id) ?? null,
+      verifiedAt: verifiedAtByLeadId.get(row.id) ?? null,
+    }));
+
+    const hotlistLeads: TrackerLead[] = ((hotlistRows ?? []) as Array<{
+      id: string; role_title: string | null; bench_sales_company_name: string | null; locations: string[] | null;
+      bench_sales_recruiter_name: string | null; bench_sales_recruiter_email: string | null; bench_sales_recruiter_phone: string | null;
+      platform: string | null; created_at: string; posted_at: string | null;
+    }>).map((row) => ({
+      id: row.id,
+      type: 'hotlist' as const,
+      title: row.role_title?.trim() || 'Available Consultant',
+      company: row.bench_sales_company_name?.trim() || '',
+      location: Array.isArray(row.locations) && row.locations.length > 0 ? row.locations.join(', ') : '',
+      posterName: row.bench_sales_recruiter_name?.trim() || '',
+      posterEmail: row.bench_sales_recruiter_email?.trim() || '',
+      posterPhone: row.bench_sales_recruiter_phone?.trim() || '',
+      platform: row.platform || '',
+      postedAt: row.posted_at || row.created_at,
+      createdAt: row.created_at,
+      scoreBreakdown: breakdownByHotlistId.get(row.id) ?? null,
+      revealedAt: revealedAtByLeadId.get(row.id) ?? null,
+      submittedAt: submittedAtByLeadId.get(row.id) ?? null,
+      verifiedAt: verifiedAtByLeadId.get(row.id) ?? null,
+    }));
+
+    return [...jobLeads, ...hotlistLeads];
+  }, [account?.id, user?.id]);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const loadOwnRevealedContacts = async (): Promise<RevealedContactJob[]> => {
-      if (!user?.id) return [];
-      const { data: actions } = await supabase
-        .from('pulse_lead_actions')
-        .select('lead_id')
-        .eq('user_id', user.id)
-        .eq('action_type', 'revealed');
-      const leadIds = [...new Set((actions ?? []).map((action) => action.lead_id))];
-      if (leadIds.length === 0) return [];
-      const { data: jobs } = await supabase
-        .from('social_jobs')
-        .select('id, company_name, posted_by_name, poster_email, poster_phone')
-        .in('id', leadIds);
-      return (jobs ?? []) as RevealedContactJob[];
-    };
-
-    const [vRes, cRes, sRes, pRes, revealedContacts] = await Promise.all([
+    const [vRes, cRes, sRes, pRes, leads] = await Promise.all([
       supabase.from('vendors').select('*').order('created_at', { ascending: false }),
       supabase.from('clients').select('*').order('created_at', { ascending: false }),
       supabase.from('submissions').select('*').order('submission_date', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('profiles').select('id,candidate_name,core_skills,preferred_locations,location,city,state,desired_salary_min').order('created_at', { ascending: false }),
-      loadOwnRevealedContacts(),
+      loadTrackerLeads(),
     ]);
+    setAllLeads(leads);
     if (!vRes.error) {
-      const normalized = (value: string | null | undefined) => value?.trim().toLowerCase() ?? '';
-      const ownVendors = (vRes.data ?? []).filter((vendor) => revealedContacts.some((job) => {
-        const vendorEmail = normalized(vendor.email);
-        const vendorPhone = normalized(vendor.contact);
-        const vendorName = normalized(vendor.name);
-        const contactPerson = normalized(vendor.contact_person);
-        return (vendorEmail && vendorEmail === normalized(job.poster_email))
-          || (vendorPhone && vendorPhone === normalized(job.poster_phone))
-          || (contactPerson && contactPerson === normalized(job.posted_by_name))
-          || (vendorName && [normalized(job.company_name), normalized(job.posted_by_name)].includes(vendorName));
-      }));
+      const ownVendors = (vRes.data ?? []).filter((vendor) => leads.some((lead) => vendorMatchesLead(vendor, lead)));
       setVendors(ownVendors);
     }
     if (!cRes.error) setClients(cRes.data ?? []);
     if (!sRes.error) setSubmissions(sRes.data ?? []);
     if (!pRes.error) setProfiles((pRes.data ?? []) as Profile[]);
     setLoading(false);
-  }, [user?.id]);
+  }, [loadTrackerLeads]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -534,8 +663,6 @@ export default function TrackerPage() {
     return inRange(c.created_at, dateRange.start, dateRange.end);
   });
 
-  const filteredVendorIdsKey = filteredVendors.map((vendor) => vendor.id).join(',');
-
   // Paginated slices
 
   // ── Selection helpers ──────────────────────────────────────────────────────
@@ -559,104 +686,20 @@ export default function TrackerPage() {
     return `${days}d ago`;
   }
 
-  const loadVendorHistoryForVendors = useCallback(async (vendorsToMatch: Vendor[]) => {
-    setHistoryLoading(true);
-    setVendorHistory([]);
+  // vendorHistory is a pure client-side filter of the already-loaded allLeads —
+  // no separate fetch/loading state needed since loadTrackerLeads() already
+  // pulled every revealed/submitted/verified job + hotlist lead up front.
+  const vendorHistory = useMemo(() => {
+    const vendorsToMatch = activeVendorId ? vendors.filter((v) => v.id === activeVendorId) : filteredVendors;
+    if (vendorsToMatch.length === 0) return [];
+    return allLeads
+      .filter((lead) => vendorsToMatch.some((vendor) => vendorMatchesLead(vendor, lead)))
+      .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+  }, [activeVendorId, allLeads, filteredVendors, vendors]);
 
-    if (!user?.id || vendorsToMatch.length === 0) {
-      setHistoryLoading(false);
-      return;
-    }
-
-    // Get revealed lead IDs for this account
-    const { data: actions, error: actionsErr } = await supabase
-      .from('pulse_lead_actions')
-      .select('lead_id, created_at')
-      .eq('user_id', user.id)
-      .eq('action_type', 'revealed');
-
-    if (actionsErr || !actions?.length) {
-      setHistoryLoading(false);
-      return;
-    }
-
-    const revealedIds = (actions as Array<{ lead_id: string; created_at: string }>).map(a => a.lead_id);
-    const revealDateByLeadId = new Map<string, string>();
-    for (const action of actions as Array<{ lead_id: string; created_at: string }>) {
-      if (!revealDateByLeadId.has(action.lead_id)) {
-        revealDateByLeadId.set(action.lead_id, action.created_at);
-      }
-    }
-
-    const fetchJobsForVendor = async (vendor: Vendor) => {
-      // Query social_jobs matching this vendor by name or email, filtered to revealed IDs
-      let query = supabase
-        .from('social_jobs')
-        .select('id, job_title, company_name, location, posted_by_name, poster_email, platform, created_at, extracted_role_normalized')
-        .in('id', revealedIds)
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      // Match by vendor name, email, or contact person
-      const conditions: string[] = [];
-      if (vendor.name) conditions.push(`posted_by_name.ilike.%${vendor.name}%`);
-      if (vendor.email) conditions.push(`poster_email.eq.${vendor.email}`);
-      if (vendor.contact_person) conditions.push(`posted_by_name.ilike.%${vendor.contact_person}%`);
-      if (vendor.name) conditions.push(`company_name.ilike.%${vendor.name}%`);
-
-      if (conditions.length === 0) return [] as VendorHistoryJob[];
-
-      const { data: jobs, error: jobsErr } = await query.or(conditions.join(','));
-      if (jobsErr || !jobs) return [] as VendorHistoryJob[];
-
-      const jobIds = (jobs as Array<{ id: string }>).map((job) => job.id);
-      const matchByJobId = new Map<string, { final_average_score: number | null; score_breakdown: Record<string, unknown> | null }>();
-
-      if (jobIds.length > 0) {
-        const { data: matches } = await supabase
-          .from('radar_match_results')
-          .select('job_id, final_average_score, score_breakdown, created_at')
-          .in('job_id', jobIds)
-          .order('created_at', { ascending: false });
-
-        for (const row of (matches ?? []) as Array<{ job_id: string; final_average_score: number | null; score_breakdown: Record<string, unknown> | null }>) {
-          if (!matchByJobId.has(row.job_id)) {
-            matchByJobId.set(row.job_id, {
-              final_average_score: row.final_average_score,
-              score_breakdown: row.score_breakdown,
-            });
-          }
-        }
-      }
-
-      return (jobs as Array<Omit<VendorHistoryJob, 'match_score' | 'score_breakdown'>>).map((job) => {
-        const match = matchByJobId.get(job.id);
-        return {
-          ...job,
-          match_score: match?.final_average_score ?? null,
-          score_breakdown: match?.score_breakdown ?? null,
-          revealed_at: revealDateByLeadId.get(job.id) ?? null,
-        };
-      });
-    };
-
-    const allJobs = (await Promise.all(vendorsToMatch.map(fetchJobsForVendor))).flat();
-    setVendorHistory(Array.from(new Map(allJobs.map((job) => [job.id, job])).values()));
-    setHistoryLoading(false);
-  }, [user?.id]);
-
-  const loadVendorHistory = useCallback(async (vendor: Vendor) => {
-    await loadVendorHistoryForVendors([vendor]);
-  }, [loadVendorHistoryForVendors]);
-
-  useEffect(() => {
-    if (activeVendorId) return;
-    void loadVendorHistoryForVendors(filteredVendors);
-  }, [activeVendorId, filteredVendorIdsKey, loadVendorHistoryForVendors]);
-
-  const generateTrackerEmailDrafts = useCallback((job: VendorHistoryJob) => {
+  const generateTrackerEmailDrafts = useCallback((lead: TrackerLead) => {
     const breakdownItems = buildScoreBreakdownDisplayItems(
-      job.score_breakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+      lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
     );
 
     const pickDetail = (patterns: RegExp[]) => {
@@ -664,8 +707,8 @@ export default function TrackerPage() {
       return item?.detail?.candidate_value?.trim() || '-';
     };
 
-    const role = job.job_title || job.extracted_role_normalized || 'requirement';
-    const companyText = job.company_name ? ` at ${job.company_name}` : '';
+    const role = lead.title || (lead.type === 'hotlist' ? 'consultant' : 'requirement');
+    const companyText = lead.company ? ` at ${lead.company}` : '';
 
     const profileHighlights = [
       `- Role: ${pickDetail([/role/i, /title/i, /position/i])}`,
@@ -677,7 +720,7 @@ export default function TrackerPage() {
     ];
 
     const pitching = [
-      `Hi ${job.posted_by_name || 'there'},`,
+      `Hi ${lead.posterName || 'there'},`,
       '',
       `I saw your post for the ${role}${companyText}.`,
       'I have a profile that looks highly relevant and can share it right away.',
@@ -692,7 +735,7 @@ export default function TrackerPage() {
     ].join('\n');
 
     const requestDetails = [
-      `Hi ${job.posted_by_name || 'there'},`,
+      `Hi ${lead.posterName || 'there'},`,
       '',
       `Following up on the ${role}${companyText}.`,
       'Could you please share the following details so I can submit the best-fit profile quickly?',
@@ -710,7 +753,7 @@ export default function TrackerPage() {
       defaultSubmittedBy || (user?.email?.split('@')[0] ?? 'ProfilePush User'),
     ].join('\n');
 
-    setActiveEmailJob(job);
+    setActiveEmailJob(lead);
     setTrackerEmailDrafts({ pitching, requestDetails });
     setSelectedEmailDraftTab('pitching');
     setModal('email');
@@ -732,13 +775,192 @@ export default function TrackerPage() {
   }, []);
 
   function handleVendorRowClick(vendor: Vendor) {
-    if (activeVendorId === vendor.id) {
-      setActiveVendorId(null);
-      setVendorHistory([]);
-    } else {
-      setActiveVendorId(vendor.id);
-      void loadVendorHistory(vendor);
-    }
+    setActiveVendorId((current) => (current === vendor.id ? null : vendor.id));
+  }
+
+  // ── Jobs/Hotlist history: status badges + card/table renderers ───────────
+
+  function leadStatusBadges(lead: TrackerLead) {
+    if (!lead.revealedAt && !lead.submittedAt && !lead.verifiedAt) return null;
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        {lead.revealedAt && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[9px] font-semibold text-gray-600 dark:border-white/15 dark:bg-white/5 dark:text-slate-300">
+            <Eye size={9} /> Revealed {formatAgo(lead.revealedAt)}
+          </span>
+        )}
+        {lead.submittedAt && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300">
+            <Check size={9} /> Submitted {formatAgo(lead.submittedAt)}
+          </span>
+        )}
+        {lead.verifiedAt && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <Check size={9} /> Verified
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  function renderJobsCards() {
+    return (
+      <div className="grid grid-cols-1 gap-0 lg:grid-cols-2 lg:gap-3 lg:p-3">
+        {vendorHistory.map((lead, index) => {
+          const breakdownItems = buildScoreBreakdownDisplayItems(
+            lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+          );
+          const isExpanded = expandedHistoryBreakdownIds.has(lead.id);
+          const prioritizedBreakdownItems = [...breakdownItems].sort((a, b) => {
+            const getPriority = (key: string) => {
+              if (/exp|experience|years?_?exp/i.test(key)) return 0;
+              if (/visa|work_authorization|authorization/i.test(key)) return 1;
+              return 2;
+            };
+            return getPriority(a.key) - getPriority(b.key);
+          });
+          const canToggleBreakdown = prioritizedBreakdownItems.length > 2;
+          const collapsedBreakdownItems = prioritizedBreakdownItems.slice(0, 3);
+          const visibleBreakdownItems = isExpanded ? prioritizedBreakdownItems : collapsedBreakdownItems;
+          const cardToneClass = [
+            'border-blue-100 bg-blue-50/35 dark:border-white/10 dark:bg-[#23272e]',
+            'border-emerald-100 bg-emerald-50/35 dark:border-white/10 dark:bg-[#252a30]',
+            'border-amber-100 bg-amber-50/40 dark:border-white/10 dark:bg-[#2a2d32]',
+            'border-slate-200 bg-slate-50/75 dark:border-white/10 dark:bg-[#22262c]',
+          ][index % 4];
+
+          return (
+            <div
+              key={lead.id}
+              className={`px-2.5 sm:px-3.5 py-2.5 sm:py-3 ${index > 0 ? 'border-t border-gray-100 dark:border-white/10 lg:border-t-0' : ''} lg:rounded-xl lg:border ${cardToneClass}`}
+            >
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <p className="text-[11px] sm:text-sm font-semibold text-gray-900 dark:text-[#CBD5E1] leading-snug">{lead.title}</p>
+                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-600 dark:bg-[#171a1f] dark:text-[#94A3B8]'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
+                {lead.platform && <span className="rounded bg-gray-100 dark:bg-[#171a1f] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600 dark:text-[#94A3B8]">{lead.platform}</span>}
+              </div>
+              {lead.company && (
+                <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-gray-600 dark:text-[#94A3B8]">{lead.company}</div>
+              )}
+              <div className="mt-0.5 text-[10px] sm:text-xs text-gray-500 dark:text-[#94A3B8]">
+                <span>{lead.posterName || '—'}</span>
+              </div>
+              <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-gray-400 dark:text-slate-500">
+                {formatAgo(lead.postedAt)} posted
+              </div>
+
+              {leadStatusBadges(lead) && <div className="mt-1.5">{leadStatusBadges(lead)}</div>}
+
+              {breakdownItems.length > 0 && (
+                canToggleBreakdown ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExpandedHistoryBreakdownIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(lead.id)) next.delete(lead.id);
+                        else next.add(lead.id);
+                        return next;
+                      });
+                    }}
+                    className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 dark:border-white/10 text-left relative group focus:outline-none"
+                  >
+                    <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                      <tbody>
+                        {visibleBreakdownItems.map((item, idx) => (
+                          <tr key={item.key}>
+                            <td className={`border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-slate-500' : 'text-gray-700 dark:text-[#CBD5E1]'}`}>
+                              {formatBreakdownFieldName(item.key)}
+                            </td>
+                            <td className={`border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-slate-500' : 'text-gray-700 dark:text-[#CBD5E1]'}`}>
+                              {item.detail?.job_value || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!isExpanded && (
+                      <div className="absolute bottom-0 left-0 right-0 h-7 flex items-center justify-center pointer-events-none">
+                        <ChevronDown size={12} className="text-blue-500 dark:text-[#94A3B8]" />
+                      </div>
+                    )}
+                  </button>
+                ) : (
+                  <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 dark:border-white/10 text-left">
+                    <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                      <tbody>
+                        {visibleBreakdownItems.map((item) => (
+                          <tr key={item.key}>
+                            <td className="border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal text-gray-700 dark:text-[#CBD5E1]">{formatBreakdownFieldName(item.key)}</td>
+                            <td className="border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal text-gray-700 dark:text-[#CBD5E1]">{item.detail?.job_value || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              )}
+
+              <div className="mt-2">
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    onClick={() => void generateTrackerEmailDrafts(lead)}
+                    className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 dark:border-white/15 dark:bg-[#2A2E35] px-2 py-1.5 sm:px-2.5 sm:py-2 text-[10px] sm:text-xs font-semibold text-white dark:text-slate-100 shadow-sm transition hover:bg-blue-700 dark:hover:bg-[#343943]"
+                  >
+                    <Mail size={10} />
+                    Generate Email
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function renderJobsTable() {
+    return (
+      <table className="w-full table-fixed border-collapse text-left text-[11px]">
+        <colgroup>
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '21%' }} />
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '14%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '25%' }} />
+        </colgroup>
+        <thead className="sticky top-0 z-[1] bg-gray-50 dark:bg-[#1F2328]">
+          <tr className="border-b border-gray-200 dark:border-white/10 text-[10px] uppercase tracking-wide text-gray-500 dark:text-[#94A3B8]">
+            <th className="px-2 py-2">Type</th>
+            <th className="px-2 py-2">Role</th>
+            <th className="px-2 py-2">Company</th>
+            <th className="px-2 py-2">Posted By</th>
+            <th className="px-2 py-2">Platform</th>
+            <th className="px-2 py-2">Posted</th>
+            <th className="px-2 py-2">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {vendorHistory.map((lead) => (
+            <tr key={lead.id} className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5">
+              <td className="px-2 py-2 align-top">
+                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
+              </td>
+              <td className="px-2 py-2 align-top break-words whitespace-normal font-medium text-gray-900 dark:text-slate-100">
+                <button type="button" onClick={() => void generateTrackerEmailDrafts(lead)} className="text-left hover:text-blue-600 hover:underline">{lead.title}</button>
+              </td>
+              <td className="px-2 py-2 align-top break-words whitespace-normal text-gray-600 dark:text-[#94A3B8]">{lead.company || '—'}</td>
+              <td className="px-2 py-2 align-top break-words whitespace-normal text-gray-600 dark:text-[#94A3B8]">{lead.posterName || '—'}</td>
+              <td className="px-2 py-2 align-top text-gray-500 dark:text-[#94A3B8]">{lead.platform || '—'}</td>
+              <td className="px-2 py-2 align-top text-gray-500 dark:text-[#94A3B8]">{formatAgo(lead.postedAt)}</td>
+              <td className="px-2 py-2 align-top">{leadStatusBadges(lead)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
   }
 
   // ── CSV download helpers ──────────────────────────────────────────────────
@@ -892,76 +1114,82 @@ export default function TrackerPage() {
               </button>
             )}
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-auto">
             {filteredVendors.length === 0 ? (
               <div className="py-16 text-center text-xs text-gray-400">
                 {isSearching ? 'No vendors match your search.' : `No vendors in ${dateLabel}.`}
               </div>
             ) : (
-              <div className="divide-y divide-gray-100 dark:divide-white/10">
-                {filteredVendors.map((v) => {
-                  const subCount = submissions.filter(s => s.vendor_name === v.name).length;
-                  const isActive = activeVendorId === v.id;
-                  return (
-                    <div
-                      key={v.id}
-                      onClick={() => handleVendorRowClick(v)}
-                      className={`px-2.5 sm:px-3.5 py-2.5 sm:py-3 cursor-pointer transition-colors ${isActive ? 'bg-amber-50/70 dark:bg-[#30353D]' : 'bg-white hover:bg-amber-50/30 dark:bg-[#1F2328] dark:hover:bg-[#272C33]'}`}
-                    >
-                      <div className="flex items-center justify-between gap-1.5">
-                        <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-slate-100 break-words whitespace-normal leading-snug">{v.name}</p>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {subCount > 0 && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{subCount}</span>}
-                          <button onClick={(e) => { e.stopPropagation(); openEditVendor(v); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors" title="Edit"><Pencil size={10} /></button>
-                          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vendor', id: v.id }); }} className="p-0.5 rounded text-gray-400 hover:text-red-600 transition-colors" title="Delete"><Trash2 size={10} /></button>
-                        </div>
-                      </div>
-                      {v.contact_person && (
-                        <div className="flex items-center gap-1 mt-1 text-[11px] sm:text-xs text-gray-600 dark:text-slate-300">
-                          <User size={10} className="text-gray-400 dark:text-slate-500 shrink-0" />
-                          {revealedFields.has(`cp-${v.id}`) ? (
-                            <span className="truncate">{v.contact_person}</span>
-                          ) : (
-                            <span className="text-gray-400 dark:text-slate-400 truncate">{v.contact_person.slice(0, 3)}•••</span>
+              <table className="w-full table-fixed border-collapse text-left text-[11px]">
+                <colgroup>
+                  <col style={{ width: '46%' }} />
+                  <col style={{ width: '36%' }} />
+                  <col style={{ width: '18%' }} />
+                </colgroup>
+                <thead className="sticky top-0 z-[1] bg-gray-50 dark:bg-[#1F2328]">
+                  <tr className="border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-500 dark:border-white/10 dark:text-[#94A3B8]">
+                    <th className="px-2.5 py-2">Name</th>
+                    <th className="px-2.5 py-2">Email</th>
+                    <th className="px-2.5 py-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredVendors.map((v) => {
+                    const subCount = submissions.filter(s => s.vendor_name === v.name).length;
+                    const isActive = activeVendorId === v.id;
+                    return (
+                      <tr
+                        key={v.id}
+                        onClick={() => handleVendorRowClick(v)}
+                        className={`cursor-pointer border-b border-gray-100 transition-colors dark:border-white/10 ${isActive ? 'bg-amber-50/70 dark:bg-[#30353D]' : 'bg-white hover:bg-amber-50/30 dark:bg-[#1F2328] dark:hover:bg-[#272C33]'}`}
+                      >
+                        <td className="px-2.5 py-2.5 align-top">
+                          <div className="flex items-start gap-1.5">
+                            <p className="min-w-0 flex-1 break-words font-semibold leading-snug text-gray-900 dark:text-slate-100">{v.name}</p>
+                            {subCount > 0 && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">{subCount}</span>}
+                          </div>
+                          {v.contact_person && (
+                            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-500 dark:text-slate-400">
+                              <User size={9} className="shrink-0 text-gray-400" />
+                              {revealedFields.has(`cp-${v.id}`) ? (
+                                <span className="truncate">{v.contact_person}</span>
+                              ) : (
+                                <span className="truncate text-gray-400">{v.contact_person.slice(0, 3)}•••</span>
+                              )}
+                              <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `cp-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="shrink-0 rounded p-0.5 text-gray-400 hover:text-blue-600">
+                                {revealedFields.has(`cp-${v.id}`) ? <EyeOff size={8} /> : <Eye size={8} />}
+                              </button>
+                            </div>
                           )}
-                          <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `cp-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0">
-                            {revealedFields.has(`cp-${v.id}`) ? <EyeOff size={9} /> : <Eye size={9} />}
-                          </button>
-                        </div>
-                      )}
-                      {v.email && (
-                        <div className="flex items-center gap-1 mt-0.5 sm:mt-1 text-[11px] sm:text-xs">
-                          <Mail size={10} className="text-gray-400 dark:text-slate-500 shrink-0" />
-                          {revealedFields.has(`email-${v.id}`) ? (
-                            <a href={`mailto:${v.email}`} onClick={e => e.stopPropagation()} className="text-blue-600 dark:text-cyan-400 hover:underline truncate">{v.email}</a>
-                          ) : (
-                            <span className="text-gray-400 dark:text-slate-400 truncate">{v.email.slice(0, 3)}@•••</span>
-                          )}
-                          <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `email-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="p-0.5 rounded text-gray-400 hover:text-blue-600 transition-colors shrink-0">
-                            {revealedFields.has(`email-${v.id}`) ? <EyeOff size={9} /> : <Eye size={9} />}
-                          </button>
-                        </div>
-                      )}
-                      {v.email && (
-                        <div className="mt-1.5 sm:mt-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void navigator.clipboard.writeText(v.email);
-                              setCopiedField(`email-${v.id}`);
-                              setTimeout(() => setCopiedField(null), 1500);
-                            }}
-                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/15 dark:bg-[#20242A] dark:text-slate-200 dark:hover:bg-[#292E35]"
-                          >
-                            {copiedField === `email-${v.id}` ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
-                            {copiedField === `email-${v.id}` ? 'Copied' : 'Email ID'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        </td>
+                        <td className="px-2.5 py-2.5 align-top">
+                          {v.email ? (
+                            <div className="flex items-center gap-1">
+                              {revealedFields.has(`email-${v.id}`) ? (
+                                <a href={`mailto:${v.email}`} onClick={(e) => e.stopPropagation()} className="min-w-0 flex-1 truncate text-blue-600 hover:underline dark:text-cyan-400">{v.email}</a>
+                              ) : (
+                                <span className="min-w-0 flex-1 truncate text-gray-400">{v.email.slice(0, 3)}@•••</span>
+                              )}
+                              <button onClick={(e) => { e.stopPropagation(); setRevealedFields(prev => { const n = new Set(prev); const k = `email-${v.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; }); }} className="shrink-0 rounded p-0.5 text-gray-400 hover:text-blue-600" title={revealedFields.has(`email-${v.id}`) ? 'Hide' : 'Reveal'}>
+                                {revealedFields.has(`email-${v.id}`) ? <EyeOff size={9} /> : <Eye size={9} />}
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(v.email); setCopiedField(`email-${v.id}`); setTimeout(() => setCopiedField(null), 1500); }} className="shrink-0 rounded p-0.5 text-gray-400 hover:text-blue-600" title="Copy">
+                                {copiedField === `email-${v.id}` ? <Check size={9} className="text-green-500" /> : <Copy size={9} />}
+                              </button>
+                            </div>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-2.5 py-2.5 align-top text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <button onClick={(e) => { e.stopPropagation(); openEditVendor(v); }} className="rounded p-0.5 text-gray-400 hover:text-blue-600" title="Edit"><Pencil size={11} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vendor', id: v.id }); }} className="rounded p-0.5 text-gray-400 hover:text-red-600" title="Delete"><Trash2 size={11} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
@@ -971,6 +1199,20 @@ export default function TrackerPage() {
           <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#1F2328]">
             <span className="text-xs font-bold text-gray-700 dark:text-slate-200 uppercase tracking-wider">Jobs</span>
             <span className="text-[10px] font-bold text-blue-700 dark:text-slate-200 bg-blue-50 dark:bg-[#2A2E35] px-1.5 py-0.5 rounded ring-1 ring-blue-200 dark:ring-white/10">{vendorHistory.length}</span>
+            {!isMobileViewport && (
+              <div className="ml-2 flex shrink-0 items-center rounded-md border border-gray-200 bg-gray-50 p-0.5 dark:border-white/10 dark:bg-white/5">
+                {(['card', 'table'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setJobsLayoutMode(mode)}
+                    className={`rounded px-2 py-1 text-[10px] font-semibold capitalize transition ${jobsLayoutMode === mode ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            )}
             {activeVendorId ? (
               <span className="ml-auto text-[10px] text-gray-500 dark:text-[#94A3B8] truncate max-w-[140px]">
                 {vendors.find(v => v.id === activeVendorId)?.name}
@@ -979,132 +1221,17 @@ export default function TrackerPage() {
               <span className="ml-auto text-[10px] text-gray-500 dark:text-[#94A3B8] truncate max-w-[140px]">All contacts</span>
             )}
           </div>
-          <div className="flex-1 overflow-y-auto">
-            {historyLoading ? (
-              <div className="flex h-full items-center justify-center py-16">
-                <LogoSpinner size={20} />
-              </div>
-            ) : vendorHistory.length === 0 ? (
+          <div className="flex-1 overflow-auto">
+            {vendorHistory.length === 0 ? (
               <div className="py-16 text-center text-xs text-gray-400 dark:text-[#94A3B8]">
                 <History size={18} className="mx-auto text-gray-300 dark:text-slate-600 mb-2" />
-                <p className="font-medium text-gray-500 dark:text-[#CBD5E1]">No revealed jobs</p>
-                <p className="mt-1">{activeVendorId ? 'No contact reveals found for this vendor yet.' : 'No contact reveals found across these contacts yet.'}</p>
+                <p className="font-medium text-gray-500 dark:text-[#CBD5E1]">No activity yet</p>
+                <p className="mt-1">{activeVendorId ? 'No revealed or submitted leads found for this contact yet.' : 'No revealed or submitted leads found across these contacts yet.'}</p>
               </div>
+            ) : jobsLayoutMode === 'table' && !isMobileViewport ? (
+              renderJobsTable()
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:gap-3">
-                {vendorHistory.map((job, index) => {
-                  const breakdownItems = buildScoreBreakdownDisplayItems(
-                    job.score_breakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
-                  );
-                  const isExpanded = expandedHistoryBreakdownIds.has(job.id);
-                  const prioritizedBreakdownItems = [...breakdownItems].sort((a, b) => {
-                    const getPriority = (key: string) => {
-                      if (/exp|experience|years?_?exp/i.test(key)) return 0;
-                      if (/visa|work_authorization|authorization/i.test(key)) return 1;
-                      return 2;
-                    };
-
-                    return getPriority(a.key) - getPriority(b.key);
-                  });
-                  const canToggleBreakdown = prioritizedBreakdownItems.length > 2;
-                  const collapsedBreakdownItems = prioritizedBreakdownItems.slice(0, 3);
-                  const visibleBreakdownItems = isExpanded ? prioritizedBreakdownItems : collapsedBreakdownItems;
-                  const cardToneClass = [
-                    'border-blue-100 bg-blue-50/35 dark:border-white/10 dark:bg-[#23272e]',
-                    'border-emerald-100 bg-emerald-50/35 dark:border-white/10 dark:bg-[#252a30]',
-                    'border-amber-100 bg-amber-50/40 dark:border-white/10 dark:bg-[#2a2d32]',
-                    'border-slate-200 bg-slate-50/75 dark:border-white/10 dark:bg-[#22262c]',
-                  ][index % 4];
-
-                  return (
-                    <div
-                      key={job.id}
-                      className={`px-2.5 sm:px-3.5 py-2.5 sm:py-3 ${index > 0 ? 'border-t border-gray-100 dark:border-white/10 lg:border-t-0' : ''} lg:rounded-xl lg:border ${cardToneClass}`}
-                    >
-                      <div className="flex items-start justify-between gap-1.5">
-                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                          <p className="text-[11px] sm:text-sm font-semibold text-gray-900 dark:text-[#CBD5E1] leading-snug">{job.job_title || job.extracted_role_normalized || 'Untitled Job'}</p>
-                          <span className="rounded bg-gray-100 dark:bg-[#171a1f] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600 dark:text-[#94A3B8]">{job.platform}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                        </div>
-                      </div>
-                      {job.company_name && (
-                        <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-gray-600 dark:text-[#94A3B8]">{job.company_name}</div>
-                      )}
-                      <div className="mt-0.5 text-[10px] sm:text-xs text-gray-500 dark:text-[#94A3B8]">
-                        <span>{job.posted_by_name || '—'}</span>
-                      </div>
-                      <div className="mt-0.5 sm:mt-1 space-y-0.5 text-[10px] sm:text-xs text-gray-400 dark:text-slate-500">
-                        <div>- {formatAgo(job.created_at)} posted</div>
-                        <div>- {job.revealed_at ? `${formatAgo(job.revealed_at)} revealed` : '— revealed'}</div>
-                      </div>
-
-                      {breakdownItems.length > 0 && (
-                        canToggleBreakdown ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setExpandedHistoryBreakdownIds((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(job.id)) next.delete(job.id);
-                                else next.add(job.id);
-                                return next;
-                              });
-                            }}
-                            className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 dark:border-white/10 text-left relative group focus:outline-none"
-                          >
-                            <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                              <tbody>
-                                {visibleBreakdownItems.map((item, idx) => (
-                                  <tr key={item.key}>
-                                    <td className={`border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-slate-500' : 'text-gray-700 dark:text-[#CBD5E1]'}`}>
-                                      {formatBreakdownFieldName(item.key)}
-                                    </td>
-                                    <td className={`border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-slate-500' : 'text-gray-700 dark:text-[#CBD5E1]'}`}>
-                                      {item.detail?.job_value || '-'}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            {!isExpanded && (
-                              <div className="absolute bottom-0 left-0 right-0 h-7 flex items-center justify-center pointer-events-none">
-                                <ChevronDown size={12} className="text-blue-500 dark:text-[#94A3B8]" />
-                              </div>
-                            )}
-                          </button>
-                        ) : (
-                          <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 dark:border-white/10 text-left">
-                            <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                              <tbody>
-                                {visibleBreakdownItems.map((item) => (
-                                  <tr key={item.key}>
-                                    <td className="border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal text-gray-700 dark:text-[#CBD5E1]">{formatBreakdownFieldName(item.key)}</td>
-                                    <td className="border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal text-gray-700 dark:text-[#CBD5E1]">{item.detail?.job_value || '-'}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )
-                      )}
-
-                      <div className="mt-2">
-                        <div className="flex flex-col gap-1.5">
-                          <button
-                            onClick={() => void generateTrackerEmailDrafts(job)}
-                                  className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 dark:border-white/15 dark:bg-[#2A2E35] px-2 py-1.5 sm:px-2.5 sm:py-2 text-[10px] sm:text-xs font-semibold text-white dark:text-slate-100 shadow-sm transition hover:bg-blue-700 dark:hover:bg-[#343943]"
-                          >
-                            <Mail size={10} />
-                            Generate Email
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              renderJobsCards()
             )}
           </div>
         </div>
@@ -1307,10 +1434,10 @@ export default function TrackerPage() {
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-gray-900">
-                  {activeEmailJob.job_title || activeEmailJob.extracted_role_normalized || 'Requirement'}
+                  {activeEmailJob.title || 'Requirement'}
                 </p>
-                <p className="text-[12px] text-gray-600">{[activeEmailJob.company_name, activeEmailJob.location].filter(Boolean).join(' • ') || 'Company details unavailable'}</p>
-                <p className="mt-0.5 text-[11px] text-gray-500">{activeEmailJob.posted_by_name || 'Posted by hidden'}{activeEmailJob.created_at ? ` • ${formatAgo(activeEmailJob.created_at)}` : ''}</p>
+                <p className="text-[12px] text-gray-600">{[activeEmailJob.company, activeEmailJob.location].filter(Boolean).join(' • ') || 'Company details unavailable'}</p>
+                <p className="mt-0.5 text-[11px] text-gray-500">{activeEmailJob.posterName || 'Posted by hidden'}{activeEmailJob.createdAt ? ` • ${formatAgo(activeEmailJob.createdAt)}` : ''}</p>
               </div>
               <button
                 onClick={() => setModal(null)}
@@ -1332,8 +1459,8 @@ export default function TrackerPage() {
                 </button>
 
                 <button
-                  onClick={() => void copyText(activeEmailJob.poster_email, 'Email ID')}
-                  disabled={!activeEmailJob.poster_email}
+                  onClick={() => void copyText(activeEmailJob.posterEmail, 'Email ID')}
+                  disabled={!activeEmailJob.posterEmail}
                   className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-300 bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
                 >
                   <Mail size={14} />
