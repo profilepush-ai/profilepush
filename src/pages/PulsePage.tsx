@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   Activity,
   AtSign,
@@ -20,11 +20,9 @@ import {
   Hash,
   LayoutGrid,
   Mail,
-  Paperclip,
   Phone,
   Radar,
   RefreshCw,
-  RotateCcw,
   Search,
   Shield,
   CheckSquare,
@@ -46,9 +44,7 @@ import {
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
-import GmailConnectPrompt from '../components/GmailConnectPrompt';
 import GmailIcon from '../components/GmailIcon';
-import { isPulseAdmin } from '../lib/pulse-admin';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -298,21 +294,18 @@ type AskedJobState = {
 };
 
 type GlobalAskedJobState = 'asked' | 'verified';
-type EmailDraftTabId = 'pitching' | 'requestDetails';
 type AskAIPreview = {
   leadId: string;
   leadType: 'job' | 'hotlist';
   requestId: string;
   vendorName: string;
+  vendorEmail: string;
   jobTitle: string;
   company: string;
   missingDetails: string[];
   emailSubject: string;
   emailContent: string;
   isGenerating: boolean;
-  resumeUrl?: string;
-  resumeFileName?: string;
-  channel: 'mailgun' | 'gmail';
 };
 type FeedSearchFilters = {
   experienceRange: string;
@@ -369,11 +362,6 @@ type PulseLeadActionRow = {
   created_at?: string;
 };
 
-type PulseRevealNamesRow = {
-  lead_id: string;
-  revealer_names: string[] | null;
-};
-
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
 const PULSE_ROWS_CACHE_TTL_MS = 30_000;
@@ -389,13 +377,6 @@ type LeadTableSortKey = 'role' | 'exp' | 'workType' | 'empType' | 'rate' | 'visa
 type PredictCategory = { label: string; earned: number; max: number; note: string };
 type PredictResult = { score: number; categories: PredictCategory[]; verdict: string; verdictClass: string };
 
-const PREDICT_PROCESSING_LABELS = ['Skills', 'Experience', 'Visa', 'Work Type', 'Location', 'Employment Type'];
-
-const PREDICT_MIN_PROCESSING_MS = 2300;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 const PULSE_LAYOUT_MODE_STORAGE_KEY = 'profilepush-jobs-layout-mode';
 
@@ -601,17 +582,6 @@ type PersonaDetailValue = {
   value: string;
   missing: boolean;
 };
-
-function getBreakdownCandidateValue(
-  breakdown: Record<string, unknown> | null | undefined,
-  key: string,
-) {
-  const value = breakdown?.[key];
-  if (!value || typeof value !== 'object') return '';
-
-  const detail = value as BreakdownDetail;
-  return (detail.candidate_value ?? '').trim();
-}
 
 function getBreakdownJobValue(
   breakdown: Record<string, unknown> | null | undefined,
@@ -1351,7 +1321,7 @@ type PulsePageProps = {
 };
 
 export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
-  const { account, subscription, user, refreshAccount } = useAuth();
+  const { account, user, refreshAccount } = useAuth();
   const { isDark } = useTheme();
   const isHotlistFeed = feedKind === 'hotlist';
   const canSelectFeedTimeBasis = user?.email?.toLowerCase() === 'poornapotluri27@gmail.com';
@@ -1366,10 +1336,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [feedLoading, setFeedLoading] = useState(false);
   const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
-  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('24h');
+  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('3d');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
@@ -1396,15 +1365,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
   const [processingAskAILeadId, setProcessingAskAILeadId] = useState<string | null>(null);
   const [askAIPreview, setAskAIPreview] = useState<AskAIPreview | null>(null);
-  const [resumeUploading, setResumeUploading] = useState(false);
-  const [showGmailConnectPrompt, setShowGmailConnectPrompt] = useState(false);
-  const [connectingGmail, setConnectingGmail] = useState(false);
-  const [generatedEmailDrafts, setGeneratedEmailDrafts] = useState<{ pitching: string; requestDetails: string }>({
-    pitching: '',
-    requestDetails: '',
-  });
-  const [selectedEmailDraftTab, setSelectedEmailDraftTab] = useState<EmailDraftTabId>('pitching');
-  const [showGeneratedEmailDraft, setShowGeneratedEmailDraft] = useState(false);
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
   const [feedTimeBasis, setFeedTimeBasis] = useState<FeedTimeBasis>('posted');
@@ -1414,14 +1374,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [tableSortDirection, setTableSortDirection] = useState<'asc' | 'desc'>('desc');
   const [expandedSkillsLeadIds, setExpandedSkillsLeadIds] = useState<Set<string>>(new Set());
   const [expandedFieldKeys, setExpandedFieldKeys] = useState<Set<string>>(new Set());
-  const [predictLead, setPredictLead] = useState<SocialLead | null>(null);
-  const [predictInput, setPredictInput] = useState('');
-  const [predictResult, setPredictResult] = useState<PredictResult | null>(null);
   const [predictResultByLeadId, setPredictResultByLeadId] = useState<Record<string, PredictResult>>({});
   const [predictedAtByLeadId, setPredictedAtByLeadId] = useState<Record<string, string>>({});
-  const [predictSubmitting, setPredictSubmitting] = useState(false);
-  const [predictProcessingStep, setPredictProcessingStep] = useState(0);
-  const [recentPredictTexts, setRecentPredictTexts] = useState<string[]>([]);
   const [bulkPredictLeadIds, setBulkPredictLeadIds] = useState<Set<string>>(new Set());
   const [isBulkPredictModalOpen, setIsBulkPredictModalOpen] = useState(false);
   const [bulkPredictInput, setBulkPredictInput] = useState('');
@@ -1442,13 +1396,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [postContentPreview, setPostContentPreview] = useState<{ leadId: string; title: string; content: string } | null>(null);
   const [loadingPostContentLeadId, setLoadingPostContentLeadId] = useState<string | null>(null);
   const [ignoredLeadIds, setIgnoredLeadIds] = useState<Set<string>>(new Set());
-  const [processingIgnoreLeadId, setProcessingIgnoreLeadId] = useState<string | null>(null);
-  const [queuedLeadIds, setQueuedLeadIds] = useState<Set<string>>(new Set());
-  const [revealCountsByLeadId, setRevealCountsByLeadId] = useState<Record<string, number>>({});
-  const [revealNamesByLeadId, setRevealNamesByLeadId] = useState<Record<string, string[]>>({});
   const [revealedAtByLeadId, setRevealedAtByLeadId] = useState<Record<string, string>>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
-  const [processingLeadId, setProcessingLeadId] = useState<string | null>(null);
   const [processingBreakdownLeadId, setProcessingBreakdownLeadId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isMobileTopCollapsed, setIsMobileTopCollapsed] = useState(false);
@@ -1480,33 +1429,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setToast({ message, type });
   }, []);
 
-  const connectGmail = useCallback(async () => {
-    if (!account?.id || connectingGmail) return;
-    setConnectingGmail(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: account.id } });
-      if (error || !data?.url) throw new Error(data?.error || 'Could not start Gmail connection');
-      window.location.href = data.url;
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not start Gmail connection', 'error');
-      setConnectingGmail(false);
-    }
-  }, [account?.id, connectingGmail, showToast]);
-
-  const REVEAL_CONTACT_COST = 0.05;
   const BREAKDOWN_COST = 0.1;
   const PREDICT_COST = 0.01;
-  const POST_CONTENT_COST = 0.1;
-  const isAdminUser = isPulseAdmin(user?.email);
-  // Display-only — the actual submit charge is computed server-side in the
-  // ask-ai-vendor-email edge function's JOB_SUBMIT_COST constant.
-  const SUBMIT_COST_DISPLAY = 0.05;
-  // Display-only — mirrors ask-ai-vendor-email edge function's ASK_AI_COST for the hotlist "Ask Resume" action.
-  const ASK_RESUME_COST_DISPLAY = 0.05;
+  const POST_CONTENT_COST = 0.05;
   const MAX_BULK_PREDICT = 5;
-  const formatCentsCost = (amount: number) => `${Math.round(amount * 100)}c`;
-  const FREE_PLAN_DAILY_REVEAL_LIMIT = 10;
-  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
 
   const sortedLeaderboard = useMemo(() => {
     return [...leaderboard]
@@ -1576,28 +1502,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         .filter(Boolean),
     );
   }, [isHotlistFeed, user?.id]);
-
-  const loadRecentPredictTexts = useCallback(async () => {
-    if (!user?.id) {
-      setRecentPredictTexts([]);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('job_search_history')
-      .select('search_query')
-      .eq('user_id', user.id)
-      .eq('page', '/predict')
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    if (error) return;
-    setRecentPredictTexts(
-      ((data ?? []) as Array<{ search_query: string | null }>)
-        .map((row) => (row.search_query ?? '').trim())
-        .filter(Boolean),
-    );
-  }, [user?.id]);
 
   const zeroStats: ProfileStats = useMemo(() => ({
     uniqueCompanies: 0,
@@ -2548,91 +2452,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     return isDark ? 'border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100';
   };
 
-  const openPredictModal = (lead: SocialLead) => {
-    setPredictLead(lead);
-    setPredictInput('');
-    setPredictResult(predictResultByLeadId[lead.id] ?? null);
-    void loadRecentPredictTexts();
-  };
-
-  const closePredictModal = () => {
-    if (predictSubmitting) return;
-    setPredictLead(null);
-    setPredictInput('');
-    setPredictResult(null);
-  };
-
-  const handleRunAnotherPrediction = () => {
-    setPredictInput('');
-    setPredictResult(null);
-  };
-
-  const handleRetryPredict = (lead: SocialLead) => {
-    setPredictLead(lead);
-    setPredictInput('');
-    setPredictResult(null);
-    void loadRecentPredictTexts();
-  };
-
-  const handleCalculateMatch = async () => {
-    if (!predictLead || !predictInput.trim() || predictSubmitting) return;
-    setPredictSubmitting(true);
-    const startedAt = Date.now();
-    try {
-      const consumed = await consumeCredits(PREDICT_COST, 'pulse_predict_match', {
-        lead_id: predictLead.id,
-        platform: predictLead.platform,
-        title: predictLead.title,
-      });
-      if (!consumed) return;
-
-      if (user?.id) {
-        void supabase
-          .from('job_search_history')
-          .insert({
-            user_id: user.id,
-            account_id: account?.id ?? null,
-            page: '/predict',
-            search_query: predictInput.trim(),
-          })
-          .then(() => loadRecentPredictTexts());
-      }
-
-      const { consultantText, jobContext } = buildPredictMatchFields(predictLead, predictInput);
-      const { data, error } = await supabase.functions.invoke('predict-match', {
-        body: {
-          lead_id: predictLead.id,
-          platform: predictLead.platform,
-          feed_kind: isHotlistFeed ? 'hotlist' : 'job',
-          role_title: predictLead.title,
-          consultant_text: consultantText,
-          account_id: account?.id ?? '',
-          job_context: jobContext,
-        },
-      });
-
-      if (error || data?.error) {
-        throw new Error(data?.error || await getFunctionErrorMessage(error, 'Could not calculate the match'));
-      }
-
-      const score = Math.max(0, Math.min(100, Math.round(Number(data.score) || 0)));
-      const categories: PredictCategory[] = Array.isArray(data.categories) ? data.categories : [];
-      const verdict = String(data.verdict || '').trim() || 'Submission likely to be accepted';
-
-      const elapsed = Date.now() - startedAt;
-      if (elapsed < PREDICT_MIN_PROCESSING_MS) await sleep(PREDICT_MIN_PROCESSING_MS - elapsed);
-
-      const result = { score, categories, verdict, verdictClass: verdictClassForScore(score) };
-      setPredictResult(result);
-      setPredictResultByLeadId((prev) => ({ ...prev, [predictLead.id]: result }));
-      setPredictedAtByLeadId((prev) => ({ ...prev, [predictLead.id]: new Date().toISOString() }));
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not calculate the match', 'error');
-    } finally {
-      setPredictSubmitting(false);
-    }
-  };
-
   const toggleBulkPredictLead = (leadId: string) => {
     setBulkPredictLeadIds((prev) => {
       const next = new Set(prev);
@@ -2779,86 +2598,42 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const revealedTableLabelClass = isDark ? 'text-[#64748B]' : 'text-slate-500';
     const revealedTableValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
 
-    const costLabelClass = 'text-[8px] font-medium leading-none text-gray-400/80 dark:text-slate-600';
-    const actionButtonsRail = (
-      <div className="flex w-9 shrink-0 flex-col gap-1">
-        {(() => {
-          const cachedPredict = predictResultByLeadId[lead.id];
-          return cachedPredict ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
-              title="Retry prediction"
-              className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-[11px] font-extrabold text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400"
-            >
-              {cachedPredict.score}
-              <span className={costLabelClass}>{formatCentsCost(PREDICT_COST)}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
-              title={isHotlistFeed ? 'Match' : 'Predict score'}
-              className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-gray-500 transition-opacity hover:opacity-70 dark:text-gray-400"
-            >
-              <Gauge size={16} strokeWidth={2} />
-              <span className={costLabelClass}>{formatCentsCost(PREDICT_COST)}</span>
-            </button>
-          );
-        })()}
+    const actionButtonsBar = (
+      <div className="mt-2 flex items-center gap-1.5">
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email') : void handleRevealContact(lead); }}
-          disabled={processingLeadId === lead.id}
-          title={isLeadRevealed ? 'Copy email' : 'Reveal email'}
-          className={`flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 ${isLeadRevealed ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}
+          onClick={(e) => { e.stopPropagation(); void handlePreviewPost(lead); }}
+          disabled={loadingPostContentLeadId === lead.id}
+          title="Preview original post"
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 text-[11px] font-semibold text-gray-700 transition-opacity hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:bg-transparent dark:text-gray-300 dark:hover:bg-white/5"
         >
-          {processingLeadId === lead.id ? '...' : isLeadRevealed ? <Copy size={15} strokeWidth={2} /> : <AtSign size={16} strokeWidth={2} />}
-          {!isLeadRevealed && <span className={costLabelClass}>{formatCentsCost(REVEAL_CONTACT_COST)}</span>}
+          {loadingPostContentLeadId === lead.id ? '...' : <Eye size={13} strokeWidth={2} />}
+          Preview
         </button>
         {isAskPending || isVerified ? (
           <span
             title={isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted')}
-            className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-blue-600 dark:text-blue-400"
+            className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-50 text-[11px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
           >
-            {isVerified ? <BadgeCheck size={16} strokeWidth={2} /> : <Check size={16} strokeWidth={2} />}
+            {isVerified ? <BadgeCheck size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2} />}
+            {isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted')}
           </span>
         ) : (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
             disabled={!canAskAI || processingAskAILeadId === lead.id}
-            title={!lead.posterEmail ? 'No email' : isHotlistFeed ? 'Ask for resume' : 'Submit candidate'}
-            className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400"
+            title={!lead.posterEmail ? 'No email' : 'Send Email'}
+            className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-[11px] font-semibold text-white transition-opacity hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {processingAskAILeadId === lead.id ? '...' : isHotlistFeed ? <FileText size={16} strokeWidth={2} /> : <Mail size={16} strokeWidth={2} />}
-            <span className={costLabelClass}>{formatCentsCost(isHotlistFeed ? ASK_RESUME_COST_DISPLAY : SUBMIT_COST_DISPLAY)}</span>
+            {processingAskAILeadId === lead.id ? '...' : isHotlistFeed ? <FileText size={13} strokeWidth={2} /> : <Mail size={13} strokeWidth={2} />}
+            Submit
           </button>
         )}
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); void handlePreviewPost(lead); }}
-          disabled={loadingPostContentLeadId === lead.id}
-          title="Preview original post"
-          className={`flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 ${postContentViewedLeadIds.has(lead.id) ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-500 dark:text-gray-400'}`}
-        >
-          {loadingPostContentLeadId === lead.id ? '...' : <Eye size={16} strokeWidth={2} />}
-          {!postContentViewedLeadIds.has(lead.id) && <span className={costLabelClass}>{formatCentsCost(POST_CONTENT_COST)}</span>}
-        </button>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); void handleIgnoreLead(lead); }}
-          disabled={processingIgnoreLeadId === lead.id}
-          title={isAdminUser ? 'Hide from platform (spam)' : 'Ignore — remove from my feed'}
-          className="flex h-9 w-9 shrink-0 flex-col items-center justify-center gap-0.5 text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400"
-        >
-          {processingIgnoreLeadId === lead.id ? '...' : <X size={16} strokeWidth={2.5} />}
-        </button>
       </div>
     );
     return (
-      <div key={lead.id} className="flex items-start gap-0.5">
-      <div className={`relative min-w-0 flex-1 rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
+      <div key={lead.id} className={`relative min-w-0 rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
         <div>
           <div className="min-w-0">
             <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
@@ -3000,8 +2775,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             </button>
           )
         ))}
-      </div>
-      {actionButtonsRail}
+        {actionButtonsBar}
       </div>
     );
   });
@@ -3030,9 +2804,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const linkClass = isDark ? 'text-blue-300 hover:text-blue-200' : 'text-blue-600 hover:text-blue-700';
     const askButtonClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400';
     const predictButtonClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-500 transition-opacity hover:opacity-70 dark:text-gray-400';
-    const predictButtonUsedClass = 'inline-flex h-7 w-auto min-w-7 shrink-0 items-center justify-center gap-0.5 px-1 text-[10px] font-semibold leading-none text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400';
-    const emailButtonClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400';
-    const emailButtonUsedClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-blue-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400';
     const submitStatusClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-blue-600 dark:text-blue-400';
     const previewButtonUsedClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center text-cyan-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-cyan-400';
     const postedLabel = feedTimeBasis === 'created' ? 'Added' : 'Posted';
@@ -3150,7 +2921,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         </thead>
         <tbody>
           {rows.map(({ lead, isAskPending, isVerified, canAskAI, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue }) => {
-            const isLeadRevealed = revealedLeadIds.has(lead.id);
             return (
               <tr key={lead.id} className={`border-b ${tableBorderClass} ${tableRowSurfaceClass} hover:bg-gray-50 dark:hover:bg-white/5`}>
                 <td className="px-2 py-2 align-top">
@@ -3180,44 +2950,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 </td>
                 <td className="px-1.5 py-2 align-top">
                   <div className="flex flex-wrap items-center gap-1">
-                    {(() => {
-                      const cachedPredict = predictResultByLeadId[lead.id];
-                      return cachedPredict ? (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleRetryPredict(lead); }}
-                          title={`${isHotlistFeed ? 'Match' : 'Predicted'} ${cachedPredict.score}% — click to retry`}
-                          className={predictButtonUsedClass}
-                        >
-                          <span className="font-extrabold">{cachedPredict.score}%</span>
-                          <RotateCcw size={11} strokeWidth={2.5} />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); openPredictModal(lead); }}
-                          className={predictButtonClass}
-                          title={isHotlistFeed ? 'Match' : 'Predict score'}
-                        >
-                          <Gauge size={12} strokeWidth={2} />
-                        </button>
-                      );
-                    })()}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); isLeadRevealed ? void copyText(lead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email') : void handleRevealContact(lead); }}
-                      disabled={processingLeadId === lead.id}
-                      title={isLeadRevealed ? 'Copy email' : 'Reveal email'}
-                      className={isLeadRevealed ? emailButtonUsedClass : emailButtonClass}
-                    >
-                      {processingLeadId === lead.id ? (
-                        <span>...</span>
-                      ) : isLeadRevealed ? (
-                        <Copy size={11} strokeWidth={2} />
-                      ) : (
-                        <AtSign size={12} strokeWidth={2} />
-                      )}
-                    </button>
                     {isAskPending || isVerified ? (
                       <span
                         title={(() => {
@@ -3234,7 +2966,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
                         disabled={!canAskAI || processingAskAILeadId === lead.id}
-                        title={!lead.posterEmail ? 'No email' : isHotlistFeed ? "Ask for the consultant's resume" : 'Submit a candidate for this role'}
+                        title={!lead.posterEmail ? 'No email' : 'Send Email'}
                         className={askButtonClass}
                       >
                         {processingAskAILeadId === lead.id ? <span>...</span> : <Mail size={12} strokeWidth={2} />}
@@ -3248,15 +2980,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       className={postContentViewedLeadIds.has(lead.id) ? previewButtonUsedClass : predictButtonClass}
                     >
                       {loadingPostContentLeadId === lead.id ? <span>...</span> : <Eye size={12} strokeWidth={2} />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); void handleIgnoreLead(lead); }}
-                      disabled={processingIgnoreLeadId === lead.id}
-                      title={isAdminUser ? 'Hide from platform (spam)' : 'Ignore — remove from my feed'}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-gray-500 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400"
-                    >
-                      {processingIgnoreLeadId === lead.id ? <span className="text-[10px]">...</span> : <X size={14} strokeWidth={2.5} />}
                     </button>
                   </div>
                 </td>
@@ -3272,17 +2995,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   useEffect(() => {
     try { localStorage.setItem(PULSE_LAYOUT_MODE_STORAGE_KEY, layoutMode); } catch {}
   }, [layoutMode]);
-
-  useEffect(() => {
-    if (!predictSubmitting) {
-      setPredictProcessingStep(0);
-      return;
-    }
-    const interval = setInterval(() => {
-      setPredictProcessingStep((step) => (step < PREDICT_PROCESSING_LABELS.length - 1 ? step + 1 : step));
-    }, 320);
-    return () => clearInterval(interval);
-  }, [predictSubmitting]);
 
   useEffect(() => {
     setProfilePage(1);
@@ -4322,38 +4034,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setDesktopAskedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
     setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
 
-    if (finalFiltered.length > 0) {
-      const leadIds = finalFiltered.map((l) => l.id);
-      const { data: revealRows } = await supabase.rpc('get_pulse_reveal_counts', {
-        p_lead_ids: leadIds,
-      });
-      if (Array.isArray(revealRows)) {
-        const counts: Record<string, number> = {};
-        for (const row of revealRows as Array<{ lead_id: string; reveal_count: number | string | null }>) {
-          const nextCount = Number(row.reveal_count ?? 0);
-          counts[row.lead_id] = Number.isFinite(nextCount) ? nextCount : 0;
-        }
-        setRevealCountsByLeadId(counts);
-      }
-
-      const { data: revealNameRows } = await supabase.rpc('get_pulse_reveal_names', {
-        p_lead_ids: leadIds,
-      });
-      if (Array.isArray(revealNameRows)) {
-        const namesByLead: Record<string, string[]> = {};
-        for (const row of revealNameRows as PulseRevealNamesRow[]) {
-          const names = Array.isArray(row.revealer_names)
-            ? row.revealer_names.filter((name) => typeof name === 'string' && name.trim().length > 0)
-            : [];
-          namesByLead[row.lead_id] = names;
-        }
-        setRevealNamesByLeadId(namesByLead);
-      }
-    } else {
-      setRevealCountsByLeadId({});
-      setRevealNamesByLeadId({});
-    }
-
     setFeedLoading(false);
   }, [feedTimeBasis, getGlobalPulseRows, isHotlistFeed, selectedProfileRange.hours, showToast]);
 
@@ -4623,117 +4303,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
   }, [showToast]);
 
-  const generateEmailDraft = useCallback((lead: SocialLead) => {
-    const roleFromBreakdown = getBreakdownCandidateValue(lead.scoreBreakdown, 'role_match');
-    const activeRole = activePersona?.target_role ?? '';
-    const useActivePersona = Boolean(
-      activePersona
-      && (
-        !roleFromBreakdown
-        || normalize(roleFromBreakdown).includes(normalize(activeRole))
-        || normalize(activeRole).includes(normalize(roleFromBreakdown))
-      ),
-    );
-
-    const activeDetails = useActivePersona && activePersona ? getPersonaDetailColumns(activePersona) : null;
-    const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
-      || user?.email?.split('@')[0]
-      || 'Your Name';
-
-    const profileRole = firstMeaningfulValue(activePersona?.target_role, roleFromBreakdown);
-    const profileExperience = firstMeaningfulValue(
-      activeDetails?.experience,
-      getBreakdownCandidateValue(lead.scoreBreakdown, 'experience_match'),
-      lead.experienceYears != null ? `${lead.experienceYears} years` : '',
-    );
-    const profileLocation = firstMeaningfulValue(
-      activeDetails?.location,
-      getBreakdownCandidateValue(lead.scoreBreakdown, 'location_match'),
-      lead.location,
-    );
-    const profileVisa = firstMeaningfulValue(
-      activeDetails?.visaStatus,
-      getBreakdownCandidateValue(lead.scoreBreakdown, 'visa_match'),
-      Array.isArray(lead.visaTypes) ? lead.visaTypes.join(', ') : '',
-    );
-    const profileRate = firstMeaningfulValue(
-      activeDetails?.rateRange,
-      getBreakdownCandidateValue(lead.scoreBreakdown, 'hourly_rate_match'),
-      lead.hourlyRate,
-    );
-    const profileSkills = firstMeaningfulValue(
-      activeDetails?.skills,
-      getBreakdownCandidateValue(lead.scoreBreakdown, 'skills_match'),
-      Array.isArray(lead.skills) ? lead.skills.join(', ') : '',
-    );
-
-    const profileLines = [
-      `- Role: ${profileRole}`,
-      `- Exp: ${profileExperience}`,
-      `- Location: ${profileLocation}`,
-      `- Visa: ${profileVisa}`,
-      `- Rate: ${profileRate}`,
-      `- Skills: ${profileSkills}`,
-    ];
-
-    return [
-      'Hi there,',
-      '',
-      `Saw your post about the ${lead.title || 'requirement'}${lead.company ? ` at ${lead.company}` : ''}.`,
-      'I have a profile that looks highly relevant to this requirement.',
-      '',
-      'Profile Highlights:',
-      ...profileLines,
-      '',
-      'If this looks relevant, I can share the full profile and coordinate next steps.',
-      '',
-      'Thanks,',
-      signedInUserName,
-    ].join('\n');
-  }, [activePersona, user?.email, user?.user_metadata?.full_name]);
-
-  const generateRequestDetailsEmailDraft = useCallback((lead: SocialLead) => {
-    const uniqueMissingFields = getMissingJobDetails(lead);
-    const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
-      || user?.email?.split('@')[0]
-      || 'Your Name';
-
-    const detailsLine = `${signedInUserName} is requesting the following missing details regarding your job post: ${uniqueMissingFields.join(', ')}.`;
-
-    return [
-      'Hi there,',
-      '',
-      `Thanks for posting the ${lead.title || 'role'}${lead.company ? ` at ${lead.company}` : ''}.`,
-      detailsLine,
-      'Please reply with these details so the best-fit profiles can be shortlisted.',
-      '',
-      'Thanks,',
-      'ProfilePush AI',
-    ].join('\n');
-  }, [user?.email, user?.user_metadata?.full_name]);
-
-  const handleResumeFileSelected = useCallback(async (file: File) => {
-    if (!account?.id) return;
-    setResumeUploading(true);
-    try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 150);
-      const path = `pulse-submit/${account.id}/${Date.now()}-${safeName}`;
-      const { error: uploadError } = await supabase.storage.from('resumes').upload(path, file, {
-        contentType: file.type || 'application/octet-stream',
-      });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(path);
-      setAskAIPreview((current) => (current ? { ...current, resumeUrl: urlData.publicUrl, resumeFileName: file.name } : current));
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not upload resume', 'error');
-    } finally {
-      setResumeUploading(false);
-    }
-  }, [account?.id, showToast]);
-
-  const handleRemoveResume = useCallback(() => {
-    setAskAIPreview((current) => (current ? { ...current, resumeUrl: undefined, resumeFileName: undefined } : current));
-  }, []);
 
   const handleAskAI = useCallback(async (lead: SocialLead) => {
     if (!account?.id || processingAskAILeadId) return;
@@ -4754,13 +4323,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       leadType,
       requestId,
       vendorName: lead.posterName || 'the vendor',
+      vendorEmail: lead.posterEmail.trim(),
       jobTitle: lead.title || lead.roleTitle || '',
       company: lead.company || '',
       missingDetails,
       emailSubject: '',
       emailContent: '',
       isGenerating: true,
-      channel: 'mailgun',
     });
     setProcessingAskAILeadId(lead.id);
     try {
@@ -4780,21 +4349,18 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       }
 
       const vendorName = data.vendor_name || lead.posterName || 'the vendor';
-      const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
-        || user?.email?.split('@')[0]
-        || '';
       setAskAIPreview((current) => ({
         leadId: lead.id,
         leadType,
         requestId,
         vendorName,
+        vendorEmail: current?.vendorEmail ?? lead.posterEmail.trim(),
         jobTitle: current?.jobTitle ?? (lead.title || lead.roleTitle || ''),
         company: current?.company ?? (lead.company || ''),
         missingDetails,
         emailSubject: removeNameFromEmail(data.email_subject || '', vendorName),
         emailContent: removeNameFromEmail(data.email_content || '', vendorName),
         isGenerating: false,
-        channel: current?.channel ?? 'mailgun',
       }));
     } catch (error) {
       setAskAIPreview(null);
@@ -4802,76 +4368,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } finally {
       setProcessingAskAILeadId(null);
     }
-  }, [account?.id, isHotlistFeed, processingAskAILeadId, showToast, user?.email, user?.user_metadata?.full_name]);
-
-  const handleSubmitAskAI = useCallback(async () => {
-    if (!account?.id || !askAIPreview || processingAskAILeadId) return;
-
-    const leadType = askAIPreview.leadType;
-    const emailSubject = askAIPreview.emailSubject.trim();
-    const emailContent = askAIPreview.emailContent.trim();
-    const emailWordCount = emailContent.split(/\s+/).filter(Boolean).length;
-    if (!emailSubject || !emailContent || emailWordCount >= 40) {
-      showToast('Email subject and content are required, and the email must be under 40 words', 'error');
-      return;
-    }
-
-    setProcessingAskAILeadId(askAIPreview.leadId);
-    try {
-      const { data, error } = await supabase.functions.invoke('ask-ai-vendor-email', {
-        body: {
-          action: 'send',
-          request_id: askAIPreview.requestId,
-          account_id: account.id,
-          job_id: askAIPreview.leadId,
-          lead_type: askAIPreview.leadType,
-          missing_details: askAIPreview.missingDetails,
-          email_subject: emailSubject,
-          email_content: emailContent,
-          channel: askAIPreview.channel,
-          ...(askAIPreview.resumeUrl ? { resume_url: askAIPreview.resumeUrl, resume_file_name: askAIPreview.resumeFileName } : {}),
-        },
-      });
-
-      if (data?.error === 'gmail_not_connected') {
-        setShowGmailConnectPrompt(true);
-        return;
-      }
-      if (error || !data?.ok) {
-        throw new Error(data?.error || error?.message || 'Could not send the request');
-      }
-
-      await refreshAccount();
-      setAskedJobStateByLeadId((prev) => ({
-        ...prev,
-        [askAIPreview.leadId]: { requestedAt: new Date().toISOString(), fulfilledAt: null },
-      }));
-      setGlobalAskedJobStateByLeadId((prev) => ({ ...prev, [askAIPreview.leadId]: 'asked' }));
-      setAskAIPreview(null);
-      if (leadType === 'job' && data.conversation_id) {
-        showToast('Submitted. Opening the conversation...', 'success');
-        navigate(`/inbox/${data.conversation_id}`);
-      } else {
-        showToast(leadType === 'hotlist' ? 'Request email sent. You will be notified if the recruiter replies in the Inbox.' : 'Submitted. You will be notified if the vendor replies in the Inbox.', 'success');
-      }
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : (leadType === 'hotlist' ? 'Could not send the recruiter email request' : 'Could not submit to the vendor'), 'error');
-    } finally {
-      setProcessingAskAILeadId(null);
-    }
-  }, [account?.id, askAIPreview, navigate, processingAskAILeadId, refreshAccount, showToast]);
-
-  useEffect(() => {
-    if (!selectedLead) {
-      setGeneratedEmailDrafts({ pitching: '', requestDetails: '' });
-      setSelectedEmailDraftTab('pitching');
-      setShowGeneratedEmailDraft(false);
-      return;
-    }
-    setGeneratedEmailDrafts({ pitching: '', requestDetails: '' });
-    setSelectedEmailDraftTab('pitching');
-    setShowGeneratedEmailDraft(false);
-  }, [selectedLead?.id]);
+  }, [account?.id, isHotlistFeed, processingAskAILeadId, showToast]);
 
   const consumeCreditsLegacy = useCallback(async (
     amount: number,
@@ -4999,175 +4496,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
   }, [account?.id, showToast, user?.id]);
 
-  const saveVendorToTracker = useCallback(async (lead: SocialLead) => {
-    if (isHotlistFeed) return true;
-    const email = lead.posterEmail.trim();
-    const phone = lead.posterPhone.trim();
-    const company = lead.company.trim();
-    const contactPerson = lead.posterName.trim();
-    const location = lead.location.trim();
-
-    let existingId: string | null = null;
-
-    if (email) {
-      const { data } = await supabase
-        .from('vendors')
-        .select('id')
-        .eq('email', email)
-        .limit(1)
-        .maybeSingle();
-      existingId = data?.id ?? null;
-    }
-
-    if (!existingId && phone) {
-      const { data } = await supabase
-        .from('vendors')
-        .select('id')
-        .eq('contact', phone)
-        .limit(1)
-        .maybeSingle();
-      existingId = data?.id ?? null;
-    }
-
-    if (!existingId && company) {
-      const { data } = await supabase
-        .from('vendors')
-        .select('id')
-        .ilike('name', company)
-        .limit(1)
-        .maybeSingle();
-      existingId = data?.id ?? null;
-    }
-
-    if (existingId) {
-      const { error } = await supabase
-        .from('vendors')
-        .update({
-          name: company || contactPerson || 'Unknown Vendor',
-          contact_person: contactPerson,
-          email,
-          contact: phone,
-          location,
-        })
-        .eq('id', existingId);
-
-      if (error) {
-        showToast('Contact revealed but vendor sync failed', 'error');
-        return false;
-      }
-      return true;
-    }
-
-    const { error } = await supabase.from('vendors').insert({
-      name: company || contactPerson || 'Unknown Vendor',
-      contact_person: contactPerson,
-      email,
-      contact: phone,
-      location,
-    });
-
-    if (error) {
-      showToast('Contact revealed but vendor sync failed', 'error');
-      return false;
-    }
-
-    return true;
-  }, [isHotlistFeed, showToast]);
-
-  const isFreePlanRevealLimitReached = useCallback(async () => {
-    if (!account?.id || isPaidPlan) return false;
-
-    const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count, error } = await supabase
-      .from('pulse_lead_actions')
-      .select('id', { count: 'exact', head: true })
-      .eq('account_id', account.id)
-      .eq('action_type', 'revealed')
-      .gte('created_at', sinceIso);
-
-    if (error) {
-      showToast('Could not verify daily reveal limit right now', 'error');
-      return true;
-    }
-
-    if ((count ?? 0) >= FREE_PLAN_DAILY_REVEAL_LIMIT) {
-      showToast(`Free plan limit reached: ${FREE_PLAN_DAILY_REVEAL_LIMIT} reveals per day`, 'error');
-      return true;
-    }
-
-    return false;
-  }, [account?.id, isPaidPlan, showToast]);
-
-  const handleRevealContact = useCallback(async (lead: SocialLead) => {
-    if (!user) {
-      showToast('Please sign in to reveal contact details', 'error');
-      return;
-    }
-
-    setProcessingLeadId(lead.id);
-    const alreadyRevealed = revealedLeadIds.has(lead.id);
-
-    try {
-      if (!alreadyRevealed) {
-        if (!isPaidPlan) {
-          const limitReached = await isFreePlanRevealLimitReached();
-          if (limitReached) return;
-        }
-
-        const consumed = await consumeCredits(REVEAL_CONTACT_COST, 'pulse_reveal_contact', {
-          lead_id: lead.id,
-          platform: lead.platform,
-          title: lead.title,
-          company: lead.company,
-        });
-        if (!consumed) return;
-
-        setRevealedLeadIds((prev) => {
-          const next = new Set(prev);
-          next.add(lead.id);
-          return next;
-        });
-        setRevealedAtByLeadId((prev) => ({
-          ...prev,
-          [lead.id]: new Date().toISOString(),
-        }));
-        setRevealCountsByLeadId((prev) => ({
-          ...prev,
-          [lead.id]: Math.max(1, (prev[lead.id] ?? 0) + 1),
-        }));
-        const signedInUserName = ((user?.user_metadata?.full_name as string | undefined)?.trim())
-          || user?.email?.split('@')[0]
-          || 'You';
-        setRevealNamesByLeadId((prev) => {
-          const existing = prev[lead.id] ?? [];
-          if (existing.some((name) => name.toLowerCase() === signedInUserName.toLowerCase())) {
-            return prev;
-          }
-          return {
-            ...prev,
-            [lead.id]: [signedInUserName, ...existing].slice(0, 3),
-          };
-        });
-        void persistLeadAction(lead.id, 'revealed');
-        showToast(`$${REVEAL_CONTACT_COST.toFixed(2)} credits consumed for reveal`, 'success');
-      }
-
-      const saved = await saveVendorToTracker(lead);
-      if (saved) {
-        setQueuedLeadIds((prev) => {
-          const next = new Set(prev);
-          next.add(lead.id);
-          return next;
-        });
-        showToast(isHotlistFeed ? 'Bench Sales Recruiter contact revealed' : 'Vendor auto-saved to Tracker', 'success');
-      }
-
-      setSelectedLead(lead);
-      setShowBreakdown(false);
-    } finally {
-      setProcessingLeadId(null);
-    }
-  }, [consumeCredits, isFreePlanRevealLimitReached, isHotlistFeed, isPaidPlan, persistLeadAction, revealedLeadIds, saveVendorToTracker, showToast, user]);
 
   const handlePreviewPost = useCallback(async (lead: SocialLead) => {
     if (!user || loadingPostContentLeadId) return;
@@ -5212,31 +4540,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
   }, [consumeCredits, isHotlistFeed, loadingPostContentLeadId, persistLeadAction, postContentViewedLeadIds, showToast, user]);
 
-  const handleIgnoreLead = useCallback(async (lead: SocialLead) => {
-    if (!user || processingIgnoreLeadId) return;
-    setProcessingIgnoreLeadId(lead.id);
-    try {
-      if (isAdminUser) {
-        const { data, error } = await supabase.functions.invoke('pulse-hide-lead', {
-          body: { lead_id: lead.id, lead_type: isHotlistFeed ? 'hotlist' : 'job' },
-        });
-        if (error || !data?.ok) throw new Error(data?.error || (error as Error)?.message || 'Could not hide this post');
-        showToast('Removed from the platform for everyone', 'success');
-      } else {
-        showToast('Removed from your feed', 'success');
-      }
-      void persistLeadAction(lead.id, 'ignored');
-      setIgnoredLeadIds((prev) => {
-        const next = new Set(prev);
-        next.add(lead.id);
-        return next;
-      });
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not remove this post', 'error');
-    } finally {
-      setProcessingIgnoreLeadId(null);
-    }
-  }, [isAdminUser, isHotlistFeed, persistLeadAction, processingIgnoreLeadId, showToast, user]);
 
   const handleOpenBreakdown = useCallback(async (lead: SocialLead) => {
     setProcessingBreakdownLeadId(lead.id);
@@ -6097,14 +5400,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-4 shadow-xl"
           >
             <div className="flex items-start gap-2.5">
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600">
-                {askAIPreview.leadType === 'hotlist' ? <FileText size={18} /> : <Mail size={18} />}
-              </span>
               <div className="min-w-0 flex-1">
                 <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating resume request' : 'Generating submission') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review submission')}</h2>
-                {askAIPreview.isGenerating ? (
-                  <p className="mt-1 text-xs leading-relaxed text-gray-600">Preparing an email to {maskName(askAIPreview.vendorName)}.</p>
-                ) : (askAIPreview.jobTitle || askAIPreview.company) && (
+                {!askAIPreview.isGenerating && (askAIPreview.jobTitle || askAIPreview.company) && (
                   <p className="mt-0.5 truncate text-xs text-gray-500">
                     {askAIPreview.jobTitle}{askAIPreview.jobTitle && askAIPreview.company ? ' · ' : ''}{askAIPreview.company}
                   </p>
@@ -6123,17 +5421,26 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             {askAIPreview.isGenerating ? (
               <div className="flex min-h-56 flex-col items-center justify-center px-6 text-center">
                 <LogoSpinner size={28} />
-                <p className="mt-4 text-sm font-semibold text-gray-900">Generating your email</p>
-                <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-500">{askAIPreview.leadType === 'hotlist' ? "Using the consultant's profile to prepare a resume request." : 'Using the job and missing details to prepare a concise message.'}</p>
+                <p className="mt-4 text-xs leading-relaxed text-gray-500">Preparing an email to {maskName(askAIPreview.vendorName)}.</p>
               </div>
             ) : <>
-            <input
-              value={askAIPreview.emailSubject}
-              onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailSubject: event.target.value } : current)}
-              disabled={Boolean(processingAskAILeadId)}
-              placeholder="Subject"
-              className="mt-3 w-full rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            />
+            <div className="relative mt-3">
+              <input
+                value={askAIPreview.emailSubject}
+                onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailSubject: event.target.value } : current)}
+                disabled={Boolean(processingAskAILeadId)}
+                placeholder="Subject"
+                className="w-full rounded-md border border-gray-200 py-1.5 pl-3 pr-8 text-xs font-medium text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+              <button
+                type="button"
+                onClick={() => void copyText(askAIPreview.emailSubject, 'Subject')}
+                className="absolute right-1.5 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                aria-label="Copy subject"
+              >
+                <Copy size={11} />
+              </button>
+            </div>
             <div className="relative mt-2">
               <textarea
                 value={askAIPreview.emailContent}
@@ -6141,190 +5448,48 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 disabled={Boolean(processingAskAILeadId)}
                 rows={4}
                 placeholder="Write your message..."
-                className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 pb-7 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full resize-none rounded-md border border-gray-200 py-2 pl-3 pr-8 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
-              <div className="pointer-events-none absolute inset-x-2 bottom-1.5 flex items-center justify-between">
-                {askAIPreview.leadType === 'job' ? (
-                  askAIPreview.resumeFileName ? (
-                    <span className="pointer-events-auto inline-flex max-w-[65%] items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
-                      <Paperclip size={10} className="shrink-0" />
-                      <span className="min-w-0 truncate">{askAIPreview.resumeFileName}</span>
-                      <button
-                        type="button"
-                        onClick={handleRemoveResume}
-                        disabled={Boolean(processingAskAILeadId)}
-                        className="shrink-0 text-gray-400 hover:text-gray-600"
-                        aria-label="Remove resume"
-                      >
-                        <X size={10} />
-                      </button>
-                    </span>
-                  ) : (
-                    <label
-                      className={`pointer-events-auto inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 ${resumeUploading ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                      title="Attach resume (optional)"
-                    >
-                      {resumeUploading ? <LogoSpinner size={12} /> : <Paperclip size={13} />}
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        disabled={resumeUploading || Boolean(processingAskAILeadId)}
-                        className="hidden"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          event.target.value = '';
-                          if (file) void handleResumeFileSelected(file);
-                        }}
-                      />
-                    </label>
-                  )
-                ) : <span />}
-                <span className="text-[10px] text-gray-400">
-                  {askAIPreview.emailContent.trim().split(/\s+/).filter(Boolean).length}/39 words
-                </span>
-              </div>
+              <button
+                type="button"
+                onClick={() => void copyText(askAIPreview.emailContent, 'Email body')}
+                className="absolute right-1.5 top-1.5 inline-flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                aria-label="Copy email body"
+              >
+                <Copy size={11} />
+              </button>
+            </div>
+            <div className="mt-2 flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5">
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-700">{askAIPreview.vendorEmail || 'No email on file'}</span>
+              <button
+                type="button"
+                onClick={() => void copyText(askAIPreview.vendorEmail, 'Email ID')}
+                disabled={!askAIPreview.vendorEmail}
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Copy email ID"
+              >
+                <Copy size={11} />
+              </button>
             </div>
             <div className="mt-3 flex items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-md bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-400">
                 <GmailIcon size={12} />
-                Gmail connector — Coming soon
+                Gmail Sync connector — launching soon
               </span>
               <button
                 type="button"
-                onClick={() => void handleSubmitAskAI()}
-                disabled={Boolean(processingAskAILeadId) || resumeUploading || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim() || askAIPreview.emailContent.trim().split(/\s+/).filter(Boolean).length >= 40}
-                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void copyText(
+                  `${askAIPreview.vendorEmail}\n${askAIPreview.emailSubject}\n\n${askAIPreview.emailContent}`,
+                  'Email',
+                )}
+                disabled={!askAIPreview.vendorEmail || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim()}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {askAIPreview.leadType === 'hotlist' ? <FileText size={12} /> : <Mail size={12} />}
-                {askAIPreview.leadType === 'job'
-                  ? (processingAskAILeadId ? 'Submitting...' : 'Submit')
-                  : (processingAskAILeadId ? 'Sending...' : 'Send')}
+                <Copy size={11} />
+                Copy All
               </button>
             </div>
             </>}
-          </div>
-        </div>
-      )}
-
-      {predictLead && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={closePredictModal}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Predict submission chance"
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl"
-          >
-            <div className="flex items-center justify-end">
-              <button
-                type="button"
-                onClick={closePredictModal}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
-                aria-label="Close predict modal"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            {!predictSubmitting && !predictResult && (
-              <>
-                <div className="mt-1">
-                  <textarea
-                    value={predictInput}
-                    onChange={(event) => setPredictInput(event.target.value)}
-                    rows={6}
-                    placeholder={isHotlistFeed ? 'Paste the job details or requirements here...' : 'Paste consultant resume, skills, or a quick summary here...'}
-                    className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
-                {recentPredictTexts.length > 0 && (
-                  <div className="mt-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Recent</div>
-                    <div className="mt-1 flex flex-col gap-1">
-                      {recentPredictTexts.map((text, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setPredictInput(text)}
-                          className="truncate rounded-md border border-gray-200 px-2 py-1.5 text-left text-[11px] text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                          title={text}
-                        >
-                          {text.length > 90 ? `${text.slice(0, 90)}…` : text}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void handleCalculateMatch()}
-                  disabled={!predictInput.trim()}
-                  className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 text-sm font-bold uppercase tracking-wide text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
-                >
-                  <Gauge size={16} strokeWidth={2.5} />
-                  {isHotlistFeed ? 'Match Score' : 'Predict Submission Acceptance'}
-                </button>
-              </>
-            )}
-
-            {predictSubmitting && (
-              <div className="mt-1 py-4">
-                <p className="text-center text-xs font-semibold text-gray-500">Analyzing submission fit...</p>
-                <div className="mt-4 space-y-2.5">
-                  {PREDICT_PROCESSING_LABELS.map((label, index) => {
-                    const isDone = index < predictProcessingStep || (index === predictProcessingStep && index === PREDICT_PROCESSING_LABELS.length - 1);
-                    const isActive = index === predictProcessingStep && !isDone;
-                    return (
-                      <div key={label} className="flex items-center gap-2.5">
-                        {isDone ? (
-                          <Check size={14} className="shrink-0 text-emerald-500" />
-                        ) : isActive ? (
-                          <LogoSpinner size={14} />
-                        ) : (
-                          <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-                            <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
-                          </span>
-                        )}
-                        <span className={`text-xs font-medium ${isDone ? 'text-gray-900' : isActive ? 'text-gray-700' : 'text-gray-400'}`}>
-                          Checking {label.toLowerCase()} match
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {!predictSubmitting && predictResult && (
-              <div className="mt-1">
-                <div className="flex flex-col items-center justify-center gap-1 rounded-md bg-gray-50 px-4 py-4">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{isHotlistFeed ? 'Match score' : 'Submission acceptance score'}</span>
-                  <div className={`text-4xl font-bold ${predictResult.verdictClass}`}>{predictResult.score}%</div>
-                  <div className={`text-xs font-semibold leading-snug ${predictResult.verdictClass}`}>{predictResult.verdict}</div>
-                </div>
-                <div className="mt-3 space-y-1.5">
-                  {predictResult.categories.map((category) => (
-                    <div key={category.label} className="flex items-center gap-2">
-                      <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{category.label}</span>
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
-                        <div
-                          className={`h-full rounded-full ${category.earned === category.max ? 'bg-emerald-500' : category.earned === 0 ? 'bg-red-400' : 'bg-amber-400'}`}
-                          style={{ width: `${(category.earned / category.max) * 100}%` }}
-                        />
-                      </div>
-                      <span className="w-24 shrink-0 truncate text-right text-[10px] text-gray-500" title={category.note}>{category.note}</span>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRunAnotherPrediction}
-                  className="mt-3 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-gray-200 px-4 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  {isHotlistFeed ? 'Try another job' : 'Try another candidate'}
-                </button>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -6393,150 +5558,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         </div>
       )}
 
-      {selectedLead && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-3" onClick={() => setSelectedLead(null)}>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-4 sm:p-3 shadow-xl max-h-[85vh] overflow-y-auto"
-          >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-gray-900">{selectedLead.title}</p>
-                {selectedLead.company && <p className="text-[12px] text-gray-600">{[selectedLead.company, selectedLead.location].filter(Boolean).join(' • ')}</p>}
-                <p className="mt-0.5 text-[11px] text-gray-500">{maskPosterName(selectedLead.posterName)} • {feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? selectedLead.createdAt : selectedLead.postedAt)}</p>
-              </div>
-              <button
-                onClick={() => setSelectedLead(null)}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                aria-label="Close"
-              >
-                <X size={14} />
-              </button>
-            </div>
 
-            {showBreakdown && (
-              <div className="mb-3 overflow-hidden rounded-md border border-slate-700/70 bg-white dark:bg-slate-950/40">
-                {(() => {
-                  const breakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
-                    selectedLead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
-                    undefined,
-                    {
-                      employment_type: selectedLead.employmentType || null,
-                      work_type: null,
-                    },
-                  ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
-
-                  if (breakdownItems.length === 0) {
-                    return (
-                      <div className="px-3 py-2 text-[11px] text-gray-500">
-                        No job match rule breakdown available for this lead.
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div className="max-h-52 overflow-y-auto">
-                      <table className="min-w-full border-collapse text-left text-[11px]">
-                        <tbody>
-                          {breakdownItems.map((item) => (
-                            <tr key={item.key}>
-                              <td className="border-b border-slate-700/70 px-2 py-1.5 font-semibold text-gray-900 dark:border-slate-700/70 dark:text-gray-100">{formatBreakdownFieldName(item.key)}</td>
-                              <td className="border-b border-slate-700/70 px-2 py-1.5 text-gray-700 dark:border-slate-700/70 dark:text-gray-300">{item.detail?.candidate_value || <PersonaMissingTag />}</td>
-                              <td className="border-b border-slate-700/70 px-2 py-1.5 text-gray-700 dark:border-slate-700/70 dark:text-gray-300">{item.detail?.job_value || <PersonaMissingTag />}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* Action buttons — thumb-zone friendly on mobile */}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-
-              <button
-                onClick={() => {
-                  setGeneratedEmailDrafts({
-                    pitching: generateEmailDraft(selectedLead),
-                    requestDetails: generateRequestDetailsEmailDraft(selectedLead),
-                  });
-                  setSelectedEmailDraftTab('pitching');
-                  setShowGeneratedEmailDraft(true);
-                }}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-3 sm:py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-              >
-                <Sparkles size={14} />
-                Generate Email
-              </button>
-
-              <button
-                onClick={() => void copyText(selectedLead.posterEmail, isHotlistFeed ? 'Bench Sales Recruiter email' : 'Vendor email')}
-                disabled={!revealedLeadIds.has(selectedLead.id) || !selectedLead.posterEmail}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-300 bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
-              >
-                <Mail size={14} />
-                Copy Email ID
-              </button>
-
-            </div>
-
-            {showGeneratedEmailDraft && (
-              <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-2.5">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="grid grid-cols-2 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedEmailDraftTab('pitching')}
-                      className={`rounded px-2 py-1 text-[10px] font-semibold transition ${selectedEmailDraftTab === 'pitching' ? 'bg-blue-600 text-white' : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
-                    >
-                      Pitching Email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedEmailDraftTab('requestDetails')}
-                      className={`rounded px-2 py-1 text-[10px] font-semibold transition ${selectedEmailDraftTab === 'requestDetails' ? 'bg-blue-600 text-white' : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
-                    >
-                      Request Details
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void copyText(
-                      selectedEmailDraftTab === 'pitching' ? generatedEmailDrafts.pitching : generatedEmailDrafts.requestDetails,
-                      selectedEmailDraftTab === 'pitching' ? 'Pitching email draft' : 'Request details email draft',
-                    )}
-                    className="rounded border border-gray-300 bg-white px-2 py-1 text-[10px] font-semibold text-gray-700 hover:bg-gray-50"
-                  >
-                    Copy Draft
-                  </button>
-                </div>
-                <textarea
-                  value={selectedEmailDraftTab === 'pitching' ? generatedEmailDrafts.pitching : generatedEmailDrafts.requestDetails}
-                  onChange={(e) => {
-                    const nextValue = e.target.value;
-                    setGeneratedEmailDrafts((prev) => (
-                      selectedEmailDraftTab === 'pitching'
-                        ? { ...prev, pitching: nextValue }
-                        : { ...prev, requestDetails: nextValue }
-                    ));
-                  }}
-                  className="h-48 w-full resize-y rounded-md border border-gray-300 bg-white p-2 text-[11px] leading-relaxed text-gray-700 outline-none focus:border-blue-500"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showGmailConnectPrompt && (
-        <GmailConnectPrompt
-          connecting={connectingGmail}
-          onClose={() => setShowGmailConnectPrompt(false)}
-          onConnect={() => void connectGmail()}
-        />
-      )}
       {postContentPreview && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setPostContentPreview(null)}>
           <div
