@@ -194,16 +194,25 @@ function fmtIso(iso: string) {
   return iso.slice(0, 10).split('-').map((p, i) => i === 0 ? p : p).join('-').replace(/(\d{4})-(\d{2})-(\d{2})/, '$2/$3/$1');
 }
 
-function formatBreakdownFieldName(key: string) {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\bmatch\b/gi, '')
-    .replace(/\bemployment\b/gi, 'Emp')
-    .replace(/\bexperience\b/gi, 'Exp')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+function hexToRgbChannels(hex: string): string {
+  const cleaned = hex.replace('#', '').trim();
+  const normalized = cleaned.length === 3
+    ? cleaned.split('').map((char) => `${char}${char}`).join('')
+    : cleaned;
+  const value = Number.parseInt(normalized, 16);
+  if (Number.isNaN(value)) return '56 189 248';
+  return `${(value >> 16) & 255} ${(value >> 8) & 255} ${value & 255}`;
 }
+
+// Same accent palette used for job/hotlist cards on /jobs and /hotlist.
+const CARD_PALETTE = [
+  { border: 'border-blue-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#38BDF8' },
+  { border: 'border-violet-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#FACC15' },
+  { border: 'border-emerald-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#34D399' },
+  { border: 'border-amber-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#FB7185' },
+  { border: 'border-rose-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#C084FC' },
+  { border: 'border-cyan-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#FB923C' },
+];
 
 function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   const escape = (v: string) => `"${(v ?? '').replace(/"/g, '""')}"`;
@@ -283,7 +292,8 @@ export default function TrackerPage() {
   const [activeVendorId, setActiveVendorId] = useState<string | null>(null);
   const [allLeads, setAllLeads] = useState<TrackerLead[]>([]);
   const [jobsLayoutMode, setJobsLayoutMode] = useState<'card' | 'table'>('table');
-  const [expandedHistoryBreakdownIds, setExpandedHistoryBreakdownIds] = useState<Set<string>>(new Set());
+  const [expandedFieldKeys, setExpandedFieldKeys] = useState<Set<string>>(new Set());
+  const [expandedSkillsLeadIds, setExpandedSkillsLeadIds] = useState<Set<string>>(new Set());
   const [revealedFields, setRevealedFields] = useState<Set<string>>(new Set());
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
@@ -780,6 +790,118 @@ export default function TrackerPage() {
 
   // ── Jobs/Hotlist history: status badges + card/table renderers ───────────
 
+  function getLeadBreakdownFieldValues(lead: TrackerLead) {
+    const items = buildScoreBreakdownDisplayItems(
+      lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+    );
+    const getValue = (matchers: string[]) => {
+      const found = items.find((item) => matchers.some((matcher) => item.key.toLowerCase().includes(matcher)));
+      const value = found?.detail?.job_value?.trim();
+      return value && value !== 'Not specified' ? value : '-';
+    };
+    return {
+      items,
+      expValue: getValue(['experience', 'exp']),
+      workTypeValue: getValue(['work_type', 'work type']),
+      employmentTypeValue: getValue(['employment_type', 'employment type']),
+      rateValue: getValue(['rate', 'hourly']),
+      visaValue: getValue(['visa']),
+      locationValue: getValue(['location']),
+      skillsValue: getValue(['skill']),
+    };
+  }
+
+  // Same 2-row-clamp + "+N more" / "Show less" pattern used on the /jobs and
+  // /hotlist tables (renderClampedField / renderClampedSkills in PulsePage.tsx).
+  function renderClampedField(leadId: string, fieldKey: string, value: string, linkClassName: string) {
+    if (value === '-') return <span className="text-gray-300">—</span>;
+    const cellKey = `${leadId}:${fieldKey}`;
+    const isExpanded = expandedFieldKeys.has(cellKey);
+    const toggleExpanded = () => {
+      setExpandedFieldKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(cellKey)) next.delete(cellKey);
+        else next.add(cellKey);
+        return next;
+      });
+    };
+    const parts = value.split(',').map((part) => part.trim()).filter(Boolean);
+
+    if (parts.length > 1) {
+      const itemCap = 2;
+      const visibleParts = isExpanded ? parts : parts.slice(0, itemCap);
+      const hiddenCount = parts.length - visibleParts.length;
+      return (
+        <div>
+          <span className={isExpanded ? '' : 'line-clamp-2'}>{visibleParts.join(', ')}</span>
+          {!isExpanded && hiddenCount > 0 && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); toggleExpanded(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+              +{hiddenCount} more
+            </button>
+          )}
+          {isExpanded && parts.length > itemCap && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); toggleExpanded(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+              Show less
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    const isLikelyOverflow = value.length > 36;
+    return (
+      <div>
+        <span className={isExpanded ? '' : 'line-clamp-2'}>{value}</span>
+        {isLikelyOverflow && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); toggleExpanded(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+            {isExpanded ? 'less' : 'more'}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  function renderClampedSkills(leadId: string, skillsValue: string, itemCap: number, linkClassName: string) {
+    const skillsList = skillsValue === '-' ? [] : skillsValue.split(',').map((skill) => skill.trim()).filter(Boolean);
+    if (skillsList.length === 0) return <span className="text-gray-300">—</span>;
+    const isExpanded = expandedSkillsLeadIds.has(leadId);
+    const visibleSkills = isExpanded ? skillsList : skillsList.slice(0, itemCap);
+    const hiddenCount = skillsList.length - visibleSkills.length;
+    return (
+      <div>
+        <span className={isExpanded ? '' : 'line-clamp-2'}>{visibleSkills.join(', ')}</span>
+        {!isExpanded && hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedSkillsLeadIds((prev) => new Set(prev).add(leadId));
+            }}
+            className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}
+          >
+            +{hiddenCount} more
+          </button>
+        )}
+        {isExpanded && skillsList.length > itemCap && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedSkillsLeadIds((prev) => {
+                const next = new Set(prev);
+                next.delete(leadId);
+                return next;
+              });
+            }}
+            className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}
+          >
+            Show less
+          </button>
+        )}
+      </div>
+    );
+  }
+
   function leadStatusBadges(lead: TrackerLead) {
     if (!lead.revealedAt && !lead.submittedAt && !lead.verifiedAt) return null;
     return (
@@ -804,113 +926,85 @@ export default function TrackerPage() {
   }
 
   function renderJobsCards() {
+    const linkClass = 'text-blue-600 dark:text-cyan-400 hover:underline';
     return (
-      <div className="grid grid-cols-1 gap-0 lg:grid-cols-2 lg:gap-3 lg:p-3">
+      <div className="grid grid-cols-1 gap-1.5 p-1.5 lg:grid-cols-2 lg:gap-3 lg:p-3">
         {vendorHistory.map((lead, index) => {
-          const breakdownItems = buildScoreBreakdownDisplayItems(
-            lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
-          );
-          const isExpanded = expandedHistoryBreakdownIds.has(lead.id);
-          const prioritizedBreakdownItems = [...breakdownItems].sort((a, b) => {
-            const getPriority = (key: string) => {
-              if (/exp|experience|years?_?exp/i.test(key)) return 0;
-              if (/visa|work_authorization|authorization/i.test(key)) return 1;
-              return 2;
-            };
-            return getPriority(a.key) - getPriority(b.key);
-          });
-          const canToggleBreakdown = prioritizedBreakdownItems.length > 2;
-          const collapsedBreakdownItems = prioritizedBreakdownItems.slice(0, 3);
-          const visibleBreakdownItems = isExpanded ? prioritizedBreakdownItems : collapsedBreakdownItems;
-          const cardToneClass = [
-            'border-blue-100 bg-blue-50/35 dark:border-white/10 dark:bg-[#23272e]',
-            'border-emerald-100 bg-emerald-50/35 dark:border-white/10 dark:bg-[#252a30]',
-            'border-amber-100 bg-amber-50/40 dark:border-white/10 dark:bg-[#2a2d32]',
-            'border-slate-200 bg-slate-50/75 dark:border-white/10 dark:bg-[#22262c]',
-          ][index % 4];
+          const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
+          const palette = CARD_PALETTE[index % CARD_PALETTE.length];
+          const accentRgb = hexToRgbChannels(palette.titleColor);
+          const cardBorderColor = `rgb(${accentRgb} / 0.45)`;
 
           return (
             <div
               key={lead.id}
-              className={`px-2.5 sm:px-3.5 py-2.5 sm:py-3 ${index > 0 ? 'border-t border-gray-100 dark:border-white/10 lg:border-t-0' : ''} lg:rounded-xl lg:border ${cardToneClass}`}
+              className={`rounded-lg border px-3 py-2.5 ${palette.fill}`}
+              style={{ borderColor: cardBorderColor }}
             >
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                <p className="text-[11px] sm:text-sm font-semibold text-gray-900 dark:text-[#CBD5E1] leading-snug">{lead.title}</p>
-                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-600 dark:bg-[#171a1f] dark:text-[#94A3B8]'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
-                {lead.platform && <span className="rounded bg-gray-100 dark:bg-[#171a1f] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-600 dark:text-[#94A3B8]">{lead.platform}</span>}
-              </div>
-              {lead.company && (
-                <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-gray-600 dark:text-[#94A3B8]">{lead.company}</div>
-              )}
-              <div className="mt-0.5 text-[10px] sm:text-xs text-gray-500 dark:text-[#94A3B8]">
-                <span>{lead.posterName || '—'}</span>
-              </div>
-              <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-gray-400 dark:text-slate-500">
-                {formatAgo(lead.postedAt)} posted
+              <p className="text-[12px] font-semibold leading-snug text-[#2563EB] dark:text-white">{lead.title}</p>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
+                <span>{formatAgo(lead.postedAt)}</span>
+                <span>•</span>
+                <span>{lead.posterName || 'Unknown'}</span>
+                {lead.company && (
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                    <span>•</span>
+                    <Building2 size={10} className="shrink-0" style={{ color: palette.titleColor }} />
+                    <span className="text-[#94A3B8]">{lead.company}</span>
+                  </span>
+                )}
+                {lead.platform && (
+                  <>
+                    <span>•</span>
+                    <span className="font-bold uppercase text-[#64748B]">{lead.platform}</span>
+                  </>
+                )}
+                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-[#94A3B8]'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
               </div>
 
-              {leadStatusBadges(lead) && <div className="mt-1.5">{leadStatusBadges(lead)}</div>}
+              {leadStatusBadges(lead) && <div className="mt-1 flex flex-wrap items-center gap-1">{leadStatusBadges(lead)}</div>}
 
-              {breakdownItems.length > 0 && (
-                canToggleBreakdown ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExpandedHistoryBreakdownIds((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(lead.id)) next.delete(lead.id);
-                        else next.add(lead.id);
-                        return next;
-                      });
-                    }}
-                    className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 dark:border-white/10 text-left relative group focus:outline-none"
-                  >
-                    <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                      <tbody>
-                        {visibleBreakdownItems.map((item, idx) => (
-                          <tr key={item.key}>
-                            <td className={`border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-slate-500' : 'text-gray-700 dark:text-[#CBD5E1]'}`}>
-                              {formatBreakdownFieldName(item.key)}
-                            </td>
-                            <td className={`border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpanded && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-slate-500' : 'text-gray-700 dark:text-[#CBD5E1]'}`}>
-                              {item.detail?.job_value || '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {!isExpanded && (
-                      <div className="absolute bottom-0 left-0 right-0 h-7 flex items-center justify-center pointer-events-none">
-                        <ChevronDown size={12} className="text-blue-500 dark:text-[#94A3B8]" />
-                      </div>
-                    )}
-                  </button>
-                ) : (
-                  <div className="mt-1.5 w-full overflow-hidden rounded-md border border-gray-200 dark:border-white/10 text-left">
-                    <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                      <tbody>
-                        {visibleBreakdownItems.map((item) => (
-                          <tr key={item.key}>
-                            <td className="border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal text-gray-700 dark:text-[#CBD5E1]">{formatBreakdownFieldName(item.key)}</td>
-                            <td className="border-b border-gray-100 dark:border-white/10 bg-white dark:bg-[#1b1f25] px-2 py-1 break-words whitespace-normal text-gray-700 dark:text-[#CBD5E1]">{item.detail?.job_value || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              <div className="mt-1.5 min-w-0 rounded-md bg-transparent px-2.5 py-2 text-left">
+                <div className="grid grid-cols-3 gap-x-3 gap-y-2">
+                  <div className="min-w-0">
+                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Exp</div>
+                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'exp', expValue, linkClass)}</div>
                   </div>
-                )
-              )}
+                  <div className="min-w-0">
+                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Work Type</div>
+                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'workType', workTypeValue, linkClass)}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Emp Type</div>
+                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'empType', employmentTypeValue, linkClass)}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Rate</div>
+                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'rate', rateValue, linkClass)}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Visa</div>
+                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'visa', visaValue, linkClass)}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Location</div>
+                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'location', locationValue, linkClass)}</div>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Skills</div>
+                  <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedSkills(lead.id, skillsValue, 8, linkClass)}</div>
+                </div>
+              </div>
 
               <div className="mt-2">
-                <div className="flex flex-col gap-1.5">
-                  <button
-                    onClick={() => void generateTrackerEmailDrafts(lead)}
-                    className="inline-flex w-full justify-center items-center gap-1 rounded-md border border-blue-600 bg-blue-600 dark:border-white/15 dark:bg-[#2A2E35] px-2 py-1.5 sm:px-2.5 sm:py-2 text-[10px] sm:text-xs font-semibold text-white dark:text-slate-100 shadow-sm transition hover:bg-blue-700 dark:hover:bg-[#343943]"
-                  >
-                    <Mail size={10} />
-                    Generate Email
-                  </button>
-                </div>
+                <button
+                  onClick={() => void generateTrackerEmailDrafts(lead)}
+                  className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-2 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 dark:border-white/15 dark:bg-[#2A2E35] dark:text-slate-100 dark:hover:bg-[#343943] sm:text-xs"
+                >
+                  <Mail size={10} />
+                  Generate Email
+                </button>
               </div>
             </div>
           );
@@ -920,44 +1014,60 @@ export default function TrackerPage() {
   }
 
   function renderJobsTable() {
+    const cellClass = 'px-2 py-2 align-top break-words whitespace-normal text-gray-600 dark:text-[#94A3B8]';
+    const linkClass = 'text-blue-600 dark:text-cyan-400 hover:underline';
     return (
       <table className="w-full table-fixed border-collapse text-left text-[11px]">
         <colgroup>
-          <col style={{ width: '7%' }} />
-          <col style={{ width: '21%' }} />
           <col style={{ width: '15%' }} />
-          <col style={{ width: '14%' }} />
-          <col style={{ width: '9%' }} />
-          <col style={{ width: '9%' }} />
-          <col style={{ width: '25%' }} />
+          <col style={{ width: '10%' }} />
+          <col style={{ width: '6%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '6%' }} />
+          <col style={{ width: '6%' }} />
+          <col style={{ width: '8%' }} />
+          <col style={{ width: '13%' }} />
+          <col style={{ width: '6%' }} />
+          <col style={{ width: '16%' }} />
         </colgroup>
         <thead className="sticky top-0 z-[1] bg-gray-50 dark:bg-[#1F2328]">
           <tr className="border-b border-gray-200 dark:border-white/10 text-[10px] uppercase tracking-wide text-gray-500 dark:text-[#94A3B8]">
-            <th className="px-2 py-2">Type</th>
             <th className="px-2 py-2">Role</th>
             <th className="px-2 py-2">Company</th>
-            <th className="px-2 py-2">Posted By</th>
-            <th className="px-2 py-2">Platform</th>
+            <th className="px-2 py-2">Exp</th>
+            <th className="px-2 py-2">Work Type</th>
+            <th className="px-2 py-2">Emp Type</th>
+            <th className="px-2 py-2">Rate</th>
+            <th className="px-2 py-2">Visa</th>
+            <th className="px-2 py-2">Location</th>
+            <th className="px-2 py-2">Skills</th>
             <th className="px-2 py-2">Posted</th>
             <th className="px-2 py-2">Status</th>
           </tr>
         </thead>
         <tbody>
-          {vendorHistory.map((lead) => (
-            <tr key={lead.id} className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5">
-              <td className="px-2 py-2 align-top">
-                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
-              </td>
-              <td className="px-2 py-2 align-top break-words whitespace-normal font-medium text-gray-900 dark:text-slate-100">
-                <button type="button" onClick={() => void generateTrackerEmailDrafts(lead)} className="text-left hover:text-blue-600 hover:underline">{lead.title}</button>
-              </td>
-              <td className="px-2 py-2 align-top break-words whitespace-normal text-gray-600 dark:text-[#94A3B8]">{lead.company || '—'}</td>
-              <td className="px-2 py-2 align-top break-words whitespace-normal text-gray-600 dark:text-[#94A3B8]">{lead.posterName || '—'}</td>
-              <td className="px-2 py-2 align-top text-gray-500 dark:text-[#94A3B8]">{lead.platform || '—'}</td>
-              <td className="px-2 py-2 align-top text-gray-500 dark:text-[#94A3B8]">{formatAgo(lead.postedAt)}</td>
-              <td className="px-2 py-2 align-top">{leadStatusBadges(lead)}</td>
-            </tr>
-          ))}
+          {vendorHistory.map((lead) => {
+            const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
+            return (
+              <tr key={lead.id} className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5">
+                <td className="px-2 py-2 align-top break-words whitespace-normal font-medium text-gray-900 dark:text-slate-100">
+                  <button type="button" onClick={() => void generateTrackerEmailDrafts(lead)} className="text-left hover:text-blue-600 hover:underline">{lead.title}</button>
+                  <span className={`ml-1 inline-block rounded px-1 py-0.5 align-middle text-[8px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
+                </td>
+                <td className={cellClass}>{lead.company || '—'}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'exp', expValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'workType', workTypeValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'empType', employmentTypeValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'rate', rateValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'visa', visaValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedField(lead.id, 'location', locationValue, linkClass)}</td>
+                <td className={cellClass}>{renderClampedSkills(lead.id, skillsValue, 4, linkClass)}</td>
+                <td className={cellClass}>{formatAgo(lead.postedAt)}</td>
+                <td className="px-2 py-2 align-top">{leadStatusBadges(lead)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     );
