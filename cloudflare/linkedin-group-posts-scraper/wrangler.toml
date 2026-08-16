@@ -13,7 +13,12 @@ service = "profilepush-linkedin-group-posts-processor"
 
 [triggers]
 # 17:00-01:00 Asia/Kolkata (UTC+05:30), hourly and inclusive.
-crons = ["30 11-19 * * *"]
+# Offset 30min from linkedin-keyword-posts-scraper's own hourly cron (also
+# "*:30") so the two scrapers don't both burst posts through the shared
+# social-job-parser (Workers AI) classifier at the same minute — that
+# contention was causing classify/extract calls to blow past their 60s
+# timeout and fail delivery.
+crons = ["0 11-19 * * *"]
 
 [[queues.producers]]
 binding = "GROUP_SCRAPE_QUEUE"
