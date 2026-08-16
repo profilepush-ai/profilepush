@@ -554,7 +554,14 @@ export default {
   },
 
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
-    await verifyProcessorAccess(env);
+    // Non-fatal: raw posts are logged before delivery is attempted (see processScrapeJob),
+    // and failed deliveries are retried above, so a down processor must not wedge the
+    // whole hourly run the way an uncaught retryFailedDeliveries() throw once did.
+    try {
+      await verifyProcessorAccess(env);
+    } catch (error) {
+      console.error(`Processor preflight failed: ${(error as Error).message}`);
+    }
     try {
       const retriedPosts = await retryFailedDeliveries(env);
       if (retriedPosts > 0) console.log(JSON.stringify({ event: "failed_group_deliveries_retried", posts: retriedPosts }));
