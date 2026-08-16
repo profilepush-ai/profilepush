@@ -8,6 +8,7 @@ export interface Env {
   MAILGUN_SIGNING_KEY: string;
   MAILGUN_DOMAIN: string;
   MAILGUN_BASE_URL: string;
+  MAILGUN_PAUSED: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   WORKER_AUTH_TOKEN: string;
@@ -95,6 +96,10 @@ const ALLOWED_ATTACHMENT_TYPES = new Set([
   "image/jpeg",
   "image/png",
 ]);
+
+function mailgunPaused(env: Env): boolean {
+  return env.MAILGUN_PAUSED === "true";
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -661,7 +666,16 @@ export default {
   },
 
   async queue(batch: MessageBatch<OutboundJob | InboundJob | ExtractionJob>, env: Env): Promise<void> {
+    const paused = mailgunPaused(env);
     for (const message of batch.messages) {
+      // Outbound sends are the only job kind that calls Mailgun — hold those
+      // without calling it at all while paused, rather than retrying into a
+      // blocked account. Inbound/extraction jobs don't touch Mailgun, so they
+      // keep flowing normally.
+      if (paused && message.body.kind === "outbound") {
+        message.retry({ delaySeconds: 1800 });
+        continue;
+      }
       try {
         if (message.body.kind === "outbound") await processOutbound(message.body, env);
         else if (message.body.kind === "inbound") await processInbound(message.body, env);

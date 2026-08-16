@@ -4,6 +4,7 @@ export interface Env {
   MAILGUN_DOMAIN: string;
   MAILGUN_BASE_URL: string;
   MAILGUN_FROM_ADDRESS: string;
+  MAILGUN_PAUSED: string;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
@@ -334,6 +335,10 @@ async function runDailyDigest(env: Env): Promise<{ jobsCount: number; hotlistCou
   return { jobsCount, hotlistCount, recipients: recipients.length };
 }
 
+function mailgunPaused(env: Env): boolean {
+  return env.MAILGUN_PAUSED === "true";
+}
+
 async function sendMailgunEmail(env: Env, job: EmailJob): Promise<void> {
   const form = new FormData();
   form.set("from", `Profile Push Alerts <${env.MAILGUN_FROM_ADDRESS}>`);
@@ -383,6 +388,7 @@ async function handleRunDigest(request: Request, env: Env): Promise<Response> {
 // feedback. Useful for previewing/testing before relying on the daily cron.
 async function handleTestDigest(request: Request, env: Env): Promise<Response> {
   if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
+  if (mailgunPaused(env)) return jsonResponse({ error: "Mailgun sending is paused" }, 503);
   const body = await request.json<{ to?: unknown }>();
   const to = typeof body.to === "string" ? body.to.trim().toLowerCase() : "";
   if (!to) return jsonResponse({ error: "to is required" }, 400);
@@ -457,7 +463,14 @@ export default {
   },
 
   async queue(batch: MessageBatch<EmailJob>, env: Env): Promise<void> {
+    const paused = mailgunPaused(env);
     for (const message of batch.messages) {
+      // Hold the message without calling Mailgun at all while paused — retrying
+      // immediately would just keep hammering a blocked account.
+      if (paused) {
+        message.retry({ delaySeconds: 1800 });
+        continue;
+      }
       try {
         await sendMailgunEmail(env, message.body);
         message.ack();

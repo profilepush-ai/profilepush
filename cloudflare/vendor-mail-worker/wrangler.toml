@@ -8,6 +8,11 @@ workers_dev = true
 crons = ["*/5 * * * *"]
 
 [vars]
+# Set to "true" and redeploy to pause outbound Mailgun sends (outbound queue
+# jobs are held and retried with a delay instead of hitting the API) — use
+# while the Mailgun account is blocked/suspended. Inbound mail and reply
+# extraction are unaffected.
+MAILGUN_PAUSED = "true"
 MAILGUN_DOMAIN = "ask.profilepush.ai"
 MAILGUN_BASE_URL = "https://api.mailgun.net"
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
