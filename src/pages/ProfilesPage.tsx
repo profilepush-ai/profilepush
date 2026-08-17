@@ -15,11 +15,10 @@ import {
   Clock3,
   DollarSign,
   Eye,
+  FileText,
   Handshake,
   Hash,
   Mail,
-  MessageSquare,
-  Percent,
   Phone,
   Radar,
   RefreshCw,
@@ -32,7 +31,6 @@ import {
   ChevronUp,
   Server,
   Sparkles,
-  Target,
   GraduationCap,
   Flame,
   Workflow,
@@ -253,6 +251,10 @@ type PulseDashboardStats = {
   predictions_made_today: number;
   replies_today: number;
   total_vendors_today: number;
+  job_previews_today: number;
+  job_submits_today: number;
+  hotlist_previews_today: number;
+  hotlist_requests_today: number;
   by_user: PulseDashboardUserRow[];
 };
 
@@ -3143,13 +3145,12 @@ export default function ProfilesPage() {
             <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
               {!isMobileViewport && account?.id && (
                 <div className="shrink-0">
-                  <div className="grid grid-cols-3 lg:grid-cols-5 gap-2">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                     {([
-                      { number: 1, label: 'Predictions Made', value: dashboardStats?.predictions_made_today ?? 0, icon: Target, tone: 'emerald' },
-                      { number: 2, label: 'Avg Prediction Rate', value: `${dashboardStats?.avg_prediction_score_today ?? 0}%`, icon: Percent, tone: 'violet' },
-                      { number: 3, label: 'Submissions Today', value: dashboardStats?.submissions_today ?? 0, icon: Send, tone: 'blue' },
-                      { number: 4, label: 'Replies Received', value: dashboardStats?.replies_today ?? 0, icon: MessageSquare, tone: 'pink' },
-                      { number: 5, label: 'Total Vendors', value: dashboardStats?.total_vendors_today ?? 0, icon: Users, tone: 'slate' },
+                      { number: 1, label: 'Job Previews', value: dashboardStats?.job_previews_today ?? 0, icon: Eye, tone: 'emerald' },
+                      { number: 2, label: 'Job Submits', value: dashboardStats?.job_submits_today ?? 0, icon: Send, tone: 'blue' },
+                      { number: 3, label: 'Hotlist Previews', value: dashboardStats?.hotlist_previews_today ?? 0, icon: Eye, tone: 'violet' },
+                      { number: 4, label: 'Hotlist Requests', value: dashboardStats?.hotlist_requests_today ?? 0, icon: FileText, tone: 'pink' },
                     ] as Array<{ number: number; label: string; value: string | number; icon: LucideIcon; tone: 'blue' | 'orange' | 'violet' | 'emerald' | 'pink' | 'slate' }>).map((card) => {
                       const toneClass = {
                         blue: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
