@@ -37,12 +37,30 @@ type SocialJobRow = {
   image_urls: string[];
 };
 
-const BATCH_SIZE = 1;
-const BATCH_DELAY_MS = 250;
+// Each post is classified individually (not batched into one prompt) because
+// batching multiple posts into a single AI call was losing context between
+// them. Sequential single-post calls were previously the only way to keep
+// that isolation, but that serializes a whole page of posts one at a time —
+// running a small pool of them concurrently keeps the same per-post
+// isolation while cutting wall-clock time roughly by the pool size.
+const CLASSIFY_CONCURRENCY = 3;
 const MAX_POSTS_PER_REQUEST = 200;
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+async function runWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  async function runNext(): Promise<void> {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await worker(items[index]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, runNext));
+  return results;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -264,12 +282,8 @@ export default {
       const rows = [...new Map(
         acceptedRows.map((row) => [`${row.platform}:${row.post_id}`, row]),
       ).values()];
-      let enqueued = 0;
-
-      for (let index = 0; index < rows.length; index += BATCH_SIZE) {
-        if (index > 0) await sleep(BATCH_DELAY_MS);
-        enqueued += await sendBatch(env, rows.slice(index, index + BATCH_SIZE));
-      }
+      const enqueuedCounts = await runWithConcurrency(rows, CLASSIFY_CONCURRENCY, (row) => sendBatch(env, [row]));
+      const enqueued = enqueuedCounts.reduce((sum, count) => sum + count, 0);
 
       return jsonResponse({
         success: true,

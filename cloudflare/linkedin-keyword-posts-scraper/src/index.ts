@@ -352,9 +352,14 @@ function chunkArray<T>(items: T[], size: number): T[][] {
 // run once the backlog grew large enough.
 const MAX_RETRY_ROWS_PER_RUN = 40;
 
+// A post stuck failing after this many delivery attempts is almost certainly
+// permanently broken (bad content, not a transient outage) — stop retrying
+// it so it doesn't keep eating into MAX_RETRY_ROWS_PER_RUN forever.
+const MAX_DELIVERY_ATTEMPTS = 6;
+
 async function retryFailedDeliveries(env: Env): Promise<number> {
   const response = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/linkedin_keyword_posts?select=keyword_id,source_post_id,raw_post&delivery_status=eq.failed&order=last_seen_at.asc&limit=${MAX_RETRY_ROWS_PER_RUN}`,
+    `${env.SUPABASE_URL}/rest/v1/linkedin_keyword_posts?select=keyword_id,source_post_id,raw_post&delivery_status=eq.failed&delivery_attempts=lt.${MAX_DELIVERY_ATTEMPTS}&order=last_seen_at.asc&limit=${MAX_RETRY_ROWS_PER_RUN}`,
     { headers: serviceHeaders(env) },
   );
   if (!response.ok) throw new Error(`Failed keyword delivery query ${response.status}: ${(await response.text()).slice(0, 500)}`);
@@ -400,12 +405,21 @@ async function processScrapeJob(job: KeywordScrapeJob, env: Env): Promise<void> 
   const selectedSourcePostIds = sourcePostIds.slice(0, selected.length);
   const notSelectedSourcePostIds = sourcePostIds.slice(selected.length);
   await markPostsDelivery(env, job.keywordId, notSelectedSourcePostIds, "not_selected");
-  try {
-    await deliverPosts(env, job, selected);
-    await markPostsDelivery(env, job.keywordId, selectedSourcePostIds, "delivered");
-  } catch (error) {
-    await markPostsDelivery(env, job.keywordId, selectedSourcePostIds, "failed", (error as Error).message);
-    throw error;
+  // Deliver in the same small chunks retryFailedDeliveries() uses, instead of
+  // the whole page (up to maxPostsPerKeyword) in one request — a single
+  // oversized request can exceed the processor's own execution budget and
+  // strand the entire page, where a stuck chunk here only strands itself
+  // (and gets picked up by the next scheduled retry pass).
+  for (const chunkIndexes of chunkArray(selected.map((_, i) => i), RETRY_DELIVERY_CHUNK_SIZE)) {
+    const postsChunk = chunkIndexes.map((i) => selected[i]);
+    const idsChunk = chunkIndexes.map((i) => selectedSourcePostIds[i]);
+    try {
+      await deliverPosts(env, job, postsChunk);
+      await markPostsDelivery(env, job.keywordId, idsChunk, "delivered");
+    } catch (error) {
+      await markPostsDelivery(env, job.keywordId, idsChunk, "failed", (error as Error).message);
+      console.error(`Delivery chunk failed for keyword ${job.keywordId}: ${(error as Error).message}`);
+    }
   }
   await logScrapeRun(env, job, posts.length, new Set(sourcePostIds).size, result.cost ?? null);
   const postsDelivered = job.postsDelivered + selected.length;

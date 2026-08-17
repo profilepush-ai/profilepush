@@ -18,6 +18,12 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function getBearerToken(request: Request): string {
+  const header = request.headers.get("Authorization") ?? "";
+  const [scheme, token] = header.split(" ");
+  return scheme?.toLowerCase() === "bearer" ? (token ?? "").trim() : "";
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const EMAIL_PATTERN = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
@@ -459,6 +465,11 @@ async function enqueueExtractionJobs(
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+
+  const expectedToken = Deno.env.get("SOCIAL_WEBHOOK_SECRET") ?? "";
+  if (!expectedToken || getBearerToken(req) !== expectedToken) {
+    return respond({ error: "Unauthorized" }, 401);
+  }
 
   try {
     const body = await req.json();

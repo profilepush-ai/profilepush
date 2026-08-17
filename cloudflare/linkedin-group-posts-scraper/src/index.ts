@@ -431,9 +431,14 @@ function chunkArray<T>(items: T[], size: number): T[][] {
 // run once the backlog grew large enough.
 const MAX_RETRY_ROWS_PER_RUN = 40;
 
+// A post stuck failing after this many delivery attempts is almost certainly
+// permanently broken (bad content, not a transient outage) — stop retrying
+// it so it doesn't keep eating into MAX_RETRY_ROWS_PER_RUN forever.
+const MAX_DELIVERY_ATTEMPTS = 6;
+
 async function retryFailedDeliveries(env: Env): Promise<number> {
   const response = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/linkedin_groups_posts?select=group_id,source_post_id,raw_post&delivery_status=eq.failed&order=last_seen_at.asc&limit=${MAX_RETRY_ROWS_PER_RUN}`,
+    `${env.SUPABASE_URL}/rest/v1/linkedin_groups_posts?select=group_id,source_post_id,raw_post&delivery_status=eq.failed&delivery_attempts=lt.${MAX_DELIVERY_ATTEMPTS}&order=last_seen_at.asc&limit=${MAX_RETRY_ROWS_PER_RUN}`,
     {
       headers: {
         apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -474,12 +479,21 @@ async function processScrapeJob(job: GroupScrapeJob, env: Env): Promise<void> {
   const selectedSourcePostIds = sourcePostIds.slice(0, selected.length);
   const notSelectedSourcePostIds = sourcePostIds.slice(selected.length);
   await markPostsDelivery(env, notSelectedSourcePostIds, "not_selected");
-  try {
-    await deliverPosts(env, job.group, selected);
-    await markPostsDelivery(env, selectedSourcePostIds, "delivered");
-  } catch (error) {
-    await markPostsDelivery(env, selectedSourcePostIds, "failed", (error as Error).message);
-    throw error;
+  // Deliver in the same small chunks retryFailedDeliveries() uses, instead of
+  // the whole page (up to maxPostsPerGroup) in one request — a single
+  // oversized request can exceed the processor's own execution budget and
+  // strand the entire page, where a stuck chunk here only strands itself
+  // (and gets picked up by the next scheduled retry pass).
+  for (const chunkIndexes of chunkArray(selected.map((_, i) => i), RETRY_DELIVERY_CHUNK_SIZE)) {
+    const postsChunk = chunkIndexes.map((i) => selected[i]);
+    const idsChunk = chunkIndexes.map((i) => selectedSourcePostIds[i]);
+    try {
+      await deliverPosts(env, job.group, postsChunk);
+      await markPostsDelivery(env, idsChunk, "delivered");
+    } catch (error) {
+      await markPostsDelivery(env, idsChunk, "failed", (error as Error).message);
+      console.error(`Delivery chunk failed for group ${job.group}: ${(error as Error).message}`);
+    }
   }
   await logScrapeRun(env, job, posts.length, new Set(sourcePostIds).size, result.cost ?? null);
 

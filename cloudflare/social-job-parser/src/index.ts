@@ -218,37 +218,46 @@ async function extractCandidatesFromImages(
 ): Promise<{ candidates: unknown[]; sourceImageUrls: string[] }> {
   const model = (env.PARSER_VISION_MODEL ?? "@cf/meta/llama-3.2-11b-vision-instruct").trim();
   const publicBaseUrl = (env.HOTLIST_IMAGES_PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
-  const candidates: unknown[] = [];
-  const sourceImageUrls: string[] = [];
 
-  for (const imageUrl of imageUrls.slice(0, MAX_HOTLIST_IMAGES_PER_POST)) {
-    try {
-      const imageResponse = await fetch(imageUrl, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; ProfilePushBot/1.0; +https://profilepush.ai)" },
-      });
-      if (!imageResponse.ok) continue;
-      const bytes = new Uint8Array(await imageResponse.arrayBuffer());
+  // Vision calls are the slowest step in the pipeline — running a post's
+  // (at most 3) images concurrently instead of sequentially keeps a
+  // multi-image post from multiplying its own latency by image count.
+  const perImageResults = await Promise.all(
+    imageUrls.slice(0, MAX_HOTLIST_IMAGES_PER_POST).map(async (imageUrl) => {
+      try {
+        const imageResponse = await fetch(imageUrl, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; ProfilePushBot/1.0; +https://profilepush.ai)" },
+        });
+        if (!imageResponse.ok) return { candidates: [] as unknown[], sourceImageUrl: null as string | null };
+        const bytes = new Uint8Array(await imageResponse.arrayBuffer());
 
-      const key = `hotlist/${crypto.randomUUID()}.jpg`;
-      await env.HOTLIST_IMAGES.put(key, bytes, {
-        httpMetadata: { contentType: imageResponse.headers.get("content-type") ?? "image/jpeg" },
-      });
-      if (publicBaseUrl) sourceImageUrls.push(`${publicBaseUrl}/${key}`);
+        const key = `hotlist/${crypto.randomUUID()}.jpg`;
+        await env.HOTLIST_IMAGES.put(key, bytes, {
+          httpMetadata: { contentType: imageResponse.headers.get("content-type") ?? "image/jpeg" },
+        });
+        const sourceImageUrl = publicBaseUrl ? `${publicBaseUrl}/${key}` : null;
 
-      const visionResult = await env.AI.run(model, {
-        image: [...bytes],
-        prompt: HOTLIST_IMAGE_EXTRACT_PROMPT,
-        max_tokens: 4096,
-        temperature: 0,
-      });
-      const rawText = (visionResult as Record<string, unknown>)?.response ?? visionResult;
-      const parsed = parseModelText(rawText);
-      const rows = Array.isArray(parsed) ? parsed : [];
-      candidates.push(...rows);
-    } catch (error) {
-      console.error(`Hotlist image extraction failed for ${imageUrl}: ${(error as Error).message}`);
-    }
-  }
+        const visionResult = await env.AI.run(model, {
+          image: [...bytes],
+          prompt: HOTLIST_IMAGE_EXTRACT_PROMPT,
+          max_tokens: 4096,
+          temperature: 0,
+        });
+        const rawText = (visionResult as Record<string, unknown>)?.response ?? visionResult;
+        const parsed = parseModelText(rawText);
+        const rows = Array.isArray(parsed) ? parsed : [];
+        return { candidates: rows, sourceImageUrl };
+      } catch (error) {
+        console.error(`Hotlist image extraction failed for ${imageUrl}: ${(error as Error).message}`);
+        return { candidates: [] as unknown[], sourceImageUrl: null as string | null };
+      }
+    }),
+  );
+
+  const candidates = perImageResults.flatMap((result) => result.candidates);
+  const sourceImageUrls = perImageResults
+    .map((result) => result.sourceImageUrl)
+    .filter((url): url is string => url !== null);
 
   return { candidates, sourceImageUrls };
 }
