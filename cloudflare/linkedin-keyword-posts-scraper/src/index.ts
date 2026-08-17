@@ -345,9 +345,16 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+// Bounds how much of the failed-delivery backlog one scheduled run will retry.
+// Retries that keep failing (e.g. a downstream outage) must never be able to
+// consume the whole run's resource budget and starve the actual new-keyword
+// scrape below — that starvation is what silently zeroed out every scheduled
+// run once the backlog grew large enough.
+const MAX_RETRY_ROWS_PER_RUN = 40;
+
 async function retryFailedDeliveries(env: Env): Promise<number> {
   const response = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/linkedin_keyword_posts?select=keyword_id,source_post_id,raw_post&delivery_status=eq.failed&order=last_seen_at.asc&limit=200`,
+    `${env.SUPABASE_URL}/rest/v1/linkedin_keyword_posts?select=keyword_id,source_post_id,raw_post&delivery_status=eq.failed&order=last_seen_at.asc&limit=${MAX_RETRY_ROWS_PER_RUN}`,
     { headers: serviceHeaders(env) },
   );
   if (!response.ok) throw new Error(`Failed keyword delivery query ${response.status}: ${(await response.text()).slice(0, 500)}`);
@@ -470,13 +477,47 @@ export default {
   },
 
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
-    // Non-fatal: raw posts are logged before delivery is attempted (see processScrapeJob),
-    // and failed deliveries are retried above, so a down processor must not wedge the
-    // whole hourly run the way an uncaught retryFailedDeliveries() throw once did.
+    // Claiming and queueing new keywords runs first and is fully guarded —
+    // a failed-delivery backlog that can't be retried successfully (e.g. a
+    // downstream outage) must never be able to consume the run's resource
+    // budget before this point and silently zero out every scheduled run,
+    // which is what happened when the retry pass ran first, unguarded.
     try {
       await verifyProcessorAccess(env);
     } catch (error) {
       console.error(`Processor preflight failed: ${(error as Error).message}`);
+    }
+    try {
+      const config = await fetchScraperConfig(env);
+      if (!await claimScheduledRun(env, config)) {
+        console.log(JSON.stringify({ event: "scheduled_keyword_scrape_skipped", enabled: config.is_enabled }));
+      } else {
+        const keywords = await fetchActiveKeywords(env);
+        const claimedIds = new Set(await claimKeywordsForScrape(
+          env,
+          keywords.map((row) => row.id),
+          config.schedule_interval_hours,
+        ));
+        const claimedKeywords = keywords.filter((row) => claimedIds.has(row.id));
+        if (claimedKeywords.length === 0) {
+          console.log(JSON.stringify({ event: "scheduled_keyword_scrape_skipped", reason: "no_keywords_due" }));
+        } else {
+          const jobs = buildInitialJobs(claimedKeywords, {
+            postedLimit: config.posted_limit,
+            sortBy: config.sort_by,
+            maxPostsPerKeyword: config.max_posts_per_keyword,
+            maxPages: config.max_pages,
+          });
+          await enqueueJobs(env.KEYWORD_SCRAPE_QUEUE, jobs);
+          console.log(JSON.stringify({
+            event: "scheduled_keywords_queued",
+            keywords: jobs.length,
+            keywordsSkippedAsRecentlyScraped: keywords.length - claimedKeywords.length,
+          }));
+        }
+      }
+    } catch (error) {
+      console.error(`Scheduled keyword scrape errored: ${(error as Error).message}`);
     }
     try {
       const retriedPosts = await retryFailedDeliveries(env);
@@ -484,34 +525,6 @@ export default {
     } catch (error) {
       console.error(`Failed delivery retry errored: ${(error as Error).message}`);
     }
-    const config = await fetchScraperConfig(env);
-    if (!await claimScheduledRun(env, config)) {
-      console.log(JSON.stringify({ event: "scheduled_keyword_scrape_skipped", enabled: config.is_enabled }));
-      return;
-    }
-    const keywords = await fetchActiveKeywords(env);
-    const claimedIds = new Set(await claimKeywordsForScrape(
-      env,
-      keywords.map((row) => row.id),
-      config.schedule_interval_hours,
-    ));
-    const claimedKeywords = keywords.filter((row) => claimedIds.has(row.id));
-    if (claimedKeywords.length === 0) {
-      console.log(JSON.stringify({ event: "scheduled_keyword_scrape_skipped", reason: "no_keywords_due" }));
-      return;
-    }
-    const jobs = buildInitialJobs(claimedKeywords, {
-      postedLimit: config.posted_limit,
-      sortBy: config.sort_by,
-      maxPostsPerKeyword: config.max_posts_per_keyword,
-      maxPages: config.max_pages,
-    });
-    await enqueueJobs(env.KEYWORD_SCRAPE_QUEUE, jobs);
-    console.log(JSON.stringify({
-      event: "scheduled_keywords_queued",
-      keywords: jobs.length,
-      keywordsSkippedAsRecentlyScraped: keywords.length - claimedKeywords.length,
-    }));
   },
 
   async queue(batch: MessageBatch<KeywordScrapeJob>, env: Env): Promise<void> {

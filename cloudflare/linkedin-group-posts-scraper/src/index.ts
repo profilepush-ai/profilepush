@@ -424,9 +424,16 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+// Bounds how much of the failed-delivery backlog one scheduled run will retry.
+// Retries that keep failing (e.g. a downstream outage) must never be able to
+// consume the whole run's resource budget and starve the actual new-group
+// scrape below — that starvation is what silently zeroed out every scheduled
+// run once the backlog grew large enough.
+const MAX_RETRY_ROWS_PER_RUN = 40;
+
 async function retryFailedDeliveries(env: Env): Promise<number> {
   const response = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/linkedin_groups_posts?select=group_id,source_post_id,raw_post&delivery_status=eq.failed&order=last_seen_at.asc&limit=200`,
+    `${env.SUPABASE_URL}/rest/v1/linkedin_groups_posts?select=group_id,source_post_id,raw_post&delivery_status=eq.failed&order=last_seen_at.asc&limit=${MAX_RETRY_ROWS_PER_RUN}`,
     {
       headers: {
         apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -554,13 +561,43 @@ export default {
   },
 
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
-    // Non-fatal: raw posts are logged before delivery is attempted (see processScrapeJob),
-    // and failed deliveries are retried above, so a down processor must not wedge the
-    // whole hourly run the way an uncaught retryFailedDeliveries() throw once did.
+    // Claiming and queueing new groups runs first and is fully guarded —
+    // a failed-delivery backlog that can't be retried successfully (e.g. a
+    // downstream outage) must never be able to consume the run's resource
+    // budget before this point and silently zero out every scheduled run,
+    // which is what happened when the retry pass ran first, unguarded.
     try {
       await verifyProcessorAccess(env);
     } catch (error) {
       console.error(`Processor preflight failed: ${(error as Error).message}`);
+    }
+    try {
+      const config = await fetchScraperConfig(env);
+      if (!await claimScheduledRun(env, config)) {
+        console.log(JSON.stringify({ event: "scheduled_scrape_skipped", enabled: config.is_enabled }));
+      } else {
+        const groups = await fetchActiveGroups(env);
+        const claimedGroups = await claimGroupsForScrape(env, groups, config.schedule_interval_hours);
+        if (claimedGroups.length === 0) {
+          console.log(JSON.stringify({ event: "scheduled_scrape_skipped", reason: "no_groups_due" }));
+        } else {
+          const jobs = buildInitialJobs({
+            groups: claimedGroups,
+            postedLimit: config.posted_limit,
+            sortBy: config.sort_by,
+            maxPostsPerGroup: config.max_posts_per_group,
+            maxPages: config.max_pages,
+          });
+          await enqueueJobs(env.GROUP_SCRAPE_QUEUE, jobs);
+          console.log(JSON.stringify({
+            event: "scheduled_groups_queued",
+            groups: jobs.length,
+            groupsSkippedAsRecentlyScraped: groups.length - claimedGroups.length,
+          }));
+        }
+      }
+    } catch (error) {
+      console.error(`Scheduled group scrape errored: ${(error as Error).message}`);
     }
     try {
       const retriedPosts = await retryFailedDeliveries(env);
@@ -568,30 +605,6 @@ export default {
     } catch (error) {
       console.error(`Failed delivery retry errored: ${(error as Error).message}`);
     }
-    const config = await fetchScraperConfig(env);
-    if (!await claimScheduledRun(env, config)) {
-      console.log(JSON.stringify({ event: "scheduled_scrape_skipped", enabled: config.is_enabled }));
-      return;
-    }
-    const groups = await fetchActiveGroups(env);
-    const claimedGroups = await claimGroupsForScrape(env, groups, config.schedule_interval_hours);
-    if (claimedGroups.length === 0) {
-      console.log(JSON.stringify({ event: "scheduled_scrape_skipped", reason: "no_groups_due" }));
-      return;
-    }
-    const jobs = buildInitialJobs({
-      groups: claimedGroups,
-      postedLimit: config.posted_limit,
-      sortBy: config.sort_by,
-      maxPostsPerGroup: config.max_posts_per_group,
-      maxPages: config.max_pages,
-    });
-    await enqueueJobs(env.GROUP_SCRAPE_QUEUE, jobs);
-    console.log(JSON.stringify({
-      event: "scheduled_groups_queued",
-      groups: jobs.length,
-      groupsSkippedAsRecentlyScraped: groups.length - claimedGroups.length,
-    }));
   },
 
   async queue(batch: MessageBatch<GroupScrapeJob>, env: Env): Promise<void> {
