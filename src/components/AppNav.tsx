@@ -16,7 +16,7 @@ const navItems = [
   { path: '/jobs',          label: 'Jobs',           mobileLabel: 'Jobs',    icon: Briefcase, hideOnMobile: false },
   { path: '/hotlist',       label: 'Hotlist',        mobileLabel: 'Hotlist', icon: UserRound, hideOnMobile: false },
   { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
-  { path: '/inbox',        label: 'Inbox',          mobileLabel: 'Inbox',   icon: Mail,      hideOnMobile: false },
+  { path: '/inbox',        label: 'Emails',         mobileLabel: 'Emails',  icon: Mail,      hideOnMobile: false },
   { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
 ];
 
@@ -452,7 +452,7 @@ export default function AppNav() {
             className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Mail size={18} />
-            <span>Inbox</span>
+            <span>Emails</span>
             {inboxUnread > 0 && <span className="absolute right-[28%] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
           </Link>
           <Link

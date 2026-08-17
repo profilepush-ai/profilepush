@@ -284,7 +284,7 @@ type ProfileCategoryTab = {
   icon: LucideIcon;
 };
 
-type MatchesTabId = 'all' | 'breakdown' | 'revealed' | 'asked' | 'verified' | 'queued' | 'predicted';
+type MatchesTabId = 'all' | 'breakdown' | 'previewed' | 'asked' | 'verified' | 'queued';
 type FeedTimeBasis = 'posted' | 'created';
 type LeadActionType = 'revealed' | 'breakdown' | 'post_content_viewed' | 'ignored';
 
@@ -1375,7 +1375,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [expandedSkillsLeadIds, setExpandedSkillsLeadIds] = useState<Set<string>>(new Set());
   const [expandedFieldKeys, setExpandedFieldKeys] = useState<Set<string>>(new Set());
   const [predictResultByLeadId, setPredictResultByLeadId] = useState<Record<string, PredictResult>>({});
-  const [predictedAtByLeadId, setPredictedAtByLeadId] = useState<Record<string, string>>({});
   const [bulkPredictLeadIds, setBulkPredictLeadIds] = useState<Set<string>>(new Set());
   const [isBulkPredictModalOpen, setIsBulkPredictModalOpen] = useState(false);
   const [bulkPredictInput, setBulkPredictInput] = useState('');
@@ -1383,16 +1382,16 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [bulkPredictCompletedCount, setBulkPredictCompletedCount] = useState(0);
   const [visibleMatchesCount, setVisibleMatchesCount] = useState(MATCHES_PAGE_SIZE);
   const [desktopRecentVisibleCount, setDesktopRecentVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
-  const [desktopRevealedVisibleCount, setDesktopRevealedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
+  const [desktopPreviewedVisibleCount, setDesktopPreviewedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [desktopAskedVisibleCount, setDesktopAskedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [desktopVerifiedVisibleCount, setDesktopVerifiedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
-  const [desktopPredictedVisibleCount, setDesktopPredictedVisibleCount] = useState(DESKTOP_MATCHES_PAGE_SIZE);
   const [revealedLeadIds, setRevealedLeadIds] = useState<Set<string>>(new Set());
   const [askedJobStateByLeadId, setAskedJobStateByLeadId] = useState<Record<string, AskedJobState>>({});
   const [globalAskedJobStateByLeadId, setGlobalAskedJobStateByLeadId] = useState<Record<string, GlobalAskedJobState>>({});
   const [askedLeadsById, setAskedLeadsById] = useState<Record<string, SocialLead>>({});
   const [breakdownChargedLeadIds, setBreakdownChargedLeadIds] = useState<Set<string>>(new Set());
   const [postContentViewedLeadIds, setPostContentViewedLeadIds] = useState<Set<string>>(new Set());
+  const [postContentViewedAtByLeadId, setPostContentViewedAtByLeadId] = useState<Record<string, string>>({});
   const [postContentPreview, setPostContentPreview] = useState<{ leadId: string; title: string; content: string } | null>(null);
   const [loadingPostContentLeadId, setLoadingPostContentLeadId] = useState<string | null>(null);
   const [ignoredLeadIds, setIgnoredLeadIds] = useState<Set<string>>(new Set());
@@ -1835,16 +1834,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     });
   }, [dedupedScopedFeed, feedTimeBasis, isHotlistFeed, revealedLeadIds]);
 
-  const revealedVisibleFeed = useMemo(() => {
-    const revealed = dedupedScopedFeed.filter((lead) => revealedLeadIds.has(lead.id));
-    return revealed.sort((a, b) => {
-      if (isHotlistFeed) return compareDetailsAndPostedDate(a, b);
-      const aTs = revealedAtByLeadId[a.id] ? new Date(revealedAtByLeadId[a.id]).getTime() : 0;
-      const bTs = revealedAtByLeadId[b.id] ? new Date(revealedAtByLeadId[b.id]).getTime() : 0;
+  const previewedVisibleFeed = useMemo(() => {
+    const previewed = dedupedScopedFeed.filter((lead) => postContentViewedLeadIds.has(lead.id));
+    return previewed.sort((a, b) => {
+      const aTs = postContentViewedAtByLeadId[a.id] ? new Date(postContentViewedAtByLeadId[a.id]).getTime() : 0;
+      const bTs = postContentViewedAtByLeadId[b.id] ? new Date(postContentViewedAtByLeadId[b.id]).getTime() : 0;
       if (aTs !== bTs) return bTs - aTs;
       return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
     });
-  }, [dedupedScopedFeed, revealedAtByLeadId, revealedLeadIds]);
+  }, [dedupedScopedFeed, postContentViewedAtByLeadId, postContentViewedLeadIds]);
 
   const askedVisibleFeed = useMemo(() => {
     const scopedById = new Map(dedupedScopedFeed.map((lead) => [lead.id, lead]));
@@ -1863,17 +1861,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
   }, [askedLeadsById, dedupedScopedFeed, globalAskedJobStateByLeadId]);
 
-  const predictedVisibleFeed = useMemo(() => {
-    const scopedById = new Map(dedupedScopedFeed.map((lead) => [lead.id, lead]));
-    return Object.keys(predictResultByLeadId)
-      .map((leadId) => scopedById.get(leadId) ?? askedLeadsById[leadId])
-      .filter((lead): lead is SocialLead => Boolean(lead))
-      .sort((a, b) => {
-        const aTs = predictedAtByLeadId[a.id] ? new Date(predictedAtByLeadId[a.id]).getTime() : 0;
-        const bTs = predictedAtByLeadId[b.id] ? new Date(predictedAtByLeadId[b.id]).getTime() : 0;
-        return bTs - aTs;
-      });
-  }, [askedLeadsById, dedupedScopedFeed, predictResultByLeadId, predictedAtByLeadId]);
 
   const allLoadedLeadsById = useMemo(() => {
     const map = new Map<string, SocialLead>();
@@ -1885,25 +1872,22 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const matchesTabCounts = useMemo(() => ({
     all: dedupedScopedFeed.length,
     breakdown: dedupedScopedFeed.filter((lead) => breakdownChargedLeadIds.has(lead.id)).length,
-    revealed: revealedVisibleFeed.length,
+    previewed: previewedVisibleFeed.length,
     asked: askedVisibleFeed.length,
     verified: verifiedVisibleFeed.length,
     queued: recentVisibleFeed.length,
-    predicted: predictedVisibleFeed.length,
-  }), [askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, predictedVisibleFeed.length, recentVisibleFeed.length, revealedVisibleFeed.length, verifiedVisibleFeed.length]);
+  }), [askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, previewedVisibleFeed.length, recentVisibleFeed.length, verifiedVisibleFeed.length]);
 
   const matchesTabDefinitions = useMemo((): Array<{ id: MatchesTabId; label: string }> => (
     isHotlistFeed
       ? [
         { id: 'queued', label: 'Recent' },
-        { id: 'predicted', label: 'Predicted' },
-        { id: 'revealed', label: 'Revealed' },
-        { id: 'asked', label: 'Asked' },
+        { id: 'previewed', label: 'Previewed' },
+        { id: 'asked', label: 'Requested' },
       ]
       : [
         { id: 'queued', label: 'Recent' },
-        { id: 'predicted', label: 'Predicted' },
-        { id: 'revealed', label: 'Revealed' },
+        { id: 'previewed', label: 'Previewed' },
         { id: 'asked', label: 'Submitted' },
       ]
   ), [isHotlistFeed]);
@@ -1917,21 +1901,19 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     let selectedFeed: SocialLead[];
     if (selectedMatchesTab === 'breakdown') {
       selectedFeed = dedupedScopedFeed.filter((lead) => breakdownChargedLeadIds.has(lead.id));
-    } else if (selectedMatchesTab === 'revealed') {
-      selectedFeed = revealedVisibleFeed;
+    } else if (selectedMatchesTab === 'previewed') {
+      selectedFeed = previewedVisibleFeed;
     } else if (selectedMatchesTab === 'asked') {
       selectedFeed = askedVisibleFeed;
     } else if (selectedMatchesTab === 'verified') {
       selectedFeed = verifiedVisibleFeed;
     } else if (selectedMatchesTab === 'queued') {
       selectedFeed = recentVisibleFeed;
-    } else if (selectedMatchesTab === 'predicted') {
-      selectedFeed = predictedVisibleFeed;
     } else {
       selectedFeed = dedupedScopedFeed;
     }
     return [...selectedFeed].sort(compareDetailsAndPostedDate);
-  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, predictedVisibleFeed, recentVisibleFeed, revealedVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
+  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, previewedVisibleFeed, recentVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
 
   const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
@@ -1940,9 +1922,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     () => [...recentVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopRecentVisibleCount),
     [desktopRecentVisibleCount, recentVisibleFeed],
   );
-  const visibleDesktopRevealedFeed = useMemo(
-    () => [...revealedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopRevealedVisibleCount),
-    [desktopRevealedVisibleCount, revealedVisibleFeed],
+  const visibleDesktopPreviewedFeed = useMemo(
+    () => [...previewedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopPreviewedVisibleCount),
+    [desktopPreviewedVisibleCount, previewedVisibleFeed],
   );
   const visibleDesktopAskedFeed = useMemo(
     () => [...askedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopAskedVisibleCount),
@@ -1952,15 +1934,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     () => [...verifiedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopVerifiedVisibleCount),
     [desktopVerifiedVisibleCount, verifiedVisibleFeed],
   );
-  const visibleDesktopPredictedFeed = useMemo(
-    () => [...predictedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopPredictedVisibleCount),
-    [desktopPredictedVisibleCount, predictedVisibleFeed],
-  );
   const canLoadMoreDesktopRecent = desktopRecentVisibleCount < recentVisibleFeed.length;
-  const canLoadMoreDesktopRevealed = desktopRevealedVisibleCount < revealedVisibleFeed.length;
+  const canLoadMoreDesktopPreviewed = desktopPreviewedVisibleCount < previewedVisibleFeed.length;
   const canLoadMoreDesktopAsked = desktopAskedVisibleCount < askedVisibleFeed.length;
   const canLoadMoreDesktopVerified = desktopVerifiedVisibleCount < verifiedVisibleFeed.length;
-  const canLoadMoreDesktopPredicted = desktopPredictedVisibleCount < predictedVisibleFeed.length;
 
   const maybeLoadMoreMatches = useCallback((container: HTMLDivElement, canLoadMore: boolean, onLoadMore: () => void) => {
     if (!canLoadMore) return;
@@ -2016,11 +1993,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     });
   }, [canLoadMoreDesktopRecent, maybeLoadMoreMatches, recentVisibleFeed.length]);
 
-  const handleDesktopRevealedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
-    maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopRevealed, () => {
-      setDesktopRevealedVisibleCount((prev) => Math.min(revealedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
+  const handleDesktopPreviewedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopPreviewed, () => {
+      setDesktopPreviewedVisibleCount((prev) => Math.min(previewedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
     });
-  }, [canLoadMoreDesktopRevealed, maybeLoadMoreMatches, revealedVisibleFeed.length]);
+  }, [canLoadMoreDesktopPreviewed, maybeLoadMoreMatches, previewedVisibleFeed.length]);
 
   const handleDesktopAskedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopAsked, () => {
@@ -2034,12 +2011,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     });
   }, [canLoadMoreDesktopVerified, maybeLoadMoreMatches, verifiedVisibleFeed.length]);
 
-  const handleDesktopPredictedScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
-    maybeLoadMoreMatches(event.currentTarget, canLoadMoreDesktopPredicted, () => {
-      setDesktopPredictedVisibleCount((prev) => Math.min(predictedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
-    });
-  }, [canLoadMoreDesktopPredicted, maybeLoadMoreMatches, predictedVisibleFeed.length]);
-
   useEffect(() => {
     if (isMobileViewport) return;
     const container = desktopMatchesScrollRef.current;
@@ -2048,8 +2019,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const hasOverflow = container.scrollHeight > container.clientHeight + 1;
     if (hasOverflow) return;
 
-    if (selectedMatchesTab === 'revealed' && canLoadMoreDesktopRevealed) {
-      setDesktopRevealedVisibleCount((prev) => Math.min(revealedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
+    if (selectedMatchesTab === 'previewed' && canLoadMoreDesktopPreviewed) {
+      setDesktopPreviewedVisibleCount((prev) => Math.min(previewedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
       return;
     }
 
@@ -2065,30 +2036,22 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     if (selectedMatchesTab === 'queued' && canLoadMoreDesktopRecent) {
       setDesktopRecentVisibleCount((prev) => Math.min(recentVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
-      return;
-    }
-
-    if (selectedMatchesTab === 'predicted' && canLoadMoreDesktopPredicted) {
-      setDesktopPredictedVisibleCount((prev) => Math.min(predictedVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
     }
   }, [
     askedVisibleFeed.length,
     canLoadMoreDesktopAsked,
-    canLoadMoreDesktopPredicted,
+    canLoadMoreDesktopPreviewed,
     canLoadMoreDesktopRecent,
-    canLoadMoreDesktopRevealed,
     canLoadMoreDesktopVerified,
     isMobileViewport,
     isTableLayout,
-    predictedVisibleFeed.length,
+    previewedVisibleFeed.length,
     recentVisibleFeed.length,
-    revealedVisibleFeed.length,
     selectedMatchesTab,
     visibleDesktopRecentFeed.length,
-    visibleDesktopRevealedFeed.length,
+    visibleDesktopPreviewedFeed.length,
     visibleDesktopAskedFeed.length,
     visibleDesktopVerifiedFeed.length,
-    visibleDesktopPredictedFeed.length,
     verifiedVisibleFeed.length,
   ]);
 
@@ -2515,7 +2478,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         const verdict = String(data.verdict || '').trim() || 'Submission likely to be accepted';
         const result = { score, categories, verdict, verdictClass: verdictClassForScore(score) };
         setPredictResultByLeadId((prev) => ({ ...prev, [lead.id]: result }));
-        setPredictedAtByLeadId((prev) => ({ ...prev, [lead.id]: new Date().toISOString() }));
         successCount += 1;
       } catch (err) {
         showToast(err instanceof Error ? err.message : `Could not predict ${lead.title || 'a job'}`, 'error');
@@ -2586,7 +2548,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const useFourColumnBreakdown = true;
 
-    const shouldForceExpandedBreakdown = isLeadRevealed && selectedMatchesTab !== 'revealed';
+    const shouldForceExpandedBreakdown = isLeadRevealed;
     const isExpandedBreakdownVisible = shouldForceExpandedBreakdown || isInlineBreakdownExpanded;
     const metaSurfaceClass = 'bg-transparent';
     const metaLabelClass = isDark ? 'text-[#64748B]' : 'text-slate-500';
@@ -2612,11 +2574,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         </button>
         {isAskPending || isVerified ? (
           <span
-            title={isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted')}
+            title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
             className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-50 text-[11px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
           >
             {isVerified ? <BadgeCheck size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2} />}
-            {isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted')}
+            {isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
           </span>
         ) : (
           <button
@@ -2627,7 +2589,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-[11px] font-semibold text-white transition-opacity hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {processingAskAILeadId === lead.id ? '...' : isHotlistFeed ? <FileText size={13} strokeWidth={2} /> : <Mail size={13} strokeWidth={2} />}
-            Submit
+            {isHotlistFeed ? 'Request' : 'Submit'}
           </button>
         )}
       </div>
@@ -2731,7 +2693,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   </button>
                 </div>
           ) : (
-          (isLeadRevealed && selectedMatchesTab !== 'revealed') ? (
+          isLeadRevealed ? (
             <div className={`mt-1.5 w-full overflow-hidden rounded-md text-left ring-1 ring-inset ${revealedTableSurfaceClass}`}>
               <table className="w-full table-fixed border-collapse text-left text-[10px]">
                 <tbody>
@@ -2969,7 +2931,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         title={!lead.posterEmail ? 'No email' : 'Send Email'}
                         className={askButtonClass}
                       >
-                        {processingAskAILeadId === lead.id ? <span>...</span> : <Mail size={12} strokeWidth={2} />}
+                        {processingAskAILeadId === lead.id ? <span>...</span> : isHotlistFeed ? <FileText size={12} strokeWidth={2} /> : <Mail size={12} strokeWidth={2} />}
                       </button>
                     )}
                     <button
@@ -3107,13 +3069,17 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const postContentViewed = new Set<string>();
     const ignored = new Set<string>();
     const revealedAt: Record<string, string> = {};
+    const postContentViewedAt: Record<string, string> = {};
     for (const row of (data ?? []) as PulseLeadActionRow[]) {
       if (row.action_type === 'revealed') {
         revealed.add(row.lead_id);
         if (row.created_at) revealedAt[row.lead_id] = row.created_at;
       }
       if (row.action_type === 'breakdown') breakdown.add(row.lead_id);
-      if (row.action_type === 'post_content_viewed') postContentViewed.add(row.lead_id);
+      if (row.action_type === 'post_content_viewed') {
+        postContentViewed.add(row.lead_id);
+        if (row.created_at) postContentViewedAt[row.lead_id] = row.created_at;
+      }
       if (row.action_type === 'ignored') ignored.add(row.lead_id);
     }
 
@@ -3122,6 +3088,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setPostContentViewedLeadIds(postContentViewed);
     setIgnoredLeadIds(ignored);
     setRevealedAtByLeadId(revealedAt);
+    setPostContentViewedAtByLeadId(postContentViewedAt);
   }, [user?.id]);
 
   const loadAskedJobState = useCallback(async () => {
@@ -3300,7 +3267,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const loadPredictedJobState = useCallback(async () => {
     if (!account?.id || !user?.id) {
       setPredictResultByLeadId({});
-      setPredictedAtByLeadId({});
       return;
     }
 
@@ -3314,7 +3280,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     if (error) return;
 
     const nextResults: Record<string, PredictResult> = {};
-    const nextAt: Record<string, string> = {};
     for (const row of (data ?? []) as Array<{ lead_id: string; score: number | null; verdict: string | null; categories: PredictCategory[] | null; created_at: string }>) {
       if (!row.lead_id || nextResults[row.lead_id]) continue;
       const score = Math.max(0, Math.min(100, Math.round(Number(row.score) || 0)));
@@ -3324,10 +3289,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         verdict: row.verdict?.trim() || 'Submission likely to be accepted',
         verdictClass: verdictClassForScore(score),
       };
-      nextAt[row.lead_id] = row.created_at;
     }
     setPredictResultByLeadId(nextResults);
-    setPredictedAtByLeadId(nextAt);
 
     const leadIds = Object.keys(nextResults);
     if (leadIds.length === 0) return;
@@ -4030,7 +3993,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setFeed(finalFiltered);
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
     setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
-    setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+    setDesktopPreviewedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
     setDesktopAskedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
     setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
 
@@ -4049,7 +4012,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   useEffect(() => {
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
     setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
-    setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+    setDesktopPreviewedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
     setDesktopAskedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
     setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
   }, [activePersona?.target_role, selectedCategoryId, selectedMatchesTab, selectedTechStacks]);
@@ -4260,7 +4223,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       && Math.abs(deltaX) > Math.abs(deltaY);
 
     if (isHorizontalSwipe) {
-      const nextTab: MatchesTabId = deltaX < 0 ? 'predicted' : 'queued';
+      const nextTab: MatchesTabId = deltaX < 0 ? 'previewed' : 'queued';
       if (nextTab !== selectedMatchesTab) {
         setSelectedMatchesTab(nextTab);
         setVisibleMatchesCount(MATCHES_PAGE_SIZE);
@@ -4349,26 +4312,51 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       }
 
       const vendorName = data.vendor_name || lead.posterName || 'the vendor';
+      const vendorEmail = lead.posterEmail.trim();
+      const generatedSubject = removeNameFromEmail(data.email_subject || '', vendorName);
+      const generatedContent = removeNameFromEmail(data.email_content || '', vendorName);
       setAskAIPreview((current) => ({
         leadId: lead.id,
         leadType,
         requestId,
         vendorName,
-        vendorEmail: current?.vendorEmail ?? lead.posterEmail.trim(),
+        vendorEmail: current?.vendorEmail ?? vendorEmail,
         jobTitle: current?.jobTitle ?? (lead.title || lead.roleTitle || ''),
         company: current?.company ?? (lead.company || ''),
         missingDetails,
-        emailSubject: removeNameFromEmail(data.email_subject || '', vendorName),
-        emailContent: removeNameFromEmail(data.email_content || '', vendorName),
+        emailSubject: generatedSubject,
+        emailContent: generatedContent,
         isGenerating: false,
       }));
+
+      // Log every generated email to the Inbox — nothing currently gets sent
+      // (Gmail Sync isn't wired up), so this is the only record of it. One
+      // row per (user, lead): regenerating just refreshes it.
+      if (user?.id) {
+        void supabase.from('pulse_ask_ai_previews' as never).upsert({
+          account_id: account.id,
+          user_id: user.id,
+          job_id: leadType === 'job' ? lead.id : null,
+          hotlist_id: leadType === 'hotlist' ? lead.id : null,
+          vendor_name: vendorName,
+          vendor_email: vendorEmail,
+          subject: generatedSubject,
+          email_content: generatedContent,
+          updated_at: new Date().toISOString(),
+        } as never, { onConflict: 'user_id,lead_key' } as never).then(({ error: previewError }) => {
+          if (previewError) {
+            console.error('Could not log generated email to Inbox', previewError);
+            showToast('Email generated, but could not be saved to Inbox', 'error');
+          }
+        });
+      }
     } catch (error) {
       setAskAIPreview(null);
       showToast(error instanceof Error ? error.message : 'Could not generate the vendor email request', 'error');
     } finally {
       setProcessingAskAILeadId(null);
     }
-  }, [account?.id, isHotlistFeed, processingAskAILeadId, showToast]);
+  }, [account?.id, isHotlistFeed, processingAskAILeadId, showToast, user?.id]);
 
   const consumeCreditsLegacy = useCallback(async (
     amount: number,
@@ -4516,6 +4504,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           next.add(lead.id);
           return next;
         });
+        setPostContentViewedAtByLeadId((prev) => ({ ...prev, [lead.id]: new Date().toISOString() }));
         void persistLeadAction(lead.id, 'post_content_viewed');
         showToast(`$${POST_CONTENT_COST.toFixed(2)} credits consumed for post preview`, 'success');
       }
@@ -4871,11 +4860,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             onClick={() => {
                               setSelectedMatchesTab(tab.id);
                               setVisibleMatchesCount(MATCHES_PAGE_SIZE);
-                              if (tab.id === 'revealed') setDesktopRevealedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+                              if (tab.id === 'previewed') setDesktopPreviewedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'asked') setDesktopAskedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'verified') setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
-                              if (tab.id === 'predicted') setDesktopPredictedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                             }}
                             className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
                           >
@@ -5251,7 +5239,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     paddingBottom: isMobileTopCollapsed ? 0 : '0.25rem',
                   }}
                 >
-                  <div className="grid w-full grid-cols-4 gap-1">
+                  <div className="grid w-full grid-cols-3 gap-1">
                     {matchesTabDefinitions.map((tab) => {
                       const isSelected = selectedMatchesTab === tab.id;
                       const count = matchesTabCounts[tab.id];
@@ -5323,31 +5311,21 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         <div
                           ref={desktopMatchesScrollRef}
                           className={`min-h-0 h-full overflow-y-auto slim-scrollbar ${isTableLayout ? 'px-1.5 pb-1.5' : 'p-1.5'}`}
-                          onScroll={selectedMatchesTab === 'revealed' ? handleDesktopRevealedScroll : selectedMatchesTab === 'asked' ? handleDesktopAskedScroll : selectedMatchesTab === 'verified' ? handleDesktopVerifiedScroll : selectedMatchesTab === 'predicted' ? handleDesktopPredictedScroll : handleDesktopRecentScroll}
+                          onScroll={selectedMatchesTab === 'previewed' ? handleDesktopPreviewedScroll : selectedMatchesTab === 'asked' ? handleDesktopAskedScroll : selectedMatchesTab === 'verified' ? handleDesktopVerifiedScroll : handleDesktopRecentScroll}
                         >
-                          {selectedMatchesTab === 'revealed' ? (
-                            revealedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No revealed consultants yet.' : 'No revealed jobs yet.'}</div>
+                          {selectedMatchesTab === 'previewed' ? (
+                            previewedVisibleFeed.length === 0 ? (
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No previewed consultants yet.' : 'No previewed jobs yet.'}</div>
                             ) : isTableLayout ? (
-                              renderLeadTable(visibleDesktopRevealedFeed)
+                              renderLeadTable(visibleDesktopPreviewedFeed)
                             ) : (
                               <div className="grid grid-cols-4 items-start gap-1.5">
-                                {renderLeadCards(visibleDesktopRevealedFeed, 4)}
-                              </div>
-                            )
-                          ) : selectedMatchesTab === 'predicted' ? (
-                            predictedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No predictions run yet.</div>
-                            ) : isTableLayout ? (
-                              renderLeadTable(visibleDesktopPredictedFeed)
-                            ) : (
-                              <div className="grid grid-cols-4 items-start gap-1.5">
-                                {renderLeadCards(visibleDesktopPredictedFeed, 4)}
+                                {renderLeadCards(visibleDesktopPreviewedFeed, 4)}
                               </div>
                             )
                           ) : selectedMatchesTab === 'asked' ? (
                             askedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No asked jobs yet.' : 'No submissions yet.'}</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No requested consultants yet.' : 'No submissions yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopAskedFeed)
                             ) : (

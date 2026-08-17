@@ -9,7 +9,7 @@ import Toast from '../components/Toast';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 
-type ConversationStatus = 'pending' | 'open' | 'replied' | 'closed' | 'failed';
+type ConversationStatus = 'pending' | 'open' | 'replied' | 'closed' | 'failed' | 'draft';
 type InboxRangeId = '24h' | '3d' | '7d' | '15d' | '30d';
 
 const INBOX_RANGE_OPTIONS: Array<{ id: InboxRangeId; label: string; hours: number }> = [
@@ -45,6 +45,7 @@ type SocialHotlistDetails = {
 
 type Conversation = {
   id: string;
+  source: 'sent' | 'draft';
   vendor_name: string;
   vendor_email: string;
   sender_name: string;
@@ -59,6 +60,8 @@ type Conversation = {
   social_jobs: SocialJobDetails | null;
   social_hotlist: SocialHotlistDetails | null;
   radar_job_details: Record<string, RadarBreakdownEntry | number> | null;
+  /** Only set when source === 'draft' — the generated email body, shown copy-only. */
+  draftEmailContent?: string;
 };
 
 function leadIdOf(conversation: Pick<Conversation, 'id' | 'job_id' | 'hotlist_id'>): string {
@@ -90,7 +93,31 @@ type Message = {
     content_type: string;
     size_bytes: number;
   }>;
+  /** True for the synthesized message representing a generated-but-unsent draft. */
+  isDraft?: boolean;
 };
+
+function draftMessage(conversation: Conversation): Message {
+  return {
+    id: conversation.id,
+    direction: 'outbound',
+    sender_type: 'user',
+    from_email: '',
+    to_email: conversation.vendor_email,
+    subject: conversation.subject,
+    text_body: conversation.draftEmailContent ?? '',
+    display_text: null,
+    display_text_status: null,
+    status: 'queued',
+    error_message: null,
+    sent_at: null,
+    received_at: null,
+    created_at: conversation.created_at,
+    vendor_message_events: [],
+    vendor_message_attachments: [],
+    isDraft: true,
+  };
+}
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -114,6 +141,7 @@ const STATUS_LABELS: Record<ConversationStatus, string> = {
   replied: 'Replied',
   closed: 'Closed',
   failed: 'Failed',
+  draft: 'Generated',
 };
 
 function formatRelative(value: string) {
@@ -236,17 +264,55 @@ export default function InboxPage() {
   const [sendingReply, setSendingReply] = useState(false);
 
   const loadConversations = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('vendor_conversations')
-      .select('id, vendor_name, vendor_email, sender_name, subject, status, channel, unread_count, last_message_at, created_at, job_id, hotlist_id, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
-      .order('last_message_at', { ascending: false });
-    if (error) {
+    const [{ data, error }, { data: previewData, error: previewError }] = await Promise.all([
+      supabase
+        .from('vendor_conversations')
+        .select('id, vendor_name, vendor_email, sender_name, subject, status, channel, unread_count, last_message_at, created_at, job_id, hotlist_id, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
+        .order('last_message_at', { ascending: false }),
+      supabase
+        .from('pulse_ask_ai_previews' as never)
+        .select('id, vendor_name, vendor_email, subject, email_content, job_id, hotlist_id, created_at, updated_at, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
+        .order('updated_at', { ascending: false }),
+    ]);
+    if (error || previewError) {
       setToast({ message: 'Could not load inbox', type: 'error' });
       return;
     }
-    const conversationRows = (data ?? []) as unknown as Omit<Conversation, 'radar_job_details'>[];
-    const jobIds = [...new Set(conversationRows.map((row) => row.job_id).filter((id): id is string => Boolean(id)))];
-    const hotlistIds = [...new Set(conversationRows.map((row) => row.hotlist_id).filter((id): id is string => Boolean(id)))];
+    const conversationRows = ((data ?? []) as unknown as Omit<Conversation, 'radar_job_details' | 'source'>[]).map((row) => ({ ...row, source: 'sent' as const }));
+    type PreviewRow = {
+      id: string;
+      vendor_name: string;
+      vendor_email: string;
+      subject: string;
+      email_content: string;
+      job_id: string | null;
+      hotlist_id: string | null;
+      created_at: string;
+      updated_at: string;
+      social_jobs: SocialJobDetails | null;
+      social_hotlist: SocialHotlistDetails | null;
+    };
+    const draftRows = ((previewData ?? []) as unknown as PreviewRow[]).map((row) => ({
+      id: row.id,
+      source: 'draft' as const,
+      vendor_name: row.vendor_name,
+      vendor_email: row.vendor_email,
+      sender_name: '',
+      subject: row.subject,
+      status: 'draft' as const,
+      channel: 'mailgun' as const,
+      unread_count: 0,
+      last_message_at: row.updated_at,
+      created_at: row.created_at,
+      job_id: row.job_id,
+      hotlist_id: row.hotlist_id,
+      social_jobs: row.social_jobs,
+      social_hotlist: row.social_hotlist,
+      draftEmailContent: row.email_content,
+    })) as unknown as Omit<Conversation, 'radar_job_details'>[];
+    const combinedRows = [...conversationRows, ...draftRows];
+    const jobIds = [...new Set(combinedRows.map((row) => row.job_id).filter((id): id is string => Boolean(id)))];
+    const hotlistIds = [...new Set(combinedRows.map((row) => row.hotlist_id).filter((id): id is string => Boolean(id)))];
     const [{ data: radarRows }, { data: hotlistRadarRows }] = await Promise.all([
       jobIds.length > 0
         ? supabase
@@ -271,10 +337,12 @@ export default function InboxPage() {
     for (const row of (hotlistRadarRows ?? []) as Array<{ hotlist_id: string; score_breakdown: Conversation['radar_job_details'] }>) {
       if (!breakdownByLeadId.has(row.hotlist_id)) breakdownByLeadId.set(row.hotlist_id, row.score_breakdown);
     }
-    const rows: Conversation[] = conversationRows.map((row) => ({
-      ...row,
-      radar_job_details: breakdownByLeadId.get(leadIdOf(row)) ?? null,
-    }));
+    const rows: Conversation[] = combinedRows
+      .map((row) => ({
+        ...row,
+        radar_job_details: breakdownByLeadId.get(leadIdOf(row)) ?? null,
+      }))
+      .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
     setConversations(rows);
     setSelectedId((current) => current ?? (window.matchMedia('(min-width: 640px)').matches ? rows[0]?.id ?? null : null));
   }, []);
@@ -306,6 +374,12 @@ export default function InboxPage() {
       lastAutoScrolledConversationId.current = null;
       return;
     }
+    const selectedConversation = conversations.find((item) => item.id === selectedId);
+    if (selectedConversation?.source === 'draft') {
+      setMessages([draftMessage(selectedConversation)]);
+      setMessagesConversationId(selectedId);
+      return;
+    }
     setMessagesConversationId(null);
     void loadMessages(selectedId);
     void supabase.rpc('update_own_vendor_conversation', {
@@ -330,6 +404,9 @@ export default function InboxPage() {
     const channel = supabase
       .channel('vendor-inbox')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_conversations' }, () => {
+        void loadConversations();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pulse_ask_ai_previews' }, () => {
         void loadConversations();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_messages' }, (payload) => {
@@ -363,12 +440,12 @@ export default function InboxPage() {
 
   const tabCounts = useMemo(() => ({
     all: scopedConversations.length,
-    asked: scopedConversations.filter((item) => ['pending', 'open'].includes(item.status)).length,
+    asked: scopedConversations.filter((item) => ['pending', 'open', 'draft'].includes(item.status)).length,
     replied: scopedConversations.filter((item) => item.status === 'replied').length,
   }), [scopedConversations]);
 
   const filtered = useMemo(() => scopedConversations.filter((item) => {
-    if (filter === 'asked') return ['pending', 'open'].includes(item.status);
+    if (filter === 'asked') return ['pending', 'open', 'draft'].includes(item.status);
     if (filter === 'replied') return item.status === 'replied';
     return true;
   }), [filter, scopedConversations]);
@@ -594,17 +671,43 @@ export default function InboxPage() {
                           <div className="mt-3 flex flex-col gap-2 border-t border-gray-200/80 pt-2.5 sm:flex-row sm:items-center">
                             <div className="flex items-center justify-between gap-2 sm:justify-start">
                               <span className="inline-flex min-w-0 items-center gap-1 text-[10px] font-medium text-gray-500">
-                                {outbound && (message.status === 'failed' || message.status === 'temporary_failed') ? <><AlertCircle size={11} className="text-red-600" /> <span className="text-red-600">Failed</span></> : deliveryState ? <><CheckCheck size={11} className={deliveryState.opened ? 'text-emerald-600' : 'text-blue-600'} /> <span className={deliveryState.opened ? 'text-emerald-700' : ''}>{deliveryState.label}</span></> : <span>{outbound ? 'Sent' : 'Received'}</span>}
+                                {message.isDraft ? 'Generated' : outbound && (message.status === 'failed' || message.status === 'temporary_failed') ? <><AlertCircle size={11} className="text-red-600" /> <span className="text-red-600">Failed</span></> : deliveryState ? <><CheckCheck size={11} className={deliveryState.opened ? 'text-emerald-600' : 'text-blue-600'} /> <span className={deliveryState.opened ? 'text-emerald-700' : ''}>{deliveryState.label}</span></> : <span>{outbound ? 'Sent' : 'Received'}</span>}
                               </span>
                               <span className="shrink-0 text-[10px] text-gray-500">{formatMessageTime(message.sent_at || message.received_at || message.created_at)}</span>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => void navigator.clipboard.writeText(selected.vendor_email).then(() => setToast({ message: 'Vendor email copied', type: 'success' }))}
-                              className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400 sm:ml-auto sm:w-auto sm:px-2.5"
-                            >
-                              <Copy size={11} /> Email
-                            </button>
+                            {message.isDraft ? (
+                              <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+                                <button
+                                  type="button"
+                                  onClick={() => void navigator.clipboard.writeText(selected.vendor_email).then(() => setToast({ message: 'Vendor email copied', type: 'success' }))}
+                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2.5 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400"
+                                >
+                                  <Copy size={11} /> Email
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void navigator.clipboard.writeText(message.subject).then(() => setToast({ message: 'Subject copied', type: 'success' }))}
+                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2.5 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400"
+                                >
+                                  <Copy size={11} /> Subject
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void navigator.clipboard.writeText(message.text_body).then(() => setToast({ message: 'Body copied', type: 'success' }))}
+                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2.5 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400"
+                                >
+                                  <Copy size={11} /> Body
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => void navigator.clipboard.writeText(selected.vendor_email).then(() => setToast({ message: 'Vendor email copied', type: 'success' }))}
+                                className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400 sm:ml-auto sm:w-auto sm:px-2.5"
+                              >
+                                <Copy size={11} /> Email
+                              </button>
+                            )}
                           </div>
                           {message.error_message && <p className="mt-2 text-[10px] text-red-600">{message.error_message}</p>}
                         </div>
@@ -614,7 +717,7 @@ export default function InboxPage() {
 
               </div>
             </div>
-            {selected.status === 'closed' ? (
+            {selected.source === 'draft' ? null : selected.status === 'closed' ? (
               <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 py-3 text-center text-[11px] text-gray-500">
                 This conversation is closed. Reopen it to send a message.
               </div>
