@@ -1117,13 +1117,16 @@ function buildPulseLeadDedupKey(lead: SocialLead, isHotlistFeed: boolean) {
     // Hotlist posts routinely share the same role/company/location across many
     // different consultants (e.g. a staffing company posting several distinct
     // "Network Engineer" candidates in the same day) — collapsing on those
-    // fields alone silently hides genuinely different candidates. Fold in the
-    // poster identity and post content so only true reposts of the same
-    // candidate collapse together.
+    // fields alone silently hides genuinely different candidates. A single
+    // "HOTLIST" post can also list several consultants at once; those rows
+    // share identical post content and poster identity but carry a distinct
+    // candidate_index per consultant, so that's the real differentiator
+    // between candidates named in the same post. Fold in poster identity and
+    // candidate index so only true reposts of the same candidate collapse.
     const email = dedupeText(lead.posterEmail);
     const poster = dedupeText(lead.posterName);
-    const contentFingerprint = dedupeText(lead.snippet).slice(0, 120);
-    return [title, company, location || '-', platform || '-', email || poster || '-', contentFingerprint || lead.id].join('|');
+    const candidateSlot = lead.candidateIndex != null ? String(lead.candidateIndex) : lead.id;
+    return [title, company, location || '-', platform || '-', email || poster || '-', candidateSlot].join('|');
   }
 
   return [title, company, location || '-', platform || '-'].join('|');
