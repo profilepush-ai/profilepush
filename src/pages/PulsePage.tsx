@@ -129,6 +129,12 @@ function compareDetailsAndPostedDate(a: SocialLead, b: SocialLead): number {
   return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
 }
 
+function compareByRecency(a: SocialLead, b: SocialLead, feedTimeBasis: FeedTimeBasis): number {
+  const aTs = new Date(feedTimeBasis === 'created' ? a.createdAt : a.postedAt).getTime();
+  const bTs = new Date(feedTimeBasis === 'created' ? b.createdAt : b.postedAt).getTime();
+  return bTs - aTs;
+}
+
 type HotlistRoleRow = {
   id: string;
   target_role: string;
@@ -1839,7 +1845,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const recentVisibleFeed = useMemo(() => {
     const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id));
     return recent.sort((a, b) => {
-      if (isHotlistFeed) return compareDetailsAndPostedDate(a, b);
+      if (isHotlistFeed) return compareByRecency(a, b, feedTimeBasis);
       const aTs = new Date(!isHotlistFeed && a.matchedAt
         ? a.matchedAt
         : (feedTimeBasis === 'created' ? a.createdAt : a.postedAt)).getTime();
@@ -1928,15 +1934,20 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } else {
       selectedFeed = dedupedScopedFeed;
     }
+    if (selectedMatchesTab === 'queued' && isHotlistFeed) {
+      return [...selectedFeed].sort((a, b) => compareByRecency(a, b, feedTimeBasis));
+    }
     return [...selectedFeed].sort(compareDetailsAndPostedDate);
-  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, previewedVisibleFeed, recentVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
+  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, feedTimeBasis, isHotlistFeed, previewedVisibleFeed, recentVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
 
   const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
 
   const visibleDesktopRecentFeed = useMemo(
-    () => [...recentVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopRecentVisibleCount),
-    [desktopRecentVisibleCount, recentVisibleFeed],
+    () => [...recentVisibleFeed]
+      .sort((a, b) => (isHotlistFeed ? compareByRecency(a, b, feedTimeBasis) : compareDetailsAndPostedDate(a, b)))
+      .slice(0, desktopRecentVisibleCount),
+    [desktopRecentVisibleCount, feedTimeBasis, isHotlistFeed, recentVisibleFeed],
   );
   const visibleDesktopPreviewedFeed = useMemo(
     () => [...previewedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopPreviewedVisibleCount),
