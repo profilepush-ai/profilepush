@@ -1107,11 +1107,24 @@ function buildSocialLeadDedupKey(row: SocialJobRow) {
   return [title, company, location || '-', poster || '-'].join('|');
 }
 
-function buildPulseLeadDedupKey(lead: SocialLead) {
+function buildPulseLeadDedupKey(lead: SocialLead, isHotlistFeed: boolean) {
   const title = dedupeText(lead.title);
   const company = dedupeText(lead.company);
   const location = dedupeText(lead.location);
   const platform = dedupeText(lead.platform);
+
+  if (isHotlistFeed) {
+    // Hotlist posts routinely share the same role/company/location across many
+    // different consultants (e.g. a staffing company posting several distinct
+    // "Network Engineer" candidates in the same day) — collapsing on those
+    // fields alone silently hides genuinely different candidates. Fold in the
+    // poster identity and post content so only true reposts of the same
+    // candidate collapse together.
+    const email = dedupeText(lead.posterEmail);
+    const poster = dedupeText(lead.posterName);
+    const contentFingerprint = dedupeText(lead.snippet).slice(0, 120);
+    return [title, company, location || '-', platform || '-', email || poster || '-', contentFingerprint || lead.id].join('|');
+  }
 
   return [title, company, location || '-', platform || '-'].join('|');
 }
@@ -1803,7 +1816,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const byKey = new Map<string, SocialLead>();
 
     for (const lead of scopedFeed) {
-      const key = buildPulseLeadDedupKey(lead);
+      const key = buildPulseLeadDedupKey(lead, isHotlistFeed);
       const existing = byKey.get(key);
       if (!existing) {
         byKey.set(key, lead);
@@ -1818,7 +1831,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
 
     return Array.from(byKey.values()).filter((lead) => !ignoredLeadIds.has(lead.id));
-  }, [feedTimeBasis, ignoredLeadIds, scopedFeed]);
+  }, [feedTimeBasis, ignoredLeadIds, isHotlistFeed, scopedFeed]);
 
   const recentVisibleFeed = useMemo(() => {
     const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id));
