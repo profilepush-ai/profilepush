@@ -129,6 +129,16 @@ function compareDetailsAndPostedDate(a: SocialLead, b: SocialLead): number {
   return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
 }
 
+function extractPrimaryEmail(raw: string | null | undefined): string {
+  // Recruiter posts often list more than one contact address (a primary plus
+  // a backup) separated by commas/slashes/whitespace. The whole raw string
+  // never matches a single-email pattern, which was silently disabling the
+  // Request button for every lead with more than one email on file. Pick the
+  // first token that actually looks like a single valid email instead.
+  const candidates = (raw ?? '').split(/[,;/|\s]+/).map((part) => part.trim()).filter(Boolean);
+  return candidates.find((candidate) => /^\S+@\S+\.\S+$/.test(candidate)) ?? '';
+}
+
 function compareByRecency(a: SocialLead, b: SocialLead, feedTimeBasis: FeedTimeBasis): number {
   const aTs = new Date(feedTimeBasis === 'created' ? a.createdAt : a.postedAt).getTime();
   const bTs = new Date(feedTimeBasis === 'created' ? b.createdAt : b.postedAt).getTime();
@@ -2544,7 +2554,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const globalAskedJobState = globalAskedJobStateByLeadId[lead.id];
     const isAskPending = globalAskedJobState === 'asked';
     const isVerified = globalAskedJobState === 'verified';
-    const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim());
+    const canAskAI = !isAskPending && !isVerified && Boolean(extractPrimaryEmail(lead.posterEmail));
     const {
       inlineBreakdownItems,
       expValue,
@@ -2808,7 +2818,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       const globalAskedJobState = globalAskedJobStateByLeadId[lead.id];
       const isAskPending = globalAskedJobState === 'asked';
       const isVerified = globalAskedJobState === 'verified';
-      const canAskAI = !isAskPending && !isVerified && /^\S+@\S+\.\S+$/.test(lead.posterEmail.trim());
+      const canAskAI = !isAskPending && !isVerified && Boolean(extractPrimaryEmail(lead.posterEmail));
       const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
       const postedTimestamp = new Date(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt).getTime();
 
@@ -4309,7 +4319,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     // rate is always a safe, relevant question, so we never block sending outreach.
     const detectedMissingDetails = leadType === 'hotlist' ? ['resume'] : getMissingJobDetails(lead);
     const missingDetails = detectedMissingDetails.length > 0 ? detectedMissingDetails : ['Rate'];
-    if (!/^\S+@\S+\.\S+$/.test(lead.posterEmail.trim())) {
+    const primaryEmail = extractPrimaryEmail(lead.posterEmail);
+    if (!primaryEmail) {
       showToast(leadType === 'hotlist' ? 'This consultant does not have a valid recruiter email' : 'This job does not have a valid vendor email', 'error');
       return;
     }
@@ -4320,7 +4331,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       leadType,
       requestId,
       vendorName: lead.posterName || 'the vendor',
-      vendorEmail: lead.posterEmail.trim(),
+      vendorEmail: primaryEmail,
       jobTitle: lead.title || lead.roleTitle || '',
       company: lead.company || '',
       missingDetails,
@@ -4346,7 +4357,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       }
 
       const vendorName = data.vendor_name || lead.posterName || 'the vendor';
-      const vendorEmail = lead.posterEmail.trim();
+      const vendorEmail = primaryEmail;
       const generatedSubject = removeNameFromEmail(data.email_subject || '', vendorName);
       const generatedContent = removeNameFromEmail(data.email_content || '', vendorName);
       setAskAIPreview((current) => ({
