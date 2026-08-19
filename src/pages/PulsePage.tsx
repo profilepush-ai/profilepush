@@ -1843,7 +1843,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   }, [feedTimeBasis, ignoredLeadIds, isHotlistFeed, scopedFeed]);
 
   const recentVisibleFeed = useMemo(() => {
-    const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id));
+    // Recent should only hold leads you haven't already acted on — once a
+    // request/submission has been sent (by anyone on the account), it moves
+    // to the Requested/Submitted tab instead of lingering here with its
+    // action button disabled.
+    const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id) && !globalAskedJobStateByLeadId[lead.id]);
     return recent.sort((a, b) => {
       if (isHotlistFeed) return compareByRecency(a, b, feedTimeBasis);
       const aTs = new Date(!isHotlistFeed && a.matchedAt
@@ -1854,17 +1858,20 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         : (feedTimeBasis === 'created' ? b.createdAt : b.postedAt)).getTime();
       return bTs - aTs;
     });
-  }, [dedupedScopedFeed, feedTimeBasis, isHotlistFeed, revealedLeadIds]);
+  }, [dedupedScopedFeed, feedTimeBasis, globalAskedJobStateByLeadId, isHotlistFeed, revealedLeadIds]);
 
   const previewedVisibleFeed = useMemo(() => {
-    const previewed = dedupedScopedFeed.filter((lead) => postContentViewedLeadIds.has(lead.id));
+    // Same reasoning as Recent: once a lead has been requested/submitted, it
+    // belongs in the Requested/Submitted tab, not lingering here with a
+    // disabled action button.
+    const previewed = dedupedScopedFeed.filter((lead) => postContentViewedLeadIds.has(lead.id) && !globalAskedJobStateByLeadId[lead.id]);
     return previewed.sort((a, b) => {
       const aTs = postContentViewedAtByLeadId[a.id] ? new Date(postContentViewedAtByLeadId[a.id]).getTime() : 0;
       const bTs = postContentViewedAtByLeadId[b.id] ? new Date(postContentViewedAtByLeadId[b.id]).getTime() : 0;
       if (aTs !== bTs) return bTs - aTs;
       return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
     });
-  }, [dedupedScopedFeed, postContentViewedAtByLeadId, postContentViewedLeadIds]);
+  }, [dedupedScopedFeed, globalAskedJobStateByLeadId, postContentViewedAtByLeadId, postContentViewedLeadIds]);
 
   const askedVisibleFeed = useMemo(() => {
     const scopedById = new Map(dedupedScopedFeed.map((lead) => [lead.id, lead]));
