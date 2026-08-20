@@ -1038,12 +1038,12 @@ const LeadCard = memo(function LeadCard({
           <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
             <span>{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
             <span>•</span>
-            <span>{isLeadRevealed ? lead.posterName : maskPosterName(lead.posterName)}</span>
+            <span>{lead.posterName}</span>
             {lead.company && (
               <span className="inline-flex items-center gap-1 whitespace-nowrap">
                 <span>•</span>
                 <Building2 size={10} className="shrink-0" style={{ color: accentColor }} />
-                <span className="text-[#94A3B8]">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
+                <span className="text-[#94A3B8]">{lead.company}</span>
               </span>
             )}
           </div>
@@ -1669,12 +1669,6 @@ function formatRevealedAt(dateIso: string) {
     hour: 'numeric',
     minute: '2-digit',
   });
-}
-
-function maskPosterName(name: string) {
-  const trimmed = (name ?? '').trim();
-  if (!trimmed) return 'hidden';
-  return `${trimmed.slice(0, 3)}***`;
 }
 
 function removeNameFromEmail(text: string, name: string) {
