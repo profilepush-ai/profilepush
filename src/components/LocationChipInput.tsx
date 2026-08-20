@@ -53,7 +53,10 @@ export default function LocationChipInput({
           scope="any"
           placeholder={placeholder}
           className="flex-1"
-          inputClassName={isDark ? '!border-white/15 !bg-[#20242a] !text-slate-100 placeholder:!text-[#64748B]' : ''}
+          // The wrapper above already draws the visible box (border + bg) —
+          // strip the input's own border/background/rounding/focus-ring so
+          // it doesn't render as a second nested container inside it.
+          inputClassName={`!rounded-none !border-0 !bg-transparent !shadow-none !ring-0 focus:!ring-0 focus:!border-0 ${isDark ? '!text-slate-100 placeholder:!text-[#64748B]' : ''}`}
         />
         <button
           type="button"

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -18,12 +18,15 @@ import {
   FileText,
   Handshake,
   Hash,
+  Laptop,
+  Layers,
   LayoutGrid,
-  Mail,
+  MapPin,
   MessageSquare,
   Phone,
   Radar,
   RefreshCw,
+  Send,
   Search,
   Shield,
   CheckSquare,
@@ -38,7 +41,6 @@ import {
   Workflow,
   User,
   Users,
-  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -55,6 +57,7 @@ import { matchesPulseFeedSearch } from '../lib/pulse-feed-search';
 import { shouldChargeCredits } from '../lib/feature-gates';
 import { normalizePostSource, type PostSource } from '../lib/post-source';
 import PostSourceBadge from '../components/PostSourceBadge';
+import LocationChipInput from '../components/LocationChipInput';
 
 type PulsePersona = {
   target_role: string;
@@ -340,16 +343,18 @@ type AskAIPreview = {
   isGenerating: boolean;
 };
 type FeedSearchFilters = {
-  experienceRange: string;
-  workType: string;
-  employmentType: string;
-  visaStatus: string;
-  location: string;
+  experienceRange: string[];
+  workType: string[];
+  employmentType: string[];
+  visaStatus: string[];
+  location: string[];
   skillsQuery: string;
   rateMode: 'all' | 'has_rate' | 'range';
   rateMin: string;
   rateMax: string;
 };
+
+type FeedFacetCategory = 'experienceRange' | 'workType' | 'employmentType' | 'visaStatus';
 
 async function getFunctionErrorMessage(error: unknown, fallback: string) {
   if (error && typeof error === 'object' && 'context' in error) {
@@ -365,11 +370,11 @@ async function getFunctionErrorMessage(error: unknown, fallback: string) {
 }
 
 const DEFAULT_FEED_SEARCH_FILTERS: FeedSearchFilters = {
-  experienceRange: 'all',
-  workType: 'all',
-  employmentType: 'all',
-  visaStatus: 'all',
-  location: '',
+  experienceRange: [],
+  workType: [],
+  employmentType: [],
+  visaStatus: [],
+  location: [],
   skillsQuery: '',
   rateMode: 'all',
   rateMin: '',
@@ -403,19 +408,24 @@ const TOP_PROFILES_PAGE_SIZE = 10;
 const MATCHES_PAGE_SIZE = 5;
 const DESKTOP_MATCHES_PAGE_SIZE = 12;
 
-type PulseLayoutMode = 'card' | 'table';
+type PulseLayoutMode = 'card' | 'table' | 'swipe';
 type LeadTableSortKey = 'role' | 'exp' | 'workType' | 'empType' | 'rate' | 'visa' | 'location' | 'posted';
 
 type PredictCategory = { label: string; earned: number; max: number; note: string };
 type PredictResult = { score: number; categories: PredictCategory[]; verdict: string; verdictClass: string };
 
+// Kill switch for the Swipe ("Pass"/"Pitch") layout — the feature is built
+// and verified (typecheck/lint/build/tests) but hidden from the UI pending
+// a manual pass on real gesture feel. Flip to true to re-expose it; nothing
+// else needs to change.
+const SWIPE_LAYOUT_ENABLED = false;
 
 const PULSE_LAYOUT_MODE_STORAGE_KEY = 'profilepush-jobs-layout-mode';
 
 function getInitialPulseLayoutMode(): PulseLayoutMode {
   if (typeof window === 'undefined') return 'card';
   const stored = window.localStorage.getItem(PULSE_LAYOUT_MODE_STORAGE_KEY);
-  return stored === 'table' ? 'table' : 'card';
+  return stored === 'table' ? 'table' : stored === 'swipe' && SWIPE_LAYOUT_ENABLED ? 'swipe' : 'card';
 }
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
@@ -506,54 +516,54 @@ function parseFeedSearchIntent(rawInput: string): ParsedFeedSearchIntent {
   };
 
   consume(/\b(c2c|corp\s*to\s*corp)\b/i, () => {
-    inferred.employmentType = 'c2c';
+    inferred.employmentType = ['c2c'];
   });
   consume(/\b(w2|w-2)\b/i, () => {
-    inferred.employmentType = 'w2';
+    inferred.employmentType = ['w2'];
   });
   consume(/\b1099\b/i, () => {
-    inferred.employmentType = '1099';
+    inferred.employmentType = ['1099'];
   });
   consume(/\bfull[\s-]?time\b|\bft\b/i, () => {
-    inferred.employmentType = 'full_time';
+    inferred.employmentType = ['full_time'];
   });
   consume(/\bpart[\s-]?time\b|\bpt\b/i, () => {
-    inferred.employmentType = 'part_time';
+    inferred.employmentType = ['part_time'];
   });
   consume(/\bcontract\b/i, () => {
-    inferred.employmentType = 'contract';
+    inferred.employmentType = ['contract'];
   });
 
   consume(/\bremote\b/i, () => {
-    inferred.workType = 'remote';
+    inferred.workType = ['remote'];
   });
   consume(/\bhybrid\b/i, () => {
-    inferred.workType = 'hybrid';
+    inferred.workType = ['hybrid'];
   });
   consume(/\bonsite\b|\bon\s*site\b|\bon-site\b/i, () => {
-    inferred.workType = 'onsite';
+    inferred.workType = ['onsite'];
   });
 
   consume(/\b(usc|us\s*citizen)\b/i, () => {
-    inferred.visaStatus = 'usc';
+    inferred.visaStatus = ['usc'];
   });
   consume(/\b(gc|green\s*card)\b/i, () => {
-    inferred.visaStatus = 'gc';
+    inferred.visaStatus = ['gc'];
   });
   consume(/\b(h1b|h-1b)\b/i, () => {
-    inferred.visaStatus = 'h1b';
+    inferred.visaStatus = ['h1b'];
   });
   consume(/\bead\b/i, () => {
-    inferred.visaStatus = 'ead';
+    inferred.visaStatus = ['ead'];
   });
   consume(/\bopt\b/i, () => {
-    inferred.visaStatus = 'opt';
+    inferred.visaStatus = ['opt'];
   });
   consume(/\bcpt\b/i, () => {
-    inferred.visaStatus = 'cpt';
+    inferred.visaStatus = ['cpt'];
   });
   consume(/\btn\b/i, () => {
-    inferred.visaStatus = 'tn';
+    inferred.visaStatus = ['tn'];
   });
 
   consume(/\$\s*(\d{2,4})\s*(?:-|to|–|—)\s*\$?\s*(\d{2,4})\b/i, (match) => {
@@ -581,9 +591,9 @@ function parseFeedSearchIntent(rawInput: string): ParsedFeedSearchIntent {
 function mergeFeedFiltersWithIntent(base: FeedSearchFilters, inferred: Partial<FeedSearchFilters>): FeedSearchFilters {
   return {
     experienceRange: base.experienceRange,
-    workType: base.workType !== 'all' ? base.workType : (inferred.workType ?? 'all'),
-    employmentType: base.employmentType !== 'all' ? base.employmentType : (inferred.employmentType ?? 'all'),
-    visaStatus: base.visaStatus !== 'all' ? base.visaStatus : (inferred.visaStatus ?? 'all'),
+    workType: base.workType.length > 0 ? base.workType : (inferred.workType ?? []),
+    employmentType: base.employmentType.length > 0 ? base.employmentType : (inferred.employmentType ?? []),
+    visaStatus: base.visaStatus.length > 0 ? base.visaStatus : (inferred.visaStatus ?? []),
     location: base.location,
     skillsQuery: base.skillsQuery,
     rateMode: base.rateMode !== 'all' ? base.rateMode : (inferred.rateMode ?? 'all'),
@@ -686,6 +696,573 @@ function hexToRgbChannels(hex: string): string {
   if (Number.isNaN(value)) return '56 189 248';
   return `${(value >> 16) & 255} ${(value >> 8) & 255} ${value & 255}`;
 }
+
+const CARD_PALETTE = [
+  {
+    border: 'border-blue-100',
+    fill: 'bg-white dark:bg-[#1E2126]',
+    titleColor: '#38BDF8',
+  },
+  {
+    border: 'border-violet-100',
+    fill: 'bg-white dark:bg-[#1E2126]',
+    titleColor: '#FACC15',
+  },
+  {
+    border: 'border-emerald-100',
+    fill: 'bg-white dark:bg-[#1E2126]',
+    titleColor: '#34D399',
+  },
+  {
+    border: 'border-amber-100',
+    fill: 'bg-white dark:bg-[#1E2126]',
+    titleColor: '#FB7185',
+  },
+  {
+    border: 'border-rose-100',
+    fill: 'bg-white dark:bg-[#1E2126]',
+    titleColor: '#C084FC',
+  },
+  {
+    border: 'border-cyan-100',
+    fill: 'bg-white dark:bg-[#1E2126]',
+    titleColor: '#FB923C',
+  },
+];
+
+// Pure breakdown-field helpers, hoisted out of PulsePage so the memoized
+// LeadCard component (defined below, outside PulsePage) can call them
+// without needing PulsePage's closure.
+function isRoleLikeBreakdownKey(key: string) {
+  const normalized = key.toLowerCase();
+  return (
+    normalized.includes('role') ||
+    normalized.includes('title') ||
+    normalized.includes('name_match')
+  );
+}
+
+function getPulseBreakdownOrder(key: string) {
+  const normalized = key.toLowerCase();
+  if (normalized.includes('experience') || normalized.includes('exp')) return 0;
+  if (normalized.includes('work_type') || normalized.includes('work type')) return 1;
+  if (normalized.includes('employment_type') || normalized.includes('employment type')) return 2;
+  if (normalized.includes('rate') || normalized.includes('hourly')) return 3;
+  if (normalized.includes('visa')) return 4;
+  if (normalized.includes('location')) return 5;
+  if (normalized.includes('skill')) return 6;
+  return 999;
+}
+
+function orderPulseBreakdownItems<T extends { key: string }>(items: T[]) {
+  return [...items].sort((a, b) => {
+    const orderDelta = getPulseBreakdownOrder(a.key) - getPulseBreakdownOrder(b.key);
+    if (orderDelta !== 0) return orderDelta;
+    return a.key.localeCompare(b.key);
+  });
+}
+
+function normalizeBreakdownDisplayValue(value: string | null | undefined) {
+  const cleaned = (value ?? '').trim();
+  const normalized = cleaned.toLowerCase().replace(/\s+/g, ' ');
+  if (!cleaned) return '-';
+  if (
+    normalized === 'unknown'
+    || normalized === 'not specified'
+    || normalized === 'not available'
+    || normalized === 'n/a'
+    || normalized === 'na'
+    || normalized === 'none'
+    || normalized === 'null'
+    || normalized === '-'
+    || normalized === '--'
+    || normalized === 'tbd'
+  ) {
+    return '-';
+  }
+  return cleaned;
+}
+
+function normalizeHotlistWorkType(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[-_]+/g, ' ');
+  if (/\bhybrid\b/.test(normalized)) return 'Hybrid';
+  if (/\bremote\b/.test(normalized)) return 'Remote';
+  if (/\bon\s*site\b|\bonsite\b/.test(normalized)) return 'Onsite';
+  return '-';
+}
+
+function getLeadBreakdownFieldValues(lead: SocialLead, isHotlistFeed: boolean) {
+  const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
+    lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+    undefined,
+    {
+      employment_type: lead.employmentType || null,
+      work_type: null,
+    },
+  ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
+  const getBreakdownValue = (matchers: string[]) => {
+    const found = inlineBreakdownItems.find((item) => {
+      const key = item.key.toLowerCase();
+      return matchers.some((matcher) => key.includes(matcher));
+    });
+    return normalizeBreakdownDisplayValue(found?.detail?.job_value);
+  };
+  const expValue = getBreakdownValue(['experience', 'exp']);
+  const rawWorkTypeValue = getBreakdownValue(['work_type', 'work type']);
+  const workTypeValue = isHotlistFeed ? normalizeHotlistWorkType(rawWorkTypeValue) : rawWorkTypeValue;
+  const employmentTypeValue = getBreakdownValue(['employment_type', 'employment type']);
+  const rateValue = getBreakdownValue(['rate', 'hourly']);
+  const visaValue = getBreakdownValue(['visa']);
+  const locationValue = getBreakdownValue(['location']);
+  const skillsValue = getBreakdownValue(['skill']);
+  return { inlineBreakdownItems, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue };
+}
+
+function predictToneClass(score: number, isDark: boolean) {
+  if (score >= 80) return isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100';
+  if (score >= 60) return isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100';
+  if (score >= 40) return isDark ? 'border-amber-400/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20' : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100';
+  return isDark ? 'border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100';
+}
+
+// A field value clamped to 2 lines with a "+N more"/"less" toggle, used inside
+// LeadCard's breakdown grid. Takes isExpanded/onToggle as props (rather than
+// closing over PulsePage's expandedFieldKeys state) so LeadCard can stay a
+// pure, memoizable component.
+function ClampedField({ value, linkClassName, isExpanded, onToggle }: {
+  value: string;
+  linkClassName: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  if (value === '-') return <PersonaMissingTag />;
+  const parts = value.split(',').map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length > 1) {
+    const itemCap = 2;
+    const collapsedParts = parts.slice(0, itemCap);
+    const hiddenCount = parts.length - collapsedParts.length;
+    // Same overflow-vs-item-count mismatch as ClampedSkills: a collapsed
+    // text that's still long can get CSS-truncated with its own "…" even
+    // when every part technically fits within itemCap.
+    const isLikelyOverflow = hiddenCount > 0 || collapsedParts.join(', ').length > 36;
+    const visibleParts = isExpanded ? parts : collapsedParts;
+    return (
+      <>
+        <span className={isExpanded ? 'block max-h-14 overflow-y-auto' : 'line-clamp-2'}>{visibleParts.join(', ')}</span>
+        {!isExpanded && isLikelyOverflow && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+            {hiddenCount > 0 ? `+${hiddenCount} more` : 'more'}
+          </button>
+        )}
+        {isExpanded && isLikelyOverflow && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+            Show less
+          </button>
+        )}
+      </>
+    );
+  }
+
+  const isLikelyOverflow = value.length > 36;
+  return (
+    <>
+      <span className={isExpanded ? 'block max-h-14 overflow-y-auto' : 'line-clamp-2'}>{value}</span>
+      {isLikelyOverflow && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+          {isExpanded ? 'less' : 'more'}
+        </button>
+      )}
+    </>
+  );
+}
+
+// Comma-separated skills list clamped to `itemCap` items with a "+N more"
+// toggle. Same isExpanded/onExpand/onCollapse-as-props shape as ClampedField,
+// for the same memoization reason.
+function ClampedSkills({ skillsValue, itemCap, linkClassName, isExpanded, onExpand, onCollapse }: {
+  skillsValue: string;
+  itemCap: number;
+  linkClassName: string;
+  isExpanded: boolean;
+  onExpand: () => void;
+  onCollapse: () => void;
+}) {
+  const skillsList = skillsValue === '-' ? [] : skillsValue.split(',').map((skill) => skill.trim()).filter(Boolean);
+  if (skillsList.length === 0) return <PersonaMissingTag />;
+  const collapsedSkills = skillsList.slice(0, itemCap);
+  const hiddenCount = skillsList.length - collapsedSkills.length;
+  // hiddenCount alone misses cases where the collapsed text is still long
+  // enough to visually overflow the 2-line clamp even though every item
+  // technically fits within itemCap — CSS then truncates it with its own
+  // "…" and there'd be no way to expand it. Treat that as overflow too.
+  const isLikelyOverflow = hiddenCount > 0 || collapsedSkills.join(', ').length > 70;
+  const visibleSkills = isExpanded ? skillsList : collapsedSkills;
+  return (
+    <>
+      {/* Capped + scrollable when expanded so revealing a long skills list on
+          one card can never grow that card's height — with the sibling
+          grid row set to stretch-to-tallest, an uncapped reveal would
+          visually inflate every other card in the same row too. */}
+      <span className={isExpanded ? 'block max-h-14 overflow-y-auto' : 'line-clamp-2'}>{visibleSkills.join(', ')}</span>
+      {!isExpanded && isLikelyOverflow && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onExpand(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+          {hiddenCount > 0 ? `+${hiddenCount} more` : 'more'}
+        </button>
+      )}
+      {isExpanded && isLikelyOverflow && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onCollapse(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+          Show less
+        </button>
+      )}
+    </>
+  );
+}
+
+interface LeadCardProps {
+  lead: SocialLead;
+  paletteIndex: number;
+  isDark: boolean;
+  isHotlistFeed: boolean;
+  feedTimeBasis: FeedTimeBasis;
+  isLeadRevealed: boolean;
+  globalAskedJobState: GlobalAskedJobState | undefined;
+  predictResult: PredictResult | undefined;
+  askedRequestedAt: string | undefined;
+  askedFulfilledAt: string | null | undefined;
+  revealedAt: string | undefined;
+  isInlineBreakdownExpanded: boolean;
+  isSkillsExpanded: boolean;
+  isExpFieldExpanded: boolean;
+  isWorkTypeFieldExpanded: boolean;
+  isEmpTypeFieldExpanded: boolean;
+  isRateFieldExpanded: boolean;
+  isVisaFieldExpanded: boolean;
+  isLocationFieldExpanded: boolean;
+  isLoadingPreview: boolean;
+  isProcessingChat: boolean;
+  isProcessingAskAI: boolean;
+  onPreview: (lead: SocialLead) => void;
+  onOpenChat: (lead: SocialLead) => void;
+  onAskAI: (lead: SocialLead) => void;
+  onToggleInlineBreakdown: (leadId: string) => void;
+  onExpandSkills: (leadId: string) => void;
+  onCollapseSkills: (leadId: string) => void;
+  onToggleField: (cellKey: string) => void;
+}
+
+// Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
+// card only re-renders when ITS OWN props change — previously every card in
+// the visible list recomputed its full breakdown/palette/badges on every
+// PulsePage render, including ones triggered by unrelated interactions
+// elsewhere on the page (typing in search, hovering, etc).
+const LeadCard = memo(function LeadCard({
+  lead, paletteIndex, isDark, isHotlistFeed, feedTimeBasis, isLeadRevealed, globalAskedJobState,
+  predictResult, askedRequestedAt, askedFulfilledAt, revealedAt, isSkillsExpanded,
+  isExpFieldExpanded, isWorkTypeFieldExpanded, isEmpTypeFieldExpanded, isRateFieldExpanded, isVisaFieldExpanded, isLocationFieldExpanded,
+  isLoadingPreview, isProcessingChat, isProcessingAskAI,
+  onPreview, onOpenChat, onAskAI, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
+}: LeadCardProps) {
+  const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
+  const cardFillClass = cardPalette.fill;
+  const accentColor = cardPalette.titleColor;
+  const accentRgb = hexToRgbChannels(accentColor);
+  const cardBorderColor = `rgb(${accentRgb} / 0.45)`;
+  const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
+  const isAskPending = globalAskedJobState === 'asked';
+  const isVerified = globalAskedJobState === 'verified';
+  const canAskAI = !isAskPending && !isVerified && Boolean(extractPrimaryEmail(lead.posterEmail));
+  const {
+    expValue,
+    workTypeValue,
+    employmentTypeValue,
+    rateValue,
+    visaValue,
+    locationValue,
+    skillsValue,
+  } = getLeadBreakdownFieldValues(lead, isHotlistFeed);
+  const skillsValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
+  const linkClassName = isDark ? 'text-blue-300' : 'text-blue-600';
+
+  const actionButtonsBar = (
+    <div className="mt-auto pt-2 flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
+        disabled={isLoadingPreview}
+        title="Preview original post"
+        className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 text-[11px] font-semibold text-gray-700 transition-opacity hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:bg-transparent dark:text-gray-300 dark:hover:bg-white/5"
+      >
+        {isLoadingPreview ? '...' : <Eye size={13} strokeWidth={2} />}
+        Preview
+      </button>
+      {lead.postSource === 'user_post' ? (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onOpenChat(lead); }}
+          disabled={isProcessingChat}
+          title="Chat about this post"
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-[11px] font-semibold text-white transition-opacity hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {isProcessingChat ? '...' : <MessageSquare size={13} strokeWidth={2} />}
+          Chat
+        </button>
+      ) : isAskPending || isVerified ? (
+        <span
+          title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-50 text-[11px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
+        >
+          {isVerified ? <BadgeCheck size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2} />}
+          {isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
+          disabled={!canAskAI || isProcessingAskAI}
+          title={!lead.posterEmail ? 'No email' : 'Send Email'}
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-blue-600 bg-transparent px-2 text-[11px] font-semibold text-blue-600 transition-opacity hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-blue-400/40 dark:bg-transparent dark:text-blue-400 dark:hover:bg-blue-500/10"
+        >
+          {isProcessingAskAI ? '...' : isHotlistFeed ? <FileText size={13} strokeWidth={2} /> : <Send size={13} strokeWidth={2} />}
+          {isHotlistFeed ? 'Request' : 'Submit'}
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className={`relative flex h-full min-w-0 flex-col rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
+      <div>
+        <div className="min-w-0">
+          <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
+            <span>{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
+            <span>•</span>
+            <span>{isLeadRevealed ? lead.posterName : maskPosterName(lead.posterName)}</span>
+            {lead.company && (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span>•</span>
+                <Building2 size={10} className="shrink-0" style={{ color: accentColor }} />
+                <span className="text-[#94A3B8]">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
+              </span>
+            )}
+          </div>
+          {(predictResult || isAskPending || isVerified || isLeadRevealed || lead.postSource === 'user_post') && (
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
+              {predictResult && (
+                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${predictToneClass(predictResult.score, isDark)}`}>
+                  <Gauge size={9} strokeWidth={2.5} />
+                  {isHotlistFeed ? 'Match' : 'Predicted'} {predictResult.score}%
+                </span>
+              )}
+              {(isAskPending || isVerified) && (
+                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isVerified ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700')}`}>
+                  {isVerified ? <BadgeCheck size={9} strokeWidth={2.5} /> : <Check size={9} strokeWidth={2.5} />}
+                  {(() => {
+                    const stampIso = isVerified ? (askedFulfilledAt ?? askedRequestedAt) : askedRequestedAt;
+                    const label = isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted');
+                    return stampIso ? `${label} ${formatAgoCompact(stampIso)}` : label;
+                  })()}
+                </span>
+              )}
+              {isLeadRevealed && (
+                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                  <AtSign size={9} strokeWidth={2.5} />
+                  Revealed{revealedAt ? ` ${formatAgoCompact(revealedAt)}` : ''}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      {(() => {
+        const chipFields = [
+          { key: 'exp', value: expValue, isExpanded: isExpFieldExpanded, icon: GraduationCap, title: 'Experience' },
+          { key: 'workType', value: workTypeValue, isExpanded: isWorkTypeFieldExpanded, icon: Laptop, title: 'Work type' },
+          { key: 'empType', value: employmentTypeValue, isExpanded: isEmpTypeFieldExpanded, icon: Briefcase, title: 'Employment type' },
+          { key: 'rate', value: rateValue, isExpanded: isRateFieldExpanded, icon: DollarSign, title: 'Rate' },
+          { key: 'visa', value: visaValue, isExpanded: isVisaFieldExpanded, icon: Shield, title: 'Visa' },
+          { key: 'location', value: locationValue, isExpanded: isLocationFieldExpanded, icon: MapPin, title: 'Location' },
+        ].filter((field) => field.value !== '-');
+        if (chipFields.length === 0 && skillsValue === '-') return null;
+        return (
+        <div className="mt-1.5 min-w-0 rounded-md px-2.5 py-2 text-left bg-transparent">
+          {(() => {
+            if (chipFields.length === 0) return null;
+            return (
+              <div className="flex flex-wrap items-center gap-1">
+                {chipFields.map((field) => (
+                  <span
+                    key={field.key}
+                    title={field.title}
+                    className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] leading-tight ${isDark ? 'border-white/10 bg-white/5 text-[#CBD5E1]' : 'border-gray-200 bg-gray-50 text-slate-700'}`}
+                  >
+                    <field.icon size={10} className={isDark ? 'shrink-0 text-[#94A3B8]' : 'shrink-0 text-gray-400'} />
+                    <ClampedField value={field.value} linkClassName={linkClassName} isExpanded={field.isExpanded} onToggle={() => onToggleField(`${lead.id}:${field.key}`)} />
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+          {skillsValue !== '-' && (
+            <button
+              type="button"
+              onClick={() => onToggleInlineBreakdown(lead.id)}
+              title="Skills"
+              className="mt-2 w-full rounded-md py-1.5 text-left focus:outline-none bg-transparent"
+            >
+              <div className={`text-[9px] leading-tight break-words ${skillsValueClass}`}>
+                <ClampedSkills
+                  skillsValue={skillsValue}
+                  itemCap={8}
+                  linkClassName={linkClassName}
+                  isExpanded={isSkillsExpanded}
+                  onExpand={() => onExpandSkills(lead.id)}
+                  onCollapse={() => onCollapseSkills(lead.id)}
+                />
+              </div>
+            </button>
+          )}
+        </div>
+        );
+      })()}
+      {actionButtonsBar}
+    </div>
+  );
+});
+
+const SWIPE_COMMIT_THRESHOLD_PX = 120;
+const SWIPE_FLY_OFF_MS = 240;
+
+interface SwipeDeckProps {
+  leads: SocialLead[];
+  buildLeadCardProps: (lead: SocialLead, paletteIndex: number) => LeadCardProps;
+  isHotlistFeed: boolean;
+  onPass: (lead: SocialLead) => void;
+  onPitch: (lead: SocialLead) => void;
+}
+
+// Single-card "Pass"/"Pitch" view: always shows leads[0]. Acting on the top
+// lead (ignoring it, or asking/chatting about it) removes it from the
+// caller's feed array on the next render, so the next lead surfaces
+// automatically — no separate queue-index state needed here.
+const SwipeDeck = memo(function SwipeDeck({ leads, buildLeadCardProps, isHotlistFeed, onPass, onPitch }: SwipeDeckProps) {
+  const [dragging, setDragging] = useState(false);
+  const [dragX, setDragX] = useState(0);
+  const [leavingCard, setLeavingCard] = useState<{ lead: SocialLead; direction: 'left' | 'right' } | null>(null);
+  const dragStartXRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!leavingCard) return;
+    const timer = setTimeout(() => setLeavingCard(null), SWIPE_FLY_OFF_MS + 20);
+    return () => clearTimeout(timer);
+  }, [leavingCard]);
+
+  const commit = (lead: SocialLead, direction: 'left' | 'right') => {
+    setLeavingCard({ lead, direction });
+    setDragX(0);
+    if (direction === 'left') onPass(lead);
+    else onPitch(lead);
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (leavingCard) return;
+    dragStartXRef.current = event.clientX;
+    setDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging || dragStartXRef.current == null) return;
+    const delta = event.clientX - dragStartXRef.current;
+    if (Math.abs(delta) < 4) return;
+    setDragX(delta);
+  };
+
+  const endDrag = (displayLead: SocialLead | undefined) => {
+    if (!dragging) return;
+    setDragging(false);
+    dragStartXRef.current = null;
+    if (displayLead && Math.abs(dragX) >= SWIPE_COMMIT_THRESHOLD_PX) {
+      commit(displayLead, dragX > 0 ? 'right' : 'left');
+    } else {
+      setDragX(0);
+    }
+  };
+
+  if (leads.length === 0 && !leavingCard) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center py-16 text-center text-gray-400">
+        <CheckSquare size={22} className="mb-2 opacity-40" />
+        <p className="text-xs font-medium">{isHotlistFeed ? 'No consultants waiting' : 'No jobs waiting'}</p>
+        <p className="mt-0.5 text-[11px] opacity-70">You're all caught up</p>
+      </div>
+    );
+  }
+
+  const displayLead = leavingCard?.lead ?? leads[0];
+  const cardProps = displayLead ? buildLeadCardProps(displayLead, 0) : null;
+
+  const transform = leavingCard
+    ? `translateX(${leavingCard.direction === 'right' ? '160%' : '-160%'}) rotate(${leavingCard.direction === 'right' ? 24 : -24}deg)`
+    : `translateX(${dragX}px) rotate(${dragX / 20}deg)`;
+  const transition = leavingCard
+    ? `transform ${SWIPE_FLY_OFF_MS}ms ease-in, opacity ${SWIPE_FLY_OFF_MS}ms ease-in`
+    : dragging ? 'none' : 'transform 200ms ease-out';
+  const passOpacity = !leavingCard && dragX < 0 ? Math.min(1, Math.abs(dragX) / SWIPE_COMMIT_THRESHOLD_PX) : 0;
+  const pitchOpacity = !leavingCard && dragX > 0 ? Math.min(1, dragX / SWIPE_COMMIT_THRESHOLD_PX) : 0;
+
+  return (
+    <div className="mx-auto flex h-full w-full max-w-md flex-col items-center justify-center gap-4 py-2">
+      <div
+        className="relative w-full touch-none select-none"
+        style={{ transform, transition, opacity: leavingCard ? 0 : 1 }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={() => endDrag(displayLead)}
+        onPointerCancel={() => { setDragging(false); dragStartXRef.current = null; setDragX(0); }}
+      >
+        <div
+          className="pointer-events-none absolute left-3 top-3 z-10 -rotate-12 rounded border-2 border-red-500 px-2 py-0.5 text-sm font-extrabold uppercase tracking-wide text-red-500"
+          style={{ opacity: passOpacity }}
+        >
+          Pass
+        </div>
+        <div
+          className="pointer-events-none absolute right-3 top-3 z-10 rotate-12 rounded border-2 border-emerald-500 px-2 py-0.5 text-sm font-extrabold uppercase tracking-wide text-emerald-500"
+          style={{ opacity: pitchOpacity }}
+        >
+          Pitch
+        </div>
+        {cardProps && <LeadCard {...cardProps} />}
+      </div>
+
+      {displayLead && (
+        <div className="flex items-center gap-6">
+          <button
+            type="button"
+            onClick={() => commit(displayLead, 'left')}
+            disabled={Boolean(leavingCard)}
+            aria-label="Pass"
+            className="inline-flex h-14 w-14 items-center justify-center rounded-full border-2 border-red-200 bg-white text-red-500 shadow-sm transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-400/30 dark:bg-[#1E2126] dark:text-red-400 dark:hover:bg-red-500/10"
+          >
+            <X size={24} strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            onClick={() => commit(displayLead, 'right')}
+            disabled={Boolean(leavingCard)}
+            aria-label="Pitch"
+            className="inline-flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-200 bg-white text-emerald-500 shadow-sm transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-400/30 dark:bg-[#1E2126] dark:text-emerald-400 dark:hover:bg-emerald-500/10"
+          >
+            <Handshake size={22} strokeWidth={2.5} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+});
 
 function matchesExperienceRange(years: number | null, rangeId: string) {
   if (rangeId === 'all') return true;
@@ -1100,11 +1677,6 @@ function maskPosterName(name: string) {
   return `${trimmed.slice(0, 3)}***`;
 }
 
-function maskName(name: string) {
-  const trimmed = (name ?? '').trim();
-  return trimmed ? `${trimmed.slice(0, 3)}***` : 'Hidden';
-}
-
 function removeNameFromEmail(text: string, name: string) {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return text;
@@ -1396,6 +1968,19 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
   const [feedSearchFilters, setFeedSearchFilters] = useState<FeedSearchFilters>(DEFAULT_FEED_SEARCH_FILTERS);
+  // Free-text/numeric filter fields (skills, rate range) apply on
+  // blur/Enter/an explicit Apply click rather than live per-keystroke —
+  // scopedFeed re-filters the whole (potentially thousand-plus-row) feed on
+  // every feedSearchFilters change, so live-typing straight into it would
+  // reintroduce the same per-keystroke perf issue fixed elsewhere this
+  // session. Dropdown/checkbox filters (experience/workType/employmentType/
+  // visa/rate mode) are discrete clicks and apply immediately, no staging
+  // needed; location commits only when a place is picked/added (its own
+  // typing lives in LocationChipInput's internal draft state), so it
+  // doesn't need pending/apply staging either.
+  const [pendingSkillsFilter, setPendingSkillsFilter] = useState(feedSearchFilters.skillsQuery);
+  const [pendingRateMin, setPendingRateMin] = useState(feedSearchFilters.rateMin);
+  const [pendingRateMax, setPendingRateMax] = useState(feedSearchFilters.rateMax);
   const [pendingFeedSearchQuery, setPendingFeedSearchQuery] = useState('');
   const [vectorSearchLeadIds, setVectorSearchLeadIds] = useState<string[] | null>(null);
   const [vectorSearchLoading, setVectorSearchLoading] = useState(false);
@@ -1420,6 +2005,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [feedTimeBasis, setFeedTimeBasis] = useState<FeedTimeBasis>('posted');
   const [layoutMode, setLayoutMode] = useState<PulseLayoutMode>(getInitialPulseLayoutMode);
   const isTableLayout = layoutMode === 'table' && !isMobileViewport;
+  const isSwipeLayout = SWIPE_LAYOUT_ENABLED && layoutMode === 'swipe';
   const [tableSortKey, setTableSortKey] = useState<LeadTableSortKey | null>('posted');
   const [tableSortDirection, setTableSortDirection] = useState<'asc' | 'desc'>('desc');
   const [expandedSkillsLeadIds, setExpandedSkillsLeadIds] = useState<Set<string>>(new Set());
@@ -1786,7 +2372,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     };
   }, []);
 
-  const scopedFeed = useMemo(() => {
+  // Feed after the free-text search box only, before the sidebar's category
+  // filters — this is the base both scopedFeed (full filter) and the
+  // sidebar's per-option counts (filter minus the one category being
+  // counted, so picking more options within a category never shrinks its
+  // own option counts) are computed from.
+  const queryScopedFeed = useMemo(() => {
     let next = baseScopedFeed;
 
     if (feedSearchQuery.trim()) {
@@ -1815,39 +2406,83 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       }
     }
 
-    next = next.filter((lead) => {
-      const fields = getLeadFilterContext(lead);
-
-      if (!matchesExperienceRange(fields.experienceYears, feedSearchFilters.experienceRange)) return false;
-      if (feedSearchFilters.workType !== 'all' && fields.workType !== feedSearchFilters.workType) return false;
-      if (feedSearchFilters.employmentType !== 'all' && fields.employmentType !== feedSearchFilters.employmentType) return false;
-      if (feedSearchFilters.visaStatus !== 'all' && fields.visaStatus !== feedSearchFilters.visaStatus) return false;
-
-      if (feedSearchFilters.location.trim()) {
-        const locationQuery = normalize(feedSearchFilters.location);
-        if (!normalize(fields.location).includes(locationQuery)) return false;
-      }
-
-      if (feedSearchFilters.skillsQuery.trim()) {
-        const skillsQuery = normalize(feedSearchFilters.skillsQuery);
-        if (!normalize(fields.skills).includes(skillsQuery)) return false;
-      }
-
-      if (feedSearchFilters.rateMode === 'has_rate' && !fields.hasRate) return false;
-
-      if (feedSearchFilters.rateMode === 'range') {
-        const min = Number(feedSearchFilters.rateMin);
-        const max = Number(feedSearchFilters.rateMax);
-        if (fields.rateValue == null) return false;
-        if (Number.isFinite(min) && fields.rateValue < min) return false;
-        if (Number.isFinite(max) && fields.rateValue > max) return false;
-      }
-
-      return true;
-    });
-
     return next;
-  }, [baseScopedFeed, feedSearchFilters, feedSearchQuery, getLeadFilterContext, vectorSearchLeadIds]);
+  }, [baseScopedFeed, feedSearchQuery, vectorSearchLeadIds]);
+
+  const matchesLeadFilters = useCallback((lead: SocialLead, excludeCategory?: FeedFacetCategory) => {
+    const fields = getLeadFilterContext(lead);
+
+    if (excludeCategory !== 'experienceRange' && feedSearchFilters.experienceRange.length > 0) {
+      if (!feedSearchFilters.experienceRange.some((rangeId) => matchesExperienceRange(fields.experienceYears, rangeId))) return false;
+    }
+    if (excludeCategory !== 'workType' && feedSearchFilters.workType.length > 0 && !feedSearchFilters.workType.includes(fields.workType)) return false;
+    if (excludeCategory !== 'employmentType' && feedSearchFilters.employmentType.length > 0 && !feedSearchFilters.employmentType.includes(fields.employmentType)) return false;
+    if (excludeCategory !== 'visaStatus' && feedSearchFilters.visaStatus.length > 0 && !feedSearchFilters.visaStatus.includes(fields.visaStatus)) return false;
+
+    if (feedSearchFilters.location.length > 0) {
+      const normalizedFieldLocation = normalize(fields.location);
+      if (!feedSearchFilters.location.some((loc) => normalizedFieldLocation.includes(normalize(loc)))) return false;
+    }
+
+    if (feedSearchFilters.skillsQuery.trim()) {
+      const skillsQuery = normalize(feedSearchFilters.skillsQuery);
+      if (!normalize(fields.skills).includes(skillsQuery)) return false;
+    }
+
+    if (feedSearchFilters.rateMode === 'has_rate' && !fields.hasRate) return false;
+
+    if (feedSearchFilters.rateMode === 'range') {
+      const min = Number(feedSearchFilters.rateMin);
+      const max = Number(feedSearchFilters.rateMax);
+      if (fields.rateValue == null) return false;
+      if (Number.isFinite(min) && fields.rateValue < min) return false;
+      if (Number.isFinite(max) && fields.rateValue > max) return false;
+    }
+
+    return true;
+  }, [feedSearchFilters, getLeadFilterContext]);
+
+  const scopedFeed = useMemo(
+    () => queryScopedFeed.filter((lead) => matchesLeadFilters(lead)),
+    [queryScopedFeed, matchesLeadFilters],
+  );
+
+  const feedFacetCounts = useMemo(() => {
+    const counts: Record<FeedFacetCategory, Record<string, number>> = {
+      experienceRange: {}, workType: {}, employmentType: {}, visaStatus: {},
+    };
+    for (const lead of queryScopedFeed) {
+      const fields = getLeadFilterContext(lead);
+      if (matchesLeadFilters(lead, 'experienceRange')) {
+        for (const opt of EXPERIENCE_RANGE_OPTIONS) {
+          if (opt.id === 'all') continue;
+          if (matchesExperienceRange(fields.experienceYears, opt.id)) {
+            counts.experienceRange[opt.id] = (counts.experienceRange[opt.id] ?? 0) + 1;
+          }
+        }
+      }
+      if (matchesLeadFilters(lead, 'workType')) {
+        counts.workType[fields.workType] = (counts.workType[fields.workType] ?? 0) + 1;
+      }
+      if (matchesLeadFilters(lead, 'employmentType')) {
+        counts.employmentType[fields.employmentType] = (counts.employmentType[fields.employmentType] ?? 0) + 1;
+      }
+      if (matchesLeadFilters(lead, 'visaStatus')) {
+        counts.visaStatus[fields.visaStatus] = (counts.visaStatus[fields.visaStatus] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [queryScopedFeed, matchesLeadFilters, getLeadFilterContext]);
+
+  const toggleFeedFacetOption = useCallback((category: FeedFacetCategory, optionValue: string) => {
+    setFeedSearchFilters((prev) => {
+      const current = prev[category];
+      const next = current.includes(optionValue)
+        ? current.filter((v) => v !== optionValue)
+        : [...current, optionValue];
+      return { ...prev, [category]: next };
+    });
+  }, []);
 
   const dedupedScopedFeed = useMemo(() => {
     const byKey = new Map<string, SocialLead>();
@@ -2200,39 +2835,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     );
   }
 
-  const CARD_PALETTE = [
-    {
-      border: 'border-blue-100',
-      fill: 'bg-white dark:bg-[#1E2126]',
-      titleColor: '#38BDF8',
-    },
-    {
-      border: 'border-violet-100',
-      fill: 'bg-white dark:bg-[#1E2126]',
-      titleColor: '#FACC15',
-    },
-    {
-      border: 'border-emerald-100',
-      fill: 'bg-white dark:bg-[#1E2126]',
-      titleColor: '#34D399',
-    },
-    {
-      border: 'border-amber-100',
-      fill: 'bg-white dark:bg-[#1E2126]',
-      titleColor: '#FB7185',
-    },
-    {
-      border: 'border-rose-100',
-      fill: 'bg-white dark:bg-[#1E2126]',
-      titleColor: '#C084FC',
-    },
-    {
-      border: 'border-cyan-100',
-      fill: 'bg-white dark:bg-[#1E2126]',
-      titleColor: '#FB923C',
-    },
-  ];
-
   const BUTTON_TONE_BY_BORDER: Record<string, string> = {
     'border-blue-100': 'bg-blue-100/35 hover:bg-blue-100/55',
     'border-violet-100': 'bg-violet-100/35 hover:bg-violet-100/55',
@@ -2240,35 +2842,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     'border-amber-100': 'bg-amber-100/35 hover:bg-amber-100/55',
     'border-rose-100': 'bg-rose-100/35 hover:bg-rose-100/55',
     'border-cyan-100': 'bg-cyan-100/35 hover:bg-cyan-100/55',
-  };
-
-  const isRoleLikeBreakdownKey = (key: string) => {
-    const normalized = key.toLowerCase();
-    return (
-      normalized.includes('role') ||
-      normalized.includes('title') ||
-      normalized.includes('name_match')
-    );
-  };
-
-  const getPulseBreakdownOrder = (key: string) => {
-    const normalized = key.toLowerCase();
-    if (normalized.includes('experience') || normalized.includes('exp')) return 0;
-    if (normalized.includes('work_type') || normalized.includes('work type')) return 1;
-    if (normalized.includes('employment_type') || normalized.includes('employment type')) return 2;
-    if (normalized.includes('rate') || normalized.includes('hourly')) return 3;
-    if (normalized.includes('visa')) return 4;
-    if (normalized.includes('location')) return 5;
-    if (normalized.includes('skill')) return 6;
-    return 999;
-  };
-
-  const orderPulseBreakdownItems = <T extends { key: string }>(items: T[]) => {
-    return [...items].sort((a, b) => {
-      const orderDelta = getPulseBreakdownOrder(a.key) - getPulseBreakdownOrder(b.key);
-      if (orderDelta !== 0) return orderDelta;
-      return a.key.localeCompare(b.key);
-    });
   };
 
   const getMissingJobDetails = (lead: SocialLead) => {
@@ -2287,42 +2860,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         return !value || value === '-' || value === 'unknown' || value === 'not specified' || value === 'n/a';
       })
       .map((item) => formatBreakdownFieldName(item.key))));
-  };
-
-  const normalizeBreakdownDisplayValue = (value: string | null | undefined) => {
-    const cleaned = (value ?? '').trim();
-    const normalized = cleaned.toLowerCase().replace(/\s+/g, ' ');
-    if (!cleaned) return '-';
-    if (
-      normalized === 'unknown'
-      || normalized === 'not specified'
-      || normalized === 'not available'
-      || normalized === 'n/a'
-      || normalized === 'na'
-      || normalized === 'none'
-      || normalized === 'null'
-      || normalized === '-'
-      || normalized === '--'
-      || normalized === 'tbd'
-    ) {
-      return '-';
-    }
-    return cleaned;
-  };
-
-  const normalizeHotlistWorkType = (value: string) => {
-    const normalized = value.trim().toLowerCase().replace(/[-_]+/g, ' ');
-    if (/\bhybrid\b/.test(normalized)) return 'Hybrid';
-    if (/\bremote\b/.test(normalized)) return 'Remote';
-    if (/\bon\s*site\b|\bonsite\b/.test(normalized)) return 'Onsite';
-    return '-';
-  };
-
-  const renderMissingAwareValue = (value: string) => {
-    if (value === '-') {
-      return <PersonaMissingTag />;
-    }
-    return value;
   };
 
   const renderClampedSkills = (leadId: string, skillsValue: string, itemCap: number, linkClassName: string) => {
@@ -2414,38 +2951,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     );
   };
 
-  const getLeadBreakdownFieldValues = (lead: SocialLead) => {
-    const inlineBreakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
-      lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
-      undefined,
-      {
-        employment_type: lead.employmentType || null,
-        work_type: null,
-      },
-    ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
-    const getBreakdownValue = (matchers: string[]) => {
-      const found = inlineBreakdownItems.find((item) => {
-        const key = item.key.toLowerCase();
-        return matchers.some((matcher) => key.includes(matcher));
-      });
-      return normalizeBreakdownDisplayValue(found?.detail?.job_value);
-    };
-    const expValue = getBreakdownValue(['experience', 'exp']);
-    const rawWorkTypeValue = getBreakdownValue(['work_type', 'work type']);
-    const workTypeValue = isHotlistFeed ? normalizeHotlistWorkType(rawWorkTypeValue) : rawWorkTypeValue;
-    const employmentTypeValue = getBreakdownValue(['employment_type', 'employment type']);
-    const rateValue = getBreakdownValue(['rate', 'hourly']);
-    const visaValue = getBreakdownValue(['visa']);
-    const locationValue = getBreakdownValue(['location']);
-    const skillsValue = getBreakdownValue(['skill']);
-    return { inlineBreakdownItems, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue };
-  };
-
   // Hotlist leads ARE the consultant, so the pasted text is the job to match against —
   // the opposite direction from the jobs feed (job_context=job, consultant_text=pasted candidate).
   // Swap the payload so the worker's fixed "JOB vs CONSULTANT" prompt still lines up correctly.
   const buildPredictMatchFields = (lead: SocialLead, pastedText: string) => {
-    const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
+    const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead, isHotlistFeed);
     if (!isHotlistFeed) {
       return {
         consultantText: pastedText,
@@ -2469,13 +2979,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const verdictClassForScore = (score: number) => (
     score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-blue-600' : score >= 40 ? 'text-amber-600' : 'text-red-600'
   );
-
-  const predictToneClass = (score: number) => {
-    if (score >= 80) return isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100';
-    if (score >= 60) return isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100';
-    if (score >= 40) return isDark ? 'border-amber-400/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20' : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100';
-    return isDark ? 'border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100';
-  };
 
   const toggleBulkPredictLead = (leadId: string) => {
     setBulkPredictLeadIds((prev) => {
@@ -2555,259 +3058,83 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setBulkPredictLeadIds(new Set());
   };
 
+  const toggleInlineBreakdown = useCallback((leadId: string) => {
+    setExpandedInlineBreakdownLeadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(leadId)) next.delete(leadId);
+      else next.add(leadId);
+      return next;
+    });
+  }, []);
+
+  const expandCardSkills = useCallback((leadId: string) => {
+    setExpandedSkillsLeadIds((prev) => new Set(prev).add(leadId));
+  }, []);
+
+  const collapseCardSkills = useCallback((leadId: string) => {
+    setExpandedSkillsLeadIds((prev) => {
+      const next = new Set(prev);
+      next.delete(leadId);
+      return next;
+    });
+  }, []);
+
+  const toggleCardField = useCallback((cellKey: string) => {
+    setExpandedFieldKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(cellKey)) next.delete(cellKey);
+      else next.add(cellKey);
+      return next;
+    });
+  }, []);
+
+  // Plain function, not useCallback: its dependency array would eagerly
+  // reference handlePreviewPost/handleOpenPostChat/handleAskAI before they're
+  // declared further down in this component. Its own referential identity
+  // doesn't need to be stable anyway — callers spread the returned object
+  // into individual JSX props, so LeadCard's memo compares those directly.
+  const buildLeadCardProps = (lead: SocialLead, paletteIndex: number): LeadCardProps => {
+    const askedState = askedJobStateByLeadId[lead.id];
+    return {
+      lead,
+      paletteIndex,
+      isDark,
+      isHotlistFeed,
+      feedTimeBasis,
+      isLeadRevealed: revealedLeadIds.has(lead.id),
+      globalAskedJobState: globalAskedJobStateByLeadId[lead.id],
+      predictResult: predictResultByLeadId[lead.id],
+      askedRequestedAt: askedState?.requestedAt,
+      askedFulfilledAt: askedState?.fulfilledAt,
+      revealedAt: revealedAtByLeadId[lead.id],
+      isInlineBreakdownExpanded: expandedInlineBreakdownLeadIds.has(lead.id),
+      isSkillsExpanded: expandedSkillsLeadIds.has(lead.id),
+      isExpFieldExpanded: expandedFieldKeys.has(`${lead.id}:exp`),
+      isWorkTypeFieldExpanded: expandedFieldKeys.has(`${lead.id}:workType`),
+      isEmpTypeFieldExpanded: expandedFieldKeys.has(`${lead.id}:empType`),
+      isRateFieldExpanded: expandedFieldKeys.has(`${lead.id}:rate`),
+      isVisaFieldExpanded: expandedFieldKeys.has(`${lead.id}:visa`),
+      isLocationFieldExpanded: expandedFieldKeys.has(`${lead.id}:location`),
+      isLoadingPreview: loadingPostContentLeadId === lead.id,
+      isProcessingChat: processingChatLeadId === lead.id,
+      isProcessingAskAI: processingAskAILeadId === lead.id,
+      onPreview: handlePreviewPost,
+      onOpenChat: handleOpenPostChat,
+      onAskAI: handleAskAI,
+      onToggleInlineBreakdown: toggleInlineBreakdown,
+      onExpandSkills: expandCardSkills,
+      onCollapseSkills: collapseCardSkills,
+      onToggleField: toggleCardField,
+    };
+  };
+
   const renderLeadCards = (leads: SocialLead[], columns = 1) => leads.map((lead, idx) => {
     const safeColumns = Math.max(1, columns);
     const row = Math.floor(idx / safeColumns);
     const col = idx % safeColumns;
     // Spread palette by row/column so adjacent cards do not share a tone.
     const paletteIndex = (row + (col * 2)) % CARD_PALETTE.length;
-    const cardPalette = CARD_PALETTE[paletteIndex];
-    const cardBorderClass = cardPalette.border;
-    const cardFillClass = cardPalette.fill;
-    const accentColor = cardPalette.titleColor;
-    const accentRgb = hexToRgbChannels(accentColor);
-    const cardBorderColor = `rgb(${accentRgb} / 0.45)`;
-    const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
-    const isLeadRevealed = revealedLeadIds.has(lead.id);
-    const globalAskedJobState = globalAskedJobStateByLeadId[lead.id];
-    const isAskPending = globalAskedJobState === 'asked';
-    const isVerified = globalAskedJobState === 'verified';
-    const canAskAI = !isAskPending && !isVerified && Boolean(extractPrimaryEmail(lead.posterEmail));
-    const {
-      inlineBreakdownItems,
-      expValue,
-      workTypeValue,
-      employmentTypeValue,
-      rateValue,
-      visaValue,
-      locationValue,
-      skillsValue,
-    } = getLeadBreakdownFieldValues(lead);
-    const isInlineBreakdownExpanded = expandedInlineBreakdownLeadIds.has(lead.id);
-    const experienceInlineItem = inlineBreakdownItems.find((item) => {
-      const key = item.key.toLowerCase();
-      return key.includes('experience') || key.includes('exp');
-    });
-    const workTypeInlineItem = inlineBreakdownItems.find((item) => {
-      const key = item.key.toLowerCase();
-      return key.includes('work_type') || key.includes('work type');
-    });
-    const employmentTypeInlineItem = inlineBreakdownItems.find((item) => {
-      const key = item.key.toLowerCase();
-      return key.includes('employment_type') || key.includes('employment type');
-    });
-    const collapsedInlineBreakdownItems = [experienceInlineItem, workTypeInlineItem, employmentTypeInlineItem]
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .filter((item, idx, arr) => arr.findIndex((other) => other.key === item.key) === idx);
-
-    if (collapsedInlineBreakdownItems.length < 3) {
-      for (const item of inlineBreakdownItems) {
-        if (collapsedInlineBreakdownItems.some((existing) => existing.key === item.key)) continue;
-        collapsedInlineBreakdownItems.push(item);
-        if (collapsedInlineBreakdownItems.length >= 3) break;
-      }
-    }
-
-    const useFourColumnBreakdown = true;
-
-    const shouldForceExpandedBreakdown = isLeadRevealed;
-    const isExpandedBreakdownVisible = shouldForceExpandedBreakdown || isInlineBreakdownExpanded;
-    const metaSurfaceClass = 'bg-transparent';
-    const metaLabelClass = isDark ? 'text-[#64748B]' : 'text-slate-500';
-    const metaValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
-    const skillsValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
-    const revealedTableSurfaceClass = isDark
-      ? 'bg-[#272B31]/70 ring-white/10'
-      : 'bg-transparent ring-slate-200';
-    const revealedTableLabelClass = isDark ? 'text-[#64748B]' : 'text-slate-500';
-    const revealedTableValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
-
-    const actionButtonsBar = (
-      <div className="mt-2 flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); void handlePreviewPost(lead); }}
-          disabled={loadingPostContentLeadId === lead.id}
-          title="Preview original post"
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 text-[11px] font-semibold text-gray-700 transition-opacity hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:bg-transparent dark:text-gray-300 dark:hover:bg-white/5"
-        >
-          {loadingPostContentLeadId === lead.id ? '...' : <Eye size={13} strokeWidth={2} />}
-          Preview
-        </button>
-        {lead.postSource === 'user_post' ? (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); void handleOpenPostChat(lead); }}
-            disabled={processingChatLeadId === lead.id}
-            title="Chat about this post"
-            className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-[11px] font-semibold text-white transition-opacity hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {processingChatLeadId === lead.id ? '...' : <MessageSquare size={13} strokeWidth={2} />}
-            Chat
-          </button>
-        ) : isAskPending || isVerified ? (
-          <span
-            title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
-            className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-50 text-[11px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
-          >
-            {isVerified ? <BadgeCheck size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2} />}
-            {isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
-            disabled={!canAskAI || processingAskAILeadId === lead.id}
-            title={!lead.posterEmail ? 'No email' : 'Send Email'}
-            className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-[11px] font-semibold text-white transition-opacity hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {processingAskAILeadId === lead.id ? '...' : isHotlistFeed ? <FileText size={13} strokeWidth={2} /> : <Mail size={13} strokeWidth={2} />}
-            {isHotlistFeed ? 'Request' : 'Submit'}
-          </button>
-        )}
-      </div>
-    );
-    return (
-      <div key={lead.id} className={`relative min-w-0 rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
-        <div>
-          <div className="min-w-0">
-            <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
-              <span>{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
-              <span>•</span>
-              <span>{isLeadRevealed ? lead.posterName : maskPosterName(lead.posterName)}</span>
-              {lead.company && (
-                <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                  <span>•</span>
-                  <Building2 size={10} className="shrink-0" style={{ color: accentColor }} />
-                  <span className="text-[#94A3B8]">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
-                </span>
-              )}
-            </div>
-            {(predictResultByLeadId[lead.id] || isAskPending || isVerified || isLeadRevealed || lead.postSource === 'user_post') && (
-              <div className="mt-1 flex flex-wrap items-center gap-1">
-                {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
-                {predictResultByLeadId[lead.id] && (
-                  <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${predictToneClass(predictResultByLeadId[lead.id].score)}`}>
-                    <Gauge size={9} strokeWidth={2.5} />
-                    {isHotlistFeed ? 'Match' : 'Predicted'} {predictResultByLeadId[lead.id].score}%
-                  </span>
-                )}
-                {(isAskPending || isVerified) && (
-                  <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isVerified ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700')}`}>
-                    {isVerified ? <BadgeCheck size={9} strokeWidth={2.5} /> : <Check size={9} strokeWidth={2.5} />}
-                    {(() => {
-                      const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
-                      const label = isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted');
-                      return stampIso ? `${label} ${formatAgoCompact(stampIso)}` : label;
-                    })()}
-                  </span>
-                )}
-                {isLeadRevealed && (
-                  <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
-                    <AtSign size={9} strokeWidth={2.5} />
-                    Revealed{revealedAtByLeadId[lead.id] ? ` ${formatAgoCompact(revealedAtByLeadId[lead.id])}` : ''}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-        {inlineBreakdownItems.length > 0 && (
-          useFourColumnBreakdown ? (
-                <div className={`mt-1.5 min-w-0 rounded-md px-2.5 py-2 text-left ${metaSurfaceClass}`}>
-                  <div className="grid grid-cols-3 gap-x-3 gap-y-2">
-                    <div className="min-w-0">
-                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Exp</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'exp', expValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Work Type</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'workType', workTypeValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Emp Type</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'empType', employmentTypeValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Rate</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'rate', rateValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Visa</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'visa', visaValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Location</div>
-                      <div className={`text-[9px] leading-tight break-words ${metaValueClass}`}>{renderClampedField(lead.id, 'location', locationValue, isDark ? 'text-blue-300' : 'text-blue-600')}</div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExpandedInlineBreakdownLeadIds((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(lead.id)) next.delete(lead.id);
-                        else next.add(lead.id);
-                        return next;
-                      });
-                    }}
-                    className={`mt-2 w-full rounded-md py-1.5 text-left focus:outline-none ${metaSurfaceClass}`}
-                  >
-                    <div className={`text-[9px] uppercase tracking-wide ${metaLabelClass}`}>Skills</div>
-                    <div className={`text-[9px] leading-tight break-words ${skillsValueClass}`}>
-                      {renderClampedSkills(lead.id, skillsValue, 8, isDark ? 'text-blue-300' : 'text-blue-600')}
-                    </div>
-                  </button>
-                </div>
-          ) : (
-          isLeadRevealed ? (
-            <div className={`mt-1.5 w-full overflow-hidden rounded-md text-left ring-1 ring-inset ${revealedTableSurfaceClass}`}>
-              <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                <tbody>
-                  {inlineBreakdownItems.map((item) => (
-                    <tr key={item.key}>
-                      <td className={`bg-transparent px-2 py-1 break-words whitespace-normal ${revealedTableLabelClass}`}>{formatBreakdownFieldName(item.key)}</td>
-                      <td className={`bg-transparent px-2 py-1 break-words whitespace-normal ${revealedTableValueClass}`}>{renderMissingAwareValue(normalizeBreakdownDisplayValue(item.detail?.job_value))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setExpandedInlineBreakdownLeadIds((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(lead.id)) next.delete(lead.id);
-                  else next.add(lead.id);
-                  return next;
-                });
-              }}
-              className={`mt-1.5 w-full overflow-hidden rounded-md border ${cardBorderClass} text-left relative group focus:outline-none`}
-            >
-              <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                <tbody>
-                  {(isExpandedBreakdownVisible ? inlineBreakdownItems : collapsedInlineBreakdownItems).map((item, idx) => (
-                    <tr key={item.key}>
-                      <td className={`px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>{formatBreakdownFieldName(item.key)}</td>
-                      <td className={`px-2 py-1 break-words whitespace-normal transition-all duration-200 ${!isExpandedBreakdownVisible && idx >= 2 ? 'blur-sm select-none text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>{renderMissingAwareValue(normalizeBreakdownDisplayValue(item.detail?.job_value))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!isExpandedBreakdownVisible && (
-                <div className="absolute bottom-0 left-0 right-0 h-7 flex items-center justify-center pointer-events-none">
-                  <ChevronDown size={12} className="text-blue-500" />
-                </div>
-              )}
-            </button>
-          )
-        ))}
-        {actionButtonsBar}
-      </div>
-    );
+    return <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex)} />;
   });
 
   const parseLeadingNumber = (value: string): number => {
@@ -2843,7 +3170,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       const isAskPending = globalAskedJobState === 'asked';
       const isVerified = globalAskedJobState === 'verified';
       const canAskAI = !isAskPending && !isVerified && Boolean(extractPrimaryEmail(lead.posterEmail));
-      const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
+      const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead, isHotlistFeed);
       const postedTimestamp = new Date(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt).getTime();
 
       const sortValues: Record<LeadTableSortKey, string | number> = {
@@ -3009,7 +3336,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         title={!lead.posterEmail ? 'No email' : 'Send Email'}
                         className={askButtonClass}
                       >
-                        {processingAskAILeadId === lead.id ? <span>...</span> : isHotlistFeed ? <FileText size={12} strokeWidth={2} /> : <Mail size={12} strokeWidth={2} />}
+                        {processingAskAILeadId === lead.id ? <span>...</span> : isHotlistFeed ? <FileText size={12} strokeWidth={2} /> : <Send size={12} strokeWidth={2} />}
                       </button>
                     )}
                     <button
@@ -3035,6 +3362,31 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   useEffect(() => {
     try { localStorage.setItem(PULSE_LAYOUT_MODE_STORAGE_KEY, layoutMode); } catch {}
   }, [layoutMode]);
+
+  useEffect(() => {
+    if (isSwipeLayout && selectedMatchesTab !== 'queued') {
+      setSelectedMatchesTab('queued');
+    }
+  }, [isSwipeLayout, selectedMatchesTab]);
+
+  useEffect(() => {
+    setPendingSkillsFilter(feedSearchFilters.skillsQuery);
+    setPendingRateMin(feedSearchFilters.rateMin);
+    setPendingRateMax(feedSearchFilters.rateMax);
+  }, [feedSearchFilters.skillsQuery, feedSearchFilters.rateMin, feedSearchFilters.rateMax]);
+
+  const applyPendingTextFilters = useCallback(() => {
+    setFeedSearchFilters((prev) => ({
+      ...prev,
+      skillsQuery: pendingSkillsFilter,
+      rateMin: pendingRateMin,
+      rateMax: pendingRateMax,
+    }));
+  }, [pendingSkillsFilter, pendingRateMin, pendingRateMax]);
+
+  const handleFilterFieldKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') applyPendingTextFilters();
+  }, [applyPendingTextFilters]);
 
   useEffect(() => {
     setProfilePage(1);
@@ -4601,6 +4953,18 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
   }, [account?.id, showToast, user?.id]);
 
+  const handleSwipePass = useCallback((lead: SocialLead) => {
+    void persistLeadAction(lead.id, 'ignored');
+    setIgnoredLeadIds((prev) => new Set(prev).add(lead.id));
+  }, [persistLeadAction]);
+
+  const handleSwipePitch = useCallback((lead: SocialLead) => {
+    if (lead.postSource === 'user_post') {
+      void handleOpenPostChat(lead);
+    } else {
+      void handleAskAI(lead);
+    }
+  }, [handleOpenPostChat, handleAskAI]);
 
   const handlePreviewPost = useCallback(async (lead: SocialLead) => {
     if (!user || loadingPostContentLeadId) return;
@@ -4965,7 +5329,18 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     <Search size={12} className={vectorSearchLoading ? 'animate-pulse' : ''} />
                   </button>
 
-                  {!isMobileViewport && (
+                  {SWIPE_LAYOUT_ENABLED && isMobileViewport && (
+                    <button
+                      type="button"
+                      onClick={() => setLayoutMode(isSwipeLayout ? 'card' : 'swipe')}
+                      className="shrink-0 rounded-full border border-gray-200 bg-gray-50 p-1.5 text-gray-600 transition hover:bg-gray-100 dark:border-white/10 dark:bg-[#20242a] dark:text-[#94A3B8] dark:hover:bg-white/5"
+                      aria-label={isSwipeLayout ? 'Switch to list view' : 'Switch to swipe view'}
+                    >
+                      {isSwipeLayout ? <LayoutGrid size={12} /> : <Layers size={12} />}
+                    </button>
+                  )}
+
+                  {!isMobileViewport && !isSwipeLayout && (
                     <div className="flex shrink-0 items-center gap-1">
                       {matchesTabDefinitions.map((tab) => {
                         const isSelected = selectedMatchesTab === tab.id;
@@ -4997,6 +5372,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       {([
                         { id: 'card' as PulseLayoutMode, label: 'Cards', icon: LayoutGrid },
                         { id: 'table' as PulseLayoutMode, label: 'Table', icon: Table2 },
+                        ...(SWIPE_LAYOUT_ENABLED ? [{ id: 'swipe' as PulseLayoutMode, label: 'Swipe', icon: Layers }] : []),
                       ]).map((view) => (
                         <button
                           key={view.id}
@@ -5063,14 +5439,136 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 </div>
               </div>
 
+              <div className="flex min-h-0 flex-1 gap-3">
+              {!isMobileViewport && (
+                <aside className="flex h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
+                  <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-3 pb-2.5 dark:border-white/10">
+                    <span className="text-[11px] font-bold text-gray-900 dark:text-slate-100">Filters</span>
+                    {JSON.stringify(feedSearchFilters) !== JSON.stringify(DEFAULT_FEED_SEARCH_FILTERS) && (
+                      <button
+                        type="button"
+                        onClick={() => setFeedSearchFilters(DEFAULT_FEED_SEARCH_FILTERS)}
+                        className="text-[10px] font-semibold text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+                  {([
+                    { category: 'experienceRange' as FeedFacetCategory, title: 'Experience', options: EXPERIENCE_RANGE_OPTIONS.filter((opt) => opt.id !== 'all').map((opt) => ({ value: opt.id, label: `${opt.label} yrs` })) },
+                    { category: 'workType' as FeedFacetCategory, title: 'Work Type', options: WORK_TYPE_OPTIONS.filter((opt) => opt.value !== 'all') },
+                    { category: 'employmentType' as FeedFacetCategory, title: 'Employment Type', options: EMPLOYMENT_TYPE_OPTIONS.filter((opt) => opt.value !== 'all') },
+                    { category: 'visaStatus' as FeedFacetCategory, title: 'Visa', options: VISA_STATUS_OPTIONS.filter((opt) => opt.value !== 'all') },
+                  ]).map(({ category, title, options }) => (
+                    <div key={category}>
+                      <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">{title}</div>
+                      <div className="flex flex-col gap-0.5">
+                        {options.map((opt) => {
+                          const count = feedFacetCounts[category][opt.value] ?? 0;
+                          const isChecked = feedSearchFilters[category].includes(opt.value);
+                          return (
+                            <label
+                              key={opt.value}
+                              className={`flex cursor-pointer items-center justify-between gap-2 rounded px-1.5 py-1 text-[11px] transition ${isChecked ? (isDark ? 'bg-blue-500/10 text-blue-300' : 'bg-blue-50 text-blue-700') : (isDark ? 'text-slate-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50')} ${count === 0 && !isChecked ? 'opacity-40' : ''}`}
+                            >
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleFeedFacetOption(category, opt.value)}
+                                  disabled={count === 0 && !isChecked}
+                                  className="h-3 w-3 shrink-0 accent-blue-600"
+                                />
+                                <span className="truncate">{opt.label}</span>
+                              </span>
+                              <span className="shrink-0 text-[10px] tabular-nums text-gray-400 dark:text-[#64748B]">{count}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Location</label>
+                    <LocationChipInput
+                      values={feedSearchFilters.location}
+                      onChange={(next) => setFeedSearchFilters((prev) => ({ ...prev, location: next }))}
+                      placeholder="Search a city/state"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Skills</label>
+                    <input
+                      type="text"
+                      value={pendingSkillsFilter}
+                      onChange={(e) => setPendingSkillsFilter(e.target.value)}
+                      onBlur={applyPendingTextFilters}
+                      onKeyDown={handleFilterFieldKeyDown}
+                      placeholder="e.g. React"
+                      className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Rate</label>
+                    <select
+                      value={feedSearchFilters.rateMode}
+                      onChange={(e) => setFeedSearchFilters((prev) => ({ ...prev, rateMode: e.target.value as FeedSearchFilters['rateMode'] }))}
+                      className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200"
+                    >
+                      <option value="all">Any</option>
+                      <option value="has_rate">Has a rate listed</option>
+                      <option value="range">Within range</option>
+                    </select>
+                    {feedSearchFilters.rateMode === 'range' && (
+                      <div className="mt-1.5 flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={pendingRateMin}
+                          onChange={(e) => setPendingRateMin(e.target.value)}
+                          onBlur={applyPendingTextFilters}
+                          onKeyDown={handleFilterFieldKeyDown}
+                          placeholder="Min"
+                          className="w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
+                        />
+                        <span className="shrink-0 text-[10px] text-gray-400">–</span>
+                        <input
+                          type="number"
+                          value={pendingRateMax}
+                          onChange={(e) => setPendingRateMax(e.target.value)}
+                          onBlur={applyPendingTextFilters}
+                          onKeyDown={handleFilterFieldKeyDown}
+                          placeholder="Max"
+                          className="w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  </div>
+
+                  <div className="shrink-0 border-t border-gray-100 p-3 pt-2.5 dark:border-white/10">
+                    <button
+                      type="button"
+                      onClick={applyPendingTextFilters}
+                      className="w-full rounded-md bg-blue-600 px-2 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </aside>
+              )}
               <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-[#ffffff] dark:bg-transparent">
 
               <div
                 className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-[#ffffff] dark:bg-transparent slim-scrollbar' : 'overflow-hidden'}`}
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
-                onTouchStart={isMobileViewport ? handleMobilePullStart : undefined}
-                onTouchMove={isMobileViewport ? handleMobilePullMove : undefined}
-                onTouchEnd={isMobileViewport ? handleMobilePullEnd : undefined}
+                onTouchStart={isMobileViewport && !isSwipeLayout ? handleMobilePullStart : undefined}
+                onTouchMove={isMobileViewport && !isSwipeLayout ? handleMobilePullMove : undefined}
+                onTouchEnd={isMobileViewport && !isSwipeLayout ? handleMobilePullEnd : undefined}
               >
                 {false && isMobileViewport ? (
                   <div className="sticky top-0 z-20 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
@@ -5345,7 +5843,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 </div>
               </section>}
 
-              {isMobileViewport && (
+              {isMobileViewport && !isSwipeLayout && (
                 <div
                   className="sticky top-0 z-40 shrink-0 overflow-hidden bg-white px-1.5 transition-[max-height,opacity,transform] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
                   style={{
@@ -5410,7 +5908,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   ) : (
                     isMobileViewport ? (
                       <div>
-                        {filteredFeed.length === 0 ? (
+                        {isSwipeLayout ? (
+                          <SwipeDeck
+                            leads={recentVisibleFeed}
+                            buildLeadCardProps={buildLeadCardProps}
+                            isHotlistFeed={isHotlistFeed}
+                            onPass={handleSwipePass}
+                            onPitch={handleSwipePitch}
+                          />
+                        ) : filteredFeed.length === 0 ? (
                           <div className="flex items-center justify-center p-6 text-center">
                             <div>
                               <Radar size={16} className="mx-auto text-gray-300" />
@@ -5430,13 +5936,21 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           className={`min-h-0 h-full overflow-y-auto slim-scrollbar ${isTableLayout ? 'px-1.5 pb-1.5' : 'p-1.5'}`}
                           onScroll={selectedMatchesTab === 'previewed' ? handleDesktopPreviewedScroll : selectedMatchesTab === 'asked' ? handleDesktopAskedScroll : selectedMatchesTab === 'verified' ? handleDesktopVerifiedScroll : handleDesktopRecentScroll}
                         >
-                          {selectedMatchesTab === 'previewed' ? (
+                          {isSwipeLayout ? (
+                            <SwipeDeck
+                              leads={recentVisibleFeed}
+                              buildLeadCardProps={buildLeadCardProps}
+                              isHotlistFeed={isHotlistFeed}
+                              onPass={handleSwipePass}
+                              onPitch={handleSwipePitch}
+                            />
+                          ) : selectedMatchesTab === 'previewed' ? (
                             previewedVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No previewed consultants yet.' : 'No previewed jobs yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopPreviewedFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-start gap-1.5">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5">
                                 {renderLeadCards(visibleDesktopPreviewedFeed, 4)}
                               </div>
                             )
@@ -5446,7 +5960,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopAskedFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-start gap-1.5">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5">
                                 {renderLeadCards(visibleDesktopAskedFeed, 4)}
                               </div>
                             )
@@ -5456,7 +5970,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopVerifiedFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-start gap-1.5">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5">
                                 {renderLeadCards(visibleDesktopVerifiedFeed, 4)}
                               </div>
                             )
@@ -5466,7 +5980,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopRecentFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-start gap-1.5">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5">
                                 {renderLeadCards(visibleDesktopRecentFeed, 4)}
                               </div>
                             )
@@ -5478,6 +5992,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 </div>
               </section>
 
+              </div>
               </div>
               </div>
             </div>
@@ -5496,7 +6011,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           >
             <div className="flex items-start gap-2.5">
               <div className="min-w-0 flex-1">
-                <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating resume request' : 'Generating submission') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review submission')}</h2>
+                <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating email draft for request' : 'Generating email draft for submission') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review submission')}</h2>
                 {!askAIPreview.isGenerating && (askAIPreview.jobTitle || askAIPreview.company) && (
                   <p className="mt-0.5 truncate text-xs text-gray-500">
                     {askAIPreview.jobTitle}{askAIPreview.jobTitle && askAIPreview.company ? ' · ' : ''}{askAIPreview.company}
@@ -5516,7 +6031,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             {askAIPreview.isGenerating ? (
               <div className="flex min-h-56 flex-col items-center justify-center px-6 text-center">
                 <LogoSpinner size={28} />
-                <p className="mt-4 text-xs leading-relaxed text-gray-500">Preparing an email to {maskName(askAIPreview.vendorName)}.</p>
+                <p className="mt-4 text-xs leading-relaxed text-gray-500">{askAIPreview.leadType === 'hotlist' ? 'Generating email draft for request' : 'Generating email draft for submission'}</p>
               </div>
             ) : <>
             <div className="relative mt-3">
