@@ -38,6 +38,7 @@ const WhyAICopilot = lazy(() => import('./pages/WhyAICopilot'));
 const HowItWorks = lazy(() => import('./pages/HowItWorks'));
 const PulsePage = lazy(() => import('./pages/PulsePage'));
 const SocialHotlistPage = lazy(() => import('./pages/SocialHotlistPage'));
+const MyPostsPage = lazy(() => import('./pages/MyPostsPage'));
 const ProfilesPage = lazy(() => import('./pages/ProfilesPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const InboxPage = lazy(() => import('./pages/InboxPage'));
@@ -191,6 +192,7 @@ export default function App() {
             <Route path="/job-watch-ai" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
             <Route path="/jobs" element={<ProtectedRoute><ErrorBoundary><PulsePage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/hotlist" element={<ProtectedRoute><ErrorBoundary><SocialHotlistPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/posts" element={<ProtectedRoute><ErrorBoundary><MyPostsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><ProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             </Routes>

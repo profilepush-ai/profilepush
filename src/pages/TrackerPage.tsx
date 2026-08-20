@@ -12,6 +12,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile } from '../types/database';
 import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
+import { normalizePostSource, type PostSource } from '../lib/post-source';
+import PostSourceBadge from '../components/PostSourceBadge';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,7 @@ interface TrackerLead {
   revealedAt: string | null;
   submittedAt: string | null;
   verifiedAt: string | null;
+  postSource: PostSource;
 }
 
 function vendorMatchesLead(vendor: Pick<Vendor, 'email' | 'contact' | 'name' | 'contact_person'>, lead: TrackerLead): boolean {
@@ -379,11 +382,11 @@ export default function TrackerPage() {
     const [{ data: jobRows }, { data: hotlistRows }] = await Promise.all([
       supabase
         .from('social_jobs')
-        .select('id, job_title, company_name, location, posted_by_name, poster_email, poster_phone, platform, created_at, posted_at, extracted_role_normalized')
+        .select('id, job_title, company_name, location, posted_by_name, poster_email, poster_phone, platform, created_at, posted_at, extracted_role_normalized, post_source')
         .in('id', allLeadIds),
       supabase
         .from('social_hotlist')
-        .select('id, role_title, bench_sales_company_name, locations, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, platform, created_at, posted_at')
+        .select('id, role_title, bench_sales_company_name, locations, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, platform, created_at, posted_at, post_source')
         .in('id', allLeadIds),
     ]);
 
@@ -412,6 +415,7 @@ export default function TrackerPage() {
       id: string; job_title: string | null; company_name: string | null; location: string | null;
       posted_by_name: string | null; poster_email: string | null; poster_phone: string | null;
       platform: string | null; created_at: string; posted_at: string | null; extracted_role_normalized: string | null;
+      post_source: string | null;
     }>).map((row) => ({
       id: row.id,
       type: 'job' as const,
@@ -428,12 +432,13 @@ export default function TrackerPage() {
       revealedAt: revealedAtByLeadId.get(row.id) ?? null,
       submittedAt: submittedAtByLeadId.get(row.id) ?? null,
       verifiedAt: verifiedAtByLeadId.get(row.id) ?? null,
+      postSource: normalizePostSource(row.post_source),
     }));
 
     const hotlistLeads: TrackerLead[] = ((hotlistRows ?? []) as Array<{
       id: string; role_title: string | null; bench_sales_company_name: string | null; locations: string[] | null;
       bench_sales_recruiter_name: string | null; bench_sales_recruiter_email: string | null; bench_sales_recruiter_phone: string | null;
-      platform: string | null; created_at: string; posted_at: string | null;
+      platform: string | null; created_at: string; posted_at: string | null; post_source: string | null;
     }>).map((row) => ({
       id: row.id,
       type: 'hotlist' as const,
@@ -450,6 +455,7 @@ export default function TrackerPage() {
       revealedAt: revealedAtByLeadId.get(row.id) ?? null,
       submittedAt: submittedAtByLeadId.get(row.id) ?? null,
       verifiedAt: verifiedAtByLeadId.get(row.id) ?? null,
+      postSource: normalizePostSource(row.post_source),
     }));
 
     return [...jobLeads, ...hotlistLeads];
@@ -953,13 +959,8 @@ export default function TrackerPage() {
                     <span className="text-[#94A3B8]">{lead.company}</span>
                   </span>
                 )}
-                {lead.platform && (
-                  <>
-                    <span>•</span>
-                    <span className="font-bold uppercase text-[#64748B]">{lead.platform}</span>
-                  </>
-                )}
                 <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-[#94A3B8]'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
+                <PostSourceBadge source={lead.postSource} />
               </div>
 
               {leadStatusBadges(lead) && <div className="mt-1 flex flex-wrap items-center gap-1">{leadStatusBadges(lead)}</div>}

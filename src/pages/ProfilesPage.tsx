@@ -49,6 +49,9 @@ import { supabase } from '../lib/supabase';
 import { HOTLIST_AI_SUGGESTIONS } from '../lib/hotlist-ai-suggestions';
 import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
 import { matchesPulseFeedSearch, type PulseFeedSearchScope } from '../lib/pulse-feed-search';
+import { shouldChargeCredits } from '../lib/feature-gates';
+import { normalizePostSource, type PostSource } from '../lib/post-source';
+import PostSourceBadge from '../components/PostSourceBadge';
 
 type PulsePersona = {
   target_role: string;
@@ -91,6 +94,7 @@ type SocialLead = {
   experienceYears: number | null;
   visaTypes: string[];
   hourlyRate: string;
+  postSource: PostSource;
 };
 
 type HotlistRoleRow = {
@@ -171,6 +175,7 @@ type SocialJobRow = {
   hourly_rate_min?: number | null;
   hourly_rate_max?: number | null;
   relocation_required?: boolean | null;
+  post_source?: string | null;
 };
 
 type RadarSocialMatchRow = {
@@ -218,6 +223,7 @@ type PulseSocialFeedRpcRow = {
   hourly_rate_min?: number | null;
   hourly_rate_max?: number | null;
   relocation_required?: boolean | null;
+  post_source?: string | null;
 };
 
 type ProfileStats = {
@@ -255,6 +261,8 @@ type PulseDashboardStats = {
   job_submits_today: number;
   hotlist_previews_today: number;
   hotlist_requests_today: number;
+  jobs_posted: number;
+  hotlists_posted: number;
   by_user: PulseDashboardUserRow[];
 };
 
@@ -1732,11 +1740,7 @@ export default function ProfilesPage() {
               )}
               {leadScoreVisual.isRecommended && <RecommendedBadge />}
             </div>
-            {lead.platform && (
-              <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
-                {lead.platform}
-              </span>
-            )}
+            <PostSourceBadge source={lead.postSource} />
           </div>
         </div>
         {inlineBreakdownItems.length > 0 && (
@@ -2551,6 +2555,7 @@ export default function ProfilesPage() {
       hourly_rate_min: row.hourly_rate_min ?? null,
       hourly_rate_max: row.hourly_rate_max ?? null,
       relocation_required: row.relocation_required ?? null,
+      post_source: row.post_source ?? null,
     } as SocialJobRow & Record<string, unknown>));
 
     const newestMatchByJobId = new Map<string, RadarSocialMatchRow>();
@@ -2607,6 +2612,7 @@ export default function ProfilesPage() {
             : ((row.extracted_hourly_rate_min || row.extracted_hourly_rate_max)
               ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
               : ''),
+          postSource: normalizePostSource(row.post_source),
         } as SocialLead;
       });
 
@@ -2913,6 +2919,7 @@ export default function ProfilesPage() {
     feature: 'pulse_reveal_contact' | 'pulse_view_breakdown',
     metadata: Record<string, unknown>,
   ) => {
+    if (!shouldChargeCredits()) return true;
     if (!account?.id) {
       showToast('No account found for credit deduction', 'error');
       return false;
@@ -3080,7 +3087,7 @@ export default function ProfilesPage() {
           return next;
         });
         void persistLeadAction(lead.id, 'revealed');
-        showToast(`$${REVEAL_CONTACT_COST.toFixed(2)} credits consumed for reveal`, 'success');
+        if (shouldChargeCredits()) showToast(`$${REVEAL_CONTACT_COST.toFixed(2)} credits consumed for reveal`, 'success');
       }
 
       const saved = await saveVendorToTracker(lead);
@@ -3119,7 +3126,7 @@ export default function ProfilesPage() {
           return next;
         });
         void persistLeadAction(lead.id, 'breakdown');
-        showToast(`$${BREAKDOWN_COST.toFixed(2)} credits consumed for breakdown`, 'success');
+        if (shouldChargeCredits()) showToast(`$${BREAKDOWN_COST.toFixed(2)} credits consumed for breakdown`, 'success');
       }
 
       setSelectedLead(lead);
@@ -3145,12 +3152,14 @@ export default function ProfilesPage() {
             <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
               {!isMobileViewport && account?.id && (
                 <div className="shrink-0">
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                     {([
                       { number: 1, label: 'Job Previews', value: dashboardStats?.job_previews_today ?? 0, icon: Eye, tone: 'emerald' },
                       { number: 2, label: 'Job Submits', value: dashboardStats?.job_submits_today ?? 0, icon: Send, tone: 'blue' },
                       { number: 3, label: 'Hotlist Previews', value: dashboardStats?.hotlist_previews_today ?? 0, icon: Eye, tone: 'violet' },
                       { number: 4, label: 'Hotlist Requests', value: dashboardStats?.hotlist_requests_today ?? 0, icon: FileText, tone: 'pink' },
+                      { number: 5, label: 'Jobs Posted', value: dashboardStats?.jobs_posted ?? 0, icon: Briefcase, tone: 'orange' },
+                      { number: 6, label: 'Hotlists Posted', value: dashboardStats?.hotlists_posted ?? 0, icon: UserRound, tone: 'slate' },
                     ] as Array<{ number: number; label: string; value: string | number; icon: LucideIcon; tone: 'blue' | 'orange' | 'violet' | 'emerald' | 'pink' | 'slate' }>).map((card) => {
                       const toneClass = {
                         blue: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',

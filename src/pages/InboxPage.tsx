@@ -7,6 +7,7 @@ import {
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
 type ConversationStatus = 'pending' | 'open' | 'replied' | 'closed' | 'failed' | 'draft';
@@ -45,13 +46,13 @@ type SocialHotlistDetails = {
 
 type Conversation = {
   id: string;
-  source: 'sent' | 'draft';
+  source: 'sent' | 'draft' | 'chat';
   vendor_name: string;
   vendor_email: string;
   sender_name: string;
   subject: string;
   status: ConversationStatus;
-  channel: 'mailgun' | 'gmail';
+  channel: 'mailgun' | 'gmail' | 'chat';
   unread_count: number;
   last_message_at: string;
   created_at: string;
@@ -95,6 +96,8 @@ type Message = {
   }>;
   /** True for the synthesized message representing a generated-but-unsent draft. */
   isDraft?: boolean;
+  /** True for a message from the post_chat_messages in-app chat table. */
+  isChat?: boolean;
 };
 
 function draftMessage(conversation: Conversation): Message {
@@ -221,7 +224,6 @@ function JobReferenceCard({ conversation }: { conversation: Conversation }) {
   const title = job?.job_title || hotlist?.role_title || (conversation.hotlist_id ? 'Available Consultant' : 'Job opportunity');
   const posterName = job?.posted_by_name?.trim() || hotlist?.bench_sales_recruiter_name?.trim() || conversation.vendor_name;
   const companyName = job?.company_name || hotlist?.bench_sales_company_name || '';
-  const platform = job?.platform || hotlist?.platform || '';
   const postedAt = job?.posted_at || hotlist?.posted_at || job?.created_at || hotlist?.created_at || conversation.created_at;
 
   return (
@@ -232,7 +234,6 @@ function JobReferenceCard({ conversation }: { conversation: Conversation }) {
         <span>•</span>
         <span>Posted by {posterName}</span>
         {companyName && <><span>•</span><span>{companyName}</span></>}
-        {platform && <><span>•</span><span className="font-bold uppercase text-gray-500">{platform}</span></>}
       </div>
       <div className="mt-2">
       <JobDetailGrid details={details} />
@@ -245,6 +246,7 @@ export default function InboxPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const { isDark } = useTheme();
+  const { account } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(conversationId ?? null);
@@ -264,7 +266,8 @@ export default function InboxPage() {
   const [sendingReply, setSendingReply] = useState(false);
 
   const loadConversations = useCallback(async () => {
-    const [{ data, error }, { data: previewData, error: previewError }] = await Promise.all([
+    if (!account?.id) return;
+    const [{ data, error }, { data: previewData, error: previewError }, { data: chatData, error: chatError }] = await Promise.all([
       supabase
         .from('vendor_conversations')
         .select('id, vendor_name, vendor_email, sender_name, subject, status, channel, unread_count, last_message_at, created_at, job_id, hotlist_id, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
@@ -273,10 +276,21 @@ export default function InboxPage() {
         .from('pulse_ask_ai_previews' as never)
         .select('id, vendor_name, vendor_email, subject, email_content, job_id, hotlist_id, created_at, updated_at, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
         .order('updated_at', { ascending: false }),
+      supabase
+        .from('post_chat_threads' as never)
+        .select('id, subject, status, last_message_at, created_at, job_id, hotlist_id, owner_account_id, owner_display_name, owner_unread_count, participant_account_id, participant_display_name, participant_unread_count, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
+        .or(`owner_account_id.eq.${account.id},participant_account_id.eq.${account.id}`)
+        .order('last_message_at', { ascending: false }),
     ]);
     if (error || previewError) {
       setToast({ message: 'Could not load inbox', type: 'error' });
       return;
+    }
+    if (chatError) {
+      // Non-fatal: in-app chat is an additional source layered onto the
+      // inbox. If it errors (e.g. not yet provisioned), email/draft
+      // conversations should still load rather than the whole page failing.
+      console.error('Could not load post chat threads', chatError);
     }
     const conversationRows = ((data ?? []) as unknown as Omit<Conversation, 'radar_job_details' | 'source'>[]).map((row) => ({ ...row, source: 'sent' as const }));
     type PreviewRow = {
@@ -310,7 +324,44 @@ export default function InboxPage() {
       social_hotlist: row.social_hotlist,
       draftEmailContent: row.email_content,
     })) as unknown as Omit<Conversation, 'radar_job_details'>[];
-    const combinedRows = [...conversationRows, ...draftRows];
+    type ChatThreadRow = {
+      id: string;
+      subject: string;
+      status: 'open' | 'closed';
+      last_message_at: string;
+      created_at: string;
+      job_id: string | null;
+      hotlist_id: string | null;
+      owner_account_id: string;
+      owner_display_name: string;
+      owner_unread_count: number;
+      participant_account_id: string;
+      participant_display_name: string;
+      participant_unread_count: number;
+      social_jobs: SocialJobDetails | null;
+      social_hotlist: SocialHotlistDetails | null;
+    };
+    const chatRows = ((chatData ?? []) as unknown as ChatThreadRow[]).map((row) => {
+      const isOwner = row.owner_account_id === account.id;
+      return {
+        id: row.id,
+        source: 'chat' as const,
+        vendor_name: isOwner ? row.participant_display_name : row.owner_display_name,
+        vendor_email: '',
+        sender_name: '',
+        subject: row.subject,
+        status: row.status,
+        channel: 'chat' as const,
+        unread_count: isOwner ? row.owner_unread_count : row.participant_unread_count,
+        last_message_at: row.last_message_at,
+        created_at: row.created_at,
+        job_id: row.job_id,
+        hotlist_id: row.hotlist_id,
+        social_jobs: row.social_jobs,
+        social_hotlist: row.social_hotlist,
+      };
+    }) as unknown as Omit<Conversation, 'radar_job_details'>[];
+    const combinedRows = [...conversationRows, ...draftRows, ...chatRows];
     const jobIds = [...new Set(combinedRows.map((row) => row.job_id).filter((id): id is string => Boolean(id)))];
     const hotlistIds = [...new Set(combinedRows.map((row) => row.hotlist_id).filter((id): id is string => Boolean(id)))];
     const [{ data: radarRows }, { data: hotlistRadarRows }] = await Promise.all([
@@ -345,7 +396,42 @@ export default function InboxPage() {
       .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
     setConversations(rows);
     setSelectedId((current) => current ?? (window.matchMedia('(min-width: 640px)').matches ? rows[0]?.id ?? null : null));
-  }, []);
+  }, [account?.id]);
+
+  const loadChatMessages = useCallback(async (threadId: string) => {
+    setLoadingMessages(true);
+    const { data, error } = await supabase
+      .from('post_chat_messages' as never)
+      .select('id, sender_account_id, body, created_at')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true });
+    setLoadingMessages(false);
+    if (error) {
+      setToast({ message: 'Could not load messages', type: 'error' });
+      return;
+    }
+    const rows = (data ?? []) as unknown as Array<{ id: string; sender_account_id: string; body: string; created_at: string }>;
+    setMessages(rows.map((row): Message => ({
+      id: row.id,
+      direction: row.sender_account_id === account?.id ? 'outbound' : 'inbound',
+      sender_type: 'user',
+      from_email: '',
+      to_email: '',
+      subject: '',
+      text_body: row.body,
+      display_text: null,
+      display_text_status: null,
+      status: 'delivered',
+      error_message: null,
+      sent_at: row.created_at,
+      received_at: null,
+      created_at: row.created_at,
+      vendor_message_events: [],
+      vendor_message_attachments: [],
+      isChat: true,
+    })));
+    setMessagesConversationId(threadId);
+  }, [account?.id]);
 
   const loadMessages = useCallback(async (id: string) => {
     setLoadingMessages(true);
@@ -380,6 +466,15 @@ export default function InboxPage() {
       setMessagesConversationId(selectedId);
       return;
     }
+    if (selectedConversation?.source === 'chat') {
+      setMessagesConversationId(null);
+      void loadChatMessages(selectedId);
+      void supabase.rpc('mark_post_chat_thread_read' as never, { p_thread_id: selectedId } as never)
+        .then(() => setConversations((current) => current.map((item) => (
+          item.id === selectedId ? { ...item, unread_count: 0 } : item
+        ))));
+      return;
+    }
     setMessagesConversationId(null);
     void loadMessages(selectedId);
     void supabase.rpc('update_own_vendor_conversation', {
@@ -388,7 +483,7 @@ export default function InboxPage() {
     }).then(() => setConversations((current) => current.map((item) => (
       item.id === selectedId ? { ...item, unread_count: 0 } : item
     ))));
-  }, [loadMessages, selectedId]);
+  }, [loadChatMessages, loadMessages, selectedId]);
 
   useEffect(() => {
     if (!selectedId || messagesConversationId !== selectedId || lastAutoScrolledConversationId.current === selectedId) return;
@@ -416,9 +511,16 @@ export default function InboxPage() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'vendor_message_events' }, () => {
         if (selectedId) void loadMessages(selectedId);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'post_chat_threads' }, () => {
+        void loadConversations();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'post_chat_messages' }, (payload) => {
+        const row = payload.new as { thread_id?: string };
+        if (row.thread_id === selectedId) void loadChatMessages(selectedId);
+      })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [loadConversations, loadMessages, selectedId]);
+  }, [loadChatMessages, loadConversations, loadMessages, selectedId]);
 
   useEffect(() => {
     setSelectedId(conversationId ?? null);
@@ -493,6 +595,13 @@ export default function InboxPage() {
     if (!text || !selected || sendingReply) return;
     setSendingReply(true);
     try {
+      if (selected.channel === 'chat') {
+        const { error } = await supabase.rpc('send_post_chat_message' as never, { p_thread_id: selected.id, p_body: text } as never);
+        if (error) throw new Error(error.message);
+        setReplyText('');
+        void loadChatMessages(selected.id);
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('send-vendor-message', {
         body: {
           conversation_id: selected.id,
@@ -591,15 +700,16 @@ export default function InboxPage() {
               <button key={item.id} type="button" onClick={() => selectConversation(item.id)} className={`flex w-full border-b border-gray-100 px-3 py-3 text-left transition-colors ${selectedId === item.id ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
-                    <span className={`truncate text-xs ${item.unread_count > 0 ? 'font-bold text-gray-950' : 'font-semibold text-gray-800'}`}>{item.social_jobs?.job_title || item.social_hotlist?.role_title || 'Vendor request'}</span>
+                    <span className={`truncate text-xs ${item.unread_count > 0 ? 'font-bold text-gray-950' : 'font-semibold text-gray-800'}`}>{item.source === 'chat' ? item.vendor_name : (item.social_jobs?.job_title || item.social_hotlist?.role_title || 'Vendor request')}</span>
                     <span className="shrink-0 text-[10px] text-gray-400">{formatRelative(item.last_message_at)}</span>
                   </span>
                   <span className="mt-1 flex items-center justify-between gap-2">
-                    <span className="min-w-0 flex-1 whitespace-normal break-words text-[9px] leading-3 text-gray-400">{getJobSummary(item.radar_job_details)}</span>
+                    <span className="min-w-0 flex-1 whitespace-normal break-words text-[9px] leading-3 text-gray-400">{item.source === 'chat' ? item.subject : getJobSummary(item.radar_job_details)}</span>
                     {item.unread_count > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[9px] font-bold text-white">{item.unread_count}</span>}
                   </span>
-                  <span className="mt-1 flex items-center">
+                  <span className="mt-1 flex items-center gap-1">
                     <span className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide ${item.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{item.hotlist_id ? 'Hotlist' : 'Job'}</span>
+                    {item.source === 'chat' && <span className="shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide bg-indigo-50 text-indigo-700">Chat</span>}
                   </span>
                 </span>
               </button>
@@ -623,6 +733,9 @@ export default function InboxPage() {
                 <div className="flex-1" />
                 {selected.channel === 'gmail' && (
                   <span className="rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide bg-red-50 text-red-600" title="Sent from your connected Gmail address">Via Gmail</span>
+                )}
+                {selected.channel === 'chat' && (
+                  <span className="rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide bg-indigo-50 text-indigo-700" title="In-app chat">Chat</span>
                 )}
                 <span className={`rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${selected.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{selected.hotlist_id ? 'Hotlist' : 'Job'}</span>
                 <span className={`rounded px-2 py-1 text-[10px] font-semibold ${selected.status === 'failed' ? 'bg-red-50 text-red-700' : selected.status === 'replied' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selected.status]}</span>
@@ -671,11 +784,11 @@ export default function InboxPage() {
                           <div className="mt-3 flex flex-col gap-2 border-t border-gray-200/80 pt-2.5 sm:flex-row sm:items-center">
                             <div className="flex items-center justify-between gap-2 sm:justify-start">
                               <span className="inline-flex min-w-0 items-center gap-1 text-[10px] font-medium text-gray-500">
-                                {message.isDraft ? 'Generated' : outbound && (message.status === 'failed' || message.status === 'temporary_failed') ? <><AlertCircle size={11} className="text-red-600" /> <span className="text-red-600">Failed</span></> : deliveryState ? <><CheckCheck size={11} className={deliveryState.opened ? 'text-emerald-600' : 'text-blue-600'} /> <span className={deliveryState.opened ? 'text-emerald-700' : ''}>{deliveryState.label}</span></> : <span>{outbound ? 'Sent' : 'Received'}</span>}
+                                {message.isChat ? <span>{outbound ? 'Sent' : 'Received'}</span> : message.isDraft ? 'Generated' : outbound && (message.status === 'failed' || message.status === 'temporary_failed') ? <><AlertCircle size={11} className="text-red-600" /> <span className="text-red-600">Failed</span></> : deliveryState ? <><CheckCheck size={11} className={deliveryState.opened ? 'text-emerald-600' : 'text-blue-600'} /> <span className={deliveryState.opened ? 'text-emerald-700' : ''}>{deliveryState.label}</span></> : <span>{outbound ? 'Sent' : 'Received'}</span>}
                               </span>
                               <span className="shrink-0 text-[10px] text-gray-500">{formatMessageTime(message.sent_at || message.received_at || message.created_at)}</span>
                             </div>
-                            {message.isDraft ? (
+                            {message.isChat ? null : message.isDraft ? (
                               <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
                                 <button
                                   type="button"
@@ -724,7 +837,7 @@ export default function InboxPage() {
             ) : (
               <div className="shrink-0 border-t border-gray-200 bg-white p-2.5 sm:p-3">
                 <p className="mb-1.5 text-[10px] text-gray-400">
-                  {selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
+                  {selected.channel === 'chat' ? 'In-app chat — not sent by email' : selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
                 </p>
                 <div className="flex items-end gap-2">
                   <textarea

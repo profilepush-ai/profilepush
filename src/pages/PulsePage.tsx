@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Activity,
   AtSign,
@@ -20,6 +20,7 @@ import {
   Hash,
   LayoutGrid,
   Mail,
+  MessageSquare,
   Phone,
   Radar,
   RefreshCw,
@@ -51,6 +52,9 @@ import { supabase } from '../lib/supabase';
 import { HOTLIST_AI_SUGGESTIONS } from '../lib/hotlist-ai-suggestions';
 import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
 import { matchesPulseFeedSearch } from '../lib/pulse-feed-search';
+import { shouldChargeCredits } from '../lib/feature-gates';
+import { normalizePostSource, type PostSource } from '../lib/post-source';
+import PostSourceBadge from '../components/PostSourceBadge';
 
 type PulsePersona = {
   target_role: string;
@@ -97,6 +101,10 @@ type SocialLead = {
   hourlyRate: string;
   consultantCount?: number;
   candidateIndex?: number;
+  postSource: PostSource;
+  authorAccountId: string | null;
+  authorUserId: string | null;
+  authorName: string | null;
 };
 
 function compareDetailsAndPostedDate(a: SocialLead, b: SocialLead): number {
@@ -223,6 +231,10 @@ type SocialJobRow = {
   hourly_rate_min?: number | null;
   hourly_rate_max?: number | null;
   relocation_required?: boolean | null;
+  post_source?: string | null;
+  created_by_account_id?: string | null;
+  created_by_user_id?: string | null;
+  author_display_name?: string | null;
 };
 
 type RadarSocialMatchRow = {
@@ -271,6 +283,10 @@ type PulseSocialFeedRpcRow = {
   hourly_rate_min?: number | null;
   hourly_rate_max?: number | null;
   relocation_required?: boolean | null;
+  post_source?: string | null;
+  created_by_account_id?: string | null;
+  created_by_user_id?: string | null;
+  author_display_name?: string | null;
 };
 
 type PulseFeedCacheWorkerResponse = {
@@ -1368,6 +1384,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [feedLoading, setFeedLoading] = useState(false);
   const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
   const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('3d');
@@ -1396,6 +1413,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [expandedMobileProfileCardIds, setExpandedMobileProfileCardIds] = useState<Set<string>>(new Set());
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
   const [processingAskAILeadId, setProcessingAskAILeadId] = useState<string | null>(null);
+  const [processingChatLeadId, setProcessingChatLeadId] = useState<string | null>(null);
   const [askAIPreview, setAskAIPreview] = useState<AskAIPreview | null>(null);
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
@@ -2616,7 +2634,18 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           {loadingPostContentLeadId === lead.id ? '...' : <Eye size={13} strokeWidth={2} />}
           Preview
         </button>
-        {isAskPending || isVerified ? (
+        {lead.postSource === 'user_post' ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void handleOpenPostChat(lead); }}
+            disabled={processingChatLeadId === lead.id}
+            title="Chat about this post"
+            className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-[11px] font-semibold text-white transition-opacity hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {processingChatLeadId === lead.id ? '...' : <MessageSquare size={13} strokeWidth={2} />}
+            Chat
+          </button>
+        ) : isAskPending || isVerified ? (
           <span
             title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
             className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-50 text-[11px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
@@ -2647,22 +2676,17 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               <span>{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
               <span>•</span>
               <span>{isLeadRevealed ? lead.posterName : maskPosterName(lead.posterName)}</span>
-              {(lead.company || lead.platform) && (
+              {lead.company && (
                 <span className="inline-flex items-center gap-1 whitespace-nowrap">
                   <span>•</span>
-                  {lead.company && (
-                    <>
-                      <Building2 size={10} className="shrink-0" style={{ color: accentColor }} />
-                      <span className="text-[#94A3B8]">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
-                    </>
-                  )}
-                  {lead.company && lead.platform && <span>•</span>}
-                  {lead.platform && <span className="font-bold uppercase text-[#64748B]">{lead.platform}</span>}
+                  <Building2 size={10} className="shrink-0" style={{ color: accentColor }} />
+                  <span className="text-[#94A3B8]">{isLeadRevealed ? lead.company : `${lead.company.slice(0, 3)}***`}</span>
                 </span>
               )}
             </div>
-            {(predictResultByLeadId[lead.id] || isAskPending || isVerified || isLeadRevealed) && (
+            {(predictResultByLeadId[lead.id] || isAskPending || isVerified || isLeadRevealed || lead.postSource === 'user_post') && (
               <div className="mt-1 flex flex-wrap items-center gap-1">
+                {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
                 {predictResultByLeadId[lead.id] && (
                   <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${predictToneClass(predictResultByLeadId[lead.id].score)}`}>
                     <Gauge size={9} strokeWidth={2.5} />
@@ -2956,7 +2980,17 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 </td>
                 <td className="px-1.5 py-2 align-top">
                   <div className="flex flex-wrap items-center gap-1">
-                    {isAskPending || isVerified ? (
+                    {lead.postSource === 'user_post' ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); void handleOpenPostChat(lead); }}
+                        disabled={processingChatLeadId === lead.id}
+                        title="Chat about this post"
+                        className={askButtonClass}
+                      >
+                        {processingChatLeadId === lead.id ? <span>...</span> : <MessageSquare size={12} strokeWidth={2} />}
+                      </button>
+                    ) : isAskPending || isVerified ? (
                       <span
                         title={(() => {
                           const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
@@ -3182,7 +3216,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
       const { data: hotlistRows, error: hotlistRowsError } = await supabase
         .from('social_hotlist')
-        .select('id, platform, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_company_name, role_title, core_skills, years_experience, visa_type, employment_type, locations, hourly_rate_min, hourly_rate_max, raw_post_content, posted_at, created_at')
+        .select('id, platform, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_company_name, role_title, core_skills, years_experience, visa_type, employment_type, locations, hourly_rate_min, hourly_rate_max, raw_post_content, posted_at, created_at, post_source, created_by_account_id, created_by_user_id')
         .in('id', hotlistIds);
       if (hotlistRowsError) return;
 
@@ -3192,7 +3226,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         bench_sales_recruiter_phone: string | null; bench_sales_company_name: string | null; role_title: string | null;
         core_skills: string[] | null; years_experience: number | null; visa_type: string | null; employment_type: string | null;
         locations: string[] | null; hourly_rate_min: number | null; hourly_rate_max: number | null; raw_post_content: string | null;
-        posted_at: string | null; created_at: string;
+        posted_at: string | null; created_at: string; post_source: string | null; created_by_account_id: string | null; created_by_user_id: string | null;
       }>) {
         const eventTime = row.posted_at || row.created_at;
         nextHotlistLeads[row.id] = {
@@ -3221,6 +3255,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           hourlyRate: (row.hourly_rate_min != null || row.hourly_rate_max != null)
             ? `$${row.hourly_rate_min ?? '?'}–$${row.hourly_rate_max ?? '?'}/hr`
             : '',
+          postSource: normalizePostSource(row.post_source),
+          authorAccountId: row.created_by_account_id ?? null,
+          authorUserId: row.created_by_user_id ?? null,
+          authorName: null,
         };
       }
       setAskedLeadsById(nextHotlistLeads);
@@ -3270,7 +3308,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const { data: jobRows, error: jobsError } = await supabase
       .from('social_jobs')
-      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max')
+      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, post_source, created_by_account_id, created_by_user_id')
       .in('id', jobIds);
     if (jobsError) return;
 
@@ -3303,6 +3341,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         hourlyRate: (row.extracted_hourly_rate_min != null || row.extracted_hourly_rate_max != null)
           ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
           : '',
+        postSource: normalizePostSource(row.post_source),
+        authorAccountId: row.created_by_account_id ?? null,
+        authorUserId: row.created_by_user_id ?? null,
+        authorName: null,
       };
     }
     setAskedLeadsById(nextLeads);
@@ -3342,7 +3384,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const { data: jobRows, error: jobsError } = await supabase
       .from('social_jobs')
-      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max')
+      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, post_source, created_by_account_id, created_by_user_id')
       .in('id', leadIds);
     if (jobsError) return;
 
@@ -3375,6 +3417,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         hourlyRate: (row.extracted_hourly_rate_min != null || row.extracted_hourly_rate_max != null)
           ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
           : '',
+        postSource: normalizePostSource(row.post_source),
+        authorAccountId: row.created_by_account_id ?? null,
+        authorUserId: row.created_by_user_id ?? null,
+        authorName: null,
       };
     }
     setAskedLeadsById((prev) => ({ ...prev, ...nextLeads }));
@@ -3885,6 +3931,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       hourly_rate_min: row.hourly_rate_min ?? null,
       hourly_rate_max: row.hourly_rate_max ?? null,
       relocation_required: row.relocation_required ?? null,
+      post_source: row.post_source ?? null,
+      created_by_account_id: row.created_by_account_id ?? null,
+      created_by_user_id: row.created_by_user_id ?? null,
+      author_display_name: row.author_display_name ?? null,
     } as SocialJobRow & Record<string, unknown>));
 
     const newestMatchByJobId = new Map<string, RadarSocialMatchRow>();
@@ -3970,7 +4020,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       .filter((row) => {
         const postedTs = getPostedTimestamp(row);
         return newestMatchByJobId.has(row.id)
-          && (row.poster_email ?? '').trim()
+          && ((row.poster_email ?? '').trim() || row.post_source === 'user_post')
           && Number.isFinite(postedTs)
           && postedTs >= rangeCutoffMs;
       })
@@ -4031,6 +4081,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           candidateIndex: hotlistSource && Number.isInteger(Number(hotlistSource.candidate_index))
             ? Number(hotlistSource.candidate_index)
             : undefined,
+          postSource: normalizePostSource(row.post_source),
+          authorAccountId: row.created_by_account_id ?? null,
+          authorUserId: row.created_by_user_id ?? null,
+          authorName: row.author_display_name ?? null,
         } as SocialLead;
       });
 
@@ -4311,6 +4365,23 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   }, [showToast]);
 
 
+  const handleOpenPostChat = useCallback(async (lead: SocialLead) => {
+    if (!account?.id || processingChatLeadId) return;
+    setProcessingChatLeadId(lead.id);
+    try {
+      const { data, error } = await supabase.rpc('start_post_chat_thread' as never, {
+        p_post_kind: isHotlistFeed ? 'hotlist' : 'job',
+        p_post_id: lead.id,
+      } as never);
+      if (error || !data) throw new Error(error?.message || 'Could not start the conversation');
+      navigate(`/inbox/${data as string}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not start the conversation', 'error');
+    } finally {
+      setProcessingChatLeadId(null);
+    }
+  }, [account?.id, isHotlistFeed, navigate, processingChatLeadId, showToast]);
+
   const handleAskAI = useCallback(async (lead: SocialLead) => {
     if (!account?.id || processingAskAILeadId) return;
 
@@ -4461,6 +4532,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     feature: 'pulse_reveal_contact' | 'pulse_view_breakdown' | 'pulse_predict_match',
     metadata: Record<string, unknown>,
   ) => {
+    if (!shouldChargeCredits()) return true;
     if (!account?.id) {
       showToast('No account found for credit deduction', 'error');
       return false;
@@ -4551,7 +4623,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         });
         setPostContentViewedAtByLeadId((prev) => ({ ...prev, [lead.id]: new Date().toISOString() }));
         void persistLeadAction(lead.id, 'post_content_viewed');
-        showToast(`$${POST_CONTENT_COST.toFixed(2)} credits consumed for post preview`, 'success');
+        if (shouldChargeCredits()) showToast(`$${POST_CONTENT_COST.toFixed(2)} credits consumed for post preview`, 'success');
       }
 
       const { data, error } = await supabase
@@ -4594,7 +4666,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           return next;
         });
         void persistLeadAction(lead.id, 'breakdown');
-        showToast(`$${BREAKDOWN_COST.toFixed(2)} credits consumed for breakdown`, 'success');
+        if (shouldChargeCredits()) showToast(`$${BREAKDOWN_COST.toFixed(2)} credits consumed for breakdown`, 'success');
       }
 
       setSelectedLead(lead);
@@ -5560,8 +5632,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 >
                   <Gauge size={16} strokeWidth={2.5} />
                   {isHotlistFeed
-                    ? `Match Score for ${bulkPredictLeadIds.size} Consultants ($${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})`
-                    : `Predict ${bulkPredictLeadIds.size} Jobs ($${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})`}
+                    ? `Match Score for ${bulkPredictLeadIds.size} Consultants${shouldChargeCredits() ? ` ($${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})` : ''}`
+                    : `Predict ${bulkPredictLeadIds.size} Jobs${shouldChargeCredits() ? ` ($${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})` : ''}`}
                 </button>
               </>
             ) : (

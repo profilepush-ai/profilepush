@@ -4,19 +4,21 @@ import {
   ChevronDown, HelpCircle, LogOut, Settings,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, ShieldCheck, Briefcase, UserRound, MoonStar, SunMedium, Mail,
+  Activity, ShieldCheck, Briefcase, UserRound, MoonStar, SunMedium, Mail, Megaphone,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
 import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/notifications';
+import { shouldShowCreditsUi } from '../lib/feature-gates';
 
 const navItems = [
   { path: '/jobs',          label: 'Jobs',           mobileLabel: 'Jobs',    icon: Briefcase, hideOnMobile: false },
   { path: '/hotlist',       label: 'Hotlist',        mobileLabel: 'Hotlist', icon: UserRound, hideOnMobile: false },
+  { path: '/posts',        label: 'Posts',          mobileLabel: 'Posts',   icon: Megaphone, hideOnMobile: false },
   { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
-  { path: '/inbox',        label: 'Emails',         mobileLabel: 'Emails',  icon: Mail,      hideOnMobile: false },
+  { path: '/inbox',        label: 'Inbox',          mobileLabel: 'Inbox',   icon: Mail,      hideOnMobile: false },
   { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
 ];
 
@@ -229,16 +231,28 @@ export default function AppNav() {
   useEffect(() => {
     if (!user) return;
     const loadUnread = async () => {
-      const { data } = await supabase.from('vendor_conversations').select('unread_count');
-      setInboxUnread((data ?? []).reduce((sum, row) => sum + Number(row.unread_count || 0), 0));
+      const [{ data }, { data: chatData }] = await Promise.all([
+        supabase.from('vendor_conversations').select('unread_count'),
+        account?.id
+          ? supabase
+            .from('post_chat_threads' as never)
+            .select('owner_account_id, owner_unread_count, participant_account_id, participant_unread_count')
+            .or(`owner_account_id.eq.${account.id},participant_account_id.eq.${account.id}`)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const emailUnread = (data ?? []).reduce((sum, row) => sum + Number(row.unread_count || 0), 0);
+      const chatRows = (chatData ?? []) as unknown as Array<{ owner_account_id: string; owner_unread_count: number; participant_account_id: string; participant_unread_count: number }>;
+      const chatUnread = chatRows.reduce((sum, row) => sum + (row.owner_account_id === account?.id ? Number(row.owner_unread_count || 0) : Number(row.participant_unread_count || 0)), 0);
+      setInboxUnread(emailUnread + chatUnread);
     };
     void loadUnread();
     const channel = supabase
       .channel('inbox-nav-unread')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_conversations' }, () => { void loadUnread(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'post_chat_threads' }, () => { void loadUnread(); })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [user]);
+  }, [user, account?.id]);
 
   async function handleSignOut() {
     await signOut();
@@ -274,7 +288,7 @@ export default function AppNav() {
           >
             {isDark ? <SunMedium size={12} /> : <MoonStar size={12} />}
           </button>
-          {account != null && <CreditsChip balance={account.credits_balance} />}
+          {shouldShowCreditsUi() && account != null && <CreditsChip balance={account.credits_balance} />}
           <NotificationBell userId={user.id} />
           <Link
             to="/account"
@@ -306,7 +320,7 @@ export default function AppNav() {
         })}
 
         {/* Credits chip shown inline on mobile */}
-        {user && account != null && (
+        {shouldShowCreditsUi() && user && account != null && (
           <span className="sm:hidden flex items-center">
             <CreditsChip balance={account.credits_balance} />
           </span>
@@ -349,7 +363,7 @@ export default function AppNav() {
             {isDark ? <SunMedium size={13} /> : <MoonStar size={13} />}
           </button>
 
-          {account != null && (
+          {shouldShowCreditsUi() && account != null && (
             <span className="hidden sm:block">
               <CreditsChip balance={account.credits_balance} />
             </span>
@@ -386,7 +400,7 @@ export default function AppNav() {
                         <Building2 size={10} className="text-gray-400 shrink-0" />
                         <span className="text-[10px] text-gray-500 truncate">{account.name}</span>
                       </div>
-                      <CreditsChip balance={account.credits_balance} />
+                      {shouldShowCreditsUi() && <CreditsChip balance={account.credits_balance} />}
                     </div>
                   )}
                 </div>
@@ -441,6 +455,13 @@ export default function AppNav() {
             <span>Hotlist</span>
           </Link>
           <Link
+            to="/posts"
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <Megaphone size={18} />
+            <span>Posts</span>
+          </Link>
+          <Link
             to="/pulse"
             className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
           >
@@ -452,7 +473,7 @@ export default function AppNav() {
             className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Mail size={18} />
-            <span>Emails</span>
+            <span>Inbox</span>
             {inboxUnread > 0 && <span className="absolute right-[28%] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
           </Link>
           <Link
