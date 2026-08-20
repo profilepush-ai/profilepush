@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -62,7 +62,6 @@ interface JobFormState {
 
 interface HotlistFormState {
   roleTitle: string;
-  candidateName: string;
   coreSkills: string[];
   yearsExperience: string;
   visaType: string;
@@ -84,7 +83,7 @@ const EMPTY_JOB_FORM: JobFormState = {
 };
 
 const EMPTY_HOTLIST_FORM: HotlistFormState = {
-  roleTitle: '', candidateName: '', coreSkills: [], yearsExperience: '', visaType: '',
+  roleTitle: '', coreSkills: [], yearsExperience: '', visaType: '',
   employmentType: '', workType: '', locations: [], hourlyRateMin: '', hourlyRateMax: '',
   availability: '', candidateSummary: '', contactEmail: '', contactPhone: '',
 };
@@ -113,7 +112,6 @@ function hotlistFormFromPost(post: UserPost | null): HotlistFormState {
   if (!post) return EMPTY_HOTLIST_FORM;
   return {
     roleTitle: post.title,
-    candidateName: post.candidateName,
     coreSkills: post.skills,
     yearsExperience: post.experienceYears != null ? String(post.experienceYears) : '',
     visaType: post.visaType,
@@ -133,23 +131,27 @@ type ExtractedJobFields = {
   job_title?: string; company_name?: string; location?: string; employment_type?: string;
   seniority_level?: string; salary_range?: string; job_description?: string; skills?: string[];
   experience_years?: number; visa_types?: string[]; hourly_rate_min?: number; hourly_rate_max?: number;
+  contact_email?: string; contact_phone?: string;
 };
 
 type ExtractedHotlistFields = {
   role_title?: string; candidate_name?: string; core_skills?: string[]; years_experience?: number;
   visa_type?: string; employment_type?: string; work_type?: string; locations?: string[];
   hourly_rate_min?: number; hourly_rate_max?: number; availability?: string; candidate_summary?: string;
+  contact_email?: string; contact_phone?: string;
 };
 
 export default function PostFormModal({
   kind,
   existingPost,
+  initialPasteText,
   onClose,
   onSaved,
   showToast,
 }: {
   kind: PostKind;
   existingPost: UserPost | null;
+  initialPasteText?: string;
   onClose: () => void;
   onSaved: () => void;
   showToast: (message: string, type?: 'success' | 'error') => void;
@@ -163,16 +165,30 @@ export default function PostFormModal({
   const labelClass = `mb-1 block text-[10px] font-semibold ${isDark ? 'text-[#94A3B8]' : 'text-gray-600'}`;
   const [jobForm, setJobForm] = useState<JobFormState>(() => jobFormFromPost(existingPost));
   const [hotlistForm, setHotlistForm] = useState<HotlistFormState>(() => hotlistFormFromPost(existingPost));
-  const [pasteText, setPasteText] = useState(existingPost?.postContent ?? '');
+  const [pasteText, setPasteText] = useState(existingPost?.postContent ?? initialPasteText ?? '');
   const [extracting, setExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showMore, setShowMore] = useState(Boolean(existingPost));
+  const autoFillTriggeredRef = useRef(false);
 
   useEffect(() => {
     setJobForm(jobFormFromPost(existingPost));
     setHotlistForm(hotlistFormFromPost(existingPost));
-    setPasteText(existingPost?.postContent ?? '');
+    setPasteText(existingPost?.postContent ?? initialPasteText ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingPost]);
+
+  // Arriving here with text already pasted on the Posts page (rather than
+  // typed into this modal) — run the same extraction immediately instead of
+  // making the user click "Auto-fill" again for text they already supplied.
+  useEffect(() => {
+    if (autoFillTriggeredRef.current) return;
+    if (!existingPost && initialPasteText && initialPasteText.trim()) {
+      autoFillTriggeredRef.current = true;
+      void handleAutoFill();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isEditing = Boolean(existingPost);
   const title = kind === 'job'
@@ -203,14 +219,13 @@ export default function PostFormModal({
           visaTypes: Array.isArray(f.visa_types) && f.visa_types.length > 0 ? f.visa_types : prev.visaTypes,
           hourlyRateMin: f.hourly_rate_min ? String(f.hourly_rate_min) : prev.hourlyRateMin,
           hourlyRateMax: f.hourly_rate_max ? String(f.hourly_rate_max) : prev.hourlyRateMax,
-          contactEmail: prev.contactEmail,
-          contactPhone: prev.contactPhone,
+          contactEmail: f.contact_email?.trim() || prev.contactEmail,
+          contactPhone: f.contact_phone?.trim() || prev.contactPhone,
         }));
       } else {
         const f = data.fields as ExtractedHotlistFields;
         setHotlistForm((prev) => ({
           roleTitle: f.role_title?.trim() || prev.roleTitle,
-          candidateName: f.candidate_name?.trim() || prev.candidateName,
           coreSkills: Array.isArray(f.core_skills) && f.core_skills.length > 0 ? f.core_skills : prev.coreSkills,
           yearsExperience: f.years_experience ? String(f.years_experience) : prev.yearsExperience,
           visaType: f.visa_type?.trim() || prev.visaType,
@@ -221,8 +236,8 @@ export default function PostFormModal({
           hourlyRateMax: f.hourly_rate_max ? String(f.hourly_rate_max) : prev.hourlyRateMax,
           availability: f.availability?.trim() || prev.availability,
           candidateSummary: f.candidate_summary?.trim() || prev.candidateSummary,
-          contactEmail: prev.contactEmail,
-          contactPhone: prev.contactPhone,
+          contactEmail: f.contact_email?.trim() || prev.contactEmail,
+          contactPhone: f.contact_phone?.trim() || prev.contactPhone,
         }));
       }
       setShowMore(true);
@@ -264,7 +279,6 @@ export default function PostFormModal({
         if (!hotlistForm.roleTitle.trim()) throw new Error('Role title is required');
         const args = {
           p_role_title: hotlistForm.roleTitle.trim(),
-          p_candidate_name: hotlistForm.candidateName.trim(),
           p_core_skills: hotlistForm.coreSkills,
           p_years_experience: parseNumberInput(hotlistForm.yearsExperience),
           p_visa_type: hotlistForm.visaType.trim(),
@@ -419,10 +433,6 @@ export default function PostFormModal({
             <div>
               <label className={labelClass}>Role title *</label>
               <input className={inputClass} value={hotlistForm.roleTitle} onChange={(e) => setHotlistForm({ ...hotlistForm, roleTitle: e.target.value })} placeholder="Senior Java Full Stack Developer" />
-            </div>
-            <div>
-              <label className={labelClass}>Candidate name</label>
-              <input className={inputClass} value={hotlistForm.candidateName} onChange={(e) => setHotlistForm({ ...hotlistForm, candidateName: e.target.value })} />
             </div>
             <div>
               <label className={labelClass}>Locations</label>

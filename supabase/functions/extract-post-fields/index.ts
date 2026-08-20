@@ -61,6 +61,21 @@ type HotlistExtractResult = {
   candidates?: HotlistCandidate[];
 };
 
+// The Cloudflare Worker's extraction schema (built for the scraper pipeline,
+// which gets poster contact info from a separate source, not the post text)
+// never returns an email/phone — pull them out of the raw pasted text
+// directly with regex instead, which is more reliable than an LLM call for
+// a well-defined pattern like this anyway.
+function extractContactEmail(text: string): string {
+  const match = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  return match ? match[0] : "";
+}
+
+function extractContactPhone(text: string): string {
+  const match = text.match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/);
+  return match ? match[0].trim() : "";
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "POST") return jsonError("Method not allowed", 405);
@@ -135,6 +150,8 @@ Deno.serve(async (req: Request) => {
       visa_types: Array.isArray(r.visa_types) ? r.visa_types : [],
       hourly_rate_min: r.hourly_rate_min ?? 0,
       hourly_rate_max: r.hourly_rate_max ?? 0,
+      contact_email: extractContactEmail(text),
+      contact_phone: extractContactPhone(text),
     };
     return new Response(JSON.stringify({ ok: true, fields }), {
       status: 200,
@@ -157,6 +174,8 @@ Deno.serve(async (req: Request) => {
     hourly_rate_max: candidate.hourly_rate_max ?? 0,
     availability: candidate.availability ?? "",
     candidate_summary: candidate.candidate_summary ?? "",
+    contact_email: extractContactEmail(text),
+    contact_phone: extractContactPhone(text),
   };
   return new Response(JSON.stringify({ ok: true, fields }), {
     status: 200,

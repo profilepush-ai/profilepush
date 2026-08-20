@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Briefcase, Building2, Check, Clock3, Eye, MapPin, MessageSquare, Pencil, Plus, RotateCcw,
-  Search, Trash2, UserRound, X, XCircle,
+  Search, Sparkles, Trash2, UserRound, X, XCircle,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -80,6 +80,10 @@ export default function MyPostsPage() {
   const [editingPost, setEditingPost] = useState<UserPost | null>(null);
   const [previewPost, setPreviewPost] = useState<UserPost | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [landingPasteText, setLandingPasteText] = useState('');
+  const [showKindChooser, setShowKindChooser] = useState(false);
+  const [chosenKind, setChosenKind] = useState<PostKind>('job');
+  const [seedPasteText, setSeedPasteText] = useState<string | undefined>(undefined);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => setToast({ message, type }), []);
 
@@ -253,6 +257,26 @@ export default function MyPostsPage() {
     void loadPosts();
   }
 
+  function handleStartFromPaste() {
+    if (!landingPasteText.trim()) return;
+    setShowKindChooser(true);
+  }
+
+  function handleContinueToForm() {
+    setEditingPost(null);
+    setSeedPasteText(landingPasteText.trim());
+    setFormOpen(chosenKind);
+    setShowKindChooser(false);
+    setLandingPasteText('');
+  }
+
+  const pasteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  function handleAddPostClick() {
+    setShowKindChooser(false);
+    pasteTextareaRef.current?.focus();
+  }
+
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -370,7 +394,7 @@ export default function MyPostsPage() {
     return (
       <button
         type="button"
-        onClick={() => { setEditingPost(null); setFormOpen(tab); }}
+        onClick={handleAddPostClick}
         className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-blue-600 bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 ${fullWidth ? 'w-full' : ''}`}
       >
         <Plus size={13} />
@@ -409,17 +433,75 @@ export default function MyPostsPage() {
             </div>
           )}
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className={`mx-auto w-full max-w-xl text-center ${posts.length === 0 ? 'flex min-h-0 flex-1 flex-col items-center justify-center' : 'shrink-0 mb-3'}`}>
+            {!showKindChooser ? (
+              <>
+                <textarea
+                  ref={pasteTextareaRef}
+                  value={landingPasteText}
+                  onChange={(e) => setLandingPasteText(e.target.value)}
+                  rows={8}
+                  placeholder="Paste a job or hotlist post here — we'll auto-fill everything ✨"
+                  className={`w-full resize-none rounded-2xl border-0 px-5 py-4 text-center text-[13px] outline-none shadow-sm transition focus:ring-2 ${isDark ? 'bg-[#20242a] text-slate-100 placeholder:text-[#94A3B8] focus:ring-blue-500/30' : 'bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:ring-blue-200'}`}
+                />
+                <button
+                  type="button"
+                  onClick={handleStartFromPaste}
+                  disabled={!landingPasteText.trim()}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-6 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Sparkles size={15} />
+                  Continue
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="mb-2.5 text-[12px] font-semibold text-gray-900 dark:text-slate-100">Is this a Job post or a Hotlist/consultant post?</p>
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setChosenKind('job')}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[11px] font-semibold transition-colors ${chosenKind === 'job' ? 'border-blue-600 bg-blue-600 text-white' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}`}
+                  >
+                    <Briefcase size={12} />
+                    Job
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChosenKind('hotlist')}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[11px] font-semibold transition-colors ${chosenKind === 'hotlist' ? 'border-blue-600 bg-blue-600 text-white' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}`}
+                  >
+                    <UserRound size={12} />
+                    Hotlist
+                  </button>
+                </div>
+                <div className="mt-3 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowKindChooser(false)}
+                    className={`rounded-full px-4 py-1.5 text-[11px] font-semibold transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleContinueToForm}
+                    className="rounded-full bg-blue-600 px-5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className={`min-h-0 overflow-y-auto ${posts.length === 0 && !loading ? 'shrink-0' : 'flex-1'}`}>
             {loading ? (
               <div className="flex items-center justify-center py-16"><LogoSpinner size={22} /></div>
-            ) : filteredPosts.length === 0 ? (
+            ) : filteredPosts.length === 0 && posts.length > 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="text-xs font-semibold text-gray-500 dark:text-slate-400">
-                  {posts.length === 0 ? `No ${tab === 'job' ? 'job' : 'hotlist'} posts yet` : 'No posts match your search'}
-                </p>
-                <p className="mt-1 text-[11px] text-gray-400 dark:text-[#64748B]">
-                  {posts.length === 0 ? 'Create one to start getting responses from other recruiters on ProfilePush.' : 'Try a different search term.'}
-                </p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-slate-400">No posts match your search</p>
+                <p className="mt-1 text-[11px] text-gray-400 dark:text-[#64748B]">Try a different search term.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-3 pb-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -524,8 +606,9 @@ export default function MyPostsPage() {
         <PostFormModal
           kind={formOpen}
           existingPost={editingPost}
-          onClose={() => { setFormOpen(null); setEditingPost(null); }}
-          onSaved={() => { setFormOpen(null); setEditingPost(null); void loadPosts(); }}
+          initialPasteText={seedPasteText}
+          onClose={() => { setFormOpen(null); setEditingPost(null); setSeedPasteText(undefined); }}
+          onSaved={() => { setFormOpen(null); setEditingPost(null); setSeedPasteText(undefined); void loadPosts(); }}
           showToast={showToast}
         />
       )}
