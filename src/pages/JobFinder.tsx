@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, Bookmark, BookmarkCheck,
@@ -479,6 +479,12 @@ function dateMs(s: string | null | undefined): number {
   if (!s) return 0;
   const t = new Date(s).getTime();
   return isNaN(t) ? 0 : t;
+}
+
+function matchesJobQuery(q: string, title: string | null, company: string | null, loc: string | null) {
+  if (!q.trim()) return true;
+  const s = q.toLowerCase();
+  return (title ?? '').toLowerCase().includes(s) || (company ?? '').toLowerCase().includes(s) || (loc ?? '').toLowerCase().includes(s);
 }
 
 function scoreColor(score: number): { ring: string; bg: string; text: string; bar: string } {
@@ -2822,7 +2828,7 @@ export default function JobFinder() {
     CareerBuilder: cbJobs.length,
   };
 
-  const filteredHistoryJobs = historyJobs.filter(j => {
+  const filteredHistoryJobs = useMemo(() => historyJobs.filter(j => {
     if (profileSearchIds !== null && !profileSearchIds.has(j.search_id)) return false;
     if (historyBoardFilter !== 'All' && j.source !== historyBoardFilter.toLowerCase()) return false;
     if (historySearch.trim()) {
@@ -2840,27 +2846,37 @@ export default function JobFinder() {
       if (fetchedAt < cutoff) return false;
     }
     return true;
-  });
-  function _q(q: string, title: string | null, company: string | null, loc: string | null) {
-    if (!q.trim()) return true;
-    const s = q.toLowerCase();
-    return (title ?? '').toLowerCase().includes(s) || (company ?? '').toLowerCase().includes(s) || (loc ?? '').toLowerCase().includes(s);
-  }
+  }), [historyJobs, profileSearchIds, historyBoardFilter, historySearch, historyDateRange]);
 
-  const filteredCandidates = profiles.filter(p => {
+  const filteredCandidates = useMemo(() => profiles.filter(p => {
     const q = candidateQuery.toLowerCase();
     const matchQ = !q || p.candidate_name.toLowerCase().includes(q) || (p.target_role ?? '').toLowerCase().includes(q);
     if (!matchQ) return false;
     if (candidateTab === 'hotlist') return hotlistProfileIds.includes(p.id);
     return true;
-  });
+  }), [profiles, candidateQuery, candidateTab, hotlistProfileIds]);
 
   const globalQ = globalSearch.toLowerCase().trim();
-  const colLinkedinJobs = linkedinJobs.filter(j => _q(linkedinColFilter, j.job_title, j.company_name, j.location)).filter(j => _q(globalQ, j.job_title, j.company_name, j.location)).sort((a, b) => dateMs(b.created_at) - dateMs(a.created_at));
-  const colDiceJobs = diceJobs.filter(j => _q(diceColFilter, j.job_title, j.company_name, j.location)).filter(j => _q(globalQ, j.job_title, j.company_name, j.location)).sort((a, b) => dateMs(b.posted) - dateMs(a.posted) || dateMs(b.created_at) - dateMs(a.created_at));
-  const colIndeedJobs = indeedJobs.filter(j => _q(indeedColFilter, j.job_title, j.company_name, j.location_display)).filter(j => _q(globalQ, j.job_title, j.company_name, j.location_display)).sort((a, b) => dateMs(b.date_published) - dateMs(a.date_published) || dateMs(b.created_at) - dateMs(a.created_at));
-  const colMonsterJobs = monsterJobs.filter(j => _q(monsterColFilter, j.job_title, j.company_name, j.location_display)).filter(j => _q(globalQ, j.job_title, j.company_name, j.location_display)).sort((a, b) => dateMs(b.date_published) - dateMs(a.date_published) || dateMs(b.created_at) - dateMs(a.created_at));
-  const colCbJobs = cbJobs.filter(j => _q(cbColFilter, j.job_title, j.company_name, j.location_display)).filter(j => _q(globalQ, j.job_title, j.company_name, j.location_display)).sort((a, b) => dateMs(b.date_published) - dateMs(a.date_published) || dateMs(b.created_at) - dateMs(a.created_at));
+  const colLinkedinJobs = useMemo(
+    () => linkedinJobs.filter(j => matchesJobQuery(linkedinColFilter, j.job_title, j.company_name, j.location)).filter(j => matchesJobQuery(globalQ, j.job_title, j.company_name, j.location)).sort((a, b) => dateMs(b.created_at) - dateMs(a.created_at)),
+    [linkedinJobs, linkedinColFilter, globalQ],
+  );
+  const colDiceJobs = useMemo(
+    () => diceJobs.filter(j => matchesJobQuery(diceColFilter, j.job_title, j.company_name, j.location)).filter(j => matchesJobQuery(globalQ, j.job_title, j.company_name, j.location)).sort((a, b) => dateMs(b.posted) - dateMs(a.posted) || dateMs(b.created_at) - dateMs(a.created_at)),
+    [diceJobs, diceColFilter, globalQ],
+  );
+  const colIndeedJobs = useMemo(
+    () => indeedJobs.filter(j => matchesJobQuery(indeedColFilter, j.job_title, j.company_name, j.location_display)).filter(j => matchesJobQuery(globalQ, j.job_title, j.company_name, j.location_display)).sort((a, b) => dateMs(b.date_published) - dateMs(a.date_published) || dateMs(b.created_at) - dateMs(a.created_at)),
+    [indeedJobs, indeedColFilter, globalQ],
+  );
+  const colMonsterJobs = useMemo(
+    () => monsterJobs.filter(j => matchesJobQuery(monsterColFilter, j.job_title, j.company_name, j.location_display)).filter(j => matchesJobQuery(globalQ, j.job_title, j.company_name, j.location_display)).sort((a, b) => dateMs(b.date_published) - dateMs(a.date_published) || dateMs(b.created_at) - dateMs(a.created_at)),
+    [monsterJobs, monsterColFilter, globalQ],
+  );
+  const colCbJobs = useMemo(
+    () => cbJobs.filter(j => matchesJobQuery(cbColFilter, j.job_title, j.company_name, j.location_display)).filter(j => matchesJobQuery(globalQ, j.job_title, j.company_name, j.location_display)).sort((a, b) => dateMs(b.date_published) - dateMs(a.date_published) || dateMs(b.created_at) - dateMs(a.created_at)),
+    [cbJobs, cbColFilter, globalQ],
+  );
 
   // Per-board history: filter historyJobs by source and profileSearchIds
   function getBoardHistory(source: 'linkedin' | 'dice' | 'indeed' | 'monster' | 'careerbuilder'): HistoryJob[] {
@@ -2888,11 +2904,11 @@ export default function JobFinder() {
     return Object.entries(groups).map(([date, jobs]) => ({ date, jobs }));
   }
 
-  const linkedinBoardHistory = getBoardHistoryExcluding('linkedin', linkedinSearch?.id ?? null).filter(j => _q(globalQ, j.job_title, j.company_name, j.location));
-  const diceBoardHistory = getBoardHistoryExcluding('dice', diceSearch?.id ?? null).filter(j => _q(globalQ, j.job_title, j.company_name, j.location));
-  const indeedBoardHistory = getBoardHistoryExcluding('indeed', indeedSearch?.id ?? null).filter(j => _q(globalQ, j.job_title, j.company_name, j.location));
-  const monsterBoardHistory = getBoardHistoryExcluding('monster', monsterSearch?.id ?? null).filter(j => _q(globalQ, j.job_title, j.company_name, j.location));
-  const cbBoardHistory = getBoardHistoryExcluding('careerbuilder', cbSearch?.id ?? null).filter(j => _q(globalQ, j.job_title, j.company_name, j.location));
+  const linkedinBoardHistory = getBoardHistoryExcluding('linkedin', linkedinSearch?.id ?? null).filter(j => matchesJobQuery(globalQ, j.job_title, j.company_name, j.location));
+  const diceBoardHistory = getBoardHistoryExcluding('dice', diceSearch?.id ?? null).filter(j => matchesJobQuery(globalQ, j.job_title, j.company_name, j.location));
+  const indeedBoardHistory = getBoardHistoryExcluding('indeed', indeedSearch?.id ?? null).filter(j => matchesJobQuery(globalQ, j.job_title, j.company_name, j.location));
+  const monsterBoardHistory = getBoardHistoryExcluding('monster', monsterSearch?.id ?? null).filter(j => matchesJobQuery(globalQ, j.job_title, j.company_name, j.location));
+  const cbBoardHistory = getBoardHistoryExcluding('careerbuilder', cbSearch?.id ?? null).filter(j => matchesJobQuery(globalQ, j.job_title, j.company_name, j.location));
 
   function getBoardHistorySlice(board: string, history: HistoryJob[]) {
     const limit = boardHistoryLimit[board] ?? BOARD_HISTORY_PAGE;
