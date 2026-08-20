@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Briefcase, Building2, Eye, MapPin, MessageSquare, Pencil, Plus, RotateCcw,
+  Briefcase, Building2, Check, Clock3, Eye, MapPin, MessageSquare, Pencil, Plus, RotateCcw,
   Search, Trash2, UserRound, X, XCircle,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
@@ -12,6 +12,13 @@ import { supabase } from '../lib/supabase';
 import PostFormModal, { type PostKind, type UserPost } from '../components/posts/PostFormModal';
 
 type Tab = 'job' | 'hotlist';
+
+const RANGE_OPTIONS: Array<{ id: string; label: string; hours: number | null }> = [
+  { id: 'all', label: 'All time', hours: null },
+  { id: '24h', label: 'Last 24 hours', hours: 24 },
+  { id: '7d', label: 'Last 7 days', hours: 168 },
+  { id: '30d', label: 'Last 30 days', hours: 720 },
+];
 
 const CARD_PALETTE = [
   { border: 'border-blue-100', titleColor: '#38BDF8' },
@@ -49,11 +56,22 @@ function matchesSearch(post: UserPost, query: string): boolean {
   return haystack.includes(query.toLowerCase());
 }
 
+function matchesRange(post: UserPost, rangeId: string): boolean {
+  const range = RANGE_OPTIONS.find((option) => option.id === rangeId);
+  if (!range || range.hours == null) return true;
+  const cutoff = Date.now() - range.hours * 60 * 60 * 1000;
+  return new Date(post.createdAt).getTime() >= cutoff;
+}
+
 export default function MyPostsPage() {
   const { account } = useAuth();
   const { isDark } = useTheme();
   const [tab, setTab] = useState<Tab>('job');
+  const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [rangeId, setRangeId] = useState('all');
+  const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
+  const rangeMenuRef = useRef<HTMLDivElement | null>(null);
   const [jobPosts, setJobPosts] = useState<UserPost[]>([]);
   const [hotlistPosts, setHotlistPosts] = useState<UserPost[]>([]);
   const [metricsByPostId, setMetricsByPostId] = useState<Record<string, { previewCount: number; chatCount: number }>>({});
@@ -178,6 +196,22 @@ export default function MyPostsPage() {
     void loadPosts();
   }, [loadPosts]);
 
+  useEffect(() => {
+    if (!isRangeMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (rangeMenuRef.current && target && !rangeMenuRef.current.contains(target)) {
+        setIsRangeMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [isRangeMenuOpen]);
+
   async function handleToggleStatus(post: UserPost) {
     const nextStatus = post.postStatus === 'open' ? 'closed' : 'open';
     const rpcName = post.kind === 'job' ? 'update_user_job_post' : 'update_user_hotlist_post';
@@ -219,11 +253,131 @@ export default function MyPostsPage() {
     void loadPosts();
   }
 
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 639px)');
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  }, []);
+
   const posts = tab === 'job' ? jobPosts : hotlistPosts;
   const filteredPosts = useMemo(
-    () => posts.filter((post) => matchesSearch(post, searchQuery)),
-    [posts, searchQuery],
+    () => posts.filter((post) => matchesSearch(post, searchQuery) && matchesRange(post, rangeId)),
+    [posts, searchQuery, rangeId],
   );
+
+  const searchBoxEl = (
+    <div className="relative flex min-w-[160px] flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
+      <Search size={11} className="text-gray-400" />
+      <input
+        type="text"
+        value={pendingSearchQuery}
+        onChange={(e) => setPendingSearchQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            setSearchQuery(pendingSearchQuery.trim());
+          }
+        }}
+        placeholder="Search your posts"
+        className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400 dark:text-slate-200 dark:placeholder:text-[#64748B]"
+      />
+      {pendingSearchQuery && (
+        <button
+          type="button"
+          onClick={() => { setPendingSearchQuery(''); setSearchQuery(''); }}
+          className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600 dark:hover:bg-white/10"
+          aria-label="Clear search"
+        >
+          <X size={11} />
+        </button>
+      )}
+    </div>
+  );
+
+  const searchButtonEl = (
+    <button
+      type="button"
+      onClick={() => setSearchQuery(pendingSearchQuery.trim())}
+      className="shrink-0 rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700"
+      aria-label="Search"
+    >
+      <Search size={12} />
+    </button>
+  );
+
+  const rangeMenuEl = (
+    <div ref={rangeMenuRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setIsRangeMenuOpen((prev) => !prev)}
+        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100 dark:border-white/10 dark:bg-[#20242a] dark:text-[#94A3B8] dark:hover:bg-white/5"
+        aria-label="Change date range"
+      >
+        <Clock3 size={11} />
+        <span>{rangeId}</span>
+      </button>
+
+      {isRangeMenuOpen && (
+        <div className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[130px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg dark:border-white/10 dark:bg-[#20242a]">
+          {RANGE_OPTIONS.map((option) => {
+            const isActive = option.id === rangeId;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => { setRangeId(option.id); setIsRangeMenuOpen(false); }}
+                className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? (isDark ? 'bg-[#2A2E35] text-slate-100' : 'bg-gray-100 text-gray-800') : (isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50')}`}
+              >
+                <span>{option.label}</span>
+                {isActive ? <Check size={11} /> : null}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const tabDefs = [
+    { id: 'job' as Tab, label: 'Jobs', icon: Briefcase, count: jobPosts.length },
+    { id: 'hotlist' as Tab, label: 'Hotlist', icon: UserRound, count: hotlistPosts.length },
+  ];
+
+  function tabButtonsEl(fullWidth: boolean) {
+    return tabDefs.map((tabDef) => {
+      const isSelected = tab === tabDef.id;
+      const Icon = tabDef.icon;
+      return (
+        <button
+          key={tabDef.id}
+          type="button"
+          onClick={() => setTab(tabDef.id)}
+          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${fullWidth ? 'w-full' : ''} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
+        >
+          <Icon size={11} />
+          <span>{tabDef.label}</span>
+          <span>{tabDef.count}</span>
+        </button>
+      );
+    });
+  }
+
+  function addPostButtonEl(fullWidth: boolean) {
+    return (
+      <button
+        type="button"
+        onClick={() => { setEditingPost(null); setFormOpen(tab); }}
+        className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-blue-600 bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 ${fullWidth ? 'w-full' : ''}`}
+      >
+        <Plus size={13} />
+        Add Post
+      </button>
+    );
+  }
 
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
@@ -231,59 +385,29 @@ export default function MyPostsPage() {
 
       <main className="flex-1 min-h-0 overflow-hidden">
         <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2">
-          <div className="flex shrink-0 flex-wrap items-center gap-2 pb-2">
-            <div className="relative flex min-w-[200px] flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
-              <Search size={11} className="text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search your posts by title, company, location, skills"
-                className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400 dark:text-slate-200 dark:placeholder:text-[#64748B]"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600 dark:hover:bg-white/10"
-                  aria-label="Clear search"
-                >
-                  <X size={11} />
-                </button>
-              )}
+          {isMobileViewport ? (
+            <div className="flex shrink-0 flex-col gap-1.5 pb-2">
+              <div className="flex items-center gap-2">
+                {searchBoxEl}
+                {searchButtonEl}
+                {rangeMenuEl}
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {tabButtonsEl(true)}
+              </div>
+              {addPostButtonEl(true)}
             </div>
-
-            <div className="flex shrink-0 items-center gap-1">
-              {([
-                { id: 'job' as Tab, label: 'Jobs', icon: Briefcase, count: jobPosts.length },
-                { id: 'hotlist' as Tab, label: 'Hotlist', icon: UserRound, count: hotlistPosts.length },
-              ]).map((tabDef) => {
-                const isSelected = tab === tabDef.id;
-                const Icon = tabDef.icon;
-                return (
-                  <button
-                    key={tabDef.id}
-                    type="button"
-                    onClick={() => setTab(tabDef.id)}
-                    className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
-                  >
-                    <Icon size={11} />
-                    <span>{tabDef.label}</span>
-                    <span>{tabDef.count}</span>
-                  </button>
-                );
-              })}
+          ) : (
+            <div className="flex shrink-0 items-center gap-2 pb-2">
+              {searchBoxEl}
+              {searchButtonEl}
+              <div className="flex shrink-0 items-center gap-1">
+                {tabButtonsEl(false)}
+              </div>
+              {rangeMenuEl}
+              {addPostButtonEl(false)}
             </div>
-
-            <button
-              type="button"
-              onClick={() => { setEditingPost(null); setFormOpen(tab); }}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-blue-600 bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700"
-            >
-              <Plus size={13} />
-              Add Post
-            </button>
-          </div>
+          )}
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? (
