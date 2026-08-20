@@ -255,7 +255,7 @@ export default function InboxPage() {
   const lastAutoScrolledConversationId = useRef<string | null>(null);
   const [query, setQuery] = useState('');
   const [pendingQuery, setPendingQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'asked' | 'replied'>('all');
+  const [filter, setFilter] = useState<'recent' | 'job' | 'hotlist'>('recent');
   const [rangeId, setRangeId] = useState<InboxRangeId>('7d');
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -541,14 +541,14 @@ export default function InboxPage() {
   }, [conversations, query, rangeId]);
 
   const tabCounts = useMemo(() => ({
-    all: scopedConversations.length,
-    asked: scopedConversations.filter((item) => ['pending', 'open', 'draft'].includes(item.status)).length,
-    replied: scopedConversations.filter((item) => item.status === 'replied').length,
+    recent: scopedConversations.length,
+    job: scopedConversations.filter((item) => !item.hotlist_id).length,
+    hotlist: scopedConversations.filter((item) => Boolean(item.hotlist_id)).length,
   }), [scopedConversations]);
 
   const filtered = useMemo(() => scopedConversations.filter((item) => {
-    if (filter === 'asked') return ['pending', 'open', 'draft'].includes(item.status);
-    if (filter === 'replied') return item.status === 'replied';
+    if (filter === 'job') return !item.hotlist_id;
+    if (filter === 'hotlist') return Boolean(item.hotlist_id);
     return true;
   }), [filter, scopedConversations]);
 
@@ -673,15 +673,19 @@ export default function InboxPage() {
               </div>
             </div>
             <div className="mt-1.5 grid w-full grid-cols-3 gap-1">
-              {(['all', 'asked', 'replied'] as const).map((option) => (
+              {([
+                { id: 'recent' as const, label: 'Recent' },
+                { id: 'job' as const, label: 'Jobs' },
+                { id: 'hotlist' as const, label: 'Hotlist' },
+              ]).map((option) => (
                 <button
-                  key={option}
+                  key={option.id}
                   type="button"
-                  onClick={() => setFilter(option)}
-                  className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold capitalize transition ${filter === option ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
+                  onClick={() => setFilter(option.id)}
+                  className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${filter === option.id ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
                 >
-                  <span>{option}</span>
-                  <span>{tabCounts[option]}</span>
+                  <span>{option.label}</span>
+                  <span>{tabCounts[option.id]}</span>
                 </button>
               ))}
             </div>
