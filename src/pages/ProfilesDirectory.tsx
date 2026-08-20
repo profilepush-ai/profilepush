@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabase';
 import { throttledAll } from '../lib/query-throttle';
 import { triggerProfileEmbedding } from '../lib/embeddings';
 import { getMatchHealthPercent } from '../lib/match-health';
+import { isPaidPlanEffective } from '../lib/feature-gates';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile, WishlistedJob, EducationEntry, ExperienceEntry, ResumeFile, ActivityLog, ProfileAssignment } from '../types/database';
 
@@ -520,7 +521,7 @@ export default function ProfilesDirectory() {
   const [hotlistRows, setHotlistRows] = useState<HotlistRow[]>([]);
   const [hotlistAdding, setHotlistAdding] = useState<string | null>(null);
   const [sidebarTabInitialized, setSidebarTabInitialized] = useState(false);
-  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+  const isPaidPlan = isPaidPlanEffective(subscription);
 
   async function addProfileToHotlist(profileId: string) {
     if (!account?.id) return;

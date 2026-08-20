@@ -21,6 +21,7 @@ import { throttled, throttledAll } from '../lib/query-throttle';
 import { buildProfileBoardStats } from '../lib/job-finder-stats';
 import { useAuth } from '../contexts/AuthContext';
 import { generateMockJobs, type MockJob } from '../lib/mockJobs';
+import { isPaidPlanEffective } from '../lib/feature-gates';
 import type { Profile } from '../types/database';
 
 interface SearchIdea {
@@ -1317,7 +1318,7 @@ export default function JobFinder() {
     }
   }
 
-  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+  const isPaidPlan = isPaidPlanEffective(subscription);
   const boardCooldownKeyByLabel: Record<string, string> = {
     LinkedIn: 'linkedin',
     Dice: 'dice',

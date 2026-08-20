@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
 import { isGmailFeatureEnabled } from '../lib/gmail-feature-flag';
+import { isPaidPlanEffective, shouldShowCreditsUi } from '../lib/feature-gates';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ export default function AccountSettings() {
   const { user, account, membership, subscription, refreshAccount, signOut } = useAuth();
 
   const isOwner = membership?.role === 'owner';
-  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+  const isPaidPlan = isPaidPlanEffective(subscription);
   const gmailFeatureEnabled = isGmailFeatureEnabled(user?.email);
 
   // ── Global ──────────────────────────────────────────────────
@@ -792,11 +793,13 @@ export default function AccountSettings() {
                   </div>
 
                   <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 sm:gap-4">
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <p className="text-[10px] text-gray-400 mb-1">AI Credits Balance</p>
-                      <p className="text-2xl font-black text-gray-900">${Number(account?.credits_balance ?? 0).toFixed(2)}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Available for AI features</p>
-                    </div>
+                    {shouldShowCreditsUi() && (
+                      <div className="bg-gray-50 rounded-xl p-4">
+                        <p className="text-[10px] text-gray-400 mb-1">AI Credits Balance</p>
+                        <p className="text-2xl font-black text-gray-900">${Number(account?.credits_balance ?? 0).toFixed(2)}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Available for AI features</p>
+                      </div>
+                    )}
                     <div className="bg-gray-50 rounded-xl p-4">
                       <p className="text-[10px] text-gray-400 mb-1">Team Size</p>
                       <p className="text-2xl font-black text-gray-900">{activeMembers.length}</p>

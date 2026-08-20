@@ -2,7 +2,13 @@ export const FREE_PLAN_DAILY_SEARCH_LIMIT = 5;
 export const FREE_PLAN_LIVE_MATCH_LIMIT = 5;
 export const DAILY_USAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+// Paywall disabled 2026-08-19 so the platform runs free "for now". Flip
+// back to true to restore subscription-tier rate limiting; the checks below
+// stay in place and just get short-circuited.
+export const BILLING_GATES_ENABLED = false;
+
 export async function getIsPaidPlan(supabase: { from: (table: string) => { select: (cols: string) => { eq: (column: string, value: string) => { maybeSingle: () => Promise<{ data?: { status?: string; plan_amount_usd?: number | null } | null }> } } } }, accountId: string | null): Promise<boolean> {
+  if (!BILLING_GATES_ENABLED) return true;
   if (!accountId) return false;
 
   const { data: sub } = await supabase.from("subscriptions").select("status, plan_amount_usd").eq("account_id", accountId).maybeSingle();
@@ -20,6 +26,7 @@ export function countRecentUsageEvents(timestamps: Array<number | string>, now: 
 }
 
 export function isUsageAllowed(currentCount: number, limit: number): boolean {
+  if (!BILLING_GATES_ENABLED) return true;
   return currentCount < limit;
 }
 

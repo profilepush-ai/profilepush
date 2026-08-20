@@ -21,6 +21,7 @@ import { getMatchHealthPercent } from '../lib/match-health';
 import { buildDemoRolePayload, getCreatedAtTimestamp, getDemoRoleDisplayMatchCount, getLiveMatchActionLabel, getWatchListDisplayMatchCount } from '../lib/demo-role-utils';
 import { buildScoreBreakdownDisplayItems, getDisplayJobDescription, getDisplayJobTitle, getSourceBadgeDisplayName, getSourceCategoryLabel } from '../lib/radar-match-ui';
 import { normalizeRadarMatchResults } from '../lib/radar-results';
+import { isPaidPlanEffective } from '../lib/feature-gates';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile, ResumeFile, ActivityLog, EducationEntry, ExperienceEntry } from '../types/database';
 
@@ -528,7 +529,7 @@ export default function RadarPage() {
   // Account-level watch settings
   const [globalWatch, setGlobalWatch] = useState<WatchSchedule | null>(null);
   const [savingWatch, setSavingWatch] = useState(false);
-  const isPaidPlan = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+  const isPaidPlan = isPaidPlanEffective(subscription);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [selectedNewTier, setSelectedNewTier] = useState<number>(25);
   const [changingPlan, setChangingPlan] = useState(false);
