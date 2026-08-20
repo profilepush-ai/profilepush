@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  AlertCircle, ArrowLeft, Check, CheckCheck, Clock3, Download, Inbox,
-  Copy, Loader2, Mail, Paperclip, Search, Send, X,
+  AlertCircle, ArrowLeft, Briefcase, Check, CheckCheck, Clock3, DollarSign, Download, GraduationCap, Inbox,
+  Copy, Laptop, Loader2, Mail, MapPin, Paperclip, Search, Send, Shield, Sparkles, X,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import { useTheme } from '../contexts/ThemeContext';
@@ -176,14 +177,14 @@ const JOB_DETAIL_FIELDS = [
 
 type DisplayJobDetail = { key: string; label: string; value: string };
 
-function getJobDisplayDetails(breakdown: Conversation['radar_job_details'], includeMissing = false): DisplayJobDetail[] {
+function getJobDisplayDetails(breakdown: Conversation['radar_job_details']): DisplayJobDetail[] {
   return JOB_DETAIL_FIELDS.map(({ keys, label }) => {
     const entry = keys
       .map((key) => breakdown?.[key])
       .find((value): value is RadarBreakdownEntry => typeof value === 'object' && value !== null);
     const value = entry?.job_value?.trim();
     return { key: keys[0], label, value: value && value !== 'Not specified' ? value : '-' };
-  }).filter((detail) => includeMissing || detail.value !== '-');
+  }).filter((detail) => detail.value !== '-');
 }
 
 function getJobSummary(breakdown: Conversation['radar_job_details']) {
@@ -193,25 +194,35 @@ function getJobSummary(breakdown: Conversation['radar_job_details']) {
     : 'Job details not provided';
 }
 
+const JOB_DETAIL_ICONS: Record<string, LucideIcon> = {
+  experience_match: GraduationCap,
+  work_type_match: Laptop,
+  employment_type_match: Briefcase,
+  hourly_rate_match: DollarSign,
+  visa_match: Shield,
+  location_match: MapPin,
+};
+
 function JobDetailGrid({ details }: { details: DisplayJobDetail[] }) {
   const primaryDetails = details.filter((detail) => detail.label !== 'Skills');
   const skills = details.find((detail) => detail.label === 'Skills');
+  if (primaryDetails.length === 0 && !skills) return null;
 
   return (
-    <div className="rounded-md bg-gray-50 px-2.5 py-2 text-left">
-      <dl className="grid grid-cols-3 gap-x-3 gap-y-2">
-        {primaryDetails.map(({ key, label, value }) => (
-          <div key={key} className="min-w-0">
-            <dt className="text-[9px] uppercase tracking-wide text-gray-500">{label}</dt>
-            <dd className="break-words text-[9px] leading-tight text-gray-700">{value}</dd>
-          </div>
-        ))}
-      </dl>
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-left">
+      {primaryDetails.map(({ key, label, value }) => {
+        const Icon = JOB_DETAIL_ICONS[key];
+        return (
+          <span key={key} title={label} className="inline-flex max-w-full items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600">
+            {Icon && <Icon size={11} className="shrink-0 text-gray-400" />}
+            <span className="truncate">{value}</span>
+          </span>
+        );
+      })}
       {skills && (
-        <div className="mt-2 min-w-0">
-          <div className="text-[9px] uppercase tracking-wide text-gray-500">Skills</div>
-          <div className="break-words text-[9px] leading-tight text-gray-700">{skills.value}</div>
-        </div>
+        <span className="w-full text-[10px] leading-relaxed text-gray-500">
+          <span className="font-semibold text-gray-600">Skills: </span>{skills.value}
+        </span>
       )}
     </div>
   );
@@ -220,7 +231,7 @@ function JobDetailGrid({ details }: { details: DisplayJobDetail[] }) {
 function JobReferenceCard({ conversation }: { conversation: Conversation }) {
   const job = conversation.social_jobs;
   const hotlist = conversation.social_hotlist;
-  const details = getJobDisplayDetails(conversation.radar_job_details, true);
+  const details = getJobDisplayDetails(conversation.radar_job_details);
   const title = job?.job_title || hotlist?.role_title || (conversation.hotlist_id ? 'Available Consultant' : 'Job opportunity');
   const posterName = job?.posted_by_name?.trim() || hotlist?.bench_sales_recruiter_name?.trim() || conversation.vendor_name;
   const companyName = job?.company_name || hotlist?.bench_sales_company_name || '';
@@ -235,9 +246,7 @@ function JobReferenceCard({ conversation }: { conversation: Conversation }) {
         <span>Posted by {posterName}</span>
         {companyName && <><span>•</span><span>{companyName}</span></>}
       </div>
-      <div className="mt-2">
       <JobDetailGrid details={details} />
-      </div>
     </section>
   );
 }
@@ -264,6 +273,7 @@ export default function InboxPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
+  const [draftingAiReply, setDraftingAiReply] = useState(false);
 
   const loadConversations = useCallback(async () => {
     if (!account?.id) return;
@@ -620,6 +630,32 @@ export default function InboxPage() {
     }
   }
 
+  async function generateAiReply() {
+    if (!selected || selected.channel !== 'chat' || draftingAiReply) return;
+    const threadId = selected.id;
+    setDraftingAiReply(true);
+    try {
+      const details = getJobDisplayDetails(selected.radar_job_details);
+      const title = selected.social_jobs?.job_title || selected.social_hotlist?.role_title || selected.subject;
+      const { data, error } = await supabase.functions.invoke('generate-chat-message', {
+        body: {
+          title,
+          is_hotlist: Boolean(selected.hotlist_id),
+          details: details.map(({ label, value }) => ({ label, value })),
+          recent_messages: messages.slice(-8).map((message) => ({ direction: message.direction, text: message.text_body })),
+        },
+      });
+      if (error || !data?.ok) {
+        throw new Error(data?.error || (error as Error)?.message || 'Could not generate a message');
+      }
+      if (selectedId === threadId) setReplyText(String(data.message ?? ''));
+    } catch (error) {
+      setToast({ message: (error as Error).message || 'Could not generate a message', type: 'error' });
+    } finally {
+      setDraftingAiReply(false);
+    }
+  }
+
   return (
     <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-gray-50 text-gray-900">
       <AppNav />
@@ -730,11 +766,12 @@ export default function InboxPage() {
           ) : (
             <>
             <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-white">
-              <header className="sticky top-0 z-10 flex h-12 items-center gap-1 border-b border-gray-200 bg-white px-2 sm:px-3">
-                <button type="button" onClick={() => navigate('/inbox', { replace: true })} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
+              <header className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 border-b border-gray-200 bg-white px-2 py-1.5 sm:px-3">
+                <button type="button" onClick={() => navigate('/inbox', { replace: true })} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
                   <ArrowLeft size={16} />
                 </button>
-                <div className="flex-1" />
+                <div className="min-w-0 flex-1 basis-0" />
+                <div className="flex flex-wrap items-center justify-end gap-1">
                 {selected.channel === 'gmail' && (
                   <span className="rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide bg-red-50 text-red-600" title="Sent from your connected Gmail address">Via Gmail</span>
                 )}
@@ -743,6 +780,7 @@ export default function InboxPage() {
                 )}
                 <span className={`rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${selected.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{selected.hotlist_id ? 'Hotlist' : 'Job'}</span>
                 <span className={`rounded px-2 py-1 text-[10px] font-semibold ${selected.status === 'failed' ? 'bg-red-50 text-red-700' : selected.status === 'replied' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selected.status]}</span>
+                </div>
               </header>
 
               <div className="mx-auto max-w-5xl px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
@@ -835,15 +873,15 @@ export default function InboxPage() {
               </div>
             </div>
             {selected.source === 'draft' ? null : selected.status === 'closed' ? (
-              <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 py-3 text-center text-[11px] text-gray-500">
+              <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 pt-3 pb-[calc(5rem+env(safe-area-inset-bottom))] text-center text-[11px] text-gray-500 sm:pb-3">
                 This conversation is closed. Reopen it to send a message.
               </div>
             ) : (
-              <div className="shrink-0 border-t border-gray-200 bg-white p-2.5 sm:p-3">
+              <div className="shrink-0 border-t border-gray-200 bg-white px-2.5 pt-2.5 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-3 sm:pt-3 sm:pb-3">
                 <p className="mb-1.5 text-[10px] text-gray-400">
                   {selected.channel === 'chat' ? 'In-app chat — not sent by email' : selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
                 </p>
-                <div className="flex items-end gap-2">
+                <div className="flex flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-1.5 transition focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
                   <textarea
                     value={replyText}
                     onChange={(event) => setReplyText(event.target.value)}
@@ -853,20 +891,33 @@ export default function InboxPage() {
                         void sendReply();
                       }
                     }}
-                    disabled={sendingReply}
+                    disabled={sendingReply || draftingAiReply}
                     rows={2}
-                    placeholder="Write a reply..."
-                    className="min-h-[2.5rem] flex-1 resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                    placeholder={draftingAiReply ? 'Writing a message…' : 'Write a reply...'}
+                    className="max-h-32 min-h-[2.25rem] w-full resize-none border-0 bg-transparent px-2 py-1.5 text-xs leading-relaxed text-gray-900 outline-none disabled:opacity-60"
                   />
-                  <button
-                    type="button"
-                    onClick={() => void sendReply()}
-                    disabled={sendingReply || !replyText.trim()}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="Send reply"
-                  >
-                    {sendingReply ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                  </button>
+                  <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
+                    {selected.channel === 'chat' ? (
+                      <button
+                        type="button"
+                        onClick={() => void generateAiReply()}
+                        disabled={draftingAiReply || sendingReply}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-blue-600 bg-transparent px-2.5 py-1 text-[10px] font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {draftingAiReply ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                        {draftingAiReply ? 'Writing…' : 'Write with AI'}
+                      </button>
+                    ) : <span />}
+                    <button
+                      type="button"
+                      onClick={() => void sendReply()}
+                      disabled={sendingReply || draftingAiReply || !replyText.trim()}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Send reply"
+                    >
+                      {sendingReply ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

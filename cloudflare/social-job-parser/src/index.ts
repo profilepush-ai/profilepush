@@ -63,6 +63,50 @@ ${consultantText.slice(0, 4000)}
 Return ONLY the JSON object:`;
 }
 
+type ChatDraftDetail = { label: string; value: string };
+type ChatDraftMessage = { direction: "outbound" | "inbound"; text: string };
+
+type GenerateChatMessageRequest = {
+  title?: string;
+  isHotlist?: boolean;
+  details?: ChatDraftDetail[];
+  recentMessages?: ChatDraftMessage[];
+  instruction?: string;
+};
+
+const CHAT_DRAFT_SYSTEM_PROMPT = "You write short, natural in-app chat messages between staffing recruiters and bench sales vendors. This is always recruiter-to-recruiter business outreach about a job requirement or an available consultant — never a candidate interview and never a question about the recipient's own skills or background. Be concise, professional, and specific to the context given. Never use markdown, a subject line, or a signature block. Respond with only the message text.";
+
+function buildChatDraftPrompt(
+  title: string,
+  isHotlist: boolean,
+  details: ChatDraftDetail[],
+  recentMessages: ChatDraftMessage[],
+  instruction: string,
+) {
+  const detailLines = details.length > 0
+    ? details.map((d) => `${d.label}: ${d.value}`).join(", ")
+    : "Not specified";
+  const historyBlock = recentMessages.length > 0
+    ? recentMessages.map((m) => `${m.direction === "outbound" ? "Me" : "Them"}: ${m.text.slice(0, 500)}`).join("\n")
+    : "(No messages yet — this will be the opening message.)";
+  const goal = isHotlist
+    ? `"Me" has a client requirement and wants to REQUEST this consultant: ask whether they're still available, and ask the recipient (the bench recruiter who posted them) to share their updated resume and current rate.`
+    : `"Me" is a recruiter who wants to SUBMIT a candidate for this job: state that they have a strong-fit consultant ready, and ask what's needed to submit — e.g. resume format, rate expectations, or visa requirement.`;
+
+  return `${isHotlist ? "CONSULTANT" : "JOB"}: ${title || "this opportunity"}
+KEY DETAILS: ${detailLines}
+
+CONVERSATION SO FAR:
+${historyBlock}
+${instruction ? `\nSPECIFIC INSTRUCTION FROM THE USER: ${instruction}` : ""}
+
+GOAL: ${goal}
+${recentMessages.length > 0 ? "Continue the conversation naturally toward this goal, referencing what was just discussed." : "Write the opening message toward this goal."}
+Keep it to ONE short sentence, under 25 words, plain text, no greeting placeholders like [Name]. Do not ask the recipient about their own experience, skills, or background — they are the poster/vendor, not a candidate. Do not open with throat-clearing like "I'm reaching out about...", "I wanted to touch base regarding...", or "I hope this finds you well" — start directly with the ask itself, e.g. "Is ${title || "this role"} still open?" or "Is this consultant still available?".
+
+Message:`;
+}
+
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -428,6 +472,53 @@ export default {
           || (score >= 80 ? "Strong match" : score >= 60 ? "Good match" : score >= 40 ? "Moderate match" : "Weak match");
 
         return jsonResponse({ score, verdict, categories });
+      } catch (error) {
+        return jsonResponse({ error: (error as Error).message }, 500);
+      }
+    }
+
+    if (new URL(req.url).pathname.replace(/\/+$/, "") === "/generate-chat-message") {
+      try {
+        const body = (await req.json()) as GenerateChatMessageRequest;
+        const title = (body.title ?? "").trim().slice(0, 300);
+        const isHotlist = Boolean(body.isHotlist);
+        const details = Array.isArray(body.details) ? body.details.slice(0, 10) : [];
+        const recentMessages = Array.isArray(body.recentMessages) ? body.recentMessages.slice(-8) : [];
+        const instruction = (body.instruction ?? "").trim().slice(0, 300);
+
+        const prompt = buildChatDraftPrompt(title, isHotlist, details, recentMessages, instruction);
+        const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
+
+        let aiResult: unknown;
+        let aiError: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            aiResult = await env.AI.run(model, {
+              messages: [
+                { role: "system", content: CHAT_DRAFT_SYSTEM_PROMPT },
+                { role: "user", content: prompt },
+              ],
+              temperature: 0.4,
+              max_tokens: 120,
+            });
+            aiError = undefined;
+            break;
+          } catch (error) {
+            aiError = error;
+            if (attempt < 2 && isRateLimitError(error)) {
+              await sleep(1000 * (attempt + 1));
+              continue;
+            }
+            break;
+          }
+        }
+        if (aiError) throw aiError;
+
+        const rawText = (aiResult as Record<string, unknown>)?.response ?? aiResult;
+        const message = String(rawText ?? "").replace(/^```[\s\S]*?```$/g, "").trim().slice(0, 1200);
+        if (!message) return jsonResponse({ error: "Model returned an empty message" }, 422);
+
+        return jsonResponse({ message });
       } catch (error) {
         return jsonResponse({ error: (error as Error).message }, 500);
       }
