@@ -27,7 +27,13 @@ export default function UserActivityTracker() {
 
     const heartbeat = () => {
       if (document.visibilityState !== 'visible') return;
-      void supabase.rpc('track_user_activity', { p_auth_session_id: authSessionId });
+      // supabase-js query/RPC builders are lazy thenables — the request is
+      // only sent once `.then()`/await is called on them. A bare `void`
+      // discards the reference without ever invoking `.then()`, so this must
+      // chain `.then()` itself or the heartbeat silently never fires.
+      void supabase.rpc('track_user_activity', { p_auth_session_id: authSessionId }).then(({ error }) => {
+        if (error) console.error('track_user_activity failed', error);
+      });
     };
 
     heartbeat();

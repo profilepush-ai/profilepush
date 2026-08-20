@@ -740,11 +740,11 @@ export default function InboxPage() {
               <button key={item.id} type="button" onClick={() => selectConversation(item.id)} className={`flex w-full border-b border-gray-100 px-3 py-3 text-left transition-colors ${selectedId === item.id ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
-                    <span className={`truncate text-xs ${item.unread_count > 0 ? 'font-bold text-gray-950' : 'font-semibold text-gray-800'}`}>{item.source === 'chat' ? item.vendor_name : (item.social_jobs?.job_title || item.social_hotlist?.role_title || 'Vendor request')}</span>
+                    <span className={`truncate text-xs ${item.unread_count > 0 ? 'font-bold text-gray-950' : 'font-semibold text-gray-800'}`}>{item.social_jobs?.job_title || item.social_hotlist?.role_title || 'Vendor request'}</span>
                     <span className="shrink-0 text-[10px] text-gray-400">{formatRelative(item.last_message_at)}</span>
                   </span>
                   <span className="mt-1 flex items-center justify-between gap-2">
-                    <span className="min-w-0 flex-1 whitespace-normal break-words text-[9px] leading-3 text-gray-400">{item.source === 'chat' ? item.subject : getJobSummary(item.radar_job_details)}</span>
+                    <span className="min-w-0 flex-1 whitespace-normal break-words text-[9px] leading-3 text-gray-400">{getJobSummary(item.radar_job_details)}</span>
                     {item.unread_count > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[9px] font-bold text-white">{item.unread_count}</span>}
                   </span>
                   <span className="mt-1 flex items-center gap-1">
