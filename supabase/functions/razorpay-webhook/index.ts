@@ -174,7 +174,32 @@ Deno.serve(async (req: Request) => {
       const payment = (entity.payment as Record<string, unknown>)?.entity as Record<string, unknown>;
       const notes = payment?.notes as Record<string, string> | null;
 
-      if (notes?.type === "plan_upgrade" && notes?.order_id) {
+      if (notes?.type === "credit_topup" && notes?.order_id) {
+        const { data: topupOrder } = await supabase
+          .from("credit_topup_orders")
+          .select("*")
+          .eq("razorpay_order_id", notes.order_id)
+          .maybeSingle();
+
+        if (topupOrder && topupOrder.status === "created") {
+          await supabase.from("credit_topup_orders").update({ status: "paid" }).eq("id", topupOrder.id);
+
+          await addCredits(
+            supabase,
+            topupOrder.account_id as string,
+            topupOrder.credits as number,
+            `Credit top-up: ${topupOrder.credits} credits`,
+          );
+
+          fireCrmWebhook(supabaseUrl, serviceRoleKey, "credits.topup", topupOrder.account_id as string, {
+            razorpay_payload: payload,
+            credits: topupOrder.credits,
+            amount_inr_paise: topupOrder.amount_inr_paise,
+            razorpay_order_id: notes.order_id,
+            payment_id: payment?.id ?? null,
+          });
+        }
+      } else if (notes?.type === "plan_upgrade" && notes?.order_id) {
         const { data: upgradeOrder } = await supabase
           .from("razorpay_upgrade_orders")
           .select("*")

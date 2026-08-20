@@ -7,6 +7,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
+import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -100,6 +101,20 @@ type Message = {
   /** True for a message from the post_chat_messages in-app chat table. */
   isChat?: boolean;
 };
+
+async function getFunctionErrorPayload(error: unknown): Promise<{ message: string | null; code: string | null }> {
+  if (error && typeof error === 'object' && 'context' in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      const payload = await context.clone().json().catch(() => null) as { error?: unknown; code?: unknown } | null;
+      return {
+        message: typeof payload?.error === 'string' ? payload.error : null,
+        code: typeof payload?.code === 'string' ? payload.code : null,
+      };
+    }
+  }
+  return { message: null, code: null };
+}
 
 function draftMessage(conversation: Conversation): Message {
   return {
@@ -274,6 +289,7 @@ export default function InboxPage() {
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
   const [draftingAiReply, setDraftingAiReply] = useState(false);
+  const [showOutOfCreditsModal, setShowOutOfCreditsModal] = useState(false);
 
   const loadConversations = useCallback(async () => {
     if (!account?.id) return;
@@ -646,7 +662,12 @@ export default function InboxPage() {
         },
       });
       if (error || !data?.ok) {
-        throw new Error(data?.error || (error as Error)?.message || 'Could not generate a message');
+        const payload = await getFunctionErrorPayload(error);
+        if (payload.code === 'insufficient_credits') {
+          setShowOutOfCreditsModal(true);
+          return;
+        }
+        throw new Error(data?.error || payload.message || (error as Error)?.message || 'Could not generate a message');
       }
       if (selectedId === threadId) setReplyText(String(data.message ?? ''));
     } catch (error) {
@@ -926,6 +947,12 @@ export default function InboxPage() {
         </section>
       </main>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      <InsufficientCreditsModal
+        open={showOutOfCreditsModal}
+        onClose={() => setShowOutOfCreditsModal(false)}
+        balance={account?.credits_balance ?? 0}
+        actionLabel="write this message"
+      />
     </div>
   );
 }

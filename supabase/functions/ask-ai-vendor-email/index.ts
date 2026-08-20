@@ -182,8 +182,24 @@ Deno.serve(async (req: Request) => {
         });
       }
 
+      // Only a genuine new generation costs a credit — a cache hit above
+      // already returned before reaching here.
+      const { data: chargeRows, error: chargeError } = await supabaseUser.rpc("consume_feature_credit", {
+        p_account_id: accountId,
+        p_amount: 1,
+        p_feature: "pulse_ask_ai_preview_generate",
+        p_metadata: { lead_type: leadType, job_id: leadType === "job" ? jobId : null, hotlist_id: leadType === "hotlist" ? jobId : null },
+      });
+      const charge = Array.isArray(chargeRows) ? chargeRows[0] as { success: boolean; new_balance: number; message: string } : null;
+      if (chargeError || !charge?.success) {
+        return respond({ error: charge?.message ?? chargeError?.message ?? "Insufficient credits", code: "insufficient_credits" }, 402);
+      }
+
       const askVendorAiToken = Deno.env.get("ASK_VENDOR_AI_TOKEN")?.trim();
-      if (!askVendorAiToken) return respond({ error: "Could not generate the vendor request" }, 503);
+      if (!askVendorAiToken) {
+        await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: 1, p_feature: "pulse_ask_ai_preview_generate" });
+        return respond({ error: "Could not generate the vendor request" }, 503);
+      }
 
       try {
         const aiResponse = await fetch(ASK_VENDOR_AI_URL, {
@@ -210,6 +226,7 @@ Deno.serve(async (req: Request) => {
         }
       } catch (error) {
         console.error("Could not generate Ask Vendor email", error);
+        await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: 1, p_feature: "pulse_ask_ai_preview_generate" });
         return respond({ error: "Could not generate the vendor request" }, 502);
       }
 
@@ -226,6 +243,7 @@ Deno.serve(async (req: Request) => {
         }, { onConflict: "lead_key,missing_details_key" });
       if (draftInsertError) {
         console.error("Could not save shared Ask Vendor draft", draftInsertError);
+        await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: 1, p_feature: "pulse_ask_ai_preview_generate" });
         return respond({ error: "Could not save the generated vendor request" }, 500);
       }
 

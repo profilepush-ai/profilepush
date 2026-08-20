@@ -11,8 +11,8 @@ describe('feature-gates', () => {
     expect(shouldChargeCredits()).toBe(false);
   });
 
-  it('shouldShowCreditsUi mirrors the disabled flag', () => {
-    expect(shouldShowCreditsUi()).toBe(false);
+  it('shouldShowCreditsUi is live independent of the legacy billing gate', () => {
+    expect(shouldShowCreditsUi()).toBe(true);
   });
 
   it('treats every account as paid while gates are disabled, even with no subscription', () => {

@@ -16,6 +16,10 @@ export function shouldChargeCredits(): boolean {
   return BILLING_GATES_ENABLED;
 }
 
+// Decoupled from BILLING_GATES_ENABLED: the credits balance UI is live for
+// the new 500-free / 1-credit-per-action model (email drafts, chat drafts,
+// post creation) independent of the legacy paid-plan gates above, which
+// stay disabled.
 export function shouldShowCreditsUi(): boolean {
-  return BILLING_GATES_ENABLED;
+  return true;
 }

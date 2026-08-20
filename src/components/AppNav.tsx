@@ -27,6 +27,8 @@ function CreditsChip({ balance }: { balance: number }) {
   const isLow = balance < 1;
   const isZero = balance <= 0;
 
+  const creditsLabel = Math.floor(Math.max(0, balance)).toLocaleString('en-IN');
+
   if (isZero) {
     return (
       <Link
@@ -35,7 +37,7 @@ function CreditsChip({ balance }: { balance: number }) {
         title="No credits remaining — top up"
       >
         <AlertTriangle size={9} />
-        $0.00
+        0 credits
       </Link>
     );
   }
@@ -48,7 +50,7 @@ function CreditsChip({ balance }: { balance: number }) {
         title="Low credits"
       >
         <AlertTriangle size={9} />
-        {`$${balance.toFixed(2)}`}
+        {`${creditsLabel} credit${creditsLabel === '1' ? '' : 's'}`}
       </Link>
     );
   }
@@ -60,7 +62,7 @@ function CreditsChip({ balance }: { balance: number }) {
       title="Credits remaining"
     >
       <CreditCard size={9} />
-      {`$${balance.toFixed(2)}`}
+      {`${creditsLabel} credits`}
     </Link>
   );
 }

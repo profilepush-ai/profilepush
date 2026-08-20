@@ -58,6 +58,7 @@ import { shouldChargeCredits } from '../lib/feature-gates';
 import { normalizePostSource, type PostSource } from '../lib/post-source';
 import PostSourceBadge from '../components/PostSourceBadge';
 import LocationChipInput from '../components/LocationChipInput';
+import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 
 type PulsePersona = {
   target_role: string;
@@ -367,6 +368,17 @@ async function getFunctionErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message !== 'Edge Function returned a non-2xx status code'
     ? error.message
     : fallback;
+}
+
+async function getFunctionErrorCode(error: unknown): Promise<string | null> {
+  if (error && typeof error === 'object' && 'context' in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      const payload = await context.clone().json().catch(() => null) as { code?: unknown } | null;
+      if (typeof payload?.code === 'string') return payload.code;
+    }
+  }
+  return null;
 }
 
 const DEFAULT_FEED_SEARCH_FILTERS: FeedSearchFilters = {
@@ -1994,6 +2006,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [processingAskAILeadId, setProcessingAskAILeadId] = useState<string | null>(null);
   const [processingChatLeadId, setProcessingChatLeadId] = useState<string | null>(null);
   const [askAIPreview, setAskAIPreview] = useState<AskAIPreview | null>(null);
+  const [showOutOfCreditsModal, setShowOutOfCreditsModal] = useState(false);
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
   const [feedTimeBasis, setFeedTimeBasis] = useState<FeedTimeBasis>('posted');
@@ -4770,6 +4783,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       });
 
       if (error || !data?.ok) {
+        const code = await getFunctionErrorCode(error);
+        if (code === 'insufficient_credits') {
+          const insufficientCreditsError = new Error('insufficient_credits');
+          insufficientCreditsError.name = 'InsufficientCreditsError';
+          throw insufficientCreditsError;
+        }
         throw new Error(data?.error || await getFunctionErrorMessage(error, 'Could not generate the request'));
       }
 
@@ -4814,7 +4833,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       }
     } catch (error) {
       setAskAIPreview(null);
-      showToast(error instanceof Error ? error.message : 'Could not generate the vendor email request', 'error');
+      if (error instanceof Error && error.name === 'InsufficientCreditsError') {
+        setShowOutOfCreditsModal(true);
+      } else {
+        showToast(error instanceof Error ? error.message : 'Could not generate the vendor email request', 'error');
+      }
     } finally {
       setProcessingAskAILeadId(null);
     }
@@ -6097,6 +6120,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           </div>
         </div>
       )}
+
+      <InsufficientCreditsModal
+        open={showOutOfCreditsModal}
+        onClose={() => setShowOutOfCreditsModal(false)}
+        balance={account?.credits_balance ?? 0}
+        actionLabel={isHotlistFeed ? 'generate this request' : 'generate this submission email'}
+      />
 
       {isBulkPredictModalOpen && (
         <div

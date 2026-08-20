@@ -1,0 +1,26 @@
+-- accounts.credits_balance is about to back real money. The existing
+-- "update_own_account_credits" RLS policy (20260609123541) lets any active
+-- account member UPDATE their own account row to any credits_balance value
+-- from the browser with no check on the new value — added to support
+-- consumeCreditsLegacy's client-side read-then-write fallback in
+-- PulsePage.tsx/ProfilesPage.tsx (already unreachable today, gated behind
+-- shouldChargeCredits() staying false).
+--
+-- RLS alone can't fix this (it gates rows, not values), so this closes it
+-- at the column-grant level instead. `authenticated` currently holds a
+-- blanket table-level UPDATE grant (verified: a column-level REVOKE alone
+-- does nothing while that broader grant exists — Postgres's table-level ACL
+-- implicitly covers every column), so the fix is to revoke UPDATE entirely
+-- and re-grant it only on the columns real self-service flows still need.
+-- The only such column found in the app today is `name`
+-- (src/pages/AccountSettings.tsx). consume_feature_credit/refund_feature_
+-- credit stay unaffected regardless: they're SECURITY DEFINER functions
+-- owned by `postgres` (same owner as this table), and SECURITY DEFINER
+-- elevates privilege *grants* to the owner even though auth.uid()/
+-- auth.role() still correctly reflect the original caller inside them.
+-- Verified via a rolled-back transaction against the live DB: a direct
+-- authenticated-role UPDATE of credits_balance now fails with "permission
+-- denied for table accounts", while both the `name` update and a
+-- consume_feature_credit() call still succeed.
+REVOKE UPDATE ON public.accounts FROM authenticated;
+GRANT UPDATE (name) ON public.accounts TO authenticated;

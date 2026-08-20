@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 import ChipInput from '../ChipInput';
 import LocationChipInput from '../LocationChipInput';
 import LocationAutosuggestInput from '../LocationAutosuggestInput';
+import InsufficientCreditsModal from '../InsufficientCreditsModal';
 
 export type PostKind = 'job' | 'hotlist';
 
@@ -157,6 +159,8 @@ export default function PostFormModal({
   showToast: (message: string, type?: 'success' | 'error') => void;
 }) {
   const { isDark } = useTheme();
+  const { account } = useAuth();
+  const [showOutOfCreditsModal, setShowOutOfCreditsModal] = useState(false);
   const inputClass = `w-full rounded-md border px-2.5 py-1.5 text-[11px] outline-none transition-colors focus:ring-2 ${
     isDark
       ? 'border-white/15 bg-[#171a1f] text-slate-100 placeholder:text-[#64748B] focus:border-blue-500 focus:ring-blue-500/20'
@@ -301,13 +305,19 @@ export default function PostFormModal({
       showToast(isEditing ? 'Post updated' : 'Post created — it will appear in the feed shortly', 'success');
       onSaved();
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not save post', 'error');
+      const message = error instanceof Error ? error.message : 'Could not save post';
+      if (message.startsWith('INSUFFICIENT_CREDITS:')) {
+        setShowOutOfCreditsModal(true);
+      } else {
+        showToast(message, 'error');
+      }
     } finally {
       setSaving(false);
     }
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={() => !saving && onClose()}>
       <div
         className={`max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg border p-4 shadow-xl ${isDark ? 'border-white/10 bg-[#1B1D21]' : 'border-gray-200 bg-white'}`}
@@ -513,5 +523,12 @@ export default function PostFormModal({
         </div>
       </div>
     </div>
+    <InsufficientCreditsModal
+      open={showOutOfCreditsModal}
+      onClose={() => setShowOutOfCreditsModal(false)}
+      balance={account?.credits_balance ?? 0}
+      actionLabel="create this post"
+    />
+    </>
   );
 }
