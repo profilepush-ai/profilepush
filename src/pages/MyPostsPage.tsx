@@ -11,7 +11,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import PostFormModal, { type PostKind, type UserPost } from '../components/posts/PostFormModal';
 
-type Tab = 'job' | 'hotlist';
+type Tab = 'job' | 'hotlist' | 'closed';
 
 const RANGE_OPTIONS: Array<{ id: string; label: string; hours: number | null }> = [
   { id: 'all', label: 'All time', hours: null },
@@ -287,7 +287,16 @@ export default function MyPostsPage() {
     return () => mediaQuery.removeEventListener('change', updateViewport);
   }, []);
 
-  const posts = tab === 'job' ? jobPosts : hotlistPosts;
+  const hasAnyPosts = jobPosts.length > 0 || hotlistPosts.length > 0;
+  const posts = useMemo(() => {
+    if (tab === 'closed') {
+      return [...jobPosts, ...hotlistPosts]
+        .filter((post) => post.postStatus === 'closed')
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    const source = tab === 'job' ? jobPosts : hotlistPosts;
+    return source.filter((post) => post.postStatus === 'open');
+  }, [tab, jobPosts, hotlistPosts]);
   const filteredPosts = useMemo(
     () => posts.filter((post) => matchesSearch(post, searchQuery) && matchesRange(post, rangeId)),
     [posts, searchQuery, rangeId],
@@ -367,8 +376,14 @@ export default function MyPostsPage() {
   );
 
   const tabDefs = [
-    { id: 'job' as Tab, label: 'Jobs', icon: Briefcase, count: jobPosts.length },
-    { id: 'hotlist' as Tab, label: 'Hotlist', icon: UserRound, count: hotlistPosts.length },
+    { id: 'job' as Tab, label: 'Jobs', icon: Briefcase, count: jobPosts.filter((post) => post.postStatus === 'open').length },
+    { id: 'hotlist' as Tab, label: 'Hotlist', icon: UserRound, count: hotlistPosts.filter((post) => post.postStatus === 'open').length },
+    {
+      id: 'closed' as Tab,
+      label: 'Closed',
+      icon: XCircle,
+      count: jobPosts.filter((post) => post.postStatus === 'closed').length + hotlistPosts.filter((post) => post.postStatus === 'closed').length,
+    },
   ];
 
   function tabButtonsEl(fullWidth: boolean) {
@@ -416,7 +431,7 @@ export default function MyPostsPage() {
                 {searchButtonEl}
                 {rangeMenuEl}
               </div>
-              <div className="grid grid-cols-2 gap-1">
+              <div className="grid grid-cols-3 gap-1">
                 {tabButtonsEl(true)}
               </div>
               {addPostButtonEl(true)}
@@ -433,7 +448,7 @@ export default function MyPostsPage() {
             </div>
           )}
 
-          <div className={`mx-auto w-full max-w-xl text-center ${posts.length === 0 ? 'flex min-h-0 flex-1 flex-col items-center justify-center' : 'shrink-0 mb-3'}`}>
+          <div className={`mx-auto w-full max-w-xl text-center ${!hasAnyPosts ? 'flex min-h-0 flex-1 flex-col items-center justify-center' : 'shrink-0 mb-3'}`}>
             {!showKindChooser ? (
               <>
                 <textarea
@@ -495,13 +510,17 @@ export default function MyPostsPage() {
             )}
           </div>
 
-          <div className={`min-h-0 overflow-y-auto ${posts.length === 0 && !loading ? 'shrink-0' : 'flex-1'}`}>
+          <div className={`min-h-0 overflow-y-auto ${!hasAnyPosts && !loading ? 'shrink-0' : 'flex-1'}`}>
             {loading ? (
               <div className="flex items-center justify-center py-16"><LogoSpinner size={22} /></div>
-            ) : filteredPosts.length === 0 && posts.length > 0 ? (
+            ) : filteredPosts.length === 0 && (posts.length > 0 || hasAnyPosts) ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="text-xs font-semibold text-gray-500 dark:text-slate-400">No posts match your search</p>
-                <p className="mt-1 text-[11px] text-gray-400 dark:text-[#64748B]">Try a different search term.</p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-slate-400">
+                  {posts.length > 0 ? 'No posts match your search' : tab === 'closed' ? 'No closed posts yet' : `No ${tab === 'job' ? 'open job' : 'open hotlist'} posts`}
+                </p>
+                <p className="mt-1 text-[11px] text-gray-400 dark:text-[#64748B]">
+                  {posts.length > 0 ? 'Try a different search term.' : tab === 'closed' ? 'Posts you close will show up here.' : 'Closed posts have moved to the Closed tab.'}
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-3 pb-4 sm:grid-cols-2 lg:grid-cols-3">
