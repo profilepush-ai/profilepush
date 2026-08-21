@@ -538,75 +538,78 @@ export default function MyPostsPage() {
               return (
                 <div
                   key={post.id}
-                  className={`relative min-w-0 rounded-lg border bg-white px-3 py-2.5 dark:bg-[#1E2126] ${palette.border}`}
+                  className={`relative flex min-w-0 flex-col overflow-hidden rounded-lg border bg-white dark:bg-[#1E2126] ${palette.border}`}
                   style={{ borderColor: cardBorderColor }}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12px] font-semibold leading-snug" style={titleToneStyle}>{displayTitle}</p>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
-                        <span>Posted {formatAgo(post.createdAt)}</span>
-                        {post.kind === 'job' && post.company && (
-                          <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                            <span>•</span>
-                            <Building2 size={10} className="shrink-0" style={{ color: palette.titleColor }} />
-                            <span>{post.company}</span>
-                          </span>
-                        )}
-                        {locationText && (
-                          <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                            <span>•</span>
-                            <MapPin size={10} className="shrink-0" style={{ color: palette.titleColor }} />
-                            <span className="truncate">{locationText}</span>
-                          </span>
-                        )}
+                  <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12px] font-semibold leading-snug" style={titleToneStyle}>{displayTitle}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
+                          <span>Posted {formatAgo(post.createdAt)}</span>
+                          {post.kind === 'job' && post.company && (
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                              <span>•</span>
+                              <Building2 size={10} className="shrink-0" style={{ color: palette.titleColor }} />
+                              <span>{post.company}</span>
+                            </span>
+                          )}
+                          {locationText && (
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                              <span>•</span>
+                              <MapPin size={10} className="shrink-0" style={{ color: palette.titleColor }} />
+                              <span className="truncate">{locationText}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button type="button" onClick={() => { setEditingPost(post); setFormOpen(post.kind); }} title="Edit" className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                          <Pencil size={12} />
+                        </button>
+                        <button type="button" onClick={() => void handleDelete(post)} title="Delete" className={`rounded p-1 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}>
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-0.5">
-                      <button type="button" onClick={() => { setEditingPost(post); setFormOpen(post.kind); }} title="Edit" className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
-                        <Pencil size={12} />
-                      </button>
-                      <button type="button" onClick={() => void handleDelete(post)} title="Delete" className={`rounded p-1 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}>
-                        <Trash2 size={12} />
-                      </button>
+
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                      <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${post.postStatus === 'open' ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500')}`}>
+                        {post.postStatus === 'open' ? 'Open' : 'Closed'}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                        <Eye size={9} strokeWidth={2.5} />
+                        {metrics.previewCount} preview{metrics.previewCount === 1 ? '' : 's'}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                        <MessageSquare size={9} strokeWidth={2.5} />
+                        {metrics.chatCount} chat{metrics.chatCount === 1 ? '' : 's'}
+                      </span>
                     </div>
+
+                    {post.skills.length > 0 && (
+                      <p className="mt-1.5 truncate text-[9px] leading-tight text-gray-500 dark:text-[#94A3B8]">
+                        {post.skills.slice(0, 6).join(' · ')}
+                      </p>
+                    )}
                   </div>
 
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${post.postStatus === 'open' ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500')}`}>
-                      {post.postStatus === 'open' ? 'Open' : 'Closed'}
-                    </span>
-                    <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
-                      <Eye size={9} strokeWidth={2.5} />
-                      {metrics.previewCount} preview{metrics.previewCount === 1 ? '' : 's'}
-                    </span>
-                    <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
-                      <MessageSquare size={9} strokeWidth={2.5} />
-                      {metrics.chatCount} chat{metrics.chatCount === 1 ? '' : 's'}
-                    </span>
-                  </div>
-
-                  {post.skills.length > 0 && (
-                    <p className="mt-1.5 truncate text-[9px] leading-tight text-gray-500 dark:text-[#94A3B8]">
-                      {post.skills.slice(0, 6).join(' · ')}
-                    </p>
-                  )}
-
-                  <div className="mt-2 flex items-center gap-1.5">
+                  <div className="mt-auto flex items-stretch border-t" style={{ borderColor: cardBorderColor }}>
                     <button
                       type="button"
                       onClick={() => setPreviewPost(post)}
                       title="Preview post"
-                      className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 text-[11px] font-semibold text-gray-700 transition-opacity hover:bg-gray-50 dark:border-white/15 dark:bg-transparent dark:text-gray-300 dark:hover:bg-white/5"
+                      className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[11px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5"
                     >
                       <Eye size={13} strokeWidth={2} />
                       Preview
                     </button>
+                    <div className="w-px" style={{ backgroundColor: cardBorderColor }} />
                     <button
                       type="button"
                       onClick={() => void handleToggleStatus(post)}
                       title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'}
-                      className={`inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-semibold transition-opacity ${post.postStatus === 'open' ? 'bg-blue-600 text-white hover:bg-blue-700' : (isDark ? 'bg-white/5 text-slate-200 hover:bg-white/10' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}`}
+                      className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors ${post.postStatus === 'open' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5'}`}
                     >
                       {post.postStatus === 'open' ? <XCircle size={13} strokeWidth={2} /> : <RotateCcw size={13} strokeWidth={2} />}
                       {post.postStatus === 'open' ? 'Close' : 'Reopen'}
