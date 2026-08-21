@@ -3,7 +3,7 @@ import {
   Plus, Search, Trash2, Pencil, X, Save, User, Briefcase,
   Building2, Mail, Phone, MapPin, DollarSign, Calendar,
   UserCheck, ChevronDown, ChevronUp, FileText, Tag, Clock, Users, Download,
-  AlertTriangle, History, Eye, EyeOff, Copy, Check, Clock3, Sparkles,
+  AlertTriangle, History, Eye, EyeOff, Copy, Check, Clock3, BadgeCheck,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -61,7 +61,6 @@ interface Submission {
   rate: string; submitted_by: string; submission_date: string; submission_type: string; created_at: string;
 }
 
-type EmailDraftTabId = 'pitching' | 'requestDetails';
 
 // ── Date range ────────────────────────────────────────────────────────────────
 
@@ -268,7 +267,7 @@ export default function TrackerPage() {
   // Pages
 
   // Modals
-  type ModalType = 'vendor' | 'client' | 'submission' | 'email' | null;
+  type ModalType = 'vendor' | 'client' | 'submission' | null;
   const [modal, setModal]         = useState<ModalType>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving]       = useState(false);
@@ -301,12 +300,13 @@ export default function TrackerPage() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<{ existing: Submission[]; } | null>(null);
-  const [activeEmailJob, setActiveEmailJob] = useState<TrackerLead | null>(null);
-  const [trackerEmailDrafts, setTrackerEmailDrafts] = useState<{ pitching: string; requestDetails: string }>({
-    pitching: '',
-    requestDetails: '',
-  });
-  const [selectedEmailDraftTab, setSelectedEmailDraftTab] = useState<EmailDraftTabId>('pitching');
+  const [trackerPostPreview, setTrackerPostPreview] = useState<{ leadId: string; title: string; content: string } | null>(null);
+  const [trackerDraftPreview, setTrackerDraftPreview] = useState<{
+    leadId: string; leadType: TrackerLeadType; vendorName: string; vendorEmail: string;
+    jobTitle: string; company: string; subject: string; emailContent: string;
+  } | null>(null);
+  const [loadingPreviewLeadId, setLoadingPreviewLeadId] = useState<string | null>(null);
+  const [loadingDraftLeadId, setLoadingDraftLeadId] = useState<string | null>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   // Close date picker on outside click
@@ -713,67 +713,70 @@ export default function TrackerPage() {
       .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
   }, [activeVendorId, allLeads, filteredVendors, vendors]);
 
-  const generateTrackerEmailDrafts = useCallback((lead: TrackerLead) => {
-    const breakdownItems = buildScoreBreakdownDisplayItems(
-      lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
-    );
+  // Preview shows the original post's raw content — same read PulsePage's
+  // handlePreviewPost does, but free here since these leads were already
+  // engaged (revealed/submitted) once from Pulse.
+  const handleTrackerPreviewPost = useCallback(async (lead: TrackerLead) => {
+    if (loadingPreviewLeadId) return;
+    setLoadingPreviewLeadId(lead.id);
+    try {
+      const { data, error } = await supabase
+        .from(lead.type === 'hotlist' ? 'social_hotlist' : 'social_jobs')
+        .select(lead.type === 'hotlist' ? 'raw_post_content' : 'post_content')
+        .eq('id', lead.id)
+        .maybeSingle();
+      if (error || !data) throw new Error(error?.message || 'Could not load the post');
 
-    const pickDetail = (patterns: RegExp[]) => {
-      const item = breakdownItems.find((entry) => patterns.some((pattern) => pattern.test(entry.key)));
-      return item?.detail?.candidate_value?.trim() || '-';
-    };
+      const content = String((lead.type === 'hotlist' ? (data as { raw_post_content: string | null }).raw_post_content : (data as { post_content: string | null }).post_content) ?? '').trim();
+      setTrackerPostPreview({
+        leadId: lead.id,
+        title: lead.title || (lead.type === 'hotlist' ? 'Available Consultant' : 'Job Opportunity'),
+        content: content || 'No post content available.',
+      });
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : 'Could not load the post', type: 'error' });
+    } finally {
+      setLoadingPreviewLeadId(null);
+    }
+  }, [loadingPreviewLeadId]);
 
-    const role = lead.title || (lead.type === 'hotlist' ? 'consultant' : 'requirement');
-    const companyText = lead.company ? ` at ${lead.company}` : '';
+  // Submit/Request never regenerates or charges credits here — it just shows
+  // the actual AI-generated draft that was already produced (and cached in
+  // pulse_ask_ai_previews) when this lead was submitted/requested from Pulse.
+  const handleTrackerViewDraft = useCallback(async (lead: TrackerLead) => {
+    if (!user?.id || loadingDraftLeadId) return;
+    setLoadingDraftLeadId(lead.id);
+    try {
+      const { data, error } = await supabase
+        .from('pulse_ask_ai_previews' as never)
+        .select('subject, email_content, vendor_name, vendor_email')
+        .eq('user_id', user.id)
+        .eq(lead.type === 'hotlist' ? 'hotlist_id' : 'job_id', lead.id)
+        .maybeSingle();
+      if (error) throw new Error(error.message || 'Could not load the generated draft');
 
-    const profileHighlights = [
-      `- Role: ${pickDetail([/role/i, /title/i, /position/i])}`,
-      `- Exp: ${pickDetail([/experience/i, /years?_?exp/i, /exp/i])}`,
-      `- Location: ${pickDetail([/location/i, /preferred_location/i, /preferred_locations/i])}`,
-      `- Visa: ${pickDetail([/visa/i, /work_authorization/i, /authorization/i])}`,
-      `- Rate: ${pickDetail([/rate/i, /salary/i, /bill_rate/i])}`,
-      `- Skills: ${pickDetail([/skill/i])}`,
-    ];
+      const row = data as { subject: string; email_content: string; vendor_name: string; vendor_email: string } | null;
+      if (!row) {
+        setToast({ message: 'No draft has been generated for this lead yet.', type: 'error' });
+        return;
+      }
 
-    const pitching = [
-      `Hi ${lead.posterName || 'there'},`,
-      '',
-      `I saw your post for the ${role}${companyText}.`,
-      'I have a profile that looks highly relevant and can share it right away.',
-      '',
-      'Profile Highlights:',
-      ...profileHighlights,
-      '',
-      'Please let me know if you would like me to send the profile and availability.',
-      '',
-      'Thanks,',
-      defaultSubmittedBy || (user?.email?.split('@')[0] ?? 'ProfilePush User'),
-    ].join('\n');
-
-    const requestDetails = [
-      `Hi ${lead.posterName || 'there'},`,
-      '',
-      `Following up on the ${role}${companyText}.`,
-      'Could you please share the following details so I can submit the best-fit profile quickly?',
-      '',
-      '- Full JD / must-have skills',
-      '- Interview process and timeline',
-      '- Work authorization constraints',
-      '- Work type (onsite / hybrid / remote)',
-      '- Target bill rate range',
-      '- Client/VMS details and submission format',
-      '',
-      'I can send matching profiles immediately after this.',
-      '',
-      'Thanks,',
-      defaultSubmittedBy || (user?.email?.split('@')[0] ?? 'ProfilePush User'),
-    ].join('\n');
-
-    setActiveEmailJob(lead);
-    setTrackerEmailDrafts({ pitching, requestDetails });
-    setSelectedEmailDraftTab('pitching');
-    setModal('email');
-  }, [defaultSubmittedBy, user?.email]);
+      setTrackerDraftPreview({
+        leadId: lead.id,
+        leadType: lead.type,
+        vendorName: row.vendor_name || lead.posterName || 'the vendor',
+        vendorEmail: row.vendor_email || lead.posterEmail || '',
+        jobTitle: lead.title,
+        company: lead.company,
+        subject: row.subject,
+        emailContent: row.email_content,
+      });
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : 'Could not load the generated draft', type: 'error' });
+    } finally {
+      setLoadingDraftLeadId(null);
+    }
+  }, [loadingDraftLeadId, user?.id]);
 
   const copyText = useCallback(async (text: string, label: string) => {
     if (!text) {
@@ -941,70 +944,88 @@ export default function TrackerPage() {
           const accentRgb = hexToRgbChannels(palette.titleColor);
           const cardBorderColor = `rgb(${accentRgb} / 0.45)`;
 
+          const statusLabel = lead.verifiedAt ? 'Verified' : (lead.type === 'hotlist' ? 'Requested' : 'Submitted');
+
           return (
             <div
               key={lead.id}
-              className={`rounded-lg border px-3 py-2.5 ${palette.fill}`}
+              className={`flex flex-col overflow-hidden rounded-lg border ${palette.fill}`}
               style={{ borderColor: cardBorderColor }}
             >
-              <p className="text-[12px] font-semibold leading-snug text-[#2563EB] dark:text-white">{lead.title}</p>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
-                <span>{formatAgo(lead.postedAt)}</span>
-                <span>•</span>
-                <span>{lead.posterName || 'Unknown'}</span>
-                {lead.company && (
-                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                    <span>•</span>
-                    <Building2 size={10} className="shrink-0" style={{ color: palette.titleColor }} />
-                    <span className="text-[#94A3B8]">{lead.company}</span>
-                  </span>
-                )}
-                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-[#94A3B8]'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
-                <PostSourceBadge source={lead.postSource} />
-              </div>
+              <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
+                <p className="text-[12px] font-semibold leading-snug text-[#2563EB] dark:text-white">{lead.title}</p>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
+                  <span>{formatAgo(lead.postedAt)}</span>
+                  <span>•</span>
+                  <span>{lead.posterName || 'Unknown'}</span>
+                  {lead.company && (
+                    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                      <span>•</span>
+                      <Building2 size={10} className="shrink-0" style={{ color: palette.titleColor }} />
+                      <span className="text-[#94A3B8]">{lead.company}</span>
+                    </span>
+                  )}
+                  <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-[#94A3B8]'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
+                  <PostSourceBadge source={lead.postSource} />
+                </div>
 
-              {leadStatusBadges(lead) && <div className="mt-1 flex flex-wrap items-center gap-1">{leadStatusBadges(lead)}</div>}
+                {leadStatusBadges(lead) && <div className="mt-1 flex flex-wrap items-center gap-1">{leadStatusBadges(lead)}</div>}
 
-              <div className="mt-1.5 min-w-0 rounded-md bg-transparent px-2.5 py-2 text-left">
-                <div className="grid grid-cols-3 gap-x-3 gap-y-2">
-                  <div className="min-w-0">
-                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Exp</div>
-                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'exp', expValue, linkClass)}</div>
+                <div className="mt-1.5 min-w-0 rounded-md bg-transparent px-2.5 py-2 text-left">
+                  <div className="grid grid-cols-3 gap-x-3 gap-y-2">
+                    <div className="min-w-0">
+                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Exp</div>
+                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'exp', expValue, linkClass)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Work Type</div>
+                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'workType', workTypeValue, linkClass)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Emp Type</div>
+                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'empType', employmentTypeValue, linkClass)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Rate</div>
+                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'rate', rateValue, linkClass)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Visa</div>
+                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'visa', visaValue, linkClass)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Location</div>
+                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'location', locationValue, linkClass)}</div>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Work Type</div>
-                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'workType', workTypeValue, linkClass)}</div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Emp Type</div>
-                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'empType', employmentTypeValue, linkClass)}</div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Rate</div>
-                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'rate', rateValue, linkClass)}</div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Visa</div>
-                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'visa', visaValue, linkClass)}</div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Location</div>
-                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'location', locationValue, linkClass)}</div>
+                  <div className="mt-2">
+                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Skills</div>
+                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedSkills(lead.id, skillsValue, 8, linkClass)}</div>
                   </div>
                 </div>
-                <div className="mt-2">
-                  <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Skills</div>
-                  <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedSkills(lead.id, skillsValue, 8, linkClass)}</div>
-                </div>
               </div>
 
-              <div className="mt-2">
+              <div className="mt-auto flex items-stretch border-t" style={{ borderColor: cardBorderColor }}>
                 <button
-                  onClick={() => void generateTrackerEmailDrafts(lead)}
-                  className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-2 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 dark:border-white/15 dark:bg-[#2A2E35] dark:text-slate-100 dark:hover:bg-[#343943] sm:text-xs"
+                  type="button"
+                  onClick={() => void handleTrackerPreviewPost(lead)}
+                  disabled={loadingPreviewLeadId === lead.id}
+                  title="Preview original post"
+                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[11px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
                 >
-                  <Mail size={10} />
-                  Generate Email
+                  {loadingPreviewLeadId === lead.id ? '...' : <Eye size={13} strokeWidth={2} />}
+                  Preview
+                </button>
+                <div className="w-px" style={{ backgroundColor: cardBorderColor }} />
+                <button
+                  type="button"
+                  onClick={() => void handleTrackerViewDraft(lead)}
+                  disabled={loadingDraftLeadId === lead.id}
+                  title={`View the ${statusLabel.toLowerCase()} draft`}
+                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400"
+                >
+                  {loadingDraftLeadId === lead.id ? '...' : (lead.verifiedAt ? <BadgeCheck size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2} />)}
+                  {statusLabel}
                 </button>
               </div>
             </div>
@@ -1053,7 +1074,7 @@ export default function TrackerPage() {
             return (
               <tr key={lead.id} className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5">
                 <td className="px-2 py-2 align-top break-words whitespace-normal font-medium text-gray-900 dark:text-slate-100">
-                  <button type="button" onClick={() => void generateTrackerEmailDrafts(lead)} className="text-left hover:text-blue-600 hover:underline">{lead.title}</button>
+                  <button type="button" onClick={() => void handleTrackerViewDraft(lead)} className="text-left hover:text-blue-600 hover:underline">{lead.title}</button>
                   <span className={`ml-1 inline-block rounded px-1 py-0.5 align-middle text-[8px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
                 </td>
                 <td className={cellClass}>{lead.company || '—'}</td>
@@ -1535,87 +1556,123 @@ export default function TrackerPage() {
         </div>
       )}
 
-      {/* ── EMAIL DRAFT MODAL ── */}
-      {modal === 'email' && activeEmailJob && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-3" onClick={() => setModal(null)}>
+      {/* ── POST CONTENT PREVIEW MODAL ── */}
+      {trackerPostPreview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setTrackerPostPreview(null)}>
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tracker-post-preview-title"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-4 sm:p-3 shadow-xl max-h-[85vh] overflow-y-auto"
+            className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-lg border border-gray-200 bg-white shadow-xl"
           >
-            <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5 border-b border-gray-100 p-4">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-50 text-slate-500">
+                <Eye size={16} />
+              </span>
+              <h2 id="tracker-post-preview-title" className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">{trackerPostPreview.title}</h2>
+              <button
+                type="button"
+                onClick={() => setTrackerPostPreview(null)}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+                aria-label="Close post preview"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-700">{trackerPostPreview.content}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PAST GENERATED DRAFT MODAL ── */}
+      {trackerDraftPreview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setTrackerDraftPreview(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tracker-draft-preview-title"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-4 shadow-xl"
+          >
+            <div className="flex items-start gap-2.5">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-gray-900">
-                  {activeEmailJob.title || 'Requirement'}
-                </p>
-                <p className="text-[12px] text-gray-600">{[activeEmailJob.company, activeEmailJob.location].filter(Boolean).join(' • ') || 'Company details unavailable'}</p>
-                <p className="mt-0.5 text-[11px] text-gray-500">{activeEmailJob.posterName || 'Posted by hidden'}{activeEmailJob.createdAt ? ` • ${formatAgo(activeEmailJob.createdAt)}` : ''}</p>
+                <h2 id="tracker-draft-preview-title" className="text-sm font-semibold text-gray-900">{trackerDraftPreview.leadType === 'hotlist' ? 'Requested draft' : 'Submitted draft'}</h2>
+                {(trackerDraftPreview.jobTitle || trackerDraftPreview.company) && (
+                  <p className="mt-0.5 truncate text-xs text-gray-500">
+                    {trackerDraftPreview.jobTitle}{trackerDraftPreview.jobTitle && trackerDraftPreview.company ? ' · ' : ''}{trackerDraftPreview.company}
+                  </p>
+                )}
               </div>
               <button
-                onClick={() => setModal(null)}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                aria-label="Close"
+                type="button"
+                onClick={() => setTrackerDraftPreview(null)}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+                aria-label="Close draft preview"
               >
                 <X size={14} />
               </button>
             </div>
 
-            <div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <button
-                  onClick={() => generateTrackerEmailDrafts(activeEmailJob)}
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-3 sm:py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  <Sparkles size={14} />
-                  Generate Email
-                </button>
-
-                <button
-                  onClick={() => void copyText(activeEmailJob.posterEmail, 'Email ID')}
-                  disabled={!activeEmailJob.posterEmail}
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-300 bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
-                >
-                  <Mail size={14} />
-                  {copiedField === 'Email ID' ? 'Copied' : 'Email ID'}
-                </button>
-              </div>
-
-              <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-2.5">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="grid grid-cols-2 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedEmailDraftTab('pitching')}
-                      className={`rounded px-2 py-1 text-[10px] font-semibold transition ${selectedEmailDraftTab === 'pitching' ? 'bg-blue-600 text-white' : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
-                    >
-                      Pitching Email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedEmailDraftTab('requestDetails')}
-                      className={`rounded px-2 py-1 text-[10px] font-semibold transition ${selectedEmailDraftTab === 'requestDetails' ? 'bg-blue-600 text-white' : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
-                    >
-                      Request Details
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void copyText(
-                      selectedEmailDraftTab === 'pitching' ? trackerEmailDrafts.pitching : trackerEmailDrafts.requestDetails,
-                      'Email draft',
-                    )}
-                    className="rounded border border-gray-300 bg-white px-2 py-1 text-[10px] font-semibold text-gray-700 hover:bg-gray-50"
-                  >
-                    {copiedField === 'Email draft' ? 'Copied' : 'Copy Draft'}
-                  </button>
-                </div>
-
-                <textarea
-                  value={selectedEmailDraftTab === 'pitching' ? trackerEmailDrafts.pitching : trackerEmailDrafts.requestDetails}
-                  readOnly
-                  rows={14}
-                  className="w-full rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none whitespace-pre-wrap"
-                />
-              </div>
+            <div className="relative mt-3">
+              <input
+                value={trackerDraftPreview.subject}
+                readOnly
+                placeholder="Subject"
+                className="w-full rounded-md border border-gray-200 bg-gray-50 py-1.5 pl-3 pr-8 text-xs font-medium text-gray-900 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => void copyText(trackerDraftPreview.subject, 'Subject')}
+                className="absolute right-1.5 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                aria-label="Copy subject"
+              >
+                <Copy size={11} />
+              </button>
+            </div>
+            <div className="relative mt-2">
+              <textarea
+                value={trackerDraftPreview.emailContent}
+                readOnly
+                rows={10}
+                className="w-full resize-none rounded-md border border-gray-200 bg-gray-50 py-2 pl-3 pr-8 text-xs leading-relaxed text-gray-900 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => void copyText(trackerDraftPreview.emailContent, 'Email body')}
+                className="absolute right-1.5 top-1.5 inline-flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                aria-label="Copy email body"
+              >
+                <Copy size={11} />
+              </button>
+            </div>
+            <div className="mt-2 flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5">
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-700">{trackerDraftPreview.vendorEmail || 'No email on file'}</span>
+              <button
+                type="button"
+                onClick={() => void copyText(trackerDraftPreview.vendorEmail, 'Email ID')}
+                disabled={!trackerDraftPreview.vendorEmail}
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Copy email ID"
+              >
+                <Copy size={11} />
+              </button>
+            </div>
+            <div className="mt-3 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => void copyText(
+                  `${trackerDraftPreview.vendorEmail}\n${trackerDraftPreview.subject}\n\n${trackerDraftPreview.emailContent}`,
+                  'Email',
+                )}
+                disabled={!trackerDraftPreview.vendorEmail || !trackerDraftPreview.subject.trim() || !trackerDraftPreview.emailContent.trim()}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Copy size={11} />
+                Copy All
+              </button>
             </div>
           </div>
         </div>
