@@ -1362,6 +1362,7 @@ export default function ProfilesPage() {
         rounded: null,
         isRecommended: false,
         cardToneClass: 'border-amber-200 bg-amber-50/55',
+        cardBorderColor: '#fde68a',
         badgeClass: 'text-gray-700 bg-white border border-gray-200',
       };
     }
@@ -1370,6 +1371,7 @@ export default function ProfilesPage() {
         rounded,
         isRecommended: false,
         cardToneClass: 'border-red-200 bg-red-50/70',
+        cardBorderColor: '#fecaca',
         badgeClass: 'text-red-700 bg-red-100 border border-red-200',
       };
     }
@@ -1378,6 +1380,7 @@ export default function ProfilesPage() {
         rounded,
         isRecommended: false,
         cardToneClass: 'border-yellow-200 bg-yellow-50/80',
+        cardBorderColor: '#fef08a',
         badgeClass: 'text-amber-800 bg-yellow-100 border border-yellow-200',
       };
     }
@@ -1386,6 +1389,7 @@ export default function ProfilesPage() {
         rounded,
         isRecommended: false,
         cardToneClass: 'border-emerald-200 bg-emerald-50/75',
+        cardBorderColor: '#a7f3d0',
         badgeClass: 'text-emerald-700 bg-emerald-100 border border-emerald-200',
       };
     }
@@ -1393,6 +1397,7 @@ export default function ProfilesPage() {
       rounded,
       isRecommended: true,
       cardToneClass: 'border-blue-200 bg-gradient-to-br from-emerald-50 via-blue-50 to-cyan-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]',
+      cardBorderColor: '#bfdbfe',
       badgeClass: 'text-blue-700 bg-white/90 border border-blue-200 shadow-sm',
     };
   }
@@ -1720,54 +1725,56 @@ export default function ProfilesPage() {
     })();
 
     return (
-      <div key={lead.id} className={`rounded-lg border px-3 py-2.5 ${leadScoreVisual.cardToneClass}`}>
-        <div className="flex items-start justify-between gap-1.5">
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold leading-snug text-gray-900">{lead.title || 'Job Opportunity'}</p>
-            {lead.company && (
-              <div className="mt-0.5 text-[10px] text-gray-600">{lead.company}</div>
-            )}
-            <div className="mt-0.5 text-[10px] text-gray-500">
-              <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
-              <span> • </span>
-              <span>{lead.postedAgo}</span>
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-0.5">
-            <div className="flex items-center gap-1.5">
-              {leadScoreVisual.rounded !== null && (
-                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${leadScoreVisual.badgeClass}`}>{leadScoreVisual.rounded}%</span>
+      <div key={lead.id} className={`flex flex-col overflow-hidden rounded-lg border ${leadScoreVisual.cardToneClass}`}>
+        <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
+          <div className="flex items-start justify-between gap-1.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold leading-snug text-gray-900">{lead.title || 'Job Opportunity'}</p>
+              {lead.company && (
+                <div className="mt-0.5 text-[10px] text-gray-600">{lead.company}</div>
               )}
-              {leadScoreVisual.isRecommended && <RecommendedBadge />}
+              <div className="mt-0.5 text-[10px] text-gray-500">
+                <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
+                <span> • </span>
+                <span>{lead.postedAgo}</span>
+              </div>
             </div>
-            <PostSourceBadge source={lead.postSource} />
+            <div className="flex shrink-0 flex-col items-end gap-0.5">
+              <div className="flex items-center gap-1.5">
+                {leadScoreVisual.rounded !== null && (
+                  <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${leadScoreVisual.badgeClass}`}>{leadScoreVisual.rounded}%</span>
+                )}
+                {leadScoreVisual.isRecommended && <RecommendedBadge />}
+              </div>
+              <PostSourceBadge source={lead.postSource} />
+            </div>
           </div>
-        </div>
-        {inlineBreakdownItems.length > 0 && (
-          <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200">
-            <div>
-              <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                <thead className="bg-white">
-                  <tr>
-                    <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
-                    <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
-                    <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleInlineBreakdownItems.map((item) => (
-                    <tr key={item.key}>
-                      <td className="border-b border-gray-100 bg-white px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
-                      <td className="border-b border-gray-100 bg-white px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
-                      <td className="border-b border-gray-100 bg-white px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
+          {inlineBreakdownItems.length > 0 && (
+            <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200">
+              <div>
+                <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                  <thead className="bg-white">
+                    <tr>
+                      <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
+                      <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Profile</th>
+                      <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Job</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {visibleInlineBreakdownItems.map((item) => (
+                      <tr key={item.key}>
+                        <td className="border-b border-gray-100 bg-white px-2 py-1 font-semibold text-gray-900 break-words whitespace-normal">{formatBreakdownFieldName(item.key)}</td>
+                        <td className="border-b border-gray-100 bg-white px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.candidate_value || '-'}</td>
+                        <td className="border-b border-gray-100 bg-white px-2 py-1 text-gray-700 break-words whitespace-normal">{item.detail?.job_value || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
-        <div className="mt-1.5 grid grid-cols-10 gap-1.5">
+          )}
+        </div>
+        <div className="mt-auto flex items-stretch border-t" style={{ borderColor: leadScoreVisual.cardBorderColor }}>
           {hasDetailsToggle && (
             <button
               type="button"
@@ -1782,15 +1789,16 @@ export default function ProfilesPage() {
                   return next;
                 });
               }}
-              className="col-span-3 inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-gray-700 transition hover:bg-gray-50"
+              className="inline-flex h-9 flex-[3] items-center justify-center text-[11px] font-semibold text-gray-600 transition-colors hover:bg-gray-50"
             >
               {isInlineBreakdownExpanded ? 'Hide Details' : 'Details'}
             </button>
           )}
+          {hasDetailsToggle && <div className="w-px" style={{ backgroundColor: leadScoreVisual.cardBorderColor }} />}
           <button
             onClick={() => void handleOpenBreakdown(lead)}
             disabled={processingBreakdownLeadId === lead.id}
-            className={`hidden items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'border-gray-200 text-gray-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            className={`hidden items-center gap-1 px-2 py-0.5 text-[10px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'text-gray-600' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             {breakdownChargedLeadIds.has(lead.id) && <Check size={9} className="text-emerald-600" />}
             {processingBreakdownLeadId === lead.id ? '...' : 'Breakdown'}
@@ -1798,7 +1806,7 @@ export default function ProfilesPage() {
           {revealedLeadIds.has(lead.id) ? (
             <button
               onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
-              className={`${hasDetailsToggle ? 'col-span-7' : 'col-span-10'} inline-flex items-center justify-center gap-1 rounded-md border border-gray-200 bg-gray-100 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-200`}
+              className={`${hasDetailsToggle ? 'flex-[7]' : 'flex-1'} inline-flex h-9 items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 transition-colors hover:bg-gray-50`}
             >
               Email
             </button>
@@ -1806,7 +1814,7 @@ export default function ProfilesPage() {
             <button
               onClick={() => void handleRevealContact(lead)}
               disabled={processingLeadId === lead.id}
-              className={`${hasDetailsToggle ? 'col-span-7' : 'col-span-10'} inline-flex items-center justify-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60`}
+              className={`${hasDetailsToggle ? 'flex-[7]' : 'flex-1'} inline-flex h-9 items-center justify-center gap-1 bg-blue-600 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60`}
             >
               {processingLeadId === lead.id ? '...' : `Reveal ${maskedEmailHint}`}
             </button>
@@ -3645,39 +3653,40 @@ export default function ProfilesPage() {
             )}
 
             {/* Action buttons — thumb-zone friendly on mobile */}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-
-              <button
-                onClick={() => {
-                  const draft = generateEmailDraft(selectedLead);
-                  setGeneratedEmailDraft(draft);
-                  setShowGeneratedEmailDraft(true);
-                }}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-3 sm:py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-              >
-                <Sparkles size={14} />
-                Generate Email
-              </button>
-
-              <button
-                onClick={() => void copyText(selectedLead.posterEmail, 'Vendor email')}
-                disabled={!revealedLeadIds.has(selectedLead.id) || !selectedLead.posterEmail}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-300 bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
-              >
-                <Mail size={14} />
-                Copy Email ID
-              </button>
-
-              {selectedLead.posterPhone && (
+            <div className="overflow-hidden rounded-md border border-gray-200">
+              <div className="grid grid-cols-1 divide-y divide-gray-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                 <button
-                  onClick={() => void copyText(selectedLead.posterPhone, 'WhatsApp number')}
-                  disabled={!revealedLeadIds.has(selectedLead.id)}
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-3 sm:py-2.5 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-500"
+                  onClick={() => {
+                    const draft = generateEmailDraft(selectedLead);
+                    setGeneratedEmailDraft(draft);
+                    setShowGeneratedEmailDraft(true);
+                  }}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-3 sm:py-2.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
                 >
-                  <Phone size={14} />
-                  Copy Phone
+                  <Sparkles size={14} />
+                  Generate Email
                 </button>
-              )}
+
+                <button
+                  onClick={() => void copyText(selectedLead.posterEmail, 'Vendor email')}
+                  disabled={!revealedLeadIds.has(selectedLead.id) || !selectedLead.posterEmail}
+                  className="inline-flex items-center justify-center gap-2 bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
+                >
+                  <Mail size={14} />
+                  Copy Email ID
+                </button>
+
+                {selectedLead.posterPhone && (
+                  <button
+                    onClick={() => void copyText(selectedLead.posterPhone, 'WhatsApp number')}
+                    disabled={!revealedLeadIds.has(selectedLead.id)}
+                    className="inline-flex items-center justify-center gap-2 bg-emerald-50 px-3 py-3 sm:py-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+                  >
+                    <Phone size={14} />
+                    Copy Phone
+                  </button>
+                )}
+              </div>
             </div>
 
             {showGeneratedEmailDraft && (
