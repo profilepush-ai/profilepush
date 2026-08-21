@@ -997,24 +997,25 @@ const LeadCard = memo(function LeadCard({
   const linkClassName = isDark ? 'text-blue-300' : 'text-blue-600';
 
   const actionButtonsBar = (
-    <div className="mt-auto pt-2 flex items-center gap-1.5">
+    <div className={`mt-auto flex items-stretch border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
         disabled={isLoadingPreview}
         title="Preview original post"
-        className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-500 bg-white px-2 text-[11px] font-semibold text-gray-500 transition-opacity hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-500 dark:bg-transparent dark:text-gray-500 dark:hover:bg-white/5"
+        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[11px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
       >
         {isLoadingPreview ? '...' : <Eye size={13} strokeWidth={2} />}
         Preview
       </button>
+      <div className={`w-px ${isDark ? 'bg-white/10' : 'bg-gray-100'}`} />
       {lead.postSource === 'user_post' ? (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onOpenChat(lead); }}
           disabled={isProcessingChat}
           title="Chat about this post"
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-[11px] font-semibold text-white transition-opacity hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-600 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isProcessingChat ? '...' : <MessageSquare size={13} strokeWidth={2} />}
           Chat
@@ -1022,7 +1023,7 @@ const LeadCard = memo(function LeadCard({
       ) : isAskPending || isVerified ? (
         <span
           title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-50 text-[11px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-[11px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
         >
           {isVerified ? <BadgeCheck size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2} />}
           {isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
@@ -1033,7 +1034,7 @@ const LeadCard = memo(function LeadCard({
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
           title={!lead.posterEmail ? 'No email' : 'Send Email'}
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-500 bg-white px-2 text-[11px] font-semibold text-gray-500 transition-opacity hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-500 dark:bg-transparent dark:text-gray-500 dark:hover:bg-white/5"
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[11px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
         >
           {isProcessingAskAI ? '...' : isHotlistFeed ? <FileText size={13} strokeWidth={2} /> : <Send size={13} strokeWidth={2} />}
           {isHotlistFeed ? 'Request' : 'Submit'}
@@ -1043,7 +1044,8 @@ const LeadCard = memo(function LeadCard({
   );
 
   return (
-    <div className={`relative flex h-full min-w-0 flex-col rounded-lg border px-3 py-2.5 ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
+    <div className={`relative flex h-full min-w-0 flex-col overflow-hidden rounded-lg border ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
+      <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
       <div>
         <div className="min-w-0">
           <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
@@ -1139,6 +1141,7 @@ const LeadCard = memo(function LeadCard({
         </div>
         );
       })()}
+      </div>
       {actionButtonsBar}
     </div>
   );
