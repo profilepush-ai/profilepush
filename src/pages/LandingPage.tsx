@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowRight, BarChart3, Building2, ChevronRight, Upload, ImagePlus, Plus, Minus, Target, Zap,
+  ArrowRight, ChevronRight, Upload, ImagePlus, Plus, Minus,
 } from 'lucide-react';
 import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
@@ -453,66 +453,6 @@ export default function LandingPage() {
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── SUBMIT VS REVEAL ── */}
-      <section id="submit" className="py-24 px-6 bg-gray-50 border-y border-gray-100">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Why Submit, not Reveal</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-              Stop paying to peek. Start submitting to close.
-            </h2>
-            <p className="mt-4 max-w-2xl mx-auto text-gray-500 leading-relaxed">
-              Revealing a contact just tells you who to email — you still have to write the pitch and hope it lands. Submitting tells the vendor you already have the right consultant: resume attached, AI-drafted outreach behind it, and a real conversation started before you've spent a single send.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-6 mb-16">
-            <div className="rounded-2xl border border-gray-200 bg-white p-6">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">The old way — Reveal</p>
-              <ul className="space-y-3 text-sm text-gray-600">
-                <li>Pay to unmask a name and email address</li>
-                <li>You still write the pitch yourself, from scratch</li>
-                <li>No signal on whether the fit is actually strong</li>
-                <li>Vendor gets one more cold email to sift through</li>
-              </ul>
-            </div>
-            <div className="rounded-2xl border-2 border-blue-600 bg-white p-6 shadow-lg shadow-blue-100">
-              <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-4">The ProfilePush way — Submit</p>
-              <ul className="space-y-3 text-sm text-gray-700">
-                <li>See it live the moment it's posted — not hours later</li>
-                <li>AI drafts the outreach, resume attached automatically</li>
-                <li>Opens a real conversation thread in your Inbox</li>
-                <li>Vendor gets a pre-qualified candidate, not a cold ask</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            <div>
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mb-3">
-                <Target className="w-5 h-5 text-blue-700" />
-              </div>
-              <h3 className="font-semibold text-gray-900 mb-1">For recruiters</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">Submit with a resume already attached and a real thread started — no more guessing which lead is worth chasing or writing the same pitch from scratch.</p>
-            </div>
-            <div>
-              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center mb-3">
-                <Building2 className="w-5 h-5 text-amber-700" />
-              </div>
-              <h3 className="font-semibold text-gray-900 mb-1">For vendors &amp; clients</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">Every submission lands pre-matched against your requirement with a resume in hand, not a generic cold pitch — less noise, faster decisions on both sides.</p>
-            </div>
-            <div>
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center mb-3">
-                <BarChart3 className="w-5 h-5 text-emerald-700" />
-              </div>
-              <h3 className="font-semibold text-gray-900 mb-1">For agency owners</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">See every submission and every user on your team — one dashboard, real accountability for what you're paying to power.</p>
             </div>
           </div>
         </div>
