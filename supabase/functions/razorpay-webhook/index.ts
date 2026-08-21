@@ -15,24 +15,19 @@ async function verifySignature(body: string, signature: string, secret: string):
   return expected === signature;
 }
 
-async function setCredits(supabase: ReturnType<typeof createClient>, accountId: string, amountUsd: number, description: string) {
-  await supabase.from("accounts").update({ credits_balance: amountUsd, is_trial: false }).eq("id", accountId);
-  await supabase.from("credit_transactions").insert({
-    account_id: accountId,
-    type: "topup",
-    amount: amountUsd,
-    description,
-  });
-}
-
-async function addCredits(supabase: ReturnType<typeof createClient>, accountId: string, amountUsd: number, description: string) {
+// Always additive — accounts.credits_balance is a single shared pool (the
+// 500-credit free signup grant, one-time top-ups, and now recurring
+// subscription credits all land in the same balance). A recurring grant
+// must never overwrite it, or it would silently wipe unspent credits and
+// any separately-purchased top-ups on every renewal.
+async function addCredits(supabase: ReturnType<typeof createClient>, accountId: string, amount: number, description: string) {
   const { data: acc } = await supabase.from("accounts").select("credits_balance").eq("id", accountId).single();
-  const newBalance = ((acc?.credits_balance as number) ?? 0) + amountUsd;
+  const newBalance = ((acc?.credits_balance as number) ?? 0) + amount;
   await supabase.from("accounts").update({ credits_balance: newBalance, is_trial: false }).eq("id", accountId);
   await supabase.from("credit_transactions").insert({
     account_id: accountId,
     type: "topup",
-    amount: amountUsd,
+    amount,
     description,
   });
 }
@@ -110,12 +105,12 @@ Deno.serve(async (req: Request) => {
         return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
       }
 
-      let creditsToGrant = dbSub.plan_amount_usd as number;
-      let newPlanAmount = dbSub.plan_amount_usd as number;
+      let creditsToGrant = dbSub.plan_credits as number;
+      let newPlanCredits = dbSub.plan_credits as number;
 
-      if (event === "subscription.charged" && dbSub.pending_plan_amount_usd) {
-        newPlanAmount = dbSub.pending_plan_amount_usd as number;
-        creditsToGrant = newPlanAmount;
+      if (event === "subscription.charged" && dbSub.pending_plan_credits) {
+        newPlanCredits = dbSub.pending_plan_credits as number;
+        creditsToGrant = newPlanCredits;
       }
 
       const periodStart = currentStart ? new Date(currentStart * 1000).toISOString() : null;
@@ -123,19 +118,19 @@ Deno.serve(async (req: Request) => {
 
       await supabase.from("subscriptions").update({
         status: "active",
-        plan_amount_usd: newPlanAmount,
-        pending_plan_amount_usd: null,
+        plan_credits: newPlanCredits,
+        pending_plan_credits: null,
         current_period_start: periodStart ?? new Date().toISOString(),
         current_period_end: periodEnd ?? new Date(Date.now() + 30 * 86400000).toISOString(),
         updated_at: new Date().toISOString(),
       }).eq("razorpay_subscription_id", rzpSubId);
 
       const label = event === "subscription.activated" ? "New subscription" : "Monthly renewal";
-      await setCredits(supabase, dbSub.account_id as string, creditsToGrant, `${label} – Pro Plan $${creditsToGrant}/mo`);
+      await addCredits(supabase, dbSub.account_id as string, creditsToGrant, `${label} – Pro Plan ₹${creditsToGrant}/mo (${creditsToGrant} credits)`);
 
       fireCrmWebhook(supabaseUrl, serviceRoleKey, event, dbSub.account_id as string, {
         razorpay_payload: payload,
-        plan_amount_usd: newPlanAmount,
+        plan_credits: newPlanCredits,
         credits_granted: creditsToGrant,
         period_start: periodStart,
         period_end: periodEnd,
@@ -161,11 +156,11 @@ Deno.serve(async (req: Request) => {
       if (sub?.id) {
         const newStatus = event === "subscription.cancelled" ? "cancelled" : "completed";
         await supabase.from("subscriptions").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("razorpay_subscription_id", sub.id as string);
-        const { data: dbSub } = await supabase.from("subscriptions").select("account_id, plan_amount_usd").eq("razorpay_subscription_id", sub.id as string).maybeSingle();
+        const { data: dbSub } = await supabase.from("subscriptions").select("account_id, plan_credits").eq("razorpay_subscription_id", sub.id as string).maybeSingle();
         fireCrmWebhook(supabaseUrl, serviceRoleKey, event, dbSub?.account_id ?? null, {
           razorpay_payload: payload,
           razorpay_subscription_id: sub.id,
-          plan_amount_usd: dbSub?.plan_amount_usd ?? null,
+          plan_credits: dbSub?.plan_credits ?? null,
         });
       }
     }
@@ -207,11 +202,11 @@ Deno.serve(async (req: Request) => {
           .maybeSingle();
 
         if (upgradeOrder && upgradeOrder.status === "created") {
-          const creditsDiff = (upgradeOrder.new_plan_amount_usd as number) - (upgradeOrder.old_plan_amount_usd as number);
+          const creditsDiff = (upgradeOrder.new_plan_credits as number) - (upgradeOrder.old_plan_credits as number);
 
           await supabase.from("razorpay_upgrade_orders").update({ status: "paid" }).eq("id", upgradeOrder.id);
           await supabase.from("subscriptions").update({
-            plan_amount_usd: upgradeOrder.new_plan_amount_usd,
+            plan_credits: upgradeOrder.new_plan_credits,
             updated_at: new Date().toISOString(),
           }).eq("account_id", upgradeOrder.account_id);
 
@@ -219,15 +214,15 @@ Deno.serve(async (req: Request) => {
             supabase,
             upgradeOrder.account_id as string,
             creditsDiff,
-            `Plan upgrade $${upgradeOrder.old_plan_amount_usd} → $${upgradeOrder.new_plan_amount_usd}`
+            `Plan upgrade ₹${upgradeOrder.old_plan_credits}/mo → ₹${upgradeOrder.new_plan_credits}/mo`
           );
 
           fireCrmWebhook(supabaseUrl, serviceRoleKey, "subscription.upgraded", upgradeOrder.account_id as string, {
             razorpay_payload: payload,
-            old_plan_amount_usd: upgradeOrder.old_plan_amount_usd,
-            new_plan_amount_usd: upgradeOrder.new_plan_amount_usd,
+            old_plan_credits: upgradeOrder.old_plan_credits,
+            new_plan_credits: upgradeOrder.new_plan_credits,
             credits_added: creditsDiff,
-            proration_usd: upgradeOrder.proration_usd,
+            proration_credits: upgradeOrder.proration_credits,
             razorpay_order_id: notes.order_id,
             payment_id: payment?.id ?? null,
             amount_inr: payment?.amount ?? null,

@@ -14,11 +14,11 @@ export interface Subscription {
   id: string;
   account_id: string;
   razorpay_subscription_id: string | null;
-  plan_amount_usd: number;
+  plan_credits: number;
   status: 'pending' | 'active' | 'halted' | 'cancelled' | 'completed' | 'inactive';
   current_period_start: string | null;
   current_period_end: string | null;
-  pending_plan_amount_usd: number | null;
+  pending_plan_credits: number | null;
   cancel_at_period_end: boolean;
 }
 

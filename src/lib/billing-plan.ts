@@ -1,5 +1,6 @@
-export const TIERS = [25, 50, 100, 200, 300, 500];
-export const INR_PER_USD = 100;
+// Pro subscription tiers: 500-5000 credits/month, flat ₹1/credit — same
+// tier list and rate as the one-time top-up packs, just billed monthly.
+export const TIERS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
 
 type FunctionsErrorLike = {
   message?: unknown;
@@ -8,8 +9,8 @@ type FunctionsErrorLike = {
   status?: unknown;
 };
 
-export function fmtINR(usd: number) {
-  return `₹${(usd * INR_PER_USD).toLocaleString('en-IN')}`;
+export function fmtINR(credits: number) {
+  return `₹${credits.toLocaleString('en-IN')}`;
 }
 
 export function getBillingErrorMessage(error: unknown, fallback: string, serverErrorPayload?: unknown): string {

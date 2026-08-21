@@ -424,7 +424,7 @@ export default function AccountSettings() {
   // ─── Plan helpers ──────────────────────────────────────────────
   const planLabel = (() => {
     if (!subscription || subscription.status === 'inactive') return account?.is_trial ? 'Free Trial' : 'Free';
-    if (subscription.status === 'active') return `$${subscription.plan_amount_usd}/mo`;
+    if (subscription.status === 'active') return `₹${subscription.plan_credits}/mo`;
     return subscription.status.charAt(0).toUpperCase() + subscription.status.slice(1);
   })();
   const planStyle = subscription?.status === 'active'

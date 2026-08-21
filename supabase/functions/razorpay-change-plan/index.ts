@@ -1,14 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { INR_PAISE_PER_CREDIT, isValidCreditTier } from "../_shared/credit-tiers.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
-
-const VALID_PLAN_AMOUNTS = [25, 50, 100, 200, 300, 500];
-const INR_PER_USD = 100;
 
 function fireCrmWebhook(supabaseUrl: string, serviceRoleKey: string, event: string, accountId: string, extra: Record<string, unknown>) {
   fetch(`${supabaseUrl}/functions/v1/notify-crm-webhook`, {
@@ -30,16 +28,16 @@ function razorpayAuth(): string {
   return "Basic " + btoa(`${key}:${secret}`);
 }
 
-async function getOrCreatePlan(amountUsd: number, supabase: ReturnType<typeof createClient>): Promise<string> {
+async function getOrCreatePlan(planCredits: number, supabase: ReturnType<typeof createClient>): Promise<string> {
   const { data: cached } = await supabase
     .from("razorpay_plan_cache")
     .select("razorpay_plan_id")
-    .eq("amount_usd", amountUsd)
+    .eq("plan_credits", planCredits)
     .maybeSingle();
 
   if (cached?.razorpay_plan_id) return cached.razorpay_plan_id;
 
-  const amountPaise = amountUsd * INR_PER_USD * 100;
+  const amountPaise = planCredits * INR_PAISE_PER_CREDIT;
   const res = await fetch("https://api.razorpay.com/v1/plans", {
     method: "POST",
     headers: { Authorization: razorpayAuth(), "Content-Type": "application/json" },
@@ -47,10 +45,10 @@ async function getOrCreatePlan(amountUsd: number, supabase: ReturnType<typeof cr
       period: "monthly",
       interval: 1,
       item: {
-        name: `ProfilePush Pro – $${amountUsd}/mo`,
+        name: `ProfilePush Pro – ₹${planCredits}/mo`,
         amount: amountPaise,
         currency: "INR",
-        description: `ProfilePush Pro Plan – $${amountUsd}/month, ${amountUsd} credits`,
+        description: `ProfilePush Pro Plan – ₹${planCredits}/month, ${planCredits} credits every cycle`,
       },
     }),
   });
@@ -58,7 +56,7 @@ async function getOrCreatePlan(amountUsd: number, supabase: ReturnType<typeof cr
   const plan = await res.json();
   if (!plan.id) throw new Error(`Razorpay plan creation failed: ${JSON.stringify(plan)}`);
 
-  await supabase.from("razorpay_plan_cache").insert({ amount_usd: amountUsd, razorpay_plan_id: plan.id });
+  await supabase.from("razorpay_plan_cache").insert({ plan_credits: planCredits, razorpay_plan_id: plan.id });
   return plan.id as string;
 }
 
@@ -83,8 +81,8 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
-    const { new_plan_amount_usd } = await req.json();
-    if (!VALID_PLAN_AMOUNTS.includes(new_plan_amount_usd)) {
+    const { new_plan_credits } = await req.json();
+    if (!isValidCreditTier(new_plan_credits)) {
       return new Response(JSON.stringify({ error: "Invalid plan amount" }), { status: 400, headers: corsHeaders });
     }
 
@@ -107,21 +105,22 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "No active subscription found" }), { status: 400, headers: corsHeaders });
     }
 
-    const oldAmount = dbSub.plan_amount_usd as number;
-    if (oldAmount === new_plan_amount_usd) {
+    const oldCredits = dbSub.plan_credits as number;
+    if (oldCredits === new_plan_credits) {
       return new Response(JSON.stringify({ error: "Already on this plan" }), { status: 400, headers: corsHeaders });
     }
 
-    const isUpgrade = new_plan_amount_usd > oldAmount;
+    const isUpgrade = new_plan_credits > oldCredits;
 
     if (isUpgrade) {
-      // Calculate prorated charge
+      // Calculate prorated charge, directly in credits/rupees — no USD/INR
+      // conversion factor, ₹1 = 1 credit throughout.
       const periodEnd = dbSub.current_period_end ? new Date(dbSub.current_period_end) : new Date(Date.now() + 30 * 86400000);
       const now = new Date();
       const msRemaining = Math.max(0, periodEnd.getTime() - now.getTime());
       const fraction = msRemaining / (30 * 86400000);
-      const proratedUsd = parseFloat(((new_plan_amount_usd - oldAmount) * fraction).toFixed(2));
-      const proratedPaise = Math.round(proratedUsd * INR_PER_USD * 100);
+      const proratedCredits = Math.round((new_plan_credits - oldCredits) * fraction);
+      const proratedPaise = proratedCredits * INR_PAISE_PER_CREDIT;
 
       // Create one-time Razorpay order for prorated difference
       const orderRes = await fetch("https://api.razorpay.com/v1/orders", {
@@ -133,8 +132,8 @@ Deno.serve(async (req: Request) => {
           notes: {
             type: "plan_upgrade",
             account_id: member.account_id,
-            old_plan_usd: oldAmount.toString(),
-            new_plan_usd: new_plan_amount_usd.toString(),
+            old_plan_credits: oldCredits.toString(),
+            new_plan_credits: new_plan_credits.toString(),
           },
         }),
       });
@@ -145,14 +144,14 @@ Deno.serve(async (req: Request) => {
       const { data: upgradeRec } = await supabaseAdmin.from("razorpay_upgrade_orders").insert({
         account_id: member.account_id,
         razorpay_order_id: order.id,
-        old_plan_amount_usd: oldAmount,
-        new_plan_amount_usd,
-        proration_usd: proratedUsd,
+        old_plan_credits: oldCredits,
+        new_plan_credits,
+        proration_credits: proratedCredits,
         status: "created",
       }).select().single();
 
       // Also update the Razorpay subscription plan immediately (effective after current cycle)
-      const newPlanId = await getOrCreatePlan(new_plan_amount_usd, supabaseAdmin);
+      const newPlanId = await getOrCreatePlan(new_plan_credits, supabaseAdmin);
       await fetch(`https://api.razorpay.com/v1/subscriptions/${dbSub.razorpay_subscription_id}`, {
         method: "PATCH",
         headers: { Authorization: razorpayAuth(), "Content-Type": "application/json" },
@@ -165,9 +164,9 @@ Deno.serve(async (req: Request) => {
         "subscription.upgrade_checkout_initiated",
         member.account_id,
         {
-          old_plan_amount_usd: oldAmount,
-          new_plan_amount_usd,
-          proration_usd: proratedUsd,
+          old_plan_credits: oldCredits,
+          new_plan_credits,
+          proration_credits: proratedCredits,
           amount_inr_paise: proratedPaise,
           razorpay_order_id: order.id,
           user_id: user.id,
@@ -183,9 +182,9 @@ Deno.serve(async (req: Request) => {
           order_id: order.id,
           key_id: getRequiredEnv("RAZORPAY_KEY_ID"),
           amount_inr_paise: proratedPaise,
-          proration_usd: proratedUsd,
-          old_plan_usd: oldAmount,
-          new_plan_usd: new_plan_amount_usd,
+          proration_credits: proratedCredits,
+          old_plan_credits: oldCredits,
+          new_plan_credits,
           upgrade_order_db_id: upgradeRec?.id,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -193,12 +192,12 @@ Deno.serve(async (req: Request) => {
     } else {
       // Downgrade — schedule for next renewal, no immediate charge
       await supabaseAdmin.from("subscriptions").update({
-        pending_plan_amount_usd: new_plan_amount_usd,
+        pending_plan_credits: new_plan_credits,
         updated_at: new Date().toISOString(),
       }).eq("account_id", member.account_id);
 
       // Update Razorpay subscription plan at cycle end
-      const newPlanId = await getOrCreatePlan(new_plan_amount_usd, supabaseAdmin);
+      const newPlanId = await getOrCreatePlan(new_plan_credits, supabaseAdmin);
       await fetch(`https://api.razorpay.com/v1/subscriptions/${dbSub.razorpay_subscription_id}`, {
         method: "PATCH",
         headers: { Authorization: razorpayAuth(), "Content-Type": "application/json" },
@@ -211,8 +210,8 @@ Deno.serve(async (req: Request) => {
         "subscription.downgrade_scheduled",
         member.account_id,
         {
-          old_plan_amount_usd: oldAmount,
-          new_plan_amount_usd,
+          old_plan_credits: oldCredits,
+          new_plan_credits,
           effective_date: dbSub.current_period_end,
           user_id: user.id,
           email: user.email,
@@ -224,8 +223,8 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({
           type: "downgrade",
-          old_plan_usd: oldAmount,
-          new_plan_usd: new_plan_amount_usd,
+          old_plan_credits: oldCredits,
+          new_plan_credits,
           effective_date: dbSub.current_period_end,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }

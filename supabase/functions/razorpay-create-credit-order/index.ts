@@ -1,20 +1,19 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { INR_PAISE_PER_CREDIT, isValidCreditTier } from "../_shared/credit-tiers.ts";
 
 // Creates a plain one-time Razorpay Order (not a Subscription) for a credit
 // top-up: 500-5000 credits in 500 increments, flat ₹1/credit. Separate from
-// razorpay-create-subscription/razorpay-change-plan, which are both
-// recurring-subscription-shaped and stay untouched/dormant. razorpay-webhook
-// credits the purchase on payment.captured via the pending row this writes.
+// razorpay-create-subscription/razorpay-change-plan, which bill the same
+// tiers/rate on a recurring monthly cadence instead of one time.
+// razorpay-webhook credits the purchase on payment.captured via the
+// pending row this writes.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
-
-const INR_PAISE_PER_CREDIT = 100; // ₹1/credit
-const MAX_CREDITS = 5000;
 
 function getRequiredEnv(name: string): string {
   const value = Deno.env.get(name);
@@ -46,7 +45,7 @@ Deno.serve(async (req: Request) => {
     if (authErr || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
     const { credits } = await req.json();
-    if (!Number.isInteger(credits) || credits <= 0 || credits % 500 !== 0 || credits > MAX_CREDITS) {
+    if (!isValidCreditTier(credits)) {
       return new Response(JSON.stringify({ error: "credits must be a multiple of 500, up to 5000" }), { status: 400, headers: corsHeaders });
     }
 

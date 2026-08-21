@@ -4,8 +4,7 @@ import { TIERS } from '../lib/billing-plan';
 import type { Subscription } from '../contexts/AuthContext';
 
 const FEATURES = [
-  '$25 AI Credits (approx 100 reveals)',
-  'Live Job alerts for Watchlist Profiles',
+  'Credits delivered automatically every month',
   'Unlimited team members',
   'Vendors Tracker & Bulk Export',
 ];
@@ -25,9 +24,9 @@ export function PlanModal({
   onSubmit: () => void;
   user: { email?: string; user_metadata?: Record<string, unknown> } | null;
 }) {
-  const isSame = hasActiveSub && subscription ? selectedNewTier === subscription.plan_amount_usd : false;
-  const isUpgrade = hasActiveSub && subscription ? selectedNewTier > subscription.plan_amount_usd : false;
-  const inr = (selectedNewTier * 100).toLocaleString('en-IN');
+  const isSame = hasActiveSub && subscription ? selectedNewTier === subscription.plan_credits : false;
+  const isUpgrade = hasActiveSub && subscription ? selectedNewTier > subscription.plan_credits : false;
+  const inr = selectedNewTier.toLocaleString('en-IN');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -51,7 +50,7 @@ export function PlanModal({
             >
               {TIERS.map(tier => (
                 <option key={tier} value={tier}>
-                  ₹{(tier * 100).toLocaleString('en-IN')}/mo{subscription?.plan_amount_usd === tier && hasActiveSub ? ' — current' : ''}
+                  ₹{tier.toLocaleString('en-IN')}/mo — {tier.toLocaleString('en-IN')} credits{subscription?.plan_credits === tier && hasActiveSub ? ' — current' : ''}
                 </option>
               ))}
             </select>

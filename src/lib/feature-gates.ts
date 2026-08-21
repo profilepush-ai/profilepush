@@ -9,7 +9,7 @@ export const BILLING_GATES_ENABLED = false;
 
 export function isPaidPlanEffective(subscription: Subscription | null | undefined): boolean {
   if (!BILLING_GATES_ENABLED) return true;
-  return subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+  return subscription?.status === 'active' && (subscription.plan_credits ?? 0) > 0;
 }
 
 export function shouldChargeCredits(): boolean {

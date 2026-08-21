@@ -19,7 +19,7 @@ describe('feature-gates', () => {
     expect(isPaidPlanEffective(null)).toBe(true);
     expect(isPaidPlanEffective(undefined)).toBe(true);
 
-    const inactiveSub = { status: 'inactive', plan_amount_usd: 0 } as Subscription;
+    const inactiveSub = { status: 'inactive', plan_credits: 0 } as Subscription;
     expect(isPaidPlanEffective(inactiveSub)).toBe(true);
   });
 });

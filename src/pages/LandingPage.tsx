@@ -25,8 +25,8 @@ const FEATURES = [
   {
     key: 'pulse',
     slug: 'jobs',
-    headline: 'Predict the fit. Then submit it.',
-    subline: 'Jobs watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards 24/7. Predict scores your consultant\'s acceptance odds against the requirement before you spend a submission, then Submit sends the resume and opens a real conversation with the vendor.',
+    headline: 'Every requirement. The moment it posts.',
+    subline: 'Jobs watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards 24/7 for new requirements, lined up against your bench the moment they post. Submit drafts the outreach, attaches the resume, and opens a real conversation with the vendor.',
     accent: 'from-blue-100 to-white',
     badge: 'bg-blue-100 text-blue-700',
     badgeLabel: 'Jobs',
@@ -43,10 +43,20 @@ const FEATURES = [
     topGlow: 'rgba(252,211,77,0.5)',
   },
   {
+    key: 'posts',
+    slug: 'posts',
+    headline: 'Post it yourself. Get matched instantly.',
+    subline: 'Can\'t find your role or consultant on the feeds? Post it directly — paste your job or hotlist listing and AI auto-fills every field. It shows up in the same Jobs and Hotlist feeds everyone else sees, and interested recruiters can chat with you about it right in-app.',
+    accent: 'from-teal-50 to-white',
+    badge: 'bg-teal-100 text-teal-700',
+    badgeLabel: 'Posts',
+    topGlow: 'rgba(94,234,212,0.5)',
+  },
+  {
     key: 'inbox',
     slug: 'inbox',
     headline: '1 submission. A real conversation.',
-    subline: 'Every submission opens a live thread with the vendor — resume attached, reply and message right from your Inbox, and track opens so nothing goes cold.',
+    subline: 'Every submission opens a live thread with the vendor — resume attached, reply and message right from your Inbox. Whether it\'s a vendor email thread or an in-app chat with another recruiter about a post, everything lands in one place, and you track opens so nothing goes cold.',
     accent: 'from-purple-50 to-white',
     badge: 'bg-purple-100 text-purple-700',
     badgeLabel: 'Inbox',
@@ -78,8 +88,12 @@ const FAQS = [
     a: 'Jobs and Hotlist are live feeds pulled from LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards. Jobs surfaces client requirements lined up against your bench; Hotlist surfaces available consultants lined up against your open requirements — so whichever side of the desk you’re on, you see your best matches first, the moment they post.',
   },
   {
+    q: 'What is Posts?',
+    a: 'Posts lets you list your own job or hotlist consultant directly on ProfilePush. Paste what you\'d normally post to a group and AI auto-fills the form for you. It joins the same Jobs and Hotlist feeds other recruiters browse, and anyone interested can chat with you about it in-app.',
+  },
+  {
     q: 'What is Inbox?',
-    a: 'Inbox is AI-drafted outreach. One click writes a personalized email requesting job details or a resume, ready for you to review and send, then tracks opens and replies in a real conversation thread.',
+    a: 'Inbox is AI-drafted outreach. One click writes a personalized email requesting job details or a resume, ready for you to review and send, then tracks opens and replies in a real conversation thread — alongside any in-app chats from your own Posts.',
   },
   {
     q: 'What is Tracker?',
@@ -87,7 +101,7 @@ const FAQS = [
   },
   {
     q: 'How much does ProfilePush cost?',
-    a: 'ProfilePush is free to start — no credit card required. Every account gets 500 free AI credits, one time, that never expire. Generating an email draft, an AI chat draft, or a new post each cost 1 credit. When you run out, top up any time in 500-credit packs at a flat ₹1 per credit.',
+    a: 'ProfilePush is free to start — no credit card required. Every account gets 500 free AI credits, one time, that never expire. Generating an email draft, an AI chat draft, or a new post each cost 1 credit. Top up any time in 500-credit packs at a flat ₹1 per credit, or subscribe to Pro from ₹500/month to have credits delivered automatically every cycle.',
   },
 ];
 
@@ -424,7 +438,7 @@ export default function LandingPage() {
               {[
                 { n: '1', t: 'See what\'s hot', d: 'Pulse ranks every tech stack by live demand and rate, so you know where to focus before you spend a submission.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
                 { n: '2', t: 'Jobs & Hotlist go live', d: 'Jobs and Hotlist scan 500+ groups and job boards in real-time — new requirements and available consultants show up the moment they post.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
-                { n: '3', t: 'Predict, then submit', d: 'Predict scores the acceptance odds before you spend the send. Submit drafts the outreach, attaches the resume, and opens a real conversation in Inbox.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
+                { n: '3', t: 'Submit with confidence', d: 'AI drafts the outreach, attaches the resume, and opens a real conversation in Inbox — no cold, generic pitch.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
                 { n: '4', t: 'Close it in Tracker', d: 'Log every submission, avoid double-submittals, and export your pipeline anytime.', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
               ].map((step) => (
                 <div key={step.n} className="relative flex gap-8 pb-10 last:pb-0">
@@ -453,7 +467,7 @@ export default function LandingPage() {
               Stop paying to peek. Start submitting to close.
             </h2>
             <p className="mt-4 max-w-2xl mx-auto text-gray-500 leading-relaxed">
-              Revealing a contact just tells you who to email — you still have to write the pitch and hope it lands. Submitting tells the vendor you already have the right consultant: resume attached, a data-driven fit score behind it, and a real conversation started before you've spent a single send.
+              Revealing a contact just tells you who to email — you still have to write the pitch and hope it lands. Submitting tells the vendor you already have the right consultant: resume attached, AI-drafted outreach behind it, and a real conversation started before you've spent a single send.
             </p>
           </div>
 
@@ -470,7 +484,7 @@ export default function LandingPage() {
             <div className="rounded-2xl border-2 border-blue-600 bg-white p-6 shadow-lg shadow-blue-100">
               <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-4">The ProfilePush way — Submit</p>
               <ul className="space-y-3 text-sm text-gray-700">
-                <li>Predict scores the acceptance odds before you act</li>
+                <li>See it live the moment it's posted — not hours later</li>
                 <li>AI drafts the outreach, resume attached automatically</li>
                 <li>Opens a real conversation thread in your Inbox</li>
                 <li>Vendor gets a pre-qualified candidate, not a cold ask</li>
@@ -484,7 +498,7 @@ export default function LandingPage() {
                 <Target className="w-5 h-5 text-blue-700" />
               </div>
               <h3 className="font-semibold text-gray-900 mb-1">For recruiters</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">Know your odds before you spend the ask. Submit with a resume already attached and a real thread started — no more guessing which lead is worth chasing.</p>
+              <p className="text-sm text-gray-500 leading-relaxed">Submit with a resume already attached and a real thread started — no more guessing which lead is worth chasing or writing the same pitch from scratch.</p>
             </div>
             <div>
               <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center mb-3">
@@ -498,7 +512,7 @@ export default function LandingPage() {
                 <BarChart3 className="w-5 h-5 text-emerald-700" />
               </div>
               <h3 className="font-semibold text-gray-900 mb-1">For agency owners</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">See every submission, every prediction, every user on your team — one dashboard, real accountability for what you're paying to power.</p>
+              <p className="text-sm text-gray-500 leading-relaxed">See every submission and every user on your team — one dashboard, real accountability for what you're paying to power.</p>
             </div>
           </div>
         </div>
@@ -514,42 +528,80 @@ export default function LandingPage() {
               Simple, transparent pricing.
             </h2>
             <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">
-              Start free. No subscription, no monthly bill — just credits that never expire.
+              Start free with credits that never expire. Upgrade to Pro when you want them delivered automatically.
             </p>
           </div>
 
-          {/* Single unified plan card */}
-          <div className="max-w-md mx-auto rounded-2xl p-8 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
-            <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-white/15 text-white w-fit">
-              Every account
-            </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
 
-            <div className="flex items-baseline gap-1.5 mb-0.5">
-              <span className="text-5xl font-extrabold text-white">500</span>
-              <span className="text-blue-200 text-sm">free AI credits</span>
+            {/* Free Plan */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-8 flex flex-col">
+              <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-yellow-100 text-yellow-700 w-fit">
+                Free
+              </span>
+
+              <div className="flex items-baseline gap-1.5 mb-0.5">
+                <span className="text-5xl font-extrabold text-gray-900">500</span>
+                <span className="text-gray-500 text-sm">credits</span>
+              </div>
+              <p className="text-sm font-semibold text-yellow-600 mb-1">One time · never expire</p>
+              <p className="text-xs text-gray-500 mb-8">No credit card required</p>
+
+              <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
+                {[
+                  'Pulse, Jobs, Hotlist, Posts, Inbox & Tracker included',
+                  'Unlimited team members',
+                  '1 credit per email draft, AI chat draft, or new post',
+                ].map(item => (
+                  <li key={item} className="flex items-center gap-2.5">
+                    <span className="w-4 h-4 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.5 6L6.5 2" stroke="#ca8a04" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+
+              <Link to="/signup" className="w-full text-center border border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 text-gray-800 text-sm font-semibold py-3 rounded-xl transition-colors">
+                Get Started Free
+              </Link>
             </div>
-            <p className="text-sm font-semibold text-yellow-300 mb-1">One time · never expire</p>
-            <p className="text-xs text-blue-300/70 mb-8">No credit card required. Top up any time — 500-credit packs at ₹1 per credit.</p>
 
-            <ul className="space-y-3 text-sm text-white flex-1 mb-8">
-              {[
-                'Pulse, Jobs, Hotlist, Inbox & Tracker included',
-                'Unlimited team members',
-                '1 credit per email draft, AI chat draft, or new post',
-                'Credits never reset or expire',
-              ].map(item => (
-                <li key={item} className="flex items-center gap-2.5">
-                  <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.5 6L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </span>
-                  {item}
-                </li>
-              ))}
-            </ul>
+            {/* Pro Plan */}
+            <div className="rounded-2xl p-8 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
+              <span className="absolute -top-3 left-8 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm text-blue-900" style={{ backgroundColor: '#facc15' }}>Auto-renews</span>
+              <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-white/15 text-white w-fit">
+                Pro
+              </span>
 
-            <Link to="/signup" className="w-full text-center bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold py-3 rounded-xl transition-colors">
-              Get Started Free
-            </Link>
+              <div className="flex items-baseline gap-1.5 mb-0.5">
+                <span className="text-5xl font-extrabold text-white">₹500</span>
+                <span className="text-blue-200 text-sm">/ month</span>
+              </div>
+              <p className="text-sm font-semibold text-yellow-300 mb-1">500 credits every cycle · from ₹500/mo</p>
+              <p className="text-xs text-blue-300/70 mb-8">Cancel any time — you keep access through what you've paid for</p>
+
+              <ul className="space-y-3 text-sm text-white flex-1 mb-8">
+                {[
+                  'Everything in Free',
+                  'Credits delivered automatically every month',
+                  'Never run out mid-month',
+                  'Higher tiers available, up to 5,000 credits/mo',
+                ].map(item => (
+                  <li key={item} className="flex items-center gap-2.5">
+                    <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.5 6L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+
+              <Link to="/signup" className="w-full text-center bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold py-3 rounded-xl transition-colors">
+                Get Started
+              </Link>
+            </div>
+
           </div>
 
         </div>

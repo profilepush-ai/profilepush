@@ -13,7 +13,7 @@ import LogoSpinner from '../components/LogoSpinner';
 import { PlanModal } from '../components/PlanModal';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import { firstPreferredLocation } from '../lib/location-normalization';
-import { loadRazorpay, TIERS, INR_PER_USD, fmtINR, getBillingErrorMessage } from '../lib/billing-plan';
+import { loadRazorpay, TIERS, fmtINR, getBillingErrorMessage } from '../lib/billing-plan';
 import { buildScoreBreakdownDisplayItems, type RadarScoreBreakdownEntry } from '../lib/radar-match-ui';
 import { DEFAULT_AI_SCORING_MAX_ATTEMPTS, DEFAULT_AI_SCORING_POLL_MS, getAiScoringQueueState } from '../lib/ai-scoring-queue';
 import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
@@ -1098,7 +1098,7 @@ export default function JobFinder() {
   const [, setFiltersFromProfile] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
-  const [selectedNewTier, setSelectedNewTier] = useState<number>(25);
+  const [selectedNewTier, setSelectedNewTier] = useState<number>(500);
   const [changingPlan, setChangingPlan] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
 
@@ -1231,12 +1231,12 @@ export default function JobFinder() {
     setToast({ message, type });
   }, []);
 
-  const hasActiveSub = subscription?.status === 'active' && (subscription.plan_amount_usd ?? 0) > 0;
+  const hasActiveSub = subscription?.status === 'active' && (subscription.plan_credits ?? 0) > 0;
   const pendingPeriodEnd = subscription?.current_period_end ?? null;
 
   function openUpgradeModal() {
-    const idx = hasActiveSub ? TIERS.indexOf(subscription?.plan_amount_usd ?? 0) : -1;
-    setSelectedNewTier(idx >= 0 && idx < TIERS.length - 1 ? TIERS[idx + 1] : 25);
+    const idx = hasActiveSub ? TIERS.indexOf(subscription?.plan_credits ?? 0) : -1;
+    setSelectedNewTier(idx >= 0 && idx < TIERS.length - 1 ? TIERS[idx + 1] : 500);
     setShowPlanModal(true);
   }
 
@@ -1246,7 +1246,7 @@ export default function JobFinder() {
       await loadRazorpay();
       const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
-        body: { plan_amount_usd: selectedNewTier },
+        body: { plan_credits: selectedNewTier },
         headers,
       });
       if (error || !data?.subscription_id) {
@@ -1256,7 +1256,7 @@ export default function JobFinder() {
         key: data.key_id,
         subscription_id: data.subscription_id,
         name: 'ProfilePush',
-        description: `Pro Plan – ${fmtINR(selectedNewTier)}/month ($${selectedNewTier} AI credits)`,
+        description: `Pro Plan – ${fmtINR(selectedNewTier)}/month (${selectedNewTier} credits)`,
         image: '/favicon.svg',
         handler: async () => {
           showToast('Subscription activated! Credits will be added shortly.', 'success');
@@ -1276,13 +1276,13 @@ export default function JobFinder() {
   }
 
   async function handleChangePlan() {
-    if (!subscription || selectedNewTier === subscription.plan_amount_usd) return;
+    if (!subscription || selectedNewTier === subscription.plan_credits) return;
     setChangingPlan(true);
     try {
-      const isUpgrade = selectedNewTier > subscription.plan_amount_usd;
+      const isUpgrade = selectedNewTier > subscription.plan_credits;
       const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-change-plan', {
-        body: { new_plan_amount_usd: selectedNewTier },
+        body: { new_plan_credits: selectedNewTier },
         headers,
       });
       if (error || !data) {
@@ -1293,7 +1293,7 @@ export default function JobFinder() {
         const rzp = new window.Razorpay({
           key: data.key_id, order_id: data.order_id, amount: data.amount_inr_paise, currency: 'INR',
           name: 'ProfilePush',
-          description: `Upgrade ₹${data.old_plan_usd * INR_PER_USD} → ₹${data.new_plan_usd * INR_PER_USD}`,
+          description: `Upgrade ₹${data.old_plan_credits} → ₹${data.new_plan_credits}`,
           image: '/favicon.svg',
           handler: async () => {
             showToast(`Upgraded to ${fmtINR(selectedNewTier)}/mo! Extra credits added.`, 'success');
