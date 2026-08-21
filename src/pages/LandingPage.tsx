@@ -484,11 +484,10 @@ export default function LandingPage() {
                 <span className="text-5xl font-extrabold text-gray-900">₹0</span>
                 <span className="text-gray-500 text-sm">/ month</span>
               </div>
-              <p className="text-xs text-gray-500 mb-8">No credit card required</p>
+              <p className="text-xs text-gray-500 mb-8">500 credits, one time · no card required</p>
 
               <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
                 {[
-                  '500 credits, one time · never expire',
                   'Pulse, Jobs, Hotlist, Posts, Inbox & Tracker included',
                   'Unlimited team members',
                   '1 credit per email draft, AI chat draft, or new post',
@@ -518,14 +517,12 @@ export default function LandingPage() {
                 <span className="text-5xl font-extrabold text-white">₹500</span>
                 <span className="text-blue-200 text-sm">/ month</span>
               </div>
-              <p className="text-xs text-blue-300/70 mb-8">Cancel any time — you keep access through what you've paid for</p>
+              <p className="text-xs text-blue-300/70 mb-8">500–5,000 credits/mo, your choice</p>
 
               <ul className="space-y-3 text-sm text-white flex-1 mb-8">
                 {[
-                  '500–5,000 credits every month, your choice',
                   'Everything in Free',
-                  'Credits delivered automatically every month',
-                  'Never run out mid-month',
+                  'Credits delivered automatically, never run out mid-month',
                   'Change your tier or cancel any time',
                 ].map(item => (
                   <li key={item} className="flex items-center gap-2.5">
