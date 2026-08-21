@@ -10,6 +10,7 @@ import UserActivityTracker from './components/UserActivityTracker';
 import { useAuth } from './contexts/AuthContext';
 import { isSupabaseConfigured, supabaseConfigMissing } from './lib/supabase';
 import { initializeOneSignal, setOneSignalExternalUserId } from './lib/onesignal';
+import { registerNativeAuthDeepLinkListener } from './lib/native-auth';
 
 const SignUp = lazy(() => import('./pages/SignUp'));
 const SignIn = lazy(() => import('./pages/SignIn'));
@@ -131,6 +132,7 @@ export default function App() {
 
   useEffect(() => {
     initializeOneSignal();
+    registerNativeAuthDeepLinkListener();
     const timer = window.setTimeout(() => setShowStartupSplash(false), 1500);
     return () => window.clearTimeout(timer);
   }, []);

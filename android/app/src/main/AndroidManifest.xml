@@ -22,6 +22,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Deep-link return target for Google sign-in via the system
+                 browser (Chrome Custom Tabs) and any other native-auth flow
+                 that hands off outside the app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.profilepush.app" android:host="auth-callback" />
+            </intent-filter>
+
         </activity>
 
         <provider

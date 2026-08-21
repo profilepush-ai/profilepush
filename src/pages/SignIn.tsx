@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowRight, Mail, Lock } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { buildSignupWebhookPayload, sendSignupWebhook } from '../lib/auth-webhook';
+import { startNativeGoogleSignIn } from '../lib/native-auth';
 import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
 import AuthSidePanel from '../components/AuthSidePanel';
+
+const isNativeApp = Capacitor.isNativePlatform();
 
 const DEFAULT_REDIRECT = '/jobs';
 const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
@@ -117,6 +121,19 @@ export default function SignIn() {
     setError(null);
     setInfo(null);
 
+    // Native: hand off to the system browser (Chrome Custom Tabs) and read
+    // the session back via deep link — Google's Identity Services SDK
+    // blocks the in-app WebView outright, so this can't just navigate the
+    // current page like the web fallback below does.
+    if (isNativeApp) {
+      const { error: nativeError } = await startNativeGoogleSignIn();
+      if (nativeError) {
+        setError(normalizeAuthError(nativeError));
+        setOauthSubmitting(false);
+      }
+      return;
+    }
+
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -194,7 +211,7 @@ export default function SignIn() {
   }, [from, navigate]);
 
   useEffect(() => {
-    if (!googleClientId || !googleButtonRef.current) return;
+    if (isNativeApp || !googleClientId || !googleButtonRef.current) return;
 
     const initializeGoogleButton = () => {
       if (!window.google?.accounts?.id || !googleButtonRef.current) return;
@@ -298,7 +315,7 @@ export default function SignIn() {
             </div>
           )}
 
-          {googleClientId ? (
+          {!isNativeApp && googleClientId ? (
             <div className="mb-4">
               <div ref={googleButtonRef} className="w-full" />
               {oauthSubmitting && (

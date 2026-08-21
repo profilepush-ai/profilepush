@@ -13,7 +13,7 @@ import Toast from '../components/Toast';
 import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
-import { getBillingErrorMessage, TIERS, fmtINR } from '../lib/billing-plan';
+import { getBillingErrorMessage, TIERS, fmtINR, openRazorpayCheckout } from '../lib/billing-plan';
 import { PlanModal } from '../components/PlanModal';
 
 declare global {
@@ -108,17 +108,6 @@ function timeAgo(iso: string) {
   const d = Math.floor(h / 24);
   if (d < 7)  return `${d}d ago`;
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function loadRazorpay(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.Razorpay) { resolve(); return; }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Razorpay'));
-    document.head.appendChild(script);
-  });
 }
 
 // ── Mini donut chart ────────────────────────────────────────────────────────
@@ -319,7 +308,6 @@ export default function BillingPage() {
   async function handleSubscribe() {
     setSubscribing(true);
     try {
-      await loadRazorpay();
       const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
         body: { plan_credits: selectedNewTier },
@@ -328,7 +316,7 @@ export default function BillingPage() {
       if (error || !data?.subscription_id) {
         throw new Error(getBillingErrorMessage(error, 'Failed to create subscription', data?.error));
       }
-      const rzp = new window.Razorpay({
+      await openRazorpayCheckout({
         key: data.key_id, subscription_id: data.subscription_id,
         name: 'ProfilePush',
         description: `Pro Plan – ${fmtINR(selectedNewTier)}/month (${selectedNewTier} credits)`,
@@ -341,9 +329,8 @@ export default function BillingPage() {
         },
         prefill: { name: user?.user_metadata?.full_name ?? '', email: user?.email ?? '' },
         theme: { color: '#2563eb' },
-        modal: { ondismiss: () => { fireCrmEvent('subscription.checkout_dismissed', { plan_credits: selectedNewTier }); setSubscribing(false); } },
+        onDismiss: () => { fireCrmEvent('subscription.checkout_dismissed', { plan_credits: selectedNewTier }); setSubscribing(false); },
       });
-      rzp.open();
     } catch (err) {
       const msg = getBillingErrorMessage(err, 'Failed to start subscription');
       fireCrmEvent('subscription.checkout_failed', { plan_credits: selectedNewTier, error: msg });
@@ -366,8 +353,7 @@ export default function BillingPage() {
         throw new Error(getBillingErrorMessage(error, 'Failed to change plan'));
       }
       if (isUpgrade && data.order_id) {
-        await loadRazorpay();
-        const rzp = new window.Razorpay({
+        await openRazorpayCheckout({
           key: data.key_id, order_id: data.order_id, amount: data.amount_inr_paise, currency: 'INR',
           name: 'ProfilePush',
           description: `Upgrade ₹${data.old_plan_credits} → ₹${data.new_plan_credits}`,
@@ -381,7 +367,6 @@ export default function BillingPage() {
           prefill: { email: user?.email ?? '' },
           theme: { color: '#2563eb' },
         });
-        rzp.open();
       } else {
         const effectiveDate = data.effective_date
           ? new Date(data.effective_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -490,7 +475,6 @@ export default function BillingPage() {
   async function handleBuyCredits() {
     setBuyingCredits(true);
     try {
-      await loadRazorpay();
       const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-create-credit-order', {
         body: { credits: selectedCreditTier },
@@ -504,7 +488,7 @@ export default function BillingPage() {
       if (!data?.order_id) {
         throw new Error(data?.error ?? 'Failed to start checkout');
       }
-      const rzp = new window.Razorpay({
+      await openRazorpayCheckout({
         key: data.key_id, order_id: data.order_id, amount: data.amount_inr_paise, currency: 'INR',
         name: 'ProfilePush',
         description: `${selectedCreditTier} credits`,
@@ -521,9 +505,8 @@ export default function BillingPage() {
         },
         prefill: { name: user?.user_metadata?.full_name ?? '', email: user?.email ?? '' },
         theme: { color: '#2563eb' },
-        modal: { ondismiss: () => { fireCrmEvent('credits.topup_checkout_dismissed', { credits: selectedCreditTier }); setBuyingCredits(false); } },
+        onDismiss: () => { fireCrmEvent('credits.topup_checkout_dismissed', { credits: selectedCreditTier }); setBuyingCredits(false); },
       });
-      rzp.open();
     } catch (err) {
       const msg = getBillingErrorMessage(err, 'Failed to start checkout');
       fireCrmEvent('credits.topup_checkout_failed', { credits: selectedCreditTier, error: msg });
