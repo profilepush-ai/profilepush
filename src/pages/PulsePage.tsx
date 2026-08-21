@@ -997,7 +997,7 @@ const LeadCard = memo(function LeadCard({
   const linkClassName = isDark ? 'text-blue-300' : 'text-blue-600';
 
   const actionButtonsBar = (
-    <div className={`mt-auto flex items-stretch border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
+    <div className="mt-auto flex items-stretch border-t" style={{ borderColor: cardBorderColor }}>
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
@@ -1008,7 +1008,7 @@ const LeadCard = memo(function LeadCard({
         {isLoadingPreview ? '...' : <Eye size={13} strokeWidth={2} />}
         Preview
       </button>
-      <div className={`w-px ${isDark ? 'bg-white/10' : 'bg-gray-100'}`} />
+      <div className="w-px" style={{ backgroundColor: cardBorderColor }} />
       {lead.postSource === 'user_post' ? (
         <button
           type="button"
