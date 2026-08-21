@@ -4,6 +4,7 @@ import {
   Building2, Mail, Phone, MapPin, DollarSign, Calendar,
   UserCheck, ChevronDown, ChevronUp, FileText, Tag, Clock, Users, Download,
   AlertTriangle, History, Eye, EyeOff, Copy, Check, Clock3, BadgeCheck,
+  GraduationCap, Laptop, Shield,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -971,38 +972,40 @@ export default function TrackerPage() {
 
                 {leadStatusBadges(lead) && <div className="mt-1 flex flex-wrap items-center gap-1">{leadStatusBadges(lead)}</div>}
 
-                <div className="mt-1.5 min-w-0 rounded-md bg-transparent px-2.5 py-2 text-left">
-                  <div className="grid grid-cols-3 gap-x-3 gap-y-2">
-                    <div className="min-w-0">
-                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Exp</div>
-                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'exp', expValue, linkClass)}</div>
+                {(() => {
+                  const chipFields = [
+                    { key: 'exp', value: expValue, icon: GraduationCap, title: 'Experience' },
+                    { key: 'workType', value: workTypeValue, icon: Laptop, title: 'Work type' },
+                    { key: 'empType', value: employmentTypeValue, icon: Briefcase, title: 'Employment type' },
+                    { key: 'rate', value: rateValue, icon: DollarSign, title: 'Rate' },
+                    { key: 'visa', value: visaValue, icon: Shield, title: 'Visa' },
+                    { key: 'location', value: locationValue, icon: MapPin, title: 'Location' },
+                  ].filter((field) => field.value !== '-');
+                  if (chipFields.length === 0 && skillsValue === '-') return null;
+                  return (
+                    <div className="mt-1.5 min-w-0 rounded-md bg-transparent px-2.5 py-2 text-left">
+                      {chipFields.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          {chipFields.map((field) => (
+                            <span
+                              key={field.key}
+                              title={field.title}
+                              className="inline-flex max-w-full items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[9px] leading-tight text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-[#CBD5E1]"
+                            >
+                              <field.icon size={10} className="shrink-0 text-gray-400 dark:text-[#94A3B8]" />
+                              {renderClampedField(lead.id, field.key, field.value, linkClass)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {skillsValue !== '-' && (
+                        <div className={chipFields.length > 0 ? 'mt-2' : ''}>
+                          <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedSkills(lead.id, skillsValue, 8, linkClass)}</div>
+                        </div>
+                      )}
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Work Type</div>
-                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'workType', workTypeValue, linkClass)}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Emp Type</div>
-                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'empType', employmentTypeValue, linkClass)}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Rate</div>
-                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'rate', rateValue, linkClass)}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Visa</div>
-                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'visa', visaValue, linkClass)}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Location</div>
-                      <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedField(lead.id, 'location', locationValue, linkClass)}</div>
-                    </div>
-                  </div>
-                  <div className="mt-2">
-                    <div className="text-[9px] uppercase tracking-wide text-slate-500 dark:text-[#64748B]">Skills</div>
-                    <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedSkills(lead.id, skillsValue, 8, linkClass)}</div>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
 
               <div className="mt-auto flex items-stretch border-t" style={{ borderColor: cardBorderColor }}>
