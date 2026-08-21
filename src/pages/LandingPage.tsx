@@ -541,14 +541,14 @@ export default function LandingPage() {
               </span>
 
               <div className="flex items-baseline gap-1.5 mb-0.5">
-                <span className="text-5xl font-extrabold text-gray-900">500</span>
-                <span className="text-gray-500 text-sm">credits</span>
+                <span className="text-5xl font-extrabold text-gray-900">₹0</span>
+                <span className="text-gray-500 text-sm">/ month</span>
               </div>
-              <p className="text-sm font-semibold text-yellow-600 mb-1">One time · never expire</p>
               <p className="text-xs text-gray-500 mb-8">No credit card required</p>
 
               <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
                 {[
+                  '500 credits, one time · never expire',
                   'Pulse, Jobs, Hotlist, Posts, Inbox & Tracker included',
                   'Unlimited team members',
                   '1 credit per email draft, AI chat draft, or new post',
@@ -575,13 +575,14 @@ export default function LandingPage() {
               </span>
 
               <div className="flex items-baseline gap-1.5 mb-0.5">
-                <span className="text-4xl font-extrabold text-white">500&ndash;5,000</span>
+                <span className="text-5xl font-extrabold text-white">₹500</span>
+                <span className="text-blue-200 text-sm">/ month</span>
               </div>
-              <p className="text-sm font-semibold text-yellow-300 mb-1">credits every month, your choice — from ₹500/mo</p>
               <p className="text-xs text-blue-300/70 mb-8">Cancel any time — you keep access through what you've paid for</p>
 
               <ul className="space-y-3 text-sm text-white flex-1 mb-8">
                 {[
+                  '500–5,000 credits every month, your choice',
                   'Everything in Free',
                   'Credits delivered automatically every month',
                   'Never run out mid-month',

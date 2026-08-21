@@ -579,10 +579,10 @@ export default function BillingPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 flex flex-col">
                   <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-yellow-100 text-yellow-700 w-fit">Free</span>
-                  <p className="text-2xl font-extrabold text-gray-900">500 credits</p>
-                  <p className="text-xs text-gray-500 mt-0.5 mb-4">One time · never expire · no card required</p>
+                  <p className="text-2xl font-extrabold text-gray-900">₹0<span className="text-sm font-semibold text-gray-500">/mo</span></p>
+                  <p className="text-xs text-gray-500 mt-0.5 mb-4">No credit card required</p>
                   <ul className="space-y-2 text-xs text-gray-600 flex-1 mb-4">
-                    {['Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', '1 credit per email/chat draft or new post'].map(item => (
+                    {['500 credits, one time · never expire', 'Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', '1 credit per email/chat draft or new post'].map(item => (
                       <li key={item} className="flex items-start gap-2">
                         <Check size={12} className="mt-0.5 shrink-0 text-emerald-600" />
                         {item}
@@ -630,10 +630,10 @@ export default function BillingPage() {
                     </>
                   ) : (
                     <>
-                      <p className="text-2xl font-extrabold text-white">{TIERS[0].toLocaleString('en-IN')}&ndash;{TIERS[TIERS.length - 1].toLocaleString('en-IN')} credits/mo</p>
-                      <p className="text-xs text-blue-200 mt-0.5 mb-4">Your choice — from {fmtINR(TIERS[0])}/mo, delivered automatically</p>
+                      <p className="text-2xl font-extrabold text-white">{fmtINR(TIERS[0])}<span className="text-sm font-semibold text-blue-200">/mo</span></p>
+                      <p className="text-xs text-blue-200 mt-0.5 mb-4">Delivered automatically every month</p>
                       <ul className="space-y-2 text-xs text-white flex-1 mb-4">
-                        {['Everything in Free', 'Credits auto-renew — never run out mid-month', 'Cancel any time, keeps access till period end'].map(item => (
+                        {[`${TIERS[0].toLocaleString('en-IN')}–${TIERS[TIERS.length - 1].toLocaleString('en-IN')} credits/mo, your choice`, 'Everything in Free', 'Credits auto-renew — never run out mid-month', 'Cancel any time, keeps access till period end'].map(item => (
                           <li key={item} className="flex items-start gap-2">
                             <Check size={12} className="mt-0.5 shrink-0 text-white" />
                             {item}
