@@ -1033,7 +1033,7 @@ const LeadCard = memo(function LeadCard({
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
           title={!lead.posterEmail ? 'No email' : 'Send Email'}
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-blue-600 bg-transparent px-2 text-[11px] font-semibold text-blue-600 transition-opacity hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-blue-400/40 dark:bg-transparent dark:text-blue-400 dark:hover:bg-blue-500/10"
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-2 text-[11px] font-semibold text-gray-700 transition-opacity hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:bg-transparent dark:text-gray-300 dark:hover:bg-white/5"
         >
           {isProcessingAskAI ? '...' : isHotlistFeed ? <FileText size={13} strokeWidth={2} /> : <Send size={13} strokeWidth={2} />}
           {isHotlistFeed ? 'Request' : 'Submit'}
