@@ -1003,7 +1003,7 @@ const LeadCard = memo(function LeadCard({
         onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
         disabled={isLoadingPreview}
         title="Preview original post"
-        className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-600 bg-white px-2 text-[11px] font-semibold text-gray-600 transition-opacity hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-300 dark:bg-transparent dark:text-gray-300 dark:hover:bg-white/5"
+        className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-500 bg-white px-2 text-[11px] font-semibold text-gray-500 transition-opacity hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-500 dark:bg-transparent dark:text-gray-500 dark:hover:bg-white/5"
       >
         {isLoadingPreview ? '...' : <Eye size={13} strokeWidth={2} />}
         Preview
@@ -1033,7 +1033,7 @@ const LeadCard = memo(function LeadCard({
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
           title={!lead.posterEmail ? 'No email' : 'Send Email'}
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-600 bg-white px-2 text-[11px] font-semibold text-gray-600 transition-opacity hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-300 dark:bg-transparent dark:text-gray-300 dark:hover:bg-white/5"
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-500 bg-white px-2 text-[11px] font-semibold text-gray-500 transition-opacity hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-500 dark:bg-transparent dark:text-gray-500 dark:hover:bg-white/5"
         >
           {isProcessingAskAI ? '...' : isHotlistFeed ? <FileText size={13} strokeWidth={2} /> : <Send size={13} strokeWidth={2} />}
           {isHotlistFeed ? 'Request' : 'Submit'}
