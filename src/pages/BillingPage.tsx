@@ -630,8 +630,8 @@ export default function BillingPage() {
                     </>
                   ) : (
                     <>
-                      <p className="text-2xl font-extrabold text-white">From {fmtINR(TIERS[0])}/mo</p>
-                      <p className="text-xs text-blue-200 mt-0.5 mb-4">Credits delivered automatically every month</p>
+                      <p className="text-2xl font-extrabold text-white">{TIERS[0].toLocaleString('en-IN')}&ndash;{TIERS[TIERS.length - 1].toLocaleString('en-IN')} credits/mo</p>
+                      <p className="text-xs text-blue-200 mt-0.5 mb-4">Your choice — from {fmtINR(TIERS[0])}/mo, delivered automatically</p>
                       <ul className="space-y-2 text-xs text-white flex-1 mb-4">
                         {['Everything in Free', 'Credits auto-renew — never run out mid-month', 'Cancel any time, keeps access till period end'].map(item => (
                           <li key={item} className="flex items-start gap-2">
