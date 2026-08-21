@@ -4,12 +4,16 @@ import {
   Eye, EyeOff, ArrowRight, Building2, User, Mail, Lock,
   CheckCircle, Phone, ChevronDown, Search,
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { buildSignupWebhookPayload, sendSignupWebhook } from '../lib/auth-webhook';
+import { startNativeGoogleSignIn } from '../lib/native-auth';
 import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
 import AuthSidePanel from '../components/AuthSidePanel';
+
+const isNativeApp = Capacitor.isNativePlatform();
 
 // ── Country data ───────────────────────────────────────────────────────────────
 
@@ -255,6 +259,15 @@ export default function SignUp() {
     setOauthSubmitting(true);
     setError(null);
 
+    if (isNativeApp) {
+      const { error: nativeError } = await startNativeGoogleSignIn();
+      if (nativeError) {
+        setError(nativeError);
+        setOauthSubmitting(false);
+      }
+      return;
+    }
+
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -331,7 +344,7 @@ export default function SignUp() {
   }, [navigate]);
 
   useEffect(() => {
-    if (!googleClientId || !googleButtonRef.current) return;
+    if (isNativeApp || !googleClientId || !googleButtonRef.current) return;
 
     const initializeGoogleButton = () => {
       if (!window.google?.accounts?.id || !googleButtonRef.current) return;
@@ -508,7 +521,7 @@ export default function SignUp() {
             </div>
           )}
 
-          {googleClientId ? (
+          {!isNativeApp && googleClientId ? (
             <div className="mb-4">
               <div ref={googleButtonRef} className="w-full" />
               {oauthSubmitting && (
