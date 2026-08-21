@@ -79,7 +79,7 @@ const FAQS = [
   },
   {
     q: 'What is Inbox?',
-    a: 'Inbox is AI-drafted outreach. One click writes and sends a personalized email requesting job details or a resume, then tracks opens and replies — with identities kept masked until you reveal them.',
+    a: 'Inbox is AI-drafted outreach. One click writes a personalized email requesting job details or a resume, ready for you to review and send, then tracks opens and replies in a real conversation thread.',
   },
   {
     q: 'What is Tracker?',
@@ -87,7 +87,7 @@ const FAQS = [
   },
   {
     q: 'How much does ProfilePush cost?',
-    a: 'ProfilePush is free to start with $5 in monthly AI credits — no credit card required. Free plan accounts are limited to 10 reveals every day. The Pro plan at ₹2,500/month includes $25 in AI credits, unlimited users, and Live Job Alerts.',
+    a: 'ProfilePush is free to start — no credit card required. Every account gets 500 free AI credits, one time, that never expire. Generating an email draft, an AI chat draft, or a new post each cost 1 credit. When you run out, top up any time in 500-credit packs at a flat ₹1 per credit.',
   },
 ];
 
@@ -352,7 +352,7 @@ export default function LandingPage() {
                 Forever Free
               </span>
               <span className="text-gray-400">·</span>
-              <span>Monthly $5 free AI Credits</span>
+              <span>500 Free AI Credits</span>
               <span className="text-gray-400">·</span>
               <span>No Credit Card Required</span>
             </p>
@@ -514,91 +514,42 @@ export default function LandingPage() {
               Simple, transparent pricing.
             </h2>
             <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">
-              Start free, upgrade when you're ready. Every plan unlocks all features.
+              Start free. No subscription, no monthly bill — just credits that never expire.
             </p>
-
-            {/* Free plan limit */}
-            <div className="flex items-center justify-center gap-6 mt-4 text-sm text-gray-500">
-              <span>Free plan: limited to 10 reveals every day</span>
-            </div>
           </div>
 
-          {/* 2-column plan cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Single unified plan card */}
+          <div className="max-w-md mx-auto rounded-2xl p-8 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
+            <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-white/15 text-white w-fit">
+              Every account
+            </span>
 
-            {/* Free Plan */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-8 flex flex-col">
-              <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-yellow-100 text-yellow-700 w-fit">
-                Free Plan
-              </span>
-
-              {/* INR price */}
-              <div className="flex items-baseline gap-1.5 mb-0.5">
-                <span className="text-5xl font-extrabold text-gray-900">₹0</span>
-                <span className="text-gray-500 text-sm">/ month</span>
-              </div>
-              {/* Dollar credit sub-heading */}
-              <p className="text-sm font-semibold text-yellow-600 mb-1">$5 in AI credits · refreshes monthly</p>
-              <p className="text-xs text-gray-500 mb-8">No credit card required</p>
-
-              <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
-                {[
-                  'Pulse, Jobs, Hotlist, Inbox & Tracker included',
-                  'Up to 2 users',
-                  '$5 AI credits reset each month',
-                  'Limited to 10 reveals every day',
-                ].map(item => (
-                  <li key={item} className="flex items-center gap-2.5">
-                    <span className="w-4 h-4 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
-                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.5 6L6.5 2" stroke="#ca8a04" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-
-              <Link to="/signup" className="w-full text-center border border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 text-gray-800 text-sm font-semibold py-3 rounded-xl transition-colors">
-                Get Started Free
-              </Link>
+            <div className="flex items-baseline gap-1.5 mb-0.5">
+              <span className="text-5xl font-extrabold text-white">500</span>
+              <span className="text-blue-200 text-sm">free AI credits</span>
             </div>
+            <p className="text-sm font-semibold text-yellow-300 mb-1">One time · never expire</p>
+            <p className="text-xs text-blue-300/70 mb-8">No credit card required. Top up any time — 500-credit packs at ₹1 per credit.</p>
 
-            {/* Pro Plan */}
-            <div className="rounded-2xl p-8 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
-              <span className="absolute -top-3 left-8 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm text-blue-900" style={{ backgroundColor: '#facc15' }}>Most Popular</span>
-              <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-white/15 text-white w-fit">
-                Pro Plan
-              </span>
+            <ul className="space-y-3 text-sm text-white flex-1 mb-8">
+              {[
+                'Pulse, Jobs, Hotlist, Inbox & Tracker included',
+                'Unlimited team members',
+                '1 credit per email draft, AI chat draft, or new post',
+                'Credits never reset or expire',
+              ].map(item => (
+                <li key={item} className="flex items-center gap-2.5">
+                  <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.5 6L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ul>
 
-              {/* INR price */}
-              <div className="flex items-baseline gap-1.5 mb-0.5">
-                <span className="text-5xl font-extrabold text-white">₹2,500</span>
-                <span className="text-blue-200 text-sm">/ month</span>
-              </div>
-              {/* Dollar credit sub-heading */}
-              <p className="text-sm font-semibold text-yellow-300 mb-1">$25 in AI credits · scale up anytime</p>
-              <p className="text-xs text-blue-300/70 mb-8">Starting plan · tiers up to $500/mo</p>
-
-              <ul className="space-y-3 text-sm text-white flex-1 mb-8">
-                {[
-                  'Pulse, Jobs, Hotlist, Inbox & Tracker included',
-                  'Unlimited users',
-                  'Full Tracker with CSV export',
-                  'Live Job Alerts',
-                ].map(item => (
-                  <li key={item} className="flex items-center gap-2.5">
-                    <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.5 6L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-
-              <Link to="/signup" className="w-full text-center bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold py-3 rounded-xl transition-colors">
-                Get Started
-              </Link>
-            </div>
-
+            <Link to="/signup" className="w-full text-center bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold py-3 rounded-xl transition-colors">
+              Get Started Free
+            </Link>
           </div>
 
         </div>
