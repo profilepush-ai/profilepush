@@ -678,13 +678,13 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-gray-50 text-gray-900">
+    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-[#e7e3de] text-gray-900">
       <AppNav />
       <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden sm:grid-cols-[290px_minmax(0,1fr)] xl:grid-cols-[310px_minmax(0,1fr)]">
         <aside className={`${selectedId ? 'hidden sm:flex' : 'flex'} min-h-0 flex-col border-r border-gray-200 bg-white`}>
           <div className="border-b border-gray-200 bg-white px-1.5 pb-1.5 pt-1.5 dark:border-white/10 dark:bg-[#1B1D21]">
             <div className="flex items-center gap-2">
-              <div className="relative flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+              <div className="relative flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5">
                 <Search size={11} className="shrink-0 text-gray-400" />
                 <input
                   value={pendingQuery}
@@ -739,7 +739,7 @@ export default function InboxPage() {
                   key={option.id}
                   type="button"
                   onClick={() => setFilter(option.id)}
-                  className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${filter === option.id ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
+                  className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${filter === option.id ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
                 >
                   <span>{option.label}</span>
                   <span>{tabCounts[option.id]}</span>
