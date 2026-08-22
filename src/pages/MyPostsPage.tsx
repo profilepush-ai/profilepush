@@ -519,7 +519,7 @@ export default function MyPostsPage() {
               return (
                 <div
                   key={post.id}
-                  className="relative flex min-w-0 flex-col bg-white dark:bg-[#1E2126] sm:overflow-hidden sm:rounded-lg sm:border sm:border-gray-200 sm:dark:border-white/10"
+                  className="relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#1E2126]"
                 >
                   <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
                     <div className="flex items-start justify-between gap-2">

@@ -951,9 +951,6 @@ interface LeadCardProps {
   onExpandSkills: (leadId: string) => void;
   onCollapseSkills: (leadId: string) => void;
   onToggleField: (cellKey: string) => void;
-  /** Single-column (mobile) feed: flush full-width block with a bottom
-   *  divider instead of a boxed card, matching a LinkedIn-style feed. */
-  flat?: boolean;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -967,7 +964,6 @@ const LeadCard = memo(function LeadCard({
   isExpFieldExpanded, isWorkTypeFieldExpanded, isEmpTypeFieldExpanded, isRateFieldExpanded, isVisaFieldExpanded, isLocationFieldExpanded,
   isLoadingPreview, isProcessingChat, isProcessingAskAI,
   onPreview, onOpenChat, onAskAI, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
-  flat = false,
 }: LeadCardProps) {
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
@@ -1030,7 +1026,7 @@ const LeadCard = memo(function LeadCard({
   );
 
   return (
-    <div className={`relative flex h-full min-w-0 flex-col ${flat ? '' : 'overflow-hidden rounded-lg border border-gray-200 dark:border-white/10'} ${cardFillClass}`}>
+    <div className={`relative flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 dark:border-white/10 ${cardFillClass}`}>
       <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
       <div>
         <div className="min-w-0">
@@ -3130,7 +3126,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const col = idx % safeColumns;
     // Spread palette by row/column so adjacent cards do not share a tone.
     const paletteIndex = (row + (col * 2)) % CARD_PALETTE.length;
-    return <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex)} flat={safeColumns === 1} />;
+    return <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex)} />;
   });
 
   const parseLeadingNumber = (value: string): number => {
@@ -5956,7 +5952,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopPreviewedFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-stretch gap-1.5">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-gray-100 p-1.5 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopPreviewedFeed, 4)}
                               </div>
                             )
@@ -5966,7 +5962,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopAskedFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-stretch gap-1.5">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-gray-100 p-1.5 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopAskedFeed, 4)}
                               </div>
                             )
@@ -5976,7 +5972,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopVerifiedFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-stretch gap-1.5">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-gray-100 p-1.5 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopVerifiedFeed, 4)}
                               </div>
                             )
@@ -5986,7 +5982,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopRecentFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-stretch gap-1.5">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-gray-100 p-1.5 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopRecentFeed, 4)}
                               </div>
                             )

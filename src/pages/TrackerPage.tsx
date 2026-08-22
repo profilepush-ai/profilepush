@@ -927,7 +927,7 @@ export default function TrackerPage() {
           return (
             <div
               key={lead.id}
-              className="flex flex-col bg-white dark:bg-[#1E2126] lg:overflow-hidden lg:rounded-lg lg:border lg:border-gray-200 lg:dark:border-white/10"
+              className="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#1E2126]"
             >
               <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
                 <p className="text-[13px] font-semibold leading-snug text-[#2563EB] dark:text-white">{lead.title}</p>

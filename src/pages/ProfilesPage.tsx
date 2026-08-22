@@ -1715,7 +1715,7 @@ export default function ProfilesPage() {
     })();
 
     return (
-      <div key={lead.id} className="flex flex-col bg-white dark:bg-[#1E2126]">
+      <div key={lead.id} className="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#1E2126]">
         <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
           <div className="flex items-start justify-between gap-1.5">
             <div className="min-w-0 flex-1">
