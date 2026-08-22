@@ -4,15 +4,15 @@ export interface AdminAccountStatsRow {
   created_at: string;
   user_name: string;
   user_email: string;
-  watching_count: number;
   credits_balance: number;
-  reveals_count: number;
-  contacts_count: number;
   searches_count: number;
-  posts_count: number;
-  previews_count: number;
+  job_posts_count: number;
+  hotlist_posts_count: number;
+  job_previews_count: number;
+  hotlist_previews_count: number;
   ai_pitches_count: number;
   ai_requests_count: number;
+  chats_count: number;
   account_age_days: number;
   session_count: number;
   active_seconds: number;
@@ -22,7 +22,7 @@ export interface AdminAccountStatsRow {
   is_trial: boolean;
 }
 
-export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'watching_count' | 'credits_balance' | 'reveals_count' | 'contacts_count' | 'searches_count' | 'posts_count' | 'previews_count' | 'ai_pitches_count' | 'ai_requests_count' | 'account_age_days' | 'session_count' | 'active_seconds' | 'active_days' | 'last_activity_at' | 'last_logged_in' | 'created_at';
+export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'credits_balance' | 'searches_count' | 'job_posts_count' | 'hotlist_posts_count' | 'job_previews_count' | 'hotlist_previews_count' | 'ai_pitches_count' | 'ai_requests_count' | 'chats_count' | 'account_age_days' | 'session_count' | 'active_seconds' | 'active_days' | 'last_activity_at' | 'last_logged_in' | 'created_at';
 export type AdminStatsSortDirection = 'asc' | 'desc';
 
 export interface AdminStatsFilterState {

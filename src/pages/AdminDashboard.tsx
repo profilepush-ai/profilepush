@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
@@ -17,15 +17,15 @@ interface AccountStats {
   created_at: string;
   user_name: string;
   user_email: string;
-  watching_count: number;
   credits_balance: number;
-  reveals_count: number;
-  contacts_count: number;
   searches_count: number;
-  posts_count: number;
-  previews_count: number;
+  job_posts_count: number;
+  hotlist_posts_count: number;
+  job_previews_count: number;
+  hotlist_previews_count: number;
   ai_pitches_count: number;
   ai_requests_count: number;
+  chats_count: number;
   account_age_days: number;
   session_count: number;
   active_seconds: number;
@@ -146,15 +146,15 @@ function getDateRange(preset: DatePreset, customStart: string, customEnd: string
 const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.ReactNode; kind: 'text' | 'number' | 'duration' | 'age' | 'date'; widthClass: string }> = [
   { key: 'user_name', label: 'User Name', icon: <UserCheck size={12} />, kind: 'text', widthClass: 'w-[140px]' },
   { key: 'user_email', label: 'User Email', icon: <Mail size={12} />, kind: 'text', widthClass: 'w-[210px]' },
-  { key: 'watching_count', label: 'Watching', icon: <Users size={12} />, kind: 'number', widthClass: 'w-[95px]' },
   { key: 'credits_balance', label: 'Credits', icon: <Database size={12} />, kind: 'number', widthClass: 'w-[110px]' },
-  { key: 'reveals_count', label: 'Reveals', icon: <Eye size={12} />, kind: 'number', widthClass: 'w-[90px]' },
-  { key: 'contacts_count', label: 'Contacts', icon: <Phone size={12} />, kind: 'number', widthClass: 'w-[95px]' },
   { key: 'searches_count', label: 'Searches', icon: <Search size={12} />, kind: 'number', widthClass: 'w-[95px]' },
-  { key: 'posts_count', label: 'Posts', icon: <Megaphone size={12} />, kind: 'number', widthClass: 'w-[90px]' },
-  { key: 'previews_count', label: 'Previews', icon: <FileSearch size={12} />, kind: 'number', widthClass: 'w-[95px]' },
+  { key: 'job_posts_count', label: 'Job Posts', icon: <Megaphone size={12} />, kind: 'number', widthClass: 'w-[100px]' },
+  { key: 'hotlist_posts_count', label: 'Hotlist Posts', icon: <Megaphone size={12} />, kind: 'number', widthClass: 'w-[115px]' },
+  { key: 'job_previews_count', label: 'Job Previews', icon: <FileSearch size={12} />, kind: 'number', widthClass: 'w-[115px]' },
+  { key: 'hotlist_previews_count', label: 'Hotlist Previews', icon: <FileSearch size={12} />, kind: 'number', widthClass: 'w-[135px]' },
   { key: 'ai_pitches_count', label: 'AI Pitches', icon: <Send size={12} />, kind: 'number', widthClass: 'w-[105px]' },
   { key: 'ai_requests_count', label: 'AI Requests', icon: <FileText size={12} />, kind: 'number', widthClass: 'w-[115px]' },
+  { key: 'chats_count', label: 'Chats', icon: <MessageSquare size={12} />, kind: 'number', widthClass: 'w-[90px]' },
   { key: 'account_age_days', label: 'Created Since', icon: <CalendarDays size={12} />, kind: 'age', widthClass: 'w-[120px]' },
   { key: 'session_count', label: 'Sessions', icon: <LogIn size={12} />, kind: 'number', widthClass: 'w-[95px]' },
   { key: 'active_seconds', label: 'Active Time', icon: <Clock size={12} />, kind: 'duration', widthClass: 'w-[110px]' },
@@ -1237,14 +1237,14 @@ export default function AdminDashboard() {
                 {[
                   { label: 'Accounts', value: filteredStats.length.toLocaleString() },
                   { label: 'Searches', value: (totals.searches_count ?? 0).toLocaleString() },
-                  { label: 'Posts', value: (totals.posts_count ?? 0).toLocaleString() },
-                  { label: 'Previews', value: (totals.previews_count ?? 0).toLocaleString() },
+                  { label: 'Job Posts', value: (totals.job_posts_count ?? 0).toLocaleString() },
+                  { label: 'Hotlist Posts', value: (totals.hotlist_posts_count ?? 0).toLocaleString() },
+                  { label: 'Job Previews', value: (totals.job_previews_count ?? 0).toLocaleString() },
+                  { label: 'Hotlist Previews', value: (totals.hotlist_previews_count ?? 0).toLocaleString() },
                   { label: 'AI Pitches', value: (totals.ai_pitches_count ?? 0).toLocaleString() },
                   { label: 'AI Requests', value: (totals.ai_requests_count ?? 0).toLocaleString() },
-                  { label: 'Watching', value: (totals.watching_count ?? 0).toLocaleString() },
+                  { label: 'Chats', value: (totals.chats_count ?? 0).toLocaleString() },
                   { label: 'Credits', value: (totals.credits_balance ?? 0).toLocaleString() },
-                  { label: 'Reveals', value: (totals.reveals_count ?? 0).toLocaleString() },
-                  { label: 'Contacts', value: (totals.contacts_count ?? 0).toLocaleString() },
                   { label: 'Sessions', value: (totals.session_count ?? 0).toLocaleString() },
                   { label: 'Active Time', value: formatActiveTime(totals.active_seconds ?? 0) },
                 ].map((metric) => (
@@ -1256,7 +1256,7 @@ export default function AdminDashboard() {
               </div>
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
               <div className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full min-w-[2130px] table-fixed text-left">
+              <table className="w-full min-w-[2080px] table-fixed text-left">
                 <thead className="sticky top-0 z-[4]">
                   <tr className="border-b border-gray-200 bg-gray-50">
                     {COLUMNS.map(col => (

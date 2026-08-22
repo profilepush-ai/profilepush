@@ -52,10 +52,6 @@ Deno.serve(async (req: Request) => {
 
     const [
       membersRes,
-      watchingRes,
-      vendorsRes,
-      clientsRes,
-      revealsRes,
       activityRes,
       searchesRes,
       postsJobsRes,
@@ -63,26 +59,13 @@ Deno.serve(async (req: Request) => {
       previewsRes,
       aiPitchesRes,
       aiRequestsRes,
+      chatsRes,
     ] = await Promise.all([
       supabase
         .from("account_members")
         .select("account_id, user_id, invited_email, display_name, role, status, created_at")
         .in("account_id", accountIds)
         .eq("status", "active"),
-      supabase
-        .from("watchlist_profiles")
-        .select("account_id")
-        .in("account_id", accountIds)
-        .eq("is_watching", true),
-      supabase.from("vendors").select("account_id").in("account_id", accountIds),
-      supabase.from("clients").select("account_id").in("account_id", accountIds),
-      withDateRange(
-        supabase
-          .from("pulse_lead_actions")
-          .select("account_id")
-          .in("account_id", accountIds)
-          .eq("action_type", "revealed")
-      ),
       (() => {
         let query = supabase
           .from("user_activity_daily")
@@ -98,8 +81,7 @@ Deno.serve(async (req: Request) => {
           .select("account_id")
           .in("account_id", accountIds)
       ),
-      // Posts: user-submitted job posts (Posts page), same source as the
-      // hotlist half below — combined into one "Posts" count.
+      // Posts, tracked separately for Jobs vs Hotlist.
       withDateRange(
         supabase
           .from("social_jobs")
@@ -114,11 +96,14 @@ Deno.serve(async (req: Request) => {
           .in("created_by_account_id", accountIds)
           .eq("post_source", "user_post")
       ),
-      // Previews: the Preview action on a Pulse card (view the original post).
+      // Previews: the Preview action on a Pulse card (view the original
+      // post). lead_id doesn't carry a job/hotlist flag itself, so this is
+      // split further below by cross-referencing which table each lead_id
+      // belongs to.
       withDateRange(
         supabase
           .from("pulse_lead_actions")
-          .select("account_id")
+          .select("account_id, lead_id")
           .in("account_id", accountIds)
           .eq("action_type", "post_content_viewed")
       ),
@@ -138,6 +123,13 @@ Deno.serve(async (req: Request) => {
           .in("account_id", accountIds)
           .not("hotlist_id", "is", null)
       ),
+      // Chats: messages sent on an in-app user_post conversation.
+      withDateRange(
+        supabase
+          .from("post_chat_messages")
+          .select("sender_account_id")
+          .in("sender_account_id", accountIds)
+      ),
     ]);
 
     function countBy(rows: any[] | null, key = "account_id"): Record<string, number> {
@@ -150,16 +142,37 @@ Deno.serve(async (req: Request) => {
       return map;
     }
 
-    const watchingCounts = countBy(watchingRes.data);
-    const vendorCounts = countBy(vendorsRes.data);
-    const clientCounts = countBy(clientsRes.data);
-    const revealsCounts = countBy(revealsRes.data);
     const searchesCounts = countBy(searchesRes.data);
     const postsJobsCounts = countBy(postsJobsRes.data, "created_by_account_id");
     const postsHotlistCounts = countBy(postsHotlistRes.data, "created_by_account_id");
-    const previewsCounts = countBy(previewsRes.data);
     const aiPitchesCounts = countBy(aiPitchesRes.data);
     const aiRequestsCounts = countBy(aiRequestsRes.data);
+    const chatsCounts = countBy(chatsRes.data, "sender_account_id");
+
+    // Split previews by looking up which table each previewed lead_id
+    // actually belongs to.
+    const previewLeadIds = Array.from(new Set(
+      (previewsRes.data ?? []).map((r: any) => r.lead_id).filter(Boolean)
+    ));
+    const [previewJobIdsRes, previewHotlistIdsRes] = previewLeadIds.length
+      ? await Promise.all([
+          supabase.from("social_jobs").select("id").in("id", previewLeadIds),
+          supabase.from("social_hotlist").select("id").in("id", previewLeadIds),
+        ])
+      : [{ data: [] as any[] }, { data: [] as any[] }];
+    const previewJobIdSet = new Set((previewJobIdsRes.data ?? []).map((r: any) => r.id));
+    const previewHotlistIdSet = new Set((previewHotlistIdsRes.data ?? []).map((r: any) => r.id));
+
+    const jobPreviewsCounts: Record<string, number> = {};
+    const hotlistPreviewsCounts: Record<string, number> = {};
+    for (const row of previewsRes.data ?? []) {
+      if (!row.account_id) continue;
+      if (previewJobIdSet.has(row.lead_id)) {
+        jobPreviewsCounts[row.account_id] = (jobPreviewsCounts[row.account_id] || 0) + 1;
+      } else if (previewHotlistIdSet.has(row.lead_id)) {
+        hotlistPreviewsCounts[row.account_id] = (hotlistPreviewsCounts[row.account_id] || 0) + 1;
+      }
+    }
 
     const activityByAccount: Record<string, {
       session_count: number;
@@ -234,15 +247,15 @@ Deno.serve(async (req: Request) => {
         created_at: a.created_at,
         user_name: primaryMember?.display_name || authUser?.full_name || a.name || "-",
         user_email: authUser?.email || primaryMember?.invited_email || "-",
-        watching_count: watchingCounts[a.id] || 0,
         credits_balance: a.credits_balance ?? 0,
-        reveals_count: revealsCounts[a.id] || 0,
-        contacts_count: (vendorCounts[a.id] || 0) + (clientCounts[a.id] || 0),
         searches_count: searchesCounts[a.id] || 0,
-        posts_count: (postsJobsCounts[a.id] || 0) + (postsHotlistCounts[a.id] || 0),
-        previews_count: previewsCounts[a.id] || 0,
+        job_posts_count: postsJobsCounts[a.id] || 0,
+        hotlist_posts_count: postsHotlistCounts[a.id] || 0,
+        job_previews_count: jobPreviewsCounts[a.id] || 0,
+        hotlist_previews_count: hotlistPreviewsCounts[a.id] || 0,
         ai_pitches_count: aiPitchesCounts[a.id] || 0,
         ai_requests_count: aiRequestsCounts[a.id] || 0,
+        chats_count: chatsCounts[a.id] || 0,
         account_age_days: Math.max(0, Math.floor((Date.now() - Date.parse(a.created_at)) / 86_400_000)),
         session_count: activity?.session_count ?? 0,
         active_seconds: activity?.active_seconds ?? 0,
