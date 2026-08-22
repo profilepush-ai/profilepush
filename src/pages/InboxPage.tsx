@@ -804,10 +804,16 @@ export default function InboxPage() {
                 </div>
               </header>
 
-              <div className="mx-auto max-w-5xl px-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
+              <div className="mx-auto flex min-h-full max-w-5xl flex-col px-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
                   <JobReferenceCard conversation={selected} />
                   {loadingMessages ? (
                     <div className="flex h-32 items-center justify-center"><Loader2 size={18} className="animate-spin text-blue-600" /></div>
+                  ) : messages.length === 0 ? (
+                    <div className="flex flex-1 flex-col items-center justify-center py-10 text-center text-gray-400">
+                      <Mail size={26} />
+                      <p className="mt-2 text-[13px] font-semibold text-gray-500">No messages yet</p>
+                      <p className="mt-1 text-[12px] text-gray-400">{selected.channel === 'chat' ? 'Say hello to start the conversation.' : 'Replies will show up here.'}</p>
+                    </div>
                   ) : messages.map((message) => {
                     const outbound = message.direction === 'outbound';
                     const deliveryState = outbound ? messageDeliveryState(message) : null;
