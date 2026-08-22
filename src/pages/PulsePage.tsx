@@ -984,13 +984,13 @@ const LeadCard = memo(function LeadCard({
   const linkClassName = isDark ? 'text-blue-300' : 'text-blue-600';
 
   const actionButtonsBar = (
-    <div className="mt-auto flex items-center justify-around border-t border-gray-200 dark:border-white/10">
+    <div className="mt-auto flex items-center gap-1.5 border-t border-gray-200 p-1.5 dark:border-white/10">
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
         disabled={isLoadingPreview}
         title="Preview original post"
-        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
+        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-gray-100 text-gray-600 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10"
       >
         {isLoadingPreview ? <LogoSpinner size={14} /> : (
           <>
@@ -1005,14 +1005,14 @@ const LeadCard = memo(function LeadCard({
           onClick={(e) => { e.stopPropagation(); onOpenChat(lead); }}
           disabled={isProcessingChat}
           title="Chat about this post"
-          className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
+          className="inline-flex h-9 flex-1 items-center justify-center rounded-md bg-gray-100 text-gray-600 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10"
         >
           {isProcessingChat ? <LogoSpinner size={14} /> : <MessageSquare size={17} strokeWidth={1.75} />}
         </button>
       ) : isAskPending || isVerified ? (
         <span
           title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
-          className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 dark:text-gray-400"
+          className={`inline-flex h-9 flex-1 items-center justify-center rounded-md ${isVerified ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'}`}
         >
           {isVerified ? <BadgeCheck size={17} strokeWidth={1.75} /> : <Check size={17} strokeWidth={1.75} />}
         </span>
@@ -1022,7 +1022,7 @@ const LeadCard = memo(function LeadCard({
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
           title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Request' : 'AI Pitch')}
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
         >
           {isProcessingAskAI ? <LogoSpinner size={14} /> : (
             <>
