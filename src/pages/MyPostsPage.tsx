@@ -507,7 +507,7 @@ export default function MyPostsPage() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-2 bg-gray-100 pb-4 dark:bg-[#141619] sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 bg-[#e7e3de] pb-4 dark:bg-[#141619] sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
             {filteredPosts.map((post) => {
               const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
               const metrics = metricsByPostId[post.id] ?? { previewCount: 0, chatCount: 0 };
@@ -519,7 +519,7 @@ export default function MyPostsPage() {
               return (
                 <div
                   key={post.id}
-                  className="relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#1E2126]"
+                  className="relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126]"
                 >
                   <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
                     <div className="flex items-start justify-between gap-2">

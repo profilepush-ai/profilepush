@@ -918,7 +918,7 @@ export default function TrackerPage() {
   function renderJobsCards() {
     const linkClass = 'text-blue-600 dark:text-cyan-400 hover:underline';
     return (
-      <div className="grid grid-cols-1 gap-2 bg-gray-100 p-1.5 dark:bg-[#141619] lg:grid-cols-2 lg:gap-3 lg:p-3">
+      <div className="grid grid-cols-1 gap-2 bg-[#e7e3de] p-1.5 dark:bg-[#141619] lg:grid-cols-2 lg:gap-3 lg:p-3">
         {vendorHistory.map((lead) => {
           const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
 
@@ -927,7 +927,7 @@ export default function TrackerPage() {
           return (
             <div
               key={lead.id}
-              className="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#1E2126]"
+              className="flex flex-col overflow-hidden rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126]"
             >
               <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
                 <p className="text-[13px] font-semibold leading-snug text-[#2563EB] dark:text-white">{lead.title}</p>
