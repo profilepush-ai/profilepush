@@ -990,7 +990,7 @@ const LeadCard = memo(function LeadCard({
         onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
         disabled={isLoadingPreview}
         title="Preview original post"
-        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
+        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-amber-500/10 dark:text-amber-400 dark:hover:bg-amber-500/20"
       >
         {isLoadingPreview ? <LogoSpinner size={14} /> : (
           <>
