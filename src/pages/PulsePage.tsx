@@ -1022,7 +1022,7 @@ const LeadCard = memo(function LeadCard({
           {isProcessingAskAI ? <LogoSpinner size={14} /> : (
             <>
               <Sparkles size={15} strokeWidth={1.75} />
-              <span className="text-[12px] font-medium">{isHotlistFeed ? 'AI Request' : 'AI Pitch'}</span>
+              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Pitch'}</span>
             </>
           )}
         </button>
