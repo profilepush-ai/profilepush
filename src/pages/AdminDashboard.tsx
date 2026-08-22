@@ -57,22 +57,6 @@ interface HotlistRoleRow {
   updated_at: string;
 }
 
-interface HotlistMatchRunRow {
-  id: string;
-  trigger_source: string;
-  account_id: string | null;
-  role_id: string | null;
-  roles_found: number;
-  profiles_processed: number;
-  total_matched: number;
-  status: 'running' | 'success' | 'error' | 'failed' | 'aborted';
-  error_message: string | null;
-  started_at: string;
-  completed_at: string | null;
-  duration_ms: number | null;
-  created_at: string;
-}
-
 interface LinkedinGroupRow {
   group_id: string;
   group_name: string | null;
@@ -96,14 +80,7 @@ interface LinkedinScraperConfig {
   updated_at: string;
 }
 
-function canRetryMatchRun(row: HotlistMatchRunRow) {
-  const status = String(row.status ?? '').toLowerCase();
-  const hasStatusFailure = status === 'error' || status === 'failed' || status === 'aborted';
-  const hasErrorMessage = typeof row.error_message === 'string' && row.error_message.trim().length > 0;
-  return hasStatusFailure || hasErrorMessage;
-}
-
-type AdminView = 'stats' | 'hotlist' | 'scraper' | 'keyword-scraper' | 'scraper-logs' | 'history' | 'ai-prompts';
+type AdminView = 'stats' | 'hotlist' | 'scraper' | 'keyword-scraper' | 'scraper-logs' | 'ai-prompts';
 type LinkedinStatsRange = '24h' | '7d' | '30d' | 'all' | 'custom';
 
 type DatePreset = '7d' | '30d' | '90d' | 'all' | 'custom';
@@ -120,14 +97,6 @@ const ROLE_CATEGORY_OPTIONS = ['all', 'front-end', 'backend', 'data', 'security'
 const VISA_TYPE_OPTIONS = ['US Citizen', 'Green Card', 'H1B', 'H4EAD', 'TN', 'OPT', 'CPT', 'F1', 'EAD', 'Other'];
 const EMPLOYMENT_TYPE_OPTIONS = ['C2C', 'W2', '1099', 'C2C or W2', 'Any'];
 const WORK_TYPE_OPTIONS = ['Remote', 'Hybrid', 'Onsite', 'Open'];
-
-function formatTriggerSource(triggerSource: string | null | undefined) {
-  if (!triggerSource) return '-';
-  if (triggerSource === 'manual_all') return 'manual_all (all roles)';
-  if (triggerSource === 'manual_scoped') return 'manual_scoped (single role)';
-  if (triggerSource === 'scheduled_cron') return 'scheduled_cron (cron)';
-  return triggerSource;
-}
 
 function getDateRange(preset: DatePreset, customStart: string, customEnd: string): { start_date: string | null; end_date: string | null } {
   if (preset === 'all') return { start_date: null, end_date: null };
@@ -192,12 +161,6 @@ export default function AdminDashboard() {
   const [roles, setRoles] = useState<HotlistRoleRow[]>([]);
   const [rolesError, setRolesError] = useState('');
   const [rolesNotice, setRolesNotice] = useState('');
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyRows, setHistoryRows] = useState<HotlistMatchRunRow[]>([]);
-  const [historyError, setHistoryError] = useState('');
-  const [historyNotice, setHistoryNotice] = useState('');
-  const [retryingHistoryRunId, setRetryingHistoryRunId] = useState<string | null>(null);
-  const [abortingHistoryRunId, setAbortingHistoryRunId] = useState<string | null>(null);
   const [roleStatsSummary, setRoleStatsSummary] = useState<Record<string, { job_count: number; watch_count: number; active_watch_count: number }>>({});
   const [rolesSearchQuery, setRolesSearchQuery] = useState('');
   const [rolesCategoryFilter, setRolesCategoryFilter] = useState('all');
@@ -310,7 +273,7 @@ export default function AdminDashboard() {
   }
 
   async function refresh() {
-    await Promise.all([fetchStats(), fetchHotlistRoles(), fetchLinkedinGroups(), fetchMatchRunHistory()]);
+    await Promise.all([fetchStats(), fetchHotlistRoles(), fetchLinkedinGroups()]);
   }
 
   async function fetchLinkedinGroups(
@@ -552,86 +515,6 @@ export default function AdminDashboard() {
     }
 
     setRolesLoading(false);
-  }
-
-  async function fetchMatchRunHistory() {
-    setHistoryLoading(true);
-    setHistoryError('');
-
-    const { data, error } = await supabase
-      .from('hotlist_match_runs')
-      .select('id, trigger_source, account_id, role_id, roles_found, profiles_processed, total_matched, status, error_message, started_at, completed_at, duration_ms, created_at')
-      .order('created_at', { ascending: false })
-      .limit(500);
-
-    if (error) {
-      setHistoryError(error.message);
-      setHistoryLoading(false);
-      return;
-    }
-
-    setHistoryRows((data ?? []) as HotlistMatchRunRow[]);
-    setHistoryLoading(false);
-  }
-
-  async function retryErroredMatchRun(row: HotlistMatchRunRow) {
-    if (retryingHistoryRunId || abortingHistoryRunId || !canRetryMatchRun(row)) return;
-
-    setRetryingHistoryRunId(row.id);
-    setHistoryError('');
-    setHistoryNotice('');
-
-    const payload = row.role_id
-      ? { trigger_source: 'manual_scoped', role_id: row.role_id }
-      : { trigger_source: 'manual_all' };
-
-    const { data, error } = await supabase.functions.invoke('job-watch-trigger', {
-      body: payload,
-    });
-
-    if (error) {
-      setHistoryError(error.message || 'Failed to retry this match run.');
-      setRetryingHistoryRunId(null);
-      return;
-    }
-
-    const summary = typeof data?.message === 'string'
-      ? data.message
-      : row.role_id
-        ? 'Retry completed for role run.'
-        : 'Retry completed for all roles run.';
-    const profilesProcessed = typeof data?.profiles_processed === 'number' ? data.profiles_processed : 0;
-    const totalMatched = typeof data?.total_matched === 'number' ? data.total_matched : 0;
-    setHistoryNotice(`${summary} Roles processed: ${profilesProcessed}. Matches added: ${totalMatched}.`);
-
-    await fetchMatchRunHistory();
-    setRetryingHistoryRunId(null);
-  }
-
-  async function abortRunningMatchRun(row: HotlistMatchRunRow) {
-    if (retryingHistoryRunId || abortingHistoryRunId || row.status !== 'running') return;
-
-    setAbortingHistoryRunId(row.id);
-    setHistoryError('');
-    setHistoryNotice('');
-
-    const { data, error } = await supabase.functions.invoke('job-watch-trigger', {
-      body: {
-        action: 'abort',
-        run_log_id: row.id,
-      },
-    });
-
-    if (error) {
-      setHistoryError(error.message || 'Failed to abort this running match run.');
-      setAbortingHistoryRunId(null);
-      return;
-    }
-
-    const summary = typeof data?.message === 'string' ? data.message : 'Abort requested.';
-    setHistoryNotice(summary);
-    await fetchMatchRunHistory();
-    setAbortingHistoryRunId(null);
   }
 
   function resetNewRoleForm() {
@@ -912,7 +795,6 @@ export default function AdminDashboard() {
     if (authed) {
       void fetchHotlistRoles();
       void fetchLinkedinGroups();
-      void fetchMatchRunHistory();
     }
   }, [authed]);
 
@@ -1057,7 +939,7 @@ export default function AdminDashboard() {
                         ? 'LinkedIn keyword search configuration'
                         : adminView === 'scraper-logs'
                           ? 'Hourly group and keyword pipeline logs'
-                          : `${historyRows.length} match runs`}
+                          : 'AI prompt configuration'}
                 </p>
               </div>
             </div>
@@ -1091,12 +973,6 @@ export default function AdminDashboard() {
                 className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'scraper-logs' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
               >
                 Scraper Logs
-              </button>
-              <button
-                onClick={() => setAdminView('history')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'history' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Match History
               </button>
               <button
                 onClick={() => setAdminView('ai-prompts')}
@@ -1771,120 +1647,6 @@ export default function AdminDashboard() {
         {adminView === 'keyword-scraper' && <LinkedinKeywordScraperPanel />}
 
   {adminView === 'scraper-logs' && <AdminScraperLogsPanel />}
-
-        {adminView === 'history' && (
-        <div className="mt-4 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-            <p className="text-sm font-semibold text-gray-900">Match Run History</p>
-            <button
-              onClick={() => void fetchMatchRunHistory()}
-              disabled={historyLoading}
-              className="flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              <RefreshCcw size={11} className={historyLoading ? 'animate-spin' : ''} /> Reload History
-            </button>
-          </div>
-
-          {historyError && (
-            <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
-              {historyError}
-            </div>
-          )}
-
-          {historyNotice && (
-            <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">
-              {historyNotice}
-            </div>
-          )}
-
-          {historyLoading && historyRows.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center py-8">
-              <LogoSpinner size={18} />
-            </div>
-          ) : (
-            <div className="min-h-0 flex-1 overflow-auto">
-              <table className="min-w-[1100px] w-full table-auto text-left">
-                <thead className="sticky top-0 z-[1]">
-                  <tr className="border-b border-gray-200 bg-gray-50 text-[11px] uppercase tracking-wide text-gray-600">
-                    <th className="px-3 py-2">Started</th>
-                    <th className="px-3 py-2">Completed</th>
-                    <th className="px-3 py-2">Source</th>
-                    <th className="px-3 py-2">Account</th>
-                    <th className="px-3 py-2">Role</th>
-                    <th className="px-3 py-2">Roles Found</th>
-                    <th className="px-3 py-2">Processed</th>
-                    <th className="px-3 py-2">Matches</th>
-                    <th className="px-3 py-2">Duration</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Error</th>
-                    <th className="px-3 py-2">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historyRows.map((row) => (
-                    <tr key={row.id} className="border-b border-gray-200 align-top text-xs text-gray-800 hover:bg-gray-50">
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">
-                        {new Date(row.started_at).toLocaleString()}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">
-                        {row.completed_at ? new Date(row.completed_at).toLocaleString() : '-'}
-                      </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal">
-                        <span className="rounded bg-gray-100 px-2 py-1 text-[11px] text-gray-700">{formatTriggerSource(row.trigger_source)}</span>
-                      </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal text-gray-600">{row.account_id || '-'}</td>
-                      <td className="px-3 py-2 break-normal whitespace-normal text-gray-600">{row.role_id || '-'}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{row.roles_found ?? 0}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{row.profiles_processed ?? 0}</td>
-                      <td className="px-3 py-2 whitespace-nowrap font-semibold text-gray-900">{row.total_matched ?? 0}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">
-                        {row.duration_ms != null ? `${Math.round(row.duration_ms / 1000)}s` : '-'}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span className={`rounded px-2 py-1 text-[11px] ${row.status === 'success' ? 'bg-green-100 text-green-700' : row.status === 'error' || row.status === 'failed' || row.status === 'aborted' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {row.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 break-normal whitespace-normal text-red-700">{row.error_message || '-'}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {row.status === 'running' ? (
-                          <button
-                            onClick={() => void abortRunningMatchRun(row)}
-                            disabled={historyLoading || !!abortingHistoryRunId || !!retryingHistoryRunId}
-                            className="inline-flex h-7 items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
-                            title="Abort this running run"
-                          >
-                            {abortingHistoryRunId === row.id ? <RefreshCcw size={11} className="animate-spin" /> : <X size={11} />}
-                            Abort
-                          </button>
-                        ) : canRetryMatchRun(row) ? (
-                          <button
-                            onClick={() => void retryErroredMatchRun(row)}
-                            disabled={historyLoading || !!retryingHistoryRunId || !!abortingHistoryRunId}
-                            className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
-                            title="Retry this failed run"
-                          >
-                            {retryingHistoryRunId === row.id ? <RefreshCcw size={11} className="animate-spin" /> : <RefreshCcw size={11} />}
-                            Retry
-                          </button>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-
-                  {historyRows.length === 0 && !historyLoading && (
-                    <tr>
-                      <td colSpan={12} className="px-4 py-8 text-center text-xs text-gray-500">No match runs found.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-        )}
 
         {adminView === 'ai-prompts' && <AdminAiPromptsPanel />}
       </div>
