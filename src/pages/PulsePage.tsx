@@ -2108,7 +2108,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
   const BREAKDOWN_COST = 0.1;
   const PREDICT_COST = 0.01;
-  const POST_CONTENT_COST = 0.05;
+  const POST_CONTENT_COST = 1;
   const MAX_BULK_PREDICT = 5;
 
   const sortedLeaderboard = useMemo(() => {
@@ -4880,7 +4880,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
   const consumeCreditsLegacy = useCallback(async (
     amount: number,
-    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown' | 'pulse_predict_match',
+    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown' | 'pulse_predict_match' | 'pulse_view_post_content',
   ) => {
     if (!account?.id) return false;
 
@@ -4933,10 +4933,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
   const consumeCredits = useCallback(async (
     amount: number,
-    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown' | 'pulse_predict_match',
+    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown' | 'pulse_predict_match' | 'pulse_view_post_content',
     metadata: Record<string, unknown>,
+    options?: { alwaysCharge?: boolean },
   ) => {
-    if (!shouldChargeCredits()) return true;
+    // Preview moved onto the always-on 1-credit-per-action model (same as
+    // post creation / AI Pitch-Request) rather than the legacy fractional
+    // pulse_reveal_contact/breakdown/predict costs, which stay behind the
+    // disabled BILLING_GATES_ENABLED flag until that's re-enabled.
+    if (!options?.alwaysCharge && !shouldChargeCredits()) return true;
     if (!account?.id) {
       showToast('No account found for credit deduction', 'error');
       return false;
@@ -5029,7 +5034,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           platform: lead.platform,
           title: lead.title,
           company: lead.company,
-        });
+        }, { alwaysCharge: true });
         if (!consumed) return;
 
         setPostContentViewedLeadIds((prev) => {
@@ -5039,7 +5044,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         });
         setPostContentViewedAtByLeadId((prev) => ({ ...prev, [lead.id]: new Date().toISOString() }));
         void persistLeadAction(lead.id, 'post_content_viewed');
-        if (shouldChargeCredits()) showToast(`$${POST_CONTENT_COST.toFixed(2)} credits consumed for post preview`, 'success');
+        showToast(`${POST_CONTENT_COST} credit${POST_CONTENT_COST === 1 ? '' : 's'} consumed for post preview`, 'success');
       }
 
       const { data, error } = await supabase
