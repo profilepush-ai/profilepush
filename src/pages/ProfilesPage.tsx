@@ -3294,7 +3294,7 @@ export default function ProfilesPage() {
                 </div>
 
               {/* Mobile search/filter row */}
-              <div className={isMobileViewport ? 'sticky top-0 z-30 bg-white px-0 pt-1.5 pb-1' : 'px-2 py-2'}>
+              <div className={isMobileViewport ? 'sticky top-0 z-30 bg-[#e7e3de] px-0 pt-1.5 pb-1' : 'px-2 py-2'}>
                 <div className="flex items-center gap-2">
                   <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5">
                     <Search size={11} className="text-gray-400" />

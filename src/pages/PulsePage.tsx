@@ -5248,7 +5248,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
               {/* Mobile search/filter row — controls job feed search */}
               <div
-                className={isMobileViewport ? `sticky top-0 z-30 shrink-0 bg-white px-0 transition-[max-height,opacity,transform] duration-200 ease-out dark:bg-[#1B1D21] ${isRangeMenuOpen || isRecentSearchesOpen ? 'overflow-visible' : 'overflow-hidden'}` : 'px-2 py-2'}
+                className={isMobileViewport ? `sticky top-0 z-30 shrink-0 bg-[#e7e3de] px-0 transition-[max-height,opacity,transform] duration-200 ease-out dark:bg-[#1B1D21] ${isRangeMenuOpen || isRecentSearchesOpen ? 'overflow-visible' : 'overflow-hidden'}` : 'px-2 py-2'}
                 style={isMobileViewport ? {
                   maxHeight: isMobileTopCollapsed ? '0px' : '52px',
                   opacity: isMobileTopCollapsed ? 0 : 1,
