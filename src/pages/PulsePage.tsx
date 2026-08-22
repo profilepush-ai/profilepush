@@ -1016,10 +1016,15 @@ const LeadCard = memo(function LeadCard({
           type="button"
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
-          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'Request' : 'Submit')}
-          className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
+          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Request' : 'AI Pitch')}
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
         >
-          {isProcessingAskAI ? <LogoSpinner size={14} /> : isHotlistFeed ? <FileText size={17} strokeWidth={1.75} /> : <Send size={17} strokeWidth={1.75} />}
+          {isProcessingAskAI ? <LogoSpinner size={14} /> : (
+            <>
+              <Sparkles size={15} strokeWidth={1.75} />
+              <span className="text-[12px] font-medium">{isHotlistFeed ? 'AI Request' : 'AI Pitch'}</span>
+            </>
+          )}
         </button>
       )}
     </div>
