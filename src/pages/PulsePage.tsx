@@ -5563,10 +5563,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   </div>
                 </aside>
               )}
-              <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-[#ffffff] dark:bg-transparent">
+              <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-transparent">
 
               <div
-                className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-[#ffffff] dark:bg-transparent slim-scrollbar' : 'overflow-hidden'}`}
+                className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-transparent slim-scrollbar' : 'overflow-hidden'}`}
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
                 onTouchStart={isMobileViewport && !isSwipeLayout ? handleMobilePullStart : undefined}
                 onTouchMove={isMobileViewport && !isSwipeLayout ? handleMobilePullMove : undefined}

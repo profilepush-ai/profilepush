@@ -3385,7 +3385,7 @@ export default function ProfilesPage() {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white">
+              <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-transparent">
               <div
                 ref={isMobileViewport ? profileListScrollRef : undefined}
                 className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-hidden bg-white' : 'overflow-hidden'}`}
