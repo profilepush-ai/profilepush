@@ -837,42 +837,54 @@ function ClampedField({ value, linkClassName, isExpanded, onToggle }: {
   isExpanded: boolean;
   onToggle: () => void;
 }) {
-  if (value === '-') return <PersonaMissingTag />;
-  const parts = value.split(',').map((part) => part.trim()).filter(Boolean);
+  const isMultiPart = value !== '-' && value.includes(',');
+  const parts = isMultiPart ? value.split(',').map((part) => part.trim()).filter(Boolean) : [];
+  const itemCap = 2;
+  const collapsedParts = isMultiPart ? parts.slice(0, itemCap) : [];
+  const hiddenCount = isMultiPart ? parts.length - collapsedParts.length : 0;
+  const visibleParts = isExpanded ? parts : collapsedParts;
+  const visibleText = isMultiPart ? visibleParts.join(', ') : value;
 
-  if (parts.length > 1) {
-    const itemCap = 2;
-    const collapsedParts = parts.slice(0, itemCap);
-    const hiddenCount = parts.length - collapsedParts.length;
-    // Same overflow-vs-item-count mismatch as ClampedSkills: a collapsed
-    // text that's still long can get CSS-truncated with its own "…" even
-    // when every part technically fits within itemCap.
-    const isLikelyOverflow = hiddenCount > 0 || collapsedParts.join(', ').length > 36;
-    const visibleParts = isExpanded ? parts : collapsedParts;
+  // Real overflow detection (scrollHeight vs clientHeight) instead of a
+  // fixed character-count guess — see ClampedSkills for why. Also, when
+  // overflow does apply, the toggle button is nested INSIDE the clamped
+  // span rather than after it as a sibling, since line-clamp's
+  // display:-webkit-box always forces a following sibling onto a new line
+  // even when the visible text's last line still has room.
+  const textRef = useRef<HTMLSpanElement | null>(null);
+  const [isTextClamped, setIsTextClamped] = useState(false);
+  useLayoutEffect(() => {
+    if (isExpanded || value === '-') return;
+    const el = textRef.current;
+    if (!el) return;
+    const measure = () => setIsTextClamped(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isExpanded, visibleText, value]);
+
+  if (value === '-') return <PersonaMissingTag />;
+  const isLikelyOverflow = hiddenCount > 0 || isTextClamped;
+
+  if (!isExpanded) {
     return (
-      <>
-        <span className={isExpanded ? 'block max-h-14 overflow-y-auto' : 'line-clamp-2'}>{visibleParts.join(', ')}</span>
-        {!isExpanded && isLikelyOverflow && (
+      <span ref={textRef} className="line-clamp-2">
+        {visibleText}
+        {isLikelyOverflow && (
           <button type="button" onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
             {hiddenCount > 0 ? `+${hiddenCount} more` : 'more'}
           </button>
         )}
-        {isExpanded && isLikelyOverflow && (
-          <button type="button" onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
-            Show less
-          </button>
-        )}
-      </>
+      </span>
     );
   }
-
-  const isLikelyOverflow = value.length > 36;
   return (
     <>
-      <span className={isExpanded ? 'block max-h-14 overflow-y-auto' : 'line-clamp-2'}>{value}</span>
+      <span className="block max-h-14 overflow-y-auto">{visibleText}</span>
       {isLikelyOverflow && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
-          {isExpanded ? 'less' : 'more'}
+          {isMultiPart ? 'Show less' : 'less'}
         </button>
       )}
     </>
@@ -915,19 +927,32 @@ function ClampedSkills({ skillsValue, itemCap, linkClassName, isExpanded, onExpa
 
   if (skillsList.length === 0) return <PersonaMissingTag />;
   const isLikelyOverflow = hiddenCount > 0 || isTextClamped;
+  if (!isExpanded) {
+    // The "+N more" link is nested INSIDE the clamped span, not after it as
+    // a sibling — line-clamp renders as display:-webkit-box, which acts
+    // like a block and always forces a following sibling onto its own new
+    // line, even when the last visible line still has room. Keeping it as
+    // trailing inline content of the same box lets it sit right at the end
+    // of the visible text instead of wasting that leftover space.
+    return (
+      <span ref={textRef} className="line-clamp-2">
+        {visibleText}
+        {isLikelyOverflow && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); onExpand(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
+            {hiddenCount > 0 ? `+${hiddenCount} more` : 'more'}
+          </button>
+        )}
+      </span>
+    );
+  }
   return (
     <>
       {/* Capped + scrollable when expanded so revealing a long skills list on
           one card can never grow that card's height — with the sibling
           grid row set to stretch-to-tallest, an uncapped reveal would
           visually inflate every other card in the same row too. */}
-      <span ref={textRef} className={isExpanded ? 'block max-h-14 overflow-y-auto' : 'line-clamp-2'}>{visibleText}</span>
-      {!isExpanded && isLikelyOverflow && (
-        <button type="button" onClick={(e) => { e.stopPropagation(); onExpand(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
-          {hiddenCount > 0 ? `+${hiddenCount} more` : 'more'}
-        </button>
-      )}
-      {isExpanded && isLikelyOverflow && (
+      <span className="block max-h-14 overflow-y-auto">{visibleText}</span>
+      {isLikelyOverflow && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onCollapse(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
           Show less
         </button>
