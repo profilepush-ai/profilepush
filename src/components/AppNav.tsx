@@ -441,38 +441,38 @@ export default function AppNav() {
 
       {/* Mobile Bottom Navigation */}
       {user && (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[calc(env(safe-area-inset-bottom)+4px)] sm:hidden">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
           <Link
             to="/jobs"
-            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[13px] font-medium ${location.pathname === '/jobs' ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/jobs' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Briefcase size={24} />
             <span>Jobs</span>
           </Link>
           <Link
             to="/hotlist"
-            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[13px] font-medium ${location.pathname === '/hotlist' ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/hotlist' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <UserRound size={24} />
             <span>Hotlist</span>
           </Link>
           <Link
             to="/posts"
-            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[13px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Megaphone size={24} />
             <span>Posts</span>
           </Link>
           <Link
             to="/pulse"
-            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[13px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Activity size={24} />
             <span>Pulse</span>
           </Link>
           <Link
             to="/inbox"
-            className={`relative flex flex-1 flex-col items-center gap-1 py-2.5 text-[13px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Mail size={24} />
             <span>Inbox</span>
