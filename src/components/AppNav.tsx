@@ -267,7 +267,7 @@ export default function AppNav() {
 
   return (
     <>
-    <header className="min-h-12 bg-white border-b border-gray-200 flex items-center px-3 sm:px-4 gap-3 sm:gap-6 shrink-0 z-50 pt-[env(safe-area-inset-top)]">
+    <header className="min-h-12 bg-white flex items-center px-3 sm:px-4 gap-3 sm:gap-6 shrink-0 z-50 pt-[env(safe-area-inset-top)]">
       {user ? (
         <span className="flex items-center shrink-0">
           <Logo size="sm" />
