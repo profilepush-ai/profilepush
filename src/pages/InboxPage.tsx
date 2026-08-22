@@ -678,7 +678,7 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-[#f3f2ee] text-gray-900">
+    <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
       <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden sm:grid-cols-[290px_minmax(0,1fr)] xl:grid-cols-[310px_minmax(0,1fr)]">
         <aside className={`${selectedId ? 'hidden sm:flex' : 'flex'} min-h-0 flex-col border-r border-gray-200 bg-white`}>
@@ -786,7 +786,7 @@ export default function InboxPage() {
             </div>
           ) : (
             <>
-            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-[#f3f2ee]">
+            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#f3f2ee]">
               <header className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 bg-[#f3f2ee] px-2 py-1.5 sm:px-3">
                 <button type="button" onClick={() => navigate('/inbox', { replace: true })} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
                   <ArrowLeft size={16} />
