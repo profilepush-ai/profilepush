@@ -778,7 +778,7 @@ export default function InboxPage() {
           </div>
         </aside>
 
-        <section className={`${selectedId ? 'flex' : 'hidden sm:flex'} min-h-0 min-w-0 flex-col overflow-hidden bg-white`}>
+        <section className={`${selectedId ? 'flex' : 'hidden sm:flex'} min-h-0 min-w-0 flex-col overflow-hidden bg-[#e7e3de]`}>
           {!selected ? (
             <div className="flex flex-1 flex-col items-center justify-center text-gray-400">
               <Mail size={32} />
@@ -786,8 +786,8 @@ export default function InboxPage() {
             </div>
           ) : (
             <>
-            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-white">
-              <header className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 border-b border-gray-200 bg-white px-2 py-1.5 sm:px-3">
+            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-[#e7e3de]">
+              <header className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 bg-[#e7e3de] px-2 py-1.5 sm:px-3">
                 <button type="button" onClick={() => navigate('/inbox', { replace: true })} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
                   <ArrowLeft size={16} />
                 </button>
