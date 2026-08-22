@@ -4,7 +4,7 @@ import {
   ChevronDown, HelpCircle, LogOut, Settings,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, ShieldCheck, Briefcase, UserRound, MoonStar, SunMedium, Mail, Megaphone,
+  Activity, Briefcase, UserRound, MoonStar, SunMedium, Mail, Megaphone,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -444,46 +444,39 @@ export default function AppNav() {
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[calc(env(safe-area-inset-bottom)+20px)] sm:hidden">
           <Link
             to="/jobs"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/jobs' ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-3 text-xs font-medium ${location.pathname === '/jobs' ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <Briefcase size={18} />
+            <Briefcase size={24} />
             <span>Jobs</span>
           </Link>
           <Link
             to="/hotlist"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/hotlist' ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-3 text-xs font-medium ${location.pathname === '/hotlist' ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <UserRound size={18} />
+            <UserRound size={24} />
             <span>Hotlist</span>
           </Link>
           <Link
             to="/posts"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-3 text-xs font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <Megaphone size={18} />
+            <Megaphone size={24} />
             <span>Posts</span>
           </Link>
           <Link
             to="/pulse"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-3 text-xs font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <Activity size={18} />
+            <Activity size={24} />
             <span>Pulse</span>
           </Link>
           <Link
             to="/inbox"
-            className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`relative flex flex-1 flex-col items-center gap-1 py-3 text-xs font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <Mail size={18} />
+            <Mail size={24} />
             <span>Inbox</span>
-            {inboxUnread > 0 && <span className="absolute right-[28%] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
-          </Link>
-          <Link
-            to="/tracker"
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/tracker' ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <ShieldCheck size={18} />
-            <span>Tracker</span>
+            {inboxUnread > 0 && <span className="absolute right-[24%] top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
           </Link>
         </nav>
       )}
