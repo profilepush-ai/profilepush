@@ -441,7 +441,7 @@ export default function MyPostsPage() {
                   onChange={(e) => setLandingPasteText(e.target.value)}
                   rows={8}
                   placeholder="Paste a job or hotlist post here — we'll auto-fill everything ✨"
-                  className={`w-full resize-none rounded-2xl border-0 px-5 py-4 text-center text-[14px] outline-none shadow-sm transition focus:ring-2 ${isDark ? 'bg-[#20242a] text-slate-100 placeholder:text-[#94A3B8] focus:ring-blue-500/30' : 'bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:ring-blue-200'}`}
+                  className={`w-full resize-none rounded-2xl border px-5 py-4 text-center text-[14px] outline-none shadow-sm transition focus:ring-2 ${isDark ? 'border-white/10 bg-[#20242a] text-slate-100 placeholder:text-[#94A3B8] focus:ring-blue-500/30' : 'border-[#dfdad2] bg-white text-gray-900 placeholder:text-gray-400 focus:ring-blue-200'}`}
                 />
                 <button
                   type="button"
