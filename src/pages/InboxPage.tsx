@@ -894,15 +894,15 @@ export default function InboxPage() {
               </div>
             </div>
             {selected.source === 'draft' ? null : selected.status === 'closed' ? (
-              <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 pt-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] text-center text-[12px] text-gray-500 sm:pb-3">
+              <div className="shrink-0 border-t border-gray-200 bg-[#e7e3de] px-3 pt-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] text-center text-[12px] text-gray-500 sm:pb-3">
                 This conversation is closed. Reopen it to send a message.
               </div>
             ) : (
-              <div className="shrink-0 border-t border-gray-200 bg-white px-2.5 pt-2.5 pb-[calc(5.75rem+env(safe-area-inset-bottom))] sm:px-3 sm:pt-3 sm:pb-3">
+              <div className="shrink-0 border-t border-gray-200 bg-[#e7e3de] px-2.5 pt-2.5 pb-[calc(5.75rem+env(safe-area-inset-bottom))] sm:px-3 sm:pt-3 sm:pb-3">
                 <p className="mb-1.5 text-[11px] text-gray-400">
                   {selected.channel === 'chat' ? 'In-app chat — not sent by email' : selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
                 </p>
-                <div className="flex flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-1.5 transition focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
+                <div className="flex flex-col gap-1.5 rounded-2xl border border-gray-200 bg-white p-1.5 transition focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
                   <textarea
                     value={replyText}
                     onChange={(event) => setReplyText(event.target.value)}
