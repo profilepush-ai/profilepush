@@ -74,7 +74,7 @@ function RoleBadge({ role }: { role: 'owner' | 'admin' | 'member' }) {
   const meta = ROLE_META[role];
   const Icon = meta.icon;
   return (
-    <span className={`account-settings-label inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border ${meta.cls}`}>
+    <span className={`account-settings-label inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md border ${meta.cls}`}>
       <Icon size={8} />{meta.label}
     </span>
   );
@@ -82,12 +82,12 @@ function RoleBadge({ role }: { role: 'owner' | 'admin' | 'member' }) {
 
 function AccessBadge({ access, locked }: { access: 'full' | 'assigned_only'; locked?: boolean }) {
   if (access === 'full') return (
-    <span className="account-settings-label inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+    <span className="account-settings-label inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
       {locked ? <Lock size={8} /> : <Eye size={8} />}Full Access
     </span>
   );
   return (
-    <span className="account-settings-label inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">
+    <span className="account-settings-label inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">
       <EyeOff size={8} />Assigned Only
     </span>
   );
@@ -108,8 +108,8 @@ function CardHeader({ icon: Icon, title, description, action }: {
     <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center gap-3">
       {Icon && <Icon size={15} className="text-gray-400 shrink-0" />}
       <div className="flex-1 min-w-0">
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-        {description && <p className="text-xs text-gray-400 mt-0.5">{description}</p>}
+        <h3 className="text-[15px] font-semibold text-gray-900">{title}</h3>
+        {description && <p className="text-[13px] text-gray-400 mt-0.5">{description}</p>}
       </div>
       {action}
     </div>
@@ -449,7 +449,7 @@ export default function AccountSettings() {
                 const active = section === item.id;
                 return (
                   <button key={item.id} onClick={() => setSection(item.id)}
-                    className={`shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-medium transition-colors sm:w-full ${
+                    className={`shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-[12px] sm:text-[13px] font-medium transition-colors sm:w-full ${
                       active
                         ? item.danger ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-700'
                         : item.danger ? 'text-red-500 hover:bg-red-50' : 'text-gray-600 hover:bg-gray-100'
@@ -472,12 +472,12 @@ export default function AccountSettings() {
             <Card>
               <div className="px-4 sm:px-6 py-5">
                 <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl ${getAvatarColor(displayName)} flex items-center justify-center text-white text-xl font-bold shrink-0`}>
+                  <div className={`w-12 h-12 rounded-xl ${getAvatarColor(displayName)} flex items-center justify-center text-white text-[21px] font-bold shrink-0`}>
                     {initial}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900">{displayName}</p>
-                    <p className="text-xs text-gray-400 truncate">{user?.email}</p>
+                    <p className="text-[15px] font-semibold text-gray-900">{displayName}</p>
+                    <p className="text-[13px] text-gray-400 truncate">{user?.email}</p>
                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                       {membership && <RoleBadge role={membership.role} />}
                       {membership && <AccessBadge access={membership.role === 'admin' ? 'full' : membership.data_access} locked={membership.role !== 'member'} />}
@@ -485,7 +485,7 @@ export default function AccountSettings() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 mt-5 pt-4 border-t border-gray-100 text-[11px]">
+                <div className="flex items-center gap-4 mt-5 pt-4 border-t border-gray-100 text-[12px]">
                   <button onClick={() => void signOut()}
                     className="text-gray-500 hover:text-gray-900 hover:underline underline-offset-2 transition-colors">
                     Logout
@@ -528,38 +528,38 @@ export default function AccountSettings() {
               <div className="px-4 sm:px-6 py-5">
                 {!gmailFeatureEnabled ? (
                   <div className="flex items-center gap-3">
-                    <span className="shrink-0 px-2 py-1 rounded-md bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-wide">Coming Soon</span>
-                    <p className="text-xs text-gray-500">We're finishing Google's security review for this feature. It'll be available to everyone shortly.</p>
+                    <span className="shrink-0 px-2 py-1 rounded-md bg-amber-50 text-amber-700 text-[11px] font-bold uppercase tracking-wide">Coming Soon</span>
+                    <p className="text-[13px] text-gray-500">We're finishing Google's security review for this feature. It'll be available to everyone shortly.</p>
                   </div>
                 ) : gmailLoading ? (
-                  <div className="flex items-center gap-2 text-xs text-gray-400"><Loader2 size={13} className="animate-spin" />Loading...</div>
+                  <div className="flex items-center gap-2 text-[13px] text-gray-400"><Loader2 size={13} className="animate-spin" />Loading...</div>
                 ) : gmailStatus && gmailStatus.status === 'connected' ? (
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                      <p className="text-[15px] font-semibold text-gray-900 flex items-center gap-1.5">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                         {gmailStatus.gmail_address}
                       </p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
+                      <p className="text-[12px] text-gray-400 mt-0.5">
                         Connected {new Date(gmailStatus.connected_at).toLocaleDateString()}
                         {gmailStatus.last_synced_at && ` · Last synced ${new Date(gmailStatus.last_synced_at).toLocaleTimeString()}`}
                       </p>
                     </div>
                     <button onClick={() => void disconnectGmail()} disabled={disconnectingGmail}
-                      className="shrink-0 px-3 py-1.5 border border-gray-200 hover:bg-gray-50 disabled:opacity-50 text-gray-600 text-xs font-semibold rounded-lg transition-colors">
+                      className="shrink-0 px-3 py-1.5 border border-gray-200 hover:bg-gray-50 disabled:opacity-50 text-gray-600 text-[13px] font-semibold rounded-lg transition-colors">
                       {disconnectingGmail ? 'Disconnecting...' : 'Disconnect'}
                     </button>
                   </div>
                 ) : (
                   <div>
                     {gmailStatus && (gmailStatus.status === 'error' || gmailStatus.status === 'revoked') && (
-                      <p className="text-[11px] text-red-600 mb-3 flex items-center gap-1"><AlertTriangle size={11} />
+                      <p className="text-[12px] text-red-600 mb-3 flex items-center gap-1"><AlertTriangle size={11} />
                         {gmailStatus.status === 'revoked' ? 'Gmail access was revoked. Reconnect to keep sending from your address.' : (gmailStatus.last_error || 'Gmail connection needs attention.')}
                       </p>
                     )}
-                    <p className="text-xs text-gray-500 mb-3">Vendors will see replies come from your real Gmail address, not a shared ProfilePush inbox.</p>
+                    <p className="text-[13px] text-gray-500 mb-3">Vendors will see replies come from your real Gmail address, not a shared ProfilePush inbox.</p>
                     <button onClick={() => void connectGmail()} disabled={connectingGmail}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-1.5">
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-[15px] font-semibold rounded-lg transition-colors flex items-center gap-1.5">
                       {connectingGmail ? <LogoSpinner size={13} /> : <Plug size={13} />}Connect Gmail
                     </button>
                   </div>
@@ -575,19 +575,19 @@ export default function AccountSettings() {
                 <CardHeader icon={Building2} title="Workspace Details" />
                 <div className="px-4 sm:px-6 py-5">
                   <form onSubmit={saveAccountName}>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Workspace Name</label>
+                    <label className="block text-[13px] font-medium text-gray-500 mb-1.5">Workspace Name</label>
                     <div className="flex flex-col xs:flex-row gap-2">
                       <input type="text" value={accountName} onChange={e => setAccountName(e.target.value)}
                         disabled={!isOwner}
-                        className="min-w-0 flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-500 transition-colors" />
+                        className="min-w-0 flex-1 border border-gray-200 rounded-lg px-3 py-2 text-[15px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-500 transition-colors" />
                       {isOwner && (
                         <button type="submit" disabled={savingName || accountName === account?.name}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-1.5">
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-[15px] font-semibold rounded-lg transition-colors flex items-center gap-1.5">
                           {savingName ? <LogoSpinner size={13} /> : <Save size={13} />}Save
                         </button>
                       )}
                     </div>
-                    {!isOwner && <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1"><Info size={9} />Only the owner can change the workspace name</p>}
+                    {!isOwner && <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1"><Info size={9} />Only the owner can change the workspace name</p>}
                   </form>
                 </div>
               </Card>
@@ -610,15 +610,15 @@ export default function AccountSettings() {
                       const canEdit = isOwner && m.role !== 'owner';
                       return (
                         <div key={m.id} className="px-4 sm:px-6 py-4 flex items-start gap-3 hover:bg-gray-50/50 transition-colors">
-                          <div className={`w-9 h-9 rounded-xl ${getAvatarColor(label)} flex items-center justify-center text-white text-sm font-bold shrink-0`}>
+                          <div className={`w-9 h-9 rounded-xl ${getAvatarColor(label)} flex items-center justify-center text-white text-[15px] font-bold shrink-0`}>
                             {label[0]?.toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold text-gray-900 truncate">{label}</span>
-                              {isMe && <span className="account-settings-label text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded-md font-semibold">You</span>}
+                              <span className="text-[15px] font-semibold text-gray-900 truncate">{label}</span>
+                              {isMe && <span className="account-settings-label text-[11px] bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded-md font-semibold">You</span>}
                             </div>
-                            <span className="text-[11px] text-gray-400 truncate block">{m.invited_email}</span>
+                            <span className="text-[12px] text-gray-400 truncate block">{m.invited_email}</span>
                           </div>
                           <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 max-w-[45%] sm:max-w-none">
                             <AccessBadge access={m.role === 'admin' ? 'full' : m.data_access} locked={m.role !== 'member'} />
@@ -640,7 +640,7 @@ export default function AccountSettings() {
                       );
                     })}
                     {activeMembers.length === 0 && (
-                      <div className="px-6 py-8 text-center text-sm text-gray-400">No active members yet.</div>
+                      <div className="px-6 py-8 text-center text-[15px] text-gray-400">No active members yet.</div>
                     )}
                   </div>
                 )}
@@ -650,7 +650,7 @@ export default function AccountSettings() {
               {pendingMembers.length > 0 && (
                 <Card>
                   <CardHeader icon={Mail} title="Pending Invites"
-                    action={<span className="account-settings-label text-xs bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full font-medium">{pendingMembers.length}</span>} />
+                    action={<span className="account-settings-label text-[13px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full font-medium">{pendingMembers.length}</span>} />
                   <div className="divide-y divide-gray-50">
                     {pendingMembers.map(m => (
                       <div key={m.id} className="px-4 sm:px-6 py-3.5 flex items-start gap-3">
@@ -658,9 +658,9 @@ export default function AccountSettings() {
                           <Mail size={13} className="text-amber-500" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          {m.display_name && <span className="text-sm font-semibold text-gray-800 truncate block">{m.display_name}</span>}
-                          <span className="text-sm text-gray-500 truncate block">{m.invited_email}</span>
-                          <span className="text-[10px] text-gray-400">Invited · hasn't signed up yet</span>
+                          {m.display_name && <span className="text-[15px] font-semibold text-gray-800 truncate block">{m.display_name}</span>}
+                          <span className="text-[15px] text-gray-500 truncate block">{m.invited_email}</span>
+                          <span className="text-[11px] text-gray-400">Invited · hasn't signed up yet</span>
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 max-w-[45%] sm:max-w-none">
                           <AccessBadge access={m.data_access} />
@@ -697,55 +697,55 @@ export default function AccountSettings() {
                     <form onSubmit={handleInvite} className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1.5">Full Name</label>
+                          <label className="block text-[13px] font-medium text-gray-500 mb-1.5">Full Name</label>
                           <div className="relative">
                             <UserCheck size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input type="text" value={inviteName} onChange={e => setInviteName(e.target.value)}
                               placeholder="Jane Smith"
-                              className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors" />
+                              className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-[15px] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors" />
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1.5">Email Address <span className="text-red-400">*</span></label>
+                          <label className="block text-[13px] font-medium text-gray-500 mb-1.5">Email Address <span className="text-red-400">*</span></label>
                           <div className="relative">
                             <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
                               placeholder="colleague@agency.com" required
-                              className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors" />
+                              className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-[15px] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors" />
                           </div>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1.5">Role</label>
+                          <label className="block text-[13px] font-medium text-gray-500 mb-1.5">Role</label>
                           <select value={inviteRole}
                             onChange={e => { const r = e.target.value as 'admin' | 'member'; setInviteRole(r); if (r === 'admin') setInviteAccess('full'); }}
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400">
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-[15px] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400">
                             <option value="member">Member</option>
                             <option value="admin">Admin</option>
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1.5">Data Access</label>
+                          <label className="block text-[13px] font-medium text-gray-500 mb-1.5">Data Access</label>
                           <select value={inviteRole === 'admin' ? 'full' : inviteAccess}
                             onChange={e => setInviteAccess(e.target.value as 'full' | 'assigned_only')}
                             disabled={inviteRole === 'admin'}
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400">
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-[15px] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400">
                             <option value="full">Full Access</option>
                             <option value="assigned_only">Assigned / Created Only</option>
                           </select>
                           {inviteRole === 'admin'
-                            ? <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1"><Lock size={9} />Admins always have full access</p>
+                            ? <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1"><Lock size={9} />Admins always have full access</p>
                             : inviteAccess === 'assigned_only'
-                            ? <p className="text-[10px] text-orange-500 mt-1">Member sees only profiles &amp; data assigned to them</p>
+                            ? <p className="text-[11px] text-orange-500 mt-1">Member sees only profiles &amp; data assigned to them</p>
                             : null}
                         </div>
                       </div>
 
                       <div className="flex justify-end pt-1">
                         <button type="submit" disabled={inviting || !inviteEmail.trim()}
-                          className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors">
+                          className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-[15px] font-semibold rounded-lg transition-colors">
                           {inviting ? <LogoSpinner size={13} /> : <Plus size={13} />}Add Member
                         </button>
                       </div>
@@ -761,7 +761,7 @@ export default function AccountSettings() {
           {section === 'billing' && (
             <>
               {!isOwner && (
-                <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
+                <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-[13px] text-amber-700">
                   <Info size={13} className="shrink-0" />
                   Billing is managed by the workspace owner. Contact them for changes.
                 </div>
@@ -773,12 +773,12 @@ export default function AccountSettings() {
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5 pb-5 border-b border-gray-100">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`account-settings-label text-xs font-semibold px-2.5 py-1 rounded-lg border ${planStyle}`}>{planLabel}</span>
+                        <span className={`account-settings-label text-[13px] font-semibold px-2.5 py-1 rounded-lg border ${planStyle}`}>{planLabel}</span>
                         {subscription?.cancel_at_period_end && (
-                          <span className="account-settings-label text-xs text-red-500 bg-red-50 border border-red-100 px-2 py-0.5 rounded-lg">Cancels at period end</span>
+                          <span className="account-settings-label text-[13px] text-red-500 bg-red-50 border border-red-100 px-2 py-0.5 rounded-lg">Cancels at period end</span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-[13px] text-gray-400 mt-1">
                         {subscription?.current_period_end
                           ? `Renews ${new Date(subscription.current_period_end).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}`
                           : account?.is_trial ? 'Free trial — upgrade to unlock all features' : 'No active subscription'}
@@ -786,7 +786,7 @@ export default function AccountSettings() {
                     </div>
                     {isOwner && (
                       <button onClick={() => navigate('/billing')}
-                        className="self-start flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors">
+                        className="self-start flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold rounded-lg transition-colors">
                         Manage Billing <ArrowRight size={12} />
                       </button>
                     )}
@@ -795,15 +795,15 @@ export default function AccountSettings() {
                   <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 sm:gap-4">
                     {shouldShowCreditsUi() && (
                       <div className="bg-gray-50 rounded-xl p-4">
-                        <p className="text-[10px] text-gray-400 mb-1">AI Credits Balance</p>
+                        <p className="text-[11px] text-gray-400 mb-1">AI Credits Balance</p>
                         <p className="text-2xl font-black text-gray-900">${Number(account?.credits_balance ?? 0).toFixed(2)}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Available for AI features</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">Available for AI features</p>
                       </div>
                     )}
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <p className="text-[10px] text-gray-400 mb-1">Team Size</p>
+                      <p className="text-[11px] text-gray-400 mb-1">Team Size</p>
                       <p className="text-2xl font-black text-gray-900">{activeMembers.length}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Active members</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">Active members</p>
                     </div>
                   </div>
                 </div>
@@ -822,8 +822,8 @@ export default function AccountSettings() {
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto">
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100">
               <div>
-                <h2 className="text-base font-bold text-gray-900">Edit Member</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{editingMember.invited_email}</p>
+                <h2 className="text-[17px] font-bold text-gray-900">Edit Member</h2>
+                <p className="text-[13px] text-gray-400 mt-0.5">{editingMember.invited_email}</p>
               </div>
               <button onClick={() => setEditingMember(null)}
                 className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
@@ -834,52 +834,52 @@ export default function AccountSettings() {
             <div className="px-4 sm:px-6 py-5 space-y-4">
               {/* Avatar + name preview */}
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                <div className={`w-9 h-9 rounded-xl ${getAvatarColor(editName || editingMember.invited_email)} flex items-center justify-center text-white text-sm font-bold shrink-0`}>
+                <div className={`w-9 h-9 rounded-xl ${getAvatarColor(editName || editingMember.invited_email)} flex items-center justify-center text-white text-[15px] font-bold shrink-0`}>
                   {(editName || editingMember.invited_email)[0]?.toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-900">{editName || editingMember.invited_email.split('@')[0]}</p>
-                  <p className="text-[11px] text-gray-400 truncate">{editingMember.invited_email}</p>
+                  <p className="text-[15px] font-semibold text-gray-900">{editName || editingMember.invited_email.split('@')[0]}</p>
+                  <p className="text-[12px] text-gray-400 truncate">{editingMember.invited_email}</p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">Display Name</label>
+                <label className="block text-[13px] font-medium text-gray-500 mb-1.5">Display Name</label>
                 <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
                   placeholder="Full name (optional)" autoFocus
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-[15px] focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors" />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Role</label>
+                  <label className="block text-[13px] font-medium text-gray-500 mb-1.5">Role</label>
                   <select value={editRole}
                     onChange={e => { const r = e.target.value as 'admin' | 'member'; setEditRole(r); if (r === 'admin') setEditAccess('full'); }}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-[15px] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400">
                     <option value="member">Member</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Data Access</label>
+                  <label className="block text-[13px] font-medium text-gray-500 mb-1.5">Data Access</label>
                   <select value={editRole === 'admin' ? 'full' : editAccess}
                     onChange={e => setEditAccess(e.target.value as 'full' | 'assigned_only')}
                     disabled={editRole === 'admin'}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-[15px] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400">
                     <option value="full">Full Access</option>
                     <option value="assigned_only">Assigned Only</option>
                   </select>
                   {editRole === 'admin'
-                    ? <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1"><Lock size={9} />Admins have full access</p>
+                    ? <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1"><Lock size={9} />Admins have full access</p>
                     : editAccess === 'assigned_only'
-                    ? <p className="text-[10px] text-orange-500 mt-1">Sees only assigned candidates</p>
+                    ? <p className="text-[11px] text-orange-500 mt-1">Sees only assigned candidates</p>
                     : null}
                 </div>
               </div>
 
               {/* Preview badges */}
               <div className="flex items-center gap-2 pt-1">
-                <span className="text-[10px] text-gray-400">Preview:</span>
+                <span className="text-[11px] text-gray-400">Preview:</span>
                 <RoleBadge role={editRole} />
                 <AccessBadge access={editRole === 'admin' ? 'full' : editAccess} locked={editRole !== 'member'} />
               </div>
@@ -887,9 +887,9 @@ export default function AccountSettings() {
 
             <div className="flex flex-wrap items-center justify-end gap-2.5 px-4 sm:px-6 py-4 border-t border-gray-100">
               <button onClick={() => setEditingMember(null)}
-                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                className="px-4 py-2 text-[15px] text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
               <button onClick={saveEdit} disabled={savingEdit}
-                className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+                className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-[15px] font-semibold rounded-lg transition-colors shadow-sm">
                 <Save size={13} />{savingEdit ? 'Saving…' : 'Save Changes'}
               </button>
             </div>
@@ -908,29 +908,29 @@ export default function AccountSettings() {
                   <AlertTriangle size={18} className="text-red-600" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-gray-900">Delete Workspace</h2>
-                  <p className="text-xs text-red-500">This action cannot be undone</p>
+                  <h2 className="text-[17px] font-bold text-gray-900">Delete Workspace</h2>
+                  <p className="text-[13px] text-red-500">This action cannot be undone</p>
                 </div>
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-[15px] text-gray-600">
                 This will permanently delete <strong>{account?.name}</strong> including all candidates, jobs, team members, and data. There is no recovery.
               </p>
             </div>
             <div className="px-4 sm:px-6 py-5">
-              <label className="block text-xs font-medium text-gray-600 mb-2">
+              <label className="block text-[13px] font-medium text-gray-600 mb-2">
                 Type <span className="font-bold text-gray-900">{account?.name}</span> to confirm:
               </label>
               <input type="text" value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)}
                 placeholder={account?.name}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-400 transition-colors" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-[15px] focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-400 transition-colors" />
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2.5 px-4 sm:px-6 py-4 border-t border-gray-100">
               <button onClick={() => { setDeleteModal(false); setDeleteConfirm(''); }}
-                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                className="px-4 py-2 text-[15px] text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
               <button
                 disabled={deleteConfirm !== account?.name || deletingWs}
                 onClick={() => showToast('Please contact support to delete your workspace.', 'error')}
-                className="flex items-center gap-1.5 px-5 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors">
+                className="flex items-center gap-1.5 px-5 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-[15px] font-semibold rounded-lg transition-colors">
                 {deletingWs ? <LogoSpinner size={13} /> : <Trash2 size={13} />}Delete Workspace
               </button>
             </div>

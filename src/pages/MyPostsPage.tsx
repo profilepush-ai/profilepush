@@ -316,7 +316,7 @@ export default function MyPostsPage() {
           }
         }}
         placeholder="Search your posts"
-        className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400 dark:text-slate-200 dark:placeholder:text-[#64748B]"
+        className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:text-slate-200 dark:placeholder:text-[#64748B]"
       />
       {pendingSearchQuery && (
         <button
@@ -347,7 +347,7 @@ export default function MyPostsPage() {
       <button
         type="button"
         onClick={() => setIsRangeMenuOpen((prev) => !prev)}
-        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100 dark:border-white/10 dark:bg-[#20242a] dark:text-[#94A3B8] dark:hover:bg-white/5"
+        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-600 transition hover:bg-gray-100 dark:border-white/10 dark:bg-[#20242a] dark:text-[#94A3B8] dark:hover:bg-white/5"
         aria-label="Change date range"
       >
         <Clock3 size={11} />
@@ -363,7 +363,7 @@ export default function MyPostsPage() {
                 key={option.id}
                 type="button"
                 onClick={() => { setRangeId(option.id); setIsRangeMenuOpen(false); }}
-                className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? (isDark ? 'bg-[#2A2E35] text-slate-100' : 'bg-gray-100 text-gray-800') : (isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50')}`}
+                className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${isActive ? (isDark ? 'bg-[#2A2E35] text-slate-100' : 'bg-gray-100 text-gray-800') : (isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50')}`}
               >
                 <span>{option.label}</span>
                 {isActive ? <Check size={11} /> : null}
@@ -395,7 +395,7 @@ export default function MyPostsPage() {
           key={tabDef.id}
           type="button"
           onClick={() => setTab(tabDef.id)}
-          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${fullWidth ? 'w-full' : ''} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
+          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${fullWidth ? 'w-full' : ''} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
         >
           <Icon size={11} />
           <span>{tabDef.label}</span>
@@ -410,7 +410,7 @@ export default function MyPostsPage() {
       <button
         type="button"
         onClick={handleAddPostClick}
-        className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-blue-600 bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 ${fullWidth ? 'w-full' : ''}`}
+        className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-blue-600 bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700 ${fullWidth ? 'w-full' : ''}`}
       >
         <Plus size={13} />
         Add Post
@@ -457,13 +457,13 @@ export default function MyPostsPage() {
                   onChange={(e) => setLandingPasteText(e.target.value)}
                   rows={8}
                   placeholder="Paste a job or hotlist post here — we'll auto-fill everything ✨"
-                  className={`w-full resize-none rounded-2xl border-0 px-5 py-4 text-center text-[13px] outline-none shadow-sm transition focus:ring-2 ${isDark ? 'bg-[#20242a] text-slate-100 placeholder:text-[#94A3B8] focus:ring-blue-500/30' : 'bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:ring-blue-200'}`}
+                  className={`w-full resize-none rounded-2xl border-0 px-5 py-4 text-center text-[14px] outline-none shadow-sm transition focus:ring-2 ${isDark ? 'bg-[#20242a] text-slate-100 placeholder:text-[#94A3B8] focus:ring-blue-500/30' : 'bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:ring-blue-200'}`}
                 />
                 <button
                   type="button"
                   onClick={handleStartFromPaste}
                   disabled={!landingPasteText.trim()}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-6 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-6 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Sparkles size={15} />
                   Continue
@@ -471,12 +471,12 @@ export default function MyPostsPage() {
               </>
             ) : (
               <>
-                <p className="mb-2.5 text-[12px] font-semibold text-gray-900 dark:text-slate-100">Is this a Job post or a Hotlist/consultant post?</p>
+                <p className="mb-2.5 text-[13px] font-semibold text-gray-900 dark:text-slate-100">Is this a Job post or a Hotlist/consultant post?</p>
                 <div className="flex items-center justify-center gap-2">
                   <button
                     type="button"
                     onClick={() => setChosenKind('job')}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[11px] font-semibold transition-colors ${chosenKind === 'job' ? 'border-blue-600 bg-blue-600 text-white' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}`}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[12px] font-semibold transition-colors ${chosenKind === 'job' ? 'border-blue-600 bg-blue-600 text-white' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}`}
                   >
                     <Briefcase size={12} />
                     Job
@@ -484,7 +484,7 @@ export default function MyPostsPage() {
                   <button
                     type="button"
                     onClick={() => setChosenKind('hotlist')}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[11px] font-semibold transition-colors ${chosenKind === 'hotlist' ? 'border-blue-600 bg-blue-600 text-white' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}`}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[12px] font-semibold transition-colors ${chosenKind === 'hotlist' ? 'border-blue-600 bg-blue-600 text-white' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}`}
                   >
                     <UserRound size={12} />
                     Hotlist
@@ -494,14 +494,14 @@ export default function MyPostsPage() {
                   <button
                     type="button"
                     onClick={() => setShowKindChooser(false)}
-                    className={`rounded-full px-4 py-1.5 text-[11px] font-semibold transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}
+                    className={`rounded-full px-4 py-1.5 text-[12px] font-semibold transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}
                   >
                     Back
                   </button>
                   <button
                     type="button"
                     onClick={handleContinueToForm}
-                    className="rounded-full bg-blue-600 px-5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700"
+                    className="rounded-full bg-blue-600 px-5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700"
                   >
                     Continue
                   </button>
@@ -515,10 +515,10 @@ export default function MyPostsPage() {
               <div className="flex items-center justify-center py-16"><LogoSpinner size={22} /></div>
             ) : filteredPosts.length === 0 && (posts.length > 0 || hasAnyPosts) ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="text-xs font-semibold text-gray-500 dark:text-slate-400">
+                <p className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">
                   {posts.length > 0 ? 'No posts match your search' : tab === 'closed' ? 'No closed posts yet' : `No ${tab === 'job' ? 'open job' : 'open hotlist'} posts`}
                 </p>
-                <p className="mt-1 text-[11px] text-gray-400 dark:text-[#64748B]">
+                <p className="mt-1 text-[12px] text-gray-400 dark:text-[#64748B]">
                   {posts.length > 0 ? 'Try a different search term.' : tab === 'closed' ? 'Posts you close will show up here.' : 'Closed posts have moved to the Closed tab.'}
                 </p>
               </div>
@@ -544,8 +544,8 @@ export default function MyPostsPage() {
                   <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[12px] font-semibold leading-snug" style={titleToneStyle}>{displayTitle}</p>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
+                        <p className="truncate text-[13px] font-semibold leading-snug" style={titleToneStyle}>{displayTitle}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
                           <span>Posted {formatAgo(post.createdAt)}</span>
                           {post.kind === 'job' && post.company && (
                             <span className="inline-flex items-center gap-1 whitespace-nowrap">
@@ -574,21 +574,21 @@ export default function MyPostsPage() {
                     </div>
 
                     <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                      <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${post.postStatus === 'open' ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500')}`}>
+                      <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${post.postStatus === 'open' ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500')}`}>
                         {post.postStatus === 'open' ? 'Open' : 'Closed'}
                       </span>
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
                         <Eye size={9} strokeWidth={2.5} />
                         {metrics.previewCount} preview{metrics.previewCount === 1 ? '' : 's'}
                       </span>
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
                         <MessageSquare size={9} strokeWidth={2.5} />
                         {metrics.chatCount} chat{metrics.chatCount === 1 ? '' : 's'}
                       </span>
                     </div>
 
                     {post.skills.length > 0 && (
-                      <p className="mt-1.5 truncate text-[9px] leading-tight text-gray-500 dark:text-[#94A3B8]">
+                      <p className="mt-1.5 truncate text-[10px] leading-tight text-gray-500 dark:text-[#94A3B8]">
                         {post.skills.slice(0, 6).join(' · ')}
                       </p>
                     )}
@@ -599,7 +599,7 @@ export default function MyPostsPage() {
                       type="button"
                       onClick={() => setPreviewPost(post)}
                       title="Preview post"
-                      className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[11px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5"
+                      className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5"
                     >
                       <Eye size={13} strokeWidth={2} />
                       Preview
@@ -609,7 +609,7 @@ export default function MyPostsPage() {
                       type="button"
                       onClick={() => void handleToggleStatus(post)}
                       title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'}
-                      className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors ${post.postStatus === 'open' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5'}`}
+                      className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold transition-colors ${post.postStatus === 'open' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5'}`}
                     >
                       {post.postStatus === 'open' ? <XCircle size={13} strokeWidth={2} /> : <RotateCcw size={13} strokeWidth={2} />}
                       {post.postStatus === 'open' ? 'Close' : 'Reopen'}
@@ -648,7 +648,7 @@ export default function MyPostsPage() {
               <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-slate-300">
                 <Eye size={16} />
               </span>
-              <h2 id="my-post-preview-title" className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-slate-100">
+              <h2 id="my-post-preview-title" className="min-w-0 flex-1 truncate text-[15px] font-semibold text-gray-900 dark:text-slate-100">
                 {previewPost.title || (previewPost.kind === 'hotlist' ? 'Available Consultant' : 'Job Opportunity')}
               </h2>
               <button
@@ -661,7 +661,7 @@ export default function MyPostsPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-700 dark:text-slate-300">
+              <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700 dark:text-slate-300">
                 {previewPost.postContent || 'No post content available.'}
               </p>
             </div>

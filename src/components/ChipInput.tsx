@@ -36,7 +36,7 @@ export default function ChipInput({
           {values.map((value) => (
             <span
               key={value}
-              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${isDark ? 'bg-blue-500/10 text-blue-300' : 'bg-blue-50 text-blue-700'}`}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${isDark ? 'bg-blue-500/10 text-blue-300' : 'bg-blue-50 text-blue-700'}`}
             >
               {value}
               <button type="button" onClick={() => remove(value)} className="opacity-60 hover:opacity-100" aria-label={`Remove ${value}`}>
@@ -60,7 +60,7 @@ export default function ChipInput({
         }}
         onBlur={commit}
         placeholder={placeholder}
-        className={`w-full border-0 bg-transparent text-[11px] outline-none placeholder:text-gray-400 ${isDark ? 'text-slate-100 placeholder:text-[#64748B]' : 'text-gray-900'}`}
+        className={`w-full border-0 bg-transparent text-[12px] outline-none placeholder:text-gray-400 ${isDark ? 'text-slate-100 placeholder:text-[#64748B]' : 'text-gray-900'}`}
       />
     </div>
   );

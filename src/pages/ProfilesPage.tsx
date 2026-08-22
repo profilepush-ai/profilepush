@@ -463,7 +463,7 @@ function RecommendedBadge() {
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded border border-blue-200 bg-white/90 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-blue-700 transition-all duration-700 ${played ? 'translate-y-0 scale-100 opacity-100' : '-translate-y-1 scale-95 opacity-0'}`}
+      className={`inline-flex items-center gap-1 rounded border border-blue-200 bg-white/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-700 transition-all duration-700 ${played ? 'translate-y-0 scale-100 opacity-100' : '-translate-y-1 scale-95 opacity-0'}`}
     >
       <span className={`inline-flex items-center transition-transform duration-700 ${played ? 'rotate-0' : '-rotate-12'}`}>
         <svg width="11" height="11" viewBox="0 0 11 11" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -1430,7 +1430,7 @@ export default function ProfilesPage() {
     const shortLevel = level === 'Medium' ? 'Med' : level;
     return (
       <span
-        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold ${badgeClass}`}
+        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${badgeClass}`}
         title={`Market Pulse ${level} (${uniqueJobs} jobs)`}
         aria-label={`Market Pulse ${level}`}
       >
@@ -1454,7 +1454,7 @@ export default function ProfilesPage() {
     onScroll?: React.UIEventHandler<HTMLDivElement>,
   ) => {
     if (profiles.length === 0) {
-      return <div className="px-3 py-6 text-center text-xs text-gray-400">{emptyMessage}</div>;
+      return <div className="px-3 py-6 text-center text-[13px] text-gray-400">{emptyMessage}</div>;
     }
 
     const compact = isMobileViewport;
@@ -1467,7 +1467,7 @@ export default function ProfilesPage() {
     return (
       <div className={`${compact ? 'min-h-0 flex-1' : 'h-full min-h-0'} flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-gray-200 bg-white`}>
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-gutter:stable] slim-scrollbar" onScroll={onScroll}>
-          <table className={`w-full max-w-full table-fixed border-collapse text-left text-[9px] sm:text-[10px] ${compact ? '[&_th]:!border-b-0 [&_td]:!border-b-0' : ''}`}>
+          <table className={`w-full max-w-full table-fixed border-collapse text-left text-[10px] sm:text-[11px] ${compact ? '[&_th]:!border-b-0 [&_td]:!border-b-0' : ''}`}>
             <thead>
               <tr>
                 <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[39%] px-1.5 py-1' : 'w-[46%] px-2 py-1.5'}`}>
@@ -1542,13 +1542,13 @@ export default function ProfilesPage() {
   const renderUsersTable = () => {
     const byUser = dashboardStats?.by_user ?? [];
     if (byUser.length === 0) {
-      return <div className="px-3 py-6 text-center text-xs text-gray-400">No user activity yet today.</div>;
+      return <div className="px-3 py-6 text-center text-[13px] text-gray-400">No user activity yet today.</div>;
     }
 
     return (
       <div className="h-full min-h-0 flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
         <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [scrollbar-gutter:stable] slim-scrollbar">
-          <table className="w-max min-w-full table-auto border-collapse text-left text-[9px] sm:text-[10px]">
+          <table className="w-max min-w-full table-auto border-collapse text-left text-[10px] sm:text-[11px]">
             <thead>
               <tr>
                 <th className="sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500 dark:border-white/10 dark:bg-[#1B1D21] dark:text-[#94A3B8]">User</th>
@@ -1584,7 +1584,7 @@ export default function ProfilesPage() {
     onScroll?: React.UIEventHandler<HTMLDivElement>,
   ) => {
     if (domains.length === 0) {
-      return <div className="px-3 py-6 text-center text-xs text-gray-400">{emptyMessage}</div>;
+      return <div className="px-3 py-6 text-center text-[13px] text-gray-400">{emptyMessage}</div>;
     }
 
     const compact = isMobileViewport;
@@ -1595,7 +1595,7 @@ export default function ProfilesPage() {
     return (
       <div className={`${compact ? 'h-[150px]' : 'h-full min-h-0'} flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-gray-200 bg-white`}>
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-gutter:stable] slim-scrollbar" onScroll={onScroll}>
-          <table className={`w-full max-w-full table-fixed border-collapse text-left text-[9px] sm:text-[10px] ${compact ? '[&_th]:!border-b-0 [&_td]:!border-b-0' : ''}`}>
+          <table className={`w-full max-w-full table-fixed border-collapse text-left text-[10px] sm:text-[11px] ${compact ? '[&_th]:!border-b-0 [&_td]:!border-b-0' : ''}`}>
             <thead>
               <tr>
                 <th className={`sticky top-0 z-20 border-b border-gray-200 bg-[#F3F4F6] dark:bg-[#171A1F] font-semibold uppercase tracking-wide text-gray-500 ${compact ? 'w-[44%] px-1.5 py-1' : 'w-[50%] px-2 py-1.5'}`}>
@@ -1655,7 +1655,7 @@ export default function ProfilesPage() {
 
   const renderDomainCards = (domains: DomainLeaderboardRow[], keyPrefix: string) => {
     if (domains.length === 0) {
-      return <div className="px-3 py-8 text-center text-xs text-gray-400">No domains found.</div>;
+      return <div className="px-3 py-8 text-center text-[13px] text-gray-400">No domains found.</div>;
     }
 
     const maxHotlists = Math.max(0, ...domains.map((domain) => domain.uniqueHotlists));
@@ -1670,16 +1670,16 @@ export default function ProfilesPage() {
           className={`rounded-lg border px-3 py-2.5 transition-colors ${domain.rank <= 3 ? 'border-emerald-200 bg-emerald-50/75' : 'border-gray-200 bg-white'}`}
         >
           <div className="flex items-start gap-2">
-            <span className={`mt-0.5 shrink-0 text-[9px] font-bold leading-none ${domain.rank <= 3 ? 'text-emerald-600' : 'text-gray-400'}`}>#{domain.rank}</span>
-            <p className="flex-1 text-[11px] font-semibold text-blue-700 leading-snug inline-flex items-center gap-1.5">
+            <span className={`mt-0.5 shrink-0 text-[10px] font-bold leading-none ${domain.rank <= 3 ? 'text-emerald-600' : 'text-gray-400'}`}>#{domain.rank}</span>
+            <p className="flex-1 text-[12px] font-semibold text-blue-700 leading-snug inline-flex items-center gap-1.5">
               <DomainIcon size={13} className="text-blue-600" />
               <span>{domain.label}</span>
             </p>
           </div>
           <div className="mt-2 flex items-center gap-1.5">
-            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700"><span style={{ color: getMetricHeatmapColor(domain.uniqueHotlists, maxHotlists) }}>{domain.uniqueHotlists}</span> Hotlist</span>
-            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700"><span style={{ color: getMetricHeatmapColor(domain.uniqueJobs, maxJobs) }}>{domain.uniqueJobs}</span> Jobs</span>
-            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[9px] font-bold text-gray-700"><span style={{ color: getMetricHeatmapColor(domain.uniqueVendors, maxVendors) }}>{domain.uniqueVendors}</span> Vendors</span>
+            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[10px] font-bold text-gray-700"><span style={{ color: getMetricHeatmapColor(domain.uniqueHotlists, maxHotlists) }}>{domain.uniqueHotlists}</span> Hotlist</span>
+            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[10px] font-bold text-gray-700"><span style={{ color: getMetricHeatmapColor(domain.uniqueJobs, maxJobs) }}>{domain.uniqueJobs}</span> Jobs</span>
+            <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-1 text-[10px] font-bold text-gray-700"><span style={{ color: getMetricHeatmapColor(domain.uniqueVendors, maxVendors) }}>{domain.uniqueVendors}</span> Vendors</span>
           </div>
         </div>
       );
@@ -1729,11 +1729,11 @@ export default function ProfilesPage() {
         <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
           <div className="flex items-start justify-between gap-1.5">
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold leading-snug text-gray-900">{lead.title || 'Job Opportunity'}</p>
+              <p className="text-[12px] font-semibold leading-snug text-gray-900">{lead.title || 'Job Opportunity'}</p>
               {lead.company && (
-                <div className="mt-0.5 text-[10px] text-gray-600">{lead.company}</div>
+                <div className="mt-0.5 text-[11px] text-gray-600">{lead.company}</div>
               )}
-              <div className="mt-0.5 text-[10px] text-gray-500">
+              <div className="mt-0.5 text-[11px] text-gray-500">
                 <span>{revealedLeadIds.has(lead.id) ? lead.posterName : maskPosterName(lead.posterName)}</span>
                 <span> • </span>
                 <span>{lead.postedAgo}</span>
@@ -1742,7 +1742,7 @@ export default function ProfilesPage() {
             <div className="flex shrink-0 flex-col items-end gap-0.5">
               <div className="flex items-center gap-1.5">
                 {leadScoreVisual.rounded !== null && (
-                  <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${leadScoreVisual.badgeClass}`}>{leadScoreVisual.rounded}%</span>
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${leadScoreVisual.badgeClass}`}>{leadScoreVisual.rounded}%</span>
                 )}
                 {leadScoreVisual.isRecommended && <RecommendedBadge />}
               </div>
@@ -1752,7 +1752,7 @@ export default function ProfilesPage() {
           {inlineBreakdownItems.length > 0 && (
             <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200">
               <div>
-                <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                <table className="w-full table-fixed border-collapse text-left text-[11px]">
                   <thead className="bg-white">
                     <tr>
                       <th className="border-b border-gray-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
@@ -1789,7 +1789,7 @@ export default function ProfilesPage() {
                   return next;
                 });
               }}
-              className="inline-flex h-9 flex-[3] items-center justify-center text-[11px] font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+              className="inline-flex h-9 flex-[3] items-center justify-center text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-50"
             >
               {isInlineBreakdownExpanded ? 'Hide Details' : 'Details'}
             </button>
@@ -1798,7 +1798,7 @@ export default function ProfilesPage() {
           <button
             onClick={() => void handleOpenBreakdown(lead)}
             disabled={processingBreakdownLeadId === lead.id}
-            className={`hidden items-center gap-1 px-2 py-0.5 text-[10px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'text-gray-600' : 'text-gray-600 hover:bg-gray-50'}`}
+            className={`hidden items-center gap-1 px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'text-gray-600' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             {breakdownChargedLeadIds.has(lead.id) && <Check size={9} className="text-emerald-600" />}
             {processingBreakdownLeadId === lead.id ? '...' : 'Breakdown'}
@@ -1806,7 +1806,7 @@ export default function ProfilesPage() {
           {revealedLeadIds.has(lead.id) ? (
             <button
               onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
-              className={`${hasDetailsToggle ? 'flex-[7]' : 'flex-1'} inline-flex h-9 items-center justify-center gap-1 text-[11px] font-semibold text-gray-600 transition-colors hover:bg-gray-50`}
+              className={`${hasDetailsToggle ? 'flex-[7]' : 'flex-1'} inline-flex h-9 items-center justify-center gap-1 text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-50`}
             >
               Email
             </button>
@@ -1814,7 +1814,7 @@ export default function ProfilesPage() {
             <button
               onClick={() => void handleRevealContact(lead)}
               disabled={processingLeadId === lead.id}
-              className={`${hasDetailsToggle ? 'flex-[7]' : 'flex-1'} inline-flex h-9 items-center justify-center gap-1 bg-blue-600 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60`}
+              className={`${hasDetailsToggle ? 'flex-[7]' : 'flex-1'} inline-flex h-9 items-center justify-center gap-1 bg-blue-600 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60`}
             >
               {processingLeadId === lead.id ? '...' : `Reveal ${maskedEmailHint}`}
             </button>
@@ -3179,14 +3179,14 @@ export default function ProfilesPage() {
                       }[card.tone];
                       return (
                         <div key={card.number} className="relative rounded-lg border border-gray-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-[#171A1F]">
-                          <span className="absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-gray-100 text-[9px] font-bold text-gray-500 dark:bg-white/10 dark:text-slate-300">{card.number}</span>
+                          <span className="absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500 dark:bg-white/10 dark:text-slate-300">{card.number}</span>
                           <span className={`inline-flex h-7 w-7 items-center justify-center rounded-md ${toneClass}`}>
                             <card.icon size={14} />
                           </span>
-                          <div className="mt-1.5 text-xl font-bold text-gray-900 dark:text-slate-100">
+                          <div className="mt-1.5 text-[21px] font-bold text-gray-900 dark:text-slate-100">
                             {(dashboardLoading || !dashboardStats) ? <span className="inline-block h-5 w-8 animate-pulse rounded bg-gray-200 dark:bg-white/10" /> : card.value}
                           </div>
-                          <div className="text-[10px] font-medium text-gray-500 dark:text-[#94A3B8]">{card.label}</div>
+                          <div className="text-[11px] font-medium text-gray-500 dark:text-[#94A3B8]">{card.label}</div>
                         </div>
                       );
                     })}
@@ -3218,13 +3218,13 @@ export default function ProfilesPage() {
                         key={category.id}
                         type="button"
                         onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
-                        className={`inline-flex shrink-0 flex-col items-center gap-0.5 rounded-md border px-3 py-1.5 text-[11px] font-medium transition ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
+                        className={`inline-flex shrink-0 flex-col items-center gap-0.5 rounded-md border px-3 py-1.5 text-[12px] font-medium transition ${isSelected ? 'border-blue-200 bg-blue-50/80 text-gray-900 shadow-[0_0_0_1px_rgba(37,99,235,0.16)]' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
                       >
                         <span className="inline-flex items-center gap-1.5">
                           <CategoryIcon size={14} className={isSelected ? 'text-blue-600' : 'text-gray-600'} />
                           <span className={isSelected ? 'text-gray-900' : 'text-gray-700'}>{category.label}</span>
                         </span>
-                        <span className={`inline-flex items-center gap-1.5 text-[9px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
+                        <span className={`inline-flex items-center gap-1.5 text-[10px] ${isSelected ? 'text-gray-600' : 'text-gray-400'}`}>
                           <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-amber-600' : ''}`}><Building2 size={9} />{vendorsCount}</span>
                           <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-orange-600' : ''}`}><Briefcase size={9} />{jobsCount}</span>
                         </span>
@@ -3244,7 +3244,7 @@ export default function ProfilesPage() {
                           key={tech}
                           type="button"
                           onClick={() => setSelectedTechStacks((prev) => isActive ? prev.filter((t) => t !== tech) : [...prev, tech])}
-                          className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${isActive ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
+                          className={`shrink-0 rounded-full border px-3 py-1 text-[12px] font-medium transition ${isActive ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800'}`}
                         >
                           {tech}
                         </button>
@@ -3266,7 +3266,7 @@ export default function ProfilesPage() {
                         value={profileSearchQuery}
                         onChange={(e) => setProfileSearchQuery(e.target.value)}
                         placeholder="Search profiles"
-                        className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                        className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
                       />
                     </div>
                   </div>
@@ -3275,14 +3275,14 @@ export default function ProfilesPage() {
                     aria-label="Date range"
                     value={profileRangeId}
                     onChange={(e) => setProfileRangeId(e.target.value as ProfileRangeOption['id'])}
-                    className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-gray-700"
+                    className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[12px] font-medium text-gray-700"
                   >
                     {PROFILE_RANGE_OPTIONS.map((option) => (
                       <option key={option.id} value={option.id}>{option.label}</option>
                     ))}
                   </select>
                   {lastMatchAt && (
-                    <span className="text-[10px] italic text-gray-400">Last refreshed {formatAgo(lastMatchAt)}</span>
+                    <span className="text-[11px] italic text-gray-400">Last refreshed {formatAgo(lastMatchAt)}</span>
                   )}
                   <button
                     onClick={() => {
@@ -3290,7 +3290,7 @@ export default function ProfilesPage() {
                       void refreshFeed();
                     }}
                     disabled={profileStatsLoading || refreshing || feedLoading}
-                    className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   >
                     <span className="inline-flex items-center gap-1">
                       <RefreshCw size={11} className={refreshing || profileStatsLoading ? 'animate-spin' : ''} />
@@ -3315,7 +3315,7 @@ export default function ProfilesPage() {
                         }
                       }}
                       placeholder="Solutions Architect"
-                      className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                      className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
                     />
                     {pendingProfileSearchQuery && (
                       <button
@@ -3346,7 +3346,7 @@ export default function ProfilesPage() {
                       onClick={() => {
                         setIsRangeMenuOpen((prev) => !prev);
                       }}
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100"
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-600 transition hover:bg-gray-100"
                       aria-label="Change date range"
                     >
                       <Clock3 size={11} />
@@ -3365,7 +3365,7 @@ export default function ProfilesPage() {
                                 setProfileRangeId(option.id);
                                 setIsRangeMenuOpen(false);
                               }}
-                              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                             >
                               <span>{option.label}</span>
                               {isActive ? <Check size={11} /> : null}
@@ -3425,7 +3425,7 @@ export default function ProfilesPage() {
                 ) : (
                   <div className="grid min-h-0 flex-1 grid-cols-3 gap-3 px-2 pb-2">
                     <div className="flex min-h-0 min-w-0 flex-col gap-1.5">
-                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
                         <Users size={10} /> Business Pulse
                       </span>
                       <div className="min-h-0 flex-1">
@@ -3433,7 +3433,7 @@ export default function ProfilesPage() {
                       </div>
                     </div>
                     <div className="flex min-h-0 min-w-0 flex-col gap-1.5">
-                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
                         <Activity size={10} /> Market Pulse — Roles
                       </span>
                       <div className="min-h-0 flex-1">
@@ -3441,7 +3441,7 @@ export default function ProfilesPage() {
                       </div>
                     </div>
                     <div className="flex min-h-0 min-w-0 flex-col gap-1.5">
-                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
                         <Activity size={10} /> Market Pulse — Domains
                       </span>
                       <div className="min-h-0 flex-1">
@@ -3455,7 +3455,7 @@ export default function ProfilesPage() {
               {false && (
                 <div className="sticky top-0 z-40 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur transform-gpu backface-hidden">
                   <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-amber-50/80 px-2 py-1">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">Jobs</span>
+                    <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-amber-700">Jobs</span>
                   </div>
                   <div className="ml-auto grid grid-cols-2 gap-1">
                     {([
@@ -3469,10 +3469,10 @@ export default function ProfilesPage() {
                           key={tab.id}
                           type="button"
                           onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                          className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${isSelected ? 'bg-amber-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                          className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[11px] font-semibold transition ${isSelected ? 'bg-amber-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                         >
                           <span>{tab.label}</span>
-                          <span className={`text-[9px] font-bold ${isSelected ? 'text-white/90' : 'text-gray-500'}`}>{count}</span>
+                          <span className={`text-[10px] font-bold ${isSelected ? 'text-white/90' : 'text-gray-500'}`}>{count}</span>
                         </button>
                       );
                     })}
@@ -3484,7 +3484,7 @@ export default function ProfilesPage() {
                 {!isMobileViewport && (
                   <div className="shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-amber-50/80 px-2 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">Jobs</span>
+                      <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-amber-700">Jobs</span>
                     </div>
                   </div>
                 )}
@@ -3501,7 +3501,7 @@ export default function ProfilesPage() {
                             value={feedSearchQuery}
                             onChange={(e) => setFeedSearchQuery(e.target.value)}
                             placeholder="Search role, skills, location, visa..."
-                            className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                            className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
                           />
                         </div>
                       </label>
@@ -3509,7 +3509,7 @@ export default function ProfilesPage() {
                         aria-label="Feed search scope"
                         value={feedSearchScope}
                         onChange={(e) => setFeedSearchScope(e.target.value as PulseFeedSearchScope)}
-                        className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-700"
+                        className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[12px] font-medium text-gray-700"
                       >
                         <option value="all">All fields</option>
                         <option value="role">Role</option>
@@ -3523,7 +3523,7 @@ export default function ProfilesPage() {
                         <button
                           type="button"
                           onClick={() => { setFeedSearchQuery(''); setFeedSearchScope('all'); }}
-                          className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-medium text-gray-600"
+                          className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-[12px] font-medium text-gray-600"
                         >
                           Clear
                         </button>
@@ -3541,7 +3541,7 @@ export default function ProfilesPage() {
                           <div className="flex items-center justify-center p-6 text-center">
                             <div>
                               <Radar size={16} className="mx-auto text-gray-300" />
-                              <p className="mt-1.5 text-[11px] text-gray-500">No matches yet</p>
+                              <p className="mt-1.5 text-[12px] text-gray-500">No matches yet</p>
                             </div>
                           </div>
                         ) : (
@@ -3553,10 +3553,10 @@ export default function ProfilesPage() {
                     ) : (
                       <div className="grid min-h-0 h-full grid-cols-2 gap-2 p-1">
                         <div className="min-h-0 rounded-md bg-transparent">
-                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Recent ({matchesTabCounts.queued})</div>
+                          <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-600">Recent ({matchesTabCounts.queued})</div>
                           <div className="min-h-0 h-[calc(100%-24px)] overflow-y-auto p-1.5 slim-scrollbar" onScroll={handleDesktopRecentScroll}>
                             {recentVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No recent jobs.</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">No recent jobs.</div>
                             ) : (
                               <div className="space-y-1.5">
                                 {renderLeadCards(visibleDesktopRecentFeed)}
@@ -3566,10 +3566,10 @@ export default function ProfilesPage() {
                         </div>
 
                         <div className="min-h-0 rounded-md bg-transparent">
-                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Revealed ({matchesTabCounts.revealed})</div>
+                          <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-600">Revealed ({matchesTabCounts.revealed})</div>
                           <div className="min-h-0 h-[calc(100%-24px)] overflow-y-auto p-1.5 slim-scrollbar" onScroll={handleDesktopRevealedScroll}>
                             {revealedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">No revealed jobs yet.</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">No revealed jobs yet.</div>
                             ) : (
                               <div className="space-y-1.5">
                                 {renderLeadCards(visibleDesktopRevealedFeed)}
@@ -3598,9 +3598,9 @@ export default function ProfilesPage() {
           >
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-gray-900">{selectedLead.title}</p>
-                {selectedLead.company && <p className="text-[12px] text-gray-600">{[selectedLead.company, selectedLead.location].filter(Boolean).join(' • ')}</p>}
-                <p className="mt-0.5 text-[11px] text-gray-500">{maskPosterName(selectedLead.posterName)}{selectedLead.postedAgo ? ` • ${selectedLead.postedAgo}` : ''}</p>
+                <p className="text-[15px] font-semibold text-gray-900">{selectedLead.title}</p>
+                {selectedLead.company && <p className="text-[13px] text-gray-600">{[selectedLead.company, selectedLead.location].filter(Boolean).join(' • ')}</p>}
+                <p className="mt-0.5 text-[12px] text-gray-500">{maskPosterName(selectedLead.posterName)}{selectedLead.postedAgo ? ` • ${selectedLead.postedAgo}` : ''}</p>
               </div>
               <button
                 onClick={() => setSelectedLead(null)}
@@ -3620,7 +3620,7 @@ export default function ProfilesPage() {
 
                   if (breakdownItems.length === 0) {
                     return (
-                      <div className="px-3 py-2 text-[11px] text-gray-500">
+                      <div className="px-3 py-2 text-[12px] text-gray-500">
                         No job match rule breakdown available for this lead.
                       </div>
                     );
@@ -3628,7 +3628,7 @@ export default function ProfilesPage() {
 
                   return (
                     <div className="max-h-52 overflow-y-auto">
-                      <table className="min-w-full border-collapse text-left text-[11px]">
+                      <table className="min-w-full border-collapse text-left text-[12px]">
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="border-b border-gray-200 px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500">Rule</th>
@@ -3661,7 +3661,7 @@ export default function ProfilesPage() {
                     setGeneratedEmailDraft(draft);
                     setShowGeneratedEmailDraft(true);
                   }}
-                  className="inline-flex items-center justify-center gap-2 px-3 py-3 sm:py-2.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                  className="inline-flex items-center justify-center gap-2 px-3 py-3 sm:py-2.5 text-[13px] font-semibold text-gray-700 transition-colors hover:bg-gray-50"
                 >
                   <Sparkles size={14} />
                   Generate Email
@@ -3670,7 +3670,7 @@ export default function ProfilesPage() {
                 <button
                   onClick={() => void copyText(selectedLead.posterEmail, 'Vendor email')}
                   disabled={!revealedLeadIds.has(selectedLead.id) || !selectedLead.posterEmail}
-                  className="inline-flex items-center justify-center gap-2 bg-blue-600 px-3 py-3 sm:py-2.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
+                  className="inline-flex items-center justify-center gap-2 bg-blue-600 px-3 py-3 sm:py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
                 >
                   <Mail size={14} />
                   Copy Email ID
@@ -3680,7 +3680,7 @@ export default function ProfilesPage() {
                   <button
                     onClick={() => void copyText(selectedLead.posterPhone, 'WhatsApp number')}
                     disabled={!revealedLeadIds.has(selectedLead.id)}
-                    className="inline-flex items-center justify-center gap-2 bg-emerald-50 px-3 py-3 sm:py-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+                    className="inline-flex items-center justify-center gap-2 bg-emerald-50 px-3 py-3 sm:py-2.5 text-[13px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
                   >
                     <Phone size={14} />
                     Copy Phone
@@ -3692,11 +3692,11 @@ export default function ProfilesPage() {
             {showGeneratedEmailDraft && (
               <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-2.5">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold text-gray-700">Generated Email Draft</p>
+                  <p className="text-[12px] font-semibold text-gray-700">Generated Email Draft</p>
                   <button
                     type="button"
                     onClick={() => void copyText(generatedEmailDraft, 'Email draft')}
-                    className="rounded border border-gray-300 bg-white px-2 py-1 text-[10px] font-semibold text-gray-700 hover:bg-gray-50"
+                    className="rounded border border-gray-300 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
                   >
                     Copy Draft
                   </button>
@@ -3704,7 +3704,7 @@ export default function ProfilesPage() {
                 <textarea
                   value={generatedEmailDraft}
                   onChange={(e) => setGeneratedEmailDraft(e.target.value)}
-                  className="h-48 w-full resize-y rounded-md border border-gray-300 bg-white p-2 text-[11px] leading-relaxed text-gray-700 outline-none focus:border-blue-500"
+                  className="h-48 w-full resize-y rounded-md border border-gray-300 bg-white p-2 text-[12px] leading-relaxed text-gray-700 outline-none focus:border-blue-500"
                 />
               </div>
             )}

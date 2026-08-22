@@ -162,7 +162,7 @@ function Insight({ icon: Icon, text, accent }: { icon: React.FC<{ size: number; 
   return (
     <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl border" style={{ borderColor: `${accent}30`, backgroundColor: `${accent}08` }}>
       <Icon size={12} className="mt-0.5 shrink-0" style={{ color: accent }} />
-      <p className="text-[11px] leading-tight" style={{ color: accent }}>{text}</p>
+      <p className="text-[12px] leading-tight" style={{ color: accent }}>{text}</p>
     </div>
   );
 }
@@ -174,7 +174,7 @@ function Tip({ text }: { text: string }) {
     <span className="relative inline-flex" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
       <Info size={11} className="text-gray-300 cursor-help" />
       {show && (
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 text-center bg-gray-900 text-white text-[10px] leading-tight rounded-lg px-2.5 py-2 z-50 shadow-xl pointer-events-none">
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 text-center bg-gray-900 text-white text-[11px] leading-tight rounded-lg px-2.5 py-2 z-50 shadow-xl pointer-events-none">
           {text}
         </span>
       )}
@@ -528,21 +528,21 @@ export default function BillingPage() {
                 <CreditCard size={15} className="text-blue-600" />
               </div>
               <div>
-                <h1 className="text-sm font-bold text-gray-900">Billing & Credits</h1>
+                <h1 className="text-[15px] font-bold text-gray-900">Billing & Credits</h1>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {/* Timeframe selector */}
               <div className="relative">
                 <select value={timeframe} onChange={e => { setTimeframe(Number(e.target.value)); setPage(1); }}
-                  className="appearance-none text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-xl pl-3 pr-7 py-2 focus:outline-none focus:border-blue-400 cursor-pointer">
+                  className="appearance-none text-[13px] font-medium text-gray-600 bg-white border border-gray-200 rounded-xl pl-3 pr-7 py-2 focus:outline-none focus:border-blue-400 cursor-pointer">
                   {TIMEFRAMES.map(t => <option key={t.days} value={t.days}>{t.label}</option>)}
                 </select>
                 <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
               {!window.matchMedia('(max-width: 639px)').matches && (
                 <button onClick={openBuyCreditsModal}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold text-white shadow-sm hover:opacity-90 transition-opacity"
                   style={{ background: 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)' }}>
                   <ArrowUpRight size={13} />
                   Buy credits
@@ -561,10 +561,10 @@ export default function BillingPage() {
               {/* 2-card pricing: Free vs Pro */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 flex flex-col">
-                  <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-yellow-100 text-yellow-700 w-fit">Free</span>
-                  <p className="text-2xl font-extrabold text-gray-900">₹0<span className="text-sm font-semibold text-gray-500">/mo</span></p>
-                  <p className="text-xs text-gray-500 mt-0.5 mb-4">500 credits, one time · no card required</p>
-                  <ul className="space-y-2 text-xs text-gray-600 flex-1 mb-4">
+                  <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-yellow-100 text-yellow-700 w-fit">Free</span>
+                  <p className="text-2xl font-extrabold text-gray-900">₹0<span className="text-[15px] font-semibold text-gray-500">/mo</span></p>
+                  <p className="text-[13px] text-gray-500 mt-0.5 mb-4">500 credits, one time · no card required</p>
+                  <ul className="space-y-2 text-[13px] text-gray-600 flex-1 mb-4">
                     {['Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', '1 credit per email/chat draft or new post'].map(item => (
                       <li key={item} className="flex items-start gap-2">
                         <Check size={12} className="mt-0.5 shrink-0 text-emerald-600" />
@@ -572,17 +572,17 @@ export default function BillingPage() {
                       </li>
                     ))}
                   </ul>
-                  <button onClick={openBuyCreditsModal} className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50">
+                  <button onClick={openBuyCreditsModal} className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-[13px] font-bold text-gray-700 transition hover:bg-gray-50">
                     Buy more credits
                   </button>
                 </div>
 
                 <div className="rounded-2xl p-5 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
-                  <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-white/15 text-white w-fit">Pro</span>
+                  <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-white/15 text-white w-fit">Pro</span>
                   {hasActiveSub && subscription ? (
                     <>
                       <p className="text-2xl font-extrabold text-white">{fmtINR(subscription.plan_credits)}/mo</p>
-                      <p className="text-xs text-blue-200 mt-0.5 mb-4">
+                      <p className="text-[13px] text-blue-200 mt-0.5 mb-4">
                         {subscription.plan_credits.toLocaleString('en-IN')} credits every cycle
                         {subscription.cancel_at_period_end
                           ? ` · cancels ${pendingPeriodEnd ?? 'at period end'}`
@@ -591,12 +591,12 @@ export default function BillingPage() {
                       <div className="flex-1" />
                       <div className="flex flex-col gap-2">
                         {(canUpgrade || canDowngrade) && (
-                          <button onClick={canUpgrade ? openUpgradeModal : openDowngradeModal} className="w-full rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50">
+                          <button onClick={canUpgrade ? openUpgradeModal : openDowngradeModal} className="w-full rounded-xl bg-white px-4 py-2.5 text-[13px] font-bold text-blue-700 transition hover:bg-blue-50">
                             Change plan
                           </button>
                         )}
                         {!subscription.cancel_at_period_end && (
-                          <button onClick={() => void handleCancelSubscription()} disabled={cancelling} className="w-full rounded-xl border border-white/30 px-4 py-2 text-xs font-semibold text-white/90 transition hover:bg-white/10 disabled:opacity-50">
+                          <button onClick={() => void handleCancelSubscription()} disabled={cancelling} className="w-full rounded-xl border border-white/30 px-4 py-2 text-[13px] font-semibold text-white/90 transition hover:bg-white/10 disabled:opacity-50">
                             {cancelling ? 'Cancelling…' : 'Cancel subscription'}
                           </button>
                         )}
@@ -605,17 +605,17 @@ export default function BillingPage() {
                   ) : subscription?.status === 'pending' ? (
                     <>
                       <p className="text-2xl font-extrabold text-white">Payment pending</p>
-                      <p className="text-xs text-blue-200 mt-0.5 mb-4">Complete checkout to activate Pro.</p>
+                      <p className="text-[13px] text-blue-200 mt-0.5 mb-4">Complete checkout to activate Pro.</p>
                       <div className="flex-1" />
-                      <button onClick={openUpgradeModal} className="w-full rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50">
+                      <button onClick={openUpgradeModal} className="w-full rounded-xl bg-white px-4 py-2.5 text-[13px] font-bold text-blue-700 transition hover:bg-blue-50">
                         Complete checkout
                       </button>
                     </>
                   ) : (
                     <>
-                      <p className="text-2xl font-extrabold text-white">{fmtINR(TIERS[0])}<span className="text-sm font-semibold text-blue-200">/mo</span></p>
-                      <p className="text-xs text-blue-200 mt-0.5 mb-4">{TIERS[0].toLocaleString('en-IN')}–{TIERS[TIERS.length - 1].toLocaleString('en-IN')} credits/mo, your choice</p>
-                      <ul className="space-y-2 text-xs text-white flex-1 mb-4">
+                      <p className="text-2xl font-extrabold text-white">{fmtINR(TIERS[0])}<span className="text-[15px] font-semibold text-blue-200">/mo</span></p>
+                      <p className="text-[13px] text-blue-200 mt-0.5 mb-4">{TIERS[0].toLocaleString('en-IN')}–{TIERS[TIERS.length - 1].toLocaleString('en-IN')} credits/mo, your choice</p>
+                      <ul className="space-y-2 text-[13px] text-white flex-1 mb-4">
                         {['Everything in Free', 'Delivered automatically, never run out mid-month', 'Cancel any time, keeps access till period end'].map(item => (
                           <li key={item} className="flex items-start gap-2">
                             <Check size={12} className="mt-0.5 shrink-0 text-white" />
@@ -624,11 +624,11 @@ export default function BillingPage() {
                         ))}
                       </ul>
                       {isOwner ? (
-                        <button onClick={openUpgradeModal} className="w-full rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50">
+                        <button onClick={openUpgradeModal} className="w-full rounded-xl bg-white px-4 py-2.5 text-[13px] font-bold text-blue-700 transition hover:bg-blue-50">
                           Subscribe to Pro
                         </button>
                       ) : (
-                        <p className="text-[11px] text-blue-200">Only the account owner can manage subscriptions.</p>
+                        <p className="text-[12px] text-blue-200">Only the account owner can manage subscriptions.</p>
                       )}
                     </>
                   )}
@@ -662,11 +662,11 @@ export default function BillingPage() {
                 ].map(({ label, value, sub, icon: Icon, color }) => (
                   <div key={label} className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
                       <Icon size={13} style={{ color }} />
                     </div>
-                    <p className="mt-2 text-lg font-extrabold text-gray-900 leading-none">{value}</p>
-                    <p className="mt-1 text-[10px] text-gray-400">{sub}</p>
+                    <p className="mt-2 text-[19px] font-extrabold text-gray-900 leading-none">{value}</p>
+                    <p className="mt-1 text-[11px] text-gray-400">{sub}</p>
                   </div>
                 ))}
               </div>
@@ -677,11 +677,11 @@ export default function BillingPage() {
             <div className="w-full lg:w-72 shrink-0 flex flex-col gap-3">
 
               <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Credits</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Credits</p>
                 <p className="mt-1 text-2xl font-extrabold text-emerald-600">{fmtBalance(balance)}</p>
-                <p className="mt-1 text-[11px] text-gray-500">1 credit per email draft, chat draft, or new post — never expire.</p>
+                <p className="mt-1 text-[12px] text-gray-500">1 credit per email draft, chat draft, or new post — never expire.</p>
                 <button onClick={openBuyCreditsModal}
-                  className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700">
+                  className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-[13px] font-bold text-white shadow-sm transition hover:bg-blue-700">
                   Buy more credits
                 </button>
               </div>
@@ -742,8 +742,8 @@ function VisualAnalytics({
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
         <BarChart2 size={28} className="text-gray-200" />
-        <p className="text-sm font-semibold text-gray-500">No usage data for this period</p>
-        <p className="text-xs text-gray-400 max-w-xs">Start using AI features to build momentum and unlock more value from your plan.</p>
+        <p className="text-[15px] font-semibold text-gray-500">No usage data for this period</p>
+        <p className="text-[13px] text-gray-400 max-w-xs">Start using AI features to build momentum and unlock more value from your plan.</p>
       </div>
     );
   }
@@ -756,12 +756,12 @@ function VisualAnalytics({
       <div className="grid grid-cols-2 gap-4">
         {/* Category donut */}
         <div className="bg-gray-50 rounded-xl p-4">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-3">Spend by Category</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">Spend by Category</p>
           <div className="flex items-center gap-4">
             <div className="relative shrink-0">
               <MiniDonut segs={donutSegs.map(s => ({ value: s.value, color: s.color }))} size={80} />
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-[10px] font-bold text-gray-700">{totalOps}</span>
+                <span className="text-[11px] font-bold text-gray-700">{totalOps}</span>
               </div>
             </div>
             <div className="flex flex-col gap-1.5 flex-1">
@@ -769,9 +769,9 @@ function VisualAnalytics({
                 <div key={s.label} className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                    <span className="text-[10px] text-gray-600 truncate">{s.label}</span>
+                    <span className="text-[11px] text-gray-600 truncate">{s.label}</span>
                   </div>
-                  <span className="text-[10px] font-semibold text-gray-700 shrink-0">
+                  <span className="text-[11px] font-semibold text-gray-700 shrink-0">
                     {totalCost > 0 ? `${(s.value / totalCost * 100).toFixed(0)}%` : '0%'}
                   </span>
                 </div>
@@ -783,9 +783,9 @@ function VisualAnalytics({
         {/* Daily trend */}
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Spend Trend</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Spend Trend</p>
             {dailySeries.length >= 2 && (
-              <div className="flex items-center gap-1 text-[10px]">
+              <div className="flex items-center gap-1 text-[11px]">
                 {dailySeries[dailySeries.length - 1] >= dailySeries[0]
                   ? <TrendingUp size={10} className="text-red-400" />
                   : <TrendingDown size={10} className="text-emerald-400" />
@@ -799,13 +799,13 @@ function VisualAnalytics({
             )}
           </div>
           <Sparkline data={dailySeries} color="#3b82f6" height={48} />
-          <p className="text-[10px] text-gray-400 mt-2">Daily credit spend over period</p>
+          <p className="text-[11px] text-gray-400 mt-2">Daily credit spend over period</p>
         </div>
       </div>
 
       {/* Breakdown bars */}
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-3">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">
           Operations Breakdown <span className="text-gray-300 font-normal ml-1">— cost + volume</span>
         </p>
         <div className="space-y-2.5">
@@ -822,15 +822,15 @@ function VisualAnalytics({
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-gray-800">{FN_LABELS[fn] ?? fn}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-md font-medium" style={{ backgroundColor: `${color}15`, color }}>
+                      <span className="text-[13px] font-semibold text-gray-800">{FN_LABELS[fn] ?? fn}</span>
+                      <span className="text-[11px] px-1.5 py-0.5 rounded-md font-medium" style={{ backgroundColor: `${color}15`, color }}>
                         {cat}
                       </span>
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-xs font-bold text-gray-800">-{fmtCredits(cost)}</p>
-                    <p className="text-[10px] text-gray-400">{count}× calls</p>
+                    <p className="text-[13px] font-bold text-gray-800">-{fmtCredits(cost)}</p>
+                    <p className="text-[11px] text-gray-400">{count}× calls</p>
                   </div>
                 </div>
                 {/* bar */}
@@ -838,7 +838,7 @@ function VisualAnalytics({
                   <div className="h-full rounded-full transition-all duration-500"
                     style={{ width: `${pct}%`, backgroundColor: color }} />
                 </div>
-                <div className="flex justify-between mt-1.5 text-[10px] text-gray-400">
+                <div className="flex justify-between mt-1.5 text-[11px] text-gray-400">
                   <span>avg {fmtCredits(cost / count)}/call</span>
                   <span className="flex items-center gap-1.5">
                     {tokens > 0 && <><Cpu size={9} />{fmtK(tokens)} tokens</>}
@@ -854,7 +854,7 @@ function VisualAnalytics({
       {/* AI Insights */}
       {insights.length > 0 && (
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-2">Key Highlights</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Key Highlights</p>
           <div className="grid grid-cols-2 gap-2">
             {insights.map((txt, i) => {
               const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444'];
@@ -893,7 +893,7 @@ function TeamAnalytics({ logs, userNames }: { logs: UsageRow[]; userNames: Recor
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
         <Users size={20} className="text-gray-200" />
-        <p className="text-sm font-semibold text-gray-500">No usage data yet</p>
+        <p className="text-[15px] font-semibold text-gray-500">No usage data yet</p>
       </div>
     );
   }
@@ -904,12 +904,12 @@ function TeamAnalytics({ logs, userNames }: { logs: UsageRow[]; userNames: Recor
     <div className="p-5 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-bold text-gray-800">Team Member Spend</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">Credit usage attributed to each team member</p>
+          <p className="text-[13px] font-bold text-gray-800">Team Member Spend</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Credit usage attributed to each team member</p>
         </div>
         <div className="text-right">
-          <p className="text-[10px] text-gray-400">Total account spend</p>
-          <p className="text-base font-extrabold text-gray-900">{fmtCredits(totalCost)}</p>
+          <p className="text-[11px] text-gray-400">Total account spend</p>
+          <p className="text-[17px] font-extrabold text-gray-900">{fmtCredits(totalCost)}</p>
         </div>
       </div>
 
@@ -921,17 +921,17 @@ function TeamAnalytics({ logs, userNames }: { logs: UsageRow[]; userNames: Recor
           return (
             <div key={row.key} className="bg-gray-50 rounded-xl p-3.5 hover:bg-gray-100/60 transition-colors">
               <div className="flex items-center gap-3 mb-2.5">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-white text-[11px] font-extrabold"
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-white text-[12px] font-extrabold"
                   style={{ backgroundColor: color }}>
                   {isSystem ? <Activity size={14} /> : row.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-800 truncate">{row.name}</p>
-                  <p className="text-[10px] text-gray-400">{row.ops} operation{row.ops !== 1 ? 's' : ''} · last {timeAgo(row.lastSeen)}</p>
+                  <p className="text-[13px] font-semibold text-gray-800 truncate">{row.name}</p>
+                  <p className="text-[11px] text-gray-400">{row.ops} operation{row.ops !== 1 ? 's' : ''} · last {timeAgo(row.lastSeen)}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-sm font-extrabold" style={{ color }}>{fmtCredits(row.cost)}</p>
-                  <p className="text-[10px] text-gray-400">{pct.toFixed(1)}% of total</p>
+                  <p className="text-[15px] font-extrabold" style={{ color }}>{fmtCredits(row.cost)}</p>
+                  <p className="text-[11px] text-gray-400">{pct.toFixed(1)}% of total</p>
                 </div>
               </div>
               <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
@@ -957,7 +957,7 @@ function TeamAnalytics({ logs, userNames }: { logs: UsageRow[]; userNames: Recor
           return (
             <div key={row.key} className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-              <span className="text-[10px] text-gray-500 truncate max-w-[120px]">{row.name}</span>
+              <span className="text-[11px] text-gray-500 truncate max-w-[120px]">{row.name}</span>
             </div>
           );
         })}
@@ -982,7 +982,7 @@ function UsageLog({
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
         <Zap size={20} className="text-gray-200" />
-        <p className="text-sm font-semibold text-gray-500">No usage records</p>
+        <p className="text-[15px] font-semibold text-gray-500">No usage records</p>
       </div>
     );
   }
@@ -990,13 +990,13 @@ function UsageLog({
   return (
     <>
       {view === 'table' ? (
-        <table className="w-full text-xs">
+        <table className="w-full text-[13px]">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
-              <th className="text-left px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wide">Operation</th>
-              <th className="text-left px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wide hidden md:table-cell">User</th>
-              <th className="text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wide">Credits</th>
-              <th className="text-right px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wide hidden md:table-cell">When</th>
+              <th className="text-left px-4 py-2.5 text-[11px] font-bold text-gray-400 uppercase tracking-wide">Operation</th>
+              <th className="text-left px-3 py-2.5 text-[11px] font-bold text-gray-400 uppercase tracking-wide hidden md:table-cell">User</th>
+              <th className="text-right px-3 py-2.5 text-[11px] font-bold text-gray-400 uppercase tracking-wide">Credits</th>
+              <th className="text-right px-4 py-2.5 text-[11px] font-bold text-gray-400 uppercase tracking-wide hidden md:table-cell">When</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -1016,14 +1016,14 @@ function UsageLog({
                     </div>
                   </td>
                   <td className="px-3 py-2.5 hidden md:table-cell">
-                    <span className="text-[10px] text-gray-500">{row.user_id ? (userNames[row.user_id] ?? 'Unknown') : 'System'}</span>
+                    <span className="text-[11px] text-gray-500">{row.user_id ? (userNames[row.user_id] ?? 'Unknown') : 'System'}</span>
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <span className={`font-semibold ${cost > 0 ? 'text-red-500' : 'text-gray-400'}`}>
                       {cost > 0 ? `-${fmtCredits(cost)}` : '—'}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 text-right text-gray-400 text-[10px] hidden md:table-cell whitespace-nowrap">{timeAgo(row.created_at)}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-400 text-[11px] hidden md:table-cell whitespace-nowrap">{timeAgo(row.created_at)}</td>
                 </tr>
               );
             })}
@@ -1044,15 +1044,15 @@ function UsageLog({
                       <Icon size={13} style={{ color }} />
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-gray-800 leading-tight">{FN_LABELS[row.function_name] ?? row.function_name}</p>
-                      <p className="text-[10px]" style={{ color }}>{cat}</p>
+                      <p className="text-[13px] font-semibold text-gray-800 leading-tight">{FN_LABELS[row.function_name] ?? row.function_name}</p>
+                      <p className="text-[11px]" style={{ color }}>{cat}</p>
                     </div>
                   </div>
-                  <span className={`text-xs font-bold shrink-0 ${cost > 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                  <span className={`text-[13px] font-bold shrink-0 ${cost > 0 ? 'text-red-500' : 'text-gray-400'}`}>
                     {cost > 0 ? `-${fmtCredits(cost)}` : '—'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-[10px] text-gray-400">
+                <div className="flex items-center justify-between text-[11px] text-gray-400">
                   <span>{row.user_id ? (userNames[row.user_id] ?? 'Unknown') : 'System'}</span>
                   <span>{timeAgo(row.created_at)}</span>
                 </div>
@@ -1064,7 +1064,7 @@ function UsageLog({
 
       {/* Pagination */}
       <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-        <span className="text-[11px] text-gray-400">
+        <span className="text-[12px] text-gray-400">
           {total === 0 ? '0 records' : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total}`}
         </span>
         <div className="flex items-center gap-1">
@@ -1084,9 +1084,9 @@ function UsageLog({
             }
             return pages.map((p, i) =>
               p === '…'
-                ? <span key={`e${i}`} className="w-7 h-7 flex items-center justify-center text-[11px] text-gray-400">…</span>
+                ? <span key={`e${i}`} className="w-7 h-7 flex items-center justify-center text-[12px] text-gray-400">…</span>
                 : <button key={p} onClick={() => onPage(p as number)}
-                    className={`w-7 h-7 flex items-center justify-center rounded-lg text-[11px] font-semibold transition-colors ${
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg text-[12px] font-semibold transition-colors ${
                       p === page ? 'bg-gray-900 text-white' : 'border border-gray-200 text-gray-500 hover:border-gray-400'
                     }`}>{p}</button>
             );
@@ -1117,14 +1117,14 @@ function TierComparison({ currentUsd }: { currentUsd: number }) {
         onClick={() => setOpen(v => !v)}>
         <div className="flex items-center gap-2">
           <Layers size={13} className="text-gray-400" />
-          <span className="text-xs font-semibold text-gray-700">Credit Packs</span>
+          <span className="text-[13px] font-semibold text-gray-700">Credit Packs</span>
         </div>
         <ChevronDown size={12} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="px-3 pb-3 space-y-1">
           {TIER_INFO.map(t => (
-            <div key={t.credits} className={`flex items-center justify-between rounded-lg px-3 py-2 text-[11px] transition-colors ${
+            <div key={t.credits} className={`flex items-center justify-between rounded-lg px-3 py-2 text-[12px] transition-colors ${
               t.credits === currentUsd ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
             }`}>
               <div className="flex items-center gap-2">
@@ -1161,14 +1161,14 @@ function BuyCreditsModal({
           <X size={15} />
         </button>
         <div className="px-6 pt-6 pb-5">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-3">Buy credits</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-blue-600 mb-3">Buy credits</p>
           <div className="mb-5">
             <span className="text-3xl font-extrabold text-gray-900">{selectedCreditTier.toLocaleString('en-IN')} credits</span>
-            <p className="text-xs text-gray-400 mt-0.5">₹{selectedCreditTier.toLocaleString('en-IN')} · ₹1 per credit · one-time, no expiry</p>
+            <p className="text-[13px] text-gray-400 mt-0.5">₹{selectedCreditTier.toLocaleString('en-IN')} · ₹1 per credit · one-time, no expiry</p>
           </div>
           <div className="relative mb-5">
             <select value={selectedCreditTier} onChange={e => setSelectedCreditTier(Number(e.target.value))}
-              className="w-full appearance-none border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-gray-800 bg-gray-50 focus:outline-none focus:border-blue-400 cursor-pointer">
+              className="w-full appearance-none border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-[15px] font-semibold text-gray-800 bg-gray-50 focus:outline-none focus:border-blue-400 cursor-pointer">
               {CREDIT_TIERS.map(tier => (
                 <option key={tier} value={tier}>
                   {tier.toLocaleString('en-IN')} credits — ₹{tier.toLocaleString('en-IN')}
@@ -1179,7 +1179,7 @@ function BuyCreditsModal({
           </div>
           <ul className="space-y-2.5 mb-5">
             {['1 credit per email draft', '1 credit per AI chat draft', '1 credit per new job/hotlist post', 'Credits never expire'].map(f => (
-              <li key={f} className="flex items-start gap-2.5 text-sm text-gray-700">
+              <li key={f} className="flex items-start gap-2.5 text-[15px] text-gray-700">
                 <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                   <Check size={9} className="text-white" strokeWidth={3} />
                 </div>
@@ -1188,7 +1188,7 @@ function BuyCreditsModal({
             ))}
           </ul>
           <button onClick={onSubmit} disabled={buyingCredits}
-            className="w-full py-3 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 shadow-sm">
+            className="w-full py-3 rounded-xl text-[15px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 shadow-sm">
             {buyingCredits && <LogoSpinner size={14} />}
             {`Pay ₹${selectedCreditTier.toLocaleString('en-IN')}`}
           </button>

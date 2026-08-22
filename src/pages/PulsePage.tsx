@@ -1003,7 +1003,7 @@ const LeadCard = memo(function LeadCard({
         onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
         disabled={isLoadingPreview}
         title="Preview original post"
-        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[11px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
+        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
       >
         {isLoadingPreview ? '...' : <Eye size={13} strokeWidth={2} />}
         Preview
@@ -1015,7 +1015,7 @@ const LeadCard = memo(function LeadCard({
           onClick={(e) => { e.stopPropagation(); onOpenChat(lead); }}
           disabled={isProcessingChat}
           title="Chat about this post"
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-600 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-600 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isProcessingChat ? '...' : <MessageSquare size={13} strokeWidth={2} />}
           Chat
@@ -1023,7 +1023,7 @@ const LeadCard = memo(function LeadCard({
       ) : isAskPending || isVerified ? (
         <span
           title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-[11px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-[12px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
         >
           {isVerified ? <BadgeCheck size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2} />}
           {isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
@@ -1034,7 +1034,7 @@ const LeadCard = memo(function LeadCard({
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
           title={!lead.posterEmail ? 'No email' : 'Send Email'}
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[11px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
         >
           {isProcessingAskAI ? '...' : isHotlistFeed ? <FileText size={13} strokeWidth={2} /> : <Send size={13} strokeWidth={2} />}
           {isHotlistFeed ? 'Request' : 'Submit'}
@@ -1048,8 +1048,8 @@ const LeadCard = memo(function LeadCard({
       <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
       <div>
         <div className="min-w-0">
-          <p className="text-[12px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
+          <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
             <span>{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
             <span>•</span>
             <span>{lead.posterName}</span>
@@ -1065,13 +1065,13 @@ const LeadCard = memo(function LeadCard({
             <div className="mt-1 flex flex-wrap items-center gap-1">
               {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
               {predictResult && (
-                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${predictToneClass(predictResult.score, isDark)}`}>
+                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${predictToneClass(predictResult.score, isDark)}`}>
                   <Gauge size={9} strokeWidth={2.5} />
                   {isHotlistFeed ? 'Match' : 'Predicted'} {predictResult.score}%
                 </span>
               )}
               {(isAskPending || isVerified) && (
-                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isVerified ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700')}`}>
+                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isVerified ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700')}`}>
                   {isVerified ? <BadgeCheck size={9} strokeWidth={2.5} /> : <Check size={9} strokeWidth={2.5} />}
                   {(() => {
                     const stampIso = isVerified ? (askedFulfilledAt ?? askedRequestedAt) : askedRequestedAt;
@@ -1081,7 +1081,7 @@ const LeadCard = memo(function LeadCard({
                 </span>
               )}
               {isLeadRevealed && (
-                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
                   <AtSign size={9} strokeWidth={2.5} />
                   Revealed{revealedAt ? ` ${formatAgoCompact(revealedAt)}` : ''}
                 </span>
@@ -1110,7 +1110,7 @@ const LeadCard = memo(function LeadCard({
                   <span
                     key={field.key}
                     title={field.title}
-                    className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] leading-tight ${isDark ? 'border-white/10 bg-white/5 text-[#CBD5E1]' : 'border-gray-200 bg-gray-50 text-slate-700'}`}
+                    className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] leading-tight ${isDark ? 'border-white/10 bg-white/5 text-[#CBD5E1]' : 'border-gray-200 bg-gray-50 text-slate-700'}`}
                   >
                     <field.icon size={10} className={isDark ? 'shrink-0 text-[#94A3B8]' : 'shrink-0 text-gray-400'} />
                     <ClampedField value={field.value} linkClassName={linkClassName} isExpanded={field.isExpanded} onToggle={() => onToggleField(`${lead.id}:${field.key}`)} />
@@ -1126,7 +1126,7 @@ const LeadCard = memo(function LeadCard({
               title="Skills"
               className="mt-2 w-full rounded-md py-1.5 text-left focus:outline-none bg-transparent"
             >
-              <div className={`text-[9px] leading-tight break-words ${skillsValueClass}`}>
+              <div className={`text-[10px] leading-tight break-words ${skillsValueClass}`}>
                 <ClampedSkills
                   skillsValue={skillsValue}
                   itemCap={8}
@@ -1210,8 +1210,8 @@ const SwipeDeck = memo(function SwipeDeck({ leads, buildLeadCardProps, isHotlist
     return (
       <div className="flex h-full flex-col items-center justify-center py-16 text-center text-gray-400">
         <CheckSquare size={22} className="mb-2 opacity-40" />
-        <p className="text-xs font-medium">{isHotlistFeed ? 'No consultants waiting' : 'No jobs waiting'}</p>
-        <p className="mt-0.5 text-[11px] opacity-70">You're all caught up</p>
+        <p className="text-[13px] font-medium">{isHotlistFeed ? 'No consultants waiting' : 'No jobs waiting'}</p>
+        <p className="mt-0.5 text-[12px] opacity-70">You're all caught up</p>
       </div>
     );
   }
@@ -1239,13 +1239,13 @@ const SwipeDeck = memo(function SwipeDeck({ leads, buildLeadCardProps, isHotlist
         onPointerCancel={() => { setDragging(false); dragStartXRef.current = null; setDragX(0); }}
       >
         <div
-          className="pointer-events-none absolute left-3 top-3 z-10 -rotate-12 rounded border-2 border-red-500 px-2 py-0.5 text-sm font-extrabold uppercase tracking-wide text-red-500"
+          className="pointer-events-none absolute left-3 top-3 z-10 -rotate-12 rounded border-2 border-red-500 px-2 py-0.5 text-[15px] font-extrabold uppercase tracking-wide text-red-500"
           style={{ opacity: passOpacity }}
         >
           Pass
         </div>
         <div
-          className="pointer-events-none absolute right-3 top-3 z-10 rotate-12 rounded border-2 border-emerald-500 px-2 py-0.5 text-sm font-extrabold uppercase tracking-wide text-emerald-500"
+          className="pointer-events-none absolute right-3 top-3 z-10 rotate-12 rounded border-2 border-emerald-500 px-2 py-0.5 text-[15px] font-extrabold uppercase tracking-wide text-emerald-500"
           style={{ opacity: pitchOpacity }}
         >
           Pitch
@@ -1311,7 +1311,7 @@ function RecommendedBadge() {
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded border border-blue-200 bg-white/90 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-blue-700 transition-all duration-700 ${played ? 'translate-y-0 scale-100 opacity-100' : '-translate-y-1 scale-95 opacity-0'}`}
+      className={`inline-flex items-center gap-1 rounded border border-blue-200 bg-white/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-700 transition-all duration-700 ${played ? 'translate-y-0 scale-100 opacity-100' : '-translate-y-1 scale-95 opacity-0'}`}
     >
       <span className={`inline-flex items-center transition-transform duration-700 ${played ? 'rotate-0' : '-rotate-12'}`}>
         <svg width="11" height="11" viewBox="0 0 11 11" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -2835,7 +2835,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const shortLevel = level === 'Medium' ? 'Med' : level;
     return (
       <span
-        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold ${badgeClass}`}
+        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${badgeClass}`}
         title={`Market Pulse ${level} (${uniqueJobs} jobs)`}
         aria-label={`Market Pulse ${level}`}
       >
@@ -3236,7 +3236,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     return (
       <>
         {bulkPredictLeadIds.size > 0 && (
-          <div className={`sticky top-0 z-[3] mb-1.5 flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-[11px] font-semibold ${isDark ? 'border-orange-400/30 bg-[#1B1D21]' : 'border-orange-200 bg-orange-50'}`}>
+          <div className={`sticky top-0 z-[3] mb-1.5 flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-[12px] font-semibold ${isDark ? 'border-orange-400/30 bg-[#1B1D21]' : 'border-orange-200 bg-orange-50'}`}>
             <span className={isDark ? 'text-orange-300' : 'text-orange-700'}>{bulkPredictLeadIds.size} of {MAX_BULK_PREDICT} selected for bulk predict</span>
             <div className="flex items-center gap-2">
               <button
@@ -3257,7 +3257,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             </div>
           </div>
         )}
-        <table className="w-full table-fixed border-collapse border-spacing-0 text-left text-[11px]">
+        <table className="w-full table-fixed border-collapse border-spacing-0 text-left text-[12px]">
         <colgroup>
           <col style={{ width: '3%' }} />
           <col style={{ width: '17%' }} />
@@ -3272,7 +3272,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           <col style={{ width: '13%' }} />
         </colgroup>
         <thead className={`sticky top-0 z-[2] ${tableHeadSurfaceClass}`}>
-          <tr className={`border-b ${tableBorderClass} text-[10px] uppercase tracking-wide ${tableMutedClass}`}>
+          <tr className={`border-b ${tableBorderClass} text-[11px] uppercase tracking-wide ${tableMutedClass}`}>
             <th className="px-2 py-2 whitespace-normal" aria-label="Select for bulk predict" />
             {renderSortableHeader('Role', 'role')}
             {renderSortableHeader('Exp', 'exp')}
@@ -5184,13 +5184,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         key={category.id}
                         type="button"
                         onClick={() => { setSelectedCategoryId(category.id); setSelectedTechStacks([]); setActivePersona(null); }}
-                        className={`inline-flex shrink-0 flex-col items-center gap-0.5 rounded-md border px-3 py-1.5 text-[11px] font-medium transition ${getCategoryTabClass(category.id, isSelected, isDark)}`}
+                        className={`inline-flex shrink-0 flex-col items-center gap-0.5 rounded-md border px-3 py-1.5 text-[12px] font-medium transition ${getCategoryTabClass(category.id, isSelected, isDark)}`}
                       >
                         <span className="inline-flex items-center gap-1.5">
                           <CategoryIcon size={14} className={isSelected ? 'text-slate-200' : 'text-slate-400'} />
                           <span>{category.label}</span>
                         </span>
-                        <span className={`inline-flex items-center gap-1.5 text-[9px] ${isSelected ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <span className={`inline-flex items-center gap-1.5 text-[10px] ${isSelected ? 'text-slate-400' : 'text-slate-500'}`}>
                           <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-slate-200' : ''}`}><Building2 size={9} />{vendorsCount}</span>
                           <span className={`inline-flex items-center gap-0.5 ${isSelected ? 'text-slate-200' : ''}`}><Briefcase size={9} />{jobsCount}</span>
                         </span>
@@ -5210,7 +5210,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           key={tech}
                           type="button"
                           onClick={() => setSelectedTechStacks((prev) => isActive ? prev.filter((t) => t !== tech) : [...prev, tech])}
-                          className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-medium transition ${getTechStackClass(selectedCategoryId, isActive, isDark)}`}
+                          className={`shrink-0 rounded-full border px-3 py-1 text-[12px] font-medium transition ${getTechStackClass(selectedCategoryId, isActive, isDark)}`}
                         >
                           {tech}
                         </button>
@@ -5232,7 +5232,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         value={profileSearchQuery}
                         onChange={(e) => setProfileSearchQuery(e.target.value)}
                         placeholder="Search profiles"
-                        className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                        className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
                       />
                     </div>
                   </div>
@@ -5241,21 +5241,21 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     aria-label="Date range"
                     value={profileRangeId}
                     onChange={(e) => setProfileRangeId(e.target.value as ProfileRangeOption['id'])}
-                    className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-medium text-gray-700"
+                    className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[12px] font-medium text-gray-700"
                   >
                     {PROFILE_RANGE_OPTIONS.map((option) => (
                       <option key={option.id} value={option.id}>{option.label}</option>
                     ))}
                   </select>
                   {lastMatchAt && (
-                    <span className="text-[10px] italic text-gray-400">Last refreshed {formatAgo(lastMatchAt)}</span>
+                    <span className="text-[11px] italic text-gray-400">Last refreshed {formatAgo(lastMatchAt)}</span>
                   )}
                   <button
                     onClick={() => {
                       void refreshFeed();
                     }}
                     disabled={profileStatsLoading || refreshing || feedLoading}
-                    className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   >
                     <span className="inline-flex items-center gap-1">
                       <RefreshCw size={11} className={refreshing || profileStatsLoading ? 'animate-spin' : ''} />
@@ -5298,7 +5298,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         }
                       }}
                       placeholder="Solutions Architect C2C $45"
-                      className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                      className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
                     />
                     {pendingFeedSearchQuery && (
                       <button
@@ -5327,7 +5327,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                               setPendingFeedSearchQuery(search);
                               void applyFeedSearch(search);
                             }}
-                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[10px] font-medium text-gray-700 transition hover:bg-gray-50"
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-gray-700 transition hover:bg-gray-50"
                           >
                             <Clock3 size={10} className="text-gray-400" />
                             <span className="truncate">{search}</span>
@@ -5377,7 +5377,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                               if (tab.id === 'verified') setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                             }}
-                            className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[10px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
+                            className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
                           >
                             <span>{tab.label}</span>
                             <span>{count}</span>
@@ -5398,7 +5398,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           key={view.id}
                           type="button"
                           onClick={() => setLayoutMode(view.id)}
-                          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold transition ${layoutMode === view.id ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
+                          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold transition ${layoutMode === view.id ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                           <view.icon size={11} />
                           {view.label}
@@ -5414,7 +5414,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           key={basis}
                           type="button"
                           onClick={() => setFeedTimeBasis(basis)}
-                          className={`rounded px-2 py-1 text-[10px] font-semibold capitalize transition ${feedTimeBasis === basis ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
+                          className={`rounded px-2 py-1 text-[11px] font-semibold capitalize transition ${feedTimeBasis === basis ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                           {basis}
                         </button>
@@ -5427,7 +5427,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       onClick={() => {
                         setIsRangeMenuOpen((prev) => !prev);
                       }}
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100"
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-600 transition hover:bg-gray-100"
                       aria-label="Change date range"
                     >
                       <Clock3 size={11} />
@@ -5446,7 +5446,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                                 setProfileRangeId(option.id);
                                 setIsRangeMenuOpen(false);
                               }}
-                              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${isActive ? (isDark ? 'bg-[#2A2E35] text-slate-100' : 'bg-gray-100 text-gray-800') : 'text-gray-600 hover:bg-gray-50'}`}
+                              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${isActive ? (isDark ? 'bg-[#2A2E35] text-slate-100' : 'bg-gray-100 text-gray-800') : 'text-gray-600 hover:bg-gray-50'}`}
                             >
                               <span>{option.label}</span>
                               {isActive ? <Check size={11} /> : null}
@@ -5463,12 +5463,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               {!isMobileViewport && (
                 <aside className="flex h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
                   <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-3 pb-2.5 dark:border-white/10">
-                    <span className="text-[11px] font-bold text-gray-900 dark:text-slate-100">Filters</span>
+                    <span className="text-[12px] font-bold text-gray-900 dark:text-slate-100">Filters</span>
                     {JSON.stringify(feedSearchFilters) !== JSON.stringify(DEFAULT_FEED_SEARCH_FILTERS) && (
                       <button
                         type="button"
                         onClick={() => setFeedSearchFilters(DEFAULT_FEED_SEARCH_FILTERS)}
-                        className="text-[10px] font-semibold text-blue-600 hover:underline dark:text-blue-400"
+                        className="text-[11px] font-semibold text-blue-600 hover:underline dark:text-blue-400"
                       >
                         Clear
                       </button>
@@ -5483,7 +5483,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     { category: 'visaStatus' as FeedFacetCategory, title: 'Visa', options: VISA_STATUS_OPTIONS.filter((opt) => opt.value !== 'all') },
                   ]).map(({ category, title, options }) => (
                     <div key={category}>
-                      <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">{title}</div>
+                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">{title}</div>
                       <div className="flex flex-col gap-0.5">
                         {options.map((opt) => {
                           const count = feedFacetCounts[category][opt.value] ?? 0;
@@ -5491,7 +5491,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           return (
                             <label
                               key={opt.value}
-                              className={`flex cursor-pointer items-center justify-between gap-2 rounded px-1.5 py-1 text-[11px] transition ${isChecked ? (isDark ? 'bg-blue-500/10 text-blue-300' : 'bg-blue-50 text-blue-700') : (isDark ? 'text-slate-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50')} ${count === 0 && !isChecked ? 'opacity-40' : ''}`}
+                              className={`flex cursor-pointer items-center justify-between gap-2 rounded px-1.5 py-1 text-[12px] transition ${isChecked ? (isDark ? 'bg-blue-500/10 text-blue-300' : 'bg-blue-50 text-blue-700') : (isDark ? 'text-slate-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50')} ${count === 0 && !isChecked ? 'opacity-40' : ''}`}
                             >
                               <span className="flex min-w-0 items-center gap-1.5">
                                 <input
@@ -5503,7 +5503,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                                 />
                                 <span className="truncate">{opt.label}</span>
                               </span>
-                              <span className="shrink-0 text-[10px] tabular-nums text-gray-400 dark:text-[#64748B]">{count}</span>
+                              <span className="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-[#64748B]">{count}</span>
                             </label>
                           );
                         })}
@@ -5512,7 +5512,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   ))}
 
                   <div>
-                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Location</label>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Location</label>
                     <LocationChipInput
                       values={feedSearchFilters.location}
                       onChange={(next) => setFeedSearchFilters((prev) => ({ ...prev, location: next }))}
@@ -5521,7 +5521,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Skills</label>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Skills</label>
                     <input
                       type="text"
                       value={pendingSkillsFilter}
@@ -5529,16 +5529,16 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       onBlur={applyPendingTextFilters}
                       onKeyDown={handleFilterFieldKeyDown}
                       placeholder="e.g. React"
-                      className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
+                      className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
                     />
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Rate</label>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Rate</label>
                     <select
                       value={feedSearchFilters.rateMode}
                       onChange={(e) => setFeedSearchFilters((prev) => ({ ...prev, rateMode: e.target.value as FeedSearchFilters['rateMode'] }))}
-                      className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200"
+                      className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200"
                     >
                       <option value="all">Any</option>
                       <option value="has_rate">Has a rate listed</option>
@@ -5553,9 +5553,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           onBlur={applyPendingTextFilters}
                           onKeyDown={handleFilterFieldKeyDown}
                           placeholder="Min"
-                          className="w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
+                          className="w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
                         />
-                        <span className="shrink-0 text-[10px] text-gray-400">–</span>
+                        <span className="shrink-0 text-[11px] text-gray-400">–</span>
                         <input
                           type="number"
                           value={pendingRateMax}
@@ -5563,7 +5563,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           onBlur={applyPendingTextFilters}
                           onKeyDown={handleFilterFieldKeyDown}
                           placeholder="Max"
-                          className="w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
+                          className="w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
                         />
                       </div>
                     )}
@@ -5574,7 +5574,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     <button
                       type="button"
                       onClick={applyPendingTextFilters}
-                      className="w-full rounded-md bg-blue-600 px-2 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700"
+                      className="w-full rounded-md bg-blue-600 px-2 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700"
                     >
                       Apply
                     </button>
@@ -5593,24 +5593,24 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 {false && isMobileViewport ? (
                   <div className="sticky top-0 z-20 shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
+                      <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
                     </div>
                     <div className="ml-auto grid grid-cols-2 gap-1">
                       <button
                         type="button"
                         onClick={() => setSelectedProfilesView('all')}
-                        className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[11px] font-semibold transition ${selectedProfilesView === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                       >
                         <span>All</span>
-                        <span className={`text-[9px] font-bold ${selectedProfilesView === 'all' ? 'text-white/90' : 'text-gray-500'}`}>{profileViewCounts.all}</span>
+                        <span className={`text-[10px] font-bold ${selectedProfilesView === 'all' ? 'text-white/90' : 'text-gray-500'}`}>{profileViewCounts.all}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setSelectedProfilesView('watching')}
-                        className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        className={`inline-flex items-center justify-center gap-0.5 rounded-full px-2 py-1 text-[11px] font-semibold transition ${selectedProfilesView === 'watching' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                       >
                         <span>Watching</span>
-                        <span className={`text-[9px] font-bold ${selectedProfilesView === 'watching' ? 'text-white/90' : 'text-gray-500'}`}>{profileViewCounts.watching}</span>
+                        <span className={`text-[10px] font-bold ${selectedProfilesView === 'watching' ? 'text-white/90' : 'text-gray-500'}`}>{profileViewCounts.watching}</span>
                       </button>
                     </div>
                   </div>
@@ -5620,7 +5620,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 {!isMobileViewport ? (
                   <div className="shrink-0 flex items-center gap-2 bg-white/90 px-1.5 py-2 backdrop-blur">
                     <div className="inline-flex items-center gap-2 min-w-0 shrink-0 rounded-full bg-blue-50/70 px-2 py-1">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
+                      <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-700">Profiles</span>
                     </div>
                   </div>
                 ) : null}
@@ -5629,7 +5629,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   <div ref={profileListScrollRef} className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
                     <div className="flex gap-2 px-1.5 py-2 snap-x snap-mandatory">
                       {visibleJobsRankedLeaderboard.length === 0 && (
-                        <div className="px-3 py-8 text-center text-xs text-gray-400">No profiles found.</div>
+                        <div className="px-3 py-8 text-center text-[13px] text-gray-400">No profiles found.</div>
                       )}
                           {visibleJobsRankedLeaderboard.map((persona, index) => {
                         const isWatching = watchingRoles.has(normalize(persona.target_role));
@@ -5659,12 +5659,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             className={`snap-start shrink-0 w-[84%] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${profilePulseVisual.cardToneClass} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                           >
                               <div className="flex items-start justify-between gap-1.5">
-                              <p className={`text-[11px] font-semibold leading-snug ${getRoleRowAccentClass(index, isDark)}`}>{persona.target_role}</p>
+                              <p className={`text-[12px] font-semibold leading-snug ${getRoleRowAccentClass(index, isDark)}`}>{persona.target_role}</p>
                               <div className="ml-auto flex items-center gap-1">
                                 {renderMarketPulseSymbol(profilePulseVisual.level, profilePulseVisual.badgeClass, stats.uniqueJobs)}
                               </div>
                             </div>
-                            <div className={`mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight ${isExpanded ? '' : ''}`}>
+                            <div className={`mt-1 grid grid-cols-3 gap-1 text-[11px] leading-tight ${isExpanded ? '' : ''}`}>
                               {mobileDetails.map((item) => (
                                 <div
                                   key={item.key}
@@ -5676,8 +5676,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             </div>
                             <div className="mt-1 space-y-1.5">
                               <div className="flex items-center gap-1.5">
-                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
-                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
+                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
+                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
                               </div>
                               <div className="grid grid-cols-10 gap-1.5">
                                 <button
@@ -5699,7 +5699,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                                 <button
                                   onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
                                   disabled={isActivating}
-                                  className={`col-span-7 inline-flex items-center justify-center rounded-md border px-2 py-1 text-[9px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                  className={`col-span-7 inline-flex items-center justify-center rounded-md border px-2 py-1 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                                 >
                                   {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
                                 </button>
@@ -5709,7 +5709,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         );
                       })}
                       {canLoadMoreProfiles && (
-                        <div ref={mobileProfilesLoadMoreRef} className="flex w-[84%] shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-[10px] text-gray-400 snap-start">
+                        <div ref={mobileProfilesLoadMoreRef} className="flex w-[84%] shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-[11px] text-gray-400 snap-start">
                           Loading more profiles...
                         </div>
                       )}
@@ -5718,11 +5718,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 ) : (
                   <div className="grid grid-cols-2 gap-2 px-2 py-2">
                     <div className="min-w-0 rounded-md bg-transparent">
-                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">All ({profileViewCounts.all})</div>
+                      <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-600">All ({profileViewCounts.all})</div>
                       <div className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
                         <div className="flex gap-2 px-1.5 py-2 snap-x snap-mandatory">
                           {filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).length === 0 && (
-                            <div className="px-3 py-6 text-center text-xs text-gray-400">No profiles found.</div>
+                            <div className="px-3 py-6 text-center text-[13px] text-gray-400">No profiles found.</div>
                           )}
                           {filteredJobsRankedLeaderboard.filter((item) => !watchingRoles.has(normalize(item.target_role))).map((persona, index) => {
                             const isWatching = watchingRoles.has(normalize(persona.target_role));
@@ -5745,12 +5745,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                                 className={`snap-start shrink-0 w-[clamp(220px,20vw,290px)] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${profilePulseVisual.cardToneClass} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                               >
                                 <div className="flex items-center justify-between gap-1.5">
-                                  <p className={`text-[11px] font-semibold leading-snug ${getRoleRowAccentClass(index, isDark)}`}>{persona.target_role}</p>
+                                  <p className={`text-[12px] font-semibold leading-snug ${getRoleRowAccentClass(index, isDark)}`}>{persona.target_role}</p>
                                   <div className="flex items-center gap-1">
                                     {renderMarketPulseSymbol(profilePulseVisual.level, profilePulseVisual.badgeClass, stats.uniqueJobs)}
                                   </div>
                                 </div>
-                                <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
+                                <div className="mt-1 grid grid-cols-3 gap-1 text-[11px] leading-tight">
                                   <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{experience.missing ? <PersonaMissingTag /> : experience.value}</div>
                                   <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{location.missing ? <PersonaMissingTag /> : location.value}</div>
                                   <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{rateRange.missing ? <PersonaMissingTag /> : rateRange.value}</div>
@@ -5760,13 +5760,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                                 </div>
                                 <div className="mt-1 space-y-1.5">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
                                   </div>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
                                     disabled={isActivating}
-                                    className={`inline-flex w-full items-center justify-center rounded-md border px-2 py-1 text-[9px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                    className={`inline-flex w-full items-center justify-center rounded-md border px-2 py-1 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                                   >
                                     {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
                                   </button>
@@ -5779,11 +5779,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     </div>
 
                     <div className="min-w-0 rounded-md bg-transparent">
-                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600">Watching ({profileViewCounts.watching})</div>
+                      <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-600">Watching ({profileViewCounts.watching})</div>
                       <div className="overflow-x-auto overflow-y-hidden pb-1 slim-scrollbar">
                         <div className="flex gap-2 px-1.5 py-2 snap-x snap-mandatory">
                           {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).length === 0 && (
-                            <div className="px-3 py-6 text-center text-xs text-gray-400">No watching profiles yet.</div>
+                            <div className="px-3 py-6 text-center text-[13px] text-gray-400">No watching profiles yet.</div>
                           )}
                           {orderedJobsRankedLeaderboard.filter((item) => watchingRoles.has(normalize(item.target_role))).map((persona, index) => {
                             const isWatching = watchingRoles.has(normalize(persona.target_role));
@@ -5806,12 +5806,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                                 className={`snap-start shrink-0 w-[clamp(220px,20vw,290px)] cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${profilePulseVisual.cardToneClass} ${isSelected ? 'ring-1 ring-gray-300' : ''}`}
                               >
                                 <div className="flex items-center justify-between gap-1.5">
-                                  <p className={`text-[11px] font-semibold leading-snug ${getRoleRowAccentClass(index, isDark)}`}>{persona.target_role}</p>
+                                  <p className={`text-[12px] font-semibold leading-snug ${getRoleRowAccentClass(index, isDark)}`}>{persona.target_role}</p>
                                   <div className="flex items-center gap-1">
                                     {renderMarketPulseSymbol(profilePulseVisual.level, profilePulseVisual.badgeClass, stats.uniqueJobs)}
                                   </div>
                                 </div>
-                                <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] leading-tight">
+                                <div className="mt-1 grid grid-cols-3 gap-1 text-[11px] leading-tight">
                                   <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{experience.missing ? <PersonaMissingTag /> : experience.value}</div>
                                   <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{location.missing ? <PersonaMissingTag /> : location.value}</div>
                                   <div className="min-w-0 truncate rounded-md bg-white/6 px-1.5 py-1 text-gray-600 ring-1 ring-inset ring-white/6 dark:bg-white/5 dark:text-gray-300 dark:ring-white/8">{rateRange.missing ? <PersonaMissingTag /> : rateRange.value}</div>
@@ -5821,13 +5821,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                                 </div>
                                 <div className="mt-1 space-y-1.5">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
                                   </div>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
                                     disabled={isActivating}
-                                    className={`inline-flex w-full items-center justify-center rounded-md border px-2 py-1 text-[9px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                    className={`inline-flex w-full items-center justify-center rounded-md border px-2 py-1 text-[10px] font-semibold transition ${isWatching ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                                   >
                                     {isActivating ? '...' : isWatching ? '✓ Watching' : '+ Watch'}
                                   </button>
@@ -5841,21 +5841,21 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   </div>
                 )}
                 <div className="hidden shrink-0 items-center justify-between gap-2 border-t border-gray-200 bg-white px-2 py-1.5">
-                  <p className="text-[10px] text-gray-500">
+                  <p className="text-[11px] text-gray-500">
                     {profilePage}/{totalProfilePages}
                   </p>
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setProfilePage((p) => Math.max(1, p - 1))}
                       disabled={profilePage <= 1}
-                      className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                     >
                       ‹
                     </button>
                     <button
                       onClick={() => setProfilePage((p) => Math.min(totalProfilePages, p + 1))}
                       disabled={profilePage >= totalProfilePages}
-                      className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                     >
                       ›
                     </button>
@@ -5883,7 +5883,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           key={tab.id}
                           type="button"
                           onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                          className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
+                          className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
                         >
                           <span>{tab.label}</span>
                           <span>{count}</span>
@@ -5899,7 +5899,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             key={basis}
                             type="button"
                             onClick={() => setFeedTimeBasis(basis)}
-                            className={`rounded px-2 py-0.5 text-[9px] font-semibold capitalize transition ${feedTimeBasis === basis ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500'}`}
+                            className={`rounded px-2 py-0.5 text-[10px] font-semibold capitalize transition ${feedTimeBasis === basis ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500'}`}
                           >
                             {basis}
                           </button>
@@ -5911,7 +5911,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               )}
 
               {isMobileViewport && (pullDistance > 0 || isPullRefreshing) && (
-                <div className="shrink-0 flex items-center justify-center bg-[rgba(255,255,255,0.95)] text-[9px] font-medium text-gray-500 dark:bg-transparent dark:text-[#94A3B8]">
+                <div className="shrink-0 flex items-center justify-center bg-[rgba(255,255,255,0.95)] text-[10px] font-medium text-gray-500 dark:bg-transparent dark:text-[#94A3B8]">
                   <div style={{ height: `${Math.max(14, Math.min(24, pullDistance))}px` }} className="flex items-center gap-1 py-0.5">
                     <RefreshCw size={9} className={isPullRefreshing ? 'animate-spin' : ''} />
                     <span>{isPullRefreshing ? 'Refreshing...' : (mobilePullArmedRef.current ? 'Release to refresh' : 'Pull to refresh')}</span>
@@ -5940,7 +5940,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           <div className="flex items-center justify-center p-6 text-center">
                             <div>
                               <Radar size={16} className="mx-auto text-gray-300" />
-                              <p className="mt-1.5 text-[11px] text-gray-500">No matches yet</p>
+                              <p className="mt-1.5 text-[12px] text-gray-500">No matches yet</p>
                             </div>
                           </div>
                         ) : (
@@ -5966,7 +5966,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             />
                           ) : selectedMatchesTab === 'previewed' ? (
                             previewedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No previewed consultants yet.' : 'No previewed jobs yet.'}</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isHotlistFeed ? 'No previewed consultants yet.' : 'No previewed jobs yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopPreviewedFeed)
                             ) : (
@@ -5976,7 +5976,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             )
                           ) : selectedMatchesTab === 'asked' ? (
                             askedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No requested consultants yet.' : 'No submissions yet.'}</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isHotlistFeed ? 'No requested consultants yet.' : 'No submissions yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopAskedFeed)
                             ) : (
@@ -5986,7 +5986,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             )
                           ) : selectedMatchesTab === 'verified' ? (
                             verifiedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No verified jobs yet.' : 'No replies yet.'}</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isHotlistFeed ? 'No verified jobs yet.' : 'No replies yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopVerifiedFeed)
                             ) : (
@@ -5996,7 +5996,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             )
                           ) : (
                             recentVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-xs text-gray-400">{isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.'}</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopRecentFeed)
                             ) : (
@@ -6031,9 +6031,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           >
             <div className="flex items-start gap-2.5">
               <div className="min-w-0 flex-1">
-                <h2 id="ask-ai-preview-title" className="text-sm font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating email draft for request' : 'Generating email draft for submission') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review submission')}</h2>
+                <h2 id="ask-ai-preview-title" className="text-[15px] font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating email draft for request' : 'Generating email draft for submission') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review submission')}</h2>
                 {!askAIPreview.isGenerating && (askAIPreview.jobTitle || askAIPreview.company) && (
-                  <p className="mt-0.5 truncate text-xs text-gray-500">
+                  <p className="mt-0.5 truncate text-[13px] text-gray-500">
                     {askAIPreview.jobTitle}{askAIPreview.jobTitle && askAIPreview.company ? ' · ' : ''}{askAIPreview.company}
                   </p>
                 )}
@@ -6051,7 +6051,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             {askAIPreview.isGenerating ? (
               <div className="flex min-h-56 flex-col items-center justify-center px-6 text-center">
                 <LogoSpinner size={28} />
-                <p className="mt-4 text-xs leading-relaxed text-gray-500">{askAIPreview.leadType === 'hotlist' ? 'Generating email draft for request' : 'Generating email draft for submission'}</p>
+                <p className="mt-4 text-[13px] leading-relaxed text-gray-500">{askAIPreview.leadType === 'hotlist' ? 'Generating email draft for request' : 'Generating email draft for submission'}</p>
               </div>
             ) : <>
             <div className="relative mt-3">
@@ -6060,7 +6060,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailSubject: event.target.value } : current)}
                 disabled={Boolean(processingAskAILeadId)}
                 placeholder="Subject"
-                className="w-full rounded-md border border-gray-200 py-1.5 pl-3 pr-8 text-xs font-medium text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-md border border-gray-200 py-1.5 pl-3 pr-8 text-[13px] font-medium text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
               <button
                 type="button"
@@ -6078,7 +6078,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 disabled={Boolean(processingAskAILeadId)}
                 rows={4}
                 placeholder="Write your message..."
-                className="w-full resize-none rounded-md border border-gray-200 py-2 pl-3 pr-8 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full resize-none rounded-md border border-gray-200 py-2 pl-3 pr-8 text-[13px] leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
               <button
                 type="button"
@@ -6090,7 +6090,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               </button>
             </div>
             <div className="mt-2 flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5">
-              <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-700">{askAIPreview.vendorEmail || 'No email on file'}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-700">{askAIPreview.vendorEmail || 'No email on file'}</span>
               <button
                 type="button"
                 onClick={() => void copyText(askAIPreview.vendorEmail, 'Email ID')}
@@ -6102,7 +6102,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               </button>
             </div>
             <div className="mt-3 flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-md bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-400">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-400">
                 <GmailIcon size={12} />
                 Gmail Sync connector — launching soon
               </span>
@@ -6113,7 +6113,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   'Email',
                 )}
                 disabled={!askAIPreview.vendorEmail || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim()}
-                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Copy size={11} />
                 Copy All
@@ -6144,7 +6144,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl"
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wide text-gray-500">{isHotlistFeed ? `Match ${bulkPredictLeadIds.size} consultants` : `Predict ${bulkPredictLeadIds.size} jobs`}</span>
+              <span className="text-[13px] font-bold uppercase tracking-wide text-gray-500">{isHotlistFeed ? `Match ${bulkPredictLeadIds.size} consultants` : `Predict ${bulkPredictLeadIds.size} jobs`}</span>
               <button
                 type="button"
                 onClick={() => { if (!bulkPredictSubmitting) { setIsBulkPredictModalOpen(false); setBulkPredictInput(''); } }}
@@ -6163,14 +6163,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     onChange={(event) => setBulkPredictInput(event.target.value)}
                     rows={6}
                     placeholder={isHotlistFeed ? "Paste the job details or requirements here — we'll match all selected consultants against it..." : "Paste consultant resume, skills, or a quick summary here — we'll run it against all selected jobs..."}
-                    className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-xs leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-[13px] leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => void handleRunBulkPredict()}
                   disabled={!bulkPredictInput.trim()}
-                  className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 text-sm font-bold uppercase tracking-wide text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
+                  className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 text-[15px] font-bold uppercase tracking-wide text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
                 >
                   <Gauge size={16} strokeWidth={2.5} />
                   {isHotlistFeed
@@ -6180,7 +6180,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               </>
             ) : (
               <div className="mt-2 py-4">
-                <p className="text-center text-xs font-semibold text-gray-500">
+                <p className="text-center text-[13px] font-semibold text-gray-500">
                   Predicting {bulkPredictCompletedCount} of {bulkPredictLeadIds.size}...
                 </p>
                 <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
@@ -6209,7 +6209,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-50 text-slate-500">
                 <Eye size={16} />
               </span>
-              <h2 id="post-content-preview-title" className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">{postContentPreview.title}</h2>
+              <h2 id="post-content-preview-title" className="min-w-0 flex-1 truncate text-[15px] font-semibold text-gray-900">{postContentPreview.title}</h2>
               <button
                 type="button"
                 onClick={() => setPostContentPreview(null)}
@@ -6220,7 +6220,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-700">{postContentPreview.content}</p>
+              <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700">{postContentPreview.content}</p>
             </div>
           </div>
         </div>

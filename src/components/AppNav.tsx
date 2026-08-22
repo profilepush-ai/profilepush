@@ -33,7 +33,7 @@ function CreditsChip({ balance }: { balance: number }) {
     return (
       <Link
         to="/billing"
-        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-current text-red-600 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(254,242,242)] hover:bg-[rgb(254,226,226)]'}`}
+        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-current text-red-600 text-[11px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(254,242,242)] hover:bg-[rgb(254,226,226)]'}`}
         title="No credits remaining — top up"
       >
         <AlertTriangle size={9} />
@@ -46,7 +46,7 @@ function CreditsChip({ balance }: { balance: number }) {
     return (
       <Link
         to="/billing"
-        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-current text-amber-700 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(255,251,235)] hover:bg-[rgb(254,243,199)]'}`}
+        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-current text-amber-700 text-[11px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(255,251,235)] hover:bg-[rgb(254,243,199)]'}`}
         title="Low credits"
       >
         <AlertTriangle size={9} />
@@ -58,7 +58,7 @@ function CreditsChip({ balance }: { balance: number }) {
   return (
     <Link
       to="/billing"
-      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-current text-emerald-700 text-[10px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(236,253,245)] hover:bg-[rgb(209,250,229)]'}`}
+      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-current text-emerald-700 text-[11px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(236,253,245)] hover:bg-[rgb(209,250,229)]'}`}
       title="Credits remaining"
     >
       <CreditCard size={9} />
@@ -146,7 +146,7 @@ function NotificationBell({ userId }: { userId: string }) {
       >
         {unreadCount > 0 ? <BellRing size={15} className="text-blue-600" /> : <Bell size={15} />}
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[9px] font-bold leading-none">
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold leading-none">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -158,14 +158,14 @@ function NotificationBell({ userId }: { userId: string }) {
           <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-white/10">
             <div className="flex items-center gap-2">
               <Bell size={13} className="text-gray-500 dark:text-slate-400" />
-              <span className="text-xs font-semibold text-gray-900 dark:text-slate-100">Notifications</span>
+              <span className="text-[13px] font-semibold text-gray-900 dark:text-slate-100">Notifications</span>
               {unreadCount > 0 && (
-                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">{unreadCount} new</span>
+                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[11px] font-bold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">{unreadCount} new</span>
               )}
             </div>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
-                <button onClick={markAllRead} className="text-[10px] text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1">
+                <button onClick={markAllRead} className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1">
                   <Check size={10} />Mark all read
                 </button>
               )}
@@ -180,8 +180,8 @@ function NotificationBell({ userId }: { userId: string }) {
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-gray-400">
                 <Bell size={22} className="mb-2 opacity-40" />
-                <p className="text-xs font-medium">No notifications yet</p>
-                <p className="text-[11px] mt-0.5 opacity-70">You're all caught up</p>
+                <p className="text-[13px] font-medium">No notifications yet</p>
+                <p className="text-[12px] mt-0.5 opacity-70">You're all caught up</p>
               </div>
             ) : (
               notifications.map(n => (
@@ -192,13 +192,13 @@ function NotificationBell({ userId }: { userId: string }) {
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <p className={`text-[11px] leading-snug ${!n.read ? 'font-semibold text-gray-900 dark:text-slate-100' : 'font-medium text-gray-700 dark:text-slate-300'}`}>
+                      <p className={`text-[12px] leading-snug ${!n.read ? 'font-semibold text-gray-900 dark:text-slate-100' : 'font-medium text-gray-700 dark:text-slate-300'}`}>
                         {n.title}
                       </p>
                       {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-1" />}
                     </div>
-                    {n.body && <p className="mt-0.5 truncate text-[10px] text-gray-400 dark:text-slate-400">{n.body}</p>}
-                    <p className="mt-0.5 text-[10px] text-gray-400 dark:text-slate-500">{timeAgo(n.created_at)}</p>
+                    {n.body && <p className="mt-0.5 truncate text-[11px] text-gray-400 dark:text-slate-400">{n.body}</p>}
+                    <p className="mt-0.5 text-[11px] text-gray-400 dark:text-slate-500">{timeAgo(n.created_at)}</p>
                   </div>
                 </button>
               ))
@@ -294,7 +294,7 @@ export default function AppNav() {
           <NotificationBell userId={user.id} />
           <Link
             to="/account"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-[13px] font-bold text-white"
             title="Account"
           >
             {initials}
@@ -309,13 +309,13 @@ export default function AppNav() {
             <Link
               key={path}
               to={path}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${hideOnMobile ? 'hidden sm:flex' : ''} ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded text-[13px] font-medium transition-colors ${hideOnMobile ? 'hidden sm:flex' : ''} ${
                 active ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}
             >
               <Icon size={12} />
               <span className="hidden sm:inline">{label}</span>
-              {path === '/inbox' && inboxUnread > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[9px] font-bold text-white">{inboxUnread > 99 ? '99+' : inboxUnread}</span>}
+              {path === '/inbox' && inboxUnread > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">{inboxUnread > 99 ? '99+' : inboxUnread}</span>}
               {!hideOnMobile && <span className="sm:hidden">{mobileLabel}</span>}
             </Link>
           );
@@ -343,7 +343,7 @@ export default function AppNav() {
 
         <Link
           to="/roadmap"
-          className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+          className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded text-[13px] font-medium transition-colors ${
             location.pathname === '/roadmap' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
           }`}
           title="Roadmap"
@@ -383,7 +383,7 @@ export default function AppNav() {
               className="flex items-center gap-1 pl-1 pr-1 py-1 rounded-lg hover:bg-gray-100 transition-colors group"
               title={(user.user_metadata?.full_name as string | undefined) || user.email || 'Account'}
             >
-              <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+              <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-[11px] font-bold shrink-0">
                 {initials}
               </div>
               <ChevronDown size={11} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
@@ -392,15 +392,15 @@ export default function AppNav() {
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-1.5 z-50">
                 <div className="px-3 py-2.5 border-b border-gray-100 mb-1">
-                  <p className="text-xs font-semibold text-gray-800 truncate">
+                  <p className="text-[13px] font-semibold text-gray-800 truncate">
                     {user.user_metadata?.full_name as string || user.email}
                   </p>
-                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{user.email}</p>
+                  <p className="text-[11px] text-gray-400 truncate mt-0.5">{user.email}</p>
                   {account && (
                     <div className="flex items-center justify-between mt-1.5">
                       <div className="flex items-center gap-1">
                         <Building2 size={10} className="text-gray-400 shrink-0" />
-                        <span className="text-[10px] text-gray-500 truncate">{account.name}</span>
+                        <span className="text-[11px] text-gray-500 truncate">{account.name}</span>
                       </div>
                       {shouldShowCreditsUi() && <CreditsChip balance={account.credits_balance} />}
                     </div>
@@ -409,7 +409,7 @@ export default function AppNav() {
 
                 <button
                   onClick={() => { setMenuOpen(false); navigate('/account'); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
                 >
                   <Settings size={13} className="text-gray-400" />
                   Account Settings
@@ -417,7 +417,7 @@ export default function AppNav() {
 
                 <button
                   onClick={() => { setMenuOpen(false); navigate('/billing'); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
                 >
                   <CreditCard size={13} className="text-gray-400" />
                   Billing & Credits
@@ -426,7 +426,7 @@ export default function AppNav() {
                 <div className="border-t border-gray-100 mt-1 pt-1">
                   <button
                     onClick={handleSignOut}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-500 hover:bg-red-50 transition-colors rounded-b-xl"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-red-500 hover:bg-red-50 transition-colors rounded-b-xl"
                   >
                     <LogOut size={13} />
                     Sign Out
@@ -444,39 +444,39 @@ export default function AppNav() {
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[calc(env(safe-area-inset-bottom)+4px)] sm:hidden">
           <Link
             to="/jobs"
-            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium ${location.pathname === '/jobs' ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[13px] font-medium ${location.pathname === '/jobs' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Briefcase size={24} />
             <span>Jobs</span>
           </Link>
           <Link
             to="/hotlist"
-            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium ${location.pathname === '/hotlist' ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[13px] font-medium ${location.pathname === '/hotlist' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <UserRound size={24} />
             <span>Hotlist</span>
           </Link>
           <Link
             to="/posts"
-            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[13px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Megaphone size={24} />
             <span>Posts</span>
           </Link>
           <Link
             to="/pulse"
-            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[13px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Activity size={24} />
             <span>Pulse</span>
           </Link>
           <Link
             to="/inbox"
-            className={`relative flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`relative flex flex-1 flex-col items-center gap-1 py-2.5 text-[13px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Mail size={24} />
             <span>Inbox</span>
-            {inboxUnread > 0 && <span className="absolute right-[24%] top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
+            {inboxUnread > 0 && <span className="absolute right-[24%] top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
           </Link>
         </nav>
       )}

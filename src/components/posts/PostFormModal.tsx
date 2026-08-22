@@ -161,12 +161,12 @@ export default function PostFormModal({
   const { isDark } = useTheme();
   const { account } = useAuth();
   const [showOutOfCreditsModal, setShowOutOfCreditsModal] = useState(false);
-  const inputClass = `w-full rounded-md border px-2.5 py-1.5 text-[11px] outline-none transition-colors focus:ring-2 ${
+  const inputClass = `w-full rounded-md border px-2.5 py-1.5 text-[12px] outline-none transition-colors focus:ring-2 ${
     isDark
       ? 'border-white/15 bg-[#171a1f] text-slate-100 placeholder:text-[#64748B] focus:border-blue-500 focus:ring-blue-500/20'
       : 'border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:ring-blue-100'
   }`;
-  const labelClass = `mb-1 block text-[10px] font-semibold ${isDark ? 'text-[#94A3B8]' : 'text-gray-600'}`;
+  const labelClass = `mb-1 block text-[11px] font-semibold ${isDark ? 'text-[#94A3B8]' : 'text-gray-600'}`;
   const [jobForm, setJobForm] = useState<JobFormState>(() => jobFormFromPost(existingPost));
   const [hotlistForm, setHotlistForm] = useState<HotlistFormState>(() => hotlistFormFromPost(existingPost));
   const [pasteText, setPasteText] = useState(existingPost?.postContent ?? initialPasteText ?? '');
@@ -324,7 +324,7 @@ export default function PostFormModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-xs font-bold text-gray-900 dark:text-slate-100">{title}</h2>
+          <h2 className="text-[13px] font-bold text-gray-900 dark:text-slate-100">{title}</h2>
           <button type="button" onClick={onClose} className={`rounded-full p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}`}>
             <X size={16} />
           </button>
@@ -345,7 +345,7 @@ export default function PostFormModal({
             type="button"
             onClick={() => void handleAutoFill()}
             disabled={!pasteText.trim() || extracting}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Sparkles size={12} />
             {extracting ? 'Auto-filling…' : 'Auto-fill fields from this text'}
@@ -387,7 +387,7 @@ export default function PostFormModal({
             <button
               type="button"
               onClick={() => setShowMore((v) => !v)}
-              className={`inline-flex items-center gap-1 text-[10px] font-semibold ${isDark ? 'text-[#94A3B8] hover:text-slate-300' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`inline-flex items-center gap-1 text-[11px] font-semibold ${isDark ? 'text-[#94A3B8] hover:text-slate-300' : 'text-gray-500 hover:text-gray-700'}`}
             >
               {showMore ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               {showMore ? 'Hide more details' : 'Add more details (optional)'}
@@ -460,7 +460,7 @@ export default function PostFormModal({
             <button
               type="button"
               onClick={() => setShowMore((v) => !v)}
-              className={`inline-flex items-center gap-1 text-[10px] font-semibold ${isDark ? 'text-[#94A3B8] hover:text-slate-300' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`inline-flex items-center gap-1 text-[11px] font-semibold ${isDark ? 'text-[#94A3B8] hover:text-slate-300' : 'text-gray-500 hover:text-gray-700'}`}
             >
               {showMore ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               {showMore ? 'Hide more details' : 'Add more details (optional)'}
@@ -514,10 +514,10 @@ export default function PostFormModal({
         )}
 
         <div className="mt-4 flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className={`rounded-md border px-3 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+          <button type="button" onClick={onClose} disabled={saving} className={`rounded-md border px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-50 ${isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
             Cancel
           </button>
-          <button type="button" onClick={() => void handleSubmit()} disabled={saving} className="rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={() => void handleSubmit()} disabled={saving} className="rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
             {saving ? 'Saving…' : isEditing ? 'Save changes' : 'Post'}
           </button>
         </div>

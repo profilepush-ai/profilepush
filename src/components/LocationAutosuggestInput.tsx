@@ -175,7 +175,7 @@ export default function LocationAutosuggestInput({
         }}
         placeholder={placeholder}
         disabled={disabled}
-        className={`w-full pl-6 pr-7 h-[30px] text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300 bg-white ${inputClassName}`}
+        className={`w-full pl-6 pr-7 h-[30px] text-[12px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder:text-gray-300 bg-white ${inputClassName}`}
       />
       {loading && <Loader2 size={12} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}
 
@@ -191,8 +191,8 @@ export default function LocationAutosuggestInput({
                 onClick={() => void pickSuggestion(s)}
                 className={`w-full text-left px-2.5 py-2 border-b border-gray-100 last:border-b-0 ${active ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
               >
-                <div className="text-[11px] font-medium text-gray-800 truncate">{s.mainText || s.text}</div>
-                {s.secondaryText && <div className="text-[10px] text-gray-500 truncate">{s.secondaryText}</div>}
+                <div className="text-[12px] font-medium text-gray-800 truncate">{s.mainText || s.text}</div>
+                {s.secondaryText && <div className="text-[11px] text-gray-500 truncate">{s.secondaryText}</div>}
               </button>
             );
           })}

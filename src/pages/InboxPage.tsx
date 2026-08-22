@@ -228,14 +228,14 @@ function JobDetailGrid({ details }: { details: DisplayJobDetail[] }) {
       {primaryDetails.map(({ key, label, value }) => {
         const Icon = JOB_DETAIL_ICONS[key];
         return (
-          <span key={key} title={label} className="inline-flex max-w-full items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600">
+          <span key={key} title={label} className="inline-flex max-w-full items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-600">
             {Icon && <Icon size={11} className="shrink-0 text-gray-400" />}
             <span className="truncate">{value}</span>
           </span>
         );
       })}
       {skills && (
-        <span className="w-full text-[10px] leading-relaxed text-gray-500">
+        <span className="w-full text-[11px] leading-relaxed text-gray-500">
           <span className="font-semibold text-gray-600">Skills: </span>{skills.value}
         </span>
       )}
@@ -254,8 +254,8 @@ function JobReferenceCard({ conversation }: { conversation: Conversation }) {
 
   return (
     <section className="mb-5 rounded-lg border border-gray-300 bg-white px-3 py-2.5 shadow-sm">
-      <p className="text-xs font-semibold leading-snug text-gray-900">{title}</p>
-      <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-gray-500">
+      <p className="text-[13px] font-semibold leading-snug text-gray-900">{title}</p>
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-gray-500">
         <span>{formatRelative(postedAt)}</span>
         <span>•</span>
         <span>Posted by {posterName}</span>
@@ -696,7 +696,7 @@ export default function InboxPage() {
                     }
                   }}
                   placeholder="Search vendor or job"
-                  className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+                  className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
                 />
                 {pendingQuery && (
                   <button type="button" onClick={() => { setPendingQuery(''); setQuery(''); }} className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600" aria-label="Clear search field">
@@ -708,7 +708,7 @@ export default function InboxPage() {
                 <Search size={12} />
               </button>
               <div className="relative shrink-0">
-                <button type="button" onClick={() => setIsRangeMenuOpen((open) => !open)} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100" aria-label="Change date range">
+                <button type="button" onClick={() => setIsRangeMenuOpen((open) => !open)} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-600 transition hover:bg-gray-100" aria-label="Change date range">
                   <Clock3 size={11} />
                   <span>{rangeId}</span>
                 </button>
@@ -719,7 +719,7 @@ export default function InboxPage() {
                         key={option.id}
                         type="button"
                         onClick={() => { setRangeId(option.id); setIsRangeMenuOpen(false); }}
-                        className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] font-semibold transition ${option.id === rangeId ? (isDark ? 'bg-[#2A2E35] text-slate-100' : 'bg-gray-100 text-gray-800') : 'text-gray-600 hover:bg-gray-50'}`}
+                        className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${option.id === rangeId ? (isDark ? 'bg-[#2A2E35] text-slate-100' : 'bg-gray-100 text-gray-800') : 'text-gray-600 hover:bg-gray-50'}`}
                       >
                         <span>{option.label}</span>
                         {option.id === rangeId && <Check size={11} />}
@@ -739,7 +739,7 @@ export default function InboxPage() {
                   key={option.id}
                   type="button"
                   onClick={() => setFilter(option.id)}
-                  className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${filter === option.id ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
+                  className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${filter === option.id ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-blue-200 bg-white text-blue-600 hover:bg-blue-50')}`}
                 >
                   <span>{option.label}</span>
                   <span>{tabCounts[option.id]}</span>
@@ -754,23 +754,23 @@ export default function InboxPage() {
             ) : filtered.length === 0 ? (
               <div className="flex h-64 flex-col items-center justify-center px-6 text-center text-gray-400">
                 <Inbox size={26} />
-                <p className="mt-3 text-xs font-semibold text-gray-600">No conversations found</p>
-                <p className="mt-1 text-[11px]">Ask a vendor from Jobs to start a thread.</p>
+                <p className="mt-3 text-[13px] font-semibold text-gray-600">No conversations found</p>
+                <p className="mt-1 text-[12px]">Ask a vendor from Jobs to start a thread.</p>
               </div>
             ) : filtered.map((item) => (
               <button key={item.id} type="button" onClick={() => selectConversation(item.id)} className={`flex w-full border-b border-gray-100 px-3 py-3 text-left transition-colors ${selectedId === item.id ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'}`}>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
-                    <span className={`truncate text-xs ${item.unread_count > 0 ? 'font-bold text-gray-950' : 'font-semibold text-gray-800'}`}>{item.social_jobs?.job_title || item.social_hotlist?.role_title || 'Vendor request'}</span>
-                    <span className="shrink-0 text-[10px] text-gray-400">{formatRelative(item.last_message_at)}</span>
+                    <span className={`truncate text-[13px] ${item.unread_count > 0 ? 'font-bold text-gray-950' : 'font-semibold text-gray-800'}`}>{item.social_jobs?.job_title || item.social_hotlist?.role_title || 'Vendor request'}</span>
+                    <span className="shrink-0 text-[11px] text-gray-400">{formatRelative(item.last_message_at)}</span>
                   </span>
                   <span className="mt-1 flex items-center justify-between gap-2">
-                    <span className="min-w-0 flex-1 whitespace-normal break-words text-[9px] leading-3 text-gray-400">{getJobSummary(item.radar_job_details)}</span>
-                    {item.unread_count > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[9px] font-bold text-white">{item.unread_count}</span>}
+                    <span className="min-w-0 flex-1 whitespace-normal break-words text-[10px] leading-3 text-gray-400">{getJobSummary(item.radar_job_details)}</span>
+                    {item.unread_count > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">{item.unread_count}</span>}
                   </span>
                   <span className="mt-1 flex items-center gap-1">
-                    <span className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide ${item.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{item.hotlist_id ? 'Hotlist' : 'Job'}</span>
-                    {item.source === 'chat' && <span className="shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide bg-indigo-50 text-indigo-700">Chat</span>}
+                    <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${item.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{item.hotlist_id ? 'Hotlist' : 'Job'}</span>
+                    {item.source === 'chat' && <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-indigo-50 text-indigo-700">Chat</span>}
                   </span>
                 </span>
               </button>
@@ -782,7 +782,7 @@ export default function InboxPage() {
           {!selected ? (
             <div className="flex flex-1 flex-col items-center justify-center text-gray-400">
               <Mail size={32} />
-              <p className="mt-3 text-sm font-semibold text-gray-600">Select a conversation</p>
+              <p className="mt-3 text-[15px] font-semibold text-gray-600">Select a conversation</p>
             </div>
           ) : (
             <>
@@ -794,13 +794,13 @@ export default function InboxPage() {
                 <div className="min-w-0 flex-1 basis-0" />
                 <div className="flex flex-wrap items-center justify-end gap-1">
                 {selected.channel === 'gmail' && (
-                  <span className="rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide bg-red-50 text-red-600" title="Sent from your connected Gmail address">Via Gmail</span>
+                  <span className="rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide bg-red-50 text-red-600" title="Sent from your connected Gmail address">Via Gmail</span>
                 )}
                 {selected.channel === 'chat' && (
-                  <span className="rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide bg-indigo-50 text-indigo-700" title="In-app chat">Chat</span>
+                  <span className="rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide bg-indigo-50 text-indigo-700" title="In-app chat">Chat</span>
                 )}
-                <span className={`rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${selected.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{selected.hotlist_id ? 'Hotlist' : 'Job'}</span>
-                <span className={`rounded px-2 py-1 text-[10px] font-semibold ${selected.status === 'failed' ? 'bg-red-50 text-red-700' : selected.status === 'replied' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selected.status]}</span>
+                <span className={`rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${selected.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{selected.hotlist_id ? 'Hotlist' : 'Job'}</span>
+                <span className={`rounded px-2 py-1 text-[11px] font-semibold ${selected.status === 'failed' ? 'bg-red-50 text-red-700' : selected.status === 'replied' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selected.status]}</span>
                 </div>
               </header>
 
@@ -821,7 +821,7 @@ export default function InboxPage() {
                     return (
                       <article key={message.id} className={`mb-3 flex last:mb-0 ${outbound ? 'justify-end' : 'justify-start'}`}>
                         <div className={`w-fit max-w-[92%] rounded-lg border px-3 py-3 sm:max-w-2xl ${outbound ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
-                          <p className="whitespace-pre-wrap break-words text-[13px] leading-5 text-gray-800">{messageText}</p>
+                          <p className="whitespace-pre-wrap break-words text-[14px] leading-5 text-gray-800">{messageText}</p>
                           {message.vendor_message_attachments.length > 0 && (
                             <div className="mt-2 flex flex-col gap-1.5">
                               {message.vendor_message_attachments.map((attachment) => (
@@ -830,7 +830,7 @@ export default function InboxPage() {
                                   type="button"
                                   onClick={() => void downloadAttachment(attachment.id, attachment.original_filename)}
                                   disabled={downloadingAttachmentId === attachment.id}
-                                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-left text-[11px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-left text-[12px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   {downloadingAttachmentId === attachment.id ? (
                                     <Loader2 size={12} className="shrink-0 animate-spin text-gray-400" />
@@ -846,31 +846,31 @@ export default function InboxPage() {
                           )}
                           <div className="mt-3 flex flex-col gap-2 border-t border-gray-200/80 pt-2.5 sm:flex-row sm:items-center">
                             <div className="flex items-center justify-between gap-2 sm:justify-start">
-                              <span className="inline-flex min-w-0 items-center gap-1 text-[10px] font-medium text-gray-500">
+                              <span className="inline-flex min-w-0 items-center gap-1 text-[11px] font-medium text-gray-500">
                                 {message.isChat ? <span>{outbound ? 'Sent' : 'Received'}</span> : message.isDraft ? 'Generated' : outbound && (message.status === 'failed' || message.status === 'temporary_failed') ? <><AlertCircle size={11} className="text-red-600" /> <span className="text-red-600">Failed</span></> : deliveryState ? <><CheckCheck size={11} className={deliveryState.opened ? 'text-emerald-600' : 'text-blue-600'} /> <span className={deliveryState.opened ? 'text-emerald-700' : ''}>{deliveryState.label}</span></> : <span>{outbound ? 'Sent' : 'Received'}</span>}
                               </span>
-                              <span className="shrink-0 text-[10px] text-gray-500">{formatMessageTime(message.sent_at || message.received_at || message.created_at)}</span>
+                              <span className="shrink-0 text-[11px] text-gray-500">{formatMessageTime(message.sent_at || message.received_at || message.created_at)}</span>
                             </div>
                             {message.isChat ? null : message.isDraft ? (
                               <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
                                 <button
                                   type="button"
                                   onClick={() => void navigator.clipboard.writeText(selected.vendor_email).then(() => setToast({ message: 'Vendor email copied', type: 'success' }))}
-                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2.5 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400"
+                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2.5 py-1.5 text-[11px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400"
                                 >
                                   <Copy size={11} /> Email
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => void navigator.clipboard.writeText(message.subject).then(() => setToast({ message: 'Subject copied', type: 'success' }))}
-                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2.5 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400"
+                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2.5 py-1.5 text-[11px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400"
                                 >
                                   <Copy size={11} /> Subject
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => void navigator.clipboard.writeText(message.text_body).then(() => setToast({ message: 'Body copied', type: 'success' }))}
-                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2.5 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400"
+                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2.5 py-1.5 text-[11px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400"
                                 >
                                   <Copy size={11} /> Body
                                 </button>
@@ -879,13 +879,13 @@ export default function InboxPage() {
                               <button
                                 type="button"
                                 onClick={() => void navigator.clipboard.writeText(selected.vendor_email).then(() => setToast({ message: 'Vendor email copied', type: 'success' }))}
-                                className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2 py-1.5 text-[10px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400 sm:ml-auto sm:w-auto sm:px-2.5"
+                                className="inline-flex w-full shrink-0 items-center justify-center gap-1 rounded-md border border-blue-300 bg-transparent px-2 py-1.5 text-[11px] font-semibold text-blue-600 transition-all hover:shadow-[0_0_0_1px_rgba(37,99,235,0.20),0_0_14px_rgba(37,99,235,0.16)] dark:border-cyan-500/30 dark:text-cyan-400 sm:ml-auto sm:w-auto sm:px-2.5"
                               >
                                 <Copy size={11} /> Email
                               </button>
                             )}
                           </div>
-                          {message.error_message && <p className="mt-2 text-[10px] text-red-600">{message.error_message}</p>}
+                          {message.error_message && <p className="mt-2 text-[11px] text-red-600">{message.error_message}</p>}
                         </div>
                       </article>
                     );
@@ -894,12 +894,12 @@ export default function InboxPage() {
               </div>
             </div>
             {selected.source === 'draft' ? null : selected.status === 'closed' ? (
-              <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 pt-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] text-center text-[11px] text-gray-500 sm:pb-3">
+              <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 pt-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] text-center text-[12px] text-gray-500 sm:pb-3">
                 This conversation is closed. Reopen it to send a message.
               </div>
             ) : (
               <div className="shrink-0 border-t border-gray-200 bg-white px-2.5 pt-2.5 pb-[calc(5.75rem+env(safe-area-inset-bottom))] sm:px-3 sm:pt-3 sm:pb-3">
-                <p className="mb-1.5 text-[10px] text-gray-400">
+                <p className="mb-1.5 text-[11px] text-gray-400">
                   {selected.channel === 'chat' ? 'In-app chat — not sent by email' : selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
                 </p>
                 <div className="flex flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-1.5 transition focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
@@ -915,7 +915,7 @@ export default function InboxPage() {
                     disabled={sendingReply || draftingAiReply}
                     rows={2}
                     placeholder={draftingAiReply ? 'Writing a message…' : 'Write a reply...'}
-                    className="max-h-32 min-h-[2.25rem] w-full resize-none border-0 bg-transparent px-2 py-1.5 text-xs leading-relaxed text-gray-900 outline-none disabled:opacity-60"
+                    className="max-h-32 min-h-[2.25rem] w-full resize-none border-0 bg-transparent px-2 py-1.5 text-[13px] leading-relaxed text-gray-900 outline-none disabled:opacity-60"
                   />
                   <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
                     {selected.channel === 'chat' ? (
@@ -923,7 +923,7 @@ export default function InboxPage() {
                         type="button"
                         onClick={() => void generateAiReply()}
                         disabled={draftingAiReply || sendingReply}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-blue-600 bg-transparent px-2.5 py-1 text-[10px] font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-blue-600 bg-transparent px-2.5 py-1 text-[11px] font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {draftingAiReply ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
                         {draftingAiReply ? 'Writing…' : 'Write with AI'}

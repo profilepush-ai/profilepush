@@ -14,7 +14,7 @@ export default function Toast({ message, type = 'success', onClose }: ToastProps
   }, [onClose]);
 
   return (
-    <div className="fixed bottom-4 right-4 z-[9999] flex items-center gap-3 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-xl text-sm max-w-sm animate-slide-up">
+    <div className="fixed bottom-4 right-4 z-[9999] flex items-center gap-3 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-xl text-[15px] max-w-sm animate-slide-up">
       {type === 'success' ? (
         <CheckCircle size={16} className="text-green-400 shrink-0" />
       ) : (

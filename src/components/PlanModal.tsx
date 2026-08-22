@@ -36,17 +36,17 @@ export function PlanModal({
           <X size={15} />
         </button>
         <div className="px-6 pt-6 pb-5">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-3">ProfilePush Pro</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-blue-600 mb-3">ProfilePush Pro</p>
           <div className="mb-5">
             <span className="text-3xl font-extrabold text-gray-900">₹{inr}</span>
-            <span className="text-sm font-medium text-gray-400">/month</span>
-            <p className="text-xs text-gray-400 mt-0.5">Billed via Razorpay</p>
+            <span className="text-[15px] font-medium text-gray-400">/month</span>
+            <p className="text-[13px] text-gray-400 mt-0.5">Billed via Razorpay</p>
           </div>
           <div className="relative mb-5">
             <select
               value={selectedNewTier}
               onChange={e => setSelectedNewTier(Number(e.target.value))}
-              className="w-full appearance-none border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-gray-800 bg-gray-50 focus:outline-none focus:border-blue-400 cursor-pointer"
+              className="w-full appearance-none border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-[15px] font-semibold text-gray-800 bg-gray-50 focus:outline-none focus:border-blue-400 cursor-pointer"
             >
               {TIERS.map(tier => (
                 <option key={tier} value={tier}>
@@ -58,7 +58,7 @@ export function PlanModal({
           </div>
           <ul className="space-y-2.5 mb-5">
             {FEATURES.map(f => (
-              <li key={f} className="flex items-start gap-2.5 text-sm text-gray-700">
+              <li key={f} className="flex items-start gap-2.5 text-[15px] text-gray-700">
                 <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                   <Check size={9} className="text-white" strokeWidth={3} />
                 </div>
@@ -67,14 +67,14 @@ export function PlanModal({
             ))}
           </ul>
           {hasActiveSub && subscription && !isSame && (
-            <p className="text-xs text-gray-500 mb-4 text-center">
+            <p className="text-[13px] text-gray-500 mb-4 text-center">
               {isUpgrade ? 'Upgrade takes effect immediately.' : `Downgrade effective ${pendingPeriodEnd ?? 'at next renewal'}.`}
             </p>
           )}
           <button
             onClick={onSubmit}
             disabled={isSame || changingPlan || subscribing}
-            className="w-full py-3 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 shadow-sm"
+            className="w-full py-3 rounded-xl text-[15px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 shadow-sm"
           >
             {(changingPlan || subscribing) && <LogoSpinner size={14} />}
             {hasActiveSub

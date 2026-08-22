@@ -139,7 +139,7 @@ function Combobox({ value, onChange, options, recentOptions, placeholder, inputT
     <div ref={ref} className="relative">
       <input
         type={inputType} value={query} autoComplete="off" autoFocus={autoFocus} placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 placeholder-gray-300 transition-all"
+        className="w-full px-3 py-2 text-[15px] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 placeholder-gray-300 transition-all"
         onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={e => { if (e.key === 'Escape') { setOpen(false); setQuery(value); } }}
@@ -150,7 +150,7 @@ function Combobox({ value, onChange, options, recentOptions, placeholder, inputT
           {showRecent && (
             <div className="px-3 pt-2 pb-0.5 flex items-center gap-1.5">
               <Clock size={10} className="text-gray-300" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Recent</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Recent</span>
             </div>
           )}
           {listItems.map((opt, i) => (
@@ -159,8 +159,8 @@ function Combobox({ value, onChange, options, recentOptions, placeholder, inputT
               onMouseDown={e => { e.preventDefault(); setQuery(opt.value); onChange(opt.value, opt); setOpen(false); }}
               className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors"
             >
-              <div className="text-sm font-medium text-gray-800 truncate">{opt.value}</div>
-              {opt.subtitle && <div className="text-xs text-gray-400 truncate">{opt.subtitle}</div>}
+              <div className="text-[15px] font-medium text-gray-800 truncate">{opt.value}</div>
+              {opt.subtitle && <div className="text-[13px] text-gray-400 truncate">{opt.subtitle}</div>}
             </button>
           ))}
         </div>
@@ -174,7 +174,7 @@ function Combobox({ value, onChange, options, recentOptions, placeholder, inputT
 function Field({ label, icon: Icon, children }: { label: string; icon: React.FC<{ size?: number; className?: string }>; children: React.ReactNode }) {
   return (
     <div>
-      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+      <label className="flex items-center gap-1.5 text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
         <Icon size={11} className="text-gray-400" />{label}
       </label>
       {children}
@@ -182,7 +182,7 @@ function Field({ label, icon: Icon, children }: { label: string; icon: React.FC<
   );
 }
 
-const inputCls = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-300 transition-all';
+const inputCls = 'w-full px-3 py-2 text-[15px] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-300 transition-all';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -917,17 +917,17 @@ export default function TrackerPage() {
     return (
       <div className="flex flex-wrap items-center gap-1">
         {lead.revealedAt && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[9px] font-semibold text-gray-600 dark:border-white/15 dark:bg-white/5 dark:text-slate-300">
+          <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 dark:border-white/15 dark:bg-white/5 dark:text-slate-300">
             <Eye size={9} /> Revealed {formatAgo(lead.revealedAt)}
           </span>
         )}
         {lead.submittedAt && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300">
+          <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300">
             <Check size={9} /> Submitted {formatAgo(lead.submittedAt)}
           </span>
         )}
         {lead.verifiedAt && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300">
             <Check size={9} /> Verified
           </span>
         )}
@@ -954,8 +954,8 @@ export default function TrackerPage() {
               style={{ borderColor: cardBorderColor }}
             >
               <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
-                <p className="text-[12px] font-semibold leading-snug text-[#2563EB] dark:text-white">{lead.title}</p>
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-[#94A3B8]">
+                <p className="text-[13px] font-semibold leading-snug text-[#2563EB] dark:text-white">{lead.title}</p>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
                   <span>{formatAgo(lead.postedAt)}</span>
                   <span>•</span>
                   <span>{lead.posterName || 'Unknown'}</span>
@@ -966,7 +966,7 @@ export default function TrackerPage() {
                       <span className="text-[#94A3B8]">{lead.company}</span>
                     </span>
                   )}
-                  <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-[#94A3B8]'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-[#94A3B8]'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
                   <PostSourceBadge source={lead.postSource} />
                 </div>
 
@@ -990,7 +990,7 @@ export default function TrackerPage() {
                             <span
                               key={field.key}
                               title={field.title}
-                              className="inline-flex max-w-full items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[9px] leading-tight text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-[#CBD5E1]"
+                              className="inline-flex max-w-full items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] leading-tight text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-[#CBD5E1]"
                             >
                               <field.icon size={10} className="shrink-0 text-gray-400 dark:text-[#94A3B8]" />
                               {renderClampedField(lead.id, field.key, field.value, linkClass)}
@@ -1000,7 +1000,7 @@ export default function TrackerPage() {
                       )}
                       {skillsValue !== '-' && (
                         <div className={chipFields.length > 0 ? 'mt-2' : ''}>
-                          <div className="text-[9px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedSkills(lead.id, skillsValue, 8, linkClass)}</div>
+                          <div className="text-[10px] leading-tight break-words text-slate-700 dark:text-[#CBD5E1]">{renderClampedSkills(lead.id, skillsValue, 8, linkClass)}</div>
                         </div>
                       )}
                     </div>
@@ -1014,7 +1014,7 @@ export default function TrackerPage() {
                   onClick={() => void handleTrackerPreviewPost(lead)}
                   disabled={loadingPreviewLeadId === lead.id}
                   title="Preview original post"
-                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[11px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
+                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
                 >
                   {loadingPreviewLeadId === lead.id ? '...' : <Eye size={13} strokeWidth={2} />}
                   Preview
@@ -1025,7 +1025,7 @@ export default function TrackerPage() {
                   onClick={() => void handleTrackerViewDraft(lead)}
                   disabled={loadingDraftLeadId === lead.id}
                   title={`View the ${statusLabel.toLowerCase()} draft`}
-                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400"
+                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400"
                 >
                   {loadingDraftLeadId === lead.id ? '...' : (lead.verifiedAt ? <BadgeCheck size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2} />)}
                   {statusLabel}
@@ -1042,7 +1042,7 @@ export default function TrackerPage() {
     const cellClass = 'px-2 py-2 align-top break-words whitespace-normal text-gray-600 dark:text-[#94A3B8]';
     const linkClass = 'text-blue-600 dark:text-cyan-400 hover:underline';
     return (
-      <table className="w-full table-fixed border-collapse text-left text-[11px]">
+      <table className="w-full table-fixed border-collapse text-left text-[12px]">
         <colgroup>
           <col style={{ width: '15%' }} />
           <col style={{ width: '10%' }} />
@@ -1057,7 +1057,7 @@ export default function TrackerPage() {
           <col style={{ width: '16%' }} />
         </colgroup>
         <thead className="sticky top-0 z-[1] bg-gray-50 dark:bg-[#1F2328]">
-          <tr className="border-b border-gray-200 dark:border-white/10 text-[10px] uppercase tracking-wide text-gray-500 dark:text-[#94A3B8]">
+          <tr className="border-b border-gray-200 dark:border-white/10 text-[11px] uppercase tracking-wide text-gray-500 dark:text-[#94A3B8]">
             <th className="px-2 py-2">Role</th>
             <th className="px-2 py-2">Company</th>
             <th className="px-2 py-2">Exp</th>
@@ -1078,7 +1078,7 @@ export default function TrackerPage() {
               <tr key={lead.id} className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5">
                 <td className="px-2 py-2 align-top break-words whitespace-normal font-medium text-gray-900 dark:text-slate-100">
                   <button type="button" onClick={() => void handleTrackerViewDraft(lead)} className="text-left hover:text-blue-600 hover:underline">{lead.title}</button>
-                  <span className={`ml-1 inline-block rounded px-1 py-0.5 align-middle text-[8px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
+                  <span className={`ml-1 inline-block rounded px-1 py-0.5 align-middle text-[9px] font-bold uppercase tracking-wide ${lead.type === 'hotlist' ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{lead.type === 'hotlist' ? 'Hotlist' : 'Job'}</span>
                 </td>
                 <td className={cellClass}>{lead.company || '—'}</td>
                 <td className={cellClass}>{renderClampedField(lead.id, 'exp', expValue, linkClass)}</td>
@@ -1155,7 +1155,7 @@ export default function TrackerPage() {
                 applyGlobalSearch();
               }
             }}
-            className="w-full border-0 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400"
+            className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
           />
           {pendingGlobalSearch && (
             <button
@@ -1184,7 +1184,7 @@ export default function TrackerPage() {
           <div className="relative shrink-0" ref={dateRef}>
             <button
               onClick={() => setDateOpen(o => !o)}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-semibold text-gray-600 transition hover:bg-gray-100"
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-600 transition hover:bg-gray-100"
             >
               <Clock3 size={11} />
               <span>{trackerDateShortLabel[datePreset]}</span>
@@ -1196,14 +1196,14 @@ export default function TrackerPage() {
                     <button
                       key={p.id}
                       onClick={() => applyPreset(p.id)}
-                      className={`w-full text-left px-3 py-1.5 text-xs rounded-lg transition-colors ${datePreset === p.id && !isSearching ? 'bg-blue-600 text-white font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
+                      className={`w-full text-left px-3 py-1.5 text-[13px] rounded-lg transition-colors ${datePreset === p.id && !isSearching ? 'bg-blue-600 text-white font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
                     >
                       {p.label}
                     </button>
                   ))}
                   <button
                     onClick={() => setDatePreset('custom')}
-                    className={`w-full text-left px-3 py-1.5 text-xs rounded-lg transition-colors ${datePreset === 'custom' ? 'bg-blue-600 text-white font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`w-full text-left px-3 py-1.5 text-[13px] rounded-lg transition-colors ${datePreset === 'custom' ? 'bg-blue-600 text-white font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
                   >
                     Custom range
                   </button>
@@ -1211,14 +1211,14 @@ export default function TrackerPage() {
                 {datePreset === 'custom' && (
                   <div className="border-t border-gray-100 pt-3 space-y-2">
                     <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">From</label>
-                      <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wide block mb-1">From</label>
+                      <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="w-full px-2 py-1.5 text-[13px] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-1">To</label>
-                      <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wide block mb-1">To</label>
+                      <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="w-full px-2 py-1.5 text-[13px] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
-                    <button onClick={applyCustom} disabled={!customStart || !customEnd} className="w-full py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors">
+                    <button onClick={applyCustom} disabled={!customStart || !customEnd} className="w-full py-1.5 text-[13px] font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors">
                       Apply
                     </button>
                   </div>
@@ -1229,7 +1229,7 @@ export default function TrackerPage() {
         )}
 
         {isSearching && (
-          <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-1.5 text-[10px] font-semibold text-blue-700">
+          <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-1.5 text-[11px] font-semibold text-blue-700">
             {filteredSubs.length + filteredVendors.length} results across all data
           </span>
         )}
@@ -1241,8 +1241,8 @@ export default function TrackerPage() {
         {/* ════════════════ CONTACTS LIST (narrow) ════════════════ */}
         <div className="min-w-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
           <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 bg-white">
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Contacts</span>
-            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded ring-1 ring-amber-200">{filteredVendors.length}</span>
+            <span className="text-[13px] font-bold text-gray-700 uppercase tracking-wider">Contacts</span>
+            <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded ring-1 ring-amber-200">{filteredVendors.length}</span>
             {selVendor.size > 0 && (
               <button onClick={() => downloadVendors(selVendor)} className="ml-auto p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Download selected">
                 <Download size={13} />
@@ -1251,18 +1251,18 @@ export default function TrackerPage() {
           </div>
           <div className="flex-1 overflow-auto">
             {filteredVendors.length === 0 ? (
-              <div className="py-16 text-center text-xs text-gray-400">
+              <div className="py-16 text-center text-[13px] text-gray-400">
                 {isSearching ? 'No vendors match your search.' : `No vendors in ${dateLabel}.`}
               </div>
             ) : (
-              <table className="w-full table-fixed border-collapse text-left text-[11px]">
+              <table className="w-full table-fixed border-collapse text-left text-[12px]">
                 <colgroup>
                   <col style={{ width: '46%' }} />
                   <col style={{ width: '36%' }} />
                   <col style={{ width: '18%' }} />
                 </colgroup>
                 <thead className="sticky top-0 z-[1] bg-gray-50 dark:bg-[#1F2328]">
-                  <tr className="border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-500 dark:border-white/10 dark:text-[#94A3B8]">
+                  <tr className="border-b border-gray-200 text-[11px] uppercase tracking-wide text-gray-500 dark:border-white/10 dark:text-[#94A3B8]">
                     <th className="px-2.5 py-2">Name</th>
                     <th className="px-2.5 py-2">Email</th>
                     <th className="px-2.5 py-2 text-right">Actions</th>
@@ -1281,10 +1281,10 @@ export default function TrackerPage() {
                         <td className="px-2.5 py-2.5 align-top">
                           <div className="flex items-start gap-1.5">
                             <p className="min-w-0 flex-1 break-words font-semibold leading-snug text-gray-900 dark:text-slate-100">{v.name}</p>
-                            {subCount > 0 && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">{subCount}</span>}
+                            {subCount > 0 && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">{subCount}</span>}
                           </div>
                           {v.contact_person && (
-                            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-500 dark:text-slate-400">
+                            <div className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-500 dark:text-slate-400">
                               <User size={9} className="shrink-0 text-gray-400" />
                               {revealedFields.has(`cp-${v.id}`) ? (
                                 <span className="truncate">{v.contact_person}</span>
@@ -1332,8 +1332,8 @@ export default function TrackerPage() {
         {/* ════════════════ VENDOR HISTORY COLUMN ════════════════ */}
         <div className="min-w-0 bg-white dark:bg-[#1B1D21] flex flex-col overflow-hidden">
           <div className="shrink-0 h-[44px] flex items-center gap-2 px-3 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#1F2328]">
-            <span className="text-xs font-bold text-gray-700 dark:text-slate-200 uppercase tracking-wider">Jobs</span>
-            <span className="text-[10px] font-bold text-blue-700 dark:text-slate-200 bg-blue-50 dark:bg-[#2A2E35] px-1.5 py-0.5 rounded ring-1 ring-blue-200 dark:ring-white/10">{vendorHistory.length}</span>
+            <span className="text-[13px] font-bold text-gray-700 dark:text-slate-200 uppercase tracking-wider">Jobs</span>
+            <span className="text-[11px] font-bold text-blue-700 dark:text-slate-200 bg-blue-50 dark:bg-[#2A2E35] px-1.5 py-0.5 rounded ring-1 ring-blue-200 dark:ring-white/10">{vendorHistory.length}</span>
             {!isMobileViewport && (
               <div className="ml-2 flex shrink-0 items-center rounded-md border border-gray-200 bg-gray-50 p-0.5 dark:border-white/10 dark:bg-white/5">
                 {(['card', 'table'] as const).map((mode) => (
@@ -1341,7 +1341,7 @@ export default function TrackerPage() {
                     key={mode}
                     type="button"
                     onClick={() => setJobsLayoutMode(mode)}
-                    className={`rounded px-2 py-1 text-[10px] font-semibold capitalize transition ${jobsLayoutMode === mode ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`rounded px-2 py-1 text-[11px] font-semibold capitalize transition ${jobsLayoutMode === mode ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
                   >
                     {mode}
                   </button>
@@ -1349,16 +1349,16 @@ export default function TrackerPage() {
               </div>
             )}
             {activeVendorId ? (
-              <span className="ml-auto text-[10px] text-gray-500 dark:text-[#94A3B8] truncate max-w-[140px]">
+              <span className="ml-auto text-[11px] text-gray-500 dark:text-[#94A3B8] truncate max-w-[140px]">
                 {vendors.find(v => v.id === activeVendorId)?.name}
               </span>
             ) : (
-              <span className="ml-auto text-[10px] text-gray-500 dark:text-[#94A3B8] truncate max-w-[140px]">All contacts</span>
+              <span className="ml-auto text-[11px] text-gray-500 dark:text-[#94A3B8] truncate max-w-[140px]">All contacts</span>
             )}
           </div>
           <div className="flex-1 overflow-auto">
             {vendorHistory.length === 0 ? (
-              <div className="py-16 text-center text-xs text-gray-400 dark:text-[#94A3B8]">
+              <div className="py-16 text-center text-[13px] text-gray-400 dark:text-[#94A3B8]">
                 <History size={18} className="mx-auto text-gray-300 dark:text-slate-600 mb-2" />
                 <p className="font-medium text-gray-500 dark:text-[#CBD5E1]">No activity yet</p>
                 <p className="mt-1">{activeVendorId ? 'No revealed or submitted leads found for this contact yet.' : 'No revealed or submitted leads found across these contacts yet.'}</p>
@@ -1380,8 +1380,8 @@ export default function TrackerPage() {
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
-                <h2 className="text-base font-bold text-gray-900">{editingId ? 'Edit Vendor' : 'Add Vendor'}</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Vendor / staffing company details</p>
+                <h2 className="text-[17px] font-bold text-gray-900">{editingId ? 'Edit Vendor' : 'Add Vendor'}</h2>
+                <p className="text-[13px] text-gray-400 mt-0.5">Vendor / staffing company details</p>
               </div>
               <button onClick={() => setModal(null)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"><X size={16} /></button>
             </div>
@@ -1405,8 +1405,8 @@ export default function TrackerPage() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-gray-100">
-              <button onClick={() => setModal(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-              <button onClick={saveVendor} disabled={saving} className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+              <button onClick={() => setModal(null)} className="px-4 py-2 text-[15px] text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+              <button onClick={saveVendor} disabled={saving} className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-[15px] font-semibold rounded-lg transition-colors shadow-sm">
                 <Save size={13} />{saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Vendor'}
               </button>
             </div>
@@ -1421,8 +1421,8 @@ export default function TrackerPage() {
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
-                <h2 className="text-base font-bold text-gray-900">{editingId ? 'Edit Client' : 'Add Client'}</h2>
-                <p className="text-xs text-gray-400 mt-0.5">End client / hiring company details</p>
+                <h2 className="text-[17px] font-bold text-gray-900">{editingId ? 'Edit Client' : 'Add Client'}</h2>
+                <p className="text-[13px] text-gray-400 mt-0.5">End client / hiring company details</p>
               </div>
               <button onClick={() => setModal(null)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"><X size={16} /></button>
             </div>
@@ -1446,8 +1446,8 @@ export default function TrackerPage() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-gray-100">
-              <button onClick={() => setModal(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-              <button onClick={saveClient} disabled={saving} className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+              <button onClick={() => setModal(null)} className="px-4 py-2 text-[15px] text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+              <button onClick={saveClient} disabled={saving} className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-[15px] font-semibold rounded-lg transition-colors shadow-sm">
                 <Save size={13} />{saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Client'}
               </button>
             </div>
@@ -1462,20 +1462,20 @@ export default function TrackerPage() {
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
-                <h2 className="text-base font-bold text-gray-900">{editingId ? 'Edit Submission' : 'New Submission'}</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Fields auto-suggest from bench, vendors &amp; clients</p>
+                <h2 className="text-[17px] font-bold text-gray-900">{editingId ? 'Edit Submission' : 'New Submission'}</h2>
+                <p className="text-[13px] text-gray-400 mt-0.5">Fields auto-suggest from bench, vendors &amp; clients</p>
               </div>
               <button onClick={() => setModal(null)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"><X size={16} /></button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               <div>
-                <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                <label className="flex items-center gap-1.5 text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
                   <Tag size={11} className="text-gray-400" />Submission Type
                 </label>
                 <div className="flex gap-2">
                   {SUBMISSION_TYPES.map(t => (
                     <button key={t} type="button" onClick={() => setSubForm(f => ({ ...f, submission_type: t }))}
-                      className={`flex-1 py-2 text-sm font-semibold rounded-lg border transition-all ${
+                      className={`flex-1 py-2 text-[15px] font-semibold rounded-lg border transition-all ${
                         subForm.submission_type === t
                           ? t === 'Client' ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
                           : t === 'Vendor' ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
@@ -1495,7 +1495,7 @@ export default function TrackerPage() {
               </Field>
               {subForm.submission_type === 'Vendor' && (
                 <div className="border-t border-gray-100 pt-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-3">Vendor Details</p>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-amber-500 mb-3">Vendor Details</p>
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Vendor Name" icon={Building2}>
                       <Combobox value={subForm.vendor_name} onChange={(val, opt) => { if (opt) handleSubVendorSelect(val); else setSubForm(f => ({ ...f, vendor_name: val })); }} options={vendorOptions} recentOptions={recentVendorOpts} placeholder="Search vendors…" />
@@ -1511,7 +1511,7 @@ export default function TrackerPage() {
               )}
               {subForm.submission_type === 'Client' && (
                 <div className="border-t border-gray-100 pt-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-teal-600 mb-3">Client Details</p>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-teal-600 mb-3">Client Details</p>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
                       <Field label="Client Name" icon={Users}>
@@ -1522,7 +1522,7 @@ export default function TrackerPage() {
                 </div>
               )}
               <div className="border-t border-gray-100 pt-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3">Job Details</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-3">Job Details</p>
                 <div className="grid grid-cols-2 gap-4">
                   {subForm.submission_type !== 'Client' && (
                     <Field label="Client Name" icon={Users}>
@@ -1538,7 +1538,7 @@ export default function TrackerPage() {
                 </div>
               </div>
               <div className="border-t border-gray-100 pt-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3">Submission Info</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-3">Submission Info</p>
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Submitted By" icon={UserCheck}>
                     <Combobox value={subForm.submitted_by} onChange={val => setSubForm(f => ({ ...f, submitted_by: val }))} options={submittedByOptions} recentOptions={submittedByOptions.slice(0, 3)} placeholder="Recruiter name" />
@@ -1550,8 +1550,8 @@ export default function TrackerPage() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-gray-100">
-              <button onClick={() => setModal(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-              <button onClick={saveSubmission} disabled={saving} className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+              <button onClick={() => setModal(null)} className="px-4 py-2 text-[15px] text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+              <button onClick={saveSubmission} disabled={saving} className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-[15px] font-semibold rounded-lg transition-colors shadow-sm">
                 <Save size={13} />{saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Submission'}
               </button>
             </div>
@@ -1573,7 +1573,7 @@ export default function TrackerPage() {
               <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-50 text-slate-500">
                 <Eye size={16} />
               </span>
-              <h2 id="tracker-post-preview-title" className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900">{trackerPostPreview.title}</h2>
+              <h2 id="tracker-post-preview-title" className="min-w-0 flex-1 truncate text-[15px] font-semibold text-gray-900">{trackerPostPreview.title}</h2>
               <button
                 type="button"
                 onClick={() => setTrackerPostPreview(null)}
@@ -1584,7 +1584,7 @@ export default function TrackerPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-700">{trackerPostPreview.content}</p>
+              <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700">{trackerPostPreview.content}</p>
             </div>
           </div>
         </div>
@@ -1602,9 +1602,9 @@ export default function TrackerPage() {
           >
             <div className="flex items-start gap-2.5">
               <div className="min-w-0 flex-1">
-                <h2 id="tracker-draft-preview-title" className="text-sm font-semibold text-gray-900">{trackerDraftPreview.leadType === 'hotlist' ? 'Requested draft' : 'Submitted draft'}</h2>
+                <h2 id="tracker-draft-preview-title" className="text-[15px] font-semibold text-gray-900">{trackerDraftPreview.leadType === 'hotlist' ? 'Requested draft' : 'Submitted draft'}</h2>
                 {(trackerDraftPreview.jobTitle || trackerDraftPreview.company) && (
-                  <p className="mt-0.5 truncate text-xs text-gray-500">
+                  <p className="mt-0.5 truncate text-[13px] text-gray-500">
                     {trackerDraftPreview.jobTitle}{trackerDraftPreview.jobTitle && trackerDraftPreview.company ? ' · ' : ''}{trackerDraftPreview.company}
                   </p>
                 )}
@@ -1624,7 +1624,7 @@ export default function TrackerPage() {
                 value={trackerDraftPreview.subject}
                 readOnly
                 placeholder="Subject"
-                className="w-full rounded-md border border-gray-200 bg-gray-50 py-1.5 pl-3 pr-8 text-xs font-medium text-gray-900 outline-none"
+                className="w-full rounded-md border border-gray-200 bg-gray-50 py-1.5 pl-3 pr-8 text-[13px] font-medium text-gray-900 outline-none"
               />
               <button
                 type="button"
@@ -1640,7 +1640,7 @@ export default function TrackerPage() {
                 value={trackerDraftPreview.emailContent}
                 readOnly
                 rows={10}
-                className="w-full resize-none rounded-md border border-gray-200 bg-gray-50 py-2 pl-3 pr-8 text-xs leading-relaxed text-gray-900 outline-none"
+                className="w-full resize-none rounded-md border border-gray-200 bg-gray-50 py-2 pl-3 pr-8 text-[13px] leading-relaxed text-gray-900 outline-none"
               />
               <button
                 type="button"
@@ -1652,7 +1652,7 @@ export default function TrackerPage() {
               </button>
             </div>
             <div className="mt-2 flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5">
-              <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-700">{trackerDraftPreview.vendorEmail || 'No email on file'}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-700">{trackerDraftPreview.vendorEmail || 'No email on file'}</span>
               <button
                 type="button"
                 onClick={() => void copyText(trackerDraftPreview.vendorEmail, 'Email ID')}
@@ -1671,7 +1671,7 @@ export default function TrackerPage() {
                   'Email',
                 )}
                 disabled={!trackerDraftPreview.vendorEmail || !trackerDraftPreview.subject.trim() || !trackerDraftPreview.emailContent.trim()}
-                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Copy size={11} />
                 Copy All
@@ -1692,8 +1692,8 @@ export default function TrackerPage() {
                 <AlertTriangle size={20} className="text-amber-500" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-gray-900">Duplicate Submission Detected</h3>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <h3 className="text-[17px] font-bold text-gray-900">Duplicate Submission Detected</h3>
+                <p className="text-[15px] text-gray-500 mt-0.5">
                   <span className="font-semibold text-gray-700">{subForm.candidate_name}</span> has already been submitted to{' '}
                   <span className="font-semibold text-gray-700">
                     {subForm.submission_type === 'Vendor' ? subForm.vendor_name : subForm.client_name}
@@ -1704,7 +1704,7 @@ export default function TrackerPage() {
 
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-5 max-h-40 overflow-y-auto space-y-2">
               {duplicateWarning.existing.map(s => (
-                <div key={s.id} className="flex items-center justify-between text-xs">
+                <div key={s.id} className="flex items-center justify-between text-[13px]">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-gray-600 font-medium truncate">{s.submitted_by || 'Unknown'}</span>
                     <span className="text-gray-400">submitted on</span>
@@ -1714,18 +1714,18 @@ export default function TrackerPage() {
               ))}
             </div>
 
-            <p className="text-xs text-gray-500 mb-4">Are you sure you want to proceed with this submission?</p>
+            <p className="text-[13px] text-gray-500 mb-4">Are you sure you want to proceed with this submission?</p>
 
             <div className="flex justify-end gap-2.5">
               <button
                 onClick={() => setDuplicateWarning(null)}
-                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="px-4 py-2 text-[15px] text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => { setDuplicateWarning(null); saveSubmission(true); }}
-                className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors"
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-[15px] font-semibold rounded-lg transition-colors"
               >
                 Submit Anyway
               </button>
@@ -1738,13 +1738,13 @@ export default function TrackerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <h3 className="text-base font-bold text-gray-900 mb-1.5">
+            <h3 className="text-[17px] font-bold text-gray-900 mb-1.5">
               Delete {deleteTarget.type.charAt(0).toUpperCase() + deleteTarget.type.slice(1)}?
             </h3>
-            <p className="text-sm text-gray-500 mb-5">This cannot be undone.</p>
+            <p className="text-[15px] text-gray-500 mb-5">This cannot be undone.</p>
             <div className="flex justify-end gap-2.5">
-              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-              <button onClick={confirmDelete} className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold rounded-lg transition-colors">Delete</button>
+              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-[15px] text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+              <button onClick={confirmDelete} className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white text-[15px] font-semibold rounded-lg transition-colors">Delete</button>
             </div>
           </div>
         </div>

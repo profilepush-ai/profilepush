@@ -35,7 +35,7 @@ export default function LocationChipInput({
           {values.map((value) => (
             <span
               key={value}
-              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${isDark ? 'bg-blue-500/10 text-blue-300' : 'bg-blue-50 text-blue-700'}`}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${isDark ? 'bg-blue-500/10 text-blue-300' : 'bg-blue-50 text-blue-700'}`}
             >
               {value}
               <button type="button" onClick={() => remove(value)} className="opacity-60 hover:opacity-100" aria-label={`Remove ${value}`}>
@@ -61,7 +61,7 @@ export default function LocationChipInput({
         <button
           type="button"
           onClick={() => add(draft)}
-          className={`h-[30px] shrink-0 rounded-md border px-2 text-[10px] font-semibold transition-colors ${isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          className={`h-[30px] shrink-0 rounded-md border px-2 text-[11px] font-semibold transition-colors ${isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           Add
         </button>
