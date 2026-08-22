@@ -67,6 +67,7 @@ export default function MyPostsPage() {
   const [landingPasteText, setLandingPasteText] = useState('');
   const [showKindChooser, setShowKindChooser] = useState(false);
   const [chosenKind, setChosenKind] = useState<PostKind>('job');
+  const [showPasteModal, setShowPasteModal] = useState(false);
   const [seedPasteText, setSeedPasteText] = useState<string | undefined>(undefined);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => setToast({ message, type }), []);
@@ -252,14 +253,31 @@ export default function MyPostsPage() {
     setFormOpen(chosenKind);
     setShowKindChooser(false);
     setLandingPasteText('');
+    setShowPasteModal(false);
   }
 
   const pasteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   function handleAddPostClick() {
     setShowKindChooser(false);
-    pasteTextareaRef.current?.focus();
+    if (hasAnyPosts) {
+      setShowPasteModal(true);
+    } else {
+      pasteTextareaRef.current?.focus();
+    }
   }
+
+  function closePasteModal() {
+    setShowPasteModal(false);
+    setShowKindChooser(false);
+    setLandingPasteText('');
+  }
+
+  useEffect(() => {
+    if (!showPasteModal) return;
+    const id = window.setTimeout(() => pasteTextareaRef.current?.focus(), 0);
+    return () => window.clearTimeout(id);
+  }, [showPasteModal]);
 
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   useEffect(() => {
@@ -402,6 +420,66 @@ export default function MyPostsPage() {
     );
   }
 
+  const pasteBarInner = !showKindChooser ? (
+    <>
+      <textarea
+        ref={pasteTextareaRef}
+        value={landingPasteText}
+        onChange={(e) => setLandingPasteText(e.target.value)}
+        rows={8}
+        placeholder="Paste a job or hotlist post here — we'll auto-fill everything ✨"
+        className={`w-full resize-none rounded-2xl border px-5 py-4 text-center text-[14px] outline-none shadow-sm transition focus:ring-2 ${isDark ? 'border-white/10 bg-[#20242a] text-slate-100 placeholder:text-[#94A3B8] focus:ring-blue-500/30' : 'border-[#dfdad2] bg-white text-gray-900 placeholder:text-gray-400 focus:ring-blue-200'}`}
+      />
+      <button
+        type="button"
+        onClick={handleStartFromPaste}
+        disabled={!landingPasteText.trim()}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-6 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Sparkles size={15} />
+        Continue
+      </button>
+    </>
+  ) : (
+    <>
+      <p className="mb-2.5 text-[13px] font-semibold text-gray-900 dark:text-slate-100">Is this a Job post or a Hotlist/consultant post?</p>
+      <div className="flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => setChosenKind('job')}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[12px] font-semibold transition-colors ${chosenKind === 'job' ? 'border-blue-600 bg-blue-600 text-white' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}`}
+        >
+          <Briefcase size={12} />
+          Job
+        </button>
+        <button
+          type="button"
+          onClick={() => setChosenKind('hotlist')}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[12px] font-semibold transition-colors ${chosenKind === 'hotlist' ? 'border-blue-600 bg-blue-600 text-white' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}`}
+        >
+          <UserRound size={12} />
+          Hotlist
+        </button>
+      </div>
+      <div className="mt-3 flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => setShowKindChooser(false)}
+          className={`rounded-full px-4 py-1.5 text-[12px] font-semibold transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          onClick={handleContinueToForm}
+          className="rounded-full bg-blue-600 px-5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700"
+        >
+          Continue
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#e7e3de] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
       <AppNav />
@@ -432,67 +510,29 @@ export default function MyPostsPage() {
             </div>
           )}
 
-          <div className={`mx-auto w-full max-w-xl text-center ${!hasAnyPosts ? 'flex min-h-0 flex-1 flex-col items-center justify-center' : 'shrink-0 mb-3'}`}>
-            {!showKindChooser ? (
-              <>
-                <textarea
-                  ref={pasteTextareaRef}
-                  value={landingPasteText}
-                  onChange={(e) => setLandingPasteText(e.target.value)}
-                  rows={8}
-                  placeholder="Paste a job or hotlist post here — we'll auto-fill everything ✨"
-                  className={`w-full resize-none rounded-2xl border px-5 py-4 text-center text-[14px] outline-none shadow-sm transition focus:ring-2 ${isDark ? 'border-white/10 bg-[#20242a] text-slate-100 placeholder:text-[#94A3B8] focus:ring-blue-500/30' : 'border-[#dfdad2] bg-white text-gray-900 placeholder:text-gray-400 focus:ring-blue-200'}`}
-                />
-                <button
-                  type="button"
-                  onClick={handleStartFromPaste}
-                  disabled={!landingPasteText.trim()}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-6 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Sparkles size={15} />
-                  Continue
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="mb-2.5 text-[13px] font-semibold text-gray-900 dark:text-slate-100">Is this a Job post or a Hotlist/consultant post?</p>
-                <div className="flex items-center justify-center gap-2">
+          {!hasAnyPosts ? (
+            <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col items-center justify-center text-center">
+              {pasteBarInner}
+            </div>
+          ) : showPasteModal ? (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onClick={closePasteModal}>
+              <div
+                className={`w-full max-w-xl rounded-lg border p-4 text-center shadow-xl ${isDark ? 'border-white/10 bg-[#1B1D21]' : 'border-gray-200 bg-white'}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-1 flex items-center justify-end">
                   <button
                     type="button"
-                    onClick={() => setChosenKind('job')}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[12px] font-semibold transition-colors ${chosenKind === 'job' ? 'border-blue-600 bg-blue-600 text-white' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}`}
+                    onClick={closePasteModal}
+                    className={`rounded-full p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}`}
                   >
-                    <Briefcase size={12} />
-                    Job
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setChosenKind('hotlist')}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-[12px] font-semibold transition-colors ${chosenKind === 'hotlist' ? 'border-blue-600 bg-blue-600 text-white' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}`}
-                  >
-                    <UserRound size={12} />
-                    Hotlist
+                    <X size={16} />
                   </button>
                 </div>
-                <div className="mt-3 flex items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowKindChooser(false)}
-                    className={`rounded-full px-4 py-1.5 text-[12px] font-semibold transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleContinueToForm}
-                    className="rounded-full bg-blue-600 px-5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700"
-                  >
-                    Continue
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+                {pasteBarInner}
+              </div>
+            </div>
+          ) : null}
 
           <div className={`min-h-0 overflow-y-auto ${!hasAnyPosts && !loading ? 'shrink-0' : 'flex-1'}`}>
             {loading ? (
