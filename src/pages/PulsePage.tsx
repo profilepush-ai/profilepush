@@ -1994,7 +1994,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [showOutOfCreditsModal, setShowOutOfCreditsModal] = useState(false);
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
-  const [feedTimeBasis, setFeedTimeBasis] = useState<FeedTimeBasis>('posted');
+  const [feedTimeBasis] = useState<FeedTimeBasis>('posted');
   const [layoutMode, setLayoutMode] = useState<PulseLayoutMode>(getInitialPulseLayoutMode);
   const isTableLayout = layoutMode === 'table' && !isMobileViewport;
   const isSwipeLayout = SWIPE_LAYOUT_ENABLED && layoutMode === 'swipe';
@@ -5389,21 +5389,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     </div>
                   )}
 
-                  {!isMobileViewport && canSelectFeedTimeBasis && (
-                    <div className="flex shrink-0 items-center rounded-md border border-gray-200 bg-gray-50 p-0.5" aria-label="Feed time basis">
-                      {(['posted', 'created'] as FeedTimeBasis[]).map((basis) => (
-                        <button
-                          key={basis}
-                          type="button"
-                          onClick={() => setFeedTimeBasis(basis)}
-                          className={`rounded px-2 py-1 text-[11px] font-semibold capitalize transition ${feedTimeBasis === basis ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                          {basis}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
                   <div ref={rangeMenuRef} className="relative shrink-0">
                     <button
                       onClick={() => {
@@ -5849,7 +5834,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 <div
                   className="sticky top-0 z-40 shrink-0 overflow-hidden bg-[#e7e3de] px-1.5 transition-[max-height,opacity,transform] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
                   style={{
-                    maxHeight: isMobileTopCollapsed ? '0px' : (canSelectFeedTimeBasis ? '72px' : '40px'),
+                    maxHeight: isMobileTopCollapsed ? '0px' : '40px',
                     opacity: isMobileTopCollapsed ? 0 : 1,
                     transform: isMobileTopCollapsed ? 'translateY(-8px)' : 'translateY(0)',
                     pointerEvents: isMobileTopCollapsed ? 'none' : 'auto',
@@ -5873,22 +5858,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       );
                     })}
                   </div>
-                  {canSelectFeedTimeBasis && (
-                    <div className="mt-1 flex justify-end">
-                      <div className="flex items-center rounded-md border border-gray-200 bg-gray-50 p-0.5" aria-label="Feed time basis">
-                        {(['posted', 'created'] as FeedTimeBasis[]).map((basis) => (
-                          <button
-                            key={basis}
-                            type="button"
-                            onClick={() => setFeedTimeBasis(basis)}
-                            className={`rounded px-2 py-0.5 text-[10px] font-semibold capitalize transition ${feedTimeBasis === basis ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500'}`}
-                          >
-                            {basis}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
