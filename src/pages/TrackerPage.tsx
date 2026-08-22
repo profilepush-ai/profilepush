@@ -1136,7 +1136,7 @@ export default function TrackerPage() {
   }
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden overscroll-none pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden overscroll-none pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       {/* ── Global toolbar ── */}
