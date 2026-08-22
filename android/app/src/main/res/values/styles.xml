@@ -13,10 +13,24 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Forced light regardless of system dark mode: this is only the
+             native background visible for an instant before the WebView
+             paints, and the app's own light/dark theme is a separate,
+             in-app toggle — DayNight's automatic dark default here would
+             show as an unbranded black flash unrelated to that toggle. -->
+        <item name="android:windowBackground">@android:color/white</item>
     </style>
 
-
+    <!-- android:background covers pre-API-31 devices (no native
+         SplashScreen support); windowSplashScreenBackground/Icon and
+         postSplashScreenTheme are what API 31+ actually reads — without
+         them Theme.SplashScreen's own (dark) default shows instead of
+         our branding, both during the system splash and in the gap
+         before the WebView paints. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>
