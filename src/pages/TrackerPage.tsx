@@ -1109,13 +1109,13 @@ export default function TrackerPage() {
   }
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden overscroll-none pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="h-[100dvh] flex flex-col bg-[#e7e3de] overflow-hidden overscroll-none pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       {/* ── Global toolbar ── */}
       <div className="sticky top-0 z-20 border-b border-gray-200 bg-white px-2 py-2 flex items-center gap-2">
         {/* Search */}
-        <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+        <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5">
           <Search size={11} className="text-gray-400" />
           <input
             type="text"

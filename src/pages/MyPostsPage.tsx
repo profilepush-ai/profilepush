@@ -287,7 +287,7 @@ export default function MyPostsPage() {
   );
 
   const searchBoxEl = (
-    <div className="relative flex min-w-[160px] flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
+    <div className="relative flex min-w-[160px] flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
       <Search size={11} className="text-gray-400" />
       <input
         type="text"
@@ -403,7 +403,7 @@ export default function MyPostsPage() {
   }
 
   return (
-    <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
+    <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#e7e3de] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
       <AppNav />
 
       <main className="flex-1 min-h-0 overflow-hidden">

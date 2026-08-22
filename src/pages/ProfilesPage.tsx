@@ -3139,7 +3139,7 @@ export default function ProfilesPage() {
   }, [breakdownChargedLeadIds, consumeCredits, persistLeadAction, showToast]);
 
   return (
-    <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#e7e3de] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       <main className="flex-1 min-h-0 overflow-hidden">
@@ -3296,7 +3296,7 @@ export default function ProfilesPage() {
               {/* Mobile search/filter row */}
               <div className={isMobileViewport ? 'sticky top-0 z-30 bg-white px-0 pt-1.5 pb-1' : 'px-2 py-2'}>
                 <div className="flex items-center gap-2">
-                  <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+                  <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5">
                     <Search size={11} className="text-gray-400" />
                     <input
                       type="text"
