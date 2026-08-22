@@ -20,22 +20,6 @@ const RANGE_OPTIONS: Array<{ id: string; label: string; hours: number | null }> 
   { id: '30d', label: 'Last 30 days', hours: 720 },
 ];
 
-const CARD_PALETTE = [
-  { border: 'border-blue-100', titleColor: '#38BDF8' },
-  { border: 'border-violet-100', titleColor: '#FACC15' },
-  { border: 'border-emerald-100', titleColor: '#34D399' },
-  { border: 'border-amber-100', titleColor: '#FB7185' },
-  { border: 'border-rose-100', titleColor: '#C084FC' },
-  { border: 'border-cyan-100', titleColor: '#FB923C' },
-];
-
-function hexToRgbChannels(hex: string): string {
-  const cleaned = hex.replace('#', '').trim();
-  const value = Number.parseInt(cleaned, 16);
-  if (Number.isNaN(value)) return '56 189 248';
-  return `${(value >> 16) & 255} ${(value >> 8) & 255} ${value & 255}`;
-}
-
 function formatAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diffMs / 60000);
@@ -523,11 +507,8 @@ export default function MyPostsPage() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-3 pb-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredPosts.map((post, idx) => {
-              const palette = CARD_PALETTE[idx % CARD_PALETTE.length];
-              const accentRgb = hexToRgbChannels(palette.titleColor);
-              const cardBorderColor = `rgb(${accentRgb} / 0.45)`;
+              <div className="grid grid-cols-1 gap-2 bg-gray-100 pb-4 dark:bg-[#141619] sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
+            {filteredPosts.map((post) => {
               const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
               const metrics = metricsByPostId[post.id] ?? { previewCount: 0, chatCount: 0 };
               const displayTitle = post.kind === 'hotlist' && post.candidateName
@@ -538,8 +519,7 @@ export default function MyPostsPage() {
               return (
                 <div
                   key={post.id}
-                  className={`relative flex min-w-0 flex-col overflow-hidden rounded-lg border bg-white dark:bg-[#1E2126] ${palette.border}`}
-                  style={{ borderColor: cardBorderColor }}
+                  className="relative flex min-w-0 flex-col bg-white dark:bg-[#1E2126] sm:overflow-hidden sm:rounded-lg sm:border sm:border-gray-200 sm:dark:border-white/10"
                 >
                   <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
                     <div className="flex items-start justify-between gap-2">
@@ -550,14 +530,14 @@ export default function MyPostsPage() {
                           {post.kind === 'job' && post.company && (
                             <span className="inline-flex items-center gap-1 whitespace-nowrap">
                               <span>•</span>
-                              <Building2 size={10} className="shrink-0" style={{ color: palette.titleColor }} />
+                              <Building2 size={10} className="shrink-0 text-gray-400" />
                               <span>{post.company}</span>
                             </span>
                           )}
                           {locationText && (
                             <span className="inline-flex items-center gap-1 whitespace-nowrap">
                               <span>•</span>
-                              <MapPin size={10} className="shrink-0" style={{ color: palette.titleColor }} />
+                              <MapPin size={10} className="shrink-0 text-gray-400" />
                               <span className="truncate">{locationText}</span>
                             </span>
                           )}
@@ -594,25 +574,22 @@ export default function MyPostsPage() {
                     )}
                   </div>
 
-                  <div className="mt-auto flex items-stretch border-t" style={{ borderColor: cardBorderColor }}>
+                  <div className="mt-auto flex items-center justify-around border-t border-gray-200 dark:border-white/10">
                     <button
                       type="button"
                       onClick={() => setPreviewPost(post)}
                       title="Preview post"
-                      className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5"
+                      className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5"
                     >
-                      <Eye size={13} strokeWidth={2} />
-                      Preview
+                      <Eye size={17} strokeWidth={1.75} />
                     </button>
-                    <div className="w-px" style={{ backgroundColor: cardBorderColor }} />
                     <button
                       type="button"
                       onClick={() => void handleToggleStatus(post)}
                       title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'}
-                      className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold transition-colors ${post.postStatus === 'open' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5'}`}
+                      className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5"
                     >
-                      {post.postStatus === 'open' ? <XCircle size={13} strokeWidth={2} /> : <RotateCcw size={13} strokeWidth={2} />}
-                      {post.postStatus === 'open' ? 'Close' : 'Reopen'}
+                      {post.postStatus === 'open' ? <XCircle size={17} strokeWidth={1.75} /> : <RotateCcw size={17} strokeWidth={1.75} />}
                     </button>
                   </div>
                 </div>

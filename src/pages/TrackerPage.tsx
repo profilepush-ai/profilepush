@@ -197,26 +197,6 @@ function fmtIso(iso: string) {
   return iso.slice(0, 10).split('-').map((p, i) => i === 0 ? p : p).join('-').replace(/(\d{4})-(\d{2})-(\d{2})/, '$2/$3/$1');
 }
 
-function hexToRgbChannels(hex: string): string {
-  const cleaned = hex.replace('#', '').trim();
-  const normalized = cleaned.length === 3
-    ? cleaned.split('').map((char) => `${char}${char}`).join('')
-    : cleaned;
-  const value = Number.parseInt(normalized, 16);
-  if (Number.isNaN(value)) return '56 189 248';
-  return `${(value >> 16) & 255} ${(value >> 8) & 255} ${value & 255}`;
-}
-
-// Same accent palette used for job/hotlist cards on /jobs and /hotlist.
-const CARD_PALETTE = [
-  { border: 'border-blue-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#38BDF8' },
-  { border: 'border-violet-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#FACC15' },
-  { border: 'border-emerald-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#34D399' },
-  { border: 'border-amber-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#FB7185' },
-  { border: 'border-rose-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#C084FC' },
-  { border: 'border-cyan-100', fill: 'bg-white dark:bg-[#1E2126]', titleColor: '#FB923C' },
-];
-
 function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   const escape = (v: string) => `"${(v ?? '').replace(/"/g, '""')}"`;
   const csv = [headers.map(escape), ...rows.map(r => r.map(escape))].map(r => r.join(',')).join('\n');
@@ -938,20 +918,16 @@ export default function TrackerPage() {
   function renderJobsCards() {
     const linkClass = 'text-blue-600 dark:text-cyan-400 hover:underline';
     return (
-      <div className="grid grid-cols-1 gap-1.5 p-1.5 lg:grid-cols-2 lg:gap-3 lg:p-3">
-        {vendorHistory.map((lead, index) => {
+      <div className="grid grid-cols-1 gap-2 bg-gray-100 p-1.5 dark:bg-[#141619] lg:grid-cols-2 lg:gap-3 lg:p-3">
+        {vendorHistory.map((lead) => {
           const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
-          const palette = CARD_PALETTE[index % CARD_PALETTE.length];
-          const accentRgb = hexToRgbChannels(palette.titleColor);
-          const cardBorderColor = `rgb(${accentRgb} / 0.45)`;
 
           const statusLabel = lead.verifiedAt ? 'Verified' : (lead.type === 'hotlist' ? 'Requested' : 'Submitted');
 
           return (
             <div
               key={lead.id}
-              className={`flex flex-col overflow-hidden rounded-lg border ${palette.fill}`}
-              style={{ borderColor: cardBorderColor }}
+              className="flex flex-col bg-white dark:bg-[#1E2126] lg:overflow-hidden lg:rounded-lg lg:border lg:border-gray-200 lg:dark:border-white/10"
             >
               <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
                 <p className="text-[13px] font-semibold leading-snug text-[#2563EB] dark:text-white">{lead.title}</p>
@@ -962,7 +938,7 @@ export default function TrackerPage() {
                   {lead.company && (
                     <span className="inline-flex items-center gap-1 whitespace-nowrap">
                       <span>•</span>
-                      <Building2 size={10} className="shrink-0" style={{ color: palette.titleColor }} />
+                      <Building2 size={10} className="shrink-0 text-gray-400" />
                       <span className="text-[#94A3B8]">{lead.company}</span>
                     </span>
                   )}
@@ -1008,27 +984,24 @@ export default function TrackerPage() {
                 })()}
               </div>
 
-              <div className="mt-auto flex items-stretch border-t" style={{ borderColor: cardBorderColor }}>
+              <div className="mt-auto flex items-center justify-around border-t border-gray-200 dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => void handleTrackerPreviewPost(lead)}
                   disabled={loadingPreviewLeadId === lead.id}
                   title="Preview original post"
-                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
+                  className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
                 >
-                  {loadingPreviewLeadId === lead.id ? '...' : <Eye size={13} strokeWidth={2} />}
-                  Preview
+                  {loadingPreviewLeadId === lead.id ? <LogoSpinner size={14} /> : <Eye size={17} strokeWidth={1.75} />}
                 </button>
-                <div className="w-px" style={{ backgroundColor: cardBorderColor }} />
                 <button
                   type="button"
                   onClick={() => void handleTrackerViewDraft(lead)}
                   disabled={loadingDraftLeadId === lead.id}
-                  title={`View the ${statusLabel.toLowerCase()} draft`}
-                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400"
+                  title={`${statusLabel} — view the ${statusLabel.toLowerCase()} draft`}
+                  className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
                 >
-                  {loadingDraftLeadId === lead.id ? '...' : (lead.verifiedAt ? <BadgeCheck size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2} />)}
-                  {statusLabel}
+                  {loadingDraftLeadId === lead.id ? <LogoSpinner size={14} /> : (lead.verifiedAt ? <BadgeCheck size={17} strokeWidth={1.75} /> : <Check size={17} strokeWidth={1.75} />)}
                 </button>
               </div>
             </div>

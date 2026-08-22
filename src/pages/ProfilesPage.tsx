@@ -1361,8 +1361,6 @@ export default function ProfilesPage() {
       return {
         rounded: null,
         isRecommended: false,
-        cardToneClass: 'border-amber-200 bg-amber-50/55',
-        cardBorderColor: '#fde68a',
         badgeClass: 'text-gray-700 bg-white border border-gray-200',
       };
     }
@@ -1370,8 +1368,6 @@ export default function ProfilesPage() {
       return {
         rounded,
         isRecommended: false,
-        cardToneClass: 'border-red-200 bg-red-50/70',
-        cardBorderColor: '#fecaca',
         badgeClass: 'text-red-700 bg-red-100 border border-red-200',
       };
     }
@@ -1379,8 +1375,6 @@ export default function ProfilesPage() {
       return {
         rounded,
         isRecommended: false,
-        cardToneClass: 'border-yellow-200 bg-yellow-50/80',
-        cardBorderColor: '#fef08a',
         badgeClass: 'text-amber-800 bg-yellow-100 border border-yellow-200',
       };
     }
@@ -1388,16 +1382,12 @@ export default function ProfilesPage() {
       return {
         rounded,
         isRecommended: false,
-        cardToneClass: 'border-emerald-200 bg-emerald-50/75',
-        cardBorderColor: '#a7f3d0',
         badgeClass: 'text-emerald-700 bg-emerald-100 border border-emerald-200',
       };
     }
     return {
       rounded,
       isRecommended: true,
-      cardToneClass: 'border-blue-200 bg-gradient-to-br from-emerald-50 via-blue-50 to-cyan-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]',
-      cardBorderColor: '#bfdbfe',
       badgeClass: 'text-blue-700 bg-white/90 border border-blue-200 shadow-sm',
     };
   }
@@ -1725,7 +1715,7 @@ export default function ProfilesPage() {
     })();
 
     return (
-      <div key={lead.id} className={`flex flex-col overflow-hidden rounded-lg border ${leadScoreVisual.cardToneClass}`}>
+      <div key={lead.id} className="flex flex-col bg-white dark:bg-[#1E2126]">
         <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
           <div className="flex items-start justify-between gap-1.5">
             <div className="min-w-0 flex-1">
@@ -1774,7 +1764,7 @@ export default function ProfilesPage() {
             </div>
           )}
         </div>
-        <div className="mt-auto flex items-stretch border-t" style={{ borderColor: leadScoreVisual.cardBorderColor }}>
+        <div className="mt-auto flex items-center justify-around border-t border-gray-200 dark:border-white/10">
           {hasDetailsToggle && (
             <button
               type="button"
@@ -1789,15 +1779,16 @@ export default function ProfilesPage() {
                   return next;
                 });
               }}
-              className="inline-flex h-9 flex-[3] items-center justify-center text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+              title={isInlineBreakdownExpanded ? 'Hide Details' : 'Details'}
+              className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50"
             >
-              {isInlineBreakdownExpanded ? 'Hide Details' : 'Details'}
+              {isInlineBreakdownExpanded ? <ChevronUp size={17} strokeWidth={1.75} /> : <ChevronDown size={17} strokeWidth={1.75} />}
             </button>
           )}
-          {hasDetailsToggle && <div className="w-px" style={{ backgroundColor: leadScoreVisual.cardBorderColor }} />}
           <button
             onClick={() => void handleOpenBreakdown(lead)}
             disabled={processingBreakdownLeadId === lead.id}
+            title="Breakdown"
             className={`hidden items-center gap-1 px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-60 ${breakdownChargedLeadIds.has(lead.id) ? 'text-gray-600' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             {breakdownChargedLeadIds.has(lead.id) && <Check size={9} className="text-emerald-600" />}
@@ -1806,17 +1797,20 @@ export default function ProfilesPage() {
           {revealedLeadIds.has(lead.id) ? (
             <button
               onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(lead.posterEmail || ''); }}
-              className={`${hasDetailsToggle ? 'flex-[7]' : 'flex-1'} inline-flex h-9 items-center justify-center gap-1 text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-50`}
+              title="Copy email"
+              className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50"
             >
-              Email
+              <Mail size={17} strokeWidth={1.75} />
             </button>
           ) : (
             <button
               onClick={() => void handleRevealContact(lead)}
               disabled={processingLeadId === lead.id}
-              className={`${hasDetailsToggle ? 'flex-[7]' : 'flex-1'} inline-flex h-9 items-center justify-center gap-1 bg-blue-600 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60`}
+              title={`Reveal ${maskedEmailHint}`}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:opacity-60"
             >
-              {processingLeadId === lead.id ? '...' : `Reveal ${maskedEmailHint}`}
+              {processingLeadId === lead.id ? <LogoSpinner size={14} /> : <Eye size={17} strokeWidth={1.75} />}
+              <span className="truncate">{maskedEmailHint}</span>
             </button>
           )}
         </div>
@@ -3545,7 +3539,7 @@ export default function ProfilesPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-1.5 px-1.5 pt-2 pb-4">
+                          <div className="space-y-2 bg-gray-100 px-1.5 pt-2 pb-4 dark:bg-[#141619]">
                             {renderLeadCards(visibleFeed)}
                           </div>
                         )}
@@ -3558,7 +3552,7 @@ export default function ProfilesPage() {
                             {recentVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">No recent jobs.</div>
                             ) : (
-                              <div className="space-y-1.5">
+                              <div className="space-y-2 bg-gray-100 p-1 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopRecentFeed)}
                               </div>
                             )}
@@ -3571,7 +3565,7 @@ export default function ProfilesPage() {
                             {revealedVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">No revealed jobs yet.</div>
                             ) : (
-                              <div className="space-y-1.5">
+                              <div className="space-y-2 bg-gray-100 p-1 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopRevealedFeed)}
                               </div>
                             )}

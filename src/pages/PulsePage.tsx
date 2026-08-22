@@ -699,16 +699,6 @@ function parseExperienceYears(value: string) {
   return numbers[0];
 }
 
-function hexToRgbChannels(hex: string): string {
-  const cleaned = hex.replace('#', '').trim();
-  const normalized = cleaned.length === 3
-    ? cleaned.split('').map((char) => `${char}${char}`).join('')
-    : cleaned;
-  const value = Number.parseInt(normalized, 16);
-  if (Number.isNaN(value)) return '56 189 248';
-  return `${(value >> 16) & 255} ${(value >> 8) & 255} ${value & 255}`;
-}
-
 const CARD_PALETTE = [
   {
     border: 'border-blue-100',
@@ -961,6 +951,9 @@ interface LeadCardProps {
   onExpandSkills: (leadId: string) => void;
   onCollapseSkills: (leadId: string) => void;
   onToggleField: (cellKey: string) => void;
+  /** Single-column (mobile) feed: flush full-width block with a bottom
+   *  divider instead of a boxed card, matching a LinkedIn-style feed. */
+  flat?: boolean;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -974,12 +967,10 @@ const LeadCard = memo(function LeadCard({
   isExpFieldExpanded, isWorkTypeFieldExpanded, isEmpTypeFieldExpanded, isRateFieldExpanded, isVisaFieldExpanded, isLocationFieldExpanded,
   isLoadingPreview, isProcessingChat, isProcessingAskAI,
   onPreview, onOpenChat, onAskAI, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
+  flat = false,
 }: LeadCardProps) {
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
-  const accentColor = cardPalette.titleColor;
-  const accentRgb = hexToRgbChannels(accentColor);
-  const cardBorderColor = `rgb(${accentRgb} / 0.45)`;
   const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
   const isAskPending = globalAskedJobState === 'asked';
   const isVerified = globalAskedJobState === 'verified';
@@ -997,54 +988,49 @@ const LeadCard = memo(function LeadCard({
   const linkClassName = isDark ? 'text-blue-300' : 'text-blue-600';
 
   const actionButtonsBar = (
-    <div className="mt-auto flex items-stretch border-t" style={{ borderColor: cardBorderColor }}>
+    <div className="mt-auto flex items-center justify-around border-t border-gray-200 dark:border-white/10">
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
         disabled={isLoadingPreview}
         title="Preview original post"
-        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
+        className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
       >
-        {isLoadingPreview ? '...' : <Eye size={13} strokeWidth={2} />}
-        Preview
+        {isLoadingPreview ? <LogoSpinner size={14} /> : <Eye size={17} strokeWidth={1.75} />}
       </button>
-      <div className="w-px" style={{ backgroundColor: cardBorderColor }} />
       {lead.postSource === 'user_post' ? (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onOpenChat(lead); }}
           disabled={isProcessingChat}
           title="Chat about this post"
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-600 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
         >
-          {isProcessingChat ? '...' : <MessageSquare size={13} strokeWidth={2} />}
-          Chat
+          {isProcessingChat ? <LogoSpinner size={14} /> : <MessageSquare size={17} strokeWidth={1.75} />}
         </button>
       ) : isAskPending || isVerified ? (
         <span
           title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-[12px] font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"
+          className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 dark:text-gray-400"
         >
-          {isVerified ? <BadgeCheck size={13} strokeWidth={2} /> : <Check size={13} strokeWidth={2} />}
-          {isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
+          {isVerified ? <BadgeCheck size={17} strokeWidth={1.75} /> : <Check size={17} strokeWidth={1.75} />}
         </span>
       ) : (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
-          title={!lead.posterEmail ? 'No email' : 'Send Email'}
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
+          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'Request' : 'Submit')}
+          className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-white/5"
         >
-          {isProcessingAskAI ? '...' : isHotlistFeed ? <FileText size={13} strokeWidth={2} /> : <Send size={13} strokeWidth={2} />}
-          {isHotlistFeed ? 'Request' : 'Submit'}
+          {isProcessingAskAI ? <LogoSpinner size={14} /> : isHotlistFeed ? <FileText size={17} strokeWidth={1.75} /> : <Send size={17} strokeWidth={1.75} />}
         </button>
       )}
     </div>
   );
 
   return (
-    <div className={`relative flex h-full min-w-0 flex-col overflow-hidden rounded-lg border ${cardFillClass}`} style={{ borderColor: cardBorderColor }}>
+    <div className={`relative flex h-full min-w-0 flex-col ${flat ? '' : 'overflow-hidden rounded-lg border border-gray-200 dark:border-white/10'} ${cardFillClass}`}>
       <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
       <div>
         <div className="min-w-0">
@@ -1056,7 +1042,7 @@ const LeadCard = memo(function LeadCard({
             {lead.company && (
               <span className="inline-flex items-center gap-1 whitespace-nowrap">
                 <span>•</span>
-                <Building2 size={10} className="shrink-0" style={{ color: accentColor }} />
+                <Building2 size={10} className="shrink-0 text-gray-400" />
                 <span className="text-[#94A3B8]">{lead.company}</span>
               </span>
             )}
@@ -3144,7 +3130,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const col = idx % safeColumns;
     // Spread palette by row/column so adjacent cards do not share a tone.
     const paletteIndex = (row + (col * 2)) % CARD_PALETTE.length;
-    return <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex)} />;
+    return <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex)} flat={safeColumns === 1} />;
   });
 
   const parseLeadingNumber = (value: string): number => {
@@ -5944,7 +5930,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-1.5 px-1.5 pt-1 pb-4">
+                          <div className="space-y-2 bg-gray-100 px-1.5 pt-1 pb-4 dark:bg-[#141619]">
                             {renderLeadCards(visibleFeed)}
                           </div>
                         )}
