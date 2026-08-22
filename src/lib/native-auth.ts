@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { supabase } from './supabase';
+import { ensureAccountForUser } from './account-provisioning';
 
 // Google's own Identity Services SDK blocks embedded WebViews by user-agent
 // (the standard "disallowed_useragent" error), so on native the app hands
@@ -32,7 +33,13 @@ export function registerNativeAuthDeepLinkListener(): void {
       const refreshToken = params.get('refresh_token');
       if (!accessToken || !refreshToken) return;
 
-      await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+      const { data } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+      // The web Google flows (SignUp/SignIn's Google Identity Services
+      // button) create the account inline right after auth succeeds — this
+      // deep-link callback is the native equivalent of that same moment and
+      // was missing it, leaving native Google sign-ups authenticated but
+      // account-less.
+      if (data.user) await ensureAccountForUser(data.user);
     })();
   });
 }
