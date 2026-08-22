@@ -10,7 +10,7 @@
   }
 
   body {
-    background: #f8fafc;
+    background: #e7e3de;
     color: #0f172a;
   }
 
@@ -247,13 +247,13 @@
 
   .slim-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: #cbd5e1 transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.7) transparent;
     scrollbar-gutter: stable;
   }
 
   .slim-scrollbar::-webkit-scrollbar {
-    width: 1px;
-    height: 1px;
+    width: 4px;
+    height: 4px;
   }
 
   .slim-scrollbar::-webkit-scrollbar-track {
@@ -261,12 +261,12 @@
   }
 
   .slim-scrollbar::-webkit-scrollbar-thumb {
-    background-color: #64748b;
+    background-color: rgba(255, 255, 255, 0.7);
     border-radius: 9999px;
   }
 
   .slim-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: #94a3b8;
+    background-color: #ffffff;
   }
 }
 
