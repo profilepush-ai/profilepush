@@ -3145,7 +3145,7 @@ export default function ProfilesPage() {
   }, [breakdownChargedLeadIds, consumeCredits, persistLeadAction, showToast]);
 
   return (
-    <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="h-[100dvh] overflow-hidden overscroll-none bg-white text-gray-900 flex flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       <main className="flex-1 min-h-0 overflow-hidden">

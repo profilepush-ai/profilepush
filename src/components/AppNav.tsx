@@ -441,7 +441,7 @@ export default function AppNav() {
 
       {/* Mobile Bottom Navigation */}
       {user && (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[calc(env(safe-area-inset-bottom)+10px)] sm:hidden">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[calc(env(safe-area-inset-bottom)+20px)] sm:hidden">
           <Link
             to="/jobs"
             className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${location.pathname === '/jobs' ? 'text-blue-600' : 'text-gray-500'}`}

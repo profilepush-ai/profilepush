@@ -435,7 +435,7 @@ export default function AccountSettings() {
   // Render
   // ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-[100dvh] bg-gray-50 flex flex-col overscroll-none pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="min-h-[100dvh] bg-gray-50 flex flex-col overscroll-none pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       <div className="flex-1 max-w-5xl mx-auto w-full min-w-0 px-3 sm:px-4 py-4 sm:py-8 flex flex-col sm:flex-row gap-4 sm:gap-6 items-start">

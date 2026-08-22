@@ -27,7 +27,7 @@ export default function AlertsPage() {
   }
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-white overscroll-none pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="h-[100dvh] flex flex-col bg-white overscroll-none pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       <main className="flex-1 flex items-center justify-center px-6">
