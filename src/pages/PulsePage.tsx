@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -891,22 +891,37 @@ function ClampedSkills({ skillsValue, itemCap, linkClassName, isExpanded, onExpa
   onCollapse: () => void;
 }) {
   const skillsList = skillsValue === '-' ? [] : skillsValue.split(',').map((skill) => skill.trim()).filter(Boolean);
-  if (skillsList.length === 0) return <PersonaMissingTag />;
   const collapsedSkills = skillsList.slice(0, itemCap);
   const hiddenCount = skillsList.length - collapsedSkills.length;
-  // hiddenCount alone misses cases where the collapsed text is still long
-  // enough to visually overflow the 2-line clamp even though every item
-  // technically fits within itemCap — CSS then truncates it with its own
-  // "…" and there'd be no way to expand it. Treat that as overflow too.
-  const isLikelyOverflow = hiddenCount > 0 || collapsedSkills.join(', ').length > 70;
   const visibleSkills = isExpanded ? skillsList : collapsedSkills;
+  const visibleText = visibleSkills.join(', ');
+
+  // Whether the 2-line clamp is actually cutting text off. A fixed
+  // character-count guess doesn't track the card's real width (e.g. it
+  // over-triggers once cards get wider, like on a 2-column desktop grid vs
+  // 4-column), so measure the rendered span directly instead.
+  const textRef = useRef<HTMLSpanElement | null>(null);
+  const [isTextClamped, setIsTextClamped] = useState(false);
+  useLayoutEffect(() => {
+    if (isExpanded) return;
+    const el = textRef.current;
+    if (!el) return;
+    const measure = () => setIsTextClamped(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isExpanded, visibleText]);
+
+  if (skillsList.length === 0) return <PersonaMissingTag />;
+  const isLikelyOverflow = hiddenCount > 0 || isTextClamped;
   return (
     <>
       {/* Capped + scrollable when expanded so revealing a long skills list on
           one card can never grow that card's height — with the sibling
           grid row set to stretch-to-tallest, an uncapped reveal would
           visually inflate every other card in the same row too. */}
-      <span className={isExpanded ? 'block max-h-14 overflow-y-auto' : 'line-clamp-2'}>{visibleSkills.join(', ')}</span>
+      <span ref={textRef} className={isExpanded ? 'block max-h-14 overflow-y-auto' : 'line-clamp-2'}>{visibleText}</span>
       {!isExpanded && isLikelyOverflow && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onExpand(); }} className={`ml-1 whitespace-nowrap font-semibold ${linkClassName}`}>
           {hiddenCount > 0 ? `+${hiddenCount} more` : 'more'}
