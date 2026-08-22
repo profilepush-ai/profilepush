@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import OneSignal from 'onesignal-cordova-plugin';
 
 const ONESIGNAL_APP_ID = 'fbf333e8-0931-4545-ac03-c532cc07d225';
-const DIALOG_SHOWN_KEY = 'onesignal_integration_dialog_shown';
+const PERMISSION_REQUESTED_KEY = 'onesignal_permission_requested';
 
 let oneSignalInitialized = false;
 let pendingExternalId: string | null = null;
@@ -25,23 +25,20 @@ function isRealSubscriptionId(subscriptionId: string | null | undefined): boolea
   return !!subscriptionId && !subscriptionId.startsWith('local-');
 }
 
-function hasShownIntegrationDialog(): boolean {
-  return window.localStorage.getItem(DIALOG_SHOWN_KEY) === '1';
+function hasRequestedPermission(): boolean {
+  return window.localStorage.getItem(PERMISSION_REQUESTED_KEY) === '1';
 }
 
-function markIntegrationDialogShown(): void {
-  window.localStorage.setItem(DIALOG_SHOWN_KEY, '1');
+function markPermissionRequested(): void {
+  window.localStorage.setItem(PERMISSION_REQUESTED_KEY, '1');
 }
 
-async function showIntegrationCompleteDialogAndRequestPermission(): Promise<void> {
-  if (hasShownIntegrationDialog()) {
+async function requestPushPermissionOnce(): Promise<void> {
+  if (hasRequestedPermission()) {
     return;
   }
 
-  markIntegrationDialogShown();
-  window.alert(
-    'Your OneSignal SDK integration is complete!\n\nYou can now send Push Notifications & In-App Messages through OneSignal. Tap below to enable push notifications.'
-  );
+  markPermissionRequested();
 
   try {
     await OneSignal.Notifications.requestPermission(true);
@@ -55,7 +52,7 @@ async function evaluateSubscriptionId(subscriptionId: string | null | undefined)
     return;
   }
 
-  await showIntegrationCompleteDialogAndRequestPermission();
+  await requestPushPermissionOnce();
 }
 
 function registerPushSubscriptionObserver(): void {
