@@ -267,7 +267,7 @@ export default function AppNav() {
 
   return (
     <>
-    <header className="min-h-10 bg-white border-b border-gray-200 flex items-center px-2 sm:px-4 gap-2 sm:gap-6 shrink-0 z-50 pt-[env(safe-area-inset-top)]">
+    <header className="min-h-12 bg-white border-b border-gray-200 flex items-center px-3 sm:px-4 gap-3 sm:gap-6 shrink-0 z-50 pt-[env(safe-area-inset-top)]">
       {user ? (
         <span className="flex items-center shrink-0">
           <Logo size="sm" />
@@ -280,21 +280,21 @@ export default function AppNav() {
 
       {/* Mobile: credits chip + account avatar */}
       {user && (
-        <span className="sm:hidden ml-auto flex items-center gap-2">
+        <span className="sm:hidden ml-auto flex items-center gap-3">
           <button
             type="button"
             onClick={toggleTheme}
             aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-50"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-50"
           >
-            {isDark ? <SunMedium size={12} /> : <MoonStar size={12} />}
+            {isDark ? <SunMedium size={14} /> : <MoonStar size={14} />}
           </button>
           {shouldShowCreditsUi() && account != null && <CreditsChip balance={account.credits_balance} />}
           <NotificationBell userId={user.id} />
           <Link
             to="/account"
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white"
             title="Account"
           >
             {initials}
