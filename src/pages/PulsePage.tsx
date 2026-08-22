@@ -5134,7 +5134,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   }, [applyFeedSearch, searchParams]);
 
   return (
-    <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#e7e3de] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
+    <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
       <AppNav />
 
       <main className="flex-1 min-h-0 overflow-hidden">
@@ -5253,7 +5253,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
               {/* Mobile search/filter row — controls job feed search */}
               <div
-                className={isMobileViewport ? `sticky top-0 z-30 shrink-0 bg-[#e7e3de] px-0 transition-[max-height,opacity,transform] duration-200 ease-out dark:bg-[#1B1D21] ${isRangeMenuOpen || isRecentSearchesOpen ? 'overflow-visible' : 'overflow-hidden'}` : 'px-2 py-2'}
+                className={isMobileViewport ? `sticky top-0 z-30 shrink-0 bg-[#f3f2ee] px-0 transition-[max-height,opacity,transform] duration-200 ease-out dark:bg-[#1B1D21] ${isRangeMenuOpen || isRecentSearchesOpen ? 'overflow-visible' : 'overflow-hidden'}` : 'px-2 py-2'}
                 style={isMobileViewport ? {
                   maxHeight: isMobileTopCollapsed ? '0px' : '52px',
                   opacity: isMobileTopCollapsed ? 0 : 1,
@@ -5837,7 +5837,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
               {isMobileViewport && !isSwipeLayout && (
                 <div
-                  className="sticky top-0 z-40 shrink-0 overflow-hidden bg-[#e7e3de] px-1.5 transition-[max-height,opacity,transform] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
+                  className="sticky top-0 z-40 shrink-0 overflow-hidden bg-[#f3f2ee] px-1.5 transition-[max-height,opacity,transform] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
                   style={{
                     maxHeight: isMobileTopCollapsed ? '0px' : '40px',
                     opacity: isMobileTopCollapsed ? 0 : 1,
@@ -5900,7 +5900,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-2 bg-[#e7e3de] px-1.5 pt-1 pb-4 dark:bg-[#141619]">
+                          <div className="space-y-2 bg-[#f3f2ee] px-1.5 pt-1 pb-4 dark:bg-[#141619]">
                             {renderLeadCards(visibleFeed)}
                           </div>
                         )}
@@ -5926,7 +5926,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopPreviewedFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-[#e7e3de] p-1.5 dark:bg-[#141619]">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopPreviewedFeed, 4)}
                               </div>
                             )
@@ -5936,7 +5936,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopAskedFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-[#e7e3de] p-1.5 dark:bg-[#141619]">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopAskedFeed, 4)}
                               </div>
                             )
@@ -5946,7 +5946,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopVerifiedFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-[#e7e3de] p-1.5 dark:bg-[#141619]">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopVerifiedFeed, 4)}
                               </div>
                             )
@@ -5956,7 +5956,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopRecentFeed)
                             ) : (
-                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-[#e7e3de] p-1.5 dark:bg-[#141619]">
+                              <div className="grid grid-cols-4 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopRecentFeed, 4)}
                               </div>
                             )

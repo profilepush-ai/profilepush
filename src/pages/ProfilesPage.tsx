@@ -3139,7 +3139,7 @@ export default function ProfilesPage() {
   }, [breakdownChargedLeadIds, consumeCredits, persistLeadAction, showToast]);
 
   return (
-    <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#e7e3de] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       <main className="flex-1 min-h-0 overflow-hidden">
@@ -3294,7 +3294,7 @@ export default function ProfilesPage() {
                 </div>
 
               {/* Mobile search/filter row */}
-              <div className={isMobileViewport ? 'sticky top-0 z-30 bg-[#e7e3de] px-0 pt-1.5 pb-1' : 'px-2 py-2'}>
+              <div className={isMobileViewport ? 'sticky top-0 z-30 bg-[#f3f2ee] px-0 pt-1.5 pb-1' : 'px-2 py-2'}>
                 <div className="flex items-center gap-2">
                   <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5">
                     <Search size={11} className="text-gray-400" />
@@ -3539,7 +3539,7 @@ export default function ProfilesPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-2 bg-[#e7e3de] px-1.5 pt-2 pb-4 dark:bg-[#141619]">
+                          <div className="space-y-2 bg-[#f3f2ee] px-1.5 pt-2 pb-4 dark:bg-[#141619]">
                             {renderLeadCards(visibleFeed)}
                           </div>
                         )}
@@ -3552,7 +3552,7 @@ export default function ProfilesPage() {
                             {recentVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">No recent jobs.</div>
                             ) : (
-                              <div className="space-y-2 bg-[#e7e3de] p-1 dark:bg-[#141619]">
+                              <div className="space-y-2 bg-[#f3f2ee] p-1 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopRecentFeed)}
                               </div>
                             )}
@@ -3565,7 +3565,7 @@ export default function ProfilesPage() {
                             {revealedVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">No revealed jobs yet.</div>
                             ) : (
-                              <div className="space-y-2 bg-[#e7e3de] p-1 dark:bg-[#141619]">
+                              <div className="space-y-2 bg-[#f3f2ee] p-1 dark:bg-[#141619]">
                                 {renderLeadCards(visibleDesktopRevealedFeed)}
                               </div>
                             )}

@@ -918,7 +918,7 @@ export default function TrackerPage() {
   function renderJobsCards() {
     const linkClass = 'text-blue-600 dark:text-cyan-400 hover:underline';
     return (
-      <div className="grid grid-cols-1 gap-2 bg-[#e7e3de] p-1.5 dark:bg-[#141619] lg:grid-cols-2 lg:gap-3 lg:p-3">
+      <div className="grid grid-cols-1 gap-2 bg-[#f3f2ee] p-1.5 dark:bg-[#141619] lg:grid-cols-2 lg:gap-3 lg:p-3">
         {vendorHistory.map((lead) => {
           const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead);
 
@@ -1109,11 +1109,11 @@ export default function TrackerPage() {
   }
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-[#e7e3de] overflow-hidden overscroll-none pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="h-[100dvh] flex flex-col bg-[#f3f2ee] overflow-hidden overscroll-none pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       {/* ── Global toolbar ── */}
-      <div className="sticky top-0 z-20 bg-[#e7e3de] px-2 py-2 flex items-center gap-2">
+      <div className="sticky top-0 z-20 bg-[#f3f2ee] px-2 py-2 flex items-center gap-2">
         {/* Search */}
         <div className="flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5">
           <Search size={11} className="text-gray-400" />

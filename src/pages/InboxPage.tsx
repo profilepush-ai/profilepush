@@ -678,7 +678,7 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-[#e7e3de] text-gray-900">
+    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-[#f3f2ee] text-gray-900">
       <AppNav />
       <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden sm:grid-cols-[290px_minmax(0,1fr)] xl:grid-cols-[310px_minmax(0,1fr)]">
         <aside className={`${selectedId ? 'hidden sm:flex' : 'flex'} min-h-0 flex-col border-r border-gray-200 bg-white`}>
@@ -778,7 +778,7 @@ export default function InboxPage() {
           </div>
         </aside>
 
-        <section className={`${selectedId ? 'flex' : 'hidden sm:flex'} min-h-0 min-w-0 flex-col overflow-hidden bg-[#e7e3de]`}>
+        <section className={`${selectedId ? 'flex' : 'hidden sm:flex'} min-h-0 min-w-0 flex-col overflow-hidden bg-[#f3f2ee]`}>
           {!selected ? (
             <div className="flex flex-1 flex-col items-center justify-center text-gray-400">
               <Mail size={32} />
@@ -786,8 +786,8 @@ export default function InboxPage() {
             </div>
           ) : (
             <>
-            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-[#e7e3de]">
-              <header className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 bg-[#e7e3de] px-2 py-1.5 sm:px-3">
+            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto bg-[#f3f2ee]">
+              <header className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 bg-[#f3f2ee] px-2 py-1.5 sm:px-3">
                 <button type="button" onClick={() => navigate('/inbox', { replace: true })} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
                   <ArrowLeft size={16} />
                 </button>
@@ -894,11 +894,11 @@ export default function InboxPage() {
               </div>
             </div>
             {selected.source === 'draft' ? null : selected.status === 'closed' ? (
-              <div className="shrink-0 border-t border-gray-200 bg-[#e7e3de] px-3 pt-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] text-center text-[12px] text-gray-500 sm:pb-3">
+              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-3 pt-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] text-center text-[12px] text-gray-500 sm:pb-3">
                 This conversation is closed. Reopen it to send a message.
               </div>
             ) : (
-              <div className="shrink-0 border-t border-gray-200 bg-[#e7e3de] px-2.5 pt-2.5 pb-[calc(5.75rem+env(safe-area-inset-bottom))] sm:px-3 sm:pt-3 sm:pb-3">
+              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-2.5 pt-2.5 pb-[calc(5.75rem+env(safe-area-inset-bottom))] sm:px-3 sm:pt-3 sm:pb-3">
                 <p className="mb-1.5 text-[11px] text-gray-400">
                   {selected.channel === 'chat' ? 'In-app chat — not sent by email' : selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
                 </p>
