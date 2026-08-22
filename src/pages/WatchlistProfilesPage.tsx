@@ -356,7 +356,7 @@ export default function WatchlistProfilesPage() {
   }
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden overscroll-none pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden overscroll-none pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       <div className="sticky top-0 z-20 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#1F2328] px-2 py-2 flex items-center gap-2">

@@ -1109,7 +1109,7 @@ export default function Dashboard() {
   // ── Loading state ─────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="h-[100dvh] flex flex-col bg-gray-50 overscroll-none pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-0">
+      <div className="h-[100dvh] flex flex-col bg-gray-50 overscroll-none pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0">
         <AppNav />
         <div className="flex-1 flex items-center justify-center"><LogoSpinner size={20} /></div>
       </div>
@@ -1118,7 +1118,7 @@ export default function Dashboard() {
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="h-[100dvh] flex flex-col bg-gray-50 font-sans overflow-hidden overscroll-none pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="h-[100dvh] flex flex-col bg-gray-50 font-sans overflow-hidden overscroll-none pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
       <div className="flex-1 overflow-y-auto p-2 sm:p-4 flex flex-col gap-3 min-h-0">

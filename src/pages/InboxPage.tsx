@@ -748,7 +748,7 @@ export default function InboxPage() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(7rem+env(safe-area-inset-bottom))] sm:pb-0">
+          <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:pb-0">
             {loading ? (
               <div className="flex h-40 items-center justify-center"><Loader2 size={18} className="animate-spin text-blue-600" /></div>
             ) : filtered.length === 0 ? (
@@ -804,7 +804,7 @@ export default function InboxPage() {
                 </div>
               </header>
 
-              <div className="mx-auto max-w-5xl px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
+              <div className="mx-auto max-w-5xl px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
                   <JobReferenceCard conversation={selected} />
                   {loadingMessages ? (
                     <div className="flex h-32 items-center justify-center"><Loader2 size={18} className="animate-spin text-blue-600" /></div>
@@ -894,11 +894,11 @@ export default function InboxPage() {
               </div>
             </div>
             {selected.source === 'draft' ? null : selected.status === 'closed' ? (
-              <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 pt-3 pb-[calc(7rem+env(safe-area-inset-bottom))] text-center text-[11px] text-gray-500 sm:pb-3">
+              <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 pt-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] text-center text-[11px] text-gray-500 sm:pb-3">
                 This conversation is closed. Reopen it to send a message.
               </div>
             ) : (
-              <div className="shrink-0 border-t border-gray-200 bg-white px-2.5 pt-2.5 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:px-3 sm:pt-3 sm:pb-3">
+              <div className="shrink-0 border-t border-gray-200 bg-white px-2.5 pt-2.5 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:px-3 sm:pt-3 sm:pb-3">
                 <p className="mb-1.5 text-[10px] text-gray-400">
                   {selected.channel === 'chat' ? 'In-app chat — not sent by email' : selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
                 </p>
