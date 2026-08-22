@@ -58,6 +58,11 @@ Deno.serve(async (req: Request) => {
       revealsRes,
       activityRes,
       searchesRes,
+      postsJobsRes,
+      postsHotlistRes,
+      previewsRes,
+      aiPitchesRes,
+      aiRequestsRes,
     ] = await Promise.all([
       supabase
         .from("account_members")
@@ -93,14 +98,54 @@ Deno.serve(async (req: Request) => {
           .select("account_id")
           .in("account_id", accountIds)
       ),
+      // Posts: user-submitted job posts (Posts page), same source as the
+      // hotlist half below — combined into one "Posts" count.
+      withDateRange(
+        supabase
+          .from("social_jobs")
+          .select("created_by_account_id")
+          .in("created_by_account_id", accountIds)
+          .eq("post_source", "user_post")
+      ),
+      withDateRange(
+        supabase
+          .from("social_hotlist")
+          .select("created_by_account_id")
+          .in("created_by_account_id", accountIds)
+          .eq("post_source", "user_post")
+      ),
+      // Previews: the Preview action on a Pulse card (view the original post).
+      withDateRange(
+        supabase
+          .from("pulse_lead_actions")
+          .select("account_id")
+          .in("account_id", accountIds)
+          .eq("action_type", "post_content_viewed")
+      ),
+      // AI Pitch (jobs) / AI Request (hotlist) are the same underlying
+      // table, split by which foreign key is set.
+      withDateRange(
+        supabase
+          .from("pulse_ask_ai_requests")
+          .select("account_id")
+          .in("account_id", accountIds)
+          .not("job_id", "is", null)
+      ),
+      withDateRange(
+        supabase
+          .from("pulse_ask_ai_requests")
+          .select("account_id")
+          .in("account_id", accountIds)
+          .not("hotlist_id", "is", null)
+      ),
     ]);
 
-    function countBy(rows: any[] | null): Record<string, number> {
+    function countBy(rows: any[] | null, key = "account_id"): Record<string, number> {
       const map: Record<string, number> = {};
       if (!rows) return map;
       for (const r of rows) {
-        const key = r.account_id;
-        if (key) map[key] = (map[key] || 0) + 1;
+        const id = r[key];
+        if (id) map[id] = (map[id] || 0) + 1;
       }
       return map;
     }
@@ -110,6 +155,11 @@ Deno.serve(async (req: Request) => {
     const clientCounts = countBy(clientsRes.data);
     const revealsCounts = countBy(revealsRes.data);
     const searchesCounts = countBy(searchesRes.data);
+    const postsJobsCounts = countBy(postsJobsRes.data, "created_by_account_id");
+    const postsHotlistCounts = countBy(postsHotlistRes.data, "created_by_account_id");
+    const previewsCounts = countBy(previewsRes.data);
+    const aiPitchesCounts = countBy(aiPitchesRes.data);
+    const aiRequestsCounts = countBy(aiRequestsRes.data);
 
     const activityByAccount: Record<string, {
       session_count: number;
@@ -189,6 +239,10 @@ Deno.serve(async (req: Request) => {
         reveals_count: revealsCounts[a.id] || 0,
         contacts_count: (vendorCounts[a.id] || 0) + (clientCounts[a.id] || 0),
         searches_count: searchesCounts[a.id] || 0,
+        posts_count: (postsJobsCounts[a.id] || 0) + (postsHotlistCounts[a.id] || 0),
+        previews_count: previewsCounts[a.id] || 0,
+        ai_pitches_count: aiPitchesCounts[a.id] || 0,
+        ai_requests_count: aiRequestsCounts[a.id] || 0,
         account_age_days: Math.max(0, Math.floor((Date.now() - Date.parse(a.created_at)) / 86_400_000)),
         session_count: activity?.session_count ?? 0,
         active_seconds: activity?.active_seconds ?? 0,

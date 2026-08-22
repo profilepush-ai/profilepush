@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Users, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Eye, Phone, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
@@ -22,6 +22,10 @@ interface AccountStats {
   reveals_count: number;
   contacts_count: number;
   searches_count: number;
+  posts_count: number;
+  previews_count: number;
+  ai_pitches_count: number;
+  ai_requests_count: number;
   account_age_days: number;
   session_count: number;
   active_seconds: number;
@@ -147,6 +151,10 @@ const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.React
   { key: 'reveals_count', label: 'Reveals', icon: <Eye size={12} />, kind: 'number', widthClass: 'w-[90px]' },
   { key: 'contacts_count', label: 'Contacts', icon: <Phone size={12} />, kind: 'number', widthClass: 'w-[95px]' },
   { key: 'searches_count', label: 'Searches', icon: <Search size={12} />, kind: 'number', widthClass: 'w-[95px]' },
+  { key: 'posts_count', label: 'Posts', icon: <Megaphone size={12} />, kind: 'number', widthClass: 'w-[90px]' },
+  { key: 'previews_count', label: 'Previews', icon: <FileSearch size={12} />, kind: 'number', widthClass: 'w-[95px]' },
+  { key: 'ai_pitches_count', label: 'AI Pitches', icon: <Send size={12} />, kind: 'number', widthClass: 'w-[105px]' },
+  { key: 'ai_requests_count', label: 'AI Requests', icon: <FileText size={12} />, kind: 'number', widthClass: 'w-[115px]' },
   { key: 'account_age_days', label: 'Created Since', icon: <CalendarDays size={12} />, kind: 'age', widthClass: 'w-[120px]' },
   { key: 'session_count', label: 'Sessions', icon: <LogIn size={12} />, kind: 'number', widthClass: 'w-[95px]' },
   { key: 'active_seconds', label: 'Active Time', icon: <Clock size={12} />, kind: 'duration', widthClass: 'w-[110px]' },
@@ -1225,18 +1233,22 @@ export default function AdminDashboard() {
             </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col gap-3">
-              <div className="grid shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-4 lg:grid-cols-8">
+              <div className="grid shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-4 lg:grid-cols-6">
                 {[
                   { label: 'Accounts', value: filteredStats.length.toLocaleString() },
+                  { label: 'Searches', value: (totals.searches_count ?? 0).toLocaleString() },
+                  { label: 'Posts', value: (totals.posts_count ?? 0).toLocaleString() },
+                  { label: 'Previews', value: (totals.previews_count ?? 0).toLocaleString() },
+                  { label: 'AI Pitches', value: (totals.ai_pitches_count ?? 0).toLocaleString() },
+                  { label: 'AI Requests', value: (totals.ai_requests_count ?? 0).toLocaleString() },
                   { label: 'Watching', value: (totals.watching_count ?? 0).toLocaleString() },
                   { label: 'Credits', value: (totals.credits_balance ?? 0).toLocaleString() },
                   { label: 'Reveals', value: (totals.reveals_count ?? 0).toLocaleString() },
                   { label: 'Contacts', value: (totals.contacts_count ?? 0).toLocaleString() },
-                  { label: 'Searches', value: (totals.searches_count ?? 0).toLocaleString() },
                   { label: 'Sessions', value: (totals.session_count ?? 0).toLocaleString() },
                   { label: 'Active Time', value: formatActiveTime(totals.active_seconds ?? 0) },
                 ].map((metric) => (
-                  <div key={metric.label} className="border-b border-r border-gray-200 px-4 py-3 last:border-r-0 sm:last:border-b-0 lg:border-b-0">
+                  <div key={metric.label} className="border-b border-r border-gray-200 px-4 py-3 [&:nth-child(2n)]:border-r-0 [&:nth-child(n+11)]:border-b-0 sm:[&:nth-child(4n)]:border-r-0 sm:[&:nth-child(n+9)]:border-b-0 lg:[&:nth-child(6n)]:border-r-0 lg:[&:nth-child(n+7)]:border-b-0">
                     <p className="text-[10px] font-semibold uppercase text-gray-500">{metric.label}</p>
                     <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{metric.value}</p>
                   </div>
@@ -1244,7 +1256,7 @@ export default function AdminDashboard() {
               </div>
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
               <div className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full min-w-[1720px] table-fixed text-left">
+              <table className="w-full min-w-[2130px] table-fixed text-left">
                 <thead className="sticky top-0 z-[4]">
                   <tr className="border-b border-gray-200 bg-gray-50">
                     {COLUMNS.map(col => (
