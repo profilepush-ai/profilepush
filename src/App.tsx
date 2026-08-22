@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -106,6 +107,26 @@ function OneSignalIdentitySync() {
   return null;
 }
 
+// The marketing landing page has no place in the installed app — a native
+// user has already "installed", so app launch skips straight to account
+// creation (or, once signed in, straight past auth entirely). Web keeps the
+// landing page unchanged.
+function AppEntry() {
+  const { user, loading } = useAuth();
+
+  if (!Capacitor.isNativePlatform()) return <LandingPage />;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <LogoSpinner size={20} />
+      </div>
+    );
+  }
+
+  return <Navigate to={user ? '/jobs' : '/signup'} replace />;
+}
+
 function SupabaseSetupRequired() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-6">
@@ -154,7 +175,7 @@ export default function App() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
             {/* Public */}
-            <Route path="/" element={<ErrorBoundary><LandingPage /></ErrorBoundary>} />
+            <Route path="/" element={<ErrorBoundary><AppEntry /></ErrorBoundary>} />
             <Route path="/signup" element={<ErrorBoundary><SignUp /></ErrorBoundary>} />
             <Route path="/signin" element={<ErrorBoundary><SignIn /></ErrorBoundary>} />
             <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
