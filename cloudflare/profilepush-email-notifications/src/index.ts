@@ -1,10 +1,10 @@
 export interface Env {
   EMAIL_QUEUE: Queue<EmailJob>;
-  MAILGUN_API_KEY: string;
-  MAILGUN_DOMAIN: string;
-  MAILGUN_BASE_URL: string;
-  MAILGUN_FROM_ADDRESS: string;
-  MAILGUN_PAUSED: string;
+  GMASS_API_KEY: string;
+  GMASS_FROM_EMAIL: string;
+  GMASS_FROM_NAME: string;
+  GMASS_WARMUP_START_DATE: string;
+  EMAIL_SENDING_PAUSED: string;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
@@ -307,17 +307,49 @@ async function notifyInAppAndPush(env: Env, recipients: DigestRecipient[], jobsC
   }
 }
 
-async function runDailyDigest(env: Env): Promise<{ jobsCount: number; hotlistCount: number; recipients: number }> {
+// New GMass-connected mailboxes need to build sending reputation gradually —
+// mailing the full recipient list from day one risks the mailbox getting
+// spam-flagged. Cap the digest EMAIL to a small, daily-growing recipient
+// count for the first 30 days after GMASS_WARMUP_START_DATE; in-app bell and
+// push notifications are unaffected since they carry no such reputation risk.
+const WARMUP_INITIAL_CAP = 10;
+const WARMUP_DAILY_GROWTH = 1.2;
+const WARMUP_DURATION_DAYS = 30;
+
+function daysSince(startDate: string, now: Date): number {
+  return Math.floor((now.getTime() - new Date(`${startDate}T00:00:00Z`).getTime()) / (24 * 60 * 60 * 1000));
+}
+
+function warmupCapForDay(dayIndex: number): number {
+  if (dayIndex < 0 || dayIndex >= WARMUP_DURATION_DAYS) return Infinity;
+  return Math.floor(WARMUP_INITIAL_CAP * Math.pow(WARMUP_DAILY_GROWTH, dayIndex));
+}
+
+// Rotates which recipients are under the cap each day, rather than always
+// emailing the same first N, so coverage spreads across the ramp period.
+function selectWarmupRecipients(recipients: DigestRecipient[], cap: number, dayIndex: number): DigestRecipient[] {
+  if (!Number.isFinite(cap) || recipients.length <= cap) return recipients;
+  const offset = ((dayIndex * cap) % recipients.length + recipients.length) % recipients.length;
+  return Array.from({ length: cap }, (_, i) => recipients[(offset + i) % recipients.length]);
+}
+
+async function runDailyDigest(
+  env: Env,
+): Promise<{ jobsCount: number; hotlistCount: number; recipients: number; emailedRecipients: number }> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const [jobsCount, hotlistCount, recipients, topRoles] = await Promise.all([
+  const [jobsCount, hotlistCount, allRecipients, topRoles] = await Promise.all([
     countSince(env, "radar_match_results", since),
     countSince(env, "radar_match_hotlist", since),
     fetchRecipients(env),
     fetchTopRoles(env),
   ]);
 
+  const dayIndex = daysSince(env.GMASS_WARMUP_START_DATE, new Date());
+  const cap = warmupCapForDay(dayIndex);
+  const emailRecipients = selectWarmupRecipients(allRecipients, cap, dayIndex);
+
   const jobs: EmailJob[] = [];
-  for (const recipient of recipients) {
+  for (const recipient of emailRecipients) {
     jobs.push(await buildDigestJob(env, recipient, jobsCount, hotlistCount, topRoles));
   }
 
@@ -326,37 +358,35 @@ async function runDailyDigest(env: Env): Promise<{ jobsCount: number; hotlistCou
   }
 
   try {
-    await notifyInAppAndPush(env, recipients, jobsCount, hotlistCount);
+    await notifyInAppAndPush(env, allRecipients, jobsCount, hotlistCount);
   } catch (error) {
     // In-app/push notification is best-effort — never let it block the email send path.
     console.error("notifyInAppAndPush threw", error);
   }
 
-  return { jobsCount, hotlistCount, recipients: recipients.length };
+  return { jobsCount, hotlistCount, recipients: allRecipients.length, emailedRecipients: emailRecipients.length };
 }
 
-function mailgunPaused(env: Env): boolean {
-  return env.MAILGUN_PAUSED === "true";
+function sendingPaused(env: Env): boolean {
+  return env.EMAIL_SENDING_PAUSED === "true";
 }
 
-async function sendMailgunEmail(env: Env, job: EmailJob): Promise<void> {
-  const form = new FormData();
-  form.set("from", `Profile Push Alerts <${env.MAILGUN_FROM_ADDRESS}>`);
-  form.set("to", job.to);
-  form.set("subject", job.subject);
-  form.set("text", job.text);
-  form.set("html", job.html);
-  form.set("o:tracking", "yes");
-
-  const response = await fetch(`${env.MAILGUN_BASE_URL}/v3/${env.MAILGUN_DOMAIN}/messages`, {
+async function sendGmassEmail(env: Env, job: EmailJob): Promise<void> {
+  const response = await fetch("https://api.gmass.co/api/transactional", {
     method: "POST",
-    headers: { Authorization: `Basic ${btoa(`api:${env.MAILGUN_API_KEY}`)}` },
-    body: form,
+    headers: { "Content-Type": "application/json", "X-apikey": env.GMASS_API_KEY },
+    body: JSON.stringify({
+      fromEmail: env.GMASS_FROM_EMAIL,
+      fromName: env.GMASS_FROM_NAME,
+      to: job.to,
+      subject: job.subject,
+      message: job.html || job.text,
+    }),
   });
 
   if (!response.ok) {
     const payload = await response.json<{ message?: string }>().catch(() => ({}));
-    const errorMessage = payload.message ?? `Mailgun HTTP ${response.status}`;
+    const errorMessage = payload.message ?? `GMass HTTP ${response.status}`;
     throw new Error(errorMessage);
   }
 }
@@ -388,7 +418,7 @@ async function handleRunDigest(request: Request, env: Env): Promise<Response> {
 // feedback. Useful for previewing/testing before relying on the daily cron.
 async function handleTestDigest(request: Request, env: Env): Promise<Response> {
   if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
-  if (mailgunPaused(env)) return jsonResponse({ error: "Mailgun sending is paused" }, 503);
+  if (sendingPaused(env)) return jsonResponse({ error: "Email sending is paused" }, 503);
   const body = await request.json<{ to?: unknown }>();
   const to = typeof body.to === "string" ? body.to.trim().toLowerCase() : "";
   if (!to) return jsonResponse({ error: "to is required" }, 400);
@@ -405,7 +435,7 @@ async function handleTestDigest(request: Request, env: Env): Promise<Response> {
   if (!recipient) return jsonResponse({ error: "No signed-up recipient found with that email" }, 404);
 
   const job = await buildDigestJob(env, recipient, jobsCount, hotlistCount, topRoles);
-  await sendMailgunEmail(env, job);
+  await sendGmassEmail(env, job);
 
   let notified = false;
   try {
@@ -463,16 +493,16 @@ export default {
   },
 
   async queue(batch: MessageBatch<EmailJob>, env: Env): Promise<void> {
-    const paused = mailgunPaused(env);
+    const paused = sendingPaused(env);
     for (const message of batch.messages) {
-      // Hold the message without calling Mailgun at all while paused — retrying
+      // Hold the message without calling GMass at all while paused — retrying
       // immediately would just keep hammering a blocked account.
       if (paused) {
         message.retry({ delaySeconds: 1800 });
         continue;
       }
       try {
-        await sendMailgunEmail(env, message.body);
+        await sendGmassEmail(env, message.body);
         message.ack();
       } catch (error) {
         console.error("Email queue job failed", error);
@@ -484,7 +514,7 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
     try {
       const result = await runDailyDigest(env);
-      console.log(`Daily digest queued for ${result.recipients} recipients (${result.jobsCount} jobs, ${result.hotlistCount} hotlist profiles)`);
+      console.log(`Daily digest: emailed ${result.emailedRecipients}/${result.recipients} recipients (${result.jobsCount} jobs, ${result.hotlistCount} hotlist profiles)`);
     } catch (error) {
       console.error("Daily digest cron run failed", error);
       throw error;

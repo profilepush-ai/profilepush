@@ -7,13 +7,19 @@ workers_dev = true
 crons = ["30 13 * * *"]
 
 [vars]
-# Set to "true" and redeploy to pause all Mailgun sends (queue jobs are held
+# Set to "true" and redeploy to pause all outbound sends (queue jobs are held
 # and retried with a delay instead of hitting the API) — use while the
-# Mailgun account is blocked/suspended.
-MAILGUN_PAUSED = "true"
-MAILGUN_DOMAIN = "alerts.profilepush.ai"
-MAILGUN_BASE_URL = "https://api.mailgun.net"
-MAILGUN_FROM_ADDRESS = "alerts@alerts.profilepush.ai"
+# GMass account is blocked/suspended or not yet configured.
+EMAIL_SENDING_PAUSED = "false"
+# Must be a Gmail/Google Workspace mailbox connected to the GMass account
+# that owns GMASS_API_KEY (Settings -> Connected Accounts in the GMass
+# dashboard) — GMass sends by driving that mailbox, not as a standalone relay.
+GMASS_FROM_EMAIL = "Insights@profilepush.ai"
+GMASS_FROM_NAME = "Profile Push"
+# Day zero of the digest send-volume ramp (10 recipients, growing 20%/day for
+# 30 days) — see "Warm-up ramp" in README.md. Set once; no need to touch it
+# again after the 30-day window passes.
+GMASS_WARMUP_START_DATE = "2026-08-23"
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5od3FjcXp2b3RnZG5ndHh1bHdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NjY3NDQsImV4cCI6MjA5NjQ0Mjc0NH0.DCPM9hZwqEsfmStT1beaUtp3P-uDVkCZL8xv0ZFpCss"
 APP_BASE_URL = "https://profilepush.ai"

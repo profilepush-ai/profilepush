@@ -7,7 +7,7 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { buildSignupWebhookPayload, sendSignupWebhook } from '../lib/auth-webhook';
+import { buildSignupWebhookPayload, sendSignupWebhook, sendWelcomeEmail } from '../lib/auth-webhook';
 import { startNativeGoogleSignIn } from '../lib/native-auth';
 import { ensureAccountForUser } from '../lib/account-provisioning';
 import Logo from '../components/Logo';
@@ -313,6 +313,7 @@ export default function SignUp() {
         fullName: user.user_metadata?.full_name ?? user.user_metadata?.name ?? '',
         provider: 'google',
       }));
+      void sendWelcomeEmail();
     }
 
     navigate(DEFAULT_SIGNUP_REDIRECT, { replace: true });
@@ -434,7 +435,7 @@ export default function SignUp() {
       return;
     }
 
-    // Fire webhook (non-blocking)
+    // Fire webhook and welcome email (non-blocking)
     void sendSignupWebhook(buildSignupWebhookPayload({
       action: 'new account signup',
       accountId,
@@ -446,6 +447,7 @@ export default function SignUp() {
       phone: fullPhone,
       provider: 'email',
     }));
+    void sendWelcomeEmail();
 
     await refreshAccount();
     navigate(DEFAULT_SIGNUP_REDIRECT, { replace: true });

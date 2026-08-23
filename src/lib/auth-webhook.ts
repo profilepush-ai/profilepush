@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 const SIGNUP_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/48XyGfN1WxneooOcHGHn/webhook-trigger/5acdf9f6-c8e2-44ea-91be-163a46cf83fd';
 
 export type SignupWebhookPayload = Record<string, string>;
@@ -38,5 +40,14 @@ export async function sendSignupWebhook(payload: SignupWebhookPayload) {
     });
   } catch (err) {
     console.error('Signup webhook failed:', err);
+  }
+}
+
+export async function sendWelcomeEmail() {
+  try {
+    const { error } = await supabase.functions.invoke('send-welcome-email');
+    if (error) console.error('Welcome email failed:', error);
+  } catch (err) {
+    console.error('Welcome email failed:', err);
   }
 }
