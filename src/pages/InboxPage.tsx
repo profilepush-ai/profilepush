@@ -786,24 +786,24 @@ export default function InboxPage() {
             </div>
           ) : (
             <>
-            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#f3f2ee]">
-              <header className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 bg-[#f3f2ee] px-2 py-1.5 sm:px-3">
-                <button type="button" onClick={() => navigate('/inbox', { replace: true })} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
-                  <ArrowLeft size={16} />
-                </button>
-                <div className="min-w-0 flex-1 basis-0" />
-                <div className="flex flex-wrap items-center justify-end gap-1">
-                {selected.channel === 'gmail' && (
-                  <span className="rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide bg-red-50 text-red-600" title="Sent from your connected Gmail address">Via Gmail</span>
-                )}
-                {selected.channel === 'chat' && (
-                  <span className="rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide bg-indigo-50 text-indigo-700" title="In-app chat">Chat</span>
-                )}
-                <span className={`rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${selected.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{selected.hotlist_id ? 'Hotlist' : 'Job'}</span>
-                <span className={`rounded px-2 py-1 text-[11px] font-semibold ${selected.status === 'failed' ? 'bg-red-50 text-red-700' : selected.status === 'replied' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selected.status]}</span>
-                </div>
-              </header>
+            <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-1 border-b border-gray-200/70 bg-[#f3f2ee] px-2 py-1.5 sm:px-3">
+              <button type="button" onClick={() => navigate('/inbox', { replace: true })} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
+                <ArrowLeft size={16} />
+              </button>
+              <div className="min-w-0 flex-1 basis-0" />
+              <div className="flex flex-wrap items-center justify-end gap-1">
+              {selected.channel === 'gmail' && (
+                <span className="rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide bg-red-50 text-red-600" title="Sent from your connected Gmail address">Via Gmail</span>
+              )}
+              {selected.channel === 'chat' && (
+                <span className="rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide bg-indigo-50 text-indigo-700" title="In-app chat">Chat</span>
+              )}
+              <span className={`rounded px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${selected.hotlist_id ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{selected.hotlist_id ? 'Hotlist' : 'Job'}</span>
+              <span className={`rounded px-2 py-1 text-[11px] font-semibold ${selected.status === 'failed' ? 'bg-red-50 text-red-700' : selected.status === 'replied' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[selected.status]}</span>
+              </div>
+            </header>
 
+            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#f3f2ee]">
               <div className="mx-auto flex min-h-full max-w-5xl flex-col px-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
                   <JobReferenceCard conversation={selected} />
                   {loadingMessages ? (
@@ -900,11 +900,11 @@ export default function InboxPage() {
               </div>
             </div>
             {selected.source === 'draft' ? null : selected.status === 'closed' ? (
-              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-3 pt-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] text-center text-[12px] text-gray-500 sm:pb-3">
+              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-3 py-3 text-center text-[12px] text-gray-500">
                 This conversation is closed. Reopen it to send a message.
               </div>
             ) : (
-              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-2.5 pt-2.5 pb-[calc(5.75rem+env(safe-area-inset-bottom))] sm:px-3 sm:pt-3 sm:pb-3">
+              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-2.5 py-2.5 sm:px-3 sm:py-3">
                 <p className="mb-1.5 text-[11px] text-gray-400">
                   {selected.channel === 'chat' ? 'In-app chat — not sent by email' : selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
                 </p>
