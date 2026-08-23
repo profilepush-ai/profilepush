@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import PostFormModal, { type PostKind, type UserPost } from '../components/posts/PostFormModal';
+import ClaimPostsWidget from '../components/posts/ClaimPostsWidget';
 
 type Tab = 'job' | 'hotlist' | 'closed';
 
@@ -509,6 +510,8 @@ export default function MyPostsPage() {
               {addPostButtonEl(false)}
             </div>
           )}
+
+          <ClaimPostsWidget onClaimed={loadPosts} showToast={showToast} />
 
           {!hasAnyPosts ? (
             <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col items-center justify-center text-center">
