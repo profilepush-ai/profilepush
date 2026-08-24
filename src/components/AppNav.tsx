@@ -4,7 +4,7 @@ import {
   ChevronDown, HelpCircle, LogOut, Settings,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, Briefcase, UserRound, MoonStar, SunMedium, Mail, Megaphone,
+  Activity, Briefcase, UserRound, MoonStar, SunMedium, Mail, Megaphone, Database,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -14,6 +14,7 @@ import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
 
 const navItems = [
+  { path: '/active-list',   label: 'Active List',    mobileLabel: 'Active List', icon: Database,  hideOnMobile: false },
   { path: '/jobs',          label: 'Jobs',           mobileLabel: 'Jobs',    icon: Briefcase, hideOnMobile: false },
   { path: '/hotlist',       label: 'Hotlist',        mobileLabel: 'Hotlist', icon: UserRound, hideOnMobile: false },
   { path: '/posts',        label: 'Posts',          mobileLabel: 'Posts',   icon: Megaphone, hideOnMobile: false },

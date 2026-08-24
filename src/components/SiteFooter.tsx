@@ -23,6 +23,8 @@ export default function SiteFooter() {
               <li><a href="/#hotlist" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Hotlist</a></li>
               <li><a href="/#inbox" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Inbox</a></li>
               <li><a href="/#tracker" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Tracker</a></li>
+              <li><Link to="/it-staffing-vendor-list" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Vendor List</Link></li>
+              <li><Link to="/it-staffing-bench-sales-recruiters-list" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Bench Sales Recruiters List</Link></li>
             </ul>
           </div>
 

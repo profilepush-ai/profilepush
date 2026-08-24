@@ -46,6 +46,9 @@ const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const InboxPage = lazy(() => import('./pages/InboxPage'));
 const WatchlistProfilesPage = lazy(() => import('./pages/WatchlistProfilesPage'));
 const OnboardingVideo = lazy(() => import('./pages/OnboardingVideo'));
+const ActiveListPage = lazy(() => import('./pages/ActiveListPage'));
+const ItStaffingVendorListPage = lazy(() => import('./pages/ItStaffingVendorListPage'));
+const ItStaffingBenchSalesRecruitersListPage = lazy(() => import('./pages/ItStaffingBenchSalesRecruitersListPage'));
 
 function PageLoader() {
   return (
@@ -186,6 +189,8 @@ export default function App() {
             <Route path="/terms" element={<ErrorBoundary><TermsAndConditions /></ErrorBoundary>} />
             <Route path="/security" element={<ErrorBoundary><SecurityPage /></ErrorBoundary>} />
             <Route path="/about" element={<ErrorBoundary><AboutUs /></ErrorBoundary>} />
+            <Route path="/it-staffing-vendor-list" element={<ErrorBoundary><ItStaffingVendorListPage /></ErrorBoundary>} />
+            <Route path="/it-staffing-bench-sales-recruiters-list" element={<ErrorBoundary><ItStaffingBenchSalesRecruitersListPage /></ErrorBoundary>} />
             <Route path="/contact" element={<ErrorBoundary><ContactUs /></ErrorBoundary>} />
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
             <Route path="/cancellation-refund" element={<ErrorBoundary><CancellationRefundPolicy /></ErrorBoundary>} />
@@ -208,6 +213,7 @@ export default function App() {
             <Route path="/roadmap" element={<ProtectedRoute><ErrorBoundary><RoadmapPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/active-list" element={<ProtectedRoute><ErrorBoundary><ActiveListPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/alerts" element={<ProtectedRoute><ErrorBoundary><AlertsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/inbox" element={<ProtectedRoute><ErrorBoundary><InboxPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/inbox/:conversationId" element={<ProtectedRoute><ErrorBoundary><InboxPage /></ErrorBoundary></ProtectedRoute>} />

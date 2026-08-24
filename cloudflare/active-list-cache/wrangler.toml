@@ -1,0 +1,12 @@
+name = "profilepush-active-list-cache"
+main = "src/index.ts"
+compatibility_date = "2026-08-23"
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "ACTIVE_LIST_CACHE"
+id = "3fca7aa56159453ab0dd8346c6ea3a84"
+preview_id = "efdc2c7cec2841e49cce230484496378"
+
+[vars]
+CACHE_TTL_SECONDS = "3600"

@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Profile } from '../types/database';
 import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
+import { downloadCsv } from '../lib/csv';
 import { normalizePostSource, type PostSource } from '../lib/post-source';
 import PostSourceBadge from '../components/PostSourceBadge';
 
@@ -195,14 +196,6 @@ function formatDate(d: string) {
 function fmtIso(iso: string) {
   if (!iso) return '—';
   return iso.slice(0, 10).split('-').map((p, i) => i === 0 ? p : p).join('-').replace(/(\d{4})-(\d{2})-(\d{2})/, '$2/$3/$1');
-}
-
-function downloadCsv(filename: string, headers: string[], rows: string[][]) {
-  const escape = (v: string) => `"${(v ?? '').replace(/"/g, '""')}"`;
-  const csv = [headers.map(escape), ...rows.map(r => r.map(escape))].map(r => r.join(',')).join('\n');
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
 }
 
 const SUBMISSION_TYPES = ['Client', 'Vendor', 'Candidate'] as const;
