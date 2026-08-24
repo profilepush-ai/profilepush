@@ -269,13 +269,28 @@ export default function ActiveListPage() {
   async function handleDownload() {
     if (selectedRows.length === 0 || !account?.id || charging) return;
 
+    // Free-plan download limit check runs first, before any credits are
+    // touched — rejecting after a charge would mean "charged and got
+    // nothing." Independent of the credits system below.
+    setCharging(true);
+    const { data: gateResult, error: gateError } = await supabase.rpc('check_and_log_active_list_download', {
+      p_requested_count: selectedRows.length,
+      p_download_type: activeTab,
+    });
+    const gateRow = Array.isArray(gateResult) ? gateResult[0] : null;
+    if (gateError || !gateRow || gateRow.allowed_count !== selectedRows.length) {
+      setCharging(false);
+      setToast({ message: gateRow?.message || gateError?.message || 'Could not verify download limit right now', type: 'error' });
+      return;
+    }
+
     const cost = Math.round(selectedRows.length * EMAIL_DOWNLOAD_COST * 100) / 100;
     if ((account.credits_balance ?? 0) < cost) {
+      setCharging(false);
       setShowOutOfCredits(true);
       return;
     }
 
-    setCharging(true);
     const { data: result, error } = await supabase.rpc('consume_feature_credit', {
       p_account_id: account.id,
       p_amount: cost,

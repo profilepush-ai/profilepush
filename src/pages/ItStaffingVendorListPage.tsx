@@ -7,6 +7,7 @@ import SiteFooter from '../components/SiteFooter';
 import { type ActiveListContact } from '../components/ActiveListTable';
 import GatedPreviewTable from '../components/GatedPreviewTable';
 import SignInPromptModal from '../components/SignInPromptModal';
+import Toast from '../components/Toast';
 import ContentSection from '../components/ContentSection';
 import FaqAccordion, { type FaqEntry } from '../components/FaqAccordion';
 import GlossaryList, { type GlossaryTerm } from '../components/GlossaryList';
@@ -87,6 +88,7 @@ export default function ItStaffingVendorListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showSignIn, setShowSignIn] = useState(false);
+  const [downloadToast, setDownloadToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const title = useMemo(() => `IT Staffing Vendor List (${monthYear()})`, []);
   const canonicalUrl = `https://profilepush.ai${PAGE_PATH}`;
@@ -178,13 +180,26 @@ export default function ItStaffingVendorListPage() {
   }, []);
 
   async function performDownload() {
-    const { data, error: invokeError } = await supabase.functions.invoke<{ vendors: ActiveListContact[] }>('active-list', { body: { hours_back: 720 } });
-    if (invokeError || !data) return;
+    const { data, error: invokeError } = await supabase.functions.invoke<{ vendors: ActiveListContact[]; limited?: boolean; message?: string }>(
+      'active-list',
+      { body: { hours_back: 720, download_type: 'vendors' } },
+    );
+    if (invokeError || !data) {
+      setDownloadToast({ message: 'Could not download the list right now — please try again shortly.', type: 'error' });
+      return;
+    }
+    if (data.vendors.length === 0) {
+      setDownloadToast({ message: data.message || "You've reached the free plan's download limit. Upgrade for unlimited downloads.", type: 'error' });
+      return;
+    }
     downloadCsv(
       'it-staffing-vendor-list.csv',
       ['Name', 'Email', 'Last Active On', 'Role Titles'],
       data.vendors.map((row) => [row.name, row.email, row.last_active_at, row.role_titles]),
     );
+    if (data.limited && data.message) {
+      setDownloadToast({ message: data.message, type: 'error' });
+    }
   }
 
   function handleDownload() {
@@ -355,6 +370,7 @@ export default function ItStaffingVendorListPage() {
         message="Sign in to download the full vendor list."
         signInPath={PAGE_PATH}
       />
+      {downloadToast && <Toast message={downloadToast.message} type={downloadToast.type} onClose={() => setDownloadToast(null)} />}
     </div>
   );
 }

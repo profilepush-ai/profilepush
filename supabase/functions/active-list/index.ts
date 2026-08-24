@@ -52,6 +52,13 @@ type ActiveListContact = {
 const ALLOWED_HOURS_BACK = [24, 72, 168, 360, 720];
 const DEFAULT_HOURS_BACK = 72;
 
+const ROW_RPC_BY_DOWNLOAD_TYPE: Record<string, string> = {
+  vendors: "get_active_list_vendor_contacts_24h",
+  recruiters: "get_active_list_recruiter_contacts_24h",
+};
+
+type DownloadGateRow = { allowed_count: number; is_free_plan: boolean; lifetime_downloaded: number; message: string };
+
 function mapRows(rows: ContactRow[] | null): ActiveListContact[] {
   return (rows ?? []).map((row) => ({
     name: row.contact_name ?? "",
@@ -93,6 +100,40 @@ Deno.serve(async (request: Request) => {
     const hoursBack = ALLOWED_HOURS_BACK.includes(requestedHours) ? requestedHours : DEFAULT_HOURS_BACK;
 
     const supabaseAdmin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+    // download_type is set only by the public preview pages' "download full
+    // list" action. When present, this is a download — gate it against the
+    // free-plan lifetime limit (check_and_log_active_list_download) and
+    // return only that one list, capped to what the account is allowed.
+    // When absent (ActiveListPage.tsx's on-mount/filter-change fetch, which
+    // populates the on-screen browsable table), behavior is unchanged: both
+    // lists, full data, no capping — the ask was to limit downloads, not
+    // in-app browsing.
+    const downloadType = body?.download_type;
+    if (downloadType === "vendors" || downloadType === "recruiters") {
+      const rowsRes = await supabaseAdmin.rpc(ROW_RPC_BY_DOWNLOAD_TYPE[downloadType], { p_hours_back: hoursBack });
+      if (rowsRes.error) throw rowsRes.error;
+      const allRows = mapRows(rowsRes.data as ContactRow[]);
+
+      // Called via supabaseUser (forwarded caller JWT), not supabaseAdmin —
+      // the RPC derives the caller's account from auth.uid() internally,
+      // which only resolves when the call is made as the actual user.
+      const gateRes = await supabaseUser.rpc("check_and_log_active_list_download", {
+        p_requested_count: allRows.length,
+        p_download_type: downloadType,
+      });
+      if (gateRes.error) throw gateRes.error;
+      const gateRow = (Array.isArray(gateRes.data) ? gateRes.data[0] : null) as DownloadGateRow | null;
+      if (!gateRow) return respond({ error: "Could not verify download limit" }, 500);
+
+      const slicedRows = allRows.slice(0, gateRow.allowed_count);
+      return respond({
+        [downloadType]: slicedRows,
+        limited: gateRow.allowed_count < allRows.length,
+        lifetime_downloaded: gateRow.lifetime_downloaded,
+        message: gateRow.message,
+      });
+    }
 
     const [recruitersRes, vendorsRes] = await Promise.all([
       supabaseAdmin.rpc("get_active_list_recruiter_contacts_24h", { p_hours_back: hoursBack }),
