@@ -67,6 +67,7 @@ export default function ActiveListTable({
   selectedEmails,
   onToggleRow,
   onToggleAllVisible,
+  fitContent = false,
 }: {
   tabs: ActiveListTab[];
   activeTab: string;
@@ -81,6 +82,12 @@ export default function ActiveListTable({
   selectedEmails?: Set<string>;
   onToggleRow?: (email: string) => void;
   onToggleAllVisible?: (emails: string[], select: boolean) => void;
+  // Sizes to its natural content height instead of stretching to fill a
+  // bounded-height flex parent — for contexts like a normal-flow marketing
+  // page (no app-shell) where there's no such parent to stretch against, and
+  // a short, fixed row count (e.g. a 10-row preview) that should just show
+  // in full rather than get its own internal scrollbar.
+  fitContent?: boolean;
 }) {
   const current = tabs.find((tab) => tab.key === activeTab) ?? tabs[0];
   const allRows = current?.rows ?? [];
@@ -117,7 +124,7 @@ export default function ActiveListTable({
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+    <div className={`flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white ${fitContent ? '' : 'h-full'}`}>
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2.5">
         {tabs.length > 1 ? (
           <div className="flex items-center gap-1">
@@ -149,9 +156,13 @@ export default function ActiveListTable({
       </div>
 
       {loading ? (
-        <div className="flex flex-1 items-center justify-center"><LogoSpinner size={18} /></div>
+        <div className={`flex items-center justify-center ${fitContent ? 'min-h-[160px]' : 'flex-1'}`}><LogoSpinner size={18} /></div>
       ) : (
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto" onScroll={handleScroll}>
+        <div
+          ref={scrollRef}
+          className={fitContent ? '' : 'min-h-0 flex-1 overflow-auto'}
+          onScroll={fitContent ? undefined : handleScroll}
+        >
           <table className="w-full table-fixed text-left text-xs">
             <thead className="sticky top-0 z-10 bg-gray-50 text-[10px] font-medium uppercase tracking-wide text-gray-400">
               <tr>

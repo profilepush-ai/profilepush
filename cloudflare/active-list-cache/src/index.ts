@@ -11,6 +11,7 @@ type ContactRpcRow = {
   contact_name: string | null;
   last_active_at: string;
   role_titles: string[] | null;
+  post_count: number | null;
 };
 
 type PublicContact = {
@@ -18,11 +19,13 @@ type PublicContact = {
   email: string;
   last_active_at: string;
   role_titles: string;
+  post_count: number;
 };
 
 type CachePayload = {
   rows: PublicContact[];
   refreshed_at: string;
+  total_count_30d: number | null;
 };
 
 const PUBLIC_ROW_CAP = 100;
@@ -30,6 +33,17 @@ const PUBLIC_ROW_CAP = 100;
 const ROUTES: Record<string, string> = {
   vendors: "get_active_list_vendor_contacts_24h",
   recruiters: "get_active_list_recruiter_contacts_24h",
+};
+
+// 30 days — the count RPCs skip the row RPCs' LATERAL joins (no per-contact
+// facet arrays to build), so a wider window costs nothing extra and gives
+// visitors a real "how much more is there" number the free/gated 100-row
+// preview can't show on its own.
+const COUNT_HOURS_BACK = 720;
+
+const COUNT_ROUTES: Record<string, string> = {
+  vendors: "get_active_list_vendor_contact_count",
+  recruiters: "get_active_list_recruiter_contact_count",
 };
 
 const corsHeaders: Record<string, string> = {
@@ -83,7 +97,33 @@ async function fetchContactsFromSupabase(env: Env, rpcName: string): Promise<Pub
     email: row.contact_email,
     last_active_at: row.last_active_at,
     role_titles: (row.role_titles ?? []).join(", "),
+    post_count: row.post_count ?? 0,
   }));
+}
+
+// PostgREST serializes a scalar-returning (non-TABLE) RPC's result as the
+// bare JSON value, e.g. the response body is literally `2847` — not an
+// array or object, unlike the row-returning RPCs above.
+async function fetchContactCount(env: Env, rpcName: string): Promise<number | null> {
+  const rpcUrl = `${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/rpc/${rpcName}`;
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+    },
+    body: JSON.stringify({ p_hours_back: COUNT_HOURS_BACK }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Supabase count RPC failed (${response.status}): ${text.slice(0, 200)}`);
+  }
+
+  const value = await response.json();
+  const count = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(count) ? count : null;
 }
 
 export default {
@@ -113,7 +153,10 @@ export default {
 
     const forceRefresh = url.searchParams.get("refresh") === "1";
     const ttlSeconds = Math.max(60, Number.parseInt(env.CACHE_TTL_SECONDS ?? "3600", 10) || 3600);
-    const cacheKey = `active-list:${routeKey}:v1`;
+    // v2: payload gained total_count_30d — bumped so a stale v1 entry never
+    // gets read back as if it had the new field (it would just be missing,
+    // silently, for up to ttlSeconds after deploy otherwise).
+    const cacheKey = `active-list:${routeKey}:v2`;
 
     if (!forceRefresh) {
       const cachedRaw = await env.ACTIVE_LIST_CACHE.get(cacheKey);
@@ -122,7 +165,7 @@ export default {
           const cached = JSON.parse(cachedRaw) as CachePayload;
           if (Array.isArray(cached.rows)) {
             return jsonResponse(
-              { rows: cached.rows, refreshed_at: cached.refreshed_at, cached: true },
+              { rows: cached.rows, refreshed_at: cached.refreshed_at, total_count_30d: cached.total_count_30d ?? null, cached: true },
               200,
               { "X-Cache-Status": "HIT" },
             );
@@ -134,8 +177,11 @@ export default {
     }
 
     try {
-      const rows = await fetchContactsFromSupabase(env, rpcName);
-      const payload: CachePayload = { rows, refreshed_at: new Date().toISOString() };
+      const [rows, totalCount30d] = await Promise.all([
+        fetchContactsFromSupabase(env, rpcName),
+        fetchContactCount(env, COUNT_ROUTES[routeKey]),
+      ]);
+      const payload: CachePayload = { rows, refreshed_at: new Date().toISOString(), total_count_30d: totalCount30d };
       try {
         await env.ACTIVE_LIST_CACHE.put(cacheKey, JSON.stringify(payload), { expirationTtl: ttlSeconds });
       } catch (error) {
@@ -149,7 +195,7 @@ export default {
           const stale = JSON.parse(cachedRaw) as CachePayload;
           if (Array.isArray(stale.rows)) {
             return jsonResponse(
-              { rows: stale.rows, refreshed_at: stale.refreshed_at, cached: true, warning: "Returned stale cache due to upstream error" },
+              { rows: stale.rows, refreshed_at: stale.refreshed_at, total_count_30d: stale.total_count_30d ?? null, cached: true, warning: "Returned stale cache due to upstream error" },
               200,
               { "X-Cache-Status": "STALE" },
             );
