@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowRight, ChevronRight, Upload, ImagePlus, Plus, Minus,
+  ArrowRight, ChevronRight, Upload, ImagePlus, Plus, Minus, ShieldCheck,
 } from 'lucide-react';
 import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
@@ -16,7 +16,7 @@ const FEATURES = [
     key: 'marketpulse',
     slug: 'pulse',
     headline: '1 leaderboard. Every hot role.',
-    subline: 'Pulse ranks every tech stack by live job count, consultant count, and average rate, so you know exactly where to focus before you spend a submission.',
+    subline: 'Ranks every tech stack by live demand and rate, so you stop guessing and chase the roles that actually convert.',
     accent: 'from-indigo-50 to-white',
     badge: 'bg-indigo-100 text-indigo-700',
     badgeLabel: 'Pulse',
@@ -26,7 +26,7 @@ const FEATURES = [
     key: 'pulse',
     slug: 'jobs',
     headline: 'Every requirement. The moment it posts.',
-    subline: 'Jobs watches LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards 24/7 for new requirements, lined up against your bench the moment they post. Submit drafts the outreach, attaches the resume, and opens a real conversation with the vendor.',
+    subline: 'AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7 — new requirements surface the moment they post, then AI Pitch drafts your outreach so you\'re never starting from a blank page.',
     accent: 'from-blue-100 to-white',
     badge: 'bg-blue-100 text-blue-700',
     badgeLabel: 'Jobs',
@@ -36,7 +36,7 @@ const FEATURES = [
     key: 'hotlist',
     slug: 'hotlist',
     headline: 'Live in seconds. Every consultant.',
-    subline: 'Hotlist surfaces available bench consultants posted by other recruiters the moment they\'re listed, lined up against your open requirements — so vendor teams can fill a role without cold-searching.',
+    subline: 'AI watches the same groups and boards 24/7 for new consultant listings — available candidates surface the moment they\'re posted, then AI Request drafts your resume ask so you spend time closing, not typing.',
     accent: 'from-amber-50 to-white',
     badge: 'bg-amber-100 text-amber-700',
     badgeLabel: 'Hotlist',
@@ -46,17 +46,27 @@ const FEATURES = [
     key: 'posts',
     slug: 'posts',
     headline: 'Post it yourself. Get matched instantly.',
-    subline: 'Can\'t find your role or consultant on the feeds? Post it directly — paste your job or hotlist listing and AI auto-fills every field. It shows up in the same Jobs and Hotlist feeds everyone else sees, and interested recruiters can chat with you about it right in-app.',
+    subline: 'Paste your listing and AI fills the form instantly — it joins the same feeds everyone browses, so interested recruiters can reach you in-app within minutes.',
     accent: 'from-teal-50 to-white',
     badge: 'bg-teal-100 text-teal-700',
     badgeLabel: 'Posts',
     topGlow: 'rgba(94,234,212,0.5)',
   },
   {
+    key: 'activelist',
+    slug: 'active-list',
+    headline: 'Every active vendor and recruiter. One list.',
+    subline: 'A filterable contact list of everyone actively posting jobs or consultants — skip the manual scrolling, filter by exactly what you need, and export the emails in seconds.',
+    accent: 'from-sky-50 to-white',
+    badge: 'bg-sky-100 text-sky-700',
+    badgeLabel: 'Active List',
+    topGlow: 'rgba(125,211,252,0.5)',
+  },
+  {
     key: 'inbox',
     slug: 'inbox',
     headline: '1 submission. A real conversation.',
-    subline: 'Every submission opens a live thread with the vendor — resume attached, reply and message right from your Inbox. Whether it\'s a vendor email thread or an in-app chat with another recruiter about a post, everything lands in one place, and you track opens so nothing goes cold.',
+    subline: 'Every AI-drafted pitch and request opens into one real conversation here — no more digging through your email for who replied to what.',
     accent: 'from-purple-50 to-white',
     badge: 'bg-purple-100 text-purple-700',
     badgeLabel: 'Inbox',
@@ -66,7 +76,7 @@ const FEATURES = [
     key: 'tracker',
     slug: 'tracker',
     headline: '0 double-submittals. Ever.',
-    subline: 'Manage every vendor and client contact in one place. Log submissions with type badges (C2C, W2, Direct), filter by date range, and export to CSV. Never risk a double-submittal again.',
+    subline: 'Every vendor and client in one CRM — log submissions, filter by date, export to CSV, and never lose a placement to a duplicate submittal.',
     accent: 'from-emerald-50 to-white',
     badge: 'bg-emerald-100 text-emerald-700',
     badgeLabel: 'Tracker',
@@ -81,23 +91,35 @@ const FAQS = [
   },
   {
     q: 'What is Pulse?',
-    a: 'Pulse is your market-intelligence dashboard. It ranks every tech stack by live job count, consultant count, and average rate, so you know exactly which roles to chase before you spend a submission.',
+    a: 'Pulse is your market-intelligence dashboard — it ranks every tech stack by live demand and rate, so you chase the roles that convert instead of guessing.',
   },
   {
     q: 'What are Jobs and Hotlist?',
-    a: 'Jobs and Hotlist are live feeds pulled from LinkedIn groups, Facebook groups, WhatsApp groups, Reddit groups, and job boards. Jobs surfaces client requirements lined up against your bench; Hotlist surfaces available consultants lined up against your open requirements — so whichever side of the desk you’re on, you see your best matches first, the moment they post.',
+    a: 'Jobs and Hotlist are live feeds — AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7. Jobs surfaces client requirements the moment they post; Hotlist surfaces available consultants the moment they\'re listed — so whichever side of the desk you\'re on, you see it before it\'s buried in a group feed.',
+  },
+  {
+    q: 'What is AI Pitch / AI Request?',
+    a: 'AI Pitch (on Jobs) and AI Request (on Hotlist) draft a personalized outreach email for you in seconds — requesting missing job details or a resume. You review the draft, then copy it or send it yourself today; sending it directly from your own inbox is launching soon.',
   },
   {
     q: 'What is Posts?',
-    a: 'Posts lets you list your own job or hotlist consultant directly on ProfilePush. Paste what you\'d normally post to a group and AI auto-fills the form for you. It joins the same Jobs and Hotlist feeds other recruiters browse, and anyone interested can chat with you about it in-app.',
+    a: 'Posts lets you list your own job or consultant directly on ProfilePush — paste what you\'d normally post to a group, AI auto-fills the form, and it joins the same feeds everyone else browses so interested recruiters can chat with you in-app immediately.',
+  },
+  {
+    q: 'What is Active List?',
+    a: 'Active List is a consolidated, filterable contact list of every vendor and recruiter who\'s posted a job requirement or consultant listing recently — filter by role, skills, experience, work type, visa status, and rate, then download names and emails. Free accounts can download up to 50 contacts at a time, 500 total; Pro accounts have no cap.',
   },
   {
     q: 'What is Inbox?',
-    a: 'Inbox is AI-drafted outreach. One click writes a personalized email requesting job details or a resume, ready for you to review and send, then tracks opens and replies in a real conversation thread — alongside any in-app chats from your own Posts.',
+    a: 'Inbox is where every AI-drafted pitch or request becomes a real conversation — replies, opens, and any in-app chats from your own Posts, all in one thread, instead of scattered across email.',
   },
   {
     q: 'What is Tracker?',
     a: 'Tracker is your vendor and client CRM. Add contacts, log submissions with type badges (C2C, W2, Direct, Client, Vendor), filter by date range, and export everything to CSV. It keeps your pipeline organized so you never double-submit.',
+  },
+  {
+    q: 'How does ProfilePush actually get me to 10X placements?',
+    a: 'Every stage removes a step that used to cost you time: AI watches social channels and job boards 24/7 so you see a post the moment it\'s live instead of scrolling groups yourself; AI Pitch/Request hands you a drafted email instead of a blank page, with direct sending from your own inbox launching soon; Inbox keeps every reply in one thread instead of scattered across email; and Tracker stops you from double-submitting the same consultant. Less time per placement means more placements in the same day.',
   },
   {
     q: 'How much does ProfilePush cost?',
@@ -372,6 +394,14 @@ export default function LandingPage() {
               <span className="text-gray-400">·</span>
               <span>No Credit Card Required</span>
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {['SOC2 Type II Infrastructure', 'AES-256 Encrypted', '100% Privacy-First — Your Data Never Sold'].map(badge => (
+                <span key={badge} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">
+                  <ShieldCheck size={11} className="text-emerald-500 shrink-0" />
+                  {badge}
+                </span>
+              ))}
+            </div>
           </div>
 
         </div>
@@ -406,7 +436,7 @@ export default function LandingPage() {
                 <h3 className="text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-[1.08] mb-4">
                   <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">{f.headline}</span>
                 </h3>
-                <p className="text-base text-gray-500 leading-relaxed max-w-2xl">{f.subline}</p>
+                <p className="text-base text-gray-500 leading-relaxed">{f.subline}</p>
               </div>
 
               <GifSlot
@@ -438,10 +468,10 @@ export default function LandingPage() {
 
             <div className="space-y-0">
               {[
-                { n: '1', t: 'See what\'s hot', d: 'Pulse ranks every tech stack by live demand and rate, so you know where to focus before you spend a submission.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
-                { n: '2', t: 'Jobs & Hotlist go live', d: 'Jobs and Hotlist scan 500+ groups and job boards in real-time — new requirements and available consultants show up the moment they post.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
-                { n: '3', t: 'Submit with confidence', d: 'AI drafts the outreach, attaches the resume, and opens a real conversation in Inbox — no cold, generic pitch.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
-                { n: '4', t: 'Close it in Tracker', d: 'Log every submission, avoid double-submittals, and export your pipeline anytime.', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
+                { n: '1', t: 'See what\'s hot', d: 'Pulse shows you exactly where the demand is, so you stop guessing and start where it counts.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
+                { n: '2', t: 'Jobs & Hotlist go live', d: 'AI watches LinkedIn, Facebook, WhatsApp, Reddit groups, and job boards 24/7 — new requirements and available consultants surface the moment they post, preview any post before you act.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
+                { n: '3', t: 'AI drafts your outreach', d: 'AI Pitch or AI Request drafts the email for you — copy it, tweak it, or send it. Sending straight from your own inbox is launching soon.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
+                { n: '4', t: 'Track it, close it', d: 'Every reply lands in Inbox as one real conversation; log it in Tracker so you never lose a placement to a duplicate submittal.', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
               ].map((step) => (
                 <div key={step.n} className="relative flex gap-8 pb-10 last:pb-0">
                   {/* Circle */}
@@ -490,8 +520,9 @@ export default function LandingPage() {
 
               <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
                 {[
-                  'Pulse, Jobs, Hotlist, Posts, Inbox & Tracker included',
+                  'Pulse, Jobs, Hotlist, Posts, Active List, Inbox & Tracker included',
                   'Unlimited team members',
+                  'Active List: 50 contacts/download, 500 lifetime',
                   '1 credit per email draft, AI chat draft, or new post',
                 ].map(item => (
                   <li key={item} className="flex items-center gap-2.5">
@@ -524,6 +555,7 @@ export default function LandingPage() {
               <ul className="space-y-3 text-sm text-white flex-1 mb-8">
                 {[
                   'Everything in Free',
+                  'Unlimited Active List downloads',
                   'Credits delivered automatically, never run out mid-month',
                   'Change your tier or cancel any time',
                 ].map(item => (
