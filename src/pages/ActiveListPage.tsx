@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, Clock3, Search, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Clock3, Search, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 import LocationChipInput from '../components/LocationChipInput';
 import ActiveListTable, { type ActiveListContact } from '../components/ActiveListTable';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { downloadCsv } from '../lib/csv';
 
 const EMAIL_DOWNLOAD_COST = 0.25;
+const PAGE_SIZE = 50;
 
 type ActiveListResponse = {
   recruiters: ActiveListContact[];
@@ -29,8 +31,7 @@ const RANGE_OPTIONS: { id: RangeId; label: string; shortLabel: string; hours: nu
 ];
 
 // Fixed numeric buckets, same as /jobs' EXPERIENCE_RANGE_OPTIONS — years is
-// continuous data that needs binning, unlike the other checkbox categories
-// below which facet on whatever distinct values actually exist in the data.
+// continuous data that needs binning either way.
 const EXPERIENCE_RANGE_OPTIONS: { id: string; label: string; min: number; max: number | null }[] = [
   { id: '1-3', label: '1-3 yrs', min: 1, max: 3 },
   { id: '3-5', label: '3-5 yrs', min: 3, max: 5 },
@@ -47,6 +48,35 @@ function matchesExperienceRange(years: number, rangeId: string): boolean {
   return range.max == null ? years >= range.min : years >= range.min && years <= range.max;
 }
 
+// Same fixed option lists /jobs uses for these three categories
+// (PulsePage.tsx's WORK_TYPE_OPTIONS/EMPLOYMENT_TYPE_OPTIONS/VISA_STATUS_OPTIONS,
+// minus its 'all' placeholder entry — this page's filters are an array-based
+// multi-select, so "nothing selected" already means "all").
+const WORK_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'remote', label: 'Remote' },
+  { value: 'hybrid', label: 'Hybrid' },
+  { value: 'onsite', label: 'Onsite' },
+];
+
+const EMPLOYMENT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'full_time', label: 'Full-time' },
+  { value: 'contract', label: 'Contract' },
+  { value: 'c2c', label: 'C2C' },
+  { value: 'w2', label: 'W2' },
+  { value: '1099', label: '1099' },
+  { value: 'part_time', label: 'Part-time' },
+];
+
+const VISA_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'usc', label: 'USC' },
+  { value: 'gc', label: 'GC' },
+  { value: 'h1b', label: 'H1B' },
+  { value: 'ead', label: 'EAD' },
+  { value: 'opt', label: 'OPT' },
+  { value: 'cpt', label: 'CPT' },
+  { value: 'tn', label: 'TN' },
+];
+
 // Checkbox facet categories — same set /jobs uses (Experience, Work Type,
 // Employment Type, Visa). Deliberately no "Role" category here — role stays
 // a free-text search in the top bar, same place /jobs puts its own role search.
@@ -60,12 +90,58 @@ const FACET_CATEGORIES: { category: FacetCategory; title: string }[] = [
 type FacetFilters = Record<FacetCategory, string[]>;
 const DEFAULT_FACETS: FacetFilters = { experienceRange: [], workType: [], employmentType: [], visaStatus: [] };
 
+// Raw work_type/employment_type/visa_type text is free-form, scraped from
+// posts ("Full-time", "C2C/W2", "Not specified", "Onsite" typo'd into the
+// employment field, etc.) — not the clean snake_case slugs the fixed option
+// lists use. Comparing it directly (as an earlier version of this file did)
+// silently failed to match even the dominant values, since e.g. "full-time"
+// never equals "full_time". Mirrors /jobs' own getLeadFilterContext: bucket
+// raw text into canonical slugs via substring matching instead of exact
+// comparison. Unlike /jobs (one value per lead, first-match-wins), this
+// returns every bucket a raw string matches — "C2C/W2" should count toward
+// both the C2C and W2 checkboxes, not arbitrarily just one, since a contact
+// here aggregates multiple posts and a checkbox filter is OR-semantics
+// anyway.
+function classifyEmploymentType(raw: string): string[] {
+  const n = raw.toLowerCase().trim();
+  const matches: string[] = [];
+  if (n.includes('full')) matches.push('full_time');
+  if (n.includes('contract')) matches.push('contract');
+  if (n.includes('c2c')) matches.push('c2c');
+  if (n.includes('w2')) matches.push('w2');
+  if (n.includes('1099')) matches.push('1099');
+  if (n.includes('part')) matches.push('part_time');
+  return matches;
+}
+
+function classifyWorkType(raw: string): string[] {
+  const n = raw.toLowerCase().trim();
+  const matches: string[] = [];
+  if (n.includes('remote')) matches.push('remote');
+  if (n.includes('hybrid')) matches.push('hybrid');
+  if (n.includes('onsite') || n.includes('on site') || n.includes('on-site')) matches.push('onsite');
+  return matches;
+}
+
+function classifyVisaStatus(raw: string): string[] {
+  const n = raw.toLowerCase().trim();
+  const matches: string[] = [];
+  if (n.includes('usc') || n.includes('us citizen')) matches.push('usc');
+  if (n.includes('green card') || n === 'gc' || n.includes(' gc') || n.includes('gc ') || n.includes('gc,') || n.includes('gc/')) matches.push('gc');
+  if (n.includes('h1b') || n.includes('h-1b')) matches.push('h1b');
+  if (n.includes('ead')) matches.push('ead');
+  if (n.includes('opt') && !n.includes('option')) matches.push('opt');
+  if (n.includes('cpt')) matches.push('cpt');
+  if (n.includes('tn')) matches.push('tn');
+  return matches;
+}
+
 function getFacetValues(contact: ActiveListContact, category: FacetCategory): string[] {
   switch (category) {
     case 'experienceRange': return EXPERIENCE_RANGE_OPTIONS.filter((r) => contact.experience_years.some((y) => matchesExperienceRange(y, r.id))).map((r) => r.id);
-    case 'workType': return contact.work_types;
-    case 'employmentType': return contact.employment_types;
-    case 'visaStatus': return contact.visa_types;
+    case 'workType': return contact.work_types.flatMap(classifyWorkType);
+    case 'employmentType': return contact.employment_types.flatMap(classifyEmploymentType);
+    case 'visaStatus': return contact.visa_types.flatMap(classifyVisaStatus);
   }
 }
 
@@ -112,38 +188,17 @@ function matchesTextFilters(contact: ActiveListContact, filters: TextFilters): b
   return true;
 }
 
-type FacetOption = { value: string; label: string; count: number };
-
-// Counts are of matching EMAIL CONTACTS (one per row already, since the RPC
-// aggregates per contact) — not underlying post counts.
-function buildFacetOptions(rows: ActiveListContact[], category: FacetCategory, selected: string[]): FacetOption[] {
-  if (category === 'experienceRange') {
-    return EXPERIENCE_RANGE_OPTIONS.map((r) => ({
-      value: r.id,
-      label: r.label,
-      count: rows.filter((row) => row.experience_years.some((y) => matchesExperienceRange(y, r.id))).length,
-    }));
+// Fixed option list per checkbox category — same as /jobs, always shown in
+// full regardless of count (0-count options are just grayed out, not
+// hidden), rather than only offering whatever values happen to appear in
+// the currently-visible rows.
+function facetOptionList(category: FacetCategory): { value: string; label: string }[] {
+  switch (category) {
+    case 'experienceRange': return EXPERIENCE_RANGE_OPTIONS.map((r) => ({ value: r.id, label: r.label }));
+    case 'workType': return WORK_TYPE_OPTIONS;
+    case 'employmentType': return EMPLOYMENT_TYPE_OPTIONS;
+    case 'visaStatus': return VISA_STATUS_OPTIONS;
   }
-
-  const counts = new Map<string, { label: string; count: number }>();
-  for (const row of rows) {
-    const seen = new Set<string>();
-    for (const raw of getFacetValues(row, category)) {
-      const label = raw.trim();
-      if (!label) continue;
-      const key = label.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const existing = counts.get(key);
-      if (existing) existing.count += 1; else counts.set(key, { label, count: 1 });
-    }
-  }
-  for (const value of selected) {
-    if (!counts.has(value)) counts.set(value, { label: value, count: 0 });
-  }
-  return Array.from(counts.entries())
-    .map(([value, { label, count }]) => ({ value, label, count }))
-    .sort((a, b) => b.count - a.count);
 }
 
 function toCsvRows(rows: ActiveListContact[]): string[][] {
@@ -154,6 +209,7 @@ export default function ActiveListPage() {
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') === 'recruiters' ? 'recruiters' : 'vendors';
   const { account, refreshAccount } = useAuth();
+  const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'vendors' | 'recruiters'>(initialTab);
   const [data, setData] = useState<ActiveListResponse>({ recruiters: [], vendors: [] });
   const [loading, setLoading] = useState(true);
@@ -167,6 +223,7 @@ export default function ActiveListPage() {
   const [textFilters, setTextFilters] = useState<TextFilters>(DEFAULT_TEXT_FILTERS);
   const [facetFilters, setFacetFilters] = useState<FacetFilters>(DEFAULT_FACETS);
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
   const [charging, setCharging] = useState(false);
   const [showOutOfCredits, setShowOutOfCredits] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -223,6 +280,38 @@ export default function ActiveListPage() {
 
   const activeFilteredRows = activeTab === 'vendors' ? filteredVendors : filteredRecruiters;
   const selectedRows = useMemo(() => activeFilteredRows.filter((row) => selectedEmails.has(row.email)), [activeFilteredRows, selectedEmails]);
+
+  // 50 rows/page, shown as page-number pagination in the table header rather
+  // than the infinite-scroll "load more" ActiveListTable otherwise offers —
+  // selection (selectedRows above) stays scoped to the full filtered set, not
+  // just the current page, so a user can select across pages before downloading.
+  const totalPages = Math.max(1, Math.ceil(activeFilteredRows.length / PAGE_SIZE));
+  const pageRows = useMemo(() => activeFilteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [activeFilteredRows, page]);
+  useEffect(() => { setPage(1); }, [activeTab, facetFilters, textFilters, rangeId]);
+
+  // Matches /jobs' feedFacetCounts — computed once per textScopedRows/filter
+  // change rather than per-category inside the sidebar's render loop. Each
+  // category's counts are against every OTHER active filter (excluding
+  // itself), so checking a box narrows the rest of the sidebar without
+  // hiding its own options.
+  const facetCounts = useMemo(() => {
+    const counts: Record<FacetCategory, Record<string, number>> = {
+      experienceRange: {}, workType: {}, employmentType: {}, visaStatus: {},
+    };
+    for (const category of Object.keys(counts) as FacetCategory[]) {
+      for (const row of textScopedRows) {
+        if (!matchesAllFacets(row, facetFilters, category)) continue;
+        const seen = new Set<string>();
+        for (const raw of getFacetValues(row, category)) {
+          const key = raw.trim().toLowerCase();
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          counts[category][key] = (counts[category][key] ?? 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [textScopedRows, facetFilters]);
 
   const hasActiveFilters = Object.values(facetFilters).some((values) => values.length > 0)
     || textFilters.roleQuery || textFilters.locationValues.length > 0 || textFilters.skillsQuery || textFilters.rateMode !== 'all';
@@ -395,52 +484,48 @@ export default function ActiveListPage() {
           <p className="shrink-0 text-[11px] text-gray-400">Select rows to unlock and download their emails — {EMAIL_DOWNLOAD_COST} credit per email.</p>
 
           <div className="flex min-h-0 flex-1 gap-3">
-            <aside className="flex h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white">
-              <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-3 pb-2.5">
-                <span className="text-[12px] font-bold text-gray-900">Filters</span>
+            <aside className="flex h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
+              <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-3 pb-2.5 dark:border-white/10">
+                <span className="text-[12px] font-bold text-gray-900 dark:text-slate-100">Filters</span>
                 {hasActiveFilters && (
-                  <button type="button" onClick={clearAllFilters} className="text-[11px] font-semibold text-blue-600 hover:underline">
+                  <button type="button" onClick={clearAllFilters} className="text-[11px] font-semibold text-blue-600 hover:underline dark:text-blue-400">
                     Clear
                   </button>
                 )}
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-                {FACET_CATEGORIES.map(({ category, title }) => {
-                  const otherFilteredRows = textScopedRows.filter((row) => matchesAllFacets(row, facetFilters, category));
-                  const options = buildFacetOptions(otherFilteredRows, category, facetFilters[category]);
-                  if (options.length === 0) return null;
-                  return (
-                    <div key={category}>
-                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{title}</div>
-                      <div className="flex flex-col gap-0.5">
-                        {options.map((opt) => {
-                          const isChecked = facetFilters[category].includes(opt.value);
-                          return (
-                            <label
-                              key={opt.value}
-                              className={`flex cursor-pointer items-center justify-between gap-2 rounded px-1.5 py-1 text-[12px] transition ${isChecked ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'} ${opt.count === 0 && !isChecked ? 'opacity-40' : ''}`}
-                            >
-                              <span className="flex min-w-0 items-center gap-1.5">
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => toggleFacetOption(category, opt.value)}
-                                  disabled={opt.count === 0 && !isChecked}
-                                  className="h-3 w-3 shrink-0 accent-blue-600"
-                                />
-                                <span className="truncate">{opt.label}</span>
-                              </span>
-                              <span className="shrink-0 text-[11px] tabular-nums text-gray-400">{opt.count}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
+                {FACET_CATEGORIES.map(({ category, title }) => (
+                  <div key={category}>
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">{title}</div>
+                    <div className="flex flex-col gap-0.5">
+                      {facetOptionList(category).map((opt) => {
+                        const count = facetCounts[category][opt.value] ?? 0;
+                        const isChecked = facetFilters[category].includes(opt.value);
+                        return (
+                          <label
+                            key={opt.value}
+                            className={`flex cursor-pointer items-center justify-between gap-2 rounded px-1.5 py-1 text-[12px] transition ${isChecked ? (isDark ? 'bg-blue-500/10 text-blue-300' : 'bg-blue-50 text-blue-700') : (isDark ? 'text-slate-300 hover:bg-white/5' : 'text-gray-700 hover:bg-gray-50')} ${count === 0 && !isChecked ? 'opacity-40' : ''}`}
+                          >
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleFacetOption(category, opt.value)}
+                                disabled={count === 0 && !isChecked}
+                                className="h-3 w-3 shrink-0 accent-blue-600"
+                              />
+                              <span className="truncate">{opt.label}</span>
+                            </span>
+                            <span className="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-[#64748B]">{count}</span>
+                          </label>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
 
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">Location</label>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Location</label>
                   <LocationChipInput
                     values={textFilters.locationValues}
                     onChange={(next) => setTextFilters((prev) => ({ ...prev, locationValues: next }))}
@@ -449,7 +534,7 @@ export default function ActiveListPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">Skills</label>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Skills</label>
                   <input
                     type="text"
                     value={pendingSkillsQuery}
@@ -457,16 +542,16 @@ export default function ActiveListPage() {
                     onBlur={applyPendingTextFilters}
                     onKeyDown={handleFilterFieldKeyDown}
                     placeholder="e.g. React"
-                    className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
+                    className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">Rate</label>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#64748B]">Rate</label>
                   <select
                     value={textFilters.rateMode}
                     onChange={(event) => setTextFilters((prev) => ({ ...prev, rateMode: event.target.value as TextFilters['rateMode'] }))}
-                    className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700"
+                    className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200"
                   >
                     <option value="all">Any</option>
                     <option value="has_rate">Has a rate listed</option>
@@ -481,7 +566,7 @@ export default function ActiveListPage() {
                         onBlur={applyPendingTextFilters}
                         onKeyDown={handleFilterFieldKeyDown}
                         placeholder="Min"
-                        className="w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
+                        className="w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
                       />
                       <span className="shrink-0 text-[11px] text-gray-400">–</span>
                       <input
@@ -491,14 +576,14 @@ export default function ActiveListPage() {
                         onBlur={applyPendingTextFilters}
                         onKeyDown={handleFilterFieldKeyDown}
                         placeholder="Max"
-                        className="w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
+                        className="w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:placeholder:text-[#64748B]"
                       />
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="shrink-0 border-t border-gray-100 p-3 pt-2.5">
+              <div className="shrink-0 border-t border-gray-100 p-3 pt-2.5 dark:border-white/10">
                 <button
                   type="button"
                   onClick={applyPendingTextFilters}
@@ -512,19 +597,48 @@ export default function ActiveListPage() {
             <div className="min-h-0 flex-1 overflow-hidden">
               <ActiveListTable
                 tabs={[
-                  { key: activeTab, label: activeTab === 'vendors' ? 'Vendors' : 'Recruiters', rows: activeFilteredRows },
+                  { key: activeTab, label: activeTab === 'vendors' ? 'Vendors' : 'Recruiters', rows: pageRows },
                 ]}
                 activeTab={activeTab}
                 onDownload={() => void handleDownload()}
                 downloadLabel={charging ? 'Charging…' : `Download Selected (${selectedRows.length})`}
                 loading={loading}
-                pageSize={10}
                 emptyMessage={hasActiveFilters ? 'No contacts match these filters.' : 'No active contacts in this range.'}
                 maskPii
                 selectable
                 selectedEmails={selectedEmails}
                 onToggleRow={toggleRow}
                 onToggleAllVisible={toggleAllVisible}
+                headerAccessory={!loading && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-400">
+                      {activeFilteredRows.length.toLocaleString('en-US')} {activeFilteredRows.length === 1 ? 'contact' : 'contacts'}
+                    </span>
+                    {totalPages > 1 && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setPage((p) => Math.max(1, p - 1))}
+                          disabled={page === 1}
+                          className="flex h-6 w-6 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Previous page"
+                        >
+                          <ChevronLeft size={12} />
+                        </button>
+                        <span className="px-1 text-[11px] font-semibold text-gray-600 tabular-nums">Page {page} of {totalPages}</span>
+                        <button
+                          type="button"
+                          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={page === totalPages}
+                          className="flex h-6 w-6 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Next page"
+                        >
+                          <ChevronRight size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               />
             </div>
           </div>
