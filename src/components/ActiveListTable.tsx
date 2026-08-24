@@ -135,8 +135,8 @@ export default function ActiveListTable({
   }
 
   return (
-    <div className={`flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white ${fitContent ? '' : 'h-full'}`}>
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2.5">
+    <div className={`flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F] ${fitContent ? '' : 'h-full'}`}>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2.5 dark:border-white/10">
         <div className="flex flex-wrap items-center gap-3">
           {tabs.length > 1 ? (
             <div className="flex items-center gap-1">
@@ -145,24 +145,24 @@ export default function ActiveListTable({
                   key={tab.key}
                   type="button"
                   onClick={() => onTabChange?.(tab.key)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${tab.key === activeTab ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${tab.key === activeTab ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/5'}`}
                 >
                   {tab.label} <span className="tabular-nums">{tab.rows.length}</span>
                 </button>
               ))}
             </div>
           ) : (
-            <span className="text-xs font-semibold text-gray-600">{current?.label}</span>
+            <span className="text-xs font-semibold text-gray-600 dark:text-slate-300">{current?.label}</span>
           )}
           {headerAccessory}
         </div>
         <div className="flex items-center gap-2">
-          {selectable && <span className="text-[11px] text-gray-500">{selectedEmails?.size ?? 0} selected</span>}
+          {selectable && <span className="text-[11px] text-gray-500 dark:text-[#94A3B8]">{selectedEmails?.size ?? 0} selected</span>}
           <button
             type="button"
             onClick={onDownload}
             disabled={loading || (selectable ? (selectedEmails?.size ?? 0) === 0 : rows.length === 0)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 px-2.5 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 px-2.5 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-400/30 dark:text-blue-400 dark:hover:bg-blue-500/10"
           >
             <Download size={12} /> {downloadLabel}
           </button>
@@ -178,7 +178,7 @@ export default function ActiveListTable({
           onScroll={fitContent ? undefined : handleScroll}
         >
           <table className="w-full table-fixed text-left text-xs">
-            <thead className="sticky top-0 z-10 bg-gray-50 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            <thead className="sticky top-0 z-10 bg-gray-50 text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:bg-[#1E2126] dark:text-[#64748B]">
               <tr>
                 {selectable && (
                   <th className="w-8 px-2 py-2.5">
@@ -197,9 +197,9 @@ export default function ActiveListTable({
                 <th className="px-2 py-2.5 font-medium">Role Titles</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="dark:divide-y dark:divide-white/5">
               {rows.map((row, index) => (
-                <tr key={`${row.email}-${index}`} className="hover:bg-gray-50">
+                <tr key={`${row.email}-${index}`} className="hover:bg-gray-50 dark:hover:bg-white/5">
                   {selectable && (
                     <td className="px-2 py-2.5 align-top">
                       <input
@@ -210,19 +210,19 @@ export default function ActiveListTable({
                       />
                     </td>
                   )}
-                  <td className="truncate select-none px-2 py-2.5 align-top text-gray-800" onCopy={(event) => event.preventDefault()}>
+                  <td className="truncate select-none px-2 py-2.5 align-top text-gray-800 dark:text-slate-200" onCopy={(event) => event.preventDefault()}>
                     {row.name ? (maskPii ? maskName(row.name) : row.name) : '—'}
                   </td>
-                  <td className="truncate select-none px-2 py-2.5 align-top text-gray-600" onCopy={(event) => event.preventDefault()}>
+                  <td className="truncate select-none px-2 py-2.5 align-top text-gray-600 dark:text-[#94A3B8]" onCopy={(event) => event.preventDefault()}>
                     {maskPii ? maskEmail(row.email) : row.email}
                   </td>
-                  <td className="px-2 py-2.5 align-top text-gray-600">{formatLastActive(row.last_active_at)}</td>
-                  <td className="px-2 py-2.5 text-right align-top tabular-nums text-gray-600">{row.post_count || '—'}</td>
-                  <td className="whitespace-normal break-words px-2 py-2.5 align-top text-gray-600">{row.role_titles || '—'}</td>
+                  <td className="px-2 py-2.5 align-top text-gray-600 dark:text-[#94A3B8]">{formatLastActive(row.last_active_at)}</td>
+                  <td className="px-2 py-2.5 text-right align-top tabular-nums text-gray-600 dark:text-[#94A3B8]">{row.post_count || '—'}</td>
+                  <td className="whitespace-normal break-words px-2 py-2.5 align-top text-gray-600 dark:text-[#94A3B8]">{row.role_titles || '—'}</td>
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={selectable ? 6 : 5} className="px-4 py-10 text-center text-xs text-gray-500">{emptyMessage}</td></tr>
+                <tr><td colSpan={selectable ? 6 : 5} className="px-4 py-10 text-center text-xs text-gray-500 dark:text-[#64748B]">{emptyMessage}</td></tr>
               )}
             </tbody>
           </table>
@@ -230,8 +230,8 @@ export default function ActiveListTable({
       )}
 
       {!loading && pageSize && allRows.length > 0 && (
-        <div className="flex shrink-0 items-center justify-center border-t border-gray-100 px-3 py-2">
-          <span className="text-[11px] text-gray-400">
+        <div className="flex shrink-0 items-center justify-center border-t border-gray-100 px-3 py-2 dark:border-white/10">
+          <span className="text-[11px] text-gray-400 dark:text-[#64748B]">
             {canLoadMore ? `Showing ${rows.length} of ${allRows.length} — scroll for more` : `${allRows.length} of ${allRows.length}`}
           </span>
         </div>

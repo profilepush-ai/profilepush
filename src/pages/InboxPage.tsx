@@ -678,7 +678,7 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 pb-[calc(4.25rem+env(safe-area-inset-bottom))] dark:bg-[#1B1D21] dark:text-slate-100 sm:pb-0">
       <AppNav />
       <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden sm:grid-cols-[290px_minmax(0,1fr)] xl:grid-cols-[310px_minmax(0,1fr)]">
         <aside className={`${selectedId ? 'hidden sm:flex' : 'flex'} min-h-0 flex-col border-r border-gray-200 bg-white`}>
@@ -778,7 +778,7 @@ export default function InboxPage() {
           </div>
         </aside>
 
-        <section className={`${selectedId ? 'flex' : 'hidden sm:flex'} min-h-0 min-w-0 flex-col overflow-hidden bg-[#f3f2ee]`}>
+        <section className={`${selectedId ? 'flex' : 'hidden sm:flex'} min-h-0 min-w-0 flex-col overflow-hidden bg-[#f3f2ee] dark:bg-[#1B1D21]`}>
           {!selected ? (
             <div className="flex flex-1 flex-col items-center justify-center text-gray-400">
               <Mail size={32} />
@@ -786,7 +786,7 @@ export default function InboxPage() {
             </div>
           ) : (
             <>
-            <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-1 border-b border-gray-200/70 bg-[#f3f2ee] px-2 py-1.5 sm:px-3">
+            <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-1 border-b border-gray-200/70 bg-[#f3f2ee] px-2 py-1.5 dark:border-white/10 dark:bg-[#1B1D21] sm:px-3">
               <button type="button" onClick={() => navigate('/inbox', { replace: true })} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 sm:hidden" title="Back to conversations">
                 <ArrowLeft size={16} />
               </button>
@@ -803,7 +803,7 @@ export default function InboxPage() {
               </div>
             </header>
 
-            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#f3f2ee]">
+            <div ref={threadScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#f3f2ee] dark:bg-[#1B1D21]">
               <div className="mx-auto flex min-h-full max-w-5xl flex-col px-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
                   <JobReferenceCard conversation={selected} />
                   {loadingMessages ? (
@@ -900,11 +900,11 @@ export default function InboxPage() {
               </div>
             </div>
             {selected.source === 'draft' ? null : selected.status === 'closed' ? (
-              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-3 py-3 text-center text-[12px] text-gray-500">
+              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-3 py-3 text-center text-[12px] text-gray-500 dark:border-white/10 dark:bg-[#1B1D21]">
                 This conversation is closed. Reopen it to send a message.
               </div>
             ) : (
-              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-2.5 py-2.5 sm:px-3 sm:py-3">
+              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-2.5 py-2.5 dark:border-white/10 dark:bg-[#1B1D21] sm:px-3 sm:py-3">
                 <p className="mb-1.5 text-[11px] text-gray-400">
                   {selected.channel === 'chat' ? 'In-app chat — not sent by email' : selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
                 </p>

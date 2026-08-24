@@ -27,6 +27,25 @@ const PAGE_SIZE = 15;
 // One-time credit-pack purchases: 500-credit increments up to 5000, flat ₹1/credit.
 const CREDIT_TIERS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
 
+// What actually deducts credits today, and how much — sourced directly from
+// each feature's real charge amount (not the flat "1 credit" the page used
+// to imply everywhere): consume_feature_credit call sites in
+// ask-ai-vendor-email/index.ts, generate-chat-message/index.ts,
+// create_user_job_post/create_user_hotlist_post (new-post RPCs),
+// check_and_log_active_list_download, and the alwaysCharge: true calls in
+// PulsePage.tsx's consumeCredits(). Predict Match %, Match Breakdown, and
+// Reveal Contact have real per-use costs in code too, but currently charge
+// nothing — they're gated behind BILLING_GATES_ENABLED (feature-gates.ts),
+// which is off site-wide, so they're listed separately below as free.
+const CREDIT_COST_ITEMS: { label: string; cost: string; note?: string }[] = [
+  { label: 'New job or hotlist post', cost: '1 credit' },
+  { label: 'AI Pitch / AI Request — generate draft', cost: '1 credit', note: 'Only the first generation per post; reopening an already-generated draft is free' },
+  { label: 'AI Pitch / AI Request — send email', cost: '0.05 credit' },
+  { label: 'Inbox AI chat draft', cost: '1 credit' },
+  { label: 'Preview original post (Jobs & Hotlist cards)', cost: '1 credit', note: 'Only the first view per post' },
+  { label: 'Active List — download a contact’s email', cost: '0.25 credit', note: 'Per email exported to CSV' },
+];
+
 interface UsageRow {
   id: string;
   user_id: string | null;
@@ -563,9 +582,9 @@ export default function BillingPage() {
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 flex flex-col">
                   <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-yellow-100 text-yellow-700 w-fit">Free</span>
                   <p className="text-2xl font-extrabold text-gray-900">₹0<span className="text-[15px] font-semibold text-gray-500">/mo</span></p>
-                  <p className="text-[13px] text-gray-500 mt-0.5 mb-4">500 credits, one time · no card required</p>
+                  <p className="text-[13px] text-gray-500 mt-0.5 mb-4">500 credits, one time · never expire · no card required</p>
                   <ul className="space-y-2 text-[13px] text-gray-600 flex-1 mb-4">
-                    {['Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', '1 credit per email/chat draft or new post'].map(item => (
+                    {['Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', 'Active List downloads: 50 contacts/download, 500 lifetime', 'Credit costs vary by feature — see breakdown below'].map(item => (
                       <li key={item} className="flex items-start gap-2">
                         <Check size={12} className="mt-0.5 shrink-0 text-emerald-600" />
                         {item}
@@ -616,7 +635,7 @@ export default function BillingPage() {
                       <p className="text-2xl font-extrabold text-white">{fmtINR(TIERS[0])}<span className="text-[15px] font-semibold text-blue-200">/mo</span></p>
                       <p className="text-[13px] text-blue-200 mt-0.5 mb-4">{TIERS[0].toLocaleString('en-IN')}–{TIERS[TIERS.length - 1].toLocaleString('en-IN')} credits/mo, your choice</p>
                       <ul className="space-y-2 text-[13px] text-white flex-1 mb-4">
-                        {['Everything in Free', 'Delivered automatically, never run out mid-month', 'Cancel any time, keeps access till period end'].map(item => (
+                        {['Everything in Free', 'Unlimited Active List downloads — no 50/500 cap', 'Delivered automatically, never run out mid-month', 'Cancel any time, keeps access till period end'].map(item => (
                           <li key={item} className="flex items-start gap-2">
                             <Check size={12} className="mt-0.5 shrink-0 text-white" />
                             {item}
@@ -632,6 +651,23 @@ export default function BillingPage() {
                       )}
                     </>
                   )}
+                </div>
+              </div>
+
+              {/* Credit costs by feature */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-5">
+                <p className="text-[13px] font-bold text-gray-800">Credit costs by feature</p>
+                <p className="text-[11px] text-gray-400 mt-0.5 mb-3">What actually gets deducted from your balance — free and Pro pay the same rates.</p>
+                <div className="divide-y divide-gray-100">
+                  {CREDIT_COST_ITEMS.map(({ label, cost, note }) => (
+                    <div key={label} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-semibold text-gray-700">{label}</p>
+                        {note && <p className="text-[11px] text-gray-400 mt-0.5">{note}</p>}
+                      </div>
+                      <span className="shrink-0 text-[13px] font-bold text-gray-900">{cost}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -679,7 +715,7 @@ export default function BillingPage() {
               <div className="rounded-2xl border border-gray-200 bg-white p-4">
                 <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Credits</p>
                 <p className="mt-1 text-2xl font-extrabold text-emerald-600">{fmtBalance(balance)}</p>
-                <p className="mt-1 text-[12px] text-gray-500">1 credit per email draft, chat draft, or new post — never expire.</p>
+                <p className="mt-1 text-[12px] text-gray-500">Cost varies by feature — see the breakdown below. Credits never expire.</p>
                 <button onClick={openBuyCreditsModal}
                   className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-[13px] font-bold text-white shadow-sm transition hover:bg-blue-700">
                   Buy more credits
@@ -1178,7 +1214,7 @@ function BuyCreditsModal({
             <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
           <ul className="space-y-2.5 mb-5">
-            {['1 credit per email draft', '1 credit per AI chat draft', '1 credit per new job/hotlist post', 'Credits never expire'].map(f => (
+            {['1 credit to generate an AI Pitch/Request draft, 0.05 to send it', '1 credit per Inbox AI chat draft or new post', '0.25 credit per Active List email download', 'Credits never expire'].map(f => (
               <li key={f} className="flex items-start gap-2.5 text-[15px] text-gray-700">
                 <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                   <Check size={9} className="text-white" strokeWidth={3} />

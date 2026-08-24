@@ -405,7 +405,7 @@ export default function ActiveListPage() {
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden overscroll-none bg-[#f3f2ee] pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="flex h-[100dvh] flex-col overflow-hidden overscroll-none bg-[#f3f2ee] pb-[calc(4.25rem+env(safe-area-inset-bottom))] dark:bg-[#1B1D21] sm:pb-0">
       <AppNav />
       <main className="min-h-0 flex-1 overflow-hidden">
         <div className="flex h-full w-full flex-col gap-2 overflow-hidden px-2 py-2">
@@ -611,7 +611,7 @@ export default function ActiveListPage() {
                 onToggleAllVisible={toggleAllVisible}
                 headerAccessory={!loading && (
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-400">
+                    <span className="text-[11px] text-gray-400 dark:text-[#64748B]">
                       {activeFilteredRows.length.toLocaleString('en-US')} {activeFilteredRows.length === 1 ? 'contact' : 'contacts'}
                     </span>
                     {totalPages > 1 && (
@@ -620,17 +620,17 @@ export default function ActiveListPage() {
                           type="button"
                           onClick={() => setPage((p) => Math.max(1, p - 1))}
                           disabled={page === 1}
-                          className="flex h-6 w-6 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="flex h-6 w-6 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-[#94A3B8] dark:hover:border-white/30"
                           aria-label="Previous page"
                         >
                           <ChevronLeft size={12} />
                         </button>
-                        <span className="px-1 text-[11px] font-semibold text-gray-600 tabular-nums">Page {page} of {totalPages}</span>
+                        <span className="px-1 text-[11px] font-semibold text-gray-600 tabular-nums dark:text-slate-300">Page {page} of {totalPages}</span>
                         <button
                           type="button"
                           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                           disabled={page === totalPages}
-                          className="flex h-6 w-6 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="flex h-6 w-6 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-[#94A3B8] dark:hover:border-white/30"
                           aria-label="Next page"
                         >
                           <ChevronRight size={12} />

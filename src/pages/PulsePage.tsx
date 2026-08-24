@@ -1030,7 +1030,7 @@ const LeadCard = memo(function LeadCard({
         onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
         disabled={isLoadingPreview}
         title="Preview original post"
-        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-yellow-50 text-gray-600 transition-colors hover:bg-yellow-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-yellow-400/10 dark:text-gray-300 dark:hover:bg-yellow-400/20"
+        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
       >
         {isLoadingPreview ? <LogoSpinner size={14} /> : (
           <>
@@ -5950,7 +5950,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-2 bg-[#f3f2ee] px-1.5 pt-1 pb-4 dark:bg-[#141619]">
+                          <div className="space-y-2 bg-[#f3f2ee] px-1.5 pt-1 pb-4 dark:bg-[#1B1D21]">
                             {renderLeadCards(visibleFeed)}
                           </div>
                         )}
@@ -5976,7 +5976,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopPreviewedFeed)
                             ) : (
-                              <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#141619]">
+                              <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#1B1D21]">
                                 {renderLeadCards(visibleDesktopPreviewedFeed, 2)}
                               </div>
                             )
@@ -5986,7 +5986,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopAskedFeed)
                             ) : (
-                              <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#141619]">
+                              <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#1B1D21]">
                                 {renderLeadCards(visibleDesktopAskedFeed, 2)}
                               </div>
                             )
@@ -5996,7 +5996,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopVerifiedFeed)
                             ) : (
-                              <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#141619]">
+                              <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#1B1D21]">
                                 {renderLeadCards(visibleDesktopVerifiedFeed, 2)}
                               </div>
                             )
@@ -6006,7 +6006,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopRecentFeed)
                             ) : (
-                              <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#141619]">
+                              <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#1B1D21]">
                                 {renderLeadCards(visibleDesktopRecentFeed, 2)}
                               </div>
                             )
