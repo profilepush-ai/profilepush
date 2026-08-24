@@ -219,10 +219,6 @@ export default function ItStaffingVendorListPage() {
         <p className="mt-3 text-sm leading-6 text-gray-600">
           Below are the vendors our system has seen most recently posting new job requirements — pulled from live market activity, not a stale monthly export. The vendors below have open requirements <em>right now</em>, not a snapshot from weeks ago.
         </p>
-        <p className="mt-3 text-sm leading-6 text-gray-600">
-          The first 10 of the 100 most recently active vendors are free to browse below, with real names and emails. <a href="/signup" className="font-semibold text-blue-600 hover:underline">Create a free ProfilePush account</a> to page through the rest and download the complete list, plus daily digest emails as new vendors go active.
-        </p>
-
         {(refreshedAt || totalCount30d != null) && (
           <p className="mt-4 text-xs font-medium text-gray-400">
             {totalCount30d != null && (
@@ -241,8 +237,10 @@ export default function ItStaffingVendorListPage() {
               rows={rows}
               tabLabel="Vendors"
               onDownload={handleDownload}
+              onSignedIn={() => { void performDownload(); }}
               downloadLabel={user ? 'Download full CSV' : 'Log in to download full list'}
               loading={loading}
+              totalCount={totalCount30d}
             />
           )}
         </div>

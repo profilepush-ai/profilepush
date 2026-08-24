@@ -219,10 +219,6 @@ export default function ItStaffingBenchSalesRecruitersListPage() {
         <p className="mt-3 text-sm leading-6 text-gray-600">
           Below are the bench sales recruiters our system has seen most recently posting available consultants — sourced from live market activity rather than a static directory that goes stale within weeks. If you're a recruiter looking for consultants to submit against your open requirements, this is who's actively marketing candidates right now.
         </p>
-        <p className="mt-3 text-sm leading-6 text-gray-600">
-          The first 10 of the 100 most recently active recruiters are free to browse below, with real names and emails. <a href="/signup" className="font-semibold text-blue-600 hover:underline">Create a free ProfilePush account</a> to page through the rest and download the complete list, plus daily digest emails as new consultants go active.
-        </p>
-
         {(refreshedAt || totalCount30d != null) && (
           <p className="mt-4 text-xs font-medium text-gray-400">
             {totalCount30d != null && (
@@ -241,8 +237,10 @@ export default function ItStaffingBenchSalesRecruitersListPage() {
               rows={rows}
               tabLabel="Recruiters"
               onDownload={handleDownload}
+              onSignedIn={() => { void performDownload(); }}
               downloadLabel={user ? 'Download full CSV' : 'Log in to download full list'}
               loading={loading}
+              totalCount={totalCount30d}
             />
           )}
         </div>

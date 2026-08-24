@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Download } from 'lucide-react';
 import LogoSpinner from './LogoSpinner';
 
@@ -68,6 +68,8 @@ export default function ActiveListTable({
   onToggleRow,
   onToggleAllVisible,
   fitContent = false,
+  headerAccessory,
+  lockedBody = false,
 }: {
   tabs: ActiveListTab[];
   activeTab: string;
@@ -88,6 +90,15 @@ export default function ActiveListTable({
   // a short, fixed row count (e.g. a 10-row preview) that should just show
   // in full rather than get its own internal scrollbar.
   fitContent?: boolean;
+  // Rendered in the header bar next to the tab label/heading — e.g. the
+  // public preview pages' pagination controls, so they sit beside "Vendors"/
+  // "Recruiters" instead of below the whole table.
+  headerAccessory?: ReactNode;
+  // Blurs and disables pointer events on just the row data, leaving the
+  // header (label, headerAccessory, download button) fully interactive —
+  // for the public preview pages' locked pages, where pagination must stay
+  // clickable so a visitor can navigate back off a locked page.
+  lockedBody?: boolean;
 }) {
   const current = tabs.find((tab) => tab.key === activeTab) ?? tabs[0];
   const allRows = current?.rows ?? [];
@@ -126,22 +137,25 @@ export default function ActiveListTable({
   return (
     <div className={`flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white ${fitContent ? '' : 'h-full'}`}>
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2.5">
-        {tabs.length > 1 ? (
-          <div className="flex items-center gap-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => onTabChange?.(tab.key)}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${tab.key === activeTab ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                {tab.label} <span className="tabular-nums">{tab.rows.length}</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <span className="text-xs font-semibold text-gray-600">{current?.label}</span>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {tabs.length > 1 ? (
+            <div className="flex items-center gap-1">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => onTabChange?.(tab.key)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${tab.key === activeTab ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  {tab.label} <span className="tabular-nums">{tab.rows.length}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs font-semibold text-gray-600">{current?.label}</span>
+          )}
+          {headerAccessory}
+        </div>
         <div className="flex items-center gap-2">
           {selectable && <span className="text-[11px] text-gray-500">{selectedEmails?.size ?? 0} selected</span>}
           <button
@@ -156,11 +170,11 @@ export default function ActiveListTable({
       </div>
 
       {loading ? (
-        <div className={`flex items-center justify-center ${fitContent ? 'min-h-[160px]' : 'flex-1'}`}><LogoSpinner size={18} /></div>
+        <div className={`flex items-center justify-center ${fitContent ? 'min-h-[160px]' : 'flex-1'} ${lockedBody ? 'pointer-events-none select-none blur-sm' : ''}`}><LogoSpinner size={18} /></div>
       ) : (
         <div
           ref={scrollRef}
-          className={fitContent ? '' : 'min-h-0 flex-1 overflow-auto'}
+          className={`${fitContent ? '' : 'min-h-0 flex-1 overflow-auto'} ${lockedBody ? 'pointer-events-none select-none blur-sm' : ''}`}
           onScroll={fitContent ? undefined : handleScroll}
         >
           <table className="w-full table-fixed text-left text-xs">
