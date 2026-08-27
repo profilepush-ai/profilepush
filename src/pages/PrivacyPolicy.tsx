@@ -41,8 +41,8 @@ export default function PrivacyPolicy() {
             <p>To provide our services, we share necessary data with trusted sub-processors:</p>
             <ul>
               <li><strong>Large Language Models (LLMs):</strong> We use enterprise APIs (e.g., OpenAI, Anthropic). We enforce zero-retention policies. Your Candidate Data and system prompts are explicitly excluded from being used to train third-party AI models.</li>
-              <li><strong>Apify:</strong> Used to execute your omni-board search queries.</li>
               <li><strong>Supabase:</strong> Used for secure database storage and authentication.</li>
+              <li><strong>Cloudflare:</strong> Used for edge processing, content delivery, and storage needs to support platform performance and reliability.</li>
               <li><strong>Razorpay:</strong> Used as our exclusive payment gateway for subscription management and automated tier adjustments. Razorpay securely tokens and handles all financial data; ProfilePush never stores raw credit card numbers on its servers.</li>
             </ul>
           </Section>
