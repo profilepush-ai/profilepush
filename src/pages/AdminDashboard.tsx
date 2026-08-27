@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
@@ -26,6 +26,8 @@ interface AccountStats {
   ai_pitches_count: number;
   ai_requests_count: number;
   chats_count: number;
+  vendor_downloads_count: number;
+  recruiter_downloads_count: number;
   account_age_days: number;
   session_count: number;
   active_seconds: number;
@@ -124,6 +126,8 @@ const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.React
   { key: 'ai_pitches_count', label: 'AI Pitches', icon: <Send size={12} />, kind: 'number', widthClass: 'w-[105px]' },
   { key: 'ai_requests_count', label: 'AI Requests', icon: <FileText size={12} />, kind: 'number', widthClass: 'w-[115px]' },
   { key: 'chats_count', label: 'Chats', icon: <MessageSquare size={12} />, kind: 'number', widthClass: 'w-[90px]' },
+  { key: 'vendor_downloads_count', label: 'Vendor Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[140px]' },
+  { key: 'recruiter_downloads_count', label: 'Recruiter Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[150px]' },
   { key: 'account_age_days', label: 'Created Since', icon: <CalendarDays size={12} />, kind: 'age', widthClass: 'w-[120px]' },
   { key: 'session_count', label: 'Sessions', icon: <LogIn size={12} />, kind: 'number', widthClass: 'w-[95px]' },
   { key: 'active_seconds', label: 'Active Time', icon: <Clock size={12} />, kind: 'duration', widthClass: 'w-[110px]' },

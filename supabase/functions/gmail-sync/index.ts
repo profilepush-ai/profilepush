@@ -135,8 +135,21 @@ async function syncConversation(
   if (notificationError) console.error(`gmail-sync notification insert failed for conversation ${conversation.id}`, notificationError);
 }
 
+// Disabled 2026-08-25: gmail.readonly was dropped from GMAIL_OAUTH_SCOPES
+// (_shared/gmail.ts) to speed up Google's OAuth verification. Every Gmail
+// API call in syncConversation() below needs that scope, so a live run
+// would get a 403 on every thread fetch — and the 401/403 handling there
+// treats that as GmailDisconnectedError, which would incorrectly mark every
+// connected user's integration as "revoked" even though nothing was
+// actually revoked. The cron that used to invoke this every 3 minutes is
+// also unscheduled (20260825140000_disable_gmail_sync_cron.sql) — this
+// guard covers any other caller. Flip back to false once gmail.readonly (or
+// an equivalent scope) is requested and approved again.
+const GMAIL_SYNC_DISABLED = true;
+
 Deno.serve(async (request) => {
   if (request.method !== "POST") return respond({ error: "Method not allowed" }, 405);
+  if (GMAIL_SYNC_DISABLED) return respond({ ok: false, disabled: true, reason: "gmail_readonly_scope_removed" });
 
   const supabaseAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 

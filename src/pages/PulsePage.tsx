@@ -48,6 +48,8 @@ import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
 import GmailIcon from '../components/GmailIcon';
+import GmailConnectPrompt from '../components/GmailConnectPrompt';
+import { isGmailFeatureEnabled } from '../lib/gmail-feature-flag';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -2041,6 +2043,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [processingAskAILeadId, setProcessingAskAILeadId] = useState<string | null>(null);
   const [processingChatLeadId, setProcessingChatLeadId] = useState<string | null>(null);
   const [askAIPreview, setAskAIPreview] = useState<AskAIPreview | null>(null);
+  const [gmailIntegrationStatus, setGmailIntegrationStatus] = useState<'connected' | 'not_connected' | null>(null);
+  const [sendingViaGmail, setSendingViaGmail] = useState(false);
+  const [showGmailConnectPrompt, setShowGmailConnectPrompt] = useState(false);
+  const [connectingGmail, setConnectingGmail] = useState(false);
+  const [pendingGmailReopen, setPendingGmailReopen] = useState<{ leadId: string; leadType: 'job' | 'hotlist' } | null>(null);
   const [showOutOfCreditsModal, setShowOutOfCreditsModal] = useState(false);
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
@@ -4878,6 +4885,142 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
   }, [account?.id, isHotlistFeed, processingAskAILeadId, showToast, user?.id]);
 
+  // Gated to the same allowlist as Account Settings' "Connect Gmail" — the
+  // Google OAuth app hasn't cleared verification for general users yet.
+  const gmailFeatureEnabled = isGmailFeatureEnabled(user?.email);
+
+  useEffect(() => {
+    if (!gmailFeatureEnabled) return;
+    supabase
+      .from('gmail_integration_status' as never)
+      .select('status')
+      .maybeSingle()
+      .then(({ data }: { data: { status?: string } | null }) => {
+        setGmailIntegrationStatus(data?.status === 'connected' ? 'connected' : 'not_connected');
+      });
+  }, [gmailFeatureEnabled]);
+
+  // Consumes the one-time gmail=connected/error (+ reopen target) query
+  // params left behind by gmail-oauth-callback's redirect back here, then
+  // clears them from the URL so a refresh doesn't replay the toast/restore.
+  useEffect(() => {
+    const gmailResult = searchParams.get('gmail');
+    if (!gmailResult) return;
+
+    if (gmailResult === 'connected') showToast('Gmail connected.', 'success');
+    else if (gmailResult === 'error') showToast('Could not connect Gmail. Please try again.', 'error');
+
+    const reopenLeadId = searchParams.get('gmail_reopen_lead');
+    const reopenLeadType = searchParams.get('gmail_reopen_type');
+    if (reopenLeadId && (reopenLeadType === 'job' || reopenLeadType === 'hotlist')) {
+      setPendingGmailReopen({ leadId: reopenLeadId, leadType: reopenLeadType });
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    for (const key of ['gmail', 'gmail_error', 'gmail_reopen_lead', 'gmail_reopen_type']) nextParams.delete(key);
+    navigate({ pathname: location.pathname, search: nextParams.toString() ? `?${nextParams.toString()}` : '' }, { replace: true });
+    // Runs once on mount only — searchParams/navigate would otherwise
+    // re-trigger this after the replace() above changes the URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Restores the modal once the reopened lead is actually present in the
+  // loaded feed (which arrives asynchronously) — prefers the draft already
+  // persisted in pulse_ask_ai_previews so reconnecting doesn't burn another
+  // credit, falling back to a fresh generate if that row is somehow gone.
+  useEffect(() => {
+    if (!pendingGmailReopen || !user?.id) return;
+    const lead = feed.find((item) => item.id === pendingGmailReopen.leadId);
+    if (!lead) return;
+    const { leadId, leadType } = pendingGmailReopen;
+    setPendingGmailReopen(null);
+
+    void (async () => {
+      const { data } = await supabase
+        .from('pulse_ask_ai_previews' as never)
+        .select('vendor_name, vendor_email, subject, email_content')
+        .eq('user_id', user.id)
+        .eq(leadType === 'hotlist' ? 'hotlist_id' : 'job_id', leadId)
+        .maybeSingle();
+      const row = data as { vendor_name?: string; vendor_email?: string; subject?: string; email_content?: string } | null;
+
+      if (!row?.subject || !row?.email_content) {
+        void handleAskAI(lead);
+        return;
+      }
+
+      const detectedMissingDetails = leadType === 'hotlist' ? ['resume'] : getMissingJobDetails(lead);
+      const missingDetails = detectedMissingDetails.length > 0 ? detectedMissingDetails : ['Rate'];
+      setAskAIPreview({
+        leadId,
+        leadType,
+        requestId: crypto.randomUUID(),
+        vendorName: row.vendor_name || lead.posterName || 'the vendor',
+        vendorEmail: row.vendor_email || extractPrimaryEmail(lead.posterEmail) || '',
+        jobTitle: lead.title || lead.roleTitle || '',
+        company: lead.company || '',
+        missingDetails,
+        emailSubject: row.subject,
+        emailContent: row.email_content,
+        isGenerating: false,
+      });
+    })();
+  }, [feed, pendingGmailReopen, user?.id, handleAskAI]);
+
+  // Mirrors AccountSettings.connectGmail — full-page redirect to Google's
+  // consent screen, so the in-progress draft in askAIPreview is lost from
+  // memory. return_to (this page + which lead to reopen) rides through the
+  // signed OAuth state and back; the restore effect below uses it to
+  // reopen the modal with the draft pulled back from pulse_ask_ai_previews
+  // (or regenerated if that row is somehow gone) once we're back here.
+  async function handleConnectGmail() {
+    if (!account?.id || connectingGmail || !askAIPreview) return;
+    setConnectingGmail(true);
+    try {
+      const returnTo = `${window.location.pathname}?gmail_reopen_lead=${encodeURIComponent(askAIPreview.leadId)}&gmail_reopen_type=${askAIPreview.leadType}`;
+      const { data, error } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: account.id, return_to: returnTo } });
+      if (error || !data?.url) throw new Error(data?.error || 'Could not start Gmail connection');
+      window.location.href = data.url;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not start Gmail connection', 'error');
+      setConnectingGmail(false);
+    }
+  }
+
+  async function handleSendViaGmail() {
+    if (!askAIPreview || !account?.id || sendingViaGmail) return;
+    setSendingViaGmail(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ask-ai-vendor-email', {
+        body: {
+          action: 'send',
+          request_id: askAIPreview.requestId,
+          account_id: account.id,
+          job_id: askAIPreview.leadId,
+          lead_type: askAIPreview.leadType,
+          missing_details: askAIPreview.missingDetails,
+          email_subject: askAIPreview.emailSubject,
+          email_content: askAIPreview.emailContent,
+          channel: 'gmail',
+        },
+      });
+      if (error || !data?.ok) {
+        if (data?.error === 'gmail_not_connected') {
+          setGmailIntegrationStatus('not_connected');
+          throw new Error('Gmail is no longer connected — reconnect and try again');
+        }
+        throw new Error(data?.error || await getFunctionErrorMessage(error, 'Could not send via Gmail'));
+      }
+      setAskAIPreview(null);
+      showToast('Sent via Gmail', 'success');
+      if (data.conversation_id) navigate(`/inbox/${data.conversation_id}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not send via Gmail', 'error');
+    } finally {
+      setSendingViaGmail(false);
+    }
+  }
+
   const consumeCreditsLegacy = useCallback(async (
     amount: number,
     feature: 'pulse_reveal_contact' | 'pulse_view_breakdown' | 'pulse_predict_match' | 'pulse_view_post_content',
@@ -6108,10 +6251,31 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               </button>
             </div>
             <div className="mt-3 flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-md bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-400">
-                <GmailIcon size={12} />
-                Gmail Sync connector — launching soon
-              </span>
+              {!gmailFeatureEnabled ? (
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-400">
+                  <GmailIcon size={12} />
+                  Send via Gmail — launching soon
+                </span>
+              ) : gmailIntegrationStatus === 'connected' ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSendViaGmail()}
+                  disabled={sendingViaGmail || !askAIPreview.vendorEmail || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim()}
+                  className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {sendingViaGmail ? <LogoSpinner size={11} /> : <GmailIcon size={12} />}
+                  {sendingViaGmail ? 'Sending…' : 'Send via Gmail'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowGmailConnectPrompt(true)}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-600 hover:underline"
+                >
+                  <GmailIcon size={12} />
+                  Connect Gmail to send
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void copyText(
@@ -6128,6 +6292,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             </>}
           </div>
         </div>
+      )}
+
+      {showGmailConnectPrompt && (
+        <GmailConnectPrompt
+          connecting={connectingGmail}
+          onClose={() => setShowGmailConnectPrompt(false)}
+          onConnect={() => void handleConnectGmail()}
+        />
       )}
 
       <InsufficientCreditsModal

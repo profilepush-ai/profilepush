@@ -60,6 +60,8 @@ Deno.serve(async (req: Request) => {
       aiPitchesRes,
       aiRequestsRes,
       chatsRes,
+      vendorDownloadsRes,
+      recruiterDownloadsRes,
     ] = await Promise.all([
       supabase
         .from("account_members")
@@ -130,6 +132,24 @@ Deno.serve(async (req: Request) => {
           .select("sender_account_id")
           .in("sender_account_id", accountIds)
       ),
+      // Active List downloads: one row per download action (see
+      // active_list_downloads / check_and_log_active_list_download), split
+      // by download_type the same way AI Pitch/Request splits by which
+      // foreign key is set.
+      withDateRange(
+        supabase
+          .from("active_list_downloads")
+          .select("account_id")
+          .in("account_id", accountIds)
+          .eq("download_type", "vendors")
+      ),
+      withDateRange(
+        supabase
+          .from("active_list_downloads")
+          .select("account_id")
+          .in("account_id", accountIds)
+          .eq("download_type", "recruiters")
+      ),
     ]);
 
     function countBy(rows: any[] | null, key = "account_id"): Record<string, number> {
@@ -148,6 +168,8 @@ Deno.serve(async (req: Request) => {
     const aiPitchesCounts = countBy(aiPitchesRes.data);
     const aiRequestsCounts = countBy(aiRequestsRes.data);
     const chatsCounts = countBy(chatsRes.data, "sender_account_id");
+    const vendorDownloadsCounts = countBy(vendorDownloadsRes.data);
+    const recruiterDownloadsCounts = countBy(recruiterDownloadsRes.data);
 
     // Split previews by looking up which table each previewed lead_id
     // actually belongs to.
@@ -256,6 +278,8 @@ Deno.serve(async (req: Request) => {
         ai_pitches_count: aiPitchesCounts[a.id] || 0,
         ai_requests_count: aiRequestsCounts[a.id] || 0,
         chats_count: chatsCounts[a.id] || 0,
+        vendor_downloads_count: vendorDownloadsCounts[a.id] || 0,
+        recruiter_downloads_count: recruiterDownloadsCounts[a.id] || 0,
         account_age_days: Math.max(0, Math.floor((Date.now() - Date.parse(a.created_at)) / 86_400_000)),
         session_count: activity?.session_count ?? 0,
         active_seconds: activity?.active_seconds ?? 0,

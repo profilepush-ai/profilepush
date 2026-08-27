@@ -19,7 +19,7 @@ export default function GmailConnectPrompt({ connecting, onClose, onConnect }: {
           </div>
           <h2 className="text-sm font-semibold text-gray-900">Connect Gmail to send from your own address</h2>
           <p className="mt-2 text-xs leading-relaxed text-gray-500">
-            Vendors will see this email come from your real Gmail address — not a shared ProfilePush inbox — and their reply lands right back in your Inbox.
+            Vendors will see this email come from your real Gmail address, not a shared ProfilePush inbox. Replies land in your Gmail directly rather than syncing back into ProfilePush.
           </p>
           <button
             onClick={onConnect}

@@ -5,6 +5,7 @@
 const GMAIL_FEATURE_ALLOWED_EMAILS = new Set([
   'profilepush.ai@gmail.com',
   'poornapotluri27@gmail.com',
+  'chandrapotluri24@gmail.com',
 ]);
 
 export function isGmailFeatureEnabled(email?: string | null): boolean {

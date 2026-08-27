@@ -542,7 +542,6 @@ export default function AccountSettings() {
                       </p>
                       <p className="text-[12px] text-gray-400 mt-0.5">
                         Connected {new Date(gmailStatus.connected_at).toLocaleDateString()}
-                        {gmailStatus.last_synced_at && ` · Last synced ${new Date(gmailStatus.last_synced_at).toLocaleTimeString()}`}
                       </p>
                     </div>
                     <button onClick={() => void disconnectGmail()} disabled={disconnectingGmail}

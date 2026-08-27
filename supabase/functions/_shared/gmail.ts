@@ -1,8 +1,14 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
+// gmail.readonly was dropped (2026-08-25) to speed up Google's OAuth
+// verification review — restricted/sensitive scopes that read a user's
+// inbox draw much more scrutiny than gmail.send alone. This means
+// gmail-sync (which needs readonly to poll vendor reply threads) is no
+// longer usable — see its own disabled short-circuit — so sending via a
+// connected Gmail account works, but replies no longer sync back into
+// ProfilePush's Inbox automatically.
 export const GMAIL_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/gmail.readonly",
   "openid",
   "email",
 ].join(" ");
@@ -77,16 +83,21 @@ function timingSafeEqual(left: string, right: string): boolean {
   return mismatch === 0;
 }
 
-/** Signed, short-lived state param carrying who initiated the OAuth flow — verified on callback since Google redirects the browser there with no Supabase session header. */
-export async function signOAuthState(userId: string, accountId: string): Promise<string> {
+/** Same-origin relative path (+ optional query string) only — rejects protocol-relative ("//host/..."), absolute ("https://..."), and anything else that could turn the signed callback redirect into an open redirect. We sign whatever the caller passes here, so this must be validated before signing, not just trusted because the result ends up inside a signature. */
+export function isSafeReturnPath(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 500 && /^\/(?!\/)[A-Za-z0-9\-._~/?=&%]*$/.test(value);
+}
+
+/** Signed, short-lived state param carrying who initiated the OAuth flow and where to send them back — verified on callback since Google redirects the browser there with no Supabase session header. */
+export async function signOAuthState(userId: string, accountId: string, returnTo?: string | null): Promise<string> {
   const secret = Deno.env.get("GMAIL_STATE_SIGNING_SECRET")!;
-  const payload = JSON.stringify({ userId, accountId, nonce: crypto.randomUUID(), issuedAt: Date.now() });
+  const payload = JSON.stringify({ userId, accountId, returnTo: returnTo ?? null, nonce: crypto.randomUUID(), issuedAt: Date.now() });
   const encodedPayload = base64UrlEncode(new TextEncoder().encode(payload));
   const signature = await hmacHex(secret, encodedPayload);
   return `${encodedPayload}.${signature}`;
 }
 
-export async function verifyOAuthState(state: string): Promise<{ userId: string; accountId: string } | null> {
+export async function verifyOAuthState(state: string): Promise<{ userId: string; accountId: string; returnTo: string | null } | null> {
   const [encodedPayload, signature] = state.split(".");
   if (!encodedPayload || !signature) return null;
   const secret = Deno.env.get("GMAIL_STATE_SIGNING_SECRET")!;
@@ -94,10 +105,10 @@ export async function verifyOAuthState(state: string): Promise<{ userId: string;
   if (!timingSafeEqual(expected, signature)) return null;
   try {
     const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(encodedPayload))) as
-      { userId: string; accountId: string; issuedAt: number };
+      { userId: string; accountId: string; returnTo?: string | null; issuedAt: number };
     if (Date.now() - payload.issuedAt > OAUTH_STATE_MAX_AGE_MS) return null;
     if (!payload.userId || !payload.accountId) return null;
-    return { userId: payload.userId, accountId: payload.accountId };
+    return { userId: payload.userId, accountId: payload.accountId, returnTo: isSafeReturnPath(payload.returnTo) ? payload.returnTo : null };
   } catch {
     return null;
   }

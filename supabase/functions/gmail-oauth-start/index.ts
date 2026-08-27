@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { GMAIL_OAUTH_SCOPES, signOAuthState } from "../_shared/gmail.ts";
+import { GMAIL_OAUTH_SCOPES, isSafeReturnPath, signOAuthState } from "../_shared/gmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,6 +36,7 @@ Deno.serve(async (request) => {
     const body = await request.json<Record<string, unknown>>();
     const accountId = asString(body.account_id, 100);
     if (!accountId) return respond({ error: "account_id is required" }, 400);
+    const returnTo = isSafeReturnPath(body.return_to) ? body.return_to : null;
 
     const { data: membership } = await supabaseAdmin
       .from("account_members")
@@ -50,7 +51,7 @@ Deno.serve(async (request) => {
     const redirectUri = Deno.env.get("GMAIL_OAUTH_REDIRECT_URI");
     if (!clientId || !redirectUri) return respond({ error: "Gmail integration is not configured" }, 503);
 
-    const state = await signOAuthState(user.id, accountId);
+    const state = await signOAuthState(user.id, accountId, returnTo);
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     authUrl.searchParams.set("client_id", clientId);
     authUrl.searchParams.set("redirect_uri", redirectUri);

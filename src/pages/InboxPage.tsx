@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  AlertCircle, ArrowLeft, Briefcase, Check, CheckCheck, Clock3, DollarSign, Download, GraduationCap, Inbox,
+  AlertCircle, ArrowLeft, Briefcase, Check, CheckCheck, Clock3, DollarSign, Download, ExternalLink, GraduationCap, Inbox,
   Copy, Laptop, Loader2, Mail, MapPin, Paperclip, Search, Send, Shield, Sparkles, X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -55,6 +55,7 @@ type Conversation = {
   subject: string;
   status: ConversationStatus;
   channel: 'mailgun' | 'gmail' | 'chat';
+  gmail_thread_id: string | null;
   unread_count: number;
   last_message_at: string;
   created_at: string;
@@ -296,7 +297,7 @@ export default function InboxPage() {
     const [{ data, error }, { data: previewData, error: previewError }, { data: chatData, error: chatError }] = await Promise.all([
       supabase
         .from('vendor_conversations')
-        .select('id, vendor_name, vendor_email, sender_name, subject, status, channel, unread_count, last_message_at, created_at, job_id, hotlist_id, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
+        .select('id, vendor_name, vendor_email, sender_name, subject, status, channel, gmail_thread_id, unread_count, last_message_at, created_at, job_id, hotlist_id, social_jobs(job_title, platform, posted_by_name, company_name, posted_at, created_at), social_hotlist(role_title, platform, bench_sales_recruiter_name, bench_sales_company_name, posted_at, created_at)')
         .order('last_message_at', { ascending: false }),
       supabase
         .from('pulse_ask_ai_previews' as never)
@@ -903,10 +904,31 @@ export default function InboxPage() {
               <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-3 py-3 text-center text-[12px] text-gray-500 dark:border-white/10 dark:bg-[#1B1D21]">
                 This conversation is closed. Reopen it to send a message.
               </div>
+            ) : selected.channel === 'gmail' ? (
+              // gmail.readonly was dropped from the OAuth scope (2026-08-25) to speed
+              // up Google's verification review, which disabled reply sync — a reply
+              // typed here would go out blind, with no way to see what the vendor
+              // actually said back (it lands in the user's real Gmail inbox, not
+              // ProfilePush). Point at the real thread instead of pretending this is
+              // a live conversation view.
+              <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-3 py-3 dark:border-white/10 dark:bg-[#1B1D21]">
+                <p className="mb-2 text-[11px] text-gray-400">
+                  Replies land in your connected Gmail inbox.
+                </p>
+                <a
+                  href={selected.gmail_thread_id ? `https://mail.google.com/mail/u/0/#all/${selected.gmail_thread_id}` : 'https://mail.google.com/mail/u/0/'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-[12px] font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200 dark:hover:bg-white/5"
+                >
+                  Continue this conversation in Gmail
+                  <ExternalLink size={12} />
+                </a>
+              </div>
             ) : (
               <div className="shrink-0 border-t border-gray-200 bg-[#f3f2ee] px-2.5 py-2.5 dark:border-white/10 dark:bg-[#1B1D21] sm:px-3 sm:py-3">
                 <p className="mb-1.5 text-[11px] text-gray-400">
-                  {selected.channel === 'chat' ? 'In-app chat — not sent by email' : selected.channel === 'gmail' ? 'Replying from your connected Gmail address' : 'Replying via ProfilePush'}
+                  {selected.channel === 'chat' ? 'In-app chat — not sent by email' : 'Replying via ProfilePush'}
                 </p>
                 <div className="flex flex-col gap-1.5 rounded-2xl border border-gray-200 bg-white p-1.5 transition focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
                   <textarea
