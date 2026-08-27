@@ -2,20 +2,17 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 // Invoked only by the accounts_notify_new_signup trigger (supabase/migrations/
-// 20260827160000_notify_new_signup.sql), which posts with a shared secret
-// stored in signup_notify_config as its bearer token — this endpoint has no
-// Supabase-session-based auth of its own, since a DB trigger has no user JWT
-// to present.
+// 20260827160000_notify_new_signup.sql). Supabase's platform-level gateway
+// requires a valid Supabase-issued JWT in Authorization before a request
+// even reaches this function's own code — the trigger sends the anon key
+// there to satisfy that (same as notify-daily-digest), and this endpoint's
+// actual authorization is the "token" field in the body, checked against
+// SIGNUP_NOTIFY_WEBHOOK_TOKEN.
 
 const NOTIFY_TO_EMAIL = "profilepush.ai@gmail.com";
 
 function respond(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-}
-
-function getBearerToken(request: Request): string {
-  const [scheme, token] = (request.headers.get("Authorization") ?? "").split(" ");
-  return scheme?.toLowerCase() === "bearer" ? (token ?? "").trim() : "";
 }
 
 function escapeHtml(value: string): string {
@@ -26,17 +23,18 @@ Deno.serve(async (request: Request) => {
   if (request.method !== "POST") return respond({ error: "Method not allowed" }, 405);
 
   try {
-    const expectedToken = Deno.env.get("SIGNUP_NOTIFY_WEBHOOK_TOKEN") ?? "";
-    if (!expectedToken || getBearerToken(request) !== expectedToken) {
-      return respond({ error: "Unauthorized" }, 401);
-    }
-
     const body = await request.json().catch(() => ({})) as {
+      token?: string;
       account_id?: string;
       account_name?: string;
       owner_id?: string;
       created_at?: string;
     };
+
+    const expectedToken = Deno.env.get("SIGNUP_NOTIFY_WEBHOOK_TOKEN") ?? "";
+    if (!expectedToken || body.token !== expectedToken) {
+      return respond({ error: "Unauthorized" }, 401);
+    }
     const ownerId = typeof body.owner_id === "string" ? body.owner_id : "";
     if (!ownerId) return respond({ error: "owner_id is required" }, 400);
 
