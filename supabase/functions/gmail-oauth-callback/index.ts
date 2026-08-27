@@ -66,6 +66,20 @@ Deno.serve(async (request) => {
       return redirectToApp("error", returnTo, tokenPayload.error ?? "token_exchange_failed");
     }
 
+    // Google's consent screen lets a user expand "Show all services" and
+    // uncheck individual scopes — approving basic identity (openid/email)
+    // while declining gmail.send specifically is a real, reachable path,
+    // not a hypothetical. A token pair still comes back in that case, so
+    // this must be checked explicitly; otherwise we'd silently mark the
+    // integration "connected" when it can never actually send anything
+    // (every future sendViaGmail call would fail with an authorization
+    // error, invisibly, days or weeks after the user thought they'd
+    // finished connecting).
+    const grantedScopes = new Set((tokenPayload.scope ?? "").split(/\s+/).filter(Boolean));
+    if (!grantedScopes.has("https://www.googleapis.com/auth/gmail.send")) {
+      return redirectToApp("error", returnTo, "gmail_send_scope_not_granted");
+    }
+
     const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
       signal: AbortSignal.timeout(15_000),

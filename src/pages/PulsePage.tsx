@@ -4908,6 +4908,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     if (!gmailResult) return;
 
     if (gmailResult === 'connected') showToast('Gmail connected.', 'success');
+    else if (searchParams.get('gmail_error') === 'gmail_send_scope_not_granted') showToast('Gmail wasn\'t connected — the "Send email on your behalf" permission was not granted. Reconnect and make sure that permission stays checked on Google\'s screen.', 'error');
     else if (gmailResult === 'error') showToast('Could not connect Gmail. Please try again.', 'error');
 
     const reopenLeadId = searchParams.get('gmail_reopen_lead');

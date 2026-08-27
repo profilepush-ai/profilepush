@@ -193,6 +193,8 @@ export default function AccountSettings() {
     if (gmailResult === 'connected') {
       showToast('Gmail connected. You can now send from your own address.', 'success');
       void loadGmailStatus();
+    } else if (searchParams.get('gmail_error') === 'gmail_send_scope_not_granted') {
+      showToast('Gmail wasn\'t connected — the "Send email on your behalf" permission was not granted. Reconnect and make sure that permission stays checked on Google\'s screen.', 'error');
     } else {
       showToast('Could not connect Gmail. Please try again.', 'error');
     }
