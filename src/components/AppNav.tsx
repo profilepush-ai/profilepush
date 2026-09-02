@@ -14,12 +14,12 @@ import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
 
 const navItems = [
-  { path: '/active-list',   label: 'Active List',    mobileLabel: 'Active List', icon: Database,  hideOnMobile: false },
   { path: '/feed',          label: 'Feed',           mobileLabel: 'Feed',    icon: Briefcase, hideOnMobile: false },
   { path: '/posts',        label: 'Posts',          mobileLabel: 'Posts',   icon: Megaphone, hideOnMobile: false },
-  { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
   { path: '/inbox',        label: 'Inbox',          mobileLabel: 'Inbox',   icon: Mail,      hideOnMobile: false },
   { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
+  { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
+  { path: '/active-list',   label: 'List',           mobileLabel: 'List', icon: Database,  hideOnMobile: false },
 ];
 
 function CreditsChip({ balance }: { balance: number }) {
@@ -457,19 +457,19 @@ export default function AppNav() {
             <span>Posts</span>
           </Link>
           <Link
-            to="/pulse"
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <Activity size={24} />
-            <span>Pulse</span>
-          </Link>
-          <Link
             to="/inbox"
             className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Mail size={24} />
             <span>Inbox</span>
             {inboxUnread > 0 && <span className="absolute right-[24%] top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
+          </Link>
+          <Link
+            to="/pulse"
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <Activity size={24} />
+            <span>Pulse</span>
           </Link>
         </nav>
       )}
