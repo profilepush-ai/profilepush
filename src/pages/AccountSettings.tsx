@@ -12,7 +12,6 @@ import Toast from '../components/Toast';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
-import { isGmailFeatureEnabled } from '../lib/gmail-feature-flag';
 import { isPaidPlanEffective, shouldShowCreditsUi } from '../lib/feature-gates';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -125,7 +124,6 @@ export default function AccountSettings() {
 
   const isOwner = membership?.role === 'owner';
   const isPaidPlan = isPaidPlanEffective(subscription);
-  const gmailFeatureEnabled = isGmailFeatureEnabled(user?.email);
 
   // ── Global ──────────────────────────────────────────────────
   const [section, setSection] = useState<Section>(() => {
@@ -528,12 +526,7 @@ export default function AccountSettings() {
                 description="Send vendor outreach and inbox replies from your own Gmail address instead of ProfilePush's."
               />
               <div className="px-4 sm:px-6 py-5">
-                {!gmailFeatureEnabled ? (
-                  <div className="flex items-center gap-3">
-                    <span className="shrink-0 px-2 py-1 rounded-md bg-amber-50 text-amber-700 text-[11px] font-bold uppercase tracking-wide">Coming Soon</span>
-                    <p className="text-[13px] text-gray-500">We're finishing Google's security review for this feature. It'll be available to everyone shortly.</p>
-                  </div>
-                ) : gmailLoading ? (
+                {gmailLoading ? (
                   <div className="flex items-center gap-2 text-[13px] text-gray-400"><Loader2 size={13} className="animate-spin" />Loading...</div>
                 ) : gmailStatus && gmailStatus.status === 'connected' ? (
                   <div className="flex items-center justify-between gap-3">

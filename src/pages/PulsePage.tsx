@@ -49,7 +49,6 @@ import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
 import GmailIcon from '../components/GmailIcon';
 import GmailConnectPrompt from '../components/GmailConnectPrompt';
-import { isGmailFeatureEnabled } from '../lib/gmail-feature-flag';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -4885,12 +4884,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
   }, [account?.id, isHotlistFeed, processingAskAILeadId, showToast, user?.id]);
 
-  // Gated to the same allowlist as Account Settings' "Connect Gmail" — the
-  // Google OAuth app hasn't cleared verification for general users yet.
-  const gmailFeatureEnabled = isGmailFeatureEnabled(user?.email);
-
   useEffect(() => {
-    if (!gmailFeatureEnabled) return;
     supabase
       .from('gmail_integration_status' as never)
       .select('status')
@@ -4898,7 +4892,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       .then(({ data }: { data: { status?: string } | null }) => {
         setGmailIntegrationStatus(data?.status === 'connected' ? 'connected' : 'not_connected');
       });
-  }, [gmailFeatureEnabled]);
+  }, []);
 
   // Consumes the one-time gmail=connected/error (+ reopen target) query
   // params left behind by gmail-oauth-callback's redirect back here, then
@@ -6252,12 +6246,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               </button>
             </div>
             <div className="mt-3 flex items-center justify-between gap-2">
-              {!gmailFeatureEnabled ? (
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-400">
-                  <GmailIcon size={12} />
-                  Send via Gmail — launching soon
-                </span>
-              ) : gmailIntegrationStatus === 'connected' ? (
+              {gmailIntegrationStatus === 'connected' ? (
                 <button
                   type="button"
                   onClick={() => void handleSendViaGmail()}
