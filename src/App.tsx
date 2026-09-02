@@ -39,7 +39,6 @@ const BookDemo = lazy(() => import('./pages/BookDemo'));
 const WhyAICopilot = lazy(() => import('./pages/WhyAICopilot'));
 const HowItWorks = lazy(() => import('./pages/HowItWorks'));
 const PulsePage = lazy(() => import('./pages/PulsePage'));
-const SocialHotlistPage = lazy(() => import('./pages/SocialHotlistPage'));
 const MyPostsPage = lazy(() => import('./pages/MyPostsPage'));
 const ProfilesPage = lazy(() => import('./pages/ProfilesPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
@@ -127,7 +126,7 @@ function AppEntry() {
     );
   }
 
-  return <Navigate to={user ? '/jobs' : '/signup'} replace />;
+  return <Navigate to={user ? '/feed' : '/signup'} replace />;
 }
 
 function SupabaseSetupRequired() {
@@ -202,12 +201,12 @@ export default function App() {
             <Route path="/admin/commands" element={<ErrorBoundary><AdminCommands /></ErrorBoundary>} />
 
             {/* Protected */}
-            <Route path="/desk" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
-            <Route path="/bench" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
+            <Route path="/desk" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
+            <Route path="/bench" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
             <Route path="/profile-details/:id" element={<ProtectedRoute><ErrorBoundary><ProfileDetails /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/job-finder" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
-            <Route path="/submission-queue" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
-            <Route path="/resume-ai/*" element={<Navigate to="/jobs" replace />} />
+            <Route path="/job-finder" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
+            <Route path="/submission-queue" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
+            <Route path="/resume-ai/*" element={<Navigate to="/feed" replace />} />
             <Route path="/account" element={<ProtectedRoute><ErrorBoundary><AccountSettings /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/support" element={<ProtectedRoute><ErrorBoundary><SupportPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/roadmap" element={<ProtectedRoute><ErrorBoundary><RoadmapPage /></ErrorBoundary></ProtectedRoute>} />
@@ -217,10 +216,11 @@ export default function App() {
             <Route path="/alerts" element={<ProtectedRoute><ErrorBoundary><AlertsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/inbox" element={<ProtectedRoute><ErrorBoundary><InboxPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/inbox/:conversationId" element={<ProtectedRoute><ErrorBoundary><InboxPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/jd-ai" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
-            <Route path="/job-watch-ai" element={<ProtectedRoute><Navigate to="/jobs" replace /></ProtectedRoute>} />
-            <Route path="/jobs" element={<ProtectedRoute><ErrorBoundary><PulsePage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/hotlist" element={<ProtectedRoute><ErrorBoundary><SocialHotlistPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/jd-ai" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
+            <Route path="/job-watch-ai" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
+            <Route path="/feed" element={<ProtectedRoute><ErrorBoundary><PulsePage feedKind="feed" /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/jobs" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
+            <Route path="/hotlist" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
             <Route path="/posts" element={<ProtectedRoute><ErrorBoundary><MyPostsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><ProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />

@@ -93,7 +93,7 @@ function detectCountryCode(): string {
 }
 
 const DEFAULT_COUNTRY = COUNTRIES[0];
-const DEFAULT_SIGNUP_REDIRECT = '/jobs';
+const DEFAULT_SIGNUP_REDIRECT = '/feed';
 const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
 
 type GoogleCredentialResponse = {
@@ -254,7 +254,7 @@ export default function SignUp() {
     );
   }
 
-  if (user) return <Navigate to="/jobs" replace />;
+  if (user) return <Navigate to="/feed" replace />;
 
   async function handleGoogleSignUp() {
     setOauthSubmitting(true);

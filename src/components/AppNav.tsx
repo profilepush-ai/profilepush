@@ -4,7 +4,7 @@ import {
   ChevronDown, HelpCircle, LogOut, Settings,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, Briefcase, UserRound, MoonStar, SunMedium, Mail, Megaphone, Database,
+  Activity, Briefcase, MoonStar, SunMedium, Mail, Megaphone, Database,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -15,8 +15,7 @@ import { shouldShowCreditsUi } from '../lib/feature-gates';
 
 const navItems = [
   { path: '/active-list',   label: 'Active List',    mobileLabel: 'Active List', icon: Database,  hideOnMobile: false },
-  { path: '/jobs',          label: 'Jobs',           mobileLabel: 'Jobs',    icon: Briefcase, hideOnMobile: false },
-  { path: '/hotlist',       label: 'Hotlist',        mobileLabel: 'Hotlist', icon: UserRound, hideOnMobile: false },
+  { path: '/feed',          label: 'Feed',           mobileLabel: 'Feed',    icon: Briefcase, hideOnMobile: false },
   { path: '/posts',        label: 'Posts',          mobileLabel: 'Posts',   icon: Megaphone, hideOnMobile: false },
   { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
   { path: '/inbox',        label: 'Inbox',          mobileLabel: 'Inbox',   icon: Mail,      hideOnMobile: false },
@@ -444,18 +443,11 @@ export default function AppNav() {
       {user && (
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
           <Link
-            to="/jobs"
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/jobs' ? 'text-blue-600' : 'text-gray-500'}`}
+            to="/feed"
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/feed' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Briefcase size={24} />
-            <span>Jobs</span>
-          </Link>
-          <Link
-            to="/hotlist"
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/hotlist' ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <UserRound size={24} />
-            <span>Hotlist</span>
+            <span>Feed</span>
           </Link>
           <Link
             to="/posts"

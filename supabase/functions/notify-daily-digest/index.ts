@@ -38,7 +38,7 @@ Deno.serve(async (request: Request) => {
 
     const title = `${jobsCount} new job${jobsCount === 1 ? "" : "s"}, ${hotlistCount} new hotlist profile${hotlistCount === 1 ? "" : "s"}`;
     const notifBody = "Your daily ProfilePush update is ready.";
-    const link = "/jobs";
+    const link = "/feed";
     const type = "daily_digest";
 
     // Only notify users who haven't disabled in-app notifications for this type.

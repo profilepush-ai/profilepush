@@ -58,6 +58,7 @@ import { matchesPulseFeedSearch } from '../lib/pulse-feed-search';
 import { shouldChargeCredits } from '../lib/feature-gates';
 import { normalizePostSource, type PostSource } from '../lib/post-source';
 import PostSourceBadge from '../components/PostSourceBadge';
+import LeadKindPill from '../components/LeadKindPill';
 import LocationChipInput from '../components/LocationChipInput';
 import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 
@@ -110,6 +111,7 @@ type SocialLead = {
   authorAccountId: string | null;
   authorUserId: string | null;
   authorName: string | null;
+  kind: 'job' | 'hotlist';
 };
 
 function compareDetailsAndPostedDate(a: SocialLead, b: SocialLead): number {
@@ -292,6 +294,7 @@ type PulseSocialFeedRpcRow = {
   created_by_account_id?: string | null;
   created_by_user_id?: string | null;
   author_display_name?: string | null;
+  _kind?: 'jobs' | 'hotlist';
 };
 
 type PulseFeedCacheWorkerResponse = {
@@ -420,6 +423,27 @@ const PULSE_CACHE_WORKER_TOKEN = (import.meta.env.VITE_PULSE_CACHE_WORKER_TOKEN 
 const TOP_PROFILES_PAGE_SIZE = 10;
 const MATCHES_PAGE_SIZE = 5;
 const DESKTOP_MATCHES_PAGE_SIZE = 12;
+
+const SEARCH_PLACEHOLDER_EXAMPLES = [
+  'Solutions Architect C2C $45',
+  'React Developer remote W2',
+  'Java Full Stack Developer C2C',
+  'SAP FICO Consultant Texas',
+  'DevOps Engineer H1B transfer',
+  'Data Engineer Chicago hybrid $60/hr',
+  'Salesforce Developer C2C $55',
+  'QA Automation Engineer onsite',
+  'AWS Cloud Architect contract',
+  'Business Analyst OPT remote',
+  'Network Engineer C2C Texas',
+  'ServiceNow Developer remote',
+];
+
+const FEED_KIND_FILTER_OPTIONS: Array<{ id: 'all' | 'job' | 'hotlist'; label: string; icon: LucideIcon }> = [
+  { id: 'all', label: 'All', icon: LayoutGrid },
+  { id: 'job', label: 'Jobs', icon: Briefcase },
+  { id: 'hotlist', label: 'Hotlist', icon: Users },
+];
 
 type PulseLayoutMode = 'card' | 'table' | 'swipe';
 type LeadTableSortKey = 'role' | 'exp' | 'workType' | 'empType' | 'rate' | 'visa' | 'location' | 'posted';
@@ -1094,8 +1118,8 @@ const LeadCard = memo(function LeadCard({
               </span>
             )}
           </div>
-          {(predictResult || isAskPending || isVerified || isLeadRevealed || lead.postSource === 'user_post') && (
-            <div className="mt-1 flex flex-wrap items-center gap-1">
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+              <LeadKindPill kind={lead.kind} />
               {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
               {predictResult && (
                 <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${predictToneClass(predictResult.score, isDark)}`}>
@@ -1120,7 +1144,6 @@ const LeadCard = memo(function LeadCard({
                 </span>
               )}
             </div>
-          )}
         </div>
       </div>
       {(() => {
@@ -1979,13 +2002,22 @@ function buildHotlistRolePayloadFromPersona(accountId: string, persona: PulsePer
 
 
 type PulsePageProps = {
-  feedKind?: 'jobs' | 'hotlist';
+  feedKind?: 'jobs' | 'hotlist' | 'feed';
 };
 
 export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const { account, user, refreshAccount } = useAuth();
   const { isDark } = useTheme();
   const isHotlistFeed = feedKind === 'hotlist';
+  const isCombinedFeed = feedKind === 'feed';
+  // Per-lead kind check: in combined mode every lead carries its own
+  // job/hotlist kind, so callers acting on a specific lead must derive from
+  // it instead of the page-level isHotlistFeed flag (which only applies to
+  // the standalone /jobs and /hotlist modes).
+  const leadIsHotlist = useCallback(
+    (lead: SocialLead) => (isCombinedFeed ? lead.kind === 'hotlist' : isHotlistFeed),
+    [isCombinedFeed, isHotlistFeed],
+  );
   const canSelectFeedTimeBasis = user?.email?.toLowerCase() === 'poornapotluri27@gmail.com';
 
   const [loading, setLoading] = useState(true);
@@ -2002,6 +2034,56 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
   const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('3d');
+  const [feedKindFilter, setFeedKindFilter] = useState<'all' | 'job' | 'hotlist'>('all');
+  const [animatedSearchPlaceholder, setAnimatedSearchPlaceholder] = useState(SEARCH_PLACEHOLDER_EXAMPLES[0]);
+
+  // Typewriter-cycles the search bar's placeholder through example queries —
+  // types a phrase out, pauses, deletes it, then moves to the next one.
+  useEffect(() => {
+    let cancelled = false;
+    let phraseIndex = 0;
+    let charCount = 0;
+    let isDeleting = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const TYPE_MS = 55;
+    const DELETE_MS = 28;
+    const PAUSE_AFTER_TYPE_MS = 1700;
+    const PAUSE_AFTER_DELETE_MS = 300;
+
+    const tick = () => {
+      if (cancelled) return;
+      const phrase = SEARCH_PLACEHOLDER_EXAMPLES[phraseIndex];
+
+      if (!isDeleting) {
+        charCount += 1;
+        setAnimatedSearchPlaceholder(phrase.slice(0, charCount));
+        if (charCount >= phrase.length) {
+          isDeleting = true;
+          timeoutId = setTimeout(tick, PAUSE_AFTER_TYPE_MS);
+          return;
+        }
+        timeoutId = setTimeout(tick, TYPE_MS);
+        return;
+      }
+
+      charCount -= 1;
+      setAnimatedSearchPlaceholder(phrase.slice(0, charCount));
+      if (charCount <= 0) {
+        isDeleting = false;
+        phraseIndex = (phraseIndex + 1) % SEARCH_PLACEHOLDER_EXAMPLES.length;
+        timeoutId = setTimeout(tick, PAUSE_AFTER_DELETE_MS);
+        return;
+      }
+      timeoutId = setTimeout(tick, DELETE_MS);
+    };
+
+    timeoutId = setTimeout(tick, TYPE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, []);
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
@@ -2174,7 +2256,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       .from('job_search_history')
       .select('search_query')
       .eq('user_id', user.id)
-      .eq('page', isHotlistFeed ? '/hotlist' : '/jobs')
+      .eq('page', isHotlistFeed ? '/hotlist' : isCombinedFeed ? '/feed' : '/jobs')
       .order('created_at', { ascending: false })
       .limit(5);
 
@@ -2184,7 +2266,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         .map((row) => (row.search_query ?? '').trim())
         .filter(Boolean),
     );
-  }, [isHotlistFeed, user?.id]);
+  }, [isCombinedFeed, isHotlistFeed, user?.id]);
 
   const zeroStats: ProfileStats = useMemo(() => ({
     uniqueCompanies: 0,
@@ -2491,8 +2573,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   }, [feedSearchFilters, getLeadFilterContext]);
 
   const scopedFeed = useMemo(
-    () => queryScopedFeed.filter((lead) => matchesLeadFilters(lead)),
-    [queryScopedFeed, matchesLeadFilters],
+    () => queryScopedFeed.filter((lead) => matchesLeadFilters(lead) && (
+      !isCombinedFeed || feedKindFilter === 'all' || lead.kind === feedKindFilter
+    )),
+    [queryScopedFeed, matchesLeadFilters, isCombinedFeed, feedKindFilter],
   );
 
   const feedFacetCounts = useMemo(() => {
@@ -2536,7 +2620,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const byKey = new Map<string, SocialLead>();
 
     for (const lead of scopedFeed) {
-      const key = buildPulseLeadDedupKey(lead, isHotlistFeed);
+      const key = buildPulseLeadDedupKey(lead, leadIsHotlist(lead));
       const existing = byKey.get(key);
       if (!existing) {
         byKey.set(key, lead);
@@ -2551,7 +2635,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
 
     return Array.from(byKey.values()).filter((lead) => !ignoredLeadIds.has(lead.id));
-  }, [feedTimeBasis, ignoredLeadIds, isHotlistFeed, scopedFeed]);
+  }, [feedTimeBasis, ignoredLeadIds, leadIsHotlist, scopedFeed]);
 
   const recentVisibleFeed = useMemo(() => {
     // Recent should only hold leads you haven't already acted on — once a
@@ -2560,7 +2644,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     // action button disabled.
     const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id) && !globalAskedJobStateByLeadId[lead.id]);
     return recent.sort((a, b) => {
-      if (isHotlistFeed) return compareByRecency(a, b, feedTimeBasis);
+      if (isCombinedFeed || isHotlistFeed) return compareByRecency(a, b, feedTimeBasis);
       const aTs = new Date(!isHotlistFeed && a.matchedAt
         ? a.matchedAt
         : (feedTimeBasis === 'created' ? a.createdAt : a.postedAt)).getTime();
@@ -2569,7 +2653,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         : (feedTimeBasis === 'created' ? b.createdAt : b.postedAt)).getTime();
       return bTs - aTs;
     });
-  }, [dedupedScopedFeed, feedTimeBasis, globalAskedJobStateByLeadId, isHotlistFeed, revealedLeadIds]);
+  }, [dedupedScopedFeed, feedTimeBasis, globalAskedJobStateByLeadId, isCombinedFeed, isHotlistFeed, revealedLeadIds]);
 
   const previewedVisibleFeed = useMemo(() => {
     // Same reasoning as Recent: once a lead has been requested/submitted, it
@@ -2618,19 +2702,25 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     queued: recentVisibleFeed.length,
   }), [askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, previewedVisibleFeed.length, recentVisibleFeed.length, verifiedVisibleFeed.length]);
 
-  const matchesTabDefinitions = useMemo((): Array<{ id: MatchesTabId; label: string }> => (
-    isHotlistFeed
+  const matchesTabDefinitions = useMemo((): Array<{ id: MatchesTabId; label: string; icon: LucideIcon }> => (
+    isCombinedFeed
       ? [
-        { id: 'queued', label: 'Recent' },
-        { id: 'previewed', label: 'Previewed' },
-        { id: 'asked', label: 'Requested' },
+        { id: 'queued', label: 'Recent', icon: Clock3 },
+        { id: 'previewed', label: 'Previewed', icon: Eye },
+        { id: 'asked', label: 'Sent', icon: Send },
+      ]
+      : isHotlistFeed
+      ? [
+        { id: 'queued', label: 'Recent', icon: Clock3 },
+        { id: 'previewed', label: 'Previewed', icon: Eye },
+        { id: 'asked', label: 'Requested', icon: Send },
       ]
       : [
-        { id: 'queued', label: 'Recent' },
-        { id: 'previewed', label: 'Previewed' },
-        { id: 'asked', label: 'Submitted' },
+        { id: 'queued', label: 'Recent', icon: Clock3 },
+        { id: 'previewed', label: 'Previewed', icon: Eye },
+        { id: 'asked', label: 'Submitted', icon: Send },
       ]
-  ), [isHotlistFeed]);
+  ), [isCombinedFeed, isHotlistFeed]);
 
   const profileViewCounts = useMemo(() => ({
     all: filteredJobsRankedLeaderboard.length,
@@ -2652,20 +2742,20 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } else {
       selectedFeed = dedupedScopedFeed;
     }
-    if (selectedMatchesTab === 'queued' && isHotlistFeed) {
+    if (isCombinedFeed || (selectedMatchesTab === 'queued' && isHotlistFeed)) {
       return [...selectedFeed].sort((a, b) => compareByRecency(a, b, feedTimeBasis));
     }
     return [...selectedFeed].sort(compareDetailsAndPostedDate);
-  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, feedTimeBasis, isHotlistFeed, previewedVisibleFeed, recentVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
+  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, feedTimeBasis, isCombinedFeed, isHotlistFeed, previewedVisibleFeed, recentVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
 
   const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
 
   const visibleDesktopRecentFeed = useMemo(
     () => [...recentVisibleFeed]
-      .sort((a, b) => (isHotlistFeed ? compareByRecency(a, b, feedTimeBasis) : compareDetailsAndPostedDate(a, b)))
+      .sort((a, b) => ((isCombinedFeed || isHotlistFeed) ? compareByRecency(a, b, feedTimeBasis) : compareDetailsAndPostedDate(a, b)))
       .slice(0, desktopRecentVisibleCount),
-    [desktopRecentVisibleCount, feedTimeBasis, isHotlistFeed, recentVisibleFeed],
+    [desktopRecentVisibleCount, feedTimeBasis, isCombinedFeed, isHotlistFeed, recentVisibleFeed],
   );
   const visibleDesktopPreviewedFeed = useMemo(
     () => [...previewedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopPreviewedVisibleCount),
@@ -3003,8 +3093,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   // the opposite direction from the jobs feed (job_context=job, consultant_text=pasted candidate).
   // Swap the payload so the worker's fixed "JOB vs CONSULTANT" prompt still lines up correctly.
   const buildPredictMatchFields = (lead: SocialLead, pastedText: string) => {
-    const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead, isHotlistFeed);
-    if (!isHotlistFeed) {
+    const leadHotlist = leadIsHotlist(lead);
+    const { expValue, workTypeValue, employmentTypeValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead, leadHotlist);
+    if (!leadHotlist) {
       return {
         consultantText: pastedText,
         jobContext: { skills: skillsValue, exp: expValue, visa: visaValue, workType: workTypeValue, employmentType: employmentTypeValue, location: locationValue },
@@ -3074,7 +3165,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           body: {
             lead_id: lead.id,
             platform: lead.platform,
-            feed_kind: isHotlistFeed ? 'hotlist' : 'job',
+            feed_kind: leadIsHotlist(lead) ? 'hotlist' : 'job',
             role_title: lead.title,
             consultant_text: consultantText,
             account_id: account?.id ?? '',
@@ -3147,7 +3238,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       lead,
       paletteIndex,
       isDark,
-      isHotlistFeed,
+      isHotlistFeed: leadIsHotlist(lead),
       feedTimeBasis,
       isLeadRevealed: revealedLeadIds.has(lead.id),
       globalAskedJobState: globalAskedJobStateByLeadId[lead.id],
@@ -3218,7 +3309,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       const isAskPending = globalAskedJobState === 'asked';
       const isVerified = globalAskedJobState === 'verified';
       const canAskAI = !isAskPending && !isVerified && Boolean(extractPrimaryEmail(lead.posterEmail));
-      const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead, isHotlistFeed);
+      const leadHotlist = leadIsHotlist(lead);
+      const { expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue } = getLeadBreakdownFieldValues(lead, leadHotlist);
       const postedTimestamp = new Date(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt).getTime();
 
       const sortValues: Record<LeadTableSortKey, string | number> = {
@@ -3233,7 +3325,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       };
 
       return {
-        lead, isAskPending, isVerified, canAskAI,
+        lead, isAskPending, isVerified, canAskAI, leadHotlist,
         expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue,
         sortValues,
       };
@@ -3290,7 +3382,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 className="inline-flex items-center gap-1 font-bold text-orange-600 transition-opacity hover:opacity-70 dark:text-orange-400"
               >
                 <Gauge size={11} strokeWidth={2.5} />
-                {isHotlistFeed ? 'Match Selected' : 'Predict Selected'}
+                {!isCombinedFeed && isHotlistFeed ? 'Match Selected' : 'Predict Selected'}
               </button>
             </div>
           </div>
@@ -3325,7 +3417,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ lead, isAskPending, isVerified, canAskAI, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue }) => {
+          {rows.map(({ lead, isAskPending, isVerified, canAskAI, leadHotlist, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue }) => {
             return (
               <tr key={lead.id} className={`border-b ${tableBorderClass} ${tableRowSurfaceClass} hover:bg-gray-50 dark:hover:bg-white/5`}>
                 <td className="px-2 py-2 align-top">
@@ -3339,7 +3431,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   />
                 </td>
                 <td className="px-2 py-2 align-top whitespace-normal break-words font-medium text-gray-900 dark:text-slate-100">
-                  {renderClampedField(lead.id, 'role', lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity'), linkClass)}
+                  <div className="mb-0.5"><LeadKindPill kind={lead.kind} /></div>
+                  {renderClampedField(lead.id, 'role', lead.title || (leadHotlist ? 'Available Consultant' : 'Job Opportunity'), linkClass)}
                 </td>
                 <td className={cellClass}>{renderClampedField(lead.id, 'exp', expValue, linkClass)}</td>
                 <td className={cellClass}>{renderClampedField(lead.id, 'workType', workTypeValue, linkClass)}</td>
@@ -3369,7 +3462,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       <span
                         title={(() => {
                           const stampIso = isVerified ? (askedJobStateByLeadId[lead.id]?.fulfilledAt ?? askedJobStateByLeadId[lead.id]?.requestedAt) : askedJobStateByLeadId[lead.id]?.requestedAt;
-                          const label = isVerified ? 'Verified' : (isHotlistFeed ? 'Resume already requested' : 'Submission already sent');
+                          const label = isVerified ? 'Verified' : (leadHotlist ? 'Resume already requested' : 'Submission already sent');
                           return stampIso ? `${label} — ${formatAgoCompact(stampIso)}` : label;
                         })()}
                         className={submitStatusClass}
@@ -3384,7 +3477,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         title={!lead.posterEmail ? 'No email' : 'Send Email'}
                         className={askButtonClass}
                       >
-                        {processingAskAILeadId === lead.id ? <span>...</span> : isHotlistFeed ? <FileText size={12} strokeWidth={2} /> : <Send size={12} strokeWidth={2} />}
+                        {processingAskAILeadId === lead.id ? <span>...</span> : leadHotlist ? <FileText size={12} strokeWidth={2} /> : <Send size={12} strokeWidth={2} />}
                       </button>
                     )}
                     <button
@@ -3569,106 +3662,104 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setPostContentViewedAtByLeadId(postContentViewedAt);
   }, [user?.id]);
 
-  const loadAskedJobState = useCallback(async () => {
-    if (isHotlistFeed) {
-      if (!account?.id || !user?.id) {
-        setAskedJobStateByLeadId({});
-        setGlobalAskedJobStateByLeadId({});
-        setAskedLeadsById({});
-        return;
-      }
+  type AskedStateBundle = {
+    stateMap: Record<string, AskedJobState>;
+    globalMap: Record<string, GlobalAskedJobState>;
+    leadsMap: Record<string, SocialLead>;
+  };
 
-      const [ownHotlistRequestsResult, hotlistStatesResult] = await Promise.all([
-        supabase
-          .from('pulse_ask_ai_requests' as never)
-          .select('hotlist_id, status, created_at, fulfilled_at')
-          .eq('account_id', account.id)
-          .eq('user_id', user.id)
-          .not('hotlist_id', 'is', null)
-          .in('status', ['completed', 'fulfilled'])
-          .order('created_at', { ascending: false }),
-        supabase.rpc('get_hotlist_asked_states' as never, { p_account_id: account.id }),
-      ]);
-
-      if (ownHotlistRequestsResult.error) return;
-
-      const nextState: Record<string, AskedJobState> = {};
-      for (const row of (ownHotlistRequestsResult.data ?? []) as Array<{ hotlist_id: string; created_at: string; fulfilled_at: string | null }>) {
-        if (!nextState[row.hotlist_id]) {
-          nextState[row.hotlist_id] = { requestedAt: row.created_at, fulfilledAt: row.fulfilled_at };
-        }
-      }
-      setAskedJobStateByLeadId(nextState);
-
-      const nextHotlistGlobalState: Record<string, GlobalAskedJobState> = {};
-      if (!hotlistStatesResult.error) {
-        for (const row of (hotlistStatesResult.data ?? []) as Array<{ hotlist_id: string; state: GlobalAskedJobState }>) {
-          if (row.state === 'asked' || row.state === 'verified') nextHotlistGlobalState[row.hotlist_id] = row.state;
-        }
-      }
-      setGlobalAskedJobStateByLeadId(nextHotlistGlobalState);
-
-      const hotlistIds = Array.from(new Set([...Object.keys(nextState), ...Object.keys(nextHotlistGlobalState)]));
-      if (hotlistIds.length === 0) {
-        setAskedLeadsById({});
-        return;
-      }
-
-      const { data: hotlistRows, error: hotlistRowsError } = await supabase
-        .from('social_hotlist')
-        .select('id, platform, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_company_name, role_title, core_skills, years_experience, visa_type, employment_type, locations, hourly_rate_min, hourly_rate_max, raw_post_content, posted_at, created_at, post_source, created_by_account_id, created_by_user_id')
-        .in('id', hotlistIds);
-      if (hotlistRowsError) return;
-
-      const nextHotlistLeads: Record<string, SocialLead> = {};
-      for (const row of (hotlistRows ?? []) as Array<{
-        id: string; platform: string; bench_sales_recruiter_name: string | null; bench_sales_recruiter_email: string | null;
-        bench_sales_recruiter_phone: string | null; bench_sales_company_name: string | null; role_title: string | null;
-        core_skills: string[] | null; years_experience: number | null; visa_type: string | null; employment_type: string | null;
-        locations: string[] | null; hourly_rate_min: number | null; hourly_rate_max: number | null; raw_post_content: string | null;
-        posted_at: string | null; created_at: string; post_source: string | null; created_by_account_id: string | null; created_by_user_id: string | null;
-      }>) {
-        const eventTime = row.posted_at || row.created_at;
-        nextHotlistLeads[row.id] = {
-          id: row.id,
-          title: row.role_title?.trim() || 'Available Consultant',
-          roleTitle: row.role_title?.trim() || '',
-          location: Array.isArray(row.locations) && row.locations.length > 0 ? row.locations.join(', ') : 'Location not specified',
-          company: row.bench_sales_company_name?.trim() || '',
-          posterName: row.bench_sales_recruiter_name?.trim() || 'Bench Sales Recruiter',
-          posterEmail: row.bench_sales_recruiter_email?.trim() || '',
-          posterPhone: row.bench_sales_recruiter_phone?.trim() || '',
-          postedAt: eventTime,
-          createdAt: row.created_at,
-          postedAgo: formatAgo(eventTime),
-          platform: row.platform,
-          matchScore: null,
-          profileId: null,
-          scoreBreakdown: null,
-          snippet: row.raw_post_content?.trim().slice(0, 150) || '',
-          employmentType: row.employment_type?.trim() || '',
-          seniority: '',
-          salaryRange: '',
-          skills: Array.isArray(row.core_skills) ? row.core_skills : [],
-          experienceYears: row.years_experience ?? null,
-          visaTypes: row.visa_type ? [row.visa_type] : [],
-          hourlyRate: (row.hourly_rate_min != null || row.hourly_rate_max != null)
-            ? `$${row.hourly_rate_min ?? '?'}–$${row.hourly_rate_max ?? '?'}/hr`
-            : '',
-          postSource: normalizePostSource(row.post_source),
-          authorAccountId: row.created_by_account_id ?? null,
-          authorUserId: row.created_by_user_id ?? null,
-          authorName: null,
-        };
-      }
-      setAskedLeadsById(nextHotlistLeads);
-      return;
-    }
+  const loadHotlistAskedState = useCallback(async (): Promise<AskedStateBundle> => {
     if (!account?.id || !user?.id) {
-      setAskedJobStateByLeadId({});
-      setGlobalAskedJobStateByLeadId({});
-      setAskedLeadsById({});
-      return;
+      return { stateMap: {}, globalMap: {}, leadsMap: {} };
+    }
+
+    const [ownHotlistRequestsResult, hotlistStatesResult] = await Promise.all([
+      supabase
+        .from('pulse_ask_ai_requests' as never)
+        .select('hotlist_id, status, created_at, fulfilled_at')
+        .eq('account_id', account.id)
+        .eq('user_id', user.id)
+        .not('hotlist_id', 'is', null)
+        .in('status', ['completed', 'fulfilled'])
+        .order('created_at', { ascending: false }),
+      supabase.rpc('get_hotlist_asked_states' as never, { p_account_id: account.id }),
+    ]);
+
+    if (ownHotlistRequestsResult.error) return { stateMap: {}, globalMap: {}, leadsMap: {} };
+
+    const nextState: Record<string, AskedJobState> = {};
+    for (const row of (ownHotlistRequestsResult.data ?? []) as Array<{ hotlist_id: string; created_at: string; fulfilled_at: string | null }>) {
+      if (!nextState[row.hotlist_id]) {
+        nextState[row.hotlist_id] = { requestedAt: row.created_at, fulfilledAt: row.fulfilled_at };
+      }
+    }
+
+    const nextHotlistGlobalState: Record<string, GlobalAskedJobState> = {};
+    if (!hotlistStatesResult.error) {
+      for (const row of (hotlistStatesResult.data ?? []) as Array<{ hotlist_id: string; state: GlobalAskedJobState }>) {
+        if (row.state === 'asked' || row.state === 'verified') nextHotlistGlobalState[row.hotlist_id] = row.state;
+      }
+    }
+
+    const hotlistIds = Array.from(new Set([...Object.keys(nextState), ...Object.keys(nextHotlistGlobalState)]));
+    if (hotlistIds.length === 0) {
+      return { stateMap: nextState, globalMap: nextHotlistGlobalState, leadsMap: {} };
+    }
+
+    const { data: hotlistRows, error: hotlistRowsError } = await supabase
+      .from('social_hotlist')
+      .select('id, platform, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_company_name, role_title, core_skills, years_experience, visa_type, employment_type, locations, hourly_rate_min, hourly_rate_max, raw_post_content, posted_at, created_at, post_source, created_by_account_id, created_by_user_id')
+      .in('id', hotlistIds);
+    if (hotlistRowsError) return { stateMap: nextState, globalMap: nextHotlistGlobalState, leadsMap: {} };
+
+    const nextHotlistLeads: Record<string, SocialLead> = {};
+    for (const row of (hotlistRows ?? []) as Array<{
+      id: string; platform: string; bench_sales_recruiter_name: string | null; bench_sales_recruiter_email: string | null;
+      bench_sales_recruiter_phone: string | null; bench_sales_company_name: string | null; role_title: string | null;
+      core_skills: string[] | null; years_experience: number | null; visa_type: string | null; employment_type: string | null;
+      locations: string[] | null; hourly_rate_min: number | null; hourly_rate_max: number | null; raw_post_content: string | null;
+      posted_at: string | null; created_at: string; post_source: string | null; created_by_account_id: string | null; created_by_user_id: string | null;
+    }>) {
+      const eventTime = row.posted_at || row.created_at;
+      nextHotlistLeads[row.id] = {
+        id: row.id,
+        title: row.role_title?.trim() || 'Available Consultant',
+        roleTitle: row.role_title?.trim() || '',
+        location: Array.isArray(row.locations) && row.locations.length > 0 ? row.locations.join(', ') : 'Location not specified',
+        company: row.bench_sales_company_name?.trim() || '',
+        posterName: row.bench_sales_recruiter_name?.trim() || 'Bench Sales Recruiter',
+        posterEmail: row.bench_sales_recruiter_email?.trim() || '',
+        posterPhone: row.bench_sales_recruiter_phone?.trim() || '',
+        postedAt: eventTime,
+        createdAt: row.created_at,
+        postedAgo: formatAgo(eventTime),
+        platform: row.platform,
+        matchScore: null,
+        profileId: null,
+        scoreBreakdown: null,
+        snippet: row.raw_post_content?.trim().slice(0, 150) || '',
+        employmentType: row.employment_type?.trim() || '',
+        seniority: '',
+        salaryRange: '',
+        skills: Array.isArray(row.core_skills) ? row.core_skills : [],
+        experienceYears: row.years_experience ?? null,
+        visaTypes: row.visa_type ? [row.visa_type] : [],
+        hourlyRate: (row.hourly_rate_min != null || row.hourly_rate_max != null)
+          ? `$${row.hourly_rate_min ?? '?'}–$${row.hourly_rate_max ?? '?'}/hr`
+          : '',
+        postSource: normalizePostSource(row.post_source),
+        authorAccountId: row.created_by_account_id ?? null,
+        authorUserId: row.created_by_user_id ?? null,
+        authorName: null,
+        kind: 'hotlist',
+      };
+    }
+    return { stateMap: nextState, globalMap: nextHotlistGlobalState, leadsMap: nextHotlistLeads };
+  }, [account?.id, user?.id]);
+
+  const loadJobsAskedState = useCallback(async (): Promise<AskedStateBundle> => {
+    if (!account?.id || !user?.id) {
+      return { stateMap: {}, globalMap: {}, leadsMap: {} };
     }
 
     const [ownRequestsResult, globalStatesResult] = await Promise.all([
@@ -3682,7 +3773,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       supabase.rpc('get_pulse_asked_job_states' as never, { p_account_id: account.id }),
     ]);
 
-    if (ownRequestsResult.error) return;
+    if (ownRequestsResult.error) return { stateMap: {}, globalMap: {}, leadsMap: {} };
 
     const nextState: Record<string, AskedJobState> = {};
     for (const row of (ownRequestsResult.data ?? []) as Array<{ job_id: string; created_at: string; fulfilled_at: string | null }>) {
@@ -3690,7 +3781,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         nextState[row.job_id] = { requestedAt: row.created_at, fulfilledAt: row.fulfilled_at };
       }
     }
-    setAskedJobStateByLeadId(nextState);
 
     const nextGlobalState: Record<string, GlobalAskedJobState> = {};
     if (!globalStatesResult.error) {
@@ -3698,19 +3788,17 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         if (row.state === 'asked' || row.state === 'verified') nextGlobalState[row.job_id] = row.state;
       }
     }
-    setGlobalAskedJobStateByLeadId(nextGlobalState);
 
     const jobIds = Array.from(new Set([...Object.keys(nextState), ...Object.keys(nextGlobalState)]));
     if (jobIds.length === 0) {
-      setAskedLeadsById({});
-      return;
+      return { stateMap: nextState, globalMap: nextGlobalState, leadsMap: {} };
     }
 
     const { data: jobRows, error: jobsError } = await supabase
       .from('social_jobs')
       .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, post_source, created_by_account_id, created_by_user_id')
       .in('id', jobIds);
-    if (jobsError) return;
+    if (jobsError) return { stateMap: nextState, globalMap: nextGlobalState, leadsMap: {} };
 
     const nextLeads: Record<string, SocialLead> = {};
     for (const row of (jobRows ?? []) as SocialJobRow[]) {
@@ -3745,10 +3833,25 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         authorAccountId: row.created_by_account_id ?? null,
         authorUserId: row.created_by_user_id ?? null,
         authorName: null,
+        kind: 'job',
       };
     }
-    setAskedLeadsById(nextLeads);
-  }, [account?.id, isHotlistFeed, user?.id]);
+    return { stateMap: nextState, globalMap: nextGlobalState, leadsMap: nextLeads };
+  }, [account?.id, user?.id]);
+
+  const loadAskedJobState = useCallback(async () => {
+    if (isCombinedFeed) {
+      const [jobs, hotlist] = await Promise.all([loadJobsAskedState(), loadHotlistAskedState()]);
+      setAskedJobStateByLeadId({ ...jobs.stateMap, ...hotlist.stateMap });
+      setGlobalAskedJobStateByLeadId({ ...jobs.globalMap, ...hotlist.globalMap });
+      setAskedLeadsById({ ...jobs.leadsMap, ...hotlist.leadsMap });
+      return;
+    }
+    const result = isHotlistFeed ? await loadHotlistAskedState() : await loadJobsAskedState();
+    setAskedJobStateByLeadId(result.stateMap);
+    setGlobalAskedJobStateByLeadId(result.globalMap);
+    setAskedLeadsById(result.leadsMap);
+  }, [isCombinedFeed, isHotlistFeed, loadHotlistAskedState, loadJobsAskedState]);
 
   const loadPredictedJobState = useCallback(async () => {
     if (!account?.id || !user?.id) {
@@ -3756,17 +3859,20 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       return;
     }
 
-    const { data, error } = await supabase
+    const predictLogQuery = supabase
       .from('pulse_predict_logs' as never)
-      .select('lead_id, score, verdict, categories, created_at')
+      .select('lead_id, feed_kind, score, verdict, categories, created_at')
       .eq('account_id', account.id)
       .eq('user_id', user.id)
-      .eq('feed_kind', isHotlistFeed ? 'hotlist' : 'job')
       .order('created_at', { ascending: false });
+    const { data, error } = isCombinedFeed
+      ? await predictLogQuery.in('feed_kind', ['job', 'hotlist'])
+      : await predictLogQuery.eq('feed_kind', isHotlistFeed ? 'hotlist' : 'job');
     if (error) return;
 
     const nextResults: Record<string, PredictResult> = {};
-    for (const row of (data ?? []) as Array<{ lead_id: string; score: number | null; verdict: string | null; categories: PredictCategory[] | null; created_at: string }>) {
+    const kindByLeadId: Record<string, 'job' | 'hotlist'> = {};
+    for (const row of (data ?? []) as Array<{ lead_id: string; feed_kind: 'job' | 'hotlist' | null; score: number | null; verdict: string | null; categories: PredictCategory[] | null; created_at: string }>) {
       if (!row.lead_id || nextResults[row.lead_id]) continue;
       const score = Math.max(0, Math.min(100, Math.round(Number(row.score) || 0)));
       nextResults[row.lead_id] = {
@@ -3775,17 +3881,21 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         verdict: row.verdict?.trim() || 'Submission likely to be accepted',
         verdictClass: verdictClassForScore(score),
       };
+      kindByLeadId[row.lead_id] = row.feed_kind === 'hotlist' ? 'hotlist' : 'job';
     }
     setPredictResultByLeadId(nextResults);
 
     const leadIds = Object.keys(nextResults);
     if (leadIds.length === 0) return;
-    if (isHotlistFeed) return;
+    if (isHotlistFeed && !isCombinedFeed) return;
+
+    const jobLeadIds = isCombinedFeed ? leadIds.filter((id) => kindByLeadId[id] !== 'hotlist') : leadIds;
+    if (jobLeadIds.length === 0) return;
 
     const { data: jobRows, error: jobsError } = await supabase
       .from('social_jobs')
       .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, post_source, created_by_account_id, created_by_user_id')
-      .in('id', leadIds);
+      .in('id', jobLeadIds);
     if (jobsError) return;
 
     const nextLeads: Record<string, SocialLead> = {};
@@ -3821,10 +3931,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         authorAccountId: row.created_by_account_id ?? null,
         authorUserId: row.created_by_user_id ?? null,
         authorName: null,
+        kind: 'job',
       };
     }
     setAskedLeadsById((prev) => ({ ...prev, ...nextLeads }));
-  }, [account?.id, isHotlistFeed, user?.id]);
+  }, [account?.id, isCombinedFeed, isHotlistFeed, user?.id]);
 
   const loadLeaderboard = useCallback(async () => {
     const { data, error } = await supabase.rpc('get_pulse_persona_leaderboard', { limit_count: LEADERBOARD_RPC_LIMIT });
@@ -3900,8 +4011,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     try {
       const { data: latestRows } = await supabase.rpc(
-        isHotlistFeed ? 'get_social_hotlist_feed_page' : 'get_pulse_social_feed',
-        isHotlistFeed
+        (!isCombinedFeed && isHotlistFeed) ? 'get_social_hotlist_feed_page' : 'get_pulse_social_feed',
+        (!isCombinedFeed && isHotlistFeed)
           ? { p_since: '1970-01-01T00:00:00.000Z', p_before_posted_at: null, p_before_lead_id: null, p_limit: 1 }
           : { p_since: '1970-01-01T00:00:00.000Z', p_limit: 1 } as never,
       );
@@ -3912,14 +4023,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
 
     setLoading(false);
-  }, [isHotlistFeed, loadAskedJobState, loadLeaderboard, loadWatchingRoles, loadLeadActionState, loadPredictedJobState]);
+  }, [isCombinedFeed, isHotlistFeed, loadAskedJobState, loadLeaderboard, loadWatchingRoles, loadLeadActionState, loadPredictedJobState]);
 
   useEffect(() => {
     void loadInitial();
   }, [loadInitial]);
 
-  const loadGlobalPulseRowsFromCacheWorker = useCallback(async (rangeHours: number) => {
-    if (isHotlistFeed) return null;
+  const loadGlobalPulseRowsFromCacheWorker = useCallback(async (rangeHours: number, kind: 'jobs' | 'hotlist') => {
+    if (kind === 'hotlist') return null;
     if (!PULSE_CACHE_WORKER_URL) return null;
 
     try {
@@ -3946,11 +4057,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } catch {
       return null;
     }
-  }, [isHotlistFeed]);
+  }, []);
 
-  const loadGlobalPulseRows = useCallback(async (rangeHours: number) => {
+  const loadGlobalPulseRows = useCallback(async (rangeHours: number, kind: 'jobs' | 'hotlist') => {
+    const isHotlistFeed = kind === 'hotlist';
     const useCreatedTime = canSelectFeedTimeBasis && feedTimeBasis === 'created';
-    const workerRows = useCreatedTime ? null : await loadGlobalPulseRowsFromCacheWorker(rangeHours);
+    const workerRows = useCreatedTime ? null : await loadGlobalPulseRowsFromCacheWorker(rangeHours, kind);
     if (workerRows) {
       return workerRows;
     }
@@ -4161,7 +4273,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         extracted_hourly_rate_max: social?.extracted_hourly_rate_max ?? null,
       } as PulseSocialFeedRpcRow;
     });
-  }, [canSelectFeedTimeBasis, feedTimeBasis, isHotlistFeed, loadGlobalPulseRowsFromCacheWorker]);
+  }, [canSelectFeedTimeBasis, feedTimeBasis, loadGlobalPulseRowsFromCacheWorker]);
 
   const getGlobalPulseRows = useCallback(async (rangeHours: number, forceRefresh = false) => {
     const now = Date.now();
@@ -4180,7 +4292,17 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       return pulseRowsRequestRef.current.request;
     }
 
-    const request = loadGlobalPulseRows(rangeHours)
+    const request = (
+      isCombinedFeed
+        ? Promise.all([
+          loadGlobalPulseRows(rangeHours, 'jobs'),
+          loadGlobalPulseRows(rangeHours, 'hotlist'),
+        ]).then(([jobRows, hotlistRows]) => [
+          ...jobRows.map((row) => ({ ...row, _kind: 'jobs' as const })),
+          ...hotlistRows.map((row) => ({ ...row, _kind: 'hotlist' as const })),
+        ])
+        : loadGlobalPulseRows(rangeHours, isHotlistFeed ? 'hotlist' : 'jobs')
+    )
       .then((rows) => {
         pulseRowsCacheRef.current = rows;
         pulseRowsCacheAtRef.current = Date.now();
@@ -4194,7 +4316,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     pulseRowsRequestRef.current = { hours: rangeHours, timeBasis: feedTimeBasis, request };
     return request;
-  }, [feedTimeBasis, loadGlobalPulseRows]);
+  }, [feedTimeBasis, isCombinedFeed, isHotlistFeed, loadGlobalPulseRows]);
 
   const loadProfileStats = useCallback(async (rowsOverride?: PulseSocialFeedRpcRow[]) => {
     if (sortedLeaderboard.length === 0) {
@@ -4335,6 +4457,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       created_by_account_id: row.created_by_account_id ?? null,
       created_by_user_id: row.created_by_user_id ?? null,
       author_display_name: row.author_display_name ?? null,
+      _kind: row._kind,
     } as SocialJobRow & Record<string, unknown>));
 
     const newestMatchByJobId = new Map<string, RadarSocialMatchRow>();
@@ -4442,13 +4565,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           ? breakdown.hotlist_source as Record<string, unknown>
           : null;
         const eventTime = row.posted_at || row.created_at || matchedAt;
+        const rowKind = (row as SocialJobRow & Record<string, unknown>)._kind as 'jobs' | 'hotlist' | undefined;
+        const rowIsHotlist = rowKind ? rowKind === 'hotlist' : isHotlistFeed;
         return {
           id: row.id,
-          title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || (isHotlistFeed ? 'Available Consultant' : 'Untitled Job'),
+          title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || (rowIsHotlist ? 'Available Consultant' : 'Untitled Job'),
           roleTitle: (row as SocialJobRow & Record<string, unknown>).role_title?.trim() || row.job_title?.trim() || row.extracted_role_normalized?.trim() || '',
           location: row.location?.trim() || 'Location not specified',
           company: row.company_name?.trim() || '',
-          posterName: row.posted_by_name?.trim() || (isHotlistFeed ? 'Bench Sales Recruiter' : 'Vendor contact'),
+          posterName: row.posted_by_name?.trim() || (rowIsHotlist ? 'Bench Sales Recruiter' : 'Vendor contact'),
           posterEmail: row.poster_email?.trim() || '',
           posterPhone: row.poster_phone?.trim() || '',
           postedAt: eventTime,
@@ -4485,6 +4610,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           authorAccountId: row.created_by_account_id ?? null,
           authorUserId: row.created_by_user_id ?? null,
           authorName: row.author_display_name ?? null,
+          kind: rowIsHotlist ? 'hotlist' : 'job',
         } as SocialLead;
       });
 
@@ -4770,7 +4896,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setProcessingChatLeadId(lead.id);
     try {
       const { data, error } = await supabase.rpc('start_post_chat_thread' as never, {
-        p_post_kind: isHotlistFeed ? 'hotlist' : 'job',
+        p_post_kind: leadIsHotlist(lead) ? 'hotlist' : 'job',
         p_post_id: lead.id,
       } as never);
       if (error || !data) throw new Error(error?.message || 'Could not start the conversation');
@@ -4780,12 +4906,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } finally {
       setProcessingChatLeadId(null);
     }
-  }, [account?.id, isHotlistFeed, navigate, processingChatLeadId, showToast]);
+  }, [account?.id, leadIsHotlist, navigate, processingChatLeadId, showToast]);
 
   const handleAskAI = useCallback(async (lead: SocialLead) => {
     if (!account?.id || processingAskAILeadId) return;
 
-    const leadType: 'job' | 'hotlist' = isHotlistFeed ? 'hotlist' : 'job';
+    const leadType: 'job' | 'hotlist' = leadIsHotlist(lead) ? 'hotlist' : 'job';
     // A job with every field already detected still has a valid "ask" — re-confirming
     // rate is always a safe, relevant question, so we never block sending outreach.
     const detectedMissingDetails = leadType === 'hotlist' ? ['resume'] : getMissingJobDetails(lead);
@@ -4882,7 +5008,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } finally {
       setProcessingAskAILeadId(null);
     }
-  }, [account?.id, isHotlistFeed, processingAskAILeadId, showToast, user?.id]);
+  }, [account?.id, leadIsHotlist, processingAskAILeadId, showToast, user?.id]);
 
   useEffect(() => {
     supabase
@@ -5185,17 +5311,18 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         showToast(`${POST_CONTENT_COST} credit${POST_CONTENT_COST === 1 ? '' : 's'} consumed for post preview`, 'success');
       }
 
+      const previewIsHotlist = leadIsHotlist(lead);
       const { data, error } = await supabase
-        .from(isHotlistFeed ? 'social_hotlist' : 'social_jobs')
-        .select(isHotlistFeed ? 'raw_post_content' : 'post_content')
+        .from(previewIsHotlist ? 'social_hotlist' : 'social_jobs')
+        .select(previewIsHotlist ? 'raw_post_content' : 'post_content')
         .eq('id', lead.id)
         .maybeSingle();
       if (error || !data) throw new Error(error?.message || 'Could not load the post');
 
-      const content = String((isHotlistFeed ? (data as { raw_post_content: string | null }).raw_post_content : (data as { post_content: string | null }).post_content) ?? '').trim();
+      const content = String((previewIsHotlist ? (data as { raw_post_content: string | null }).raw_post_content : (data as { post_content: string | null }).post_content) ?? '').trim();
       setPostContentPreview({
         leadId: lead.id,
-        title: lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity'),
+        title: lead.title || (previewIsHotlist ? 'Available Consultant' : 'Job Opportunity'),
         content: content || 'No post content available.',
       });
     } catch (error) {
@@ -5203,7 +5330,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } finally {
       setLoadingPostContentLeadId(null);
     }
-  }, [consumeCredits, isHotlistFeed, loadingPostContentLeadId, persistLeadAction, postContentViewedLeadIds, showToast, user]);
+  }, [consumeCredits, leadIsHotlist, loadingPostContentLeadId, persistLeadAction, postContentViewedLeadIds, showToast, user]);
 
 
   const handleOpenBreakdown = useCallback(async (lead: SocialLead) => {
@@ -5251,7 +5378,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         .insert({
           user_id: user.id,
           account_id: account?.id ?? null,
-          page: isHotlistFeed ? '/hotlist' : '/jobs',
+          page: isHotlistFeed ? '/hotlist' : isCombinedFeed ? '/feed' : '/jobs',
           search_query: rawQuery,
         });
       void loadRecentSearches();
@@ -5263,7 +5390,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       return;
     }
 
-    if (isHotlistFeed) {
+    if (isHotlistFeed || isCombinedFeed) {
+      // Hotlist rows aren't indexed by the jobs-only FTS/vector RPCs; combined
+      // mode relies on the client-side matchesPulseFeedSearch fallback in
+      // queryScopedFeed so both kinds are searched consistently.
       setVectorSearchLeadIds(null);
       setVectorSearchLoading(false);
       return;
@@ -5307,7 +5437,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
 
     setVectorSearchLoading(false);
-  }, [account?.id, isHotlistFeed, loadRecentSearches, pendingFeedSearchQuery, selectedProfileRange.hours, user?.id]);
+  }, [account?.id, isCombinedFeed, isHotlistFeed, loadRecentSearches, pendingFeedSearchQuery, selectedProfileRange.hours, user?.id]);
 
   useEffect(() => {
     const queryFromParams = (searchParams.get('q') ?? '').trim();
@@ -5320,6 +5450,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setPendingFeedSearchQuery(queryFromParams);
     void applyFeedSearch(queryFromParams);
   }, [applyFeedSearch, searchParams]);
+
+  const leaderboardJobsLabel = isCombinedFeed ? 'Leads' : isHotlistFeed ? 'Consultants' : 'Jobs';
+  const leaderboardVendorsLabel = isCombinedFeed ? 'Recruiters' : isHotlistFeed ? 'Bench Recruiters' : 'Vendors';
 
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
@@ -5452,6 +5585,23 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 } : undefined}
               >
                 <div className="flex items-center gap-2">
+                  {isCombinedFeed && !isMobileViewport && (
+                    <div className="flex shrink-0 items-center gap-1" aria-label="Filter by kind">
+                      {FEED_KIND_FILTER_OPTIONS.map((option) => {
+                        const isSelected = feedKindFilter === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setFeedKindFilter(option.id)}
+                            className={`inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div ref={recentSearchesRef} className="relative flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5">
                     <Search size={11} className="text-gray-400" />
                     <input
@@ -5472,7 +5622,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           void applyFeedSearch();
                         }
                       }}
-                      placeholder="Solutions Architect C2C $45"
+                      placeholder={animatedSearchPlaceholder}
                       className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
                     />
                     {pendingFeedSearchQuery && (
@@ -5552,9 +5702,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                               if (tab.id === 'verified') setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                             }}
+                            title={tab.label}
+                            aria-label={tab.label}
                             className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
                           >
-                            <span>{tab.label}</span>
+                            <tab.icon size={13} strokeWidth={2.25} />
                             <span>{count}</span>
                           </button>
                         );
@@ -5573,10 +5725,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           key={view.id}
                           type="button"
                           onClick={() => setLayoutMode(view.id)}
-                          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold transition ${layoutMode === view.id ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
+                          title={view.label}
+                          aria-label={view.label}
+                          className={`inline-flex items-center justify-center rounded px-2 py-1 text-[11px] font-semibold transition ${layoutMode === view.id ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
                         >
-                          <view.icon size={11} />
-                          {view.label}
+                          <view.icon size={13} />
                         </button>
                       ))}
                     </div>
@@ -5836,8 +5989,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             </div>
                             <div className="mt-1 space-y-1.5">
                               <div className="flex items-center gap-1.5">
-                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
-                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
+                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueJobs} {leaderboardJobsLabel}</span>
+                                <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueVendors} {leaderboardVendorsLabel}</span>
                               </div>
                               <div className="grid grid-cols-10 gap-1.5">
                                 <button
@@ -5920,8 +6073,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                                 </div>
                                 <div className="mt-1 space-y-1.5">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueJobs} {leaderboardJobsLabel}</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueVendors} {leaderboardVendorsLabel}</span>
                                   </div>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
@@ -5981,8 +6134,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                                 </div>
                                 <div className="mt-1 space-y-1.5">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueJobs} {isHotlistFeed ? 'Consultants' : 'Jobs'}</span>
-                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueVendors} {isHotlistFeed ? 'Bench Recruiters' : 'Vendors'}</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueJobs} {leaderboardJobsLabel}</span>
+                                    <span className="rounded border border-amber-100 bg-white/85 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">{stats.uniqueVendors} {leaderboardVendorsLabel}</span>
                                   </div>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); void activatePersona(persona); }}
@@ -6034,7 +6187,27 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     paddingBottom: isMobileTopCollapsed ? 0 : '0.25rem',
                   }}
                 >
-                  <div className="grid w-full grid-cols-3 gap-1">
+                  <div className="flex w-full items-stretch gap-1">
+                    {isCombinedFeed && (
+                      <>
+                        {FEED_KIND_FILTER_OPTIONS.map((option) => {
+                          const isSelected = feedKindFilter === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => setFeedKindFilter(option.id)}
+                              title={option.label}
+                              aria-label={option.label}
+                              className={`inline-flex flex-1 items-center justify-center rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
+                            >
+                              <option.icon size={13} />
+                            </button>
+                          );
+                        })}
+                        <div className="mx-0.5 my-1 w-px shrink-0 bg-gray-300 dark:bg-white/10" />
+                      </>
+                    )}
                     {matchesTabDefinitions.map((tab) => {
                       const isSelected = selectedMatchesTab === tab.id;
                       const count = matchesTabCounts[tab.id];
@@ -6043,9 +6216,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           key={tab.id}
                           type="button"
                           onClick={() => { setSelectedMatchesTab(tab.id); setVisibleMatchesCount(MATCHES_PAGE_SIZE); }}
-                          className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
+                          title={tab.label}
+                          aria-label={tab.label}
+                          className={`inline-flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
                         >
-                          <span>{tab.label}</span>
+                          <tab.icon size={13} strokeWidth={2.25} />
                           <span>{count}</span>
                         </button>
                       );
@@ -6076,7 +6251,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           <SwipeDeck
                             leads={recentVisibleFeed}
                             buildLeadCardProps={buildLeadCardProps}
-                            isHotlistFeed={isHotlistFeed}
+                            isHotlistFeed={isCombinedFeed ? (recentVisibleFeed[0] ? leadIsHotlist(recentVisibleFeed[0]) : false) : isHotlistFeed}
                             onPass={handleSwipePass}
                             onPitch={handleSwipePitch}
                           />
@@ -6104,13 +6279,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             <SwipeDeck
                               leads={recentVisibleFeed}
                               buildLeadCardProps={buildLeadCardProps}
-                              isHotlistFeed={isHotlistFeed}
+                              isHotlistFeed={isCombinedFeed ? (recentVisibleFeed[0] ? leadIsHotlist(recentVisibleFeed[0]) : false) : isHotlistFeed}
                               onPass={handleSwipePass}
                               onPitch={handleSwipePitch}
                             />
                           ) : selectedMatchesTab === 'previewed' ? (
                             previewedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isHotlistFeed ? 'No previewed consultants yet.' : 'No previewed jobs yet.'}</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isCombinedFeed ? 'No previewed leads yet.' : isHotlistFeed ? 'No previewed consultants yet.' : 'No previewed jobs yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopPreviewedFeed)
                             ) : (
@@ -6120,7 +6295,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             )
                           ) : selectedMatchesTab === 'asked' ? (
                             askedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isHotlistFeed ? 'No requested consultants yet.' : 'No submissions yet.'}</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isCombinedFeed ? 'Nothing sent yet.' : isHotlistFeed ? 'No requested consultants yet.' : 'No submissions yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopAskedFeed)
                             ) : (
@@ -6130,7 +6305,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             )
                           ) : selectedMatchesTab === 'verified' ? (
                             verifiedVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isHotlistFeed ? 'No verified jobs yet.' : 'No replies yet.'}</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isCombinedFeed ? 'No replies yet.' : isHotlistFeed ? 'No verified jobs yet.' : 'No replies yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopVerifiedFeed)
                             ) : (
@@ -6140,7 +6315,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             )
                           ) : (
                             recentVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.'}</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isCombinedFeed ? 'No recent leads.' : isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopRecentFeed)
                             ) : (
@@ -6296,7 +6471,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         open={showOutOfCreditsModal}
         onClose={() => setShowOutOfCreditsModal(false)}
         balance={account?.credits_balance ?? 0}
-        actionLabel={isHotlistFeed ? 'generate this request' : 'generate this submission email'}
+        actionLabel={isCombinedFeed ? 'generate this outreach' : isHotlistFeed ? 'generate this request' : 'generate this submission email'}
       />
 
       {isBulkPredictModalOpen && (
@@ -6312,7 +6487,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
             className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-5 shadow-xl"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[13px] font-bold uppercase tracking-wide text-gray-500">{isHotlistFeed ? `Match ${bulkPredictLeadIds.size} consultants` : `Predict ${bulkPredictLeadIds.size} jobs`}</span>
+              <span className="text-[13px] font-bold uppercase tracking-wide text-gray-500">{!isCombinedFeed && isHotlistFeed ? `Match ${bulkPredictLeadIds.size} consultants` : `Predict ${bulkPredictLeadIds.size} leads`}</span>
               <button
                 type="button"
                 onClick={() => { if (!bulkPredictSubmitting) { setIsBulkPredictModalOpen(false); setBulkPredictInput(''); } }}
@@ -6330,7 +6505,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     value={bulkPredictInput}
                     onChange={(event) => setBulkPredictInput(event.target.value)}
                     rows={6}
-                    placeholder={isHotlistFeed ? "Paste the job details or requirements here — we'll match all selected consultants against it..." : "Paste consultant resume, skills, or a quick summary here — we'll run it against all selected jobs..."}
+                    placeholder={!isCombinedFeed && isHotlistFeed ? "Paste the job details or requirements here — we'll match all selected consultants against it..." : "Paste a resume, job description, or quick summary here — we'll run it against all selected leads..."}
                     className="w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-[13px] leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
@@ -6341,9 +6516,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 text-[15px] font-bold uppercase tracking-wide text-orange-600 transition-opacity hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-400"
                 >
                   <Gauge size={16} strokeWidth={2.5} />
-                  {isHotlistFeed
+                  {!isCombinedFeed && isHotlistFeed
                     ? `Match Score for ${bulkPredictLeadIds.size} Consultants${shouldChargeCredits() ? ` ($${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})` : ''}`
-                    : `Predict ${bulkPredictLeadIds.size} Jobs${shouldChargeCredits() ? ` ($${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})` : ''}`}
+                    : `Predict ${bulkPredictLeadIds.size} Leads${shouldChargeCredits() ? ` ($${(bulkPredictLeadIds.size * PREDICT_COST).toFixed(2)})` : ''}`}
                 </button>
               </>
             ) : (

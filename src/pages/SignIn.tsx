@@ -13,7 +13,7 @@ import AuthSidePanel from '../components/AuthSidePanel';
 
 const isNativeApp = Capacitor.isNativePlatform();
 
-const DEFAULT_REDIRECT = '/jobs';
+const DEFAULT_REDIRECT = '/feed';
 const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
 
 type GoogleCredentialResponse = {
