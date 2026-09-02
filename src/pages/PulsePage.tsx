@@ -2510,6 +2510,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const queryScopedFeed = useMemo(() => {
     let next = baseScopedFeed;
 
+    if (isCombinedFeed && feedKindFilter !== 'all') {
+      next = next.filter((lead) => lead.kind === feedKindFilter);
+    }
+
     if (feedSearchQuery.trim()) {
       if (Array.isArray(vectorSearchLeadIds) && vectorSearchLeadIds.length > 0) {
         const rankById = new Map<string, number>();
@@ -2537,7 +2541,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
 
     return next;
-  }, [baseScopedFeed, feedSearchQuery, vectorSearchLeadIds]);
+  }, [baseScopedFeed, feedKindFilter, feedSearchQuery, isCombinedFeed, vectorSearchLeadIds]);
 
   const matchesLeadFilters = useCallback((lead: SocialLead, excludeCategory?: FeedFacetCategory) => {
     const fields = getLeadFilterContext(lead);
@@ -2573,10 +2577,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   }, [feedSearchFilters, getLeadFilterContext]);
 
   const scopedFeed = useMemo(
-    () => queryScopedFeed.filter((lead) => matchesLeadFilters(lead) && (
-      !isCombinedFeed || feedKindFilter === 'all' || lead.kind === feedKindFilter
-    )),
-    [queryScopedFeed, matchesLeadFilters, isCombinedFeed, feedKindFilter],
+    () => queryScopedFeed.filter((lead) => matchesLeadFilters(lead)),
+    [queryScopedFeed, matchesLeadFilters],
   );
 
   const feedFacetCounts = useMemo(() => {
