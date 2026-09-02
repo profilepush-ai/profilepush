@@ -1113,7 +1113,8 @@ const LeadCard = memo(function LeadCard({
           <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
             <span>{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
-            <span>•</span>
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
             <span className="inline-flex items-center gap-1">
               <LeadAvatar avatarUrl={lead.avatarUrl} name={lead.posterName} size={14} />
               {lead.posterName}

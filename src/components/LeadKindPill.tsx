@@ -12,8 +12,8 @@ export default function LeadKindPill({ kind, variant = 'pill' }: { kind: 'job' |
       <span
         className={`absolute right-0 top-0 z-10 inline-flex items-center gap-1 rounded-bl-lg rounded-tr-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide shadow-sm ${
           isHotlist
-            ? (isDark ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-100 text-amber-800')
-            : (isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-blue-100 text-blue-800')
+            ? (isDark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-600')
+            : (isDark ? 'bg-blue-500/10 text-blue-300' : 'bg-blue-50 text-blue-600')
         }`}
       >
         <Icon size={10} strokeWidth={2.5} />
