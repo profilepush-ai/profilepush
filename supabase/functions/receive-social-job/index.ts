@@ -88,6 +88,7 @@ function normalizeSocialJobItems(items: Array<Record<string, unknown>>) {
       posted_by_name: asString(item.posted_by_name ?? item.poster_name ?? item.recruiter_name),
       posted_at: asIsoOrNull(item.posted_at ?? item.created_at ?? item.timestamp),
       profile_link: asString(item.profile_link ?? item.profileUrl ?? item.profile_url),
+      avatar_url: asString(item.avatar_url ?? item.avatarUrl),
       poster_email: posterEmail,
       poster_phone: asString(item.poster_phone ?? item.phone ?? item.posterPhone),
       post_url: asString(item.post_url ?? item.url ?? item.postUrl),
@@ -298,6 +299,7 @@ async function persistSocialHotlists(
       bench_sales_recruiter_phone: asString(result.bench_sales_recruiter_phone).trim() || asString(source.poster_phone),
       bench_sales_company_name: asString(result.bench_sales_company_name).trim(),
       recruiter_profile_link: asString(source.profile_link),
+      bench_sales_recruiter_avatar_url: asString(source.avatar_url),
     };
     sourceCandidateCounts.push({ platform, sourcePostId, candidateCount: consultantCount });
     const sourceImageUrls = asStringArray(result.source_image_urls);

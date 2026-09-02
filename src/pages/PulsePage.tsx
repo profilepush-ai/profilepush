@@ -59,6 +59,7 @@ import { shouldChargeCredits } from '../lib/feature-gates';
 import { normalizePostSource, type PostSource } from '../lib/post-source';
 import PostSourceBadge from '../components/PostSourceBadge';
 import LeadKindPill from '../components/LeadKindPill';
+import LeadAvatar from '../components/LeadAvatar';
 import LocationChipInput from '../components/LocationChipInput';
 import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 
@@ -111,6 +112,7 @@ type SocialLead = {
   authorAccountId: string | null;
   authorUserId: string | null;
   authorName: string | null;
+  avatarUrl: string | null;
   kind: 'job' | 'hotlist';
 };
 
@@ -242,6 +244,7 @@ type SocialJobRow = {
   created_by_account_id?: string | null;
   created_by_user_id?: string | null;
   author_display_name?: string | null;
+  avatar_url?: string | null;
 };
 
 type RadarSocialMatchRow = {
@@ -294,6 +297,7 @@ type PulseSocialFeedRpcRow = {
   created_by_account_id?: string | null;
   created_by_user_id?: string | null;
   author_display_name?: string | null;
+  avatar_url?: string | null;
   _kind?: 'jobs' | 'hotlist';
 };
 
@@ -1102,14 +1106,18 @@ const LeadCard = memo(function LeadCard({
 
   return (
     <div className={`relative flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-[#dfdad2] dark:border-white/10 ${cardFillClass}`}>
+      <LeadKindPill kind={lead.kind} variant="banner" />
       <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
       <div>
-        <div className="min-w-0">
+        <div className="min-w-0 pr-14">
           <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
             <span>{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
             <span>•</span>
-            <span>{lead.posterName}</span>
+            <span className="inline-flex items-center gap-1">
+              <LeadAvatar avatarUrl={lead.avatarUrl} name={lead.posterName} size={14} />
+              {lead.posterName}
+            </span>
             {lead.company && (
               <span className="inline-flex items-center gap-1 whitespace-nowrap">
                 <span>•</span>
@@ -1119,7 +1127,6 @@ const LeadCard = memo(function LeadCard({
             )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1">
-              <LeadKindPill kind={lead.kind} />
               {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
               {predictResult && (
                 <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${predictToneClass(predictResult.score, isDark)}`}>
@@ -3710,14 +3717,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const { data: hotlistRows, error: hotlistRowsError } = await supabase
       .from('social_hotlist')
-      .select('id, platform, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_company_name, role_title, core_skills, years_experience, visa_type, employment_type, locations, hourly_rate_min, hourly_rate_max, raw_post_content, posted_at, created_at, post_source, created_by_account_id, created_by_user_id')
+      .select('id, platform, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_recruiter_avatar_url, bench_sales_company_name, role_title, core_skills, years_experience, visa_type, employment_type, locations, hourly_rate_min, hourly_rate_max, raw_post_content, posted_at, created_at, post_source, created_by_account_id, created_by_user_id')
       .in('id', hotlistIds);
     if (hotlistRowsError) return { stateMap: nextState, globalMap: nextHotlistGlobalState, leadsMap: {} };
 
     const nextHotlistLeads: Record<string, SocialLead> = {};
     for (const row of (hotlistRows ?? []) as Array<{
       id: string; platform: string; bench_sales_recruiter_name: string | null; bench_sales_recruiter_email: string | null;
-      bench_sales_recruiter_phone: string | null; bench_sales_company_name: string | null; role_title: string | null;
+      bench_sales_recruiter_phone: string | null; bench_sales_recruiter_avatar_url: string | null; bench_sales_company_name: string | null; role_title: string | null;
       core_skills: string[] | null; years_experience: number | null; visa_type: string | null; employment_type: string | null;
       locations: string[] | null; hourly_rate_min: number | null; hourly_rate_max: number | null; raw_post_content: string | null;
       posted_at: string | null; created_at: string; post_source: string | null; created_by_account_id: string | null; created_by_user_id: string | null;
@@ -3753,6 +3760,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         authorAccountId: row.created_by_account_id ?? null,
         authorUserId: row.created_by_user_id ?? null,
         authorName: null,
+        avatarUrl: row.bench_sales_recruiter_avatar_url?.trim() || null,
         kind: 'hotlist',
       };
     }
@@ -3798,7 +3806,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const { data: jobRows, error: jobsError } = await supabase
       .from('social_jobs')
-      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, post_source, created_by_account_id, created_by_user_id')
+      .select('id, platform, posted_by_name, poster_email, poster_phone, avatar_url, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, post_source, created_by_account_id, created_by_user_id')
       .in('id', jobIds);
     if (jobsError) return { stateMap: nextState, globalMap: nextGlobalState, leadsMap: {} };
 
@@ -3835,6 +3843,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         authorAccountId: row.created_by_account_id ?? null,
         authorUserId: row.created_by_user_id ?? null,
         authorName: null,
+        avatarUrl: row.avatar_url?.trim() || null,
         kind: 'job',
       };
     }
@@ -3896,7 +3905,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const { data: jobRows, error: jobsError } = await supabase
       .from('social_jobs')
-      .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, post_source, created_by_account_id, created_by_user_id')
+      .select('id, platform, posted_by_name, poster_email, poster_phone, avatar_url, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, post_source, created_by_account_id, created_by_user_id')
       .in('id', jobLeadIds);
     if (jobsError) return;
 
@@ -3933,6 +3942,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         authorAccountId: row.created_by_account_id ?? null,
         authorUserId: row.created_by_user_id ?? null,
         authorName: null,
+        avatarUrl: row.avatar_url?.trim() || null,
         kind: 'job',
       };
     }
@@ -4232,7 +4242,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     if (socialJobIds.length > 0) {
       const { data: socialData, error: socialError } = await supabase
         .from('social_jobs')
-        .select('id, platform, posted_by_name, poster_email, poster_phone, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max')
+        .select('id, platform, posted_by_name, poster_email, poster_phone, avatar_url, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max')
         .in('id', socialJobIds);
 
       if (socialError) {
@@ -4273,6 +4283,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         extracted_visa_types: social?.extracted_visa_types ?? [],
         extracted_hourly_rate_min: social?.extracted_hourly_rate_min ?? null,
         extracted_hourly_rate_max: social?.extracted_hourly_rate_max ?? null,
+        avatar_url: social?.avatar_url ?? null,
       } as PulseSocialFeedRpcRow;
     });
   }, [canSelectFeedTimeBasis, feedTimeBasis, loadGlobalPulseRowsFromCacheWorker]);
@@ -4459,6 +4470,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       created_by_account_id: row.created_by_account_id ?? null,
       created_by_user_id: row.created_by_user_id ?? null,
       author_display_name: row.author_display_name ?? null,
+      avatar_url: row.avatar_url ?? null,
       _kind: row._kind,
     } as SocialJobRow & Record<string, unknown>));
 
@@ -4612,6 +4624,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           authorAccountId: row.created_by_account_id ?? null,
           authorUserId: row.created_by_user_id ?? null,
           authorName: row.author_display_name ?? null,
+          avatarUrl: row.avatar_url?.trim() || null,
           kind: rowIsHotlist ? 'hotlist' : 'job',
         } as SocialLead;
       });

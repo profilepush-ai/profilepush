@@ -35,6 +35,7 @@ type SocialJobRow = {
   salary_range: string;
   source_keyword_id?: string;
   image_urls: string[];
+  avatar_url: string;
 };
 
 // Each post is classified individually (not batched into one prompt) because
@@ -153,9 +154,16 @@ function extractImageUrls(post: RawPost): string[] {
     .filter(Boolean);
 }
 
-function getAuthor(post: RawPost): { name: string; profileUrl: string } {
+function getAuthor(post: RawPost): { name: string; profileUrl: string; avatarUrl: string } {
   const author = post.author && typeof post.author === "object"
     ? post.author as Record<string, unknown>
+    : {};
+  // HarvestAPI's documented shape is author.avatar = { url, width, height,
+  // expiresAt } — but that's not something we can pin down from a fixture in
+  // this repo, so fall back to a few plausible alternate shapes/key names
+  // rather than assuming the one we found in their docs is exact and final.
+  const avatarObject = author.avatar && typeof author.avatar === "object"
+    ? author.avatar as Record<string, unknown>
     : {};
   return {
     name: firstString(
@@ -171,6 +179,14 @@ function getAuthor(post: RawPost): { name: string; profileUrl: string } {
       post.authorProfileUrl,
       post.profile_link,
       author.linkedinUrl,
+    ),
+    avatarUrl: firstString(
+      avatarObject.url,
+      author.avatarUrl,
+      author.pictureUrl,
+      author.profilePictureUrl,
+      author.imageUrl,
+      typeof author.avatar === "string" ? author.avatar : "",
     ),
   };
 }
@@ -204,6 +220,7 @@ async function normalizePost(post: RawPost, globalGroupId: string, keywordId: st
     posted_by_name: author.name,
     posted_at: postedAt,
     profile_link: author.profileUrl,
+    avatar_url: author.avatarUrl,
     post_url: postUrl,
     job_title: firstString(post.job_title, post.title),
     company_name: firstString(post.company_name, post.company),
