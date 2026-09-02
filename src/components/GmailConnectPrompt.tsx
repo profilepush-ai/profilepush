@@ -1,5 +1,11 @@
-import { Mail, X } from 'lucide-react';
+import { Mail, X, Send, ShieldCheck, EyeOff } from 'lucide-react';
 import LogoSpinner from './LogoSpinner';
+
+const REASSURANCES = [
+  { icon: Send, text: 'Send-only access — we can\'t read your inbox' },
+  { icon: ShieldCheck, text: '100% private — your Gmail data is never stored or shared' },
+  { icon: EyeOff, text: 'We never see your replies — they stay in your Gmail' },
+];
 
 export default function GmailConnectPrompt({ connecting, onClose, onConnect }: {
   connecting: boolean;
@@ -18,9 +24,14 @@ export default function GmailConnectPrompt({ connecting, onClose, onConnect }: {
             <Mail size={20} />
           </div>
           <h2 className="text-sm font-semibold text-gray-900">Connect Gmail to send from your own address</h2>
-          <p className="mt-2 text-xs leading-relaxed text-gray-500">
-            Vendors will see this email come from your real Gmail address, not a shared ProfilePush inbox. Replies land in your Gmail directly rather than syncing back into ProfilePush.
-          </p>
+          <ul className="mt-3 space-y-2">
+            {REASSURANCES.map(({ icon: Icon, text }) => (
+              <li key={text} className="flex items-start gap-2 text-xs leading-relaxed text-gray-600">
+                <Icon size={13} className="mt-0.5 shrink-0 text-blue-600" />
+                {text}
+              </li>
+            ))}
+          </ul>
           <button
             onClick={onConnect}
             disabled={connecting}

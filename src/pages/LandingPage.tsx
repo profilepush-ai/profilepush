@@ -26,7 +26,7 @@ const FEATURES = [
     key: 'pulse',
     slug: 'jobs',
     headline: 'Every requirement. The moment it posts.',
-    subline: 'AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7 — new requirements surface the moment they post, then AI Pitch drafts your outreach so you\'re never starting from a blank page.',
+    subline: 'AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7 — new requirements surface the moment they post, then AI Submit drafts your outreach so you\'re never starting from a blank page.',
     accent: 'from-blue-100 to-white',
     badge: 'bg-blue-100 text-blue-700',
     badgeLabel: 'Jobs',
@@ -98,8 +98,8 @@ const FAQS = [
     a: 'Jobs and Hotlist are live feeds — AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7. Jobs surfaces client requirements the moment they post; Hotlist surfaces available consultants the moment they\'re listed — so whichever side of the desk you\'re on, you see it before it\'s buried in a group feed.',
   },
   {
-    q: 'What is AI Pitch / AI Request?',
-    a: 'AI Pitch (on Jobs) and AI Request (on Hotlist) draft a personalized outreach email for you in seconds — requesting missing job details or a resume. You review the draft, then send it straight from your own connected Gmail address, or copy it and send it yourself.',
+    q: 'What is AI Submit / AI Request?',
+    a: 'AI Submit (on Jobs) and AI Request (on Hotlist) draft a personalized outreach email for you in seconds — requesting missing job details or a resume. You review the draft, then send it straight from your own connected Gmail address, or copy it and send it yourself.',
   },
   {
     q: 'What is Posts?',
@@ -119,7 +119,7 @@ const FAQS = [
   },
   {
     q: 'How does ProfilePush actually get me to 10X placements?',
-    a: 'Every stage removes a step that used to cost you time: AI watches social channels and job boards 24/7 so you see a post the moment it\'s live instead of scrolling groups yourself; AI Pitch/Request hands you a drafted email instead of a blank page, ready to send straight from your own connected Gmail; Inbox keeps every reply in one thread instead of scattered across email; and Tracker stops you from double-submitting the same consultant. Less time per placement means more placements in the same day.',
+    a: 'Every stage removes a step that used to cost you time: AI watches social channels and job boards 24/7 so you see a post the moment it\'s live instead of scrolling groups yourself; AI Submit/Request hands you a drafted email instead of a blank page, ready to send straight from your own connected Gmail; Inbox keeps every reply in one thread instead of scattered across email; and Tracker stops you from double-submitting the same consultant. Less time per placement means more placements in the same day.',
   },
   {
     q: 'How much does ProfilePush cost?',
@@ -470,7 +470,7 @@ export default function LandingPage() {
               {[
                 { n: '1', t: 'See what\'s hot', d: 'Pulse shows you exactly where the demand is, so you stop guessing and start where it counts.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
                 { n: '2', t: 'Jobs & Hotlist go live', d: 'AI watches LinkedIn, Facebook, WhatsApp, Reddit groups, and job boards 24/7 — new requirements and available consultants surface the moment they post, preview any post before you act.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
-                { n: '3', t: 'AI drafts your outreach', d: 'AI Pitch or AI Request drafts the email for you — send it straight from your own connected Gmail, or copy it and tweak it yourself.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
+                { n: '3', t: 'AI drafts your outreach', d: 'AI Submit or AI Request drafts the email for you — send it straight from your own connected Gmail, or copy it and tweak it yourself.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
                 { n: '4', t: 'Track it, close it', d: 'Every reply lands in Inbox as one real conversation; log it in Tracker so you never lose a placement to a duplicate submittal.', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
               ].map((step) => (
                 <div key={step.n} className="relative flex gap-8 pb-10 last:pb-0">

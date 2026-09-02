@@ -39,8 +39,8 @@ const CREDIT_TIERS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
 // which is off site-wide, so they're listed separately below as free.
 const CREDIT_COST_ITEMS: { label: string; cost: string; note?: string }[] = [
   { label: 'New job or hotlist post', cost: '1 credit' },
-  { label: 'AI Pitch / AI Request — generate draft', cost: '1 credit', note: 'Only the first generation per post; reopening an already-generated draft is free' },
-  { label: 'AI Pitch / AI Request — send email', cost: '0.05 credit' },
+  { label: 'AI Submit / AI Request — generate draft', cost: '1 credit', note: 'Only the first generation per post; reopening an already-generated draft is free' },
+  { label: 'AI Submit / AI Request — send email', cost: '0.05 credit' },
   { label: 'Inbox AI chat draft', cost: '1 credit' },
   { label: 'Preview original post (Jobs & Hotlist cards)', cost: '1 credit', note: 'Only the first view per post' },
   { label: 'Active List — download a contact’s email', cost: '0.25 credit', note: 'Per email exported to CSV' },
@@ -1214,7 +1214,7 @@ function BuyCreditsModal({
             <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
           <ul className="space-y-2.5 mb-5">
-            {['1 credit to generate an AI Pitch/Request draft, 0.05 to send it', '1 credit per Inbox AI chat draft or new post', '0.25 credit per Active List email download', 'Credits never expire'].map(f => (
+            {['1 credit to generate an AI Submit/Request draft, 0.05 to send it', '1 credit per Inbox AI chat draft or new post', '0.25 credit per Active List email download', 'Credits never expire'].map(f => (
               <li key={f} className="flex items-start gap-2.5 text-[15px] text-gray-700">
                 <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                   <Check size={9} className="text-white" strokeWidth={3} />

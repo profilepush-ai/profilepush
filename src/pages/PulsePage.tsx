@@ -1062,13 +1062,13 @@ const LeadCard = memo(function LeadCard({
           type="button"
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
-          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Request' : 'AI Pitch')}
+          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Request' : 'AI Submit')}
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
         >
           {isProcessingAskAI ? <LogoSpinner size={14} /> : (
             <>
               <Sparkles size={15} strokeWidth={1.75} />
-              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Pitch'}</span>
+              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Submit'}</span>
             </>
           )}
         </button>
