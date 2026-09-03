@@ -13,6 +13,30 @@ import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
 
+// Shows the account's real Google profile photo (from user_metadata, set by
+// Supabase's Google OAuth flow) when available, falling back to the same
+// initials circle used for email/password accounts that have no photo — and
+// for a Google photo URL that 404s/fails to load.
+function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | null; initials: string; sizeClass: string }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  if (pictureUrl && !imageFailed) {
+    return (
+      <img
+        src={pictureUrl}
+        alt=""
+        referrerPolicy="no-referrer"
+        className={`${sizeClass} shrink-0 rounded-full object-cover`}
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+  return (
+    <div className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full bg-blue-600 font-bold text-white`}>
+      {initials}
+    </div>
+  );
+}
+
 const navItems = [
   { path: '/feed',          label: 'Feed',           mobileLabel: 'Feed',    icon: Briefcase, hideOnMobile: false },
   { path: '/posts',        label: 'Posts',          mobileLabel: 'Posts',   icon: Megaphone, hideOnMobile: false },
@@ -264,6 +288,11 @@ export default function AppNav() {
   const initials = user?.user_metadata?.full_name
     ? (user.user_metadata.full_name as string).split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
     : user?.email?.[0]?.toUpperCase() ?? '?';
+  // Supabase's Google provider maps the OIDC `picture` claim to both keys
+  // depending on flow (signInWithIdToken vs signInWithOAuth) — check both.
+  const pictureUrl = (user?.user_metadata?.avatar_url as string | undefined)
+    || (user?.user_metadata?.picture as string | undefined)
+    || null;
 
   return (
     <>
@@ -292,12 +321,8 @@ export default function AppNav() {
           </button>
           {shouldShowCreditsUi() && account != null && <CreditsChip balance={account.credits_balance} />}
           <NotificationBell userId={user.id} />
-          <Link
-            to="/account"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-[13px] font-bold text-white"
-            title="Account"
-          >
-            {initials}
+          <Link to="/account" className="shrink-0" title="Account">
+            <UserAvatar pictureUrl={pictureUrl} initials={initials} sizeClass="h-8 w-8 text-[13px]" />
           </Link>
         </span>
       )}
@@ -383,9 +408,7 @@ export default function AppNav() {
               className="flex items-center gap-1 pl-1 pr-1 py-1 rounded-lg hover:bg-gray-100 transition-colors group"
               title={(user.user_metadata?.full_name as string | undefined) || user.email || 'Account'}
             >
-              <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-[11px] font-bold shrink-0">
-                {initials}
-              </div>
+              <UserAvatar pictureUrl={pictureUrl} initials={initials} sizeClass="w-6 h-6 text-[11px]" />
               <ChevronDown size={11} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
             </button>
 
