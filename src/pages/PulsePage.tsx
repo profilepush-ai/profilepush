@@ -106,6 +106,7 @@ type SocialLead = {
   experienceYears: number | null;
   visaTypes: string[];
   hourlyRate: string;
+  workType: string;
   consultantCount?: number;
   candidateIndex?: number;
   postSource: PostSource;
@@ -831,21 +832,28 @@ function getLeadBreakdownFieldValues(lead: SocialLead, isHotlistFeed: boolean) {
       work_type: null,
     },
   ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
-  const getBreakdownValue = (matchers: string[]) => {
+  // Self-submitted posts (post_source='user_post') never go through AI
+  // matching, so scoreBreakdown is always empty for them — without a
+  // fallback to the lead's own stored fields, every chip below would show
+  // "-" even though the poster's real data (location, skills, experience,
+  // visa, rate) is sitting right there on the lead.
+  const getBreakdownValue = (matchers: string[], fallback?: string) => {
     const found = inlineBreakdownItems.find((item) => {
       const key = item.key.toLowerCase();
       return matchers.some((matcher) => key.includes(matcher));
     });
-    return normalizeBreakdownDisplayValue(found?.detail?.job_value);
+    const breakdownValue = normalizeBreakdownDisplayValue(found?.detail?.job_value);
+    if (breakdownValue !== '-') return breakdownValue;
+    return fallback ? normalizeBreakdownDisplayValue(fallback) : '-';
   };
-  const expValue = getBreakdownValue(['experience', 'exp']);
-  const rawWorkTypeValue = getBreakdownValue(['work_type', 'work type']);
+  const expValue = getBreakdownValue(['experience', 'exp'], lead.experienceYears != null ? String(lead.experienceYears) : undefined);
+  const rawWorkTypeValue = getBreakdownValue(['work_type', 'work type'], lead.workType || undefined);
   const workTypeValue = isHotlistFeed ? normalizeHotlistWorkType(rawWorkTypeValue) : rawWorkTypeValue;
-  const employmentTypeValue = getBreakdownValue(['employment_type', 'employment type']);
-  const rateValue = getBreakdownValue(['rate', 'hourly']);
-  const visaValue = getBreakdownValue(['visa']);
-  const locationValue = getBreakdownValue(['location']);
-  const skillsValue = getBreakdownValue(['skill']);
+  const employmentTypeValue = getBreakdownValue(['employment_type', 'employment type'], lead.employmentType || undefined);
+  const rateValue = getBreakdownValue(['rate', 'hourly'], lead.hourlyRate || undefined);
+  const visaValue = getBreakdownValue(['visa'], lead.visaTypes.length > 0 ? lead.visaTypes.join(', ') : undefined);
+  const locationValue = getBreakdownValue(['location'], lead.location && lead.location !== 'Location not specified' ? lead.location : undefined);
+  const skillsValue = getBreakdownValue(['skill'], lead.skills.length > 0 ? lead.skills.join(', ') : undefined);
   return { inlineBreakdownItems, expValue, workTypeValue, employmentTypeValue, rateValue, visaValue, locationValue, skillsValue };
 }
 
@@ -3718,7 +3726,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const { data: hotlistRows, error: hotlistRowsError } = await supabase
       .from('social_hotlist')
-      .select('id, platform, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_recruiter_avatar_url, bench_sales_company_name, role_title, core_skills, years_experience, visa_type, employment_type, locations, hourly_rate_min, hourly_rate_max, raw_post_content, posted_at, created_at, post_source, created_by_account_id, created_by_user_id')
+      .select('id, platform, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_recruiter_avatar_url, bench_sales_company_name, role_title, core_skills, years_experience, visa_type, employment_type, work_type, locations, hourly_rate_min, hourly_rate_max, raw_post_content, posted_at, created_at, post_source, created_by_account_id, created_by_user_id')
       .in('id', hotlistIds);
     if (hotlistRowsError) return { stateMap: nextState, globalMap: nextHotlistGlobalState, leadsMap: {} };
 
@@ -3726,7 +3734,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     for (const row of (hotlistRows ?? []) as Array<{
       id: string; platform: string; bench_sales_recruiter_name: string | null; bench_sales_recruiter_email: string | null;
       bench_sales_recruiter_phone: string | null; bench_sales_recruiter_avatar_url: string | null; bench_sales_company_name: string | null; role_title: string | null;
-      core_skills: string[] | null; years_experience: number | null; visa_type: string | null; employment_type: string | null;
+      core_skills: string[] | null; years_experience: number | null; visa_type: string | null; employment_type: string | null; work_type: string | null;
       locations: string[] | null; hourly_rate_min: number | null; hourly_rate_max: number | null; raw_post_content: string | null;
       posted_at: string | null; created_at: string; post_source: string | null; created_by_account_id: string | null; created_by_user_id: string | null;
     }>) {
@@ -3757,6 +3765,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         hourlyRate: (row.hourly_rate_min != null || row.hourly_rate_max != null)
           ? `$${row.hourly_rate_min ?? '?'}–$${row.hourly_rate_max ?? '?'}/hr`
           : '',
+        workType: row.work_type?.trim() || '',
         postSource: normalizePostSource(row.post_source),
         authorAccountId: row.created_by_account_id ?? null,
         authorUserId: row.created_by_user_id ?? null,
@@ -3840,6 +3849,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         hourlyRate: (row.extracted_hourly_rate_min != null || row.extracted_hourly_rate_max != null)
           ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
           : '',
+        workType: '',
         postSource: normalizePostSource(row.post_source),
         authorAccountId: row.created_by_account_id ?? null,
         authorUserId: row.created_by_user_id ?? null,
@@ -3939,6 +3949,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         hourlyRate: (row.extracted_hourly_rate_min != null || row.extracted_hourly_rate_max != null)
           ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
           : '',
+        workType: '',
         postSource: normalizePostSource(row.post_source),
         authorAccountId: row.created_by_account_id ?? null,
         authorUserId: row.created_by_user_id ?? null,
@@ -4621,6 +4632,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           candidateIndex: hotlistSource && Number.isInteger(Number(hotlistSource.candidate_index))
             ? Number(hotlistSource.candidate_index)
             : undefined,
+          workType: row.work_type?.trim() || '',
           postSource: normalizePostSource(row.post_source),
           authorAccountId: row.created_by_account_id ?? null,
           authorUserId: row.created_by_user_id ?? null,
