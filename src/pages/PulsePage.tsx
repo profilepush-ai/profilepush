@@ -62,6 +62,7 @@ import LeadKindPill from '../components/LeadKindPill';
 import LeadAvatar from '../components/LeadAvatar';
 import LocationChipInput from '../components/LocationChipInput';
 import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
+import SubmitApplicationModal from '../components/SubmitApplicationModal';
 
 type PulsePersona = {
   target_role: string;
@@ -1024,6 +1025,7 @@ interface LeadCardProps {
   onPreview: (lead: SocialLead) => void;
   onOpenChat: (lead: SocialLead) => void;
   onAskAI: (lead: SocialLead) => void;
+  onApply: (lead: SocialLead) => void;
   onToggleInlineBreakdown: (leadId: string) => void;
   onExpandSkills: (leadId: string) => void;
   onCollapseSkills: (leadId: string) => void;
@@ -1040,7 +1042,7 @@ const LeadCard = memo(function LeadCard({
   predictResult, askedRequestedAt, askedFulfilledAt, revealedAt, isSkillsExpanded,
   isExpFieldExpanded, isWorkTypeFieldExpanded, isEmpTypeFieldExpanded, isRateFieldExpanded, isVisaFieldExpanded, isLocationFieldExpanded,
   isLoadingPreview, isProcessingChat, isProcessingAskAI,
-  onPreview, onOpenChat, onAskAI, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
+  onPreview, onOpenChat, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
 }: LeadCardProps) {
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
@@ -1077,15 +1079,28 @@ const LeadCard = memo(function LeadCard({
         )}
       </button>
       {lead.postSource === 'user_post' ? (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onOpenChat(lead); }}
-          disabled={isProcessingChat}
-          title="Chat about this post"
-          className="inline-flex h-9 flex-1 items-center justify-center bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
-        >
-          {isProcessingChat ? <LogoSpinner size={14} /> : <MessageSquare size={17} strokeWidth={1.75} />}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpenChat(lead); }}
+            disabled={isProcessingChat}
+            title="Chat about this post"
+            className="inline-flex h-9 flex-1 items-center justify-center bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
+          >
+            {isProcessingChat ? <LogoSpinner size={14} /> : <MessageSquare size={17} strokeWidth={1.75} />}
+          </button>
+          {lead.kind === 'job' && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onApply(lead); }}
+              title="Submit a consultant to this job"
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
+            >
+              <Send size={15} strokeWidth={1.75} />
+              <span className="text-[12px] font-normal">Apply</span>
+            </button>
+          )}
+        </>
       ) : isAskPending || isVerified ? (
         <span
           title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
@@ -2175,6 +2190,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [postContentViewedLeadIds, setPostContentViewedLeadIds] = useState<Set<string>>(new Set());
   const [postContentViewedAtByLeadId, setPostContentViewedAtByLeadId] = useState<Record<string, string>>({});
   const [postContentPreview, setPostContentPreview] = useState<{ leadId: string; title: string; content: string } | null>(null);
+  const [applyModalLead, setApplyModalLead] = useState<SocialLead | null>(null);
   const [loadingPostContentLeadId, setLoadingPostContentLeadId] = useState<string | null>(null);
   const [ignoredLeadIds, setIgnoredLeadIds] = useState<Set<string>>(new Set());
   const [revealedAtByLeadId, setRevealedAtByLeadId] = useState<Record<string, string>>({});
@@ -3278,6 +3294,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       onPreview: handlePreviewPost,
       onOpenChat: handleOpenPostChat,
       onAskAI: handleAskAI,
+      onApply: (applyLead) => setApplyModalLead(applyLead),
       onToggleInlineBreakdown: toggleInlineBreakdown,
       onExpandSkills: expandCardSkills,
       onCollapseSkills: collapseCardSkills,
@@ -3467,15 +3484,27 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 <td className="px-1.5 py-2 align-top">
                   <div className="flex flex-wrap items-center gap-1">
                     {lead.postSource === 'user_post' ? (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); void handleOpenPostChat(lead); }}
-                        disabled={processingChatLeadId === lead.id}
-                        title="Chat about this post"
-                        className={askButtonClass}
-                      >
-                        {processingChatLeadId === lead.id ? <span>...</span> : <MessageSquare size={12} strokeWidth={2} />}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void handleOpenPostChat(lead); }}
+                          disabled={processingChatLeadId === lead.id}
+                          title="Chat about this post"
+                          className={askButtonClass}
+                        >
+                          {processingChatLeadId === lead.id ? <span>...</span> : <MessageSquare size={12} strokeWidth={2} />}
+                        </button>
+                        {lead.kind === 'job' && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setApplyModalLead(lead); }}
+                            title="Submit a consultant to this job"
+                            className={askButtonClass}
+                          >
+                            <Send size={12} strokeWidth={2} />
+                          </button>
+                        )}
+                      </>
                     ) : isAskPending || isVerified ? (
                       <span
                         title={(() => {
@@ -6502,6 +6531,16 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         balance={account?.credits_balance ?? 0}
         actionLabel={isCombinedFeed ? 'generate this outreach' : isHotlistFeed ? 'generate this request' : 'generate this submission email'}
       />
+
+      {applyModalLead && (
+        <SubmitApplicationModal
+          jobId={applyModalLead.id}
+          jobTitle={applyModalLead.title || 'this job'}
+          onClose={() => setApplyModalLead(null)}
+          onSaved={() => setApplyModalLead(null)}
+          showToast={showToast}
+        />
+      )}
 
       {isBulkPredictModalOpen && (
         <div
