@@ -160,8 +160,8 @@ Deno.serve(async (req: Request) => {
   }
 
   const r = results[0] as HotlistExtractResult;
-  const candidate = Array.isArray(r.candidates) && r.candidates.length > 0 ? r.candidates[0] : {};
-  const fields = {
+  const rawCandidates = Array.isArray(r.candidates) && r.candidates.length > 0 ? r.candidates : [{}];
+  const candidates = rawCandidates.map((candidate) => ({
     role_title: candidate.role_title ?? "",
     candidate_name: candidate.candidate_name ?? "",
     core_skills: Array.isArray(candidate.core_skills) ? candidate.core_skills : [],
@@ -174,10 +174,16 @@ Deno.serve(async (req: Request) => {
     hourly_rate_max: candidate.hourly_rate_max ?? 0,
     availability: candidate.availability ?? "",
     candidate_summary: candidate.candidate_summary ?? "",
-    contact_email: extractContactEmail(text),
-    contact_phone: extractContactPhone(text),
-  };
-  return new Response(JSON.stringify({ ok: true, fields }), {
+  }));
+  const contactEmail = extractContactEmail(text);
+  const contactPhone = extractContactPhone(text);
+
+  // `fields` mirrors the first candidate for callers still expecting the old
+  // single-candidate shape (kept so the modal's single-consultant flow needs
+  // no changes) — `candidates` carries every candidate found for the caller
+  // to detect and handle a multi-candidate paste.
+  const fields = { ...candidates[0], contact_email: contactEmail, contact_phone: contactPhone };
+  return new Response(JSON.stringify({ ok: true, fields, candidates, contact_email: contactEmail, contact_phone: contactPhone }), {
     status: 200,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });

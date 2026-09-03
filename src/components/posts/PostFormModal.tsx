@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sparkles, Trash2, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -136,12 +136,50 @@ type ExtractedJobFields = {
   contact_email?: string; contact_phone?: string;
 };
 
-type ExtractedHotlistFields = {
+type ExtractedHotlistCandidate = {
   role_title?: string; candidate_name?: string; core_skills?: string[]; years_experience?: number;
   visa_type?: string; employment_type?: string; work_type?: string; locations?: string[];
   hourly_rate_min?: number; hourly_rate_max?: number; availability?: string; candidate_summary?: string;
+};
+
+type ExtractedHotlistFields = ExtractedHotlistCandidate & {
   contact_email?: string; contact_phone?: string;
 };
+
+// One row in the multi-candidate review list — shown instead of the single
+// hotlist form when a paste is detected to contain more than one consultant
+// (the standard bench-sales "table of available consultants" post format).
+interface HotlistCandidateDraft {
+  candidateName: string;
+  roleTitle: string;
+  yearsExperience: string;
+  coreSkills: string[];
+  visaType: string;
+  employmentType: string;
+  workType: string;
+  locations: string[];
+  hourlyRateMin: string;
+  hourlyRateMax: string;
+  availability: string;
+  candidateSummary: string;
+}
+
+function candidateDraftFromExtracted(c: ExtractedHotlistCandidate): HotlistCandidateDraft {
+  return {
+    candidateName: c.candidate_name?.trim() ?? '',
+    roleTitle: c.role_title?.trim() ?? '',
+    yearsExperience: c.years_experience ? String(c.years_experience) : '',
+    coreSkills: Array.isArray(c.core_skills) ? c.core_skills : [],
+    visaType: c.visa_type?.trim() ?? '',
+    employmentType: c.employment_type?.trim() ?? '',
+    workType: c.work_type?.trim() ?? '',
+    locations: Array.isArray(c.locations) ? c.locations : [],
+    hourlyRateMin: c.hourly_rate_min ? String(c.hourly_rate_min) : '',
+    hourlyRateMax: c.hourly_rate_max ? String(c.hourly_rate_max) : '',
+    availability: c.availability?.trim() ?? '',
+    candidateSummary: c.candidate_summary?.trim() ?? '',
+  };
+}
 
 export default function PostFormModal({
   kind,
@@ -173,12 +211,15 @@ export default function PostFormModal({
   const [extracting, setExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showMore, setShowMore] = useState(Boolean(existingPost));
+  const [parsedCandidates, setParsedCandidates] = useState<HotlistCandidateDraft[]>([]);
+  const isMultiCandidateMode = kind === 'hotlist' && parsedCandidates.length > 0;
   const autoFillTriggeredRef = useRef(false);
 
   useEffect(() => {
     setJobForm(jobFormFromPost(existingPost));
     setHotlistForm(hotlistFormFromPost(existingPost));
     setPasteText(existingPost?.postContent ?? initialPasteText ?? '');
+    setParsedCandidates([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingPost]);
 
@@ -227,22 +268,36 @@ export default function PostFormModal({
           contactPhone: f.contact_phone?.trim() || prev.contactPhone,
         }));
       } else {
-        const f = data.fields as ExtractedHotlistFields;
-        setHotlistForm((prev) => ({
-          roleTitle: f.role_title?.trim() || prev.roleTitle,
-          coreSkills: Array.isArray(f.core_skills) && f.core_skills.length > 0 ? f.core_skills : prev.coreSkills,
-          yearsExperience: f.years_experience ? String(f.years_experience) : prev.yearsExperience,
-          visaType: f.visa_type?.trim() || prev.visaType,
-          employmentType: f.employment_type?.trim() || prev.employmentType,
-          workType: f.work_type?.trim() || prev.workType,
-          locations: Array.isArray(f.locations) && f.locations.length > 0 ? f.locations : prev.locations,
-          hourlyRateMin: f.hourly_rate_min ? String(f.hourly_rate_min) : prev.hourlyRateMin,
-          hourlyRateMax: f.hourly_rate_max ? String(f.hourly_rate_max) : prev.hourlyRateMax,
-          availability: f.availability?.trim() || prev.availability,
-          candidateSummary: f.candidate_summary?.trim() || prev.candidateSummary,
-          contactEmail: f.contact_email?.trim() || prev.contactEmail,
-          contactPhone: f.contact_phone?.trim() || prev.contactPhone,
-        }));
+        const candidates = Array.isArray(data.candidates) ? data.candidates as ExtractedHotlistCandidate[] : [];
+        // Editing an existing post always maps to exactly one social_hotlist
+        // row, so even if the newly-pasted text looks like a multi-candidate
+        // table, stay in single-candidate mode for edits.
+        if (!isEditing && candidates.length > 1) {
+          setParsedCandidates(candidates.map(candidateDraftFromExtracted));
+          setHotlistForm((prev) => ({
+            ...prev,
+            contactEmail: data.contact_email?.trim() || prev.contactEmail,
+            contactPhone: data.contact_phone?.trim() || prev.contactPhone,
+          }));
+        } else {
+          setParsedCandidates([]);
+          const f = data.fields as ExtractedHotlistFields;
+          setHotlistForm((prev) => ({
+            roleTitle: f.role_title?.trim() || prev.roleTitle,
+            coreSkills: Array.isArray(f.core_skills) && f.core_skills.length > 0 ? f.core_skills : prev.coreSkills,
+            yearsExperience: f.years_experience ? String(f.years_experience) : prev.yearsExperience,
+            visaType: f.visa_type?.trim() || prev.visaType,
+            employmentType: f.employment_type?.trim() || prev.employmentType,
+            workType: f.work_type?.trim() || prev.workType,
+            locations: Array.isArray(f.locations) && f.locations.length > 0 ? f.locations : prev.locations,
+            hourlyRateMin: f.hourly_rate_min ? String(f.hourly_rate_min) : prev.hourlyRateMin,
+            hourlyRateMax: f.hourly_rate_max ? String(f.hourly_rate_max) : prev.hourlyRateMax,
+            availability: f.availability?.trim() || prev.availability,
+            candidateSummary: f.candidate_summary?.trim() || prev.candidateSummary,
+            contactEmail: f.contact_email?.trim() || prev.contactEmail,
+            contactPhone: f.contact_phone?.trim() || prev.contactPhone,
+          }));
+        }
       }
       setShowMore(true);
       showToast('Fields auto-filled — review and adjust before posting', 'success');
@@ -279,6 +334,30 @@ export default function PostFormModal({
           ? await supabase.rpc('update_user_job_post' as never, { p_id: existingPost!.id, ...args, p_post_status: existingPost!.postStatus } as never)
           : await supabase.rpc('create_user_job_post' as never, args as never);
         if (error) throw new Error(error.message);
+      } else if (isMultiCandidateMode) {
+        if (parsedCandidates.length === 0) throw new Error('No candidates to post');
+        if (parsedCandidates.some((c) => !c.roleTitle.trim())) throw new Error('Every candidate needs a role title');
+        const candidatesPayload = parsedCandidates.map((c) => ({
+          role_title: c.roleTitle.trim(),
+          candidate_name: c.candidateName.trim(),
+          core_skills: c.coreSkills,
+          years_experience: parseNumberInput(c.yearsExperience),
+          visa_type: c.visaType.trim(),
+          employment_type: c.employmentType.trim(),
+          work_type: c.workType.trim(),
+          locations: c.locations,
+          hourly_rate_min: parseNumberInput(c.hourlyRateMin),
+          hourly_rate_max: parseNumberInput(c.hourlyRateMax),
+          availability: c.availability.trim(),
+          candidate_summary: c.candidateSummary.trim(),
+        }));
+        const { error } = await supabase.rpc('create_user_hotlist_posts_batch' as never, {
+          p_candidates: candidatesPayload,
+          p_post_content: pasteText.trim(),
+          p_contact_email: hotlistForm.contactEmail.trim(),
+          p_contact_phone: hotlistForm.contactPhone.trim(),
+        } as never);
+        if (error) throw new Error(error.message);
       } else {
         if (!hotlistForm.roleTitle.trim()) throw new Error('Role title is required');
         const args = {
@@ -302,7 +381,7 @@ export default function PostFormModal({
           : await supabase.rpc('create_user_hotlist_post' as never, args as never);
         if (error) throw new Error(error.message);
       }
-      showToast(isEditing ? 'Post updated' : 'Post created — it will appear in the feed shortly', 'success');
+      showToast(isEditing ? 'Post updated' : isMultiCandidateMode ? `${parsedCandidates.length} posts created — they will appear in the feed shortly` : 'Post created — it will appear in the feed shortly', 'success');
       onSaved();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not save post';
@@ -438,6 +517,83 @@ export default function PostFormModal({
               </div>
             )}
           </div>
+        ) : isMultiCandidateMode ? (
+          <div className="space-y-2.5">
+            <div className={`rounded-md border p-2.5 text-[12px] font-semibold ${isDark ? 'border-emerald-400/20 bg-emerald-500/5 text-emerald-300' : 'border-emerald-100 bg-emerald-50 text-emerald-700'}`}>
+              {parsedCandidates.length} candidates found — review the key fields below before posting.{' '}
+              <button
+                type="button"
+                onClick={() => setParsedCandidates([])}
+                className={`underline ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}
+              >
+                Post one consultant instead
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {parsedCandidates.map((candidate, index) => (
+                <div key={index} className={`rounded-md border p-2.5 ${isDark ? 'border-white/10 bg-[#171a1f]' : 'border-gray-200 bg-gray-50/50'}`}>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className={`text-[11px] font-bold ${isDark ? 'text-[#94A3B8]' : 'text-gray-500'}`}>Candidate {index + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => setParsedCandidates((prev) => prev.filter((_, i) => i !== index))}
+                      className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5 hover:text-red-400' : 'text-gray-400 hover:bg-gray-100 hover:text-red-600'}`}
+                      aria-label={`Remove candidate ${index + 1}`}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={labelClass}>Name</label>
+                      <input
+                        className={inputClass}
+                        value={candidate.candidateName}
+                        onChange={(e) => setParsedCandidates((prev) => prev.map((c, i) => (i === index ? { ...c, candidateName: e.target.value } : c)))}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Role title *</label>
+                      <input
+                        className={inputClass}
+                        value={candidate.roleTitle}
+                        onChange={(e) => setParsedCandidates((prev) => prev.map((c, i) => (i === index ? { ...c, roleTitle: e.target.value } : c)))}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={labelClass}>Experience (yrs)</label>
+                      <input
+                        className={inputClass}
+                        inputMode="numeric"
+                        value={candidate.yearsExperience}
+                        onChange={(e) => setParsedCandidates((prev) => prev.map((c, i) => (i === index ? { ...c, yearsExperience: e.target.value } : c)))}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Skills</label>
+                      <ChipInput
+                        values={candidate.coreSkills}
+                        onChange={(coreSkills) => setParsedCandidates((prev) => prev.map((c, i) => (i === index ? { ...c, coreSkills } : c)))}
+                        placeholder="Java, Spring Boot…"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <label className={labelClass}>Contact email * (applies to every candidate above)</label>
+              <input className={inputClass} type="email" value={hotlistForm.contactEmail} onChange={(e) => setHotlistForm({ ...hotlistForm, contactEmail: e.target.value })} placeholder="you@company.com" />
+            </div>
+            <div>
+              <label className={labelClass}>Contact phone</label>
+              <input className={inputClass} value={hotlistForm.contactPhone} onChange={(e) => setHotlistForm({ ...hotlistForm, contactPhone: e.target.value })} />
+            </div>
+          </div>
         ) : (
           <div className="space-y-2.5">
             <div>
@@ -517,8 +673,8 @@ export default function PostFormModal({
           <button type="button" onClick={onClose} disabled={saving} className={`rounded-md border px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-50 ${isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
             Cancel
           </button>
-          <button type="button" onClick={() => void handleSubmit()} disabled={saving} className="rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-            {saving ? 'Saving…' : isEditing ? 'Save changes' : 'Post'}
+          <button type="button" onClick={() => void handleSubmit()} disabled={saving || (isMultiCandidateMode && parsedCandidates.length === 0)} className="rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+            {saving ? 'Saving…' : isEditing ? 'Save changes' : isMultiCandidateMode ? `Post all ${parsedCandidates.length}` : 'Post'}
           </button>
         </div>
       </div>
