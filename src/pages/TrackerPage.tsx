@@ -1,13 +1,14 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Briefcase, Check, CheckCircle2, ChevronDown, ChevronUp, Clock3, ExternalLink, LayoutGrid,
+  Briefcase, Check, CheckCircle2, Clock3, ExternalLink, LayoutGrid,
   MessageSquare, Search, Sparkles, UserRound, Video, X, XCircle,
   type LucideIcon,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
+import ScreeningSubmissionModal from '../components/ScreeningSubmissionModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -26,21 +27,21 @@ const STATUS_FILTER_OPTIONS: Array<{ id: StatusFilter; label: string; icon: Luci
   { id: 'closed', label: 'Closed', icon: XCircle },
 ];
 
-const CLOSED_APPLICATION_STATUSES = new Set(['shortlisted', 'rejected']);
+const CLOSED_APPLICATION_STATUSES = new Set(['qualified', 'rejected']);
 const CLOSED_ASK_AI_STATUSES = new Set(['failed', 'refunded']);
 
 const APPLICATION_STATUS_STYLES: Record<string, string> = {
   submitted: 'border-gray-200 bg-gray-100 text-gray-600',
   screening_sent: 'border-blue-200 bg-blue-50 text-blue-700',
   screening_completed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  shortlisted: 'border-emerald-300 bg-emerald-100 text-emerald-800',
+  qualified: 'border-emerald-300 bg-emerald-100 text-emerald-800',
   rejected: 'border-red-200 bg-red-50 text-red-600',
 };
 const APPLICATION_STATUS_LABELS: Record<string, string> = {
   submitted: 'Submitted',
   screening_sent: 'Screening sent',
   screening_completed: 'Screening complete',
-  shortlisted: 'Shortlisted',
+  qualified: 'Qualified',
   rejected: 'Rejected',
 };
 
@@ -152,9 +153,7 @@ export default function TrackerPage() {
   const [turnsByApplication, setTurnsByApplication] = useState<Record<string, TurnRow[]>>({});
   const [hotlistRows, setHotlistRows] = useState<HotlistRow[]>([]);
 
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [videoModal, setVideoModal] = useState<{ url: string } | null>(null);
-  const [loadingVideoTurnId, setLoadingVideoTurnId] = useState<string | null>(null);
+  const [watchSubmissionAppId, setWatchSubmissionAppId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => setToast({ message, type }), []);
@@ -241,19 +240,6 @@ export default function TrackerPage() {
   }, [account?.id]);
 
   useEffect(() => { void loadData(); }, [loadData]);
-
-  async function handleWatch(turnId: string) {
-    setLoadingVideoTurnId(turnId);
-    const { data, error } = await supabase.functions.invoke('get-application-video-embed', {
-      body: { turnId },
-    });
-    setLoadingVideoTurnId(null);
-    if (error || !data?.iframeUrl) {
-      showToast((data as { error?: string } | null)?.error || 'Could not load this video', 'error');
-      return;
-    }
-    setVideoModal({ url: data.iframeUrl as string });
-  }
 
   const allRows: TrackerRow[] = useMemo(() => [...applications, ...hotlistRows], [applications, hotlistRows]);
 
@@ -383,90 +369,61 @@ export default function TrackerPage() {
                   {rows.map((row) => {
                     if (row.kind === 'job') {
                       const turns = turnsByApplication[row.id] ?? [];
-                      const isExpanded = expandedId === row.id;
                       const screeningUrl = `${window.location.origin}/screen/${row.screeningToken}`;
                       return (
-                        <Fragment key={row.id}>
-                          <tr className={`border-b ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-100 hover:bg-gray-50'}`}>
-                            {kindFilter === 'all' && (
-                              <td className="px-3 py-2.5 align-top">
-                                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>
-                                  <Briefcase size={9} />
-                                  Job
-                                </span>
-                              </td>
-                            )}
-                            <td className="max-w-xs px-3 py-2.5 align-top">
-                              <p className="truncate font-semibold text-gray-900 dark:text-slate-100">{row.jobTitle}</p>
-                              <p className="truncate text-[11px] text-gray-400 dark:text-[#94A3B8]">
-                                {row.companyName}{row.candidateName ? ` · ${row.candidateName}` : ''}
-                              </p>
-                            </td>
-                            <td className="px-3 py-2.5 align-top text-gray-500 dark:text-[#94A3B8]">{formatAgo(row.createdAt)}</td>
+                        <tr key={row.id} className={`border-b ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-100 hover:bg-gray-50'}`}>
+                          {kindFilter === 'all' && (
                             <td className="px-3 py-2.5 align-top">
-                              <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${APPLICATION_STATUS_STYLES[row.status] ?? APPLICATION_STATUS_STYLES.submitted}`}>
-                                {APPLICATION_STATUS_LABELS[row.status] ?? row.status}
+                              <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>
+                                <Briefcase size={9} />
+                                Job
                               </span>
                             </td>
-                            <td className="px-3 py-2.5 align-top">
-                              {row.aiScore !== null ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:border-purple-400/30 dark:bg-purple-500/10 dark:text-purple-300">
-                                  <Sparkles size={9} strokeWidth={2.5} />
-                                  {row.aiScore}/100
-                                </span>
-                              ) : <span className="text-[11px] text-gray-400 dark:text-[#64748B]">—</span>}
-                            </td>
-                            <td className="px-3 py-2.5 align-top">
-                              <a
-                                href={screeningUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-100 dark:border-white/15 dark:bg-white/5 dark:text-slate-300"
-                              >
-                                <ExternalLink size={9} strokeWidth={2.5} />
-                                Screening link
-                              </a>
-                            </td>
-                            <td className="px-3 py-2.5 align-top">
-                              {turns.length > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => setExpandedId(isExpanded ? null : row.id)}
-                                  className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                                >
-                                  {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                                  {turns.filter((t) => t.answered_at).length}/{turns.length}
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                          {isExpanded && (
-                            <tr className={isDark ? 'bg-white/[0.02]' : 'bg-gray-50/60'}>
-                              <td colSpan={kindFilter === 'all' ? 7 : 6} className="px-3 py-3">
-                                <div className="flex flex-col gap-2">
-                                  {turns.map((turn) => (
-                                    <div key={turn.id} className="rounded-md border border-gray-100 bg-white p-2.5 dark:border-white/10 dark:bg-transparent">
-                                      <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400">Q{turn.turn_index + 1}. {turn.question_text}</p>
-                                      {turn.answered_at && turn.video_stream_uid ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => void handleWatch(turn.id)}
-                                          disabled={loadingVideoTurnId === turn.id}
-                                          className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 disabled:opacity-60 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-400"
-                                        >
-                                          {loadingVideoTurnId === turn.id ? <LogoSpinner size={11} /> : <Video size={12} />}
-                                          Watch answer
-                                        </button>
-                                      ) : (
-                                        <p className="mt-1 text-[11px] text-gray-400 dark:text-[#64748B]">Not answered yet</p>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                            </tr>
                           )}
-                        </Fragment>
+                          <td className="max-w-xs px-3 py-2.5 align-top">
+                            <p className="truncate font-semibold text-gray-900 dark:text-slate-100">{row.jobTitle}</p>
+                            <p className="truncate text-[11px] text-gray-400 dark:text-[#94A3B8]">
+                              {row.companyName}{row.candidateName ? ` · ${row.candidateName}` : ''}
+                            </p>
+                          </td>
+                          <td className="px-3 py-2.5 align-top text-gray-500 dark:text-[#94A3B8]">{formatAgo(row.createdAt)}</td>
+                          <td className="px-3 py-2.5 align-top">
+                            <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${APPLICATION_STATUS_STYLES[row.status] ?? APPLICATION_STATUS_STYLES.submitted}`}>
+                              {APPLICATION_STATUS_LABELS[row.status] ?? row.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 align-top">
+                            {row.aiScore !== null ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:border-purple-400/30 dark:bg-purple-500/10 dark:text-purple-300">
+                                <Sparkles size={9} strokeWidth={2.5} />
+                                {row.aiScore}/100
+                              </span>
+                            ) : <span className="text-[11px] text-gray-400 dark:text-[#64748B]">—</span>}
+                          </td>
+                          <td className="px-3 py-2.5 align-top">
+                            <a
+                              href={screeningUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-100 dark:border-white/15 dark:bg-white/5 dark:text-slate-300"
+                            >
+                              <ExternalLink size={9} strokeWidth={2.5} />
+                              Screening link
+                            </a>
+                          </td>
+                          <td className="px-3 py-2.5 align-top">
+                            {turns.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => setWatchSubmissionAppId(row.id)}
+                                className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
+                              >
+                                <Video size={10} strokeWidth={2.5} />
+                                Watch Submission
+                              </button>
+                            ) : <span className="text-[11px] text-gray-400 dark:text-[#64748B]">—</span>}
+                          </td>
+                        </tr>
                       );
                     }
 
@@ -527,19 +484,12 @@ export default function TrackerPage() {
         </div>
       </main>
 
-      {videoModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" onClick={() => setVideoModal(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-lg bg-black shadow-2xl">
-            <div className="flex items-center justify-end p-1.5">
-              <button type="button" onClick={() => setVideoModal(null)} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-white/80 hover:bg-white/10" aria-label="Close video">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="aspect-video w-full">
-              <iframe src={videoModal.url} className="h-full w-full" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowFullScreen />
-            </div>
-          </div>
-        </div>
+      {watchSubmissionAppId && (
+        <ScreeningSubmissionModal
+          turns={turnsByApplication[watchSubmissionAppId] ?? []}
+          onClose={() => setWatchSubmissionAppId(null)}
+          showToast={showToast}
+        />
       )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
