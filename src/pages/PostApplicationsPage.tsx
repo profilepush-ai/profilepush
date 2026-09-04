@@ -64,6 +64,16 @@ export default function PostApplicationsPage() {
   const [chatBusyId, setChatBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 639px)');
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  }, []);
+
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => setToast({ message, type }), []);
 
   const loadApplications = useCallback(async () => {
@@ -166,6 +176,96 @@ export default function PostApplicationsPage() {
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <p className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">No applications yet</p>
                 <p className="mt-1 text-[12px] text-gray-400 dark:text-[#64748B]">Applications submitted for this job will show up here.</p>
+              </div>
+            ) : isMobileViewport ? (
+              <div className="flex flex-col gap-2 p-2">
+                {applications.map((app) => {
+                  const turns = turnsByApplication[app.id] ?? [];
+                  const hasAnsweredTurn = turns.some((t) => t.answered_at);
+                  const screeningSubmitted = app.status === 'screening_completed' || app.status === 'qualified';
+                  return (
+                    <div key={app.id} className="rounded-lg border border-[#dfdad2] bg-white p-3 dark:border-white/10 dark:bg-[#1E2126]">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100">{app.candidate_name || 'Unnamed candidate'}</p>
+                          {app.candidate_email && <p className="truncate text-[11px] text-gray-400 dark:text-[#94A3B8]">{app.candidate_email}</p>}
+                          {app.candidate_phone && <p className="text-[11px] text-gray-400 dark:text-[#94A3B8]">{app.candidate_phone}</p>}
+                        </div>
+                        <span className={`shrink-0 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[app.status] ?? STATUS_STYLES.submitted}`}>
+                          {STATUS_LABELS[app.status] ?? app.status}
+                        </span>
+                      </div>
+
+                      {app.recruiter_note && (
+                        <p className="mt-1 truncate text-[11px] italic text-gray-500 dark:text-[#94A3B8]" title={app.recruiter_note}>
+                          “{app.recruiter_note}”
+                        </p>
+                      )}
+
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {app.ai_score !== null && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:border-purple-400/30 dark:bg-purple-500/10 dark:text-purple-300">
+                            <Sparkles size={9} strokeWidth={2.5} />
+                            {app.ai_score}/100
+                          </span>
+                        )}
+                        {app.resume_url && (
+                          <button
+                            type="button"
+                            onClick={() => setResumeModalUrl(app.resume_url)}
+                            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-100 dark:border-white/15 dark:bg-white/5 dark:text-slate-300"
+                          >
+                            <FileText size={9} strokeWidth={2.5} />
+                            Resume
+                          </button>
+                        )}
+                        {hasAnsweredTurn && (
+                          <button
+                            type="button"
+                            onClick={() => setWatchSubmissionAppId(app.id)}
+                            className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
+                          >
+                            <Video size={10} strokeWidth={2.5} />
+                            Watch Submission
+                          </button>
+                        )}
+                      </div>
+
+                      {app.ai_summary && (
+                        <p className="mt-1.5 text-[11px] text-gray-400 dark:text-[#64748B]">{app.ai_summary}</p>
+                      )}
+
+                      <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 text-[11px] text-gray-400 dark:border-white/10 dark:text-[#64748B]">
+                        <span>{app.applied_by_account_name || '—'} · {formatDate(app.created_at)}</span>
+                      </div>
+
+                      <div className="mt-2 flex items-center gap-1">
+                        {screeningSubmitted && app.status !== 'qualified' && (
+                          <button
+                            type="button"
+                            disabled={decisionBusyId === app.id}
+                            onClick={() => void handleQualify(app.id)}
+                            title="Qualify"
+                            className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                          >
+                            <Check size={12} />
+                            Qualify
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={chatBusyId === app.id}
+                          onClick={() => void handleChat(app.id)}
+                          title="Chat with the submitting recruiter"
+                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-400"
+                        >
+                          {chatBusyId === app.id ? <LogoSpinner size={12} /> : <MessageSquare size={12} />}
+                          Chat
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
