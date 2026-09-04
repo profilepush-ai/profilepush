@@ -32,6 +32,11 @@ export default function ScreeningSubmissionModal({
   const [index, setIndex] = useState(0);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Distinguishes "no recording exists for this application" (expected for
+  // applications from before video was tracked per-application, or one that
+  // never finished the interview) from a genuine load failure — these need
+  // different messaging, not one generic error.
+  const [notFound, setNotFound] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const current = sorted[index];
@@ -39,11 +44,17 @@ export default function ScreeningSubmissionModal({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setNotFound(false);
     void (async () => {
       try {
         const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
         const res = await fetch(`${WORKER_URL}/video/${applicationId}`, { headers: headers as Record<string, string> });
         if (cancelled) return;
+        if (res.status === 404) {
+          setLoading(false);
+          setNotFound(true);
+          return;
+        }
         if (!res.ok) {
           setLoading(false);
           showToast('Could not load this video', 'error');
@@ -109,8 +120,10 @@ export default function ScreeningSubmissionModal({
               playsInline
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              {loading ? <LogoSpinner size={20} /> : (
+            <div className="flex h-full w-full items-center justify-center px-6 text-center">
+              {loading ? <LogoSpinner size={20} /> : notFound ? (
+                <p className="text-[12px] text-white/60">No recording is available for this application.</p>
+              ) : (
                 <p className="text-[12px] text-white/60">Could not load this video</p>
               )}
             </div>
