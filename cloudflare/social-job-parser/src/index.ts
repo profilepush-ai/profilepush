@@ -87,6 +87,7 @@ type GenerateScreeningQuestionRequest = {
   jobTitle?: string;
   jobDescription?: string;
   priorTurns?: ScreeningTurn[];
+  forceConclude?: boolean;
   maxTurns?: number;
 };
 
@@ -98,18 +99,30 @@ function buildScreeningQuestionPrompt(
   jobDescription: string,
   priorTurns: ScreeningTurn[],
   maxTurns: number,
+  forceConclude: boolean,
 ) {
   const historyBlock = priorTurns.length > 0
     ? priorTurns.map((t, i) => `Q${i + 1}: ${t.question}\nA${i + 1}: ${t.answer.slice(0, 1500)}`).join("\n\n")
     : "(This is the first question — no answers yet.)";
 
-  return `JOB: ${jobTitle || "Untitled role"}
+  const header = `JOB: ${jobTitle || "Untitled role"}
 JOB REQUIREMENTS: ${(jobDescription || "Not specified").slice(0, 3000)}
 
 CANDIDATE RESUME SUMMARY: ${(resumeSummary || "Not available").slice(0, 3000)}
 
 INTERVIEW SO FAR (${priorTurns.length} of up to ${maxTurns} questions asked):
-${historyBlock}
+${historyBlock}`;
+
+  if (forceConclude) {
+    return `${header}
+
+The interview has reached its question limit and MUST end now — you do not have the option to ask another question.
+
+Return ONLY valid JSON in exactly this shape, no markdown, no explanation:
+{"done": true, "summary": string (3-5 sentences, an honest, specific assessment of the candidate's fit for this job based on their answers — call out both strengths and any red flags or vague answers), "score": number (0-100 fit score)}`;
+  }
+
+  return `${header}
 
 ${priorTurns.length >= maxTurns - 1
     ? "This is the LAST question or the interview should now be wrapped up — if you have enough to assess fit, set done=true and write a short summary + score instead of another question."
@@ -578,8 +591,9 @@ export default {
         const resumeSummary = (body.resumeSummary ?? "").trim();
         const priorTurns = Array.isArray(body.priorTurns) ? body.priorTurns.slice(0, 10) : [];
         const maxTurns = Math.min(6, Math.max(2, Number(body.maxTurns) || 5));
+        const forceConclude = Boolean(body.forceConclude);
 
-        const prompt = buildScreeningQuestionPrompt(resumeSummary, jobTitle, jobDescription, priorTurns, maxTurns);
+        const prompt = buildScreeningQuestionPrompt(resumeSummary, jobTitle, jobDescription, priorTurns, maxTurns, forceConclude);
         const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
 
         let aiResult: unknown;
@@ -610,10 +624,13 @@ export default {
         const rawText = (aiResult as Record<string, unknown>)?.response ?? aiResult;
         const parsed = parseModelText(rawText) as { done?: boolean; question?: string; summary?: string; score?: number };
 
-        if (parsed?.done) {
-          const summary = String(parsed.summary ?? "").trim().slice(0, 2000);
-          const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
-          if (!summary) return jsonResponse({ error: "Model returned an empty summary" }, 422);
+        // forceConclude means the turn cap has been reached — the interview
+        // ends here no matter what the model returned, so it can never run
+        // past maxTurns even if the model ignores the "must end now" prompt.
+        if (parsed?.done || forceConclude) {
+          const summary = String(parsed?.summary ?? "").trim().slice(0, 2000)
+            || "The candidate completed the screening, but an automatic summary could not be generated.";
+          const score = Math.max(0, Math.min(100, Math.round(Number(parsed?.score) || 0)));
           return jsonResponse({ done: true, summary, score });
         }
 

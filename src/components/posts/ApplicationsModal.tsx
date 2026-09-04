@@ -180,7 +180,7 @@ export default function ApplicationsModal({ jobId, jobTitle, onClose, showToast 
                           {app.ai_score !== null && (
                             <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:border-purple-400/30 dark:bg-purple-500/10 dark:text-purple-300">
                               <Sparkles size={9} strokeWidth={2.5} />
-                              Score {app.ai_score}/10
+                              Score {app.ai_score}/100
                             </span>
                           )}
                           {app.resume_url && (

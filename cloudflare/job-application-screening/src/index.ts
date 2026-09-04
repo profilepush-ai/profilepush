@@ -184,13 +184,17 @@ async function generateNextQuestion(
   priorTurns: Array<{ question: string; answer: string }>,
 ): Promise<{ done: true; summary: string; score: number } | { done: false; question: string }> {
   const maxTurns = Math.min(6, Math.max(2, Number(env.MAX_SCREENING_TURNS) || 5));
+  // Hard cap enforced here, not just suggested in the prompt — a model that
+  // ignores the "wrap up" instruction must not be able to extend the
+  // interview past maxTurns.
+  const forceConclude = priorTurns.length >= maxTurns;
   const res = await env.SOCIAL_JOB_PARSER.fetch("https://social-job-parser.internal/generate-screening-question", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(env.CLOUDFLARE_WORKER_TOKEN ? { Authorization: `Bearer ${env.CLOUDFLARE_WORKER_TOKEN}` } : {}),
     },
-    body: JSON.stringify({ resumeSummary, jobTitle, jobDescription, priorTurns, maxTurns }),
+    body: JSON.stringify({ resumeSummary, jobTitle, jobDescription, priorTurns, maxTurns, forceConclude }),
     signal: AbortSignal.timeout(30_000),
   });
   const payload = await res.json() as { done?: boolean; question?: string; summary?: string; score?: number; error?: string };
