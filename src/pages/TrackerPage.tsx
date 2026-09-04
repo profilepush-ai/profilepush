@@ -38,9 +38,9 @@ const APPLICATION_STATUS_STYLES: Record<string, string> = {
   rejected: 'border-red-200 bg-red-50 text-red-600',
 };
 const APPLICATION_STATUS_LABELS: Record<string, string> = {
-  submitted: 'Submitted',
-  screening_sent: 'Screening sent',
-  screening_completed: 'Screening complete',
+  submitted: 'Applied',
+  screening_sent: 'Screening Sent',
+  screening_completed: 'Screening Submitted',
   qualified: 'Qualified',
   rejected: 'Rejected',
 };
@@ -369,6 +369,7 @@ export default function TrackerPage() {
                   {rows.map((row) => {
                     if (row.kind === 'job') {
                       const turns = turnsByApplication[row.id] ?? [];
+                      const hasAnsweredTurn = turns.some((t) => t.answered_at);
                       const screeningUrl = `${window.location.origin}/screen/${row.screeningToken}`;
                       return (
                         <tr key={row.id} className={`border-b ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-100 hover:bg-gray-50'}`}>
@@ -412,7 +413,7 @@ export default function TrackerPage() {
                             </a>
                           </td>
                           <td className="px-3 py-2.5 align-top">
-                            {turns.length > 0 ? (
+                            {hasAnsweredTurn ? (
                               <button
                                 type="button"
                                 onClick={() => setWatchSubmissionAppId(row.id)}

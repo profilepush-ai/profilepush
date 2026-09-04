@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, FileText, MessageSquare, Sparkles, Video, XCircle } from 'lucide-react';
+import { ArrowLeft, Check, FileText, MessageSquare, Sparkles, Video, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
@@ -38,9 +38,9 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  submitted: 'Submitted',
-  screening_sent: 'Screening sent',
-  screening_completed: 'Screening complete',
+  submitted: 'Applied',
+  screening_sent: 'Screening Sent',
+  screening_completed: 'Screening Submitted',
   qualified: 'Qualified',
   rejected: 'Rejected',
 };
@@ -59,6 +59,7 @@ export default function PostApplicationsPage() {
   const [applications, setApplications] = useState<ApplicationRow[]>([]);
   const [turnsByApplication, setTurnsByApplication] = useState<Record<string, ScreeningTurn[]>>({});
   const [watchSubmissionAppId, setWatchSubmissionAppId] = useState<string | null>(null);
+  const [resumeModalUrl, setResumeModalUrl] = useState<string | null>(null);
   const [decisionBusyId, setDecisionBusyId] = useState<string | null>(null);
   const [chatBusyId, setChatBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -105,19 +106,19 @@ export default function PostApplicationsPage() {
 
   useEffect(() => { void loadApplications(); }, [loadApplications]);
 
-  async function handleDecision(applicationId: string, status: 'qualified' | 'rejected') {
+  async function handleQualify(applicationId: string) {
     setDecisionBusyId(applicationId);
     const { error } = await supabase.rpc('set_job_application_decision' as never, {
       p_application_id: applicationId,
-      p_status: status,
+      p_status: 'qualified',
     } as never);
     setDecisionBusyId(null);
     if (error) {
       showToast(error.message, 'error');
       return;
     }
-    setApplications((prev) => prev.map((a) => (a.id === applicationId ? { ...a, status } : a)));
-    showToast(status === 'qualified' ? 'Candidate qualified' : 'Candidate rejected', 'success');
+    setApplications((prev) => prev.map((a) => (a.id === applicationId ? { ...a, status: 'qualified' } : a)));
+    showToast('Candidate qualified', 'success');
   }
 
   async function handleChat(applicationId: string) {
@@ -183,7 +184,8 @@ export default function PostApplicationsPage() {
                 <tbody>
                   {applications.map((app) => {
                     const turns = turnsByApplication[app.id] ?? [];
-                    const isDecided = app.status === 'qualified' || app.status === 'rejected';
+                    const hasAnsweredTurn = turns.some((t) => t.answered_at);
+                    const screeningSubmitted = app.status === 'screening_completed' || app.status === 'qualified';
                     return (
                       <tr key={app.id} className={`border-b ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-100 hover:bg-gray-50'}`}>
                         <td className="px-3 py-2.5 align-top">
@@ -218,19 +220,18 @@ export default function PostApplicationsPage() {
                         <td className="px-3 py-2.5 align-top text-gray-500 dark:text-[#94A3B8]">{formatDate(app.created_at)}</td>
                         <td className="px-3 py-2.5 align-top">
                           {app.resume_url ? (
-                            <a
-                              href={app.resume_url}
-                              target="_blank"
-                              rel="noreferrer"
+                            <button
+                              type="button"
+                              onClick={() => setResumeModalUrl(app.resume_url)}
                               className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-100 dark:border-white/15 dark:bg-white/5 dark:text-slate-300"
                             >
                               <FileText size={9} strokeWidth={2.5} />
                               Resume
-                            </a>
+                            </button>
                           ) : <span className="text-[11px] text-gray-400 dark:text-[#64748B]">—</span>}
                         </td>
                         <td className="px-3 py-2.5 align-top">
-                          {turns.length > 0 ? (
+                          {hasAnsweredTurn ? (
                             <button
                               type="button"
                               onClick={() => setWatchSubmissionAppId(app.id)}
@@ -248,37 +249,27 @@ export default function PostApplicationsPage() {
                         </td>
                         <td className="px-3 py-2.5 align-top">
                           <div className="flex items-center gap-1">
-                            {!isDecided && (
-                              <>
-                                <button
-                                  type="button"
-                                  disabled={decisionBusyId === app.id}
-                                  onClick={() => void handleDecision(app.id, 'qualified')}
-                                  title="Qualify"
-                                  className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
-                                >
-                                  <Check size={12} />
-                                  Qualify
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={decisionBusyId === app.id}
-                                  onClick={() => void handleDecision(app.id, 'rejected')}
-                                  title="Reject"
-                                  className="rounded p-1 text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/10"
-                                >
-                                  <XCircle size={14} />
-                                </button>
-                              </>
+                            {screeningSubmitted && app.status !== 'qualified' && (
+                              <button
+                                type="button"
+                                disabled={decisionBusyId === app.id}
+                                onClick={() => void handleQualify(app.id)}
+                                title="Qualify"
+                                className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                              >
+                                <Check size={12} />
+                                Qualify
+                              </button>
                             )}
                             <button
                               type="button"
                               disabled={chatBusyId === app.id}
                               onClick={() => void handleChat(app.id)}
                               title="Chat with the submitting recruiter"
-                              className="rounded p-1 text-blue-500 transition-colors hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                              className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-400"
                             >
-                              {chatBusyId === app.id ? <LogoSpinner size={12} /> : <MessageSquare size={14} />}
+                              {chatBusyId === app.id ? <LogoSpinner size={12} /> : <MessageSquare size={12} />}
+                              Chat
                             </button>
                           </div>
                         </td>
@@ -298,6 +289,25 @@ export default function PostApplicationsPage() {
           onClose={() => setWatchSubmissionAppId(null)}
           showToast={showToast}
         />
+      )}
+
+      {resumeModalUrl && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" onClick={() => setResumeModalUrl(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="flex h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-[#1B1D21]">
+            <div className="flex items-center justify-between border-b border-gray-100 p-3 dark:border-white/10">
+              <p className="text-[12px] font-semibold text-gray-700 dark:text-slate-200">Resume</p>
+              <button
+                type="button"
+                onClick={() => setResumeModalUrl(null)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"
+                aria-label="Close resume"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <iframe src={resumeModalUrl} className="flex-1 w-full bg-white" title="Resume" />
+          </div>
+        </div>
       )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
