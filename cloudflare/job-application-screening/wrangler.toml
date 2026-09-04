@@ -1,0 +1,15 @@
+name = "profilepush-job-application-screening"
+main = "src/index.ts"
+compatibility_date = "2026-09-04"
+workers_dev = true
+
+[vars]
+SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
+CLOUDFLARE_ACCOUNT_ID = "53134bd8509f5b224717a1c7b6be0016"
+CLOUDFLARE_WORKER_URL = "https://profilepush-social-job-parser.profilepush-ai.workers.dev"
+MAX_SCREENING_TURNS = "5"
+
+# Secrets (set via `wrangler secret put <NAME>`, not stored here):
+#   SUPABASE_SERVICE_ROLE_KEY   — same value used by the other workers in this repo
+#   CLOUDFLARE_STREAM_API_TOKEN — a Cloudflare API token scoped to Stream:Edit
+#   CLOUDFLARE_WORKER_TOKEN     — same token social-job-parser's WORKER_AUTH_TOKEN expects

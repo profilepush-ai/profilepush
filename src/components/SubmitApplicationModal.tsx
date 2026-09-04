@@ -61,7 +61,7 @@ export default function SubmitApplicationModal({
 
       const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(storagePath);
 
-      const { error } = await supabase.rpc('submit_job_application' as never, {
+      const { data: applicationId, error } = await supabase.rpc('submit_job_application' as never, {
         p_social_job_id: jobId,
         p_candidate_name: candidateName.trim(),
         p_candidate_email: candidateEmail.trim(),
@@ -73,6 +73,15 @@ export default function SubmitApplicationModal({
 
       showToast('Application submitted', 'success');
       onSaved();
+
+      // Fire-and-forget: parses the resume, generates the first screening
+      // question, and emails the candidate their link. The application row
+      // already exists regardless of whether this follow-up step succeeds,
+      // so a failure here shouldn't block/undo the submission the recruiter
+      // just saw succeed.
+      void supabase.functions.invoke('process-job-application', { body: { applicationId } }).catch(() => {
+        // Best-effort — the application still exists even if this fails.
+      });
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not submit application', 'error');
     } finally {

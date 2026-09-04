@@ -2,6 +2,10 @@ export interface Env {
   AI: Ai;
   HOTLIST_IMAGES: R2Bucket;
   WORKER_AUTH_TOKEN?: string;
+  // Second accepted token, additive to WORKER_AUTH_TOKEN — lets a new caller
+  // (job-application-screening) authenticate without needing to know or
+  // rotate the original shared secret every other caller already uses.
+  SCREENING_WORKER_TOKEN?: string;
   PARSER_MODEL?: string;
   PARSER_VISION_MODEL?: string;
   HOTLIST_IMAGES_PUBLIC_BASE_URL?: string;
@@ -75,6 +79,47 @@ type GenerateChatMessageRequest = {
 };
 
 const CHAT_DRAFT_SYSTEM_PROMPT = "You write short, natural in-app chat messages between staffing recruiters and bench sales vendors. This is always recruiter-to-recruiter business outreach about a job requirement or an available consultant — never a candidate interview and never a question about the recipient's own skills or background. Be concise, professional, and specific to the context given. Never use markdown, a subject line, or a signature block. Respond with only the message text.";
+
+type ScreeningTurn = { question: string; answer: string };
+
+type GenerateScreeningQuestionRequest = {
+  resumeSummary?: string;
+  jobTitle?: string;
+  jobDescription?: string;
+  priorTurns?: ScreeningTurn[];
+  maxTurns?: number;
+};
+
+const SCREENING_QUESTION_SYSTEM_PROMPT = "You are an AI recruiter conducting a short, adaptive video screening interview for a staffing job requirement. Ask ONE focused, specific question at a time to verify the candidate genuinely has the experience their resume claims and that they fit this specific job's requirements — dig into specifics (a real example, a number, a tool, a decision they made) rather than generic questions a rehearsed answer could dodge. Each new question should build on what the candidate just said, not repeat ground already covered. Keep every question to one or two sentences, plain spoken language (this will be read aloud/answered on camera), no markdown. Respond with strict JSON only.";
+
+function buildScreeningQuestionPrompt(
+  resumeSummary: string,
+  jobTitle: string,
+  jobDescription: string,
+  priorTurns: ScreeningTurn[],
+  maxTurns: number,
+) {
+  const historyBlock = priorTurns.length > 0
+    ? priorTurns.map((t, i) => `Q${i + 1}: ${t.question}\nA${i + 1}: ${t.answer.slice(0, 1500)}`).join("\n\n")
+    : "(This is the first question — no answers yet.)";
+
+  return `JOB: ${jobTitle || "Untitled role"}
+JOB REQUIREMENTS: ${(jobDescription || "Not specified").slice(0, 3000)}
+
+CANDIDATE RESUME SUMMARY: ${(resumeSummary || "Not available").slice(0, 3000)}
+
+INTERVIEW SO FAR (${priorTurns.length} of up to ${maxTurns} questions asked):
+${historyBlock}
+
+${priorTurns.length >= maxTurns - 1
+    ? "This is the LAST question or the interview should now be wrapped up — if you have enough to assess fit, set done=true and write a short summary + score instead of another question."
+    : "Ask the next question."}
+
+Return ONLY valid JSON in exactly one of these two shapes, no markdown, no explanation:
+{"done": false, "question": string}
+or, only once you have enough answers to judge fit (never before at least 2 answered questions):
+{"done": true, "summary": string (3-5 sentences, an honest, specific assessment of the candidate's fit for this job based on their answers — call out both strengths and any red flags or vague answers), "score": number (0-100 fit score)}`;
+}
 
 function buildChatDraftPrompt(
   title: string,
@@ -406,9 +451,10 @@ export default {
     }
 
     const expected = (env.WORKER_AUTH_TOKEN ?? "").trim();
+    const expectedScreening = (env.SCREENING_WORKER_TOKEN ?? "").trim();
     if (expected) {
       const actual = getBearerToken(req);
-      if (!actual || actual !== expected) {
+      if (!actual || (actual !== expected && (!expectedScreening || actual !== expectedScreening))) {
         return jsonResponse({ error: "Unauthorized" }, 401);
       }
     }
@@ -519,6 +565,61 @@ export default {
         if (!message) return jsonResponse({ error: "Model returned an empty message" }, 422);
 
         return jsonResponse({ message });
+      } catch (error) {
+        return jsonResponse({ error: (error as Error).message }, 500);
+      }
+    }
+
+    if (new URL(req.url).pathname.replace(/\/+$/, "") === "/generate-screening-question") {
+      try {
+        const body = (await req.json()) as GenerateScreeningQuestionRequest;
+        const jobTitle = (body.jobTitle ?? "").trim().slice(0, 300);
+        const jobDescription = (body.jobDescription ?? "").trim();
+        const resumeSummary = (body.resumeSummary ?? "").trim();
+        const priorTurns = Array.isArray(body.priorTurns) ? body.priorTurns.slice(0, 10) : [];
+        const maxTurns = Math.min(6, Math.max(2, Number(body.maxTurns) || 5));
+
+        const prompt = buildScreeningQuestionPrompt(resumeSummary, jobTitle, jobDescription, priorTurns, maxTurns);
+        const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
+
+        let aiResult: unknown;
+        let aiError: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            aiResult = await env.AI.run(model, {
+              messages: [
+                { role: "system", content: SCREENING_QUESTION_SYSTEM_PROMPT },
+                { role: "user", content: prompt },
+              ],
+              temperature: 0.5,
+              max_tokens: 500,
+            });
+            aiError = undefined;
+            break;
+          } catch (error) {
+            aiError = error;
+            if (attempt < 2 && isRateLimitError(error)) {
+              await sleep(1000 * (attempt + 1));
+              continue;
+            }
+            break;
+          }
+        }
+        if (aiError) throw aiError;
+
+        const rawText = (aiResult as Record<string, unknown>)?.response ?? aiResult;
+        const parsed = parseModelText(rawText) as { done?: boolean; question?: string; summary?: string; score?: number };
+
+        if (parsed?.done) {
+          const summary = String(parsed.summary ?? "").trim().slice(0, 2000);
+          const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+          if (!summary) return jsonResponse({ error: "Model returned an empty summary" }, 422);
+          return jsonResponse({ done: true, summary, score });
+        }
+
+        const question = String(parsed?.question ?? "").trim().slice(0, 500);
+        if (!question) return jsonResponse({ error: "Model returned an empty question" }, 422);
+        return jsonResponse({ done: false, question });
       } catch (error) {
         return jsonResponse({ error: (error as Error).message }, 500);
       }
