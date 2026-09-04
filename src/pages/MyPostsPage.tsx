@@ -406,7 +406,7 @@ export default function MyPostsPage() {
     closed: jobPosts.filter((p) => p.postStatus === 'closed').length + hotlistPosts.filter((p) => p.postStatus === 'closed').length,
   };
 
-  function kindFilterButtonsEl(fullWidth: boolean) {
+  function kindFilterButtonsEl(fullWidth: boolean, compact = false) {
     return KIND_FILTER_OPTIONS.map((option) => {
       const isSelected = kindFilter === option.id;
       const Icon = option.icon;
@@ -415,17 +415,23 @@ export default function MyPostsPage() {
           key={option.id}
           type="button"
           onClick={() => setKindFilter(option.id)}
-          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${fullWidth ? 'w-full' : ''} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
+          title={option.label}
+          aria-label={option.label}
+          className={`inline-flex items-center justify-center gap-1 rounded-full font-semibold transition ${compact ? 'px-2 py-1.5' : 'px-3 py-1.5 text-[11px]'} ${fullWidth ? 'w-full' : ''} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
         >
-          <Icon size={11} />
-          <span>{option.label}</span>
-          <span>{kindCounts[option.id]}</span>
+          <Icon size={compact ? 13 : 11} />
+          {!compact && (
+            <>
+              <span>{option.label}</span>
+              <span>{kindCounts[option.id]}</span>
+            </>
+          )}
         </button>
       );
     });
   }
 
-  function statusFilterButtonsEl(fullWidth: boolean) {
+  function statusFilterButtonsEl(fullWidth: boolean, compact = false) {
     return STATUS_FILTER_OPTIONS.map((option) => {
       const isSelected = statusFilter === option.id;
       const Icon = option.icon;
@@ -434,11 +440,17 @@ export default function MyPostsPage() {
           key={option.id}
           type="button"
           onClick={() => setStatusFilter(option.id)}
-          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${fullWidth ? 'w-full' : ''} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
+          title={option.label}
+          aria-label={option.label}
+          className={`inline-flex items-center justify-center gap-1 rounded-full font-semibold transition ${compact ? 'px-2 py-1.5' : 'px-3 py-1.5 text-[11px]'} ${fullWidth ? 'w-full' : ''} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
         >
-          <Icon size={11} />
-          <span>{option.label}</span>
-          <span>{statusCounts[option.id]}</span>
+          <Icon size={compact ? 13 : 11} />
+          {!compact && (
+            <>
+              <span>{option.label}</span>
+              <span>{statusCounts[option.id]}</span>
+            </>
+          )}
         </button>
       );
     });
@@ -525,16 +537,10 @@ export default function MyPostsPage() {
         <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2">
           {isMobileViewport ? (
             <div className="flex shrink-0 flex-col gap-1.5 pb-2">
-              <div className="grid grid-cols-3 gap-1">
-                {kindFilterButtonsEl(true)}
-              </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                {kindFilterButtonsEl(false, true)}
                 {searchBoxEl}
-                {searchButtonEl}
-                {rangeMenuEl}
-              </div>
-              <div className="grid grid-cols-2 gap-1">
-                {statusFilterButtonsEl(true)}
+                {statusFilterButtonsEl(false, true)}
               </div>
               {addPostButtonEl(true)}
             </div>

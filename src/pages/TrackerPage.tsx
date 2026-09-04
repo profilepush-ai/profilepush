@@ -156,6 +156,16 @@ export default function TrackerPage() {
   const [watchSubmissionAppId, setWatchSubmissionAppId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 639px)');
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  }, []);
+
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => setToast({ message, type }), []);
 
   const loadData = useCallback(async () => {
@@ -261,7 +271,7 @@ export default function TrackerPage() {
     closed: allRows.filter((r) => isRowClosed(r)).length,
   };
 
-  function kindFilterButtonsEl() {
+  function kindFilterButtonsEl(compact = false) {
     return KIND_FILTER_OPTIONS.map((option) => {
       const isSelected = kindFilter === option.id;
       const Icon = option.icon;
@@ -270,17 +280,23 @@ export default function TrackerPage() {
           key={option.id}
           type="button"
           onClick={() => setKindFilter(option.id)}
-          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
+          title={option.label}
+          aria-label={option.label}
+          className={`inline-flex items-center justify-center gap-1 rounded-full font-semibold transition ${compact ? 'px-2 py-1.5' : 'px-3 py-1.5 text-[11px]'} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
         >
-          <Icon size={11} />
-          <span>{option.label}</span>
-          <span>{kindCounts[option.id]}</span>
+          <Icon size={compact ? 13 : 11} />
+          {!compact && (
+            <>
+              <span>{option.label}</span>
+              <span>{kindCounts[option.id]}</span>
+            </>
+          )}
         </button>
       );
     });
   }
 
-  function statusFilterButtonsEl() {
+  function statusFilterButtonsEl(compact = false) {
     return STATUS_FILTER_OPTIONS.map((option) => {
       const isSelected = statusFilter === option.id;
       const Icon = option.icon;
@@ -289,11 +305,17 @@ export default function TrackerPage() {
           key={option.id}
           type="button"
           onClick={() => setStatusFilter(option.id)}
-          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
+          title={option.label}
+          aria-label={option.label}
+          className={`inline-flex items-center justify-center gap-1 rounded-full font-semibold transition ${compact ? 'px-2 py-1.5' : 'px-3 py-1.5 text-[11px]'} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
         >
-          <Icon size={11} />
-          <span>{option.label}</span>
-          <span>{statusCounts[option.id]}</span>
+          <Icon size={compact ? 13 : 11} />
+          {!compact && (
+            <>
+              <span>{option.label}</span>
+              <span>{statusCounts[option.id]}</span>
+            </>
+          )}
         </button>
       );
     });
@@ -305,40 +327,54 @@ export default function TrackerPage() {
 
       <main className="flex-1 min-h-0 overflow-hidden">
         <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2">
-          <div className="flex shrink-0 items-center gap-2 pb-2">
-            <div className="flex shrink-0 items-center gap-1">
-              {kindFilterButtonsEl()}
-            </div>
-            <div className="relative flex min-w-[160px] flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
-              <Search size={11} className="text-gray-400" />
-              <input
-                type="text"
-                value={pendingSearchQuery}
-                onChange={(e) => setPendingSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') { e.preventDefault(); setSearchQuery(pendingSearchQuery.trim()); }
-                }}
-                placeholder="Search applications and requests"
-                className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:text-slate-200 dark:placeholder:text-[#64748B]"
-              />
-              {pendingSearchQuery && (
-                <button type="button" onClick={() => { setPendingSearchQuery(''); setSearchQuery(''); }} className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600 dark:hover:bg-white/10" aria-label="Clear search">
-                  <X size={11} />
+          {(() => {
+            const searchBoxEl = (
+              <div className="relative flex min-w-0 flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
+                <Search size={11} className="shrink-0 text-gray-400" />
+                <input
+                  type="text"
+                  value={pendingSearchQuery}
+                  onChange={(e) => setPendingSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); setSearchQuery(pendingSearchQuery.trim()); }
+                  }}
+                  placeholder="Search applications and requests"
+                  className="w-full min-w-0 border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:text-slate-200 dark:placeholder:text-[#64748B]"
+                />
+                {pendingSearchQuery && (
+                  <button type="button" onClick={() => { setPendingSearchQuery(''); setSearchQuery(''); }} className="shrink-0 rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600 dark:hover:bg-white/10" aria-label="Clear search">
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+            );
+
+            return isMobileViewport ? (
+              <div className="flex shrink-0 items-center gap-1 pb-2">
+                {kindFilterButtonsEl(true)}
+                {searchBoxEl}
+                {statusFilterButtonsEl(true)}
+              </div>
+            ) : (
+              <div className="flex shrink-0 items-center gap-2 pb-2">
+                <div className="flex shrink-0 items-center gap-1">
+                  {kindFilterButtonsEl()}
+                </div>
+                <div className="min-w-[160px] flex-1">{searchBoxEl}</div>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery(pendingSearchQuery.trim())}
+                  className="shrink-0 rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700"
+                  aria-label="Search"
+                >
+                  <Search size={12} />
                 </button>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setSearchQuery(pendingSearchQuery.trim())}
-              className="shrink-0 rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700"
-              aria-label="Search"
-            >
-              <Search size={12} />
-            </button>
-            <div className="flex shrink-0 items-center gap-1">
-              {statusFilterButtonsEl()}
-            </div>
-          </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {statusFilterButtonsEl()}
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126]">
             {loading ? (
