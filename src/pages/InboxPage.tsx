@@ -101,6 +101,9 @@ type Message = {
   isDraft?: boolean;
   /** True for a message from the post_chat_messages in-app chat table. */
   isChat?: boolean;
+  /** Optional action button attached to a chat message (e.g. "Watch Screening"). */
+  ctaLabel?: string | null;
+  ctaUrl?: string | null;
 };
 
 async function getFunctionErrorPayload(error: unknown): Promise<{ message: string | null; code: string | null }> {
@@ -429,7 +432,7 @@ export default function InboxPage() {
     setLoadingMessages(true);
     const { data, error } = await supabase
       .from('post_chat_messages' as never)
-      .select('id, sender_account_id, body, created_at')
+      .select('id, sender_account_id, body, created_at, cta_label, cta_url')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: true });
     setLoadingMessages(false);
@@ -437,7 +440,7 @@ export default function InboxPage() {
       setToast({ message: 'Could not load messages', type: 'error' });
       return;
     }
-    const rows = (data ?? []) as unknown as Array<{ id: string; sender_account_id: string; body: string; created_at: string }>;
+    const rows = (data ?? []) as unknown as Array<{ id: string; sender_account_id: string; body: string; created_at: string; cta_label: string | null; cta_url: string | null }>;
     setMessages(rows.map((row): Message => ({
       id: row.id,
       direction: row.sender_account_id === account?.id ? 'outbound' : 'inbound',
@@ -456,6 +459,8 @@ export default function InboxPage() {
       vendor_message_events: [],
       vendor_message_attachments: [],
       isChat: true,
+      ctaLabel: row.cta_label,
+      ctaUrl: row.cta_url,
     })));
     setMessagesConversationId(threadId);
   }, [account?.id]);
@@ -829,6 +834,16 @@ export default function InboxPage() {
                       <article key={message.id} className={`mb-3 flex last:mb-0 ${outbound ? 'justify-end' : 'justify-start'}`}>
                         <div className={`w-fit max-w-[92%] rounded-lg border px-3 py-3 sm:max-w-2xl ${outbound ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
                           <p className="whitespace-pre-wrap break-words text-[14px] leading-5 text-gray-800">{messageText}</p>
+                          {message.isChat && message.ctaLabel && message.ctaUrl && (
+                            <button
+                              type="button"
+                              onClick={() => navigate(message.ctaUrl!)}
+                              className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700"
+                            >
+                              {message.ctaLabel}
+                              <ExternalLink size={12} />
+                            </button>
+                          )}
                           {message.vendor_message_attachments.length > 0 && (
                             <div className="mt-2 flex flex-col gap-1.5">
                               {message.vendor_message_attachments.map((attachment) => (

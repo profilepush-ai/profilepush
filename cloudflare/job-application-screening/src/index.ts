@@ -65,6 +65,9 @@ type ApplicationRow = {
   resume_parsed_json: Record<string, unknown> | null;
   ai_summary: string | null;
   ai_score: number | null;
+  chat_thread_id: string | null;
+  created_by_account_id: string;
+  created_by_user_id: string | null;
 };
 
 type TurnRow = {
@@ -79,11 +82,91 @@ type TurnRow = {
 async function getApplicationByToken(env: Env, token: string): Promise<ApplicationRow | null> {
   const res = await supabaseRest(
     env,
-    `job_applications?screening_token=eq.${encodeURIComponent(token)}&select=id,social_job_id,candidate_name,status,resume_parsed_json,ai_summary,ai_score&limit=1`,
+    `job_applications?screening_token=eq.${encodeURIComponent(token)}&select=id,social_job_id,candidate_name,status,resume_parsed_json,ai_summary,ai_score,chat_thread_id,created_by_account_id,created_by_user_id&limit=1`,
   );
   if (!res.ok) return null;
   const rows = (await res.json()) as ApplicationRow[];
   return rows[0] ?? null;
+}
+
+// Posts the "screening complete, here's the video" message into the
+// application's dedicated chat thread once the interview finishes —
+// best-effort, a failure here must never fail the candidate's completion
+// response (they already finished; the poster just won't get the in-app
+// nudge, though the data is still visible in Applications either way).
+async function sendScreeningCompletedMessage(env: Env, application: ApplicationRow, jobTitle: string): Promise<void> {
+  if (!application.chat_thread_id) return;
+  try {
+    const threadRes = await supabaseRest(
+      env,
+      `post_chat_threads?id=eq.${application.chat_thread_id}&select=owner_account_id,owner_user_id,owner_unread_count`,
+    );
+    if (!threadRes.ok) return;
+    const threadRows = (await threadRes.json()) as Array<{ owner_account_id: string; owner_user_id: string | null; owner_unread_count: number }>;
+    const thread = threadRows[0];
+    if (!thread) return;
+
+    let senderDisplayName = "ProfilePush user";
+    const submitterNameRes = await supabaseRest(
+      env,
+      `account_members?user_id=eq.${application.created_by_user_id}&account_id=eq.${application.created_by_account_id}&select=display_name&limit=1`,
+    );
+    if (submitterNameRes.ok) {
+      const rows = (await submitterNameRes.json()) as Array<{ display_name: string }>;
+      senderDisplayName = rows[0]?.display_name?.trim() || "";
+    }
+    if (!senderDisplayName) {
+      const accountNameRes = await supabaseRest(env, `accounts?id=eq.${application.created_by_account_id}&select=name&limit=1`);
+      if (accountNameRes.ok) {
+        const rows = (await accountNameRes.json()) as Array<{ name: string }>;
+        senderDisplayName = rows[0]?.name?.trim() || "ProfilePush user";
+      } else {
+        senderDisplayName = "ProfilePush user";
+      }
+    }
+
+    const candidateLabel = application.candidate_name?.trim() || "The candidate";
+    const body = `${candidateLabel}'s screening for ${jobTitle} is complete — you can review the recording now.`;
+    const ctaUrl = `https://profilepush.ai/posts/applications/${application.social_job_id}`;
+
+    await supabaseRest(env, "post_chat_messages", {
+      method: "POST",
+      body: JSON.stringify({
+        thread_id: application.chat_thread_id,
+        sender_account_id: application.created_by_account_id,
+        sender_user_id: application.created_by_user_id,
+        sender_display_name: senderDisplayName,
+        body,
+        cta_label: "Watch Screening",
+        cta_url: ctaUrl,
+      }),
+    });
+
+    await supabaseRest(env, `post_chat_threads?id=eq.${application.chat_thread_id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        owner_unread_count: thread.owner_unread_count + 1,
+        last_message_at: new Date().toISOString(),
+        last_message_preview: body.slice(0, 140),
+      }),
+    });
+
+    if (thread.owner_user_id) {
+      await supabaseRest(env, "notifications", {
+        method: "POST",
+        body: JSON.stringify({
+          account_id: thread.owner_account_id,
+          user_id: thread.owner_user_id,
+          type: "post_message_received",
+          title: `Screening complete for "${jobTitle}"`,
+          body: `${candidateLabel}'s screening is ready to review`,
+          link: `/posts/messages/${application.chat_thread_id}`,
+        }),
+      });
+    }
+  } catch {
+    // Best-effort — see comment above.
+  }
 }
 
 async function getTurns(env: Env, applicationId: string): Promise<TurnRow[]> {
@@ -299,6 +382,7 @@ async function handleAnswer(env: Env, token: string, req: Request): Promise<Resp
       method: "PATCH",
       body: JSON.stringify({ status: "screening_completed", ai_summary: result.summary, ai_score: result.score }),
     });
+    await sendScreeningCompletedMessage(env, application, jobTitle);
     return jsonResponse({ done: true });
   }
 

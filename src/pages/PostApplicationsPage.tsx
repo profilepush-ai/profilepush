@@ -209,24 +209,16 @@ export default function PostApplicationsPage() {
                             {app.ai_score}/100
                           </span>
                         )}
-                        {app.resume_url && (
+                        {screeningSubmitted && app.status !== 'qualified' && (
                           <button
                             type="button"
-                            onClick={() => setResumeModalUrl(app.resume_url)}
-                            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-100 dark:border-white/15 dark:bg-white/5 dark:text-slate-300"
+                            disabled={decisionBusyId === app.id}
+                            onClick={() => void handleQualify(app.id)}
+                            title="Qualify"
+                            className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
                           >
-                            <FileText size={9} strokeWidth={2.5} />
-                            Resume
-                          </button>
-                        )}
-                        {hasAnsweredTurn && (
-                          <button
-                            type="button"
-                            onClick={() => setWatchSubmissionAppId(app.id)}
-                            className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
-                          >
-                            <Video size={10} strokeWidth={2.5} />
-                            Watch Submission
+                            <Check size={9} strokeWidth={2.5} />
+                            Qualify
                           </button>
                         )}
                       </div>
@@ -240,18 +232,24 @@ export default function PostApplicationsPage() {
                       </div>
 
                       <div className="mt-2 flex items-center gap-1">
-                        {screeningSubmitted && app.status !== 'qualified' && (
-                          <button
-                            type="button"
-                            disabled={decisionBusyId === app.id}
-                            onClick={() => void handleQualify(app.id)}
-                            title="Qualify"
-                            className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
-                          >
-                            <Check size={12} />
-                            Qualify
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          disabled={!app.resume_url}
+                          onClick={() => setResumeModalUrl(app.resume_url)}
+                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:bg-white/5 dark:text-slate-300"
+                        >
+                          <FileText size={12} />
+                          Resume
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!hasAnsweredTurn}
+                          onClick={() => setWatchSubmissionAppId(app.id)}
+                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
+                        >
+                          <Video size={12} />
+                          Watch Screening
+                        </button>
                         <button
                           type="button"
                           disabled={chatBusyId === app.id}
@@ -276,8 +274,7 @@ export default function PostApplicationsPage() {
                     <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Match Score</th>
                     <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Applied By</th>
                     <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Applied Date</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Resume</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Screening</th>
+                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">AI Summary</th>
                     <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Actions</th>
                   </tr>
                 </thead>
@@ -319,36 +316,41 @@ export default function PostApplicationsPage() {
                         </td>
                         <td className="px-3 py-2.5 align-top text-gray-500 dark:text-[#94A3B8]">{formatDate(app.created_at)}</td>
                         <td className="px-3 py-2.5 align-top">
-                          {app.resume_url ? (
-                            <button
-                              type="button"
-                              onClick={() => setResumeModalUrl(app.resume_url)}
-                              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-100 dark:border-white/15 dark:bg-white/5 dark:text-slate-300"
-                            >
-                              <FileText size={9} strokeWidth={2.5} />
-                              Resume
-                            </button>
-                          ) : <span className="text-[11px] text-gray-400 dark:text-[#64748B]">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 align-top">
-                          {hasAnsweredTurn ? (
-                            <button
-                              type="button"
-                              onClick={() => setWatchSubmissionAppId(app.id)}
-                              className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
-                            >
-                              <Video size={10} strokeWidth={2.5} />
-                              Watch Submission
-                            </button>
-                          ) : <span className="text-[11px] text-gray-400 dark:text-[#64748B]">—</span>}
                           {app.ai_summary && (
-                            <p className="mt-1 max-w-[200px] truncate text-[11px] text-gray-400 dark:text-[#64748B]" title={app.ai_summary}>
+                            <p className="max-w-[200px] truncate text-[11px] text-gray-400 dark:text-[#64748B]" title={app.ai_summary}>
                               {app.ai_summary}
                             </p>
                           )}
                         </td>
                         <td className="px-3 py-2.5 align-top">
                           <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={!app.resume_url}
+                              onClick={() => setResumeModalUrl(app.resume_url)}
+                              title="Resume"
+                              className="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-white/5"
+                            >
+                              <FileText size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!hasAnsweredTurn}
+                              onClick={() => setWatchSubmissionAppId(app.id)}
+                              title="Watch Screening"
+                              className="rounded p-1 text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                            >
+                              <Video size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={chatBusyId === app.id}
+                              onClick={() => void handleChat(app.id)}
+                              title="Chat with the submitting recruiter"
+                              className="rounded p-1 text-blue-500 transition-colors hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                            >
+                              {chatBusyId === app.id ? <LogoSpinner size={12} /> : <MessageSquare size={14} />}
+                            </button>
                             {screeningSubmitted && app.status !== 'qualified' && (
                               <button
                                 type="button"
@@ -361,16 +363,6 @@ export default function PostApplicationsPage() {
                                 Qualify
                               </button>
                             )}
-                            <button
-                              type="button"
-                              disabled={chatBusyId === app.id}
-                              onClick={() => void handleChat(app.id)}
-                              title="Chat with the submitting recruiter"
-                              className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-400"
-                            >
-                              {chatBusyId === app.id ? <LogoSpinner size={12} /> : <MessageSquare size={12} />}
-                              Chat
-                            </button>
                           </div>
                         </td>
                       </tr>

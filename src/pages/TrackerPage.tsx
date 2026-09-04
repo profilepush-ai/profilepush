@@ -436,7 +436,7 @@ export default function TrackerPage() {
                               className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
                             >
                               <Video size={10} strokeWidth={2.5} />
-                              Watch Submission
+                              Watch Screening
                             </button>
                           )}
                         </div>
@@ -553,7 +553,7 @@ export default function TrackerPage() {
                                 className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
                               >
                                 <Video size={10} strokeWidth={2.5} />
-                                Watch Submission
+                                Watch Screening
                               </button>
                             ) : <span className="text-[11px] text-gray-400 dark:text-[#64748B]">—</span>}
                           </td>
