@@ -4,7 +4,7 @@ import {
   ChevronDown, HelpCircle, LogOut, Settings,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, Briefcase, MoonStar, SunMedium, Mail, Megaphone, Database, Users,
+  Activity, Briefcase, MoonStar, SunMedium, Mail, Megaphone, Database,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -42,7 +42,6 @@ const navItems = [
   { path: '/posts',        label: 'Posts',          mobileLabel: 'Posts',   icon: Megaphone, hideOnMobile: false },
   { path: '/inbox',        label: 'Inbox',          mobileLabel: 'Inbox',   icon: Mail,      hideOnMobile: false },
   { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
-  { path: '/contacts',      label: 'Contacts',       mobileLabel: 'Contacts', icon: Users,    hideOnMobile: false },
   { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
   { path: '/active-list',   label: 'List',           mobileLabel: 'List', icon: Database,  hideOnMobile: false },
 ];
