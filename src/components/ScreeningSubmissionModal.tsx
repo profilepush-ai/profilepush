@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Video, X } from 'lucide-react';
 import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
 import LogoSpinner from './LogoSpinner';
@@ -9,66 +9,70 @@ export interface ScreeningTurn {
   id: string;
   turn_index: number;
   question_text: string;
-  video_r2_key: string | null;
+  video_offset_ms: number | null;
   answered_at: string | null;
 }
 
-// One question + its video at a time, with prev/next arrows — replaces
-// listing every turn inline in the table row, since a reviewer only wants
-// to watch one answer at a time anyway.
+// The interview is one continuous video now (not one clip per question), so
+// this fetches it once and seeks a persistent <video> to each question's
+// stored offset on Previous/Next, instead of swapping between separate
+// per-turn clips.
 export default function ScreeningSubmissionModal({
+  applicationId,
   turns,
   onClose,
   showToast,
 }: {
+  applicationId: string;
   turns: ScreeningTurn[];
   onClose: () => void;
   showToast: (message: string, type?: 'success' | 'error') => void;
 }) {
   const sorted = [...turns].sort((a, b) => a.turn_index - b.turn_index);
   const [index, setIndex] = useState(0);
-  const [videoUrlByTurnId, setVideoUrlByTurnId] = useState<Record<string, string>>({});
-  const [loadingTurnId, setLoadingTurnId] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const current = sorted[index];
 
   useEffect(() => {
-    if (!current || !current.video_r2_key || !current.answered_at) return;
-    if (videoUrlByTurnId[current.id]) return;
     let cancelled = false;
-    setLoadingTurnId(current.id);
+    setLoading(true);
     void (async () => {
       try {
         const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
-        const res = await fetch(`${WORKER_URL}/video/${current.id}`, { headers: headers as Record<string, string> });
+        const res = await fetch(`${WORKER_URL}/video/${applicationId}`, { headers: headers as Record<string, string> });
         if (cancelled) return;
         if (!res.ok) {
-          setLoadingTurnId(null);
+          setLoading(false);
           showToast('Could not load this video', 'error');
           return;
         }
         const blob = await res.blob();
         if (cancelled) return;
-        const objectUrl = URL.createObjectURL(blob);
-        setLoadingTurnId(null);
-        setVideoUrlByTurnId((prev) => ({ ...prev, [current.id]: objectUrl }));
+        setVideoUrl(URL.createObjectURL(blob));
+        setLoading(false);
       } catch {
         if (!cancelled) {
-          setLoadingTurnId(null);
+          setLoading(false);
           showToast('Could not load this video', 'error');
         }
       }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id]);
+  }, [applicationId]);
 
-  // Blob object URLs are per-fetch and must be released once no longer
-  // shown, otherwise every turn viewed this session leaks memory.
   useEffect(() => () => {
-    Object.values(videoUrlByTurnId).forEach((url) => URL.revokeObjectURL(url));
+    if (videoUrl) URL.revokeObjectURL(videoUrl);
+  }, [videoUrl]);
+
+  useEffect(() => {
+    if (!videoRef.current || !current || current.video_offset_ms == null) return;
+    videoRef.current.currentTime = current.video_offset_ms / 1000;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [index, videoUrl]);
 
   if (!current) return null;
 
@@ -96,24 +100,19 @@ export default function ScreeningSubmissionModal({
         </div>
 
         <div className="aspect-video w-full bg-black">
-          {current.answered_at && current.video_r2_key ? (
-            videoUrlByTurnId[current.id] ? (
-              <video
-                src={videoUrlByTurnId[current.id]}
-                className="h-full w-full"
-                controls
-                playsInline
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                {loadingTurnId === current.id ? <LogoSpinner size={20} /> : (
-                  <p className="text-[12px] text-white/60">Could not load this video</p>
-                )}
-              </div>
-            )
+          {videoUrl ? (
+            <video
+              ref={videoRef}
+              src={videoUrl}
+              className="h-full w-full"
+              controls
+              playsInline
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
-              <p className="text-[12px] text-white/60">Not answered yet</p>
+              {loading ? <LogoSpinner size={20} /> : (
+                <p className="text-[12px] text-white/60">Could not load this video</p>
+              )}
             </div>
           )}
         </div>

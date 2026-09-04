@@ -4,22 +4,24 @@
 // job_applications.screening_token in the URL, same trust model this app's
 // /onboard/:token flow already uses. Talks to Supabase via the service role
 // key (bypassing RLS, same as other backend-only workers in this repo) and
-// to the social-job-parser Worker's /generate-screening-question route for
-// the actual Workers AI calls (that Worker already owns the AI binding and
-// the JSON-parsing/retry helpers — this Worker orchestrates, it doesn't
-// duplicate the AI plumbing).
+// to the social-job-parser Worker for the actual Workers AI calls (that
+// Worker already owns the AI binding and the JSON-parsing/retry helpers —
+// this Worker orchestrates, it doesn't duplicate the AI plumbing).
 //
-// Screening videos live permanently in R2 (VIDEO_BUCKET); Stream is used
-// only transiently, purely for its auto-captioning capability — every
-// upload is deleted from Stream (deleteStreamVideo) right after its
-// transcript is read. See handleSubmitAnswer().
+// The interview is recorded as ONE continuous video (not one file per
+// question) so it stays adaptive — question N+1 must react to what the
+// candidate actually said answering question N — without needing three
+// separate uploads. Each answer is transcribed fast via Workers AI Whisper
+// (social-job-parser's /transcribe-screening-audio) on a small audio-only
+// clip, well before the final combined video exists; the full video is
+// only uploaded once, at the very end, via /finalize. See
+// handleSegmentAnswer() and handleFinalize().
 
 export interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   SUPABASE_ANON_KEY: string;
   CLOUDFLARE_ACCOUNT_ID: string;
-  CLOUDFLARE_STREAM_API_TOKEN: string;
   SOCIAL_JOB_PARSER: Fetcher;
   VIDEO_BUCKET: R2Bucket;
   CLOUDFLARE_WORKER_TOKEN?: string;
@@ -37,10 +39,6 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ── Supabase REST (service role — bypasses RLS, same pattern other workers
@@ -75,7 +73,7 @@ type TurnRow = {
   id: string;
   turn_index: number;
   question_text: string;
-  video_r2_key: string | null;
+  video_offset_ms: number | null;
   transcript: string | null;
   answered_at: string | null;
 };
@@ -173,7 +171,7 @@ async function sendScreeningCompletedMessage(env: Env, application: ApplicationR
 async function getTurns(env: Env, applicationId: string): Promise<TurnRow[]> {
   const res = await supabaseRest(
     env,
-    `job_application_screening_turns?application_id=eq.${applicationId}&select=id,turn_index,question_text,video_r2_key,transcript,answered_at&order=turn_index.asc`,
+    `job_application_screening_turns?application_id=eq.${applicationId}&select=id,turn_index,question_text,video_offset_ms,transcript,answered_at&order=turn_index.asc`,
   );
   if (!res.ok) return [];
   return (await res.json()) as TurnRow[];
@@ -190,121 +188,30 @@ function buildResumeSummary(parsed: Record<string, unknown> | null): string {
   return lines.join("\n");
 }
 
-// ── Cloudflare Stream API ───────────────────────────────────────────────────
-function streamUrl(env: Env, path: string): string {
-  return `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/stream${path}`;
-}
-
-function streamHeaders(env: Env, json = false): Record<string, string> {
-  return {
-    Authorization: `Bearer ${env.CLOUDFLARE_STREAM_API_TOKEN}`,
-    ...(json ? { "Content-Type": "application/json" } : {}),
-  };
-}
-
-async function requestDirectUpload(env: Env): Promise<{ uploadUrl: string; uid: string }> {
-  const res = await fetch(streamUrl(env, "/direct_upload"), {
-    method: "POST",
-    headers: streamHeaders(env, true),
-    body: JSON.stringify({ maxDurationSeconds: 180 }),
-  });
-  const payload = await res.json() as { result?: { uploadURL?: string; uid?: string }; errors?: unknown };
-  if (!res.ok || !payload.result?.uploadURL || !payload.result?.uid) {
-    throw new Error(`Stream direct_upload failed: ${JSON.stringify(payload.errors ?? payload)}`);
-  }
-  return { uploadUrl: payload.result.uploadURL, uid: payload.result.uid };
-}
-
-// Stream is now purely a transient captioning tool, not storage — R2 (via
-// the caller's Promise.all sibling) holds the permanent copy. Any failure
-// here degrades to no-transcript, exactly like a captions timeout does;
-// it must never fail the request, since the R2 write is what the candidate
-// actually depends on.
-async function uploadToStream(env: Env, buffer: ArrayBuffer, contentType: string): Promise<{ uid: string } | null> {
+// ── social-job-parser calls (Workers AI, via the existing service binding) ─
+async function transcribeAudioChunk(env: Env, buffer: ArrayBuffer, contentType: string): Promise<string> {
+  // Degrades to "" on any failure — matches this flow's established
+  // precedent (the old Stream-captions path did the same on a timeout):
+  // one answer losing its transcript should cost that answer's adaptivity,
+  // not the whole interview.
   try {
-    const { uploadUrl, uid } = await requestDirectUpload(env);
-    const formData = new FormData();
-    formData.append("file", new Blob([buffer], { type: contentType }), "answer");
-    const uploadRes = await fetch(uploadUrl, { method: "POST", body: formData });
-    if (!uploadRes.ok) return null;
-    return { uid };
-  } catch {
-    return null;
-  }
-}
-
-// Best-effort cleanup once the transcript has been read — only ever called
-// after waitForCaptionsAndGetTranscript has already returned, never
-// concurrently with it. An unretried failure here just leaves one video
-// billing on Stream until a future cleanup sweep; it must not fail the
-// candidate's request.
-async function deleteStreamVideo(env: Env, uid: string): Promise<void> {
-  try {
-    await fetch(streamUrl(env, `/${uid}`), { method: "DELETE", headers: streamHeaders(env) });
-  } catch {
-    // best-effort — see comment above.
-  }
-}
-
-// Strips WebVTT formatting (header, cue numbers, timestamp lines) down to
-// plain spoken text for the AI prompt.
-function vttToPlainText(vtt: string): string {
-  return vtt
-    .split("\n")
-    .filter((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === "WEBVTT") return false;
-      if (/^\d+$/.test(trimmed)) return false;
-      if (trimmed.includes("-->")) return false;
-      return true;
-    })
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-async function waitForCaptionsAndGetTranscript(env: Env, videoUid: string, language = "en"): Promise<string> {
-  // Stream needs a short processing window after upload before it will
-  // accept a captions/generate call — calling it immediately post-upload
-  // reliably 400s with error code 10067 ("video not ready to stream").
-  // Retry specifically on that code until Stream is ready or we give up;
-  // any other error means generation isn't going to happen, so bail.
-  let generateTriggered = false;
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const genRes = await fetch(streamUrl(env, `/${videoUid}/captions/${language}/generate`), {
+    const res = await env.SOCIAL_JOB_PARSER.fetch("https://social-job-parser.internal/transcribe-screening-audio", {
       method: "POST",
-      headers: streamHeaders(env),
+      headers: {
+        "Content-Type": contentType,
+        ...(env.CLOUDFLARE_WORKER_TOKEN ? { Authorization: `Bearer ${env.CLOUDFLARE_WORKER_TOKEN}` } : {}),
+      },
+      body: buffer,
+      signal: AbortSignal.timeout(30_000),
     });
-    if (genRes.ok) { generateTriggered = true; break; }
-    const genPayload = await genRes.json().catch(() => null) as { errors?: Array<{ code?: number }> } | null;
-    const notReadyYet = genPayload?.errors?.some((e) => e.code === 10067);
-    if (!notReadyYet) break;
-    await sleep(1500);
+    if (!res.ok) return "";
+    const payload = await res.json() as { text?: string };
+    return String(payload.text ?? "").trim();
+  } catch {
+    return "";
   }
-  if (!generateTriggered) return "";
-
-  const maxAttempts = 15;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await sleep(2000);
-    const listRes = await fetch(streamUrl(env, `/${videoUid}/captions`), { headers: streamHeaders(env) });
-    if (listRes.ok) {
-      const listPayload = await listRes.json() as { result?: Array<{ language?: string; status?: string }> };
-      const caption = (listPayload.result ?? []).find((c) => c.language === language);
-      if (caption?.status === "ready") {
-        const vttRes = await fetch(streamUrl(env, `/${videoUid}/captions/${language}/vtt`), { headers: streamHeaders(env) });
-        if (vttRes.ok) return vttToPlainText(await vttRes.text());
-        break;
-      }
-      if (caption?.status === "error") break;
-    }
-  }
-  // Captions never became ready in time — the answer is still recorded
-  // (video_r2_key is saved regardless), just without a transcript for the
-  // next question to build on.
-  return "";
 }
 
-// ── social-job-parser call (Workers AI question generation) ────────────────
 async function generateNextQuestion(
   env: Env,
   resumeSummary: string,
@@ -334,49 +241,51 @@ async function generateNextQuestion(
   return { done: false, question: String(payload.question ?? "") };
 }
 
+async function fetchJobContext(env: Env, socialJobId: string): Promise<{ jobTitle: string; jobDescription: string; companyName: string }> {
+  const res = await supabaseRest(env, `social_jobs?id=eq.${socialJobId}&select=job_title,job_description,post_content,company_name`);
+  const rows = res.ok ? (await res.json()) as Array<{ job_title: string; job_description: string; post_content: string; company_name: string }> : [];
+  const job = rows[0];
+  return {
+    jobTitle: job?.job_title || "this role",
+    jobDescription: job?.job_description || job?.post_content || "",
+    companyName: job?.company_name || "",
+  };
+}
+
 // ── Route handlers ──────────────────────────────────────────────────────────
 async function handleGetSession(env: Env, token: string): Promise<Response> {
   const application = await getApplicationByToken(env, token);
   if (!application) return jsonResponse({ error: "Invalid or expired screening link" }, 404);
 
-  const [jobRes, turns] = await Promise.all([
-    supabaseRest(env, `social_jobs?id=eq.${application.social_job_id}&select=job_title,company_name`),
+  const [{ jobTitle, companyName }, turns] = await Promise.all([
+    fetchJobContext(env, application.social_job_id),
     getTurns(env, application.id),
   ]);
-  const jobRows = jobRes.ok ? (await jobRes.json()) as Array<{ job_title: string; company_name: string }> : [];
-  const job = jobRows[0];
 
   const currentTurn = turns.find((t) => !t.answered_at);
+  const done = application.status === "screening_completed";
+  // All questions answered (ai_summary was written by the last /segment
+  // call) but the final video hasn't landed yet — the candidate needs to
+  // resume at the finalize step, not re-answer anything.
+  const awaitingFinalVideo = !done && !currentTurn && Boolean(application.ai_summary);
 
   return jsonResponse({
     candidateName: application.candidate_name,
-    jobTitle: job?.job_title || "this role",
-    companyName: job?.company_name || "",
+    jobTitle,
+    companyName,
     status: application.status,
     turnsAnswered: turns.filter((t) => t.answered_at).length,
     currentTurnIndex: currentTurn?.turn_index ?? null,
     currentQuestion: currentTurn?.question_text ?? null,
-    done: application.status === "screening_completed",
-    summary: application.status === "screening_completed" ? application.ai_summary : undefined,
+    done,
+    awaitingFinalVideo,
+    summary: done ? application.ai_summary : undefined,
   });
 }
 
-async function handleUploadUrl(env: Env, token: string): Promise<Response> {
-  const application = await getApplicationByToken(env, token);
-  if (!application) return jsonResponse({ error: "Invalid or expired screening link" }, 404);
-  if (application.status === "screening_completed") return jsonResponse({ error: "Screening already completed" }, 400);
+const MAX_AUDIO_CHUNK_BYTES = 2 * 1024 * 1024; // a ~90s/64kbps answer clip is well under this
 
-  try {
-    const { uploadUrl, uid } = await requestDirectUpload(env);
-    return jsonResponse({ uploadUrl, uid });
-  } catch (error) {
-    return jsonResponse({ error: (error as Error).message }, 502);
-  }
-}
-
-const MAX_VIDEO_BYTES = 25 * 1024 * 1024; // defense-in-depth ceiling; the client also enforces a duration/bitrate cap
-
-async function handleSubmitAnswer(env: Env, token: string, turnIndexParam: string, req: Request): Promise<Response> {
+async function handleSegmentAnswer(env: Env, token: string, turnIndexParam: string, req: Request): Promise<Response> {
   const application = await getApplicationByToken(env, token);
   if (!application) return jsonResponse({ error: "Invalid or expired screening link" }, 404);
   if (application.status === "screening_completed") return jsonResponse({ error: "Screening already completed" }, 400);
@@ -384,54 +293,29 @@ async function handleSubmitAnswer(env: Env, token: string, turnIndexParam: strin
   const turnIndex = Number(turnIndexParam);
   if (!Number.isInteger(turnIndex)) return jsonResponse({ error: "Invalid turn index" }, 400);
 
-  const contentType = req.headers.get("Content-Type") || "video/webm";
+  const contentType = req.headers.get("Content-Type") || "audio/webm";
   const buffer = await req.arrayBuffer();
   if (buffer.byteLength === 0) return jsonResponse({ error: "Empty recording" }, 400);
-  if (buffer.byteLength > MAX_VIDEO_BYTES) return jsonResponse({ error: "Recording too large" }, 413);
+  if (buffer.byteLength > MAX_AUDIO_CHUNK_BYTES) return jsonResponse({ error: "Recording too large" }, 413);
+
+  const videoOffsetMsHeader = req.headers.get("X-Video-Offset-Ms");
+  const videoOffsetMs = videoOffsetMsHeader != null && Number.isFinite(Number(videoOffsetMsHeader))
+    ? Math.max(0, Math.round(Number(videoOffsetMsHeader)))
+    : null;
 
   const turns = await getTurns(env, application.id);
   const turn = turns.find((t) => t.turn_index === turnIndex);
   if (!turn) return jsonResponse({ error: "Unknown turn" }, 404);
   if (turn.answered_at) return jsonResponse({ error: "This question was already answered" }, 400);
 
-  const r2Key = `screenings/${application.id}/${turn.id}`;
-
-  // R2 is the only durable copy of the video now, so a failed write must
-  // hard-fail the request (the candidate needs to know to retake). The
-  // Stream leg is wrapped in its own try/catch inside uploadToStream and
-  // is allowed to fail independently — video storage must never depend on
-  // Stream's health.
-  let streamResult: { uid: string } | null;
-  try {
-    const [, streamOutcome] = await Promise.all([
-      env.VIDEO_BUCKET.put(r2Key, buffer, { httpMetadata: { contentType } }),
-      uploadToStream(env, buffer, contentType),
-    ]);
-    streamResult = streamOutcome;
-  } catch {
-    return jsonResponse({ error: "Failed to store recording, please try again" }, 502);
-  }
-
-  const transcript = streamResult ? await waitForCaptionsAndGetTranscript(env, streamResult.uid) : "";
-  if (streamResult) await deleteStreamVideo(env, streamResult.uid);
+  const transcript = await transcribeAudioChunk(env, buffer, contentType);
 
   await supabaseRest(env, `job_application_screening_turns?id=eq.${turn.id}`, {
     method: "PATCH",
-    body: JSON.stringify({
-      video_r2_key: r2Key,
-      video_content_type: contentType,
-      transcript,
-      answered_at: new Date().toISOString(),
-    }),
+    body: JSON.stringify({ transcript, video_offset_ms: videoOffsetMs, answered_at: new Date().toISOString() }),
   });
 
-  const [jobRes] = await Promise.all([
-    supabaseRest(env, `social_jobs?id=eq.${application.social_job_id}&select=job_title,job_description,post_content`),
-  ]);
-  const jobRows = jobRes.ok ? (await jobRes.json()) as Array<{ job_title: string; job_description: string; post_content: string }> : [];
-  const job = jobRows[0];
-  const jobTitle = job?.job_title || "this role";
-  const jobDescription = job?.job_description || job?.post_content || "";
+  const { jobTitle, jobDescription } = await fetchJobContext(env, application.social_job_id);
   const resumeSummary = buildResumeSummary(application.resume_parsed_json);
 
   const priorTurns = [...turns.filter((t) => t.answered_at), { ...turn, transcript, answered_at: new Date().toISOString() }]
@@ -446,12 +330,15 @@ async function handleSubmitAnswer(env: Env, token: string, turnIndexParam: strin
   }
 
   if (result.done) {
+    // Score/summary are text-derived and ready now, but status stays
+    // screening_sent (and no chat notification fires) until /finalize
+    // actually lands the full video — the recruiter shouldn't be told a
+    // recording is ready to watch before it exists.
     await supabaseRest(env, `job_applications?id=eq.${application.id}`, {
       method: "PATCH",
-      body: JSON.stringify({ status: "screening_completed", ai_summary: result.summary, ai_score: result.score }),
+      body: JSON.stringify({ ai_summary: result.summary, ai_score: result.score }),
     });
-    await sendScreeningCompletedMessage(env, application, jobTitle);
-    return jsonResponse({ done: true });
+    return jsonResponse({ done: true, awaitingFinalVideo: true });
   }
 
   await supabaseRest(env, "job_application_screening_turns", {
@@ -462,17 +349,54 @@ async function handleSubmitAnswer(env: Env, token: string, turnIndexParam: strin
   return jsonResponse({ done: false, nextTurnIndex: turnIndex + 1, nextQuestion: result.question });
 }
 
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // ~4 attempts (3 questions + 1 capped retake) x 90s at the client's bitrate caps, plus container/VBR headroom
+
+async function handleFinalize(env: Env, token: string, req: Request): Promise<Response> {
+  const application = await getApplicationByToken(env, token);
+  if (!application) return jsonResponse({ error: "Invalid or expired screening link" }, 404);
+  if (application.status === "screening_completed") return jsonResponse({ done: true }); // idempotent retry
+  if (!application.ai_summary) return jsonResponse({ error: "Screening is not yet complete" }, 400);
+
+  const contentType = req.headers.get("Content-Type") || "video/webm";
+  const buffer = await req.arrayBuffer();
+  if (buffer.byteLength === 0) return jsonResponse({ error: "Empty recording" }, 400);
+  if (buffer.byteLength > MAX_VIDEO_BYTES) return jsonResponse({ error: "Recording too large" }, 413);
+
+  const r2Key = `screenings/${application.id}/full`;
+
+  // R2 is the only durable copy of the video — a failed write must hard-fail
+  // so the candidate knows to retry finalize (the frontend keeps the blob
+  // in memory for exactly this retry), same asymmetric-failure principle as
+  // this flow has always used.
+  try {
+    await env.VIDEO_BUCKET.put(r2Key, buffer, { httpMetadata: { contentType } });
+  } catch {
+    return jsonResponse({ error: "Failed to store recording, please try again" }, 502);
+  }
+
+  await supabaseRest(env, `job_applications?id=eq.${application.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ video_r2_key: r2Key, video_content_type: contentType, status: "screening_completed" }),
+  });
+
+  const { jobTitle } = await fetchJobContext(env, application.social_job_id);
+  await sendScreeningCompletedMessage(env, application, jobTitle);
+
+  return jsonResponse({ done: true });
+}
+
 // Recruiter-facing video playback. Authorization is entirely delegated to
 // Postgres RLS: the caller's own Supabase JWT is passed straight through to
 // PostgREST (not the service-role key), so "can this recruiter already
-// SELECT this turn row" is the same question RLS already answers everywhere
-// else in this app — no separate auth logic to write or get wrong here.
-async function handleVideoPlayback(env: Env, turnId: string, req: Request): Promise<Response> {
+// SELECT this application row" is the same question RLS already answers
+// everywhere else in this app — no separate auth logic to write or get
+// wrong here.
+async function handleVideoPlayback(env: Env, applicationId: string, req: Request): Promise<Response> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return jsonResponse({ error: "Unauthorized" }, 401);
 
   const res = await fetch(
-    `${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/job_application_screening_turns?id=eq.${encodeURIComponent(turnId)}&select=video_r2_key,video_content_type`,
+    `${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/job_applications?id=eq.${encodeURIComponent(applicationId)}&select=video_r2_key,video_content_type`,
     { headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: authHeader } },
   );
   if (!res.ok) return jsonResponse({ error: "Unauthorized" }, res.status === 401 ? 401 : 403);
@@ -503,15 +427,11 @@ export default {
     const sessionMatch = path.match(/^\/screen\/([^/]+)\/?$/);
     if (sessionMatch && req.method === "GET") return handleGetSession(env, sessionMatch[1]);
 
-    // Kept as a harmless, unused rollback path through the R2 migration's
-    // verification window — the frontend no longer calls this once the new
-    // single-POST /answer/:turnIndex route ships. Safe to remove once that's
-    // confirmed live (see the R2 migration plan's delivery order).
-    const uploadUrlMatch = path.match(/^\/screen\/([^/]+)\/upload-url\/?$/);
-    if (uploadUrlMatch && req.method === "POST") return handleUploadUrl(env, uploadUrlMatch[1]);
+    const segmentMatch = path.match(/^\/screen\/([^/]+)\/segment\/(\d+)\/?$/);
+    if (segmentMatch && req.method === "POST") return handleSegmentAnswer(env, segmentMatch[1], segmentMatch[2], req);
 
-    const answerMatch = path.match(/^\/screen\/([^/]+)\/answer\/(\d+)\/?$/);
-    if (answerMatch && req.method === "POST") return handleSubmitAnswer(env, answerMatch[1], answerMatch[2], req);
+    const finalizeMatch = path.match(/^\/screen\/([^/]+)\/finalize\/?$/);
+    if (finalizeMatch && req.method === "POST") return handleFinalize(env, finalizeMatch[1], req);
 
     const videoMatch = path.match(/^\/video\/([^/]+)\/?$/);
     if (videoMatch && req.method === "GET") return handleVideoPlayback(env, videoMatch[1], req);

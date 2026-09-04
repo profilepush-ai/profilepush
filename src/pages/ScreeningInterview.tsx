@@ -15,12 +15,21 @@ interface SessionState {
   currentTurnIndex: number | null;
   currentQuestion: string | null;
   done: boolean;
+  awaitingFinalVideo: boolean;
 }
 
-type PageStatus = 'loading' | 'invalid' | 'active' | 'completed' | 'worker_not_configured';
-type RecordPhase = 'requesting_camera' | 'camera_denied' | 'preview' | 'recording' | 'recorded' | 'submitting';
+type PageStatus = 'loading' | 'invalid' | 'active' | 'completed' | 'worker_not_configured' | 'recording_lost';
+type RecordPhase = 'requesting_camera' | 'camera_denied' | 'preview' | 'recording' | 'recorded' | 'submitting' | 'finalizing';
 
+// The whole interview is recorded as ONE continuous video (master recorder,
+// start()'d once, paused/resumed at each question boundary, stopped only
+// once at the very end) so it stays adaptive without needing three separate
+// uploads. A second, ephemeral, audio-only recorder runs alongside it per
+// question purely to get a small clip fast-transcribed (Workers AI Whisper)
+// so the next question can react to what was actually said — it's never
+// uploaded/stored, just discarded once its transcript is back.
 const MAX_RECORDING_MS = 90_000;
+const MAX_RETAKES_PER_QUESTION = 1;
 
 function pickMimeType(): string {
   const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
@@ -36,15 +45,31 @@ export default function ScreeningInterview() {
   const [session, setSession] = useState<SessionState | null>(null);
   const [recordPhase, setRecordPhase] = useState<RecordPhase>('requesting_camera');
   const [errorMessage, setErrorMessage] = useState('');
+  const [retakesUsed, setRetakesUsed] = useState(0);
 
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
-  const recordedVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const recordedBlobRef = useRef<Blob | null>(null);
-  const recordedUrlRef = useRef<string>('');
-  const recordedMimeTypeRef = useRef<string>('');
+
+  const masterRecorderRef = useRef<MediaRecorder | null>(null);
+  const masterChunksRef = useRef<Blob[]>([]);
+  const masterBlobRef = useRef<Blob | null>(null);
+  const masterMimeTypeRef = useRef<string>('');
+
+  const ephemeralRecorderRef = useRef<MediaRecorder | null>(null);
+  const ephemeralChunksRef = useRef<Blob[]>([]);
+  const ephemeralBlobRef = useRef<Blob | null>(null);
+
+  // Sum of every active-recording interval, including retaken/discarded
+  // attempts — those seconds are still physically encoded in the master
+  // file, so this must match the file's own internal timeline exactly for
+  // video_offset_ms (recruiter "jump to this answer") to stay accurate.
+  const elapsedActiveMsRef = useRef(0);
+  const activeSegmentStartRef = useRef(0);
+  // Where the CURRENT attempt's audio begins in the master timeline —
+  // recomputed on every (re)start, so it always ends up pointing at
+  // whichever attempt is ultimately submitted, never a discarded retake.
+  const acceptedOffsetMsRef = useRef(0);
+
   const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadSession = useCallback(async () => {
@@ -54,7 +79,14 @@ export default function ScreeningInterview() {
       if (!res.ok) { setPageStatus('invalid'); return; }
       const data = (await res.json()) as SessionState;
       setSession(data);
-      setPageStatus(data.done ? 'completed' : 'active');
+      if (data.done) { setPageStatus('completed'); return; }
+      // All questions were answered in an earlier browser session that
+      // never reached /finalize (e.g. the tab was closed) — the recording
+      // only ever existed in that session's memory, so there's nothing to
+      // resume here. No automated recovery for this; tell the candidate
+      // plainly instead of showing a broken interview.
+      if (data.awaitingFinalVideo) { setPageStatus('recording_lost'); return; }
+      setPageStatus('active');
     } catch {
       setPageStatus('invalid');
     }
@@ -92,80 +124,129 @@ export default function ScreeningInterview() {
 
   useEffect(() => () => {
     stopCamera();
-    if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current);
     if (maxDurationTimerRef.current) clearTimeout(maxDurationTimerRef.current);
+    // A long-lived master recorder won't get GC'd just from the component
+    // unmounting the way today's short per-question recorders did — stop it
+    // explicitly so a candidate navigating away doesn't leave it running.
+    if (masterRecorderRef.current && masterRecorderRef.current.state !== 'inactive') {
+      masterRecorderRef.current.onstop = null;
+      masterRecorderRef.current.stop();
+    }
   }, [stopCamera]);
+
+  async function finalizeInterview() {
+    const blob = masterBlobRef.current;
+    if (!blob || !token) return;
+    setErrorMessage('');
+    try {
+      const res = await fetch(`${WORKER_URL}/screen/${encodeURIComponent(token)}/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': masterMimeTypeRef.current || blob.type || 'video/webm' },
+        body: blob,
+      });
+      const payload = (await res.json()) as { done?: boolean; error?: string };
+      if (!res.ok) throw new Error(payload.error || 'Could not submit your recording');
+      stopCamera();
+      setPageStatus('completed');
+    } catch (error) {
+      // The blob is still in masterBlobRef — retry re-sends the same bytes
+      // rather than forcing the candidate to redo the whole interview over
+      // what might just be a network blip on this last step.
+      setErrorMessage(error instanceof Error ? error.message : 'Could not submit your recording. Please try again.');
+    }
+  }
 
   function startRecording() {
     const stream = streamRef.current;
     if (!stream) return;
-    chunksRef.current = [];
-    const mimeType = pickMimeType();
-    recordedMimeTypeRef.current = mimeType || 'video/webm';
-    const recorder = new MediaRecorder(stream, {
-      ...(mimeType ? { mimeType } : {}),
-      videoBitsPerSecond: 800_000,
-      audioBitsPerSecond: 64_000,
-    });
-    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-    recorder.onstop = () => {
-      if (maxDurationTimerRef.current) { clearTimeout(maxDurationTimerRef.current); maxDurationTimerRef.current = null; }
-      const blob = new Blob(chunksRef.current, { type: recordedMimeTypeRef.current });
-      recordedBlobRef.current = blob;
-      if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current);
-      recordedUrlRef.current = URL.createObjectURL(blob);
-      if (recordedVideoRef.current) recordedVideoRef.current.src = recordedUrlRef.current;
+
+    if (!masterRecorderRef.current) {
+      const mimeType = pickMimeType();
+      masterMimeTypeRef.current = mimeType || 'video/webm';
+      const master = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: 800_000,
+        audioBitsPerSecond: 64_000,
+      });
+      master.ondataavailable = (e) => { if (e.data.size > 0) masterChunksRef.current.push(e.data); };
+      master.onstop = () => {
+        masterBlobRef.current = new Blob(masterChunksRef.current, { type: masterMimeTypeRef.current });
+        void finalizeInterview();
+      };
+      masterRecorderRef.current = master;
+      master.start();
+    } else {
+      masterRecorderRef.current.resume();
+    }
+
+    acceptedOffsetMsRef.current = elapsedActiveMsRef.current;
+    activeSegmentStartRef.current = Date.now();
+
+    ephemeralChunksRef.current = [];
+    const audioStream = new MediaStream(stream.getAudioTracks());
+    const ephemeral = new MediaRecorder(audioStream);
+    ephemeral.ondataavailable = (e) => { if (e.data.size > 0) ephemeralChunksRef.current.push(e.data); };
+    ephemeral.onstop = () => {
+      ephemeralBlobRef.current = new Blob(ephemeralChunksRef.current, { type: ephemeral.mimeType || 'audio/webm' });
       setRecordPhase('recorded');
     };
-    recorderRef.current = recorder;
-    recorder.start();
+    ephemeralRecorderRef.current = ephemeral;
+    ephemeral.start();
+
     setRecordPhase('recording');
-    // Hard stop so a candidate can't record indefinitely — bounds storage
-    // cost per answer regardless of backend.
     maxDurationTimerRef.current = setTimeout(() => {
-      if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+      if (masterRecorderRef.current?.state === 'recording') stopRecording();
     }, MAX_RECORDING_MS);
   }
 
   function stopRecording() {
-    recorderRef.current?.stop();
+    if (maxDurationTimerRef.current) { clearTimeout(maxDurationTimerRef.current); maxDurationTimerRef.current = null; }
+    elapsedActiveMsRef.current += Date.now() - activeSegmentStartRef.current;
+    masterRecorderRef.current?.pause();
+    ephemeralRecorderRef.current?.stop();
   }
 
   function retake() {
-    recordedBlobRef.current = null;
-    if (recordedUrlRef.current) { URL.revokeObjectURL(recordedUrlRef.current); recordedUrlRef.current = ''; }
+    if (retakesUsed >= MAX_RETAKES_PER_QUESTION) return;
+    setRetakesUsed((n) => n + 1);
+    ephemeralBlobRef.current = null;
     setRecordPhase('preview');
   }
 
   async function submitAnswer() {
-    const blob = recordedBlobRef.current;
+    const audioBlob = ephemeralBlobRef.current;
     const turnIndex = session?.currentTurnIndex;
-    if (!blob || turnIndex === null || turnIndex === undefined || !token) return;
+    if (!audioBlob || turnIndex === null || turnIndex === undefined || !token) return;
 
     setRecordPhase('submitting');
     setErrorMessage('');
     try {
-      const answerRes = await fetch(`${WORKER_URL}/screen/${encodeURIComponent(token)}/answer/${turnIndex}`, {
+      const res = await fetch(`${WORKER_URL}/screen/${encodeURIComponent(token)}/segment/${turnIndex}`, {
         method: 'POST',
-        headers: { 'Content-Type': recordedMimeTypeRef.current || blob.type || 'video/webm' },
-        body: blob,
+        headers: {
+          'Content-Type': audioBlob.type || 'audio/webm',
+          'X-Video-Offset-Ms': String(acceptedOffsetMsRef.current),
+        },
+        body: audioBlob,
       });
-      const answerPayload = (await answerRes.json()) as { done?: boolean; nextTurnIndex?: number; nextQuestion?: string; error?: string };
-      if (!answerRes.ok) throw new Error(answerPayload.error || 'Could not process your answer');
+      const payload = (await res.json()) as { done?: boolean; nextTurnIndex?: number; nextQuestion?: string; error?: string };
+      if (!res.ok) throw new Error(payload.error || 'Could not process your answer');
 
-      if (answerPayload.done) {
-        stopCamera();
-        setPageStatus('completed');
+      if (payload.done) {
+        setRecordPhase('finalizing');
+        masterRecorderRef.current?.stop();
         return;
       }
 
+      setRetakesUsed(0);
+      ephemeralBlobRef.current = null;
       setSession((prev) => prev && ({
         ...prev,
         turnsAnswered: prev.turnsAnswered + 1,
-        currentTurnIndex: answerPayload.nextTurnIndex ?? null,
-        currentQuestion: answerPayload.nextQuestion ?? null,
+        currentTurnIndex: payload.nextTurnIndex ?? null,
+        currentQuestion: payload.nextQuestion ?? null,
       }));
-      retake();
+      setRecordPhase('preview');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
       setRecordPhase('recorded');
@@ -189,6 +270,20 @@ export default function ScreeningInterview() {
           </div>
           <h1 className="text-base font-bold text-gray-900 mb-2">Link Not Found</h1>
           <p className="text-sm text-gray-500">This screening link is invalid or has expired. Please contact your recruiter.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (pageStatus === 'recording_lost') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-10 max-w-sm text-center">
+          <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle size={24} className="text-red-400" />
+          </div>
+          <h1 className="text-base font-bold text-gray-900 mb-2">Recording Didn't Finish</h1>
+          <p className="text-sm text-gray-500">It looks like your screening answers were recorded, but the video didn't finish submitting. Please contact your recruiter for a new link.</p>
         </div>
       </div>
     );
@@ -233,13 +328,7 @@ export default function ScreeningInterview() {
             autoPlay
             muted
             playsInline
-            className={`w-full h-full object-cover ${recordPhase === 'recorded' || recordPhase === 'submitting' ? 'hidden' : ''}`}
-          />
-          <video
-            ref={recordedVideoRef}
-            controls
-            playsInline
-            className={`w-full h-full object-cover ${recordPhase === 'recorded' || recordPhase === 'submitting' ? '' : 'hidden'}`}
+            className="w-full h-full object-cover"
           />
           {recordPhase === 'recording' && (
             <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-red-600 text-white text-[11px] font-bold px-2 py-1 rounded-full">
@@ -247,9 +336,17 @@ export default function ScreeningInterview() {
               REC
             </div>
           )}
-          {recordPhase === 'requesting_camera' && (
-            <div className="absolute inset-0 flex items-center justify-center">
+          {recordPhase === 'recorded' && (
+            <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-emerald-600 text-white text-[11px] font-bold px-2 py-1 rounded-full">
+              <CheckCircle2 size={12} />
+              Recorded
+            </div>
+          )}
+          {(recordPhase === 'requesting_camera' || recordPhase === 'submitting' || recordPhase === 'finalizing') && (
+            <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-2">
               <LogoSpinner size={20} />
+              {recordPhase === 'submitting' && <p className="text-xs text-white/80">Processing your answer…</p>}
+              {recordPhase === 'finalizing' && !errorMessage && <p className="text-xs text-white/80">Submitting your recording…</p>}
             </div>
           )}
           {recordPhase === 'camera_denied' && (
@@ -290,13 +387,15 @@ export default function ScreeningInterview() {
           )}
           {recordPhase === 'recorded' && (
             <>
-              <button
-                onClick={retake}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm px-4 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
-              >
-                <RotateCcw size={14} />
-                Retake
-              </button>
+              {retakesUsed < MAX_RETAKES_PER_QUESTION && (
+                <button
+                  onClick={retake}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm px-4 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
+                >
+                  <RotateCcw size={14} />
+                  Retake
+                </button>
+              )}
               <button
                 onClick={() => void submitAnswer()}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-4 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-md shadow-emerald-900/20"
@@ -306,10 +405,12 @@ export default function ScreeningInterview() {
               </button>
             </>
           )}
-          {recordPhase === 'submitting' && (
-            <button disabled className="w-full bg-emerald-600 opacity-70 text-white font-bold text-sm px-6 py-3 rounded-xl flex items-center justify-center gap-2">
-              <LogoSpinner size={15} />
-              Reviewing your answer…
+          {recordPhase === 'finalizing' && errorMessage && (
+            <button
+              onClick={() => void finalizeInterview()}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
+            >
+              Retry Submit
             </button>
           )}
         </div>

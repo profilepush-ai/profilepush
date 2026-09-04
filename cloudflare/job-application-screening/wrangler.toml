@@ -21,13 +21,14 @@ SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 binding = "SOCIAL_JOB_PARSER"
 service = "profilepush-social-job-parser"
 
-# Screening videos: R2 is the permanent store; Stream is used only
-# transiently for auto-captioning, then the Stream copy is deleted.
+# The whole interview's video (one file, not one per question) lives
+# permanently here — Cloudflare Stream is no longer used anywhere in this
+# flow (Workers AI Whisper handles per-answer transcription instead, via
+# social-job-parser).
 [[r2_buckets]]
 binding = "VIDEO_BUCKET"
 bucket_name = "profilepush-screening-videos"
 
 # Secrets (set via `wrangler secret put <NAME>`, not stored here):
-#   SUPABASE_SERVICE_ROLE_KEY   — same value used by the other workers in this repo
-#   CLOUDFLARE_STREAM_API_TOKEN — a Cloudflare API token scoped to Stream:Edit
-#   CLOUDFLARE_WORKER_TOKEN     — same token social-job-parser's WORKER_AUTH_TOKEN expects
+#   SUPABASE_SERVICE_ROLE_KEY — same value used by the other workers in this repo
+#   CLOUDFLARE_WORKER_TOKEN   — same token social-job-parser's WORKER_AUTH_TOKEN expects

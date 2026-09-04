@@ -100,7 +100,7 @@ export default function PostApplicationsPage() {
     if (appIds.length > 0) {
       const { data: turns } = await supabase
         .from('job_application_screening_turns')
-        .select('id, application_id, turn_index, question_text, video_r2_key, answered_at')
+        .select('id, application_id, turn_index, question_text, video_offset_ms, answered_at')
         .in('application_id', appIds)
         .order('turn_index', { ascending: true });
 
@@ -377,6 +377,7 @@ export default function PostApplicationsPage() {
 
       {watchSubmissionAppId && (
         <ScreeningSubmissionModal
+          applicationId={watchSubmissionAppId}
           turns={watchSubmissionTurns}
           onClose={() => setWatchSubmissionAppId(null)}
           showToast={showToast}

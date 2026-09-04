@@ -8,6 +8,7 @@ export interface Env {
   SCREENING_WORKER_TOKEN?: string;
   PARSER_MODEL?: string;
   PARSER_VISION_MODEL?: string;
+  WHISPER_MODEL?: string;
   HOTLIST_IMAGES_PUBLIC_BASE_URL?: string;
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
@@ -757,6 +758,47 @@ export default {
         const question = String(parsed?.question ?? "").trim().slice(0, 500);
         if (!question) return jsonResponse({ error: "Model returned an empty question" }, 422);
         return jsonResponse({ done: false, question });
+      } catch (error) {
+        return jsonResponse({ error: (error as Error).message }, 500);
+      }
+    }
+
+    if (new URL(req.url).pathname.replace(/\/+$/, "") === "/transcribe-screening-audio") {
+      try {
+        const buffer = await req.arrayBuffer();
+        if (buffer.byteLength === 0) return jsonResponse({ error: "Empty audio" }, 400);
+
+        const model = (env.WHISPER_MODEL ?? "@cf/openai/whisper-large-v3-turbo").trim();
+        // This model's input schema wants audio as a base64 string, not a raw
+        // byte array/binary (confirmed empirically — the array/binary shapes
+        // both 400 with a schema type-mismatch error). Encoded via a manual
+        // byte loop rather than String.fromCharCode(...bytes) to avoid a
+        // call-stack blowup on larger clips.
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        const base64Audio = btoa(binary);
+
+        let aiResult: unknown;
+        let aiError: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            aiResult = await env.AI.run(model, { audio: base64Audio });
+            aiError = undefined;
+            break;
+          } catch (error) {
+            aiError = error;
+            if (attempt < 2 && isRateLimitError(error)) {
+              await sleep(1000 * (attempt + 1));
+              continue;
+            }
+            break;
+          }
+        }
+        if (aiError) throw aiError;
+
+        const text = String((aiResult as Record<string, unknown>)?.text ?? "").trim();
+        return jsonResponse({ text });
       } catch (error) {
         return jsonResponse({ error: (error as Error).message }, 500);
       }
