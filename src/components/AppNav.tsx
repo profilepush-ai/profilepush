@@ -489,6 +489,13 @@ export default function AppNav() {
             {inboxUnread > 0 && <span className="absolute right-[24%] top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
           </Link>
           <Link
+            to="/tracker"
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <FileText size={24} />
+            <span>Tracker</span>
+          </Link>
+          <Link
             to="/pulse"
             className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
           >
