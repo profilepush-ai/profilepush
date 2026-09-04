@@ -599,6 +599,77 @@ export default function MyPostsPage() {
                   {posts.length > 0 ? 'Try a different search term.' : statusFilter === 'closed' ? 'Posts you close will show up here.' : 'Try switching to the Closed filter.'}
                 </p>
               </div>
+            ) : isMobileViewport ? (
+              <div className="flex flex-col gap-2 p-2">
+                {filteredPosts.map((post) => {
+                  const metrics = metricsByPostId[post.id] ?? { previewCount: 0, chatCount: 0, shareCount: 0, applicationCount: 0 };
+                  const displayTitle = post.kind === 'hotlist' && post.candidateName
+                    ? `${post.title || 'Available Consultant'} — ${post.candidateName}`
+                    : (post.title || 'Job Opportunity');
+                  const locationText = post.kind === 'job' ? post.location : post.locations.join(', ');
+
+                  return (
+                    <div key={post.id} className="rounded-lg border border-[#dfdad2] bg-white p-3 dark:border-white/10 dark:bg-[#1E2126]">
+                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${post.kind === 'job' ? (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700') : (isDark ? 'border-purple-400/30 bg-purple-500/10 text-purple-300' : 'border-purple-200 bg-purple-50 text-purple-700')}`}>
+                          {post.kind === 'job' ? <Briefcase size={9} /> : <UserRound size={9} />}
+                          {post.kind === 'job' ? 'Job' : 'Hotlist'}
+                        </span>
+                        <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${post.postStatus === 'open' ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500')}`}>
+                          {post.postStatus === 'open' ? 'Open' : 'Closed'}
+                        </span>
+                        <span className="text-[11px] text-gray-400 dark:text-[#64748B]">{formatAgo(post.createdAt)}</span>
+                      </div>
+                      <p className="truncate text-[13px] font-semibold leading-snug" style={{ color: isDark ? '#FFFFFF' : '#2563EB' }}>{displayTitle}</p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#94A3B8]">
+                        {post.kind === 'job' && post.company && (
+                          <span className="inline-flex items-center gap-1">
+                            <Building2 size={10} className="shrink-0 text-gray-400" />
+                            {post.company}
+                          </span>
+                        )}
+                        {locationText && (
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin size={10} className="shrink-0 text-gray-400" />
+                            {locationText}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-2 flex items-center gap-3 text-[11px] text-gray-500 dark:text-slate-400">
+                        <span className="inline-flex items-center gap-1"><Eye size={11} className="text-gray-400" />{metrics.previewCount}</span>
+                        <span className="inline-flex items-center gap-1"><MessageSquare size={11} className="text-gray-400" />{metrics.chatCount}</span>
+                        <span className="inline-flex items-center gap-1"><Share2 size={11} className="text-gray-400" />{metrics.shareCount}</span>
+                        {post.kind === 'job' && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/posts/applications/${post.id}`)}
+                            className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${metrics.applicationCount > 0 ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300' : (isDark ? 'border-white/15 text-[#94A3B8]' : 'border-gray-200 text-gray-600')}`}
+                          >
+                            <Users size={11} />
+                            {metrics.applicationCount} Application{metrics.applicationCount === 1 ? '' : 's'}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="mt-2.5 flex items-center justify-around border-t border-gray-100 pt-2 dark:border-white/10">
+                        <button type="button" onClick={() => setPreviewPost(post)} title="Preview post" className={`rounded p-1.5 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                          <Eye size={15} />
+                        </button>
+                        <button type="button" onClick={() => { setEditingPost(post); setFormOpen(post.kind); }} title="Edit" className={`rounded p-1.5 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                          <Pencil size={15} />
+                        </button>
+                        <button type="button" onClick={() => void handleToggleStatus(post)} title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'} className={`rounded p-1.5 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                          {post.postStatus === 'open' ? <XCircle size={15} /> : <RotateCcw size={15} />}
+                        </button>
+                        <button type="button" onClick={() => void handleDelete(post)} title="Delete" className={`rounded p-1.5 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}>
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
                 <thead>

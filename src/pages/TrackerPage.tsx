@@ -390,6 +390,101 @@ export default function TrackerPage() {
                   {searchQuery ? 'Try a different search term.' : 'Applications you submit and Hotlist requests you send will show up here.'}
                 </p>
               </div>
+            ) : isMobileViewport ? (
+              <div className="flex flex-col gap-2 p-2">
+                {rows.map((row) => {
+                  if (row.kind === 'job') {
+                    const turns = turnsByApplication[row.id] ?? [];
+                    const hasAnsweredTurn = turns.some((t) => t.answered_at);
+                    const screeningUrl = `${window.location.origin}/screen/${row.screeningToken}`;
+                    return (
+                      <div key={row.id} className="rounded-lg border border-[#dfdad2] bg-white p-3 dark:border-white/10 dark:bg-[#1E2126]">
+                        <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>
+                            <Briefcase size={9} />
+                            Job
+                          </span>
+                          <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${APPLICATION_STATUS_STYLES[row.status] ?? APPLICATION_STATUS_STYLES.submitted}`}>
+                            {APPLICATION_STATUS_LABELS[row.status] ?? row.status}
+                          </span>
+                          <span className="text-[11px] text-gray-400 dark:text-[#64748B]">{formatAgo(row.createdAt)}</span>
+                        </div>
+                        <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100">{row.jobTitle}</p>
+                        <p className="truncate text-[11px] text-gray-400 dark:text-[#94A3B8]">
+                          {row.companyName}{row.candidateName ? ` · ${row.candidateName}` : ''}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {row.aiScore !== null && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:border-purple-400/30 dark:bg-purple-500/10 dark:text-purple-300">
+                              <Sparkles size={9} strokeWidth={2.5} />
+                              {row.aiScore}/100
+                            </span>
+                          )}
+                          <a
+                            href={screeningUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-100 dark:border-white/15 dark:bg-white/5 dark:text-slate-300"
+                          >
+                            <ExternalLink size={9} strokeWidth={2.5} />
+                            Screening link
+                          </a>
+                          {hasAnsweredTurn && (
+                            <button
+                              type="button"
+                              onClick={() => setWatchSubmissionAppId(row.id)}
+                              className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
+                            >
+                              <Video size={10} strokeWidth={2.5} />
+                              Watch Submission
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const isChat = row.type === 'chat';
+                  return (
+                    <div key={row.id} className="rounded-lg border border-[#dfdad2] bg-white p-3 dark:border-white/10 dark:bg-[#1E2126]">
+                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-purple-400/30 bg-purple-500/10 text-purple-300' : 'border-purple-200 bg-purple-50 text-purple-700'}`}>
+                          <UserRound size={9} />
+                          Hotlist
+                        </span>
+                        {isChat ? (
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${row.hasUnread ? (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700') : row.status === 'closed' ? (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500') : (isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600')}`}>
+                            {row.hasUnread ? <MessageSquare size={9} strokeWidth={2.5} /> : row.status === 'closed' ? <XCircle size={9} strokeWidth={2.5} /> : <Clock3 size={9} strokeWidth={2.5} />}
+                            {row.hasUnread ? 'New reply' : row.status === 'closed' ? 'Closed' : 'Awaiting reply'}
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${ASK_AI_STATUS_STYLES[row.status] ?? ASK_AI_STATUS_STYLES.completed}`}>
+                            {row.status === 'completed' ? <CheckCircle2 size={9} strokeWidth={2.5} /> : <Clock3 size={9} strokeWidth={2.5} />}
+                            {ASK_AI_STATUS_LABELS[row.status] ?? row.status}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-gray-400 dark:text-[#64748B]">{formatAgo(row.createdAt)}</span>
+                      </div>
+                      <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100">
+                        {isChat ? row.subject : (row.roleTitle || 'Available Consultant')}
+                      </p>
+                      <p className="truncate text-[11px] text-gray-400 dark:text-[#94A3B8]">
+                        {isChat ? row.ownerDisplayName : [row.candidateName, row.companyName].filter(Boolean).join(' · ')}
+                      </p>
+                      {isChat && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/inbox/${row.id}`)}
+                          className="mt-2 inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
+                        >
+                          <MessageSquare size={9} strokeWidth={2.5} />
+                          Open chat
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
                 <thead>
