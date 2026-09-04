@@ -6,7 +6,7 @@ workers_dev = true
 [vars]
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 CLOUDFLARE_ACCOUNT_ID = "53134bd8509f5b224717a1c7b6be0016"
-MAX_SCREENING_TURNS = "5"
+MAX_SCREENING_TURNS = "3"
 
 # Calls social-job-parser via a service binding rather than its public
 # workers.dev URL — a Worker-to-Worker fetch between two *.workers.dev

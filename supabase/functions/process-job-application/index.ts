@@ -17,7 +17,7 @@ const corsHeaders = {
 };
 
 const APP_BASE_URL = "https://profilepush.ai";
-const MAX_SCREENING_TURNS = 5;
+const MAX_SCREENING_TURNS = 3;
 
 function respond(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

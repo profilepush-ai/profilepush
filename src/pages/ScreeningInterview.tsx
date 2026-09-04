@@ -208,20 +208,19 @@ export default function ScreeningInterview() {
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8 flex items-center justify-center">
       <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 sm:p-8 max-w-lg w-full">
-        <div className="flex items-center gap-1.5 font-bold text-blue-600 text-sm mb-6">
-          <Logo size="sm" />
+        <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-1.5 font-bold text-blue-600 text-sm">
+            <Logo size="sm" />
+          </div>
+          <p className="min-w-0 truncate text-[10px] text-gray-400" title={`${session?.jobTitle ?? ''}${session?.companyName ? ` · ${session.companyName}` : ''}`}>
+            {session?.jobTitle}{session?.companyName ? ` · ${session.companyName}` : ''}
+          </p>
         </div>
 
-        <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-5">
-          <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wide mb-1">Video Screening</p>
-          <p className="text-base font-bold text-gray-900">{session?.jobTitle}</p>
-          {session?.companyName && <p className="text-sm text-gray-500">{session.companyName}</p>}
-        </div>
-
-        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
+        <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wide mb-1.5">
           Question {(session?.turnsAnswered ?? 0) + 1}
         </p>
-        <p className="text-sm font-medium text-gray-800 mb-5 leading-relaxed">{session?.currentQuestion}</p>
+        <p className="text-lg font-bold text-gray-900 mb-5 leading-snug">{session?.currentQuestion}</p>
 
         <div className="relative bg-gray-900 rounded-xl overflow-hidden aspect-video mb-4">
           <video
@@ -298,7 +297,7 @@ export default function ScreeningInterview() {
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-4 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-md shadow-emerald-900/20"
               >
                 <CheckCircle2 size={15} />
-                Submit Answer
+                Submit & Next
               </button>
             </>
           )}
