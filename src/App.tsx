@@ -25,6 +25,7 @@ const RoadmapPage = lazy(() => import('./pages/RoadmapPage'));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
 const CandidateOnboarding = lazy(() => import('./pages/CandidateOnboarding'));
 const ConfirmApplied = lazy(() => import('./pages/ConfirmApplied'));
+const ScreeningInterview = lazy(() => import('./pages/ScreeningInterview'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsAndConditions = lazy(() => import('./pages/TermsAndConditions'));
 const SecurityPage = lazy(() => import('./pages/SecurityPage'));
@@ -184,6 +185,7 @@ export default function App() {
             <Route path="/onboard/:token" element={<ErrorBoundary><CandidateOnboarding /></ErrorBoundary>} />
             <Route path="/welcome" element={<ProtectedRoute><ErrorBoundary><OnboardingVideo /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/confirm-applied/:token" element={<ErrorBoundary><ConfirmApplied /></ErrorBoundary>} />
+            <Route path="/screen/:token" element={<ErrorBoundary><ScreeningInterview /></ErrorBoundary>} />
             <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
             <Route path="/terms" element={<ErrorBoundary><TermsAndConditions /></ErrorBoundary>} />
             <Route path="/security" element={<ErrorBoundary><SecurityPage /></ErrorBoundary>} />

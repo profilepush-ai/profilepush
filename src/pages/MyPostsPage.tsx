@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Briefcase, Building2, Check, Clock3, Eye, MapPin, MessageSquare, Pencil, Plus, RotateCcw,
-  Search, Sparkles, Trash2, UserRound, X, XCircle,
+  Search, Sparkles, Trash2, UserRound, Users, X, XCircle,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -11,6 +11,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import PostFormModal, { type PostKind, type UserPost } from '../components/posts/PostFormModal';
 import ClaimPostsWidget from '../components/posts/ClaimPostsWidget';
+import ApplicationsModal from '../components/posts/ApplicationsModal';
 
 type Tab = 'job' | 'hotlist' | 'closed';
 
@@ -64,6 +65,7 @@ export default function MyPostsPage() {
   const [formOpen, setFormOpen] = useState<PostKind | null>(null);
   const [editingPost, setEditingPost] = useState<UserPost | null>(null);
   const [previewPost, setPreviewPost] = useState<UserPost | null>(null);
+  const [applicationsPost, setApplicationsPost] = useState<UserPost | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [landingPasteText, setLandingPasteText] = useState('');
   const [showKindChooser, setShowKindChooser] = useState(false);
@@ -634,6 +636,16 @@ export default function MyPostsPage() {
                     >
                       {post.postStatus === 'open' ? <XCircle size={17} strokeWidth={1.75} /> : <RotateCcw size={17} strokeWidth={1.75} />}
                     </button>
+                    {post.kind === 'job' && (
+                      <button
+                        type="button"
+                        onClick={() => setApplicationsPost(post)}
+                        title="View applications"
+                        className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5"
+                      >
+                        <Users size={17} strokeWidth={1.75} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -687,6 +699,15 @@ export default function MyPostsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {applicationsPost && (
+        <ApplicationsModal
+          jobId={applicationsPost.id}
+          jobTitle={applicationsPost.title || 'Job Opportunity'}
+          onClose={() => setApplicationsPost(null)}
+          showToast={showToast}
+        />
       )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
