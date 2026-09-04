@@ -28,6 +28,7 @@ const ConfirmApplied = lazy(() => import('./pages/ConfirmApplied'));
 const ScreeningInterview = lazy(() => import('./pages/ScreeningInterview'));
 const PublicJobPage = lazy(() => import('./pages/PublicJobPage'));
 const PublicHotlistPage = lazy(() => import('./pages/PublicHotlistPage'));
+const PostApplicationsPage = lazy(() => import('./pages/PostApplicationsPage'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsAndConditions = lazy(() => import('./pages/TermsAndConditions'));
 const SecurityPage = lazy(() => import('./pages/SecurityPage'));
@@ -228,6 +229,7 @@ export default function App() {
             <Route path="/jobs" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
             <Route path="/hotlist" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
             <Route path="/posts" element={<ProtectedRoute><ErrorBoundary><MyPostsPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/posts/applications/:jobId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><ProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             </Routes>

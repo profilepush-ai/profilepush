@@ -1004,16 +1004,31 @@ function getLeadShareUrl(lead: SocialLead): string {
   return `${window.location.origin}/${lead.kind === 'hotlist' ? 'hotlist' : 'job'}/${lead.id}`;
 }
 
+// Records that this account shared this lead, for the Posts page's Shares
+// column — same "one row per (account, lead, action)" convention as
+// revealed/breakdown/post_content_viewed, so a repeat share by the same
+// account doesn't inflate the count.
+function recordLeadShare(leadId: string, accountId: string | null | undefined, userId: string | null | undefined) {
+  if (!accountId) return;
+  void supabase
+    .from('pulse_lead_actions')
+    .upsert(
+      { account_id: accountId, user_id: userId ?? null, lead_id: leadId, action_type: 'shared' },
+      { onConflict: 'account_id,user_id,lead_id,action_type', ignoreDuplicates: true },
+    );
+}
+
 // Shared by both the card and table views — uses the native share sheet
 // where available (mobile, some desktop browsers), otherwise copies the
 // link and reports success via the returned boolean so the caller can show
 // its own brief "Copied" feedback.
-async function shareLead(lead: SocialLead): Promise<boolean> {
+async function shareLead(lead: SocialLead, accountId: string | null | undefined, userId: string | null | undefined): Promise<boolean> {
   const url = getLeadShareUrl(lead);
   const title = lead.kind === 'hotlist' ? (lead.roleTitle || lead.title || 'Available Consultant') : (lead.title || 'Job Opportunity');
   if (navigator.share) {
     try {
       await navigator.share({ title, url });
+      recordLeadShare(lead.id, accountId, userId);
       return false;
     } catch {
       // AbortError (user cancelled) or unsupported — fall through to copy.
@@ -1021,6 +1036,7 @@ async function shareLead(lead: SocialLead): Promise<boolean> {
   }
   try {
     await navigator.clipboard.writeText(url);
+    recordLeadShare(lead.id, accountId, userId);
     return true;
   } catch {
     return false;
@@ -1029,6 +1045,8 @@ async function shareLead(lead: SocialLead): Promise<boolean> {
 
 interface LeadCardProps {
   lead: SocialLead;
+  accountId: string | null | undefined;
+  userId: string | null | undefined;
   paletteIndex: number;
   isDark: boolean;
   isHotlistFeed: boolean;
@@ -1066,7 +1084,7 @@ interface LeadCardProps {
 // PulsePage render, including ones triggered by unrelated interactions
 // elsewhere on the page (typing in search, hovering, etc).
 const LeadCard = memo(function LeadCard({
-  lead, paletteIndex, isDark, isHotlistFeed, feedTimeBasis, isLeadRevealed, globalAskedJobState,
+  lead, accountId, userId, paletteIndex, isDark, isHotlistFeed, feedTimeBasis, isLeadRevealed, globalAskedJobState,
   predictResult, askedRequestedAt, askedFulfilledAt, revealedAt, isSkillsExpanded,
   isExpFieldExpanded, isWorkTypeFieldExpanded, isEmpTypeFieldExpanded, isRateFieldExpanded, isVisaFieldExpanded, isLocationFieldExpanded,
   isLoadingPreview, isProcessingChat, isProcessingAskAI,
@@ -1109,7 +1127,7 @@ const LeadCard = memo(function LeadCard({
       </button>
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); void shareLead(lead).then((copied) => { if (copied) { setJustCopiedShare(true); setTimeout(() => setJustCopiedShare(false), 1500); } }); }}
+        onClick={(e) => { e.stopPropagation(); void shareLead(lead, accountId, userId).then((copied) => { if (copied) { setJustCopiedShare(true); setTimeout(() => setJustCopiedShare(false), 1500); } }); }}
         title="Share this post"
         className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
       >
@@ -3308,6 +3326,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const askedState = askedJobStateByLeadId[lead.id];
     return {
       lead,
+      accountId: account?.id,
+      userId: user?.id,
       paletteIndex,
       isDark,
       isHotlistFeed: leadIsHotlist(lead),
@@ -3523,7 +3543,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   <div className="flex flex-wrap items-center gap-1">
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); void shareLead(lead).then((copied) => { if (copied) showToast('Link copied', 'success'); }); }}
+                      onClick={(e) => { e.stopPropagation(); void shareLead(lead, account?.id, user?.id).then((copied) => { if (copied) showToast('Link copied', 'success'); }); }}
                       title="Share this post"
                       className={askButtonClass}
                     >

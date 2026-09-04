@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Briefcase, Building2, Check, Clock3, Eye, MapPin, MessageSquare, Pencil, Plus, RotateCcw,
-  Search, Sparkles, Trash2, UserRound, Users, X, XCircle,
+  Briefcase, Building2, Check, Clock3, Eye, LayoutGrid, MapPin, MessageSquare, Pencil, Plus, RotateCcw,
+  Search, Share2, Sparkles, Trash2, UserRound, Users, X, XCircle,
+  type LucideIcon,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -11,9 +13,20 @@ import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import PostFormModal, { type PostKind, type UserPost } from '../components/posts/PostFormModal';
 import ClaimPostsWidget from '../components/posts/ClaimPostsWidget';
-import ApplicationsModal from '../components/posts/ApplicationsModal';
 
-type Tab = 'job' | 'hotlist' | 'closed';
+type KindFilter = 'all' | 'job' | 'hotlist';
+type StatusFilter = 'open' | 'closed';
+
+const KIND_FILTER_OPTIONS: Array<{ id: KindFilter; label: string; icon: LucideIcon }> = [
+  { id: 'all', label: 'All', icon: LayoutGrid },
+  { id: 'job', label: 'Jobs', icon: Briefcase },
+  { id: 'hotlist', label: 'Hotlist', icon: UserRound },
+];
+
+const STATUS_FILTER_OPTIONS: Array<{ id: StatusFilter; label: string; icon: LucideIcon }> = [
+  { id: 'open', label: 'Open', icon: Check },
+  { id: 'closed', label: 'Closed', icon: XCircle },
+];
 
 const RANGE_OPTIONS: Array<{ id: string; label: string; hours: number | null }> = [
   { id: 'all', label: 'All time', hours: null },
@@ -52,7 +65,9 @@ function matchesRange(post: UserPost, rangeId: string): boolean {
 export default function MyPostsPage() {
   const { account } = useAuth();
   const { isDark } = useTheme();
-  const [tab, setTab] = useState<Tab>('job');
+  const navigate = useNavigate();
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [rangeId, setRangeId] = useState('all');
@@ -60,12 +75,11 @@ export default function MyPostsPage() {
   const rangeMenuRef = useRef<HTMLDivElement | null>(null);
   const [jobPosts, setJobPosts] = useState<UserPost[]>([]);
   const [hotlistPosts, setHotlistPosts] = useState<UserPost[]>([]);
-  const [metricsByPostId, setMetricsByPostId] = useState<Record<string, { previewCount: number; chatCount: number }>>({});
+  const [metricsByPostId, setMetricsByPostId] = useState<Record<string, { previewCount: number; chatCount: number; shareCount: number; applicationCount: number }>>({});
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState<PostKind | null>(null);
   const [editingPost, setEditingPost] = useState<UserPost | null>(null);
   const [previewPost, setPreviewPost] = useState<UserPost | null>(null);
-  const [applicationsPost, setApplicationsPost] = useState<UserPost | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [landingPasteText, setLandingPasteText] = useState('');
   const [showKindChooser, setShowKindChooser] = useState(false);
@@ -173,10 +187,15 @@ export default function MyPostsPage() {
     }
 
     if (!metricsResult.error) {
-      const metricsRows = (metricsResult.data ?? []) as Array<{ post_id: string; preview_count: number; chat_count: number }>;
-      const next: Record<string, { previewCount: number; chatCount: number }> = {};
+      const metricsRows = (metricsResult.data ?? []) as Array<{ post_id: string; preview_count: number; chat_count: number; share_count: number; application_count: number }>;
+      const next: Record<string, { previewCount: number; chatCount: number; shareCount: number; applicationCount: number }> = {};
       for (const row of metricsRows) {
-        next[row.post_id] = { previewCount: row.preview_count ?? 0, chatCount: row.chat_count ?? 0 };
+        next[row.post_id] = {
+          previewCount: row.preview_count ?? 0,
+          chatCount: row.chat_count ?? 0,
+          shareCount: row.share_count ?? 0,
+          applicationCount: row.application_count ?? 0,
+        };
       }
       setMetricsByPostId(next);
     }
@@ -294,14 +313,11 @@ export default function MyPostsPage() {
 
   const hasAnyPosts = jobPosts.length > 0 || hotlistPosts.length > 0;
   const posts = useMemo(() => {
-    if (tab === 'closed') {
-      return [...jobPosts, ...hotlistPosts]
-        .filter((post) => post.postStatus === 'closed')
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }
-    const source = tab === 'job' ? jobPosts : hotlistPosts;
-    return source.filter((post) => post.postStatus === 'open');
-  }, [tab, jobPosts, hotlistPosts]);
+    const source = kindFilter === 'all' ? [...jobPosts, ...hotlistPosts] : kindFilter === 'job' ? jobPosts : hotlistPosts;
+    return source
+      .filter((post) => post.postStatus === statusFilter)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [kindFilter, statusFilter, jobPosts, hotlistPosts]);
   const filteredPosts = useMemo(
     () => posts.filter((post) => matchesSearch(post, searchQuery) && matchesRange(post, rangeId)),
     [posts, searchQuery, rangeId],
@@ -380,31 +396,49 @@ export default function MyPostsPage() {
     </div>
   );
 
-  const tabDefs = [
-    { id: 'job' as Tab, label: 'Jobs', icon: Briefcase, count: jobPosts.filter((post) => post.postStatus === 'open').length },
-    { id: 'hotlist' as Tab, label: 'Hotlist', icon: UserRound, count: hotlistPosts.filter((post) => post.postStatus === 'open').length },
-    {
-      id: 'closed' as Tab,
-      label: 'Closed',
-      icon: XCircle,
-      count: jobPosts.filter((post) => post.postStatus === 'closed').length + hotlistPosts.filter((post) => post.postStatus === 'closed').length,
-    },
-  ];
+  const kindCounts: Record<KindFilter, number> = {
+    all: jobPosts.filter((p) => p.postStatus === statusFilter).length + hotlistPosts.filter((p) => p.postStatus === statusFilter).length,
+    job: jobPosts.filter((p) => p.postStatus === statusFilter).length,
+    hotlist: hotlistPosts.filter((p) => p.postStatus === statusFilter).length,
+  };
+  const statusCounts: Record<StatusFilter, number> = {
+    open: jobPosts.filter((p) => p.postStatus === 'open').length + hotlistPosts.filter((p) => p.postStatus === 'open').length,
+    closed: jobPosts.filter((p) => p.postStatus === 'closed').length + hotlistPosts.filter((p) => p.postStatus === 'closed').length,
+  };
 
-  function tabButtonsEl(fullWidth: boolean) {
-    return tabDefs.map((tabDef) => {
-      const isSelected = tab === tabDef.id;
-      const Icon = tabDef.icon;
+  function kindFilterButtonsEl(fullWidth: boolean) {
+    return KIND_FILTER_OPTIONS.map((option) => {
+      const isSelected = kindFilter === option.id;
+      const Icon = option.icon;
       return (
         <button
-          key={tabDef.id}
+          key={option.id}
           type="button"
-          onClick={() => setTab(tabDef.id)}
+          onClick={() => setKindFilter(option.id)}
           className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${fullWidth ? 'w-full' : ''} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
         >
           <Icon size={11} />
-          <span>{tabDef.label}</span>
-          <span>{tabDef.count}</span>
+          <span>{option.label}</span>
+          <span>{kindCounts[option.id]}</span>
+        </button>
+      );
+    });
+  }
+
+  function statusFilterButtonsEl(fullWidth: boolean) {
+    return STATUS_FILTER_OPTIONS.map((option) => {
+      const isSelected = statusFilter === option.id;
+      const Icon = option.icon;
+      return (
+        <button
+          key={option.id}
+          type="button"
+          onClick={() => setStatusFilter(option.id)}
+          className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${fullWidth ? 'w-full' : ''} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
+        >
+          <Icon size={11} />
+          <span>{option.label}</span>
+          <span>{statusCounts[option.id]}</span>
         </button>
       );
     });
@@ -491,22 +525,28 @@ export default function MyPostsPage() {
         <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2">
           {isMobileViewport ? (
             <div className="flex shrink-0 flex-col gap-1.5 pb-2">
+              <div className="grid grid-cols-3 gap-1">
+                {kindFilterButtonsEl(true)}
+              </div>
               <div className="flex items-center gap-2">
                 {searchBoxEl}
                 {searchButtonEl}
                 {rangeMenuEl}
               </div>
-              <div className="grid grid-cols-3 gap-1">
-                {tabButtonsEl(true)}
+              <div className="grid grid-cols-2 gap-1">
+                {statusFilterButtonsEl(true)}
               </div>
               {addPostButtonEl(true)}
             </div>
           ) : (
             <div className="flex shrink-0 items-center gap-2 pb-2">
+              <div className="flex shrink-0 items-center gap-1">
+                {kindFilterButtonsEl(false)}
+              </div>
               {searchBoxEl}
               {searchButtonEl}
               <div className="flex shrink-0 items-center gap-1">
-                {tabButtonsEl(false)}
+                {statusFilterButtonsEl(false)}
               </div>
               {rangeMenuEl}
               {addPostButtonEl(false)}
@@ -539,118 +579,125 @@ export default function MyPostsPage() {
             </div>
           ) : null}
 
-          <div className={`min-h-0 overflow-y-auto ${!hasAnyPosts && !loading ? 'shrink-0' : 'flex-1'}`}>
+          <div className={`min-h-0 overflow-auto rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126] ${!hasAnyPosts && !loading ? 'shrink-0' : 'flex-1'}`}>
             {loading ? (
               <div className="flex items-center justify-center py-16"><LogoSpinner size={22} /></div>
             ) : filteredPosts.length === 0 && (posts.length > 0 || hasAnyPosts) ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <p className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">
-                  {posts.length > 0 ? 'No posts match your search' : tab === 'closed' ? 'No closed posts yet' : `No ${tab === 'job' ? 'open job' : 'open hotlist'} posts`}
+                  {posts.length > 0 ? 'No posts match your search' : statusFilter === 'closed' ? 'No closed posts' : `No open ${kindFilter === 'all' ? '' : kindFilter === 'job' ? 'job ' : 'hotlist '}posts`}
                 </p>
                 <p className="mt-1 text-[12px] text-gray-400 dark:text-[#64748B]">
-                  {posts.length > 0 ? 'Try a different search term.' : tab === 'closed' ? 'Posts you close will show up here.' : 'Closed posts have moved to the Closed tab.'}
+                  {posts.length > 0 ? 'Try a different search term.' : statusFilter === 'closed' ? 'Posts you close will show up here.' : 'Try switching to the Closed filter.'}
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-2 bg-[#f3f2ee] pb-4 dark:bg-[#141619] sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
-            {filteredPosts.map((post) => {
-              const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
-              const metrics = metricsByPostId[post.id] ?? { previewCount: 0, chatCount: 0 };
-              const displayTitle = post.kind === 'hotlist' && post.candidateName
-                ? `${post.title || 'Available Consultant'} — ${post.candidateName}`
-                : (post.title || 'Job Opportunity');
-              const locationText = post.kind === 'job' ? post.location : post.locations.join(', ');
+              <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
+                <thead>
+                  <tr className={`sticky top-0 z-10 border-b ${isDark ? 'border-white/10 bg-[#20242a]' : 'border-gray-200 bg-gray-50'}`}>
+                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Post</th>
+                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Status</th>
+                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Posted</th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-[#94A3B8]">Previews</th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-[#94A3B8]">Chats</th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-[#94A3B8]">Shares</th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-[#94A3B8]">Applications</th>
+                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPosts.map((post) => {
+                    const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
+                    const metrics = metricsByPostId[post.id] ?? { previewCount: 0, chatCount: 0, shareCount: 0, applicationCount: 0 };
+                    const displayTitle = post.kind === 'hotlist' && post.candidateName
+                      ? `${post.title || 'Available Consultant'} — ${post.candidateName}`
+                      : (post.title || 'Job Opportunity');
+                    const locationText = post.kind === 'job' ? post.location : post.locations.join(', ');
 
-              return (
-                <div
-                  key={post.id}
-                  className="relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126]"
-                >
-                  <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-semibold leading-snug" style={titleToneStyle}>{displayTitle}</p>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
-                          <span>Posted {formatAgo(post.createdAt)}</span>
-                          {post.kind === 'job' && post.company && (
-                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                              <span>•</span>
-                              <Building2 size={10} className="shrink-0 text-gray-400" />
-                              <span>{post.company}</span>
+                    return (
+                      <tr key={post.id} className={`border-b ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-100 hover:bg-gray-50'}`}>
+                        <td className="max-w-xs px-3 py-2.5 align-top">
+                          <div className="mb-0.5 flex items-center gap-1.5">
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${post.kind === 'job' ? (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700') : (isDark ? 'border-purple-400/30 bg-purple-500/10 text-purple-300' : 'border-purple-200 bg-purple-50 text-purple-700')}`}>
+                              {post.kind === 'job' ? <Briefcase size={9} /> : <UserRound size={9} />}
+                              {post.kind === 'job' ? 'Job' : 'Hotlist'}
                             </span>
+                          </div>
+                          <p className="truncate font-semibold leading-snug" style={titleToneStyle}>{displayTitle}</p>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
+                            {post.kind === 'job' && post.company && (
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                <Building2 size={10} className="shrink-0 text-gray-400" />
+                                <span>{post.company}</span>
+                              </span>
+                            )}
+                            {locationText && (
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                <MapPin size={10} className="shrink-0 text-gray-400" />
+                                <span className="truncate">{locationText}</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 align-top">
+                          <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${post.postStatus === 'open' ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500')}`}>
+                            {post.postStatus === 'open' ? 'Open' : 'Closed'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 align-top text-gray-500 dark:text-[#94A3B8]">{formatAgo(post.createdAt)}</td>
+                        <td className="px-3 py-2.5 text-center align-top">
+                          <span className="inline-flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                            <Eye size={11} className="text-gray-400" />
+                            {metrics.previewCount}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-center align-top">
+                          <span className="inline-flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                            <MessageSquare size={11} className="text-gray-400" />
+                            {metrics.chatCount}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-center align-top">
+                          <span className="inline-flex items-center gap-1 text-gray-600 dark:text-slate-300">
+                            <Share2 size={11} className="text-gray-400" />
+                            {metrics.shareCount}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-center align-top">
+                          {post.kind === 'job' ? (
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/posts/applications/${post.id}`)}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${metrics.applicationCount > 0 ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-100')}`}
+                            >
+                              <Users size={11} />
+                              {metrics.applicationCount}
+                            </button>
+                          ) : (
+                            <span className="text-gray-400 dark:text-[#64748B]">—</span>
                           )}
-                          {locationText && (
-                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                              <span>•</span>
-                              <MapPin size={10} className="shrink-0 text-gray-400" />
-                              <span className="truncate">{locationText}</span>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        <button type="button" onClick={() => { setEditingPost(post); setFormOpen(post.kind); }} title="Edit" className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
-                          <Pencil size={12} />
-                        </button>
-                        <button type="button" onClick={() => void handleDelete(post)} title="Delete" className={`rounded p-1 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}>
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                      <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${post.postStatus === 'open' ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500')}`}>
-                        {post.postStatus === 'open' ? 'Open' : 'Closed'}
-                      </span>
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
-                        <Eye size={9} strokeWidth={2.5} />
-                        {metrics.previewCount} preview{metrics.previewCount === 1 ? '' : 's'}
-                      </span>
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
-                        <MessageSquare size={9} strokeWidth={2.5} />
-                        {metrics.chatCount} chat{metrics.chatCount === 1 ? '' : 's'}
-                      </span>
-                    </div>
-
-                    {post.skills.length > 0 && (
-                      <p className="mt-1.5 truncate text-[10px] leading-tight text-gray-500 dark:text-[#94A3B8]">
-                        {post.skills.slice(0, 6).join(' · ')}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="mt-auto flex items-center justify-around border-t border-gray-200 dark:border-white/10">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewPost(post)}
-                      title="Preview post"
-                      className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5"
-                    >
-                      <Eye size={17} strokeWidth={1.75} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleToggleStatus(post)}
-                      title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'}
-                      className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5"
-                    >
-                      {post.postStatus === 'open' ? <XCircle size={17} strokeWidth={1.75} /> : <RotateCcw size={17} strokeWidth={1.75} />}
-                    </button>
-                    {post.kind === 'job' && (
-                      <button
-                        type="button"
-                        onClick={() => setApplicationsPost(post)}
-                        title="View applications"
-                        className="inline-flex h-9 flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-white/5"
-                      >
-                        <Users size={17} strokeWidth={1.75} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-              </div>
+                        </td>
+                        <td className="px-3 py-2.5 align-top">
+                          <div className="flex items-center gap-0.5">
+                            <button type="button" onClick={() => setPreviewPost(post)} title="Preview post" className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                              <Eye size={13} />
+                            </button>
+                            <button type="button" onClick={() => { setEditingPost(post); setFormOpen(post.kind); }} title="Edit" className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                              <Pencil size={13} />
+                            </button>
+                            <button type="button" onClick={() => void handleToggleStatus(post)} title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'} className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                              {post.postStatus === 'open' ? <XCircle size={13} /> : <RotateCcw size={13} />}
+                            </button>
+                            <button type="button" onClick={() => void handleDelete(post)} title="Delete" className={`rounded p-1 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}>
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
@@ -699,15 +746,6 @@ export default function MyPostsPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {applicationsPost && (
-        <ApplicationsModal
-          jobId={applicationsPost.id}
-          jobTitle={applicationsPost.title || 'Job Opportunity'}
-          onClose={() => setApplicationsPost(null)}
-          showToast={showToast}
-        />
       )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
