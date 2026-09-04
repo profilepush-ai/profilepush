@@ -6,8 +6,16 @@ workers_dev = true
 [vars]
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 CLOUDFLARE_ACCOUNT_ID = "53134bd8509f5b224717a1c7b6be0016"
-CLOUDFLARE_WORKER_URL = "https://profilepush-social-job-parser.profilepush-ai.workers.dev"
 MAX_SCREENING_TURNS = "5"
+
+# Calls social-job-parser via a service binding rather than its public
+# workers.dev URL — a Worker-to-Worker fetch between two *.workers.dev
+# subdomains on the SAME account is blocked by Cloudflare (error 1042);
+# service bindings call the other Worker directly and aren't subject to
+# that restriction (and are faster, since there's no real network hop).
+[[services]]
+binding = "SOCIAL_JOB_PARSER"
+service = "profilepush-social-job-parser"
 
 # Secrets (set via `wrangler secret put <NAME>`, not stored here):
 #   SUPABASE_SERVICE_ROLE_KEY   — same value used by the other workers in this repo

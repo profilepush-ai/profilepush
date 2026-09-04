@@ -20,7 +20,7 @@ export interface Env {
   SUPABASE_SERVICE_ROLE_KEY: string;
   CLOUDFLARE_ACCOUNT_ID: string;
   CLOUDFLARE_STREAM_API_TOKEN: string;
-  CLOUDFLARE_WORKER_URL: string;
+  SOCIAL_JOB_PARSER: Fetcher;
   CLOUDFLARE_WORKER_TOKEN?: string;
   MAX_SCREENING_TURNS?: string;
 }
@@ -184,7 +184,7 @@ async function generateNextQuestion(
   priorTurns: Array<{ question: string; answer: string }>,
 ): Promise<{ done: true; summary: string; score: number } | { done: false; question: string }> {
   const maxTurns = Math.min(6, Math.max(2, Number(env.MAX_SCREENING_TURNS) || 5));
-  const res = await fetch(`${env.CLOUDFLARE_WORKER_URL.replace(/\/$/, "")}/generate-screening-question`, {
+  const res = await env.SOCIAL_JOB_PARSER.fetch("https://social-job-parser.internal/generate-screening-question", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
