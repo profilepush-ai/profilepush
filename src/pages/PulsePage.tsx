@@ -22,7 +22,6 @@ import {
   Layers,
   LayoutGrid,
   MapPin,
-  MessageSquare,
   Phone,
   Radar,
   RefreshCw,
@@ -1066,10 +1065,8 @@ interface LeadCardProps {
   isVisaFieldExpanded: boolean;
   isLocationFieldExpanded: boolean;
   isLoadingPreview: boolean;
-  isProcessingChat: boolean;
   isProcessingAskAI: boolean;
   onPreview: (lead: SocialLead) => void;
-  onOpenChat: (lead: SocialLead) => void;
   onAskAI: (lead: SocialLead) => void;
   onApply: (lead: SocialLead) => void;
   onToggleInlineBreakdown: (leadId: string) => void;
@@ -1087,8 +1084,8 @@ const LeadCard = memo(function LeadCard({
   lead, accountId, userId, paletteIndex, isDark, isHotlistFeed, feedTimeBasis, isLeadRevealed, globalAskedJobState,
   predictResult, askedRequestedAt, askedFulfilledAt, revealedAt, isSkillsExpanded,
   isExpFieldExpanded, isWorkTypeFieldExpanded, isEmpTypeFieldExpanded, isRateFieldExpanded, isVisaFieldExpanded, isLocationFieldExpanded,
-  isLoadingPreview, isProcessingChat, isProcessingAskAI,
-  onPreview, onOpenChat, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
+  isLoadingPreview, isProcessingAskAI,
+  onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
 }: LeadCardProps) {
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
@@ -1134,29 +1131,16 @@ const LeadCard = memo(function LeadCard({
         {justCopiedShare ? <Check size={17} strokeWidth={1.75} /> : <Share2 size={17} strokeWidth={1.75} />}
         <span className="text-[12px] font-normal">{justCopiedShare ? 'Copied' : 'Share'}</span>
       </button>
-      {lead.postSource === 'user_post' ? (
-        <>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onOpenChat(lead); }}
-            disabled={isProcessingChat}
-            title="Chat about this post"
-            className="inline-flex h-9 flex-1 items-center justify-center bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
-          >
-            {isProcessingChat ? <LogoSpinner size={14} /> : <MessageSquare size={17} strokeWidth={1.75} />}
-          </button>
-          {lead.kind === 'job' && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onApply(lead); }}
-              title="Submit a consultant to this job"
-              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
-            >
-              <Send size={15} strokeWidth={1.75} />
-              <span className="text-[12px] font-normal">Apply</span>
-            </button>
-          )}
-        </>
+      {lead.kind === 'job' && lead.postSource === 'user_post' ? (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onApply(lead); }}
+          title="Submit a consultant to this job"
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
+        >
+          <Send size={15} strokeWidth={1.75} />
+          <span className="text-[12px] font-normal">Apply</span>
+        </button>
       ) : isAskPending || isVerified ? (
         <span
           title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
@@ -1169,10 +1153,15 @@ const LeadCard = memo(function LeadCard({
           type="button"
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
-          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Request' : 'AI Submit')}
+          title={!lead.posterEmail ? 'No email' : (lead.postSource === 'user_post' ? 'Request' : isHotlistFeed ? 'AI Request' : 'AI Submit')}
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
         >
-          {isProcessingAskAI ? <LogoSpinner size={14} /> : (
+          {isProcessingAskAI ? <LogoSpinner size={14} /> : lead.postSource === 'user_post' ? (
+            <>
+              <FileText size={15} strokeWidth={1.75} />
+              <span className="text-[12px] font-normal">Request</span>
+            </>
+          ) : (
             <>
               <Sparkles size={15} strokeWidth={1.75} />
               <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Submit'}</span>
@@ -3347,10 +3336,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       isVisaFieldExpanded: expandedFieldKeys.has(`${lead.id}:visa`),
       isLocationFieldExpanded: expandedFieldKeys.has(`${lead.id}:location`),
       isLoadingPreview: loadingPostContentLeadId === lead.id,
-      isProcessingChat: processingChatLeadId === lead.id,
       isProcessingAskAI: processingAskAILeadId === lead.id,
       onPreview: handlePreviewPost,
-      onOpenChat: handleOpenPostChat,
       onAskAI: handleAskAI,
       onApply: (applyLead) => setApplyModalLead(applyLead),
       onToggleInlineBreakdown: toggleInlineBreakdown,
@@ -3549,28 +3536,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     >
                       <Share2 size={12} strokeWidth={2} />
                     </button>
-                    {lead.postSource === 'user_post' ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); void handleOpenPostChat(lead); }}
-                          disabled={processingChatLeadId === lead.id}
-                          title="Chat about this post"
-                          className={askButtonClass}
-                        >
-                          {processingChatLeadId === lead.id ? <span>...</span> : <MessageSquare size={12} strokeWidth={2} />}
-                        </button>
-                        {lead.kind === 'job' && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setApplyModalLead(lead); }}
-                            title="Submit a consultant to this job"
-                            className={askButtonClass}
-                          >
-                            <Send size={12} strokeWidth={2} />
-                          </button>
-                        )}
-                      </>
+                    {lead.kind === 'job' && lead.postSource === 'user_post' ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setApplyModalLead(lead); }}
+                        title="Submit a consultant to this job"
+                        className={askButtonClass}
+                      >
+                        <Send size={12} strokeWidth={2} />
+                      </button>
                     ) : isAskPending || isVerified ? (
                       <span
                         title={(() => {
@@ -3587,7 +3561,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); void handleAskAI(lead); }}
                         disabled={!canAskAI || processingAskAILeadId === lead.id}
-                        title={!lead.posterEmail ? 'No email' : 'Send Email'}
+                        title={!lead.posterEmail ? 'No email' : (lead.postSource === 'user_post' ? 'Request' : 'Send Email')}
                         className={askButtonClass}
                       >
                         {processingAskAILeadId === lead.id ? <span>...</span> : leadHotlist ? <FileText size={12} strokeWidth={2} /> : <Send size={12} strokeWidth={2} />}
