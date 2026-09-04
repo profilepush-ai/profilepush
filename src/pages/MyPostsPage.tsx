@@ -537,12 +537,14 @@ export default function MyPostsPage() {
         <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2">
           {isMobileViewport ? (
             <div className="flex shrink-0 flex-col gap-1.5 pb-2">
+              <div className="flex items-center gap-2">
+                {searchBoxEl}
+                {addPostButtonEl(false)}
+              </div>
               <div className="flex items-center gap-1">
                 {kindFilterButtonsEl(false, true)}
-                {searchBoxEl}
                 {statusFilterButtonsEl(false, true)}
               </div>
-              {addPostButtonEl(true)}
             </div>
           ) : (
             <div className="flex shrink-0 items-center gap-2 pb-2">

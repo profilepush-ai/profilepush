@@ -350,10 +350,12 @@ export default function TrackerPage() {
             );
 
             return isMobileViewport ? (
-              <div className="flex shrink-0 items-center gap-1 pb-2">
-                {kindFilterButtonsEl(true)}
+              <div className="flex shrink-0 flex-col gap-1.5 pb-2">
                 {searchBoxEl}
-                {statusFilterButtonsEl(true)}
+                <div className="flex items-center gap-1">
+                  {kindFilterButtonsEl(true)}
+                  {statusFilterButtonsEl(true)}
+                </div>
               </div>
             ) : (
               <div className="flex shrink-0 items-center gap-2 pb-2">
