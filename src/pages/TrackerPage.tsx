@@ -78,7 +78,7 @@ interface TurnRow {
   application_id: string;
   turn_index: number;
   question_text: string;
-  video_stream_uid: string | null;
+  video_r2_key: string | null;
   answered_at: string | null;
 }
 
@@ -210,7 +210,7 @@ export default function TrackerPage() {
       if (appIds.length > 0) {
         const { data: turns } = await supabase
           .from('job_application_screening_turns')
-          .select('id, application_id, turn_index, question_text, video_stream_uid, answered_at')
+          .select('id, application_id, turn_index, question_text, video_r2_key, answered_at')
           .in('application_id', appIds)
           .order('turn_index', { ascending: true });
         const grouped: Record<string, TurnRow[]> = {};

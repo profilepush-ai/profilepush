@@ -9,18 +9,19 @@
 // the JSON-parsing/retry helpers — this Worker orchestrates, it doesn't
 // duplicate the AI plumbing).
 //
-// NOTE: the Cloudflare Stream captions polling in handleAnswer() is built
-// from Cloudflare's documented API shapes (POST .../captions/{lang}/generate
-// returns {status: "inprogress"|"ready"|"error"}, GET .../captions/{lang}/vtt
-// returns WebVTT text) but has not been exercised against a real recorded
-// video yet — treat the first live run as the actual verification step.
+// Screening videos live permanently in R2 (VIDEO_BUCKET); Stream is used
+// only transiently, purely for its auto-captioning capability — every
+// upload is deleted from Stream (deleteStreamVideo) right after its
+// transcript is read. See handleSubmitAnswer().
 
 export interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  SUPABASE_ANON_KEY: string;
   CLOUDFLARE_ACCOUNT_ID: string;
   CLOUDFLARE_STREAM_API_TOKEN: string;
   SOCIAL_JOB_PARSER: Fetcher;
+  VIDEO_BUCKET: R2Bucket;
   CLOUDFLARE_WORKER_TOKEN?: string;
   MAX_SCREENING_TURNS?: string;
 }
@@ -28,7 +29,7 @@ export interface Env {
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -74,7 +75,7 @@ type TurnRow = {
   id: string;
   turn_index: number;
   question_text: string;
-  video_stream_uid: string | null;
+  video_r2_key: string | null;
   transcript: string | null;
   answered_at: string | null;
 };
@@ -172,7 +173,7 @@ async function sendScreeningCompletedMessage(env: Env, application: ApplicationR
 async function getTurns(env: Env, applicationId: string): Promise<TurnRow[]> {
   const res = await supabaseRest(
     env,
-    `job_application_screening_turns?application_id=eq.${applicationId}&select=id,turn_index,question_text,video_stream_uid,transcript,answered_at&order=turn_index.asc`,
+    `job_application_screening_turns?application_id=eq.${applicationId}&select=id,turn_index,question_text,video_r2_key,transcript,answered_at&order=turn_index.asc`,
   );
   if (!res.ok) return [];
   return (await res.json()) as TurnRow[];
@@ -214,6 +215,37 @@ async function requestDirectUpload(env: Env): Promise<{ uploadUrl: string; uid: 
   return { uploadUrl: payload.result.uploadURL, uid: payload.result.uid };
 }
 
+// Stream is now purely a transient captioning tool, not storage — R2 (via
+// the caller's Promise.all sibling) holds the permanent copy. Any failure
+// here degrades to no-transcript, exactly like a captions timeout does;
+// it must never fail the request, since the R2 write is what the candidate
+// actually depends on.
+async function uploadToStream(env: Env, buffer: ArrayBuffer, contentType: string): Promise<{ uid: string } | null> {
+  try {
+    const { uploadUrl, uid } = await requestDirectUpload(env);
+    const formData = new FormData();
+    formData.append("file", new Blob([buffer], { type: contentType }), "answer");
+    const uploadRes = await fetch(uploadUrl, { method: "POST", body: formData });
+    if (!uploadRes.ok) return null;
+    return { uid };
+  } catch {
+    return null;
+  }
+}
+
+// Best-effort cleanup once the transcript has been read — only ever called
+// after waitForCaptionsAndGetTranscript has already returned, never
+// concurrently with it. An unretried failure here just leaves one video
+// billing on Stream until a future cleanup sweep; it must not fail the
+// candidate's request.
+async function deleteStreamVideo(env: Env, uid: string): Promise<void> {
+  try {
+    await fetch(streamUrl(env, `/${uid}`), { method: "DELETE", headers: streamHeaders(env) });
+  } catch {
+    // best-effort — see comment above.
+  }
+}
+
 // Strips WebVTT formatting (header, cue numbers, timestamp lines) down to
 // plain spoken text for the AI prompt.
 function vttToPlainText(vtt: string): string {
@@ -232,10 +264,24 @@ function vttToPlainText(vtt: string): string {
 }
 
 async function waitForCaptionsAndGetTranscript(env: Env, videoUid: string, language = "en"): Promise<string> {
-  await fetch(streamUrl(env, `/${videoUid}/captions/${language}/generate`), {
-    method: "POST",
-    headers: streamHeaders(env),
-  });
+  // Stream needs a short processing window after upload before it will
+  // accept a captions/generate call — calling it immediately post-upload
+  // reliably 400s with error code 10067 ("video not ready to stream").
+  // Retry specifically on that code until Stream is ready or we give up;
+  // any other error means generation isn't going to happen, so bail.
+  let generateTriggered = false;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const genRes = await fetch(streamUrl(env, `/${videoUid}/captions/${language}/generate`), {
+      method: "POST",
+      headers: streamHeaders(env),
+    });
+    if (genRes.ok) { generateTriggered = true; break; }
+    const genPayload = await genRes.json().catch(() => null) as { errors?: Array<{ code?: number }> } | null;
+    const notReadyYet = genPayload?.errors?.some((e) => e.code === 10067);
+    if (!notReadyYet) break;
+    await sleep(1500);
+  }
+  if (!generateTriggered) return "";
 
   const maxAttempts = 15;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -253,8 +299,8 @@ async function waitForCaptionsAndGetTranscript(env: Env, videoUid: string, langu
     }
   }
   // Captions never became ready in time — the answer is still recorded
-  // (video_stream_uid is saved regardless), just without a transcript for
-  // the next question to build on.
+  // (video_r2_key is saved regardless), just without a transcript for the
+  // next question to build on.
   return "";
 }
 
@@ -328,33 +374,55 @@ async function handleUploadUrl(env: Env, token: string): Promise<Response> {
   }
 }
 
-async function handleAnswer(env: Env, token: string, req: Request): Promise<Response> {
+const MAX_VIDEO_BYTES = 25 * 1024 * 1024; // defense-in-depth ceiling; the client also enforces a duration/bitrate cap
+
+async function handleSubmitAnswer(env: Env, token: string, turnIndexParam: string, req: Request): Promise<Response> {
   const application = await getApplicationByToken(env, token);
   if (!application) return jsonResponse({ error: "Invalid or expired screening link" }, 404);
   if (application.status === "screening_completed") return jsonResponse({ error: "Screening already completed" }, 400);
 
-  const body = await req.json().catch(() => ({})) as { turnIndex?: number; videoUid?: string };
-  const turnIndex = Number(body.turnIndex);
-  const videoUid = String(body.videoUid ?? "").trim();
-  if (!Number.isInteger(turnIndex) || !videoUid) {
-    return jsonResponse({ error: "turnIndex and videoUid are required" }, 400);
-  }
+  const turnIndex = Number(turnIndexParam);
+  if (!Number.isInteger(turnIndex)) return jsonResponse({ error: "Invalid turn index" }, 400);
+
+  const contentType = req.headers.get("Content-Type") || "video/webm";
+  const buffer = await req.arrayBuffer();
+  if (buffer.byteLength === 0) return jsonResponse({ error: "Empty recording" }, 400);
+  if (buffer.byteLength > MAX_VIDEO_BYTES) return jsonResponse({ error: "Recording too large" }, 413);
 
   const turns = await getTurns(env, application.id);
   const turn = turns.find((t) => t.turn_index === turnIndex);
   if (!turn) return jsonResponse({ error: "Unknown turn" }, 404);
   if (turn.answered_at) return jsonResponse({ error: "This question was already answered" }, 400);
 
+  const r2Key = `screenings/${application.id}/${turn.id}`;
+
+  // R2 is the only durable copy of the video now, so a failed write must
+  // hard-fail the request (the candidate needs to know to retake). The
+  // Stream leg is wrapped in its own try/catch inside uploadToStream and
+  // is allowed to fail independently — video storage must never depend on
+  // Stream's health.
+  let streamResult: { uid: string } | null;
+  try {
+    const [, streamOutcome] = await Promise.all([
+      env.VIDEO_BUCKET.put(r2Key, buffer, { httpMetadata: { contentType } }),
+      uploadToStream(env, buffer, contentType),
+    ]);
+    streamResult = streamOutcome;
+  } catch {
+    return jsonResponse({ error: "Failed to store recording, please try again" }, 502);
+  }
+
+  const transcript = streamResult ? await waitForCaptionsAndGetTranscript(env, streamResult.uid) : "";
+  if (streamResult) await deleteStreamVideo(env, streamResult.uid);
+
   await supabaseRest(env, `job_application_screening_turns?id=eq.${turn.id}`, {
     method: "PATCH",
-    body: JSON.stringify({ video_stream_uid: videoUid }),
-  });
-
-  const transcript = await waitForCaptionsAndGetTranscript(env, videoUid);
-
-  await supabaseRest(env, `job_application_screening_turns?id=eq.${turn.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ transcript, answered_at: new Date().toISOString() }),
+    body: JSON.stringify({
+      video_r2_key: r2Key,
+      video_content_type: contentType,
+      transcript,
+      answered_at: new Date().toISOString(),
+    }),
   });
 
   const [jobRes] = await Promise.all([
@@ -394,18 +462,59 @@ async function handleAnswer(env: Env, token: string, req: Request): Promise<Resp
   return jsonResponse({ done: false, nextTurnIndex: turnIndex + 1, nextQuestion: result.question });
 }
 
+// Recruiter-facing video playback. Authorization is entirely delegated to
+// Postgres RLS: the caller's own Supabase JWT is passed straight through to
+// PostgREST (not the service-role key), so "can this recruiter already
+// SELECT this turn row" is the same question RLS already answers everywhere
+// else in this app — no separate auth logic to write or get wrong here.
+async function handleVideoPlayback(env: Env, turnId: string, req: Request): Promise<Response> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return jsonResponse({ error: "Unauthorized" }, 401);
+
+  const res = await fetch(
+    `${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/job_application_screening_turns?id=eq.${encodeURIComponent(turnId)}&select=video_r2_key,video_content_type`,
+    { headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: authHeader } },
+  );
+  if (!res.ok) return jsonResponse({ error: "Unauthorized" }, res.status === 401 ? 401 : 403);
+
+  const rows = (await res.json().catch(() => [])) as Array<{ video_r2_key: string | null; video_content_type: string | null }>;
+  const row = rows[0];
+  if (!row || !row.video_r2_key) return jsonResponse({ error: "Not found" }, 404);
+
+  const object = await env.VIDEO_BUCKET.get(row.video_r2_key);
+  if (!object) return jsonResponse({ error: "Not found" }, 404);
+
+  return new Response(object.body, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": row.video_content_type || "video/webm",
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
 
-    const url = new URL(req.url);
-    const match = url.pathname.match(/^\/screen\/([^/]+)(\/upload-url|\/answer)?\/?$/);
-    if (!match) return jsonResponse({ error: "Not found" }, 404);
-    const [, token, subroute] = match;
+    const path = new URL(req.url).pathname;
 
-    if (!subroute && req.method === "GET") return handleGetSession(env, token);
-    if (subroute === "/upload-url" && req.method === "POST") return handleUploadUrl(env, token);
-    if (subroute === "/answer" && req.method === "POST") return handleAnswer(env, token, req);
+    const sessionMatch = path.match(/^\/screen\/([^/]+)\/?$/);
+    if (sessionMatch && req.method === "GET") return handleGetSession(env, sessionMatch[1]);
+
+    // Kept as a harmless, unused rollback path through the R2 migration's
+    // verification window — the frontend no longer calls this once the new
+    // single-POST /answer/:turnIndex route ships. Safe to remove once that's
+    // confirmed live (see the R2 migration plan's delivery order).
+    const uploadUrlMatch = path.match(/^\/screen\/([^/]+)\/upload-url\/?$/);
+    if (uploadUrlMatch && req.method === "POST") return handleUploadUrl(env, uploadUrlMatch[1]);
+
+    const answerMatch = path.match(/^\/screen\/([^/]+)\/answer\/(\d+)\/?$/);
+    if (answerMatch && req.method === "POST") return handleSubmitAnswer(env, answerMatch[1], answerMatch[2], req);
+
+    const videoMatch = path.match(/^\/video\/([^/]+)\/?$/);
+    if (videoMatch && req.method === "GET") return handleVideoPlayback(env, videoMatch[1], req);
 
     return jsonResponse({ error: "Not found" }, 404);
   },

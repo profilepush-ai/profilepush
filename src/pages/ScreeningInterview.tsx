@@ -20,6 +20,8 @@ interface SessionState {
 type PageStatus = 'loading' | 'invalid' | 'active' | 'completed' | 'worker_not_configured';
 type RecordPhase = 'requesting_camera' | 'camera_denied' | 'preview' | 'recording' | 'recorded' | 'submitting';
 
+const MAX_RECORDING_MS = 90_000;
+
 function pickMimeType(): string {
   const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
   for (const type of candidates) {
@@ -42,6 +44,8 @@ export default function ScreeningInterview() {
   const chunksRef = useRef<Blob[]>([]);
   const recordedBlobRef = useRef<Blob | null>(null);
   const recordedUrlRef = useRef<string>('');
+  const recordedMimeTypeRef = useRef<string>('');
+  const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadSession = useCallback(async () => {
     if (!token) { setPageStatus('invalid'); return; }
@@ -89,6 +93,7 @@ export default function ScreeningInterview() {
   useEffect(() => () => {
     stopCamera();
     if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current);
+    if (maxDurationTimerRef.current) clearTimeout(maxDurationTimerRef.current);
   }, [stopCamera]);
 
   function startRecording() {
@@ -96,10 +101,16 @@ export default function ScreeningInterview() {
     if (!stream) return;
     chunksRef.current = [];
     const mimeType = pickMimeType();
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recordedMimeTypeRef.current = mimeType || 'video/webm';
+    const recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      videoBitsPerSecond: 800_000,
+      audioBitsPerSecond: 64_000,
+    });
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: mimeType || 'video/webm' });
+      if (maxDurationTimerRef.current) { clearTimeout(maxDurationTimerRef.current); maxDurationTimerRef.current = null; }
+      const blob = new Blob(chunksRef.current, { type: recordedMimeTypeRef.current });
       recordedBlobRef.current = blob;
       if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current);
       recordedUrlRef.current = URL.createObjectURL(blob);
@@ -109,6 +120,11 @@ export default function ScreeningInterview() {
     recorderRef.current = recorder;
     recorder.start();
     setRecordPhase('recording');
+    // Hard stop so a candidate can't record indefinitely — bounds storage
+    // cost per answer regardless of backend.
+    maxDurationTimerRef.current = setTimeout(() => {
+      if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+    }, MAX_RECORDING_MS);
   }
 
   function stopRecording() {
@@ -129,21 +145,10 @@ export default function ScreeningInterview() {
     setRecordPhase('submitting');
     setErrorMessage('');
     try {
-      const uploadUrlRes = await fetch(`${WORKER_URL}/screen/${encodeURIComponent(token)}/upload-url`, { method: 'POST' });
-      const uploadUrlPayload = (await uploadUrlRes.json()) as { uploadUrl?: string; uid?: string; error?: string };
-      if (!uploadUrlRes.ok || !uploadUrlPayload.uploadUrl || !uploadUrlPayload.uid) {
-        throw new Error(uploadUrlPayload.error || 'Could not start the video upload');
-      }
-
-      const formData = new FormData();
-      formData.append('file', blob, 'answer.webm');
-      const streamUploadRes = await fetch(uploadUrlPayload.uploadUrl, { method: 'POST', body: formData });
-      if (!streamUploadRes.ok) throw new Error('Video upload failed. Please try again.');
-
-      const answerRes = await fetch(`${WORKER_URL}/screen/${encodeURIComponent(token)}/answer`, {
+      const answerRes = await fetch(`${WORKER_URL}/screen/${encodeURIComponent(token)}/answer/${turnIndex}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ turnIndex, videoUid: uploadUrlPayload.uid }),
+        headers: { 'Content-Type': recordedMimeTypeRef.current || blob.type || 'video/webm' },
+        body: blob,
       });
       const answerPayload = (await answerRes.json()) as { done?: boolean; nextTurnIndex?: number; nextQuestion?: string; error?: string };
       if (!answerRes.ok) throw new Error(answerPayload.error || 'Could not process your answer');

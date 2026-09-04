@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Video, X } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
 import LogoSpinner from './LogoSpinner';
+
+const WORKER_URL = (import.meta.env.VITE_SCREENING_WORKER_URL ?? '').trim();
 
 export interface ScreeningTurn {
   id: string;
   turn_index: number;
   question_text: string;
-  video_stream_uid: string | null;
+  video_r2_key: string | null;
   answered_at: string | null;
 }
 
@@ -25,29 +27,48 @@ export default function ScreeningSubmissionModal({
 }) {
   const sorted = [...turns].sort((a, b) => a.turn_index - b.turn_index);
   const [index, setIndex] = useState(0);
-  const [embedUrlByTurnId, setEmbedUrlByTurnId] = useState<Record<string, string>>({});
+  const [videoUrlByTurnId, setVideoUrlByTurnId] = useState<Record<string, string>>({});
   const [loadingTurnId, setLoadingTurnId] = useState<string | null>(null);
 
   const current = sorted[index];
 
   useEffect(() => {
-    if (!current || !current.video_stream_uid || !current.answered_at) return;
-    if (embedUrlByTurnId[current.id]) return;
+    if (!current || !current.video_r2_key || !current.answered_at) return;
+    if (videoUrlByTurnId[current.id]) return;
     let cancelled = false;
     setLoadingTurnId(current.id);
-    void supabase.functions.invoke('get-application-video-embed', { body: { turnId: current.id } })
-      .then(({ data, error }) => {
+    void (async () => {
+      try {
+        const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
+        const res = await fetch(`${WORKER_URL}/video/${current.id}`, { headers: headers as Record<string, string> });
         if (cancelled) return;
-        setLoadingTurnId(null);
-        if (error || !data?.iframeUrl) {
-          showToast((data as { error?: string } | null)?.error || 'Could not load this video', 'error');
+        if (!res.ok) {
+          setLoadingTurnId(null);
+          showToast('Could not load this video', 'error');
           return;
         }
-        setEmbedUrlByTurnId((prev) => ({ ...prev, [current.id]: data.iframeUrl as string }));
-      });
+        const blob = await res.blob();
+        if (cancelled) return;
+        const objectUrl = URL.createObjectURL(blob);
+        setLoadingTurnId(null);
+        setVideoUrlByTurnId((prev) => ({ ...prev, [current.id]: objectUrl }));
+      } catch {
+        if (!cancelled) {
+          setLoadingTurnId(null);
+          showToast('Could not load this video', 'error');
+        }
+      }
+    })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id]);
+
+  // Blob object URLs are per-fetch and must be released once no longer
+  // shown, otherwise every turn viewed this session leaks memory.
+  useEffect(() => () => {
+    Object.values(videoUrlByTurnId).forEach((url) => URL.revokeObjectURL(url));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!current) return null;
 
@@ -75,13 +96,13 @@ export default function ScreeningSubmissionModal({
         </div>
 
         <div className="aspect-video w-full bg-black">
-          {current.answered_at && current.video_stream_uid ? (
-            embedUrlByTurnId[current.id] ? (
-              <iframe
-                src={embedUrlByTurnId[current.id]}
+          {current.answered_at && current.video_r2_key ? (
+            videoUrlByTurnId[current.id] ? (
+              <video
+                src={videoUrlByTurnId[current.id]}
                 className="h-full w-full"
-                allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-                allowFullScreen
+                controls
+                playsInline
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center">

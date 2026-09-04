@@ -7,6 +7,10 @@ workers_dev = true
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 CLOUDFLARE_ACCOUNT_ID = "53134bd8509f5b224717a1c7b6be0016"
 MAX_SCREENING_TURNS = "3"
+# Public anon key (safe to commit — same value baked into src/lib/supabase.ts).
+# Used to pass through the recruiter's own JWT to PostgREST on the video
+# playback route, so Postgres RLS (not this Worker) decides who can watch.
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5od3FjcXp2b3RnZG5ndHh1bHdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NjY3NDQsImV4cCI6MjA5NjQ0Mjc0NH0.DCPM9hZwqEsfmStT1beaUtp3P-uDVkCZL8xv0ZFpCss"
 
 # Calls social-job-parser via a service binding rather than its public
 # workers.dev URL — a Worker-to-Worker fetch between two *.workers.dev
@@ -16,6 +20,12 @@ MAX_SCREENING_TURNS = "3"
 [[services]]
 binding = "SOCIAL_JOB_PARSER"
 service = "profilepush-social-job-parser"
+
+# Screening videos: R2 is the permanent store; Stream is used only
+# transiently for auto-captioning, then the Stream copy is deleted.
+[[r2_buckets]]
+binding = "VIDEO_BUCKET"
+bucket_name = "profilepush-screening-videos"
 
 # Secrets (set via `wrangler secret put <NAME>`, not stored here):
 #   SUPABASE_SERVICE_ROLE_KEY   — same value used by the other workers in this repo
