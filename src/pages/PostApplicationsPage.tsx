@@ -14,6 +14,7 @@ interface ApplicationRow {
   candidate_phone: string;
   resume_url: string;
   resume_file_name: string;
+  recruiter_note: string;
   status: string;
   ai_summary: string | null;
   ai_score: number | null;
@@ -195,9 +196,14 @@ export default function PostApplicationsPage() {
                       <Fragment key={app.id}>
                         <tr className={`border-b ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-100 hover:bg-gray-50'}`}>
                           <td className="px-3 py-2.5 align-top">
-                            <p className="font-semibold text-gray-900 dark:text-slate-100">{app.candidate_name}</p>
-                            <p className="text-[11px] text-gray-400 dark:text-[#94A3B8]">{app.candidate_email}</p>
+                            <p className="font-semibold text-gray-900 dark:text-slate-100">{app.candidate_name || 'Unnamed candidate'}</p>
+                            {app.candidate_email && <p className="text-[11px] text-gray-400 dark:text-[#94A3B8]">{app.candidate_email}</p>}
                             {app.candidate_phone && <p className="text-[11px] text-gray-400 dark:text-[#94A3B8]">{app.candidate_phone}</p>}
+                            {app.recruiter_note && (
+                              <p className="mt-1 max-w-[220px] truncate text-[11px] italic text-gray-500 dark:text-[#94A3B8]" title={app.recruiter_note}>
+                                “{app.recruiter_note}”
+                              </p>
+                            )}
                           </td>
                           <td className="px-3 py-2.5 align-top">
                             <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[app.status] ?? STATUS_STYLES.submitted}`}>

@@ -79,7 +79,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: application, error: appError } = await supabase
       .from("job_applications")
-      .select("id, social_job_id, candidate_name, candidate_email, resume_url, status")
+      .select("id, social_job_id, candidate_name, candidate_email, resume_url, status, resume_parsed_json")
       .eq("id", applicationId)
       .maybeSingle();
     if (appError) return respond({ error: appError.message }, 500);
@@ -98,37 +98,45 @@ Deno.serve(async (req: Request) => {
     const jobTitle = asString(job?.job_title) || "this role";
     const jobDescription = asString(job?.job_description) || asString(job?.post_content);
 
-    // Parse the resume — best-effort; a parse failure shouldn't block
-    // sending the candidate their screening link.
-    let resumeParsed: Record<string, unknown> | null = null;
-    try {
-      const resumeResponse = await fetch(application.resume_url);
-      if (resumeResponse.ok) {
-        const resumeBlob = await resumeResponse.blob();
-        const filename = application.resume_url.split("/").pop() || "resume.pdf";
-        const formData = new FormData();
-        formData.append("resume", resumeBlob, filename);
-        const parseResponse = await fetch(`${supabaseUrl.replace(/\/$/, "")}/functions/v1/parse-resume`, {
-          method: "POST",
-          body: formData,
-        });
-        if (parseResponse.ok) {
-          const parsed = await parseResponse.json();
-          // parse-resume returns 202 {queued:true, job_id} when every LLM
-          // provider was temporarily unavailable and it fell back to a
-          // background queue instead of parsing inline — that stub has none
-          // of the real resume fields, so treat it the same as "no parse"
-          // rather than storing it as if it were the parsed resume.
-          if (parsed && !parsed.queued) resumeParsed = parsed;
-        } else {
-          console.error("process-job-application: parse-resume failed", parseResponse.status, await parseResponse.text());
+    // The Apply modal parses the resume itself (to derive candidate
+    // name/email before submitting) and passes the result straight into
+    // submit_job_application — reuse it here rather than parsing again.
+    let resumeParsed: Record<string, unknown> | null =
+      (application.resume_parsed_json as Record<string, unknown> | null) ?? null;
+
+    if (!resumeParsed) {
+      // Fallback for applications submitted without a pre-parsed resume —
+      // best-effort; a parse failure shouldn't block sending the candidate
+      // their screening link.
+      try {
+        const resumeResponse = await fetch(application.resume_url);
+        if (resumeResponse.ok) {
+          const resumeBlob = await resumeResponse.blob();
+          const filename = application.resume_url.split("/").pop() || "resume.pdf";
+          const formData = new FormData();
+          formData.append("resume", resumeBlob, filename);
+          const parseResponse = await fetch(`${supabaseUrl.replace(/\/$/, "")}/functions/v1/parse-resume`, {
+            method: "POST",
+            body: formData,
+          });
+          if (parseResponse.ok) {
+            const parsed = await parseResponse.json();
+            // parse-resume returns 202 {queued:true, job_id} when every LLM
+            // provider was temporarily unavailable and it fell back to a
+            // background queue instead of parsing inline — that stub has none
+            // of the real resume fields, so treat it the same as "no parse"
+            // rather than storing it as if it were the parsed resume.
+            if (parsed && !parsed.queued) resumeParsed = parsed;
+          } else {
+            console.error("process-job-application: parse-resume failed", parseResponse.status, await parseResponse.text());
+          }
         }
+      } catch (error) {
+        console.error("process-job-application: resume fetch/parse errored", error);
       }
-    } catch (error) {
-      console.error("process-job-application: resume fetch/parse errored", error);
     }
 
-    if (resumeParsed) {
+    if (resumeParsed && !application.resume_parsed_json) {
       await supabase.from("job_applications").update({ resume_parsed_json: resumeParsed }).eq("id", applicationId);
     }
 
