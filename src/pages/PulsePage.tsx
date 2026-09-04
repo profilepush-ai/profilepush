@@ -795,6 +795,20 @@ function orderPulseBreakdownItems<T extends { key: string }>(items: T[]) {
   });
 }
 
+// AI-populated fields (radar_match_results job_details, extracted_* columns)
+// are occasionally malformed — a nested object instead of a plain number —
+// which previously rendered as literal "[object Object]" text once
+// string-interpolated. Every experienceYears/hourlyRate mapping site below
+// routes raw values through this instead of trusting the declared type.
+function safeNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed !== '' && Number.isFinite(Number(trimmed))) return Number(trimmed);
+  }
+  return null;
+}
+
 function normalizeBreakdownDisplayValue(value: string | null | undefined) {
   const cleaned = (value ?? '').trim();
   const normalized = cleaned.toLowerCase().replace(/\s+/g, ' ');
@@ -3829,10 +3843,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         seniority: '',
         salaryRange: '',
         skills: Array.isArray(row.core_skills) ? row.core_skills : [],
-        experienceYears: row.years_experience ?? null,
+        experienceYears: safeNumber(row.years_experience),
         visaTypes: row.visa_type ? [row.visa_type] : [],
-        hourlyRate: (row.hourly_rate_min != null || row.hourly_rate_max != null)
-          ? `$${row.hourly_rate_min ?? '?'}–$${row.hourly_rate_max ?? '?'}/hr`
+        hourlyRate: (safeNumber(row.hourly_rate_min) != null || safeNumber(row.hourly_rate_max) != null)
+          ? `$${safeNumber(row.hourly_rate_min) ?? '?'}–$${safeNumber(row.hourly_rate_max) ?? '?'}/hr`
           : '',
         workType: row.work_type?.trim() || '',
         postSource: normalizePostSource(row.post_source),
@@ -3913,10 +3927,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         seniority: row.seniority_level?.trim() || '',
         salaryRange: row.salary_range?.trim() || '',
         skills: Array.isArray(row.extracted_skills) ? row.extracted_skills : [],
-        experienceYears: row.extracted_experience_years ?? null,
+        experienceYears: safeNumber(row.extracted_experience_years),
         visaTypes: Array.isArray(row.extracted_visa_types) ? row.extracted_visa_types : [],
-        hourlyRate: (row.extracted_hourly_rate_min != null || row.extracted_hourly_rate_max != null)
-          ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
+        hourlyRate: (safeNumber(row.extracted_hourly_rate_min) != null || safeNumber(row.extracted_hourly_rate_max) != null)
+          ? `$${safeNumber(row.extracted_hourly_rate_min) ?? '?'}–$${safeNumber(row.extracted_hourly_rate_max) ?? '?'}/hr`
           : '',
         workType: '',
         postSource: normalizePostSource(row.post_source),
@@ -4013,10 +4027,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         seniority: row.seniority_level?.trim() || '',
         salaryRange: row.salary_range?.trim() || '',
         skills: Array.isArray(row.extracted_skills) ? row.extracted_skills : [],
-        experienceYears: row.extracted_experience_years ?? null,
+        experienceYears: safeNumber(row.extracted_experience_years),
         visaTypes: Array.isArray(row.extracted_visa_types) ? row.extracted_visa_types : [],
-        hourlyRate: (row.extracted_hourly_rate_min != null || row.extracted_hourly_rate_max != null)
-          ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
+        hourlyRate: (safeNumber(row.extracted_hourly_rate_min) != null || safeNumber(row.extracted_hourly_rate_max) != null)
+          ? `$${safeNumber(row.extracted_hourly_rate_min) ?? '?'}–$${safeNumber(row.extracted_hourly_rate_max) ?? '?'}/hr`
           : '',
         workType: '',
         postSource: normalizePostSource(row.post_source),
@@ -4686,14 +4700,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           skills: Array.isArray((row as SocialJobRow & Record<string, unknown>).core_skills)
             ? ((row as SocialJobRow & Record<string, unknown>).core_skills as string[])
             : (Array.isArray(row.extracted_skills) ? row.extracted_skills : []),
-          experienceYears: (row as SocialJobRow & Record<string, unknown>).years_experience ?? row.extracted_experience_years ?? null,
+          experienceYears: safeNumber((row as SocialJobRow & Record<string, unknown>).years_experience) ?? safeNumber(row.extracted_experience_years),
           visaTypes: Array.isArray((row as SocialJobRow & Record<string, unknown>).visa_types)
             ? ((row as SocialJobRow & Record<string, unknown>).visa_types as string[])
             : (Array.isArray(row.extracted_visa_types) ? row.extracted_visa_types : []),
-          hourlyRate: ((row as SocialJobRow & Record<string, unknown>).hourly_rate_min != null || (row as SocialJobRow & Record<string, unknown>).hourly_rate_max != null)
-            ? `$${(row as SocialJobRow & Record<string, unknown>).hourly_rate_min ?? (row.extracted_hourly_rate_min ?? '?')}–$${(row as SocialJobRow & Record<string, unknown>).hourly_rate_max ?? (row.extracted_hourly_rate_max ?? '?')}/hr`
-            : ((row.extracted_hourly_rate_min || row.extracted_hourly_rate_max)
-              ? `$${row.extracted_hourly_rate_min ?? '?'}–$${row.extracted_hourly_rate_max ?? '?'}/hr`
+          hourlyRate: (safeNumber((row as SocialJobRow & Record<string, unknown>).hourly_rate_min) != null || safeNumber((row as SocialJobRow & Record<string, unknown>).hourly_rate_max) != null)
+            ? `$${safeNumber((row as SocialJobRow & Record<string, unknown>).hourly_rate_min) ?? safeNumber(row.extracted_hourly_rate_min) ?? '?'}–$${safeNumber((row as SocialJobRow & Record<string, unknown>).hourly_rate_max) ?? safeNumber(row.extracted_hourly_rate_max) ?? '?'}/hr`
+            : ((safeNumber(row.extracted_hourly_rate_min) != null || safeNumber(row.extracted_hourly_rate_max) != null)
+              ? `$${safeNumber(row.extracted_hourly_rate_min) ?? '?'}–$${safeNumber(row.extracted_hourly_rate_max) ?? '?'}/hr`
               : ''),
           consultantCount: hotlistSource && Number.isInteger(Number(hotlistSource.consultant_count))
             ? Number(hotlistSource.consultant_count)
