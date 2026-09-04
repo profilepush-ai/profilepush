@@ -9,6 +9,7 @@ const PRICING: Record<string, { input: number; output: number }> = {
   "gemini-2.0-flash":       { input: 0.075 / 1e6, output: 0.30 / 1e6 },
   "gemini-1.5-flash":       { input: 0.075 / 1e6, output: 0.30 / 1e6 },
   "gpt-4o-mini":            { input: 0.15 / 1e6,  output: 0.60 / 1e6 },
+  "llama-3.1-8b-instruct-fp8": { input: 0.152 / 1e6, output: 0.287 / 1e6 },
 };
 
 export function computeCost(model: string, inputTokens: number, outputTokens: number): number {

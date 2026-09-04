@@ -113,7 +113,13 @@ Deno.serve(async (req: Request) => {
           body: formData,
         });
         if (parseResponse.ok) {
-          resumeParsed = await parseResponse.json();
+          const parsed = await parseResponse.json();
+          // parse-resume returns 202 {queued:true, job_id} when every LLM
+          // provider was temporarily unavailable and it fell back to a
+          // background queue instead of parsing inline — that stub has none
+          // of the real resume fields, so treat it the same as "no parse"
+          // rather than storing it as if it were the parsed resume.
+          if (parsed && !parsed.queued) resumeParsed = parsed;
         } else {
           console.error("process-job-application: parse-resume failed", parseResponse.status, await parseResponse.text());
         }

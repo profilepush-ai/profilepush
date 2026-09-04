@@ -1,12 +1,19 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { ZipReader, BlobReader, TextWriter } from "npm:@zip.js/zip.js@2";
+import { getDocumentProxy, extractText } from "npm:unpdf@1.8.1";
 import {
-  computeCost, geminiUrl, fetchWithRetry,
-  isCircuitOpen, recordCircuitSuccess, recordCircuitFailure,
+  computeCost, isCircuitOpen, recordCircuitSuccess, recordCircuitFailure,
   enqueueJob,
 } from "../_shared/llm-router.ts";
 import { getPromptOverride } from "../_shared/prompts.ts";
+
+// Extracts structured candidate data from an uploaded resume. Text extraction
+// (PDF/DOCX/RTF/TXT -> plain text) happens here in Deno; the actual JSON
+// extraction runs on Cloudflare Workers AI via the social-job-parser Worker's
+// /parse-resume-text route (it already owns the AI binding and the
+// JSON-parsing/retry helpers this needs — this function extracts text and
+// orchestrates, it doesn't call any LLM directly).
 
 async function extractTextFromDocx(arrayBuffer: ArrayBuffer): Promise<string> {
   const blob = new Blob([arrayBuffer]);
@@ -35,77 +42,37 @@ async function extractTextFromDocx(arrayBuffer: ArrayBuffer): Promise<string> {
     .trim();
 }
 
+async function extractTextFromPdf(arrayBuffer: ArrayBuffer): Promise<string> {
+  const pdf = await getDocumentProxy(new Uint8Array(arrayBuffer));
+  const { text } = await extractText(pdf, { mergePages: true });
+  return (Array.isArray(text) ? text.join("\n") : text).trim();
+}
+
+// RTF is mostly readable text wrapped in control words/groups — this is a
+// best-effort strip (not a full RTF parser), sufficient for extracting the
+// visible text most resume-formatted RTF files contain.
+function extractTextFromRtf(raw: string): string {
+  return raw
+    .replace(/\\par[d]?\b/g, "\n")
+    .replace(/\\tab\b/g, "\t")
+    .replace(/\{\\[^{}]*\}/g, "")
+    .replace(/\\'[0-9a-fA-F]{2}/g, "")
+    .replace(/\\[a-zA-Z]+-?\d*\s?/g, "")
+    .replace(/[{}]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-From-Queue",
 };
 
-// Models tried in order; first non-open-circuit wins
-const GEMINI_MODELS = ["gemini-3.1-pro-preview", "gemini-2.0-flash", "gemini-1.5-flash"];
-
-const RESPONSE_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    candidate_name:   { type: "STRING" },
-    target_role:      { type: "STRING" },
-    location:         { type: "STRING" },
-    city:             { type: "STRING" },
-    state:            { type: "STRING" },
-    zip_code:         { type: "STRING" },
-    country:          { type: "STRING" },
-    phone:            { type: "STRING" },
-    email:            { type: "STRING" },
-    linkedin_url:     { type: "STRING" },
-    github_url:       { type: "STRING" },
-    portfolio_url:    { type: "STRING" },
-    years_experience: { type: "INTEGER" },
-    core_skills:      { type: "ARRAY", items: { type: "STRING" } },
-    education: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          institution: { type: "STRING" }, degree: { type: "STRING" },
-          field:       { type: "STRING" }, start_year: { type: "STRING" },
-          end_year:    { type: "STRING" }, gpa: { type: "STRING" },
-        },
-      },
-    },
-    experience: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          company:     { type: "STRING" }, title: { type: "STRING" },
-          location:    { type: "STRING" }, start_date: { type: "STRING" },
-          end_date:    { type: "STRING" }, current: { type: "BOOLEAN" },
-          description: { type: "STRING" },
-        },
-      },
-    },
-  },
-  required: [
-    "candidate_name", "target_role", "location", "city", "state",
-    "zip_code", "country", "phone", "email", "linkedin_url",
-    "github_url", "portfolio_url", "years_experience", "core_skills",
-    "education", "experience",
-  ],
-};
-
-const SYSTEM_INSTRUCTION =
-  "You are an expert ATS data extraction engine. Your objective is to parse raw, " +
-  "unstructured resume content and extract the candidate's information into a strict JSON format. " +
-  "Output ONLY valid JSON matching the exact schema requested. " +
-  "If a specific piece of information cannot be found, return an empty string for string fields, " +
-  "0 for integer fields, false for boolean fields, and an empty array for array fields. " +
-  "Do not guess, hallucinate, or infer data that is not explicitly written, except for 'target_role' " +
-  "which should be inferred from the most recent job title or career summary objective. " +
-  "For core_skills, extract all distinct technical skills, tools, languages, frameworks, and " +
-  "certifications mentioned anywhere in the resume.";
+const CLOUDFLARE_AI_MODEL_LABEL = "llama-3.1-8b-instruct-fp8";
 
 const DEFAULT_USER_INSTRUCTION =
-  "Extract the candidate profile from the attached resume according to your system instructions and strict JSON schema.";
+  "Extract the candidate profile from the resume text below according to your system instructions and strict JSON schema.";
 
 function jsonError(message: string, status = 400) {
   return new Response(JSON.stringify({ error: message }), {
@@ -119,8 +86,9 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-  if (!GEMINI_API_KEY) return jsonError("GEMINI_API_KEY secret is not configured", 500);
+  const workerUrl = (Deno.env.get("CLOUDFLARE_WORKER_URL") ?? "").trim();
+  const workerToken = (Deno.env.get("CLOUDFLARE_WORKER_TOKEN") ?? "").trim();
+  if (!workerUrl) return jsonError("CLOUDFLARE_WORKER_URL secret is not configured", 500);
 
   const fromQueue = req.headers.get("X-From-Queue") === "true";
 
@@ -130,8 +98,8 @@ Deno.serve(async (req: Request) => {
   );
 
   const promptOverride = await getPromptOverride(supabase, "parse-resume");
-  const systemInstruction = promptOverride?.systemPrompt?.trim() || SYSTEM_INSTRUCTION;
-  const userInstruction = promptOverride?.userPrompt?.trim() || DEFAULT_USER_INSTRUCTION;
+  const systemPrompt = promptOverride?.systemPrompt?.trim() || undefined;
+  const userPrompt = promptOverride?.userPrompt?.trim() || DEFAULT_USER_INSTRUCTION;
 
   // Resolve user/account from auth header
   let userId: string | null = null;
@@ -170,21 +138,28 @@ Deno.serve(async (req: Request) => {
   }
 
   // Accept both multipart/form-data (UI upload) and application/json (queue processor)
-  let base64: string;
-  let filename: string;
-  let fileIsText = false;
   let plainText = "";
+  let filename = "resume";
   const contentType = req.headers.get("content-type") ?? "";
 
-  const SUPPORTED_EXTENSIONS = [".pdf", ".doc", ".docx", ".rtf", ".txt"];
+  const SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".rtf", ".txt"];
 
   if (contentType.includes("application/json")) {
     const body = await req.json().catch(() => ({}));
-    base64    = body.base64_pdf ?? "";
-    filename  = body.filename   ?? "resume.pdf";
-    plainText = body.plain_text ?? "";
-    fileIsText = !!plainText || !filename.toLowerCase().endsWith(".pdf");
-    if (!base64 && !plainText) return jsonError("Missing base64_pdf or plain_text in JSON body");
+    filename = body.filename ?? "resume.pdf";
+    if (typeof body.plain_text === "string" && body.plain_text.trim()) {
+      plainText = body.plain_text;
+    } else if (typeof body.base64_pdf === "string" && body.base64_pdf) {
+      try {
+        const binary = atob(body.base64_pdf);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        plainText = await extractTextFromPdf(bytes.buffer);
+      } catch (error) {
+        return jsonError(`Failed to extract text from queued PDF: ${(error as Error).message}`, 422);
+      }
+    }
+    if (!plainText) return jsonError("Missing plain_text or base64_pdf in JSON body");
   } else {
     let formData: FormData;
     try { formData = await req.formData(); }
@@ -194,138 +169,64 @@ Deno.serve(async (req: Request) => {
     if (!file) return jsonError("Missing 'resume' field in form data");
 
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
+    if (ext === ".doc") {
+      return jsonError("Legacy .doc files aren't supported — please upload as PDF, DOCX, RTF, or TXT.");
+    }
     if (!SUPPORTED_EXTENSIONS.includes(ext)) {
-      return jsonError("Unsupported file type. Please upload PDF, Word (.doc/.docx), RTF, or TXT files.");
+      return jsonError("Unsupported file type. Please upload PDF, Word (.docx), RTF, or TXT files.");
     }
 
     const arrayBuffer = await file.arrayBuffer();
-
-    if (ext === ".pdf") {
-      const uint8 = new Uint8Array(arrayBuffer);
-      let binary = "";
-      for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
-      base64   = btoa(binary);
-      filename = file.name;
-    } else if (ext === ".docx") {
-      // Extract text from .docx (zip of XML)
-      try {
-        plainText = await extractTextFromDocx(arrayBuffer);
-      } catch {
-        return jsonError("Failed to extract text from .docx file. The file may be corrupted.");
-      }
-      if (!plainText) return jsonError("Could not extract any text from the .docx file.");
-      base64 = "";
-      filename = file.name;
-      fileIsText = true;
-    } else if (ext === ".txt") {
-      plainText = new TextDecoder().decode(arrayBuffer);
-      base64 = "";
-      filename = file.name;
-      fileIsText = true;
-    } else {
-      // .doc, .rtf — send as inline binary (Gemini supports these via PDF-like handling)
-      const uint8 = new Uint8Array(arrayBuffer);
-      let binary = "";
-      for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
-      base64   = btoa(binary);
-      filename = file.name;
-      fileIsText = true;
-    }
-  }
-
-  // Build Gemini payload based on file type
-  let geminiPayload: Record<string, unknown>;
-
-  if (!fileIsText || (base64 && filename.toLowerCase().endsWith(".pdf"))) {
-    // PDF: send as inline binary
-    geminiPayload = {
-      system_instruction: { parts: [{ text: systemInstruction }] },
-      contents: [{
-        parts: [
-          { text: userInstruction },
-          { inline_data: { mime_type: "application/pdf", data: base64 } },
-        ],
-      }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-        temperature: 0.1,
-      },
-    };
-  } else if (plainText) {
-    // Plain text content (from .txt or pasted text)
-    geminiPayload = {
-      system_instruction: { parts: [{ text: systemInstruction }] },
-      contents: [{
-        parts: [
-          { text: `${userInstruction}\n\n--- RESUME TEXT ---\n${plainText}\n--- END ---` },
-        ],
-      }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-        temperature: 0.1,
-      },
-    };
-  } else {
-    // .docx/.doc/.rtf: send as inline binary with appropriate mime type
-    const mimeMap: Record<string, string> = {
-      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ".doc": "application/msword",
-      ".rtf": "application/rtf",
-    };
-    const ext = "." + filename.split(".").pop()?.toLowerCase();
-    const mimeType = mimeMap[ext] || "application/octet-stream";
-
-    geminiPayload = {
-      system_instruction: { parts: [{ text: systemInstruction }] },
-      contents: [{
-        parts: [
-          { text: userInstruction },
-          { inline_data: { mime_type: mimeType, data: base64 } },
-        ],
-      }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-        temperature: 0.1,
-      },
-    };
-  }
-
-  // ── Try each Gemini model in order ──────────────────────────────────────────
-  let geminiData: Record<string, unknown> | null = null;
-  let usedModel = "";
-  let lastError = "All LLM providers unavailable";
-
-  for (const model of GEMINI_MODELS) {
-    if (await isCircuitOpen(supabase, "gemini", model)) continue;
+    filename = file.name;
 
     try {
-      const res = await fetchWithRetry(
-        geminiUrl(model, GEMINI_API_KEY),
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiPayload) },
-      );
-
-      if (!res.ok) {
-        const errText = await res.text();
-        await recordCircuitFailure(supabase, "gemini", model);
-        lastError = `Gemini ${model} error ${res.status}: ${errText.slice(0, 200)}`;
-        continue;
+      if (ext === ".pdf") {
+        plainText = await extractTextFromPdf(arrayBuffer);
+      } else if (ext === ".docx") {
+        plainText = await extractTextFromDocx(arrayBuffer);
+      } else if (ext === ".rtf") {
+        plainText = extractTextFromRtf(new TextDecoder().decode(arrayBuffer));
+      } else {
+        plainText = new TextDecoder().decode(arrayBuffer);
       }
+    } catch (error) {
+      return jsonError(`Failed to extract text from the ${ext} file: ${(error as Error).message}`);
+    }
 
-      await recordCircuitSuccess(supabase, "gemini", model);
-      geminiData = await res.json() as Record<string, unknown>;
-      usedModel  = model;
-      break;
+    if (!plainText.trim()) return jsonError(`Could not extract any text from the ${ext} file.`);
+  }
+
+  // ── Call Cloudflare Workers AI via social-job-parser ────────────────────────
+  let parsed: Record<string, unknown> | null = null;
+  let lastError = "Resume parsing service unavailable";
+
+  if (!(await isCircuitOpen(supabase, "cloudflare", CLOUDFLARE_AI_MODEL_LABEL))) {
+    try {
+      const res = await fetch(`${workerUrl.replace(/\/$/, "")}/parse-resume-text`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(workerToken ? { Authorization: `Bearer ${workerToken}` } : {}),
+        },
+        body: JSON.stringify({ resumeText: plainText, systemPrompt, userPrompt }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (res.ok) {
+        parsed = await res.json();
+        await recordCircuitSuccess(supabase, "cloudflare", CLOUDFLARE_AI_MODEL_LABEL);
+      } else {
+        const errText = await res.text();
+        await recordCircuitFailure(supabase, "cloudflare", CLOUDFLARE_AI_MODEL_LABEL);
+        lastError = `Resume parser error ${res.status}: ${errText.slice(0, 200)}`;
+      }
     } catch (err) {
-      await recordCircuitFailure(supabase, "gemini", model);
+      await recordCircuitFailure(supabase, "cloudflare", CLOUDFLARE_AI_MODEL_LABEL);
       lastError = err instanceof Error ? err.message : String(err);
     }
   }
 
-  // ── All models failed ────────────────────────────────────────────────────────
-  if (!geminiData) {
+  // ── Parsing unavailable ──────────────────────────────────────────────────────
+  if (!parsed) {
     if (fromQueue) {
       // Queue processor must not re-enqueue; surface the error directly
       return jsonError(`Parse failed: ${lastError}`, 503);
@@ -334,7 +235,7 @@ Deno.serve(async (req: Request) => {
       const jobId = await enqueueJob(
         supabase,
         "parse-resume",
-        { base64_pdf: base64, filename, plain_text: plainText || undefined },
+        { plain_text: plainText, filename },
         accountId,
         userId,
       );
@@ -347,36 +248,25 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  const rawText = (geminiData?.candidates as Record<string, unknown>[])?.[0]
-    ?.content as Record<string, unknown>;
-  const text: string = (rawText?.parts as Record<string, unknown>[])?.[0]?.text as string ?? "";
-
-  if (!text) return jsonError("Gemini returned no content", 502);
-
-  // Log usage (fire-and-forget)
+  // Log usage (fire-and-forget) — Workers AI pricing is per-token same as
+  // before, just a different provider/model.
   try {
-    const usage = (geminiData?.usageMetadata ?? {}) as Record<string, number>;
-    const promptTokens     = usage.promptTokenCount     ?? 0;
-    const completionTokens = usage.candidatesTokenCount ?? 0;
-    const totalTokens      = usage.totalTokenCount      ?? 0;
-    const costUsd          = computeCost(usedModel, promptTokens, completionTokens);
+    const promptTokens = Math.ceil(plainText.length / 4);
+    const completionTokens = Math.ceil(JSON.stringify(parsed).length / 4);
+    const costUsd = computeCost(CLOUDFLARE_AI_MODEL_LABEL, promptTokens, completionTokens);
 
     await supabase.from("api_usage_log").insert({
-      user_id:           userId,
-      account_id:        accountId,
-      function_name:     "parse-resume",
-      provider:          "gemini",
-      model:             usedModel,
-      prompt_tokens:     promptTokens,
+      user_id: userId,
+      account_id: accountId,
+      function_name: "parse-resume",
+      provider: "cloudflare",
+      model: CLOUDFLARE_AI_MODEL_LABEL,
+      prompt_tokens: promptTokens,
       completion_tokens: completionTokens,
-      total_tokens:      totalTokens,
-      cost_usd:          costUsd,
+      total_tokens: promptTokens + completionTokens,
+      cost_usd: costUsd,
     });
   } catch { /* logging must never break the main response */ }
-
-  let parsed: Record<string, unknown>;
-  try { parsed = JSON.parse(text); }
-  catch { return jsonError("Gemini response was not valid JSON", 502); }
 
   if (Array.isArray(parsed.core_skills)) {
     parsed.core_skills = (parsed.core_skills as string[]).join(", ");

@@ -91,6 +91,12 @@ type GenerateScreeningQuestionRequest = {
   maxTurns?: number;
 };
 
+type ParseResumeTextRequest = {
+  resumeText?: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+};
+
 const SCREENING_QUESTION_SYSTEM_PROMPT = "You are an AI recruiter conducting a short, adaptive video screening interview for a staffing job requirement. Ask ONE focused, specific question at a time to verify the candidate genuinely has the experience their resume claims and that they fit this specific job's requirements — dig into specifics (a real example, a number, a tool, a decision they made) rather than generic questions a rehearsed answer could dodge. Each new question should build on what the candidate just said, not repeat ground already covered. Keep every question to one or two sentences, plain spoken language (this will be read aloud/answered on camera), no markdown. Respond with strict JSON only.";
 
 function buildScreeningQuestionPrompt(
@@ -411,6 +417,120 @@ function parseModelText(raw: unknown): unknown {
   }
 }
 
+const RESUME_PARSE_SYSTEM_PROMPT =
+  "You are an expert ATS data extraction engine. Your objective is to parse raw, " +
+  "unstructured resume text and extract the candidate's information into a strict JSON object. " +
+  "Output ONLY valid JSON matching the exact schema requested, no markdown, no explanation. " +
+  "If a specific piece of information cannot be found, return an empty string for string fields, " +
+  "0 for the years_experience field, and an empty array for array fields. " +
+  "Do not guess, hallucinate, or infer data that is not explicitly written, except for 'target_role' " +
+  "which should be inferred from the most recent job title or career summary objective. " +
+  "For core_skills, extract all distinct technical skills, tools, languages, frameworks, and " +
+  "certifications mentioned anywhere in the resume. " +
+  "IMPORTANT: candidate_name is almost always the very first line of the resume (a person's " +
+  "full name, not a section heading) — extract it even if no explicit 'Name:' label is present. " +
+  "Similarly, always scan for an Education section (institution, degree, field of study) and a " +
+  "Work Experience/Employment section (company, job title, dates) even when they aren't the first " +
+  "thing in the document — these are core resume sections, not optional details.";
+
+const RESUME_PARSE_DEFAULT_USER_PROMPT = `Extract the candidate profile from the resume text below into exactly this JSON shape (all keys required):
+{"candidate_name": string, "target_role": string, "location": string, "city": string, "state": string, "zip_code": string, "country": string, "phone": string, "email": string, "linkedin_url": string, "github_url": string, "portfolio_url": string, "years_experience": number, "core_skills": string[], "education": [{"institution": string, "degree": string, "field": string, "start_year": string, "end_year": string, "gpa": string}], "experience": [{"company": string, "title": string, "location": string, "start_date": string, "end_date": string, "current": boolean, "description": string}]}`;
+
+// Bracket/string-aware scanner mirroring recoverTruncatedJsonArray, but for a
+// single top-level object — resume parsing returns one object, not an array,
+// so a truncated response (model hit max_tokens mid-object) needs its own
+// recovery: find the last fully-closed nested value before the cut, then
+// close the top-level object there instead of discarding the whole response.
+function recoverTruncatedJsonObject(text: string): Record<string, unknown> {
+  const start = text.indexOf("{");
+  if (start === -1) throw new Error("No JSON object found in model output");
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let lastCompleteEnd = -1;
+
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (char === "\\") escape = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') { inString = true; continue; }
+    if (char === "{" || char === "[") depth++;
+    else if (char === "}" || char === "]") {
+      depth--;
+      if (depth === 1 && (char === "}" || char === "]")) lastCompleteEnd = i;
+      if (depth === 0) { lastCompleteEnd = i; break; }
+    }
+  }
+
+  if (lastCompleteEnd === -1) throw new Error("No complete field found in model output");
+  return JSON.parse(`${text.slice(start, lastCompleteEnd + 1)}}`);
+}
+
+function asStr(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+// Workers AI has no equivalent of Gemini's responseSchema enforcement, so the
+// model can omit fields or use the wrong type — normalize to the exact shape
+// every caller of parse-resume (ProfilesDirectory.tsx, process-job-application)
+// already relies on, rather than passing whatever the model happened to return.
+function normalizeResumeFields(parsed: Record<string, unknown>): Record<string, unknown> {
+  const education = Array.isArray(parsed.education) ? parsed.education : [];
+  const experience = Array.isArray(parsed.experience) ? parsed.experience : [];
+  const coreSkills = Array.isArray(parsed.core_skills)
+    ? (parsed.core_skills as unknown[]).map(asStr).filter(Boolean)
+    : [];
+
+  return {
+    candidate_name: asStr(parsed.candidate_name),
+    target_role: asStr(parsed.target_role),
+    location: asStr(parsed.location),
+    city: asStr(parsed.city),
+    state: asStr(parsed.state),
+    zip_code: asStr(parsed.zip_code),
+    country: asStr(parsed.country),
+    phone: asStr(parsed.phone),
+    email: asStr(parsed.email),
+    linkedin_url: asStr(parsed.linkedin_url),
+    github_url: asStr(parsed.github_url),
+    portfolio_url: asStr(parsed.portfolio_url),
+    years_experience: Number.isFinite(Number(parsed.years_experience)) ? Math.max(0, Math.round(Number(parsed.years_experience))) : 0,
+    core_skills: coreSkills,
+    education: education.map((e) => {
+      const entry = (e ?? {}) as Record<string, unknown>;
+      return {
+        institution: asStr(entry.institution), degree: asStr(entry.degree), field: asStr(entry.field),
+        start_year: asStr(entry.start_year), end_year: asStr(entry.end_year), gpa: asStr(entry.gpa),
+      };
+    }),
+    experience: experience.map((e) => {
+      const entry = (e ?? {}) as Record<string, unknown>;
+      return {
+        company: asStr(entry.company), title: asStr(entry.title), location: asStr(entry.location),
+        start_date: asStr(entry.start_date), end_date: asStr(entry.end_date),
+        current: entry.current === true, description: asStr(entry.description),
+      };
+    }),
+  };
+}
+
+function parseResumeModelText(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== "string") throw new Error("Model returned a non-string response");
+  const trimmed = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (parseError) {
+    parsed = recoverTruncatedJsonObject(trimmed);
+  }
+  return normalizeResumeFields(parsed);
+}
+
 function getBearerToken(req: Request) {
   const header = req.headers.get("Authorization") ?? "";
   const [scheme, token] = header.split(" ");
@@ -637,6 +757,55 @@ export default {
         const question = String(parsed?.question ?? "").trim().slice(0, 500);
         if (!question) return jsonResponse({ error: "Model returned an empty question" }, 422);
         return jsonResponse({ done: false, question });
+      } catch (error) {
+        return jsonResponse({ error: (error as Error).message }, 500);
+      }
+    }
+
+    if (new URL(req.url).pathname.replace(/\/+$/, "") === "/parse-resume-text") {
+      try {
+        const body = (await req.json()) as ParseResumeTextRequest;
+        const resumeText = (body.resumeText ?? "").trim().slice(0, 20000);
+        if (!resumeText) return jsonResponse({ error: "resumeText is required" }, 400);
+
+        const systemPrompt = (body.systemPrompt ?? "").trim() || RESUME_PARSE_SYSTEM_PROMPT;
+        const userPrompt = (body.userPrompt ?? "").trim() || RESUME_PARSE_DEFAULT_USER_PROMPT;
+        const model = (env.PARSER_MODEL ?? "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
+
+        let aiResult: unknown;
+        let aiError: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            aiResult = await env.AI.run(model, {
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: `${userPrompt}\n\n--- RESUME TEXT ---\n${resumeText}\n--- END ---` },
+              ],
+              temperature: 0.1,
+              max_tokens: 3000,
+            });
+            aiError = undefined;
+            break;
+          } catch (error) {
+            aiError = error;
+            if (attempt < 2 && isRateLimitError(error)) {
+              await sleep(1000 * (attempt + 1));
+              continue;
+            }
+            break;
+          }
+        }
+        if (aiError) throw aiError;
+
+        const rawText = (aiResult as Record<string, unknown>)?.response ?? aiResult;
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = parseResumeModelText(rawText);
+        } catch (error) {
+          return jsonResponse({ error: `Model returned invalid JSON: ${(error as Error).message}` }, 502);
+        }
+
+        return jsonResponse(parsed);
       } catch (error) {
         return jsonResponse({ error: (error as Error).message }, 500);
       }

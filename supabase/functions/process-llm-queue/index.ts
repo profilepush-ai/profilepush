@@ -41,24 +41,13 @@ Deno.serve(async (req: Request) => {
   let res: Response;
   try {
     headers["Content-Type"] = "application/json";
-    if (job.type === "parse-resume") {
-      // Call parse-resume in JSON mode with the stored base64 payload
-      res = await fetch(fnUrl, {
-        method:  "POST",
-        headers,
-        body: JSON.stringify({
-          base64_pdf: job.payload.base64_pdf,
-          filename:   job.payload.filename ?? "resume.pdf",
-        }),
-      });
-    } else {
-      // score-job-match / rewrite-resume: replay the original payload
-      res = await fetch(fnUrl, {
-        method:  "POST",
-        headers,
-        body: JSON.stringify(job.payload),
-      });
-    }
+    // Replay the original payload as JSON — parse-resume's JSON-mode branch
+    // accepts {plain_text, filename} directly, same shape enqueueJob stored.
+    res = await fetch(fnUrl, {
+      method:  "POST",
+      headers,
+      body: JSON.stringify(job.payload),
+    });
   } catch (fetchErr) {
     const errMsg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
     await markJobFailed(supabase, job, errMsg);
