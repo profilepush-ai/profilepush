@@ -26,6 +26,8 @@ const BillingPage = lazy(() => import('./pages/BillingPage'));
 const CandidateOnboarding = lazy(() => import('./pages/CandidateOnboarding'));
 const ConfirmApplied = lazy(() => import('./pages/ConfirmApplied'));
 const ScreeningInterview = lazy(() => import('./pages/ScreeningInterview'));
+const PublicJobPage = lazy(() => import('./pages/PublicJobPage'));
+const PublicHotlistPage = lazy(() => import('./pages/PublicHotlistPage'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsAndConditions = lazy(() => import('./pages/TermsAndConditions'));
 const SecurityPage = lazy(() => import('./pages/SecurityPage'));
@@ -186,6 +188,8 @@ export default function App() {
             <Route path="/welcome" element={<ProtectedRoute><ErrorBoundary><OnboardingVideo /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/confirm-applied/:token" element={<ErrorBoundary><ConfirmApplied /></ErrorBoundary>} />
             <Route path="/screen/:token" element={<ErrorBoundary><ScreeningInterview /></ErrorBoundary>} />
+            <Route path="/job/:id" element={<ErrorBoundary><PublicJobPage /></ErrorBoundary>} />
+            <Route path="/hotlist/:id" element={<ErrorBoundary><PublicHotlistPage /></ErrorBoundary>} />
             <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
             <Route path="/terms" element={<ErrorBoundary><TermsAndConditions /></ErrorBoundary>} />
             <Route path="/security" element={<ErrorBoundary><SecurityPage /></ErrorBoundary>} />

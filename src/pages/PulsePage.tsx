@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Send,
   Search,
+  Share2,
   Shield,
   CheckSquare,
   ChevronDown,
@@ -999,6 +1000,33 @@ function ClampedSkills({ skillsValue, itemCap, linkClassName, isExpanded, onExpa
   );
 }
 
+function getLeadShareUrl(lead: SocialLead): string {
+  return `${window.location.origin}/${lead.kind === 'hotlist' ? 'hotlist' : 'job'}/${lead.id}`;
+}
+
+// Shared by both the card and table views — uses the native share sheet
+// where available (mobile, some desktop browsers), otherwise copies the
+// link and reports success via the returned boolean so the caller can show
+// its own brief "Copied" feedback.
+async function shareLead(lead: SocialLead): Promise<boolean> {
+  const url = getLeadShareUrl(lead);
+  const title = lead.kind === 'hotlist' ? (lead.roleTitle || lead.title || 'Available Consultant') : (lead.title || 'Job Opportunity');
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, url });
+      return false;
+    } catch {
+      // AbortError (user cancelled) or unsupported — fall through to copy.
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface LeadCardProps {
   lead: SocialLead;
   paletteIndex: number;
@@ -1047,6 +1075,7 @@ const LeadCard = memo(function LeadCard({
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
   const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
+  const [justCopiedShare, setJustCopiedShare] = useState(false);
   const isAskPending = globalAskedJobState === 'asked';
   const isVerified = globalAskedJobState === 'verified';
   const canAskAI = !isAskPending && !isVerified && Boolean(extractPrimaryEmail(lead.posterEmail));
@@ -1077,6 +1106,15 @@ const LeadCard = memo(function LeadCard({
             <span className="text-[12px] font-normal">Preview</span>
           </>
         )}
+      </button>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); void shareLead(lead).then((copied) => { if (copied) { setJustCopiedShare(true); setTimeout(() => setJustCopiedShare(false), 1500); } }); }}
+        title="Share this post"
+        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
+      >
+        {justCopiedShare ? <Check size={17} strokeWidth={1.75} /> : <Share2 size={17} strokeWidth={1.75} />}
+        <span className="text-[12px] font-normal">{justCopiedShare ? 'Copied' : 'Share'}</span>
       </button>
       {lead.postSource === 'user_post' ? (
         <>
@@ -3483,6 +3521,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 </td>
                 <td className="px-1.5 py-2 align-top">
                   <div className="flex flex-wrap items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); void shareLead(lead).then((copied) => { if (copied) showToast('Link copied', 'success'); }); }}
+                      title="Share this post"
+                      className={askButtonClass}
+                    >
+                      <Share2 size={12} strokeWidth={2} />
+                    </button>
                     {lead.postSource === 'user_post' ? (
                       <>
                         <button
