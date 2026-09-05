@@ -1207,22 +1207,6 @@ const LeadCard = memo(function LeadCard({
       <div>
         <div className="min-w-0 pr-14">
           <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
-            <span>{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
-            <span className="inline-flex items-center gap-1">
-              <LeadAvatar avatarUrl={lead.avatarUrl} name={lead.posterName} size={14} />
-              {lead.posterName}
-            </span>
-            {lead.company && (
-              <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                <span>•</span>
-                <Building2 size={10} className="shrink-0 text-gray-400" />
-                <span className="text-[#94A3B8]">{lead.company}</span>
-              </span>
-            )}
-          </div>
           <div className="mt-1 flex flex-wrap items-center gap-1">
               {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
               {predictResult && (
@@ -1301,6 +1285,21 @@ const LeadCard = memo(function LeadCard({
         </div>
         );
       })()}
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
+        <span className="inline-flex items-center gap-1">
+          <LeadAvatar avatarUrl={lead.avatarUrl} name={lead.posterName} size={14} />
+          {lead.posterName}
+        </span>
+        {lead.company && (
+          <span className="inline-flex items-center gap-1 whitespace-nowrap">
+            <span>•</span>
+            <Building2 size={10} className="shrink-0 text-gray-400" />
+            <span className="text-[#94A3B8]">{lead.company}</span>
+          </span>
+        )}
+        <span className="whitespace-nowrap">•</span>
+        <span className="whitespace-nowrap">{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
+      </div>
       </div>
       {!hideActions && actionButtonsBar}
     </div>
@@ -5603,7 +5602,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       });
       setPostContentViewedAtByLeadId((prev) => ({ ...prev, [lead.id]: new Date().toISOString() }));
       void persistLeadAction(lead.id, 'post_content_viewed');
-      showToast(`${POST_CONTENT_COST} credit${POST_CONTENT_COST === 1 ? '' : 's'} consumed for post preview`, 'success');
     }
 
     const previewIsHotlist = leadIsHotlist(lead);
@@ -5616,7 +5614,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const content = String((previewIsHotlist ? (data as { raw_post_content: string | null }).raw_post_content : (data as { post_content: string | null }).post_content) ?? '').trim();
     return content || 'No post content available.';
-  }, [consumeCredits, leadIsHotlist, persistLeadAction, postContentViewedLeadIds, showToast]);
+  }, [consumeCredits, leadIsHotlist, persistLeadAction, postContentViewedLeadIds]);
 
   const handlePreviewPost = useCallback(async (lead: SocialLead) => {
     if (!user || loadingPostContentLeadId) return;
