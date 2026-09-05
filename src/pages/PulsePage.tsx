@@ -1904,25 +1904,48 @@ function buildPulseLeadDedupKey(lead: SocialLead, isHotlistFeed: boolean) {
   return [title, company, location || '-', platform || '-'].join('|');
 }
 
-function roleMatchesPersona(row: SocialJobRow, personaRole: string, personaSkills: string[]) {
-  const roleText = normalize(personaRole);
+// roleMatchesPersona used to re-normalize the SAME persona role/skills (and,
+// at its worst call site, the SAME row's title/content) on every single
+// iteration of an O(personas x rows) loop — this was the single largest
+// contributor to a multi-second blocking task on every page load (profiled:
+// ~2.5s in normalize() alone, ~1s in this function, ~1s in the regex it
+// uses internally). Split into profile-builders (run once per persona and
+// once per row) plus a cheap comparison, so a caller looping over many
+// personas x rows can hoist both sides out of the inner loop. The original
+// signature is kept as a thin wrapper for callers that only ever check one
+// persona against one row, where hoisting wouldn't matter.
+type PersonaMatchProfile = { roleText: string; personaBucketKey: string; roleTokens: string[]; normalizedSkills: string[] };
+type RowMatchProfile = { titleText: string; fullText: string; rowBucketKey: string };
+
+function buildPersonaMatchProfile(personaRole: string, personaSkills: string[]): PersonaMatchProfile {
+  return {
+    roleText: normalize(personaRole),
+    personaBucketKey: getPersonaBucket(personaRole).key,
+    roleTokens: canonicalizeRoleForUniqueness(personaRole)
+      .split(' ')
+      .filter((token) => token.length >= 3 && !['engineer', 'developer', 'senior', 'lead', 'staff', 'principal'].includes(token)),
+    normalizedSkills: personaSkills.map((skill) => normalize(skill)),
+  };
+}
+
+function buildRowMatchProfile(row: SocialJobRow): RowMatchProfile {
   const titleText = normalize(`${row.extracted_role_normalized ?? ''} ${row.job_title ?? ''}`);
-  const fullText = normalize(`${titleText} ${row.post_content ?? ''}`);
-  if (!fullText) return false;
+  return {
+    titleText,
+    fullText: normalize(`${titleText} ${row.post_content ?? ''}`),
+    rowBucketKey: getPersonaBucket(`${row.extracted_role_normalized ?? ''} ${row.job_title ?? ''}`).key,
+  };
+}
 
-  if (fullText.includes(roleText)) return true;
+function matchesPersonaProfile(row: RowMatchProfile, persona: PersonaMatchProfile): boolean {
+  if (!row.fullText) return false;
+  if (row.fullText.includes(persona.roleText)) return true;
+  if (persona.personaBucketKey && row.rowBucketKey && persona.personaBucketKey === row.rowBucketKey) return true;
 
-  const personaBucketKey = getPersonaBucket(personaRole).key;
-  const rowBucketKey = getPersonaBucket(`${row.extracted_role_normalized ?? ''} ${row.job_title ?? ''}`).key;
-  if (personaBucketKey && rowBucketKey && personaBucketKey === rowBucketKey) return true;
-
-  const roleTokens = canonicalizeRoleForUniqueness(personaRole)
-    .split(' ')
-    .filter((token) => token.length >= 3 && !['engineer', 'developer', 'senior', 'lead', 'staff', 'principal'].includes(token));
-
-  const titleRoleHits = roleTokens.reduce((count, token) => count + (titleText.includes(token) ? 1 : 0), 0);
-  const fullRoleHits = roleTokens.reduce((count, token) => count + (fullText.includes(token) ? 1 : 0), 0);
-  const skillHits = personaSkills.reduce((count, skill) => count + (fullText.includes(normalize(skill)) ? 1 : 0), 0);
+  const { roleTokens } = persona;
+  const titleRoleHits = roleTokens.reduce((count, token) => count + (row.titleText.includes(token) ? 1 : 0), 0);
+  const fullRoleHits = roleTokens.reduce((count, token) => count + (row.fullText.includes(token) ? 1 : 0), 0);
+  const skillHits = persona.normalizedSkills.reduce((count, skill) => count + (row.fullText.includes(skill) ? 1 : 0), 0);
 
   if (roleTokens.length > 0) {
     if (titleRoleHits >= Math.min(2, roleTokens.length)) return true;
@@ -1931,6 +1954,10 @@ function roleMatchesPersona(row: SocialJobRow, personaRole: string, personaSkill
   }
 
   return skillHits >= 2;
+}
+
+function roleMatchesPersona(row: SocialJobRow, personaRole: string, personaSkills: string[]) {
+  return matchesPersonaProfile(buildRowMatchProfile(row), buildPersonaMatchProfile(personaRole, personaSkills));
 }
 
 function getPersonaSkillList(role: string, personaSkills?: string | null) {
@@ -3341,6 +3368,11 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     });
   }, []);
 
+  // setApplyModalLead is a state setter (always referentially stable), so
+  // this wrapper only needs to be created once — kept stable so it doesn't
+  // defeat LeadCard's memo() for every card on every render.
+  const handleApplyLead = useCallback((applyLead: SocialLead) => setApplyModalLead(applyLead), []);
+
   // Plain function, not useCallback: its dependency array would eagerly
   // reference handlePreviewPost/handleOpenPostChat/handleAskAI before they're
   // declared further down in this component. Its own referential identity
@@ -3374,7 +3406,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       isProcessingAskAI: processingAskAILeadId === lead.id,
       onPreview: handlePreviewPost,
       onAskAI: handleAskAI,
-      onApply: (applyLead) => setApplyModalLead(applyLead),
+      onApply: handleApplyLead,
       onToggleInlineBreakdown: toggleInlineBreakdown,
       onExpandSkills: expandCardSkills,
       onCollapseSkills: collapseCardSkills,
@@ -3628,6 +3660,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   // The list column intentionally stays lightweight (title/company/time
   // only); the point of this layout is that the rich detail lives in one
   // place, not duplicated in every row.
+  // Stable across renders (navigate itself is stable) so it doesn't defeat
+  // LeadCard's memo() for every card in the list — an inline arrow here
+  // previously forced all 30+ cards to re-render on every selection change,
+  // not just the newly- and previously-selected ones.
+  const handleSelectDetailLead = useCallback((selected: SocialLead) => {
+    navigate(`/feed/${selected.kind}/${selected.id}`, { replace: true });
+  }, [navigate]);
+
   const renderDetailSplitView = (leads: SocialLead[]) => {
     const selectedLead = routeLeadId
       ? leads.find((lead) => lead.id === routeLeadId && lead.kind === routeLeadKind) ?? null
@@ -3659,7 +3699,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               {...buildLeadCardProps(lead, idx)}
               hideActions
               isSelected={selectedLead?.id === lead.id}
-              onSelect={(selected) => navigate(`/feed/${selected.kind}/${selected.id}`, { replace: true })}
+              onSelect={handleSelectDetailLead}
             />
           ))}
         </div>
@@ -4645,18 +4685,25 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         : null,
     })) as Array<Pick<SocialJobRow, 'id' | 'company_name' | 'posted_by_name' | 'poster_email' | 'poster_phone' | 'job_title' | 'post_content' | 'extracted_role_normalized'> & { match_score: number | null }>;
     const stats: Record<string, ProfileStats> = {};
+    // Each row's title/content normalization is identical across every
+    // persona in the leaderboard — hoisting it out of the persona loop turns
+    // an O(personas x rows) normalize-heavy cost into O(rows) once, reused
+    // by every persona below.
+    const rowProfiles = rows.map((row) => buildRowMatchProfile(row as SocialJobRow));
 
     for (const persona of sortedLeaderboard) {
       const roleKey = normalize(persona.target_role);
       const skills = getPersonaSkillList(persona.target_role, persona.priority_skills);
+      const personaProfile = buildPersonaMatchProfile(persona.target_role, skills);
       const companies = new Set<string>();
       const vendors = new Set<string>();
       const jobs = new Set<string>();
       let matchScoreSum = 0;
       let matchScoreCount = 0;
 
-      for (const row of rows) {
-        if (!roleMatchesPersona(row as SocialJobRow, persona.target_role, skills)) continue;
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        const row = rows[rowIndex];
+        if (!matchesPersonaProfile(rowProfiles[rowIndex], personaProfile)) continue;
 
         jobs.add(row.id);
         if (typeof row.match_score === 'number') {
