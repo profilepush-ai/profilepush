@@ -467,9 +467,9 @@ const SWIPE_LAYOUT_ENABLED = false;
 const PULSE_LAYOUT_MODE_STORAGE_KEY = 'profilepush-jobs-layout-mode';
 
 function getInitialPulseLayoutMode(): PulseLayoutMode {
-  if (typeof window === 'undefined') return 'card';
+  if (typeof window === 'undefined') return 'detail';
   const stored = window.localStorage.getItem(PULSE_LAYOUT_MODE_STORAGE_KEY);
-  return stored === 'table' ? 'table' : stored === 'detail' ? 'detail' : stored === 'swipe' && SWIPE_LAYOUT_ENABLED ? 'swipe' : 'card';
+  return stored === 'table' ? 'table' : stored === 'card' ? 'card' : stored === 'swipe' && SWIPE_LAYOUT_ENABLED ? 'swipe' : 'detail';
 }
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
