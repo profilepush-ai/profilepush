@@ -50,7 +50,7 @@ function formatDate(iso: string): string {
 }
 
 export default function PostApplicationsPage() {
-  const { jobId } = useParams<{ jobId: string }>();
+  const { jobId, applicationId: selectedApplicationId } = useParams<{ jobId: string; applicationId?: string }>();
   const navigate = useNavigate();
   const { isDark } = useTheme();
 
@@ -145,6 +145,16 @@ export default function PostApplicationsPage() {
   }
 
   const watchSubmissionTurns = watchSubmissionAppId ? (turnsByApplication[watchSubmissionAppId] ?? []) : [];
+
+  // Desktop detail-panel selection is route-driven (mirrors /feed's Detail
+  // layout and InboxPage's /inbox/:conversationId) — a real, back/forward-
+  // able, refresh-safe URL per application, not local component state.
+  // Mobile keeps its own separate card layout + popups (watchSubmissionAppId
+  // / resumeModalUrl below) entirely untouched.
+  const selectedApp = selectedApplicationId ? applications.find((a) => a.id === selectedApplicationId) ?? null : null;
+  const selectedTurns = selectedApp ? (turnsByApplication[selectedApp.id] ?? []) : [];
+  const selectedHasAnsweredTurn = selectedTurns.some((t) => t.answered_at);
+  const selectedScreeningSubmitted = selectedApp ? (selectedApp.status === 'screening_completed' || selectedApp.status === 'qualified') : false;
 
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
@@ -266,110 +276,133 @@ export default function PostApplicationsPage() {
                 })}
               </div>
             ) : (
-              <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
-                <thead>
-                  <tr className={`sticky top-0 z-10 border-b ${isDark ? 'border-white/10 bg-[#20242a]' : 'border-gray-200 bg-gray-50'}`}>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Candidate</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Status</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Match Score</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Applied By</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Applied Date</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">AI Summary</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_380px] gap-3 p-2">
+                {/* Plain block stacking, not CSS grid, for this list column —
+                    a grid's "auto" row-sizing pass measures nested-flex
+                    content by min-content rather than actual rendered
+                    height (found and fixed the same bug in PulsePage's
+                    detail layout: every row collapsed and overlapped). */}
+                <div className="min-h-0 space-y-1.5 overflow-y-auto pr-1">
                   {applications.map((app) => {
-                    const turns = turnsByApplication[app.id] ?? [];
-                    const hasAnsweredTurn = turns.some((t) => t.answered_at);
-                    const screeningSubmitted = app.status === 'screening_completed' || app.status === 'qualified';
+                    const isSelected = selectedApp?.id === app.id;
                     return (
-                      <tr key={app.id} className={`border-b ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-100 hover:bg-gray-50'}`}>
-                        <td className="px-3 py-2.5 align-top">
-                          <p className="font-semibold text-gray-900 dark:text-slate-100">{app.candidate_name || 'Unnamed candidate'}</p>
-                          {app.candidate_email && <p className="text-[11px] text-gray-400 dark:text-[#94A3B8]">{app.candidate_email}</p>}
-                          {app.candidate_phone && <p className="text-[11px] text-gray-400 dark:text-[#94A3B8]">{app.candidate_phone}</p>}
-                          {app.recruiter_note && (
-                            <p className="mt-1 max-w-[220px] truncate text-[11px] italic text-gray-500 dark:text-[#94A3B8]" title={app.recruiter_note}>
-                              “{app.recruiter_note}”
-                            </p>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 align-top">
-                          <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[app.status] ?? STATUS_STYLES.submitted}`}>
+                      <button
+                        key={app.id}
+                        type="button"
+                        onClick={() => navigate(`/posts/applications/${jobId}/${app.id}`, { replace: true })}
+                        className={`block w-full rounded-md border px-3 py-2.5 text-left transition-colors ${isSelected ? 'border-blue-300 bg-blue-50 dark:border-blue-400/40 dark:bg-blue-500/10' : 'border-transparent bg-white hover:bg-gray-50 dark:bg-[#1E2126] dark:hover:bg-white/5'}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100">{app.candidate_name || 'Unnamed candidate'}</p>
+                            {app.candidate_email && <p className="truncate text-[11px] text-gray-400 dark:text-[#94A3B8]">{app.candidate_email}</p>}
+                          </div>
+                          <span className={`shrink-0 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[app.status] ?? STATUS_STYLES.submitted}`}>
                             {STATUS_LABELS[app.status] ?? app.status}
                           </span>
-                        </td>
-                        <td className="px-3 py-2.5 align-top">
-                          {app.ai_score !== null ? (
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-400 dark:text-[#94A3B8]">
+                          {app.ai_score !== null && (
                             <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:border-purple-400/30 dark:bg-purple-500/10 dark:text-purple-300">
                               <Sparkles size={9} strokeWidth={2.5} />
                               {app.ai_score}/100
                             </span>
-                          ) : (
-                            <span className="text-[11px] text-gray-400 dark:text-[#64748B]">—</span>
                           )}
-                        </td>
-                        <td className="px-3 py-2.5 align-top">
-                          <p className="text-gray-700 dark:text-slate-300">{app.applied_by_account_name || '—'}</p>
-                          <p className="text-[11px] text-gray-400 dark:text-[#94A3B8]">{app.applied_by_user_email}</p>
-                        </td>
-                        <td className="px-3 py-2.5 align-top text-gray-500 dark:text-[#94A3B8]">{formatDate(app.created_at)}</td>
-                        <td className="px-3 py-2.5 align-top">
-                          {app.ai_summary && (
-                            <p className="max-w-[200px] truncate text-[11px] text-gray-400 dark:text-[#64748B]" title={app.ai_summary}>
-                              {app.ai_summary}
-                            </p>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 align-top">
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              disabled={!app.resume_url}
-                              onClick={() => setResumeModalUrl(app.resume_url)}
-                              title="Resume"
-                              className="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-white/5"
-                            >
-                              <FileText size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!hasAnsweredTurn}
-                              onClick={() => setWatchSubmissionAppId(app.id)}
-                              title="Watch Screening"
-                              className="rounded p-1 text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400 dark:hover:bg-blue-500/10"
-                            >
-                              <Video size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={chatBusyId === app.id}
-                              onClick={() => void handleChat(app.id)}
-                              title="Chat with the submitting recruiter"
-                              className="rounded p-1 text-blue-500 transition-colors hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
-                            >
-                              {chatBusyId === app.id ? <LogoSpinner size={12} /> : <MessageSquare size={14} />}
-                            </button>
-                            {screeningSubmitted && app.status !== 'qualified' && (
-                              <button
-                                type="button"
-                                disabled={decisionBusyId === app.id}
-                                onClick={() => void handleQualify(app.id)}
-                                title="Qualify"
-                                className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
-                              >
-                                <Check size={12} />
-                                Qualify
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                          <span>{app.applied_by_account_name || '—'} · {formatDate(app.created_at)}</span>
+                        </div>
+                      </button>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+
+                <aside className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#1E2126]">
+                  {!selectedApp ? (
+                    <div className="flex flex-1 items-center justify-center p-6 text-center">
+                      <p className="text-[13px] text-gray-400 dark:text-[#64748B]">Select an application to review</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start gap-2.5 border-b border-gray-100 p-4 dark:border-white/10">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[15px] font-semibold text-gray-900 dark:text-slate-100">{selectedApp.candidate_name || 'Unnamed candidate'}</p>
+                          {(selectedApp.candidate_email || selectedApp.candidate_phone) && (
+                            <p className="truncate text-[12px] text-gray-500 dark:text-[#94A3B8]">
+                              {selectedApp.candidate_email}{selectedApp.candidate_email && selectedApp.candidate_phone ? ' · ' : ''}{selectedApp.candidate_phone}
+                            </p>
+                          )}
+                          <span className={`mt-1 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[selectedApp.status] ?? STATUS_STYLES.submitted}`}>
+                            {STATUS_LABELS[selectedApp.status] ?? selectedApp.status}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/posts/applications/${jobId}`, { replace: true })}
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"
+                          aria-label="Close"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+                        {selectedApp.ai_summary && (
+                          <div>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">AI Summary</p>
+                            <p className="text-[13px] leading-relaxed text-gray-700 dark:text-slate-300">{selectedApp.ai_summary}</p>
+                          </div>
+                        )}
+
+                        <div>
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">Screening Video</p>
+                          {selectedHasAnsweredTurn ? (
+                            <ScreeningSubmissionModal
+                              embedded
+                              applicationId={selectedApp.id}
+                              turns={selectedTurns}
+                              onClose={() => {}}
+                              showToast={showToast}
+                            />
+                          ) : (
+                            <p className="text-[12px] text-gray-400 dark:text-[#64748B]">No screening recorded yet.</p>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">Resume</p>
+                          {selectedApp.resume_url ? (
+                            <iframe src={selectedApp.resume_url} className="h-[500px] w-full rounded-md border border-gray-200 bg-white dark:border-white/10" title="Resume" />
+                          ) : (
+                            <p className="text-[12px] text-gray-400 dark:text-[#64748B]">No resume on file.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 border-t border-gray-100 p-3 dark:border-white/10">
+                        <button
+                          type="button"
+                          disabled={chatBusyId === selectedApp.id}
+                          onClick={() => void handleChat(selectedApp.id)}
+                          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-400"
+                        >
+                          {chatBusyId === selectedApp.id ? <LogoSpinner size={14} /> : <MessageSquare size={14} />}
+                          Chat
+                        </button>
+                        {selectedScreeningSubmitted && selectedApp.status !== 'qualified' && (
+                          <button
+                            type="button"
+                            disabled={decisionBusyId === selectedApp.id}
+                            onClick={() => void handleQualify(selectedApp.id)}
+                            className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-emerald-600 text-[12px] font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            {decisionBusyId === selectedApp.id ? <LogoSpinner size={14} /> : <Check size={14} />}
+                            Qualify
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </aside>
+              </div>
             )}
           </div>
         </div>

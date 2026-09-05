@@ -233,6 +233,7 @@ export default function App() {
             <Route path="/hotlist" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
             <Route path="/posts" element={<ProtectedRoute><ErrorBoundary><MyPostsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/applications/:jobId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/posts/applications/:jobId/:applicationId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><ProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             </Routes>

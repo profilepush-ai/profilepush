@@ -22,11 +22,17 @@ export default function ScreeningSubmissionModal({
   turns,
   onClose,
   showToast,
+  embedded = false,
 }: {
   applicationId: string;
   turns: ScreeningTurn[];
   onClose: () => void;
   showToast: (message: string, type?: 'success' | 'error') => void;
+  // When true, renders just the question header + video + Previous/Next
+  // controls with no fixed backdrop/centered-card chrome or close button —
+  // for embedding directly inside another layout (e.g. a detail panel)
+  // instead of popping up as its own modal.
+  embedded?: boolean;
 }) {
   const sorted = [...turns].sort((a, b) => a.turn_index - b.turn_index);
   const [index, setIndex] = useState(0);
@@ -117,19 +123,19 @@ export default function ScreeningSubmissionModal({
 
   if (!current) return null;
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-[#1B1D21]">
-        <div className="flex items-start gap-2.5 border-b border-gray-100 p-4 dark:border-white/10">
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
-            <Video size={16} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">
-              Question {index + 1} of {sorted.length}
-            </p>
-            <p className="text-[13px] font-semibold leading-snug text-gray-900 dark:text-slate-100">{current.question_text}</p>
-          </div>
+  const content = (
+    <>
+      <div className="flex items-start gap-2.5 border-b border-gray-100 p-4 dark:border-white/10">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+          <Video size={16} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">
+            Question {index + 1} of {sorted.length}
+          </p>
+          <p className="text-[13px] font-semibold leading-snug text-gray-900 dark:text-slate-100">{current.question_text}</p>
+        </div>
+        {!embedded && (
           <button
             type="button"
             onClick={onClose}
@@ -138,55 +144,67 @@ export default function ScreeningSubmissionModal({
           >
             <X size={14} />
           </button>
-        </div>
+        )}
+      </div>
 
-        <div className="aspect-video w-full bg-black">
-          {videoUrl ? (
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              className="h-full w-full"
-              controls
-              playsInline
-            />
-          ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-6 text-center">
-              {loading ? (
-                <>
-                  <LogoSpinner size={20} />
-                  <p className="text-[11px] text-white/50">
-                    Loading video{loadProgress != null ? `… ${loadProgress}%` : '…'}
-                  </p>
-                </>
-              ) : notFound ? (
-                <p className="text-[12px] text-white/60">No recording is available for this application.</p>
-              ) : (
-                <p className="text-[12px] text-white/60">Could not load this video</p>
-              )}
-            </div>
-          )}
-        </div>
+      <div className="aspect-video w-full bg-black">
+        {videoUrl ? (
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            className="h-full w-full"
+            controls
+            playsInline
+          />
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-6 text-center">
+            {loading ? (
+              <>
+                <LogoSpinner size={20} />
+                <p className="text-[11px] text-white/50">
+                  Loading video{loadProgress != null ? `… ${loadProgress}%` : '…'}
+                </p>
+              </>
+            ) : notFound ? (
+              <p className="text-[12px] text-white/60">No recording is available for this application.</p>
+            ) : (
+              <p className="text-[12px] text-white/60">Could not load this video</p>
+            )}
+          </div>
+        )}
+      </div>
 
-        <div className="flex items-center justify-between border-t border-gray-100 p-3 dark:border-white/10">
-          <button
-            type="button"
-            onClick={() => setIndex((i) => Math.max(0, i - 1))}
-            disabled={index === 0}
-            className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-3 py-1.5 text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:text-slate-300 dark:hover:bg-white/5"
-          >
-            <ChevronLeft size={14} />
-            Previous
-          </button>
-          <button
-            type="button"
-            onClick={() => setIndex((i) => Math.min(sorted.length - 1, i + 1))}
-            disabled={index === sorted.length - 1}
-            className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-3 py-1.5 text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:text-slate-300 dark:hover:bg-white/5"
-          >
-            Next
-            <ChevronRight size={14} />
-          </button>
-        </div>
+      <div className="flex items-center justify-between border-t border-gray-100 p-3 dark:border-white/10">
+        <button
+          type="button"
+          onClick={() => setIndex((i) => Math.max(0, i - 1))}
+          disabled={index === 0}
+          className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-3 py-1.5 text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:text-slate-300 dark:hover:bg-white/5"
+        >
+          <ChevronLeft size={14} />
+          Previous
+        </button>
+        <button
+          type="button"
+          onClick={() => setIndex((i) => Math.min(sorted.length - 1, i + 1))}
+          disabled={index === sorted.length - 1}
+          className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-3 py-1.5 text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:text-slate-300 dark:hover:bg-white/5"
+        >
+          Next
+          <ChevronRight size={14} />
+        </button>
+      </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="overflow-hidden rounded-lg border border-gray-100 bg-white dark:border-white/10 dark:bg-[#1B1D21]">{content}</div>;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-[#1B1D21]">
+        {content}
       </div>
     </div>
   );
