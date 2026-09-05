@@ -32,6 +32,12 @@ export default function ScreeningSubmissionModal({
   const [index, setIndex] = useState(0);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // fetch().blob() has to buffer the whole file before it can play at all —
+  // for a several-MB recording over a real (non-localhost) connection that
+  // can take a while, and with only a bare spinner it's indistinguishable
+  // from actually being stuck. Track real download progress so it visibly
+  // isn't.
+  const [loadProgress, setLoadProgress] = useState<number | null>(null);
   // Distinguishes "no recording exists for this application" (expected for
   // applications from before video was tracked per-application, or one that
   // never finished the interview) from a genuine load failure — these need
@@ -45,6 +51,7 @@ export default function ScreeningSubmissionModal({
     let cancelled = false;
     setLoading(true);
     setNotFound(false);
+    setLoadProgress(null);
     void (async () => {
       try {
         const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
@@ -60,8 +67,31 @@ export default function ScreeningSubmissionModal({
           showToast('Could not load this video', 'error');
           return;
         }
-        const blob = await res.blob();
+
+        const total = Number(res.headers.get('Content-Length')) || 0;
+        const reader = res.body?.getReader();
+        if (!reader) {
+          // Fallback for an environment without streaming body support —
+          // same end result, just no progress feedback along the way.
+          const blob = await res.blob();
+          if (cancelled) return;
+          setVideoUrl(URL.createObjectURL(blob));
+          setLoading(false);
+          return;
+        }
+
+        const chunks: Uint8Array[] = [];
+        let received = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (cancelled) { void reader.cancel(); return; }
+          chunks.push(value);
+          received += value.length;
+          if (total > 0) setLoadProgress(Math.min(99, Math.round((received / total) * 100)));
+        }
         if (cancelled) return;
+        const blob = new Blob(chunks as BlobPart[], { type: res.headers.get('Content-Type') || 'video/webm' });
         setVideoUrl(URL.createObjectURL(blob));
         setLoading(false);
       } catch {
@@ -120,8 +150,15 @@ export default function ScreeningSubmissionModal({
               playsInline
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center px-6 text-center">
-              {loading ? <LogoSpinner size={20} /> : notFound ? (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-6 text-center">
+              {loading ? (
+                <>
+                  <LogoSpinner size={20} />
+                  <p className="text-[11px] text-white/50">
+                    Loading video{loadProgress != null ? `… ${loadProgress}%` : '…'}
+                  </p>
+                </>
+              ) : notFound ? (
                 <p className="text-[12px] text-white/60">No recording is available for this application.</p>
               ) : (
                 <p className="text-[12px] text-white/60">Could not load this video</p>
