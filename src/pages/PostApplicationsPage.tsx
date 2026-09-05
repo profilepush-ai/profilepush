@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, FileText, MessageSquare, Sparkles, Video, X } from 'lucide-react';
+import { ArrowLeft, Check, FileText, MessageSquare, Search, Sparkles, Video, X, XCircle } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
@@ -45,6 +45,15 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: 'Rejected',
 };
 
+const STATUS_TABS: Array<{ id: string; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'submitted', label: 'Applied' },
+  { id: 'screening_sent', label: 'Screening Sent' },
+  { id: 'screening_completed', label: 'Screening Submitted' },
+  { id: 'qualified', label: 'Qualified' },
+  { id: 'rejected', label: 'Rejected' },
+];
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
@@ -63,6 +72,8 @@ export default function PostApplicationsPage() {
   const [decisionBusyId, setDecisionBusyId] = useState<string | null>(null);
   const [chatBusyId, setChatBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   useEffect(() => {
@@ -131,6 +142,21 @@ export default function PostApplicationsPage() {
     showToast('Candidate qualified', 'success');
   }
 
+  async function handleReject(applicationId: string) {
+    setDecisionBusyId(applicationId);
+    const { error } = await supabase.rpc('set_job_application_decision' as never, {
+      p_application_id: applicationId,
+      p_status: 'rejected',
+    } as never);
+    setDecisionBusyId(null);
+    if (error) {
+      showToast(error.message, 'error');
+      return;
+    }
+    setApplications((prev) => prev.map((a) => (a.id === applicationId ? { ...a, status: 'rejected' } : a)));
+    showToast('Candidate rejected', 'success');
+  }
+
   async function handleChat(applicationId: string) {
     setChatBusyId(applicationId);
     const { data, error } = await supabase.rpc('start_application_chat' as never, {
@@ -155,6 +181,18 @@ export default function PostApplicationsPage() {
   const selectedTurns = selectedApp ? (turnsByApplication[selectedApp.id] ?? []) : [];
   const selectedHasAnsweredTurn = selectedTurns.some((t) => t.answered_at);
   const selectedScreeningSubmitted = selectedApp ? (selectedApp.status === 'screening_completed' || selectedApp.status === 'qualified') : false;
+  const selectedCanDecide = selectedApp ? (selectedApp.status !== 'qualified' && selectedApp.status !== 'rejected') : false;
+
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredApplications = applications.filter((app) => {
+    if (statusFilter !== 'all' && app.status !== statusFilter) return false;
+    if (!normalizedSearch) return true;
+    return (
+      app.candidate_name?.toLowerCase().includes(normalizedSearch) ||
+      app.candidate_email?.toLowerCase().includes(normalizedSearch) ||
+      app.applied_by_account_name?.toLowerCase().includes(normalizedSearch)
+    );
+  });
 
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
@@ -179,6 +217,37 @@ export default function PostApplicationsPage() {
             </div>
           </div>
 
+          {!loading && applications.length > 0 && (
+            <div className="mb-2 flex shrink-0 flex-col gap-2">
+              <div className="relative">
+                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by candidate name, email, or recruiter..."
+                  className="w-full rounded-md border border-[#dfdad2] bg-white py-1.5 pl-8 pr-3 text-[12px] text-gray-700 outline-none focus:border-blue-300 dark:border-white/10 dark:bg-[#1E2126] dark:text-slate-200"
+                />
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                {STATUS_TABS.map((tab) => {
+                  const count = tab.id === 'all' ? applications.length : applications.filter((a) => a.status === tab.id).length;
+                  const isActive = statusFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setStatusFilter(tab.id)}
+                      className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${isActive ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-400/40 dark:bg-blue-500/10 dark:text-blue-300' : 'border-[#dfdad2] bg-white text-gray-500 hover:bg-gray-50 dark:border-white/10 dark:bg-[#1E2126] dark:text-[#94A3B8] dark:hover:bg-white/5'}`}
+                    >
+                      {tab.label} · {count}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126]">
             {loading ? (
               <div className="flex items-center justify-center py-16"><LogoSpinner size={20} /></div>
@@ -187,9 +256,14 @@ export default function PostApplicationsPage() {
                 <p className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">No applications yet</p>
                 <p className="mt-1 text-[12px] text-gray-400 dark:text-[#64748B]">Applications submitted for this job will show up here.</p>
               </div>
+            ) : filteredApplications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <p className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">No matching applications</p>
+                <p className="mt-1 text-[12px] text-gray-400 dark:text-[#64748B]">Try a different search term or status filter.</p>
+              </div>
             ) : isMobileViewport ? (
               <div className="flex flex-col gap-2 p-2">
-                {applications.map((app) => {
+                {filteredApplications.map((app) => {
                   const turns = turnsByApplication[app.id] ?? [];
                   const hasAnsweredTurn = turns.some((t) => t.answered_at);
                   const screeningSubmitted = app.status === 'screening_completed' || app.status === 'qualified';
@@ -219,17 +293,31 @@ export default function PostApplicationsPage() {
                             {app.ai_score}/100
                           </span>
                         )}
-                        {screeningSubmitted && app.status !== 'qualified' && (
-                          <button
-                            type="button"
-                            disabled={decisionBusyId === app.id}
-                            onClick={() => void handleQualify(app.id)}
-                            title="Qualify"
-                            className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
-                          >
-                            <Check size={9} strokeWidth={2.5} />
-                            Qualify
-                          </button>
+                        {app.status !== 'qualified' && app.status !== 'rejected' && (
+                          <>
+                            {screeningSubmitted && (
+                              <button
+                                type="button"
+                                disabled={decisionBusyId === app.id}
+                                onClick={() => void handleQualify(app.id)}
+                                title="Qualify"
+                                className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                              >
+                                <Check size={9} strokeWidth={2.5} />
+                                Qualify
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={decisionBusyId === app.id}
+                              onClick={() => void handleReject(app.id)}
+                              title="Reject"
+                              className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-300"
+                            >
+                              <XCircle size={9} strokeWidth={2.5} />
+                              Reject
+                            </button>
+                          </>
                         )}
                       </div>
 
@@ -283,7 +371,7 @@ export default function PostApplicationsPage() {
                     height (found and fixed the same bug in PulsePage's
                     detail layout: every row collapsed and overlapped). */}
                 <div className="min-h-0 space-y-1.5 overflow-y-auto pr-1">
-                  {applications.map((app) => {
+                  {filteredApplications.map((app) => {
                     const isSelected = selectedApp?.id === app.id;
                     return (
                       <button
@@ -389,16 +477,29 @@ export default function PostApplicationsPage() {
                           {chatBusyId === selectedApp.id ? <LogoSpinner size={14} /> : <MessageSquare size={14} />}
                           Chat
                         </button>
-                        {selectedScreeningSubmitted && selectedApp.status !== 'qualified' && (
-                          <button
-                            type="button"
-                            disabled={decisionBusyId === selectedApp.id}
-                            onClick={() => void handleQualify(selectedApp.id)}
-                            className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-emerald-600 text-[12px] font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
-                          >
-                            {decisionBusyId === selectedApp.id ? <LogoSpinner size={14} /> : <Check size={14} />}
-                            Qualify
-                          </button>
+                        {selectedCanDecide && (
+                          <>
+                            {selectedScreeningSubmitted && (
+                              <button
+                                type="button"
+                                disabled={decisionBusyId === selectedApp.id}
+                                onClick={() => void handleQualify(selectedApp.id)}
+                                className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-emerald-600 text-[12px] font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                              >
+                                {decisionBusyId === selectedApp.id ? <LogoSpinner size={14} /> : <Check size={14} />}
+                                Qualify
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={decisionBusyId === selectedApp.id}
+                              onClick={() => void handleReject(selectedApp.id)}
+                              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 text-[12px] font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-300"
+                            >
+                              {decisionBusyId === selectedApp.id ? <LogoSpinner size={14} /> : <XCircle size={14} />}
+                              Reject
+                            </button>
+                          </>
                         )}
                       </div>
                     </>
