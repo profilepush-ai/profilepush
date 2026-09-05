@@ -228,6 +228,7 @@ export default function App() {
             <Route path="/jd-ai" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
             <Route path="/job-watch-ai" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
             <Route path="/feed" element={<ProtectedRoute><ErrorBoundary><PulsePage feedKind="feed" /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/feed/:kind/:id" element={<ProtectedRoute><ErrorBoundary><PulsePage feedKind="feed" /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/jobs" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
             <Route path="/hotlist" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
             <Route path="/posts" element={<ProtectedRoute><ErrorBoundary><MyPostsPage /></ErrorBoundary></ProtectedRoute>} />

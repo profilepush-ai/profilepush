@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import {
   Activity,
   AtSign,
@@ -22,6 +22,7 @@ import {
   Layers,
   LayoutGrid,
   MapPin,
+  PanelRight,
   Phone,
   Radar,
   RefreshCw,
@@ -451,7 +452,7 @@ const FEED_KIND_FILTER_OPTIONS: Array<{ id: 'all' | 'job' | 'hotlist'; label: st
   { id: 'hotlist', label: 'Hotlist', icon: Users },
 ];
 
-type PulseLayoutMode = 'card' | 'table' | 'swipe';
+type PulseLayoutMode = 'card' | 'table' | 'swipe' | 'detail';
 type LeadTableSortKey = 'role' | 'exp' | 'workType' | 'empType' | 'rate' | 'visa' | 'location' | 'posted';
 
 type PredictCategory = { label: string; earned: number; max: number; note: string };
@@ -468,7 +469,7 @@ const PULSE_LAYOUT_MODE_STORAGE_KEY = 'profilepush-jobs-layout-mode';
 function getInitialPulseLayoutMode(): PulseLayoutMode {
   if (typeof window === 'undefined') return 'card';
   const stored = window.localStorage.getItem(PULSE_LAYOUT_MODE_STORAGE_KEY);
-  return stored === 'table' ? 'table' : stored === 'swipe' && SWIPE_LAYOUT_ENABLED ? 'swipe' : 'card';
+  return stored === 'table' ? 'table' : stored === 'detail' ? 'detail' : stored === 'swipe' && SWIPE_LAYOUT_ENABLED ? 'swipe' : 'card';
 }
 
 const PROFILE_RANGE_OPTIONS: ProfileRangeOption[] = [
@@ -1087,6 +1088,12 @@ interface LeadCardProps {
   onExpandSkills: (leadId: string) => void;
   onCollapseSkills: (leadId: string) => void;
   onToggleField: (cellKey: string) => void;
+  // Detail-panel layout only: renders the exact same card content (skills,
+  // chips, badges — nothing reinvented) but with the action bar swapped out
+  // for the whole card being clickable, opening that lead in the panel.
+  hideActions?: boolean;
+  isSelected?: boolean;
+  onSelect?: (lead: SocialLead) => void;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -1100,6 +1107,7 @@ const LeadCard = memo(function LeadCard({
   isExpFieldExpanded, isWorkTypeFieldExpanded, isEmpTypeFieldExpanded, isRateFieldExpanded, isVisaFieldExpanded, isLocationFieldExpanded,
   isLoadingPreview, isProcessingAskAI,
   onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
+  hideActions, isSelected, onSelect,
 }: LeadCardProps) {
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
@@ -1187,7 +1195,13 @@ const LeadCard = memo(function LeadCard({
   );
 
   return (
-    <div className={`relative flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-[#dfdad2] dark:border-white/10 ${cardFillClass}`}>
+    <div
+      role={hideActions ? 'button' : undefined}
+      tabIndex={hideActions ? 0 : undefined}
+      onClick={hideActions ? () => onSelect?.(lead) : undefined}
+      onKeyDown={hideActions ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect?.(lead); } } : undefined}
+      className={`relative flex ${hideActions ? 'h-auto' : 'h-full'} min-w-0 flex-col overflow-hidden rounded-lg border ${isSelected ? 'border-blue-400 ring-1 ring-blue-200' : 'border-[#dfdad2] dark:border-white/10'} ${cardFillClass} ${hideActions ? 'cursor-pointer' : ''}`}
+    >
       <LeadKindPill kind={lead.kind} variant="banner" />
       <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
       <div>
@@ -1288,7 +1302,7 @@ const LeadCard = memo(function LeadCard({
         );
       })()}
       </div>
-      {actionButtonsBar}
+      {!hideActions && actionButtonsBar}
     </div>
   );
 });
@@ -2225,7 +2239,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [feedTimeBasis] = useState<FeedTimeBasis>('posted');
   const [layoutMode, setLayoutMode] = useState<PulseLayoutMode>(getInitialPulseLayoutMode);
   const isTableLayout = layoutMode === 'table' && !isMobileViewport;
+  const isDetailLayout = layoutMode === 'detail' && !isMobileViewport;
   const isSwipeLayout = SWIPE_LAYOUT_ENABLED && layoutMode === 'swipe';
+  // Selected post for the detail-panel layout — a real path param (not just
+  // component state) so a post has a genuine, shareable, back/forward-able
+  // URL while browsing. Ignored entirely outside detail mode and on mobile
+  // (the switcher that reaches this mode is already hidden there).
+  const { kind: routeLeadKind, id: routeLeadId } = useParams<{ kind?: string; id?: string }>();
   const [tableSortKey, setTableSortKey] = useState<LeadTableSortKey | null>('posted');
   const [tableSortDirection, setTableSortDirection] = useState<'asc' | 'desc'>('desc');
   const [expandedSkillsLeadIds, setExpandedSkillsLeadIds] = useState<Set<string>>(new Set());
@@ -2251,6 +2271,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [postContentPreview, setPostContentPreview] = useState<{ leadId: string; title: string; content: string } | null>(null);
   const [applyModalLead, setApplyModalLead] = useState<SocialLead | null>(null);
   const [loadingPostContentLeadId, setLoadingPostContentLeadId] = useState<string | null>(null);
+  const [detailPanelContent, setDetailPanelContent] = useState<{ leadId: string; content: string } | null>(null);
+  const [loadingDetailPanelLeadId, setLoadingDetailPanelLeadId] = useState<string | null>(null);
   const [ignoredLeadIds, setIgnoredLeadIds] = useState<Set<string>>(new Set());
   const [revealedAtByLeadId, setRevealedAtByLeadId] = useState<Record<string, string>>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -3598,6 +3620,158 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         </tbody>
         </table>
       </>
+    );
+  };
+
+  // Detail-panel layout: a plain, button-free list on the left (click a row
+  // to open it) and the full post — structured fields, raw content, and the
+  // same actions the cards/table use, now in a sticky footer — on the right.
+  // The list column intentionally stays lightweight (title/company/time
+  // only); the point of this layout is that the rich detail lives in one
+  // place, not duplicated in every row.
+  const renderDetailSplitView = (leads: SocialLead[]) => {
+    const selectedLead = routeLeadId
+      ? leads.find((lead) => lead.id === routeLeadId && lead.kind === routeLeadKind) ?? null
+      : null;
+    const selectedIsHotlist = selectedLead ? leadIsHotlist(selectedLead) : false;
+    const selectedGlobalState = selectedLead ? globalAskedJobStateByLeadId[selectedLead.id] : undefined;
+    const selectedIsAskPending = selectedGlobalState === 'asked';
+    const selectedIsVerified = selectedGlobalState === 'verified';
+    const selectedCanAskAI = selectedLead
+      ? !selectedIsAskPending && !selectedIsVerified && Boolean(extractPrimaryEmail(selectedLead.posterEmail))
+      : false;
+    const selectedIsProcessingAskAI = selectedLead ? processingAskAILeadId === selectedLead.id : false;
+    const selectedContent = selectedLead && detailPanelContent?.leadId === selectedLead.id ? detailPanelContent.content : null;
+    const selectedContentLoading = selectedLead ? loadingDetailPanelLeadId === selectedLead.id : false;
+
+    return (
+      <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_380px] gap-3">
+        <div className="grid min-h-0 grid-cols-1 items-start gap-1.5 overflow-y-auto pr-1">
+          {leads.map((lead, idx) => (
+            <LeadCard
+              key={lead.id}
+              {...buildLeadCardProps(lead, idx)}
+              hideActions
+              isSelected={selectedLead?.id === lead.id}
+              onSelect={(selected) => navigate(`/feed/${selected.kind}/${selected.id}`, { replace: true })}
+            />
+          ))}
+        </div>
+
+        <aside className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white">
+          {!selectedLead ? (
+            <div className="flex flex-1 items-center justify-center p-6 text-center">
+              <p className="text-[13px] text-gray-400">Select a post to preview</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-start gap-2.5 border-b border-gray-100 p-4">
+                <div className="min-w-0 flex-1">
+                  <LeadKindPill kind={selectedLead.kind} />
+                  <p className="mt-1 text-[15px] font-semibold text-gray-900">
+                    {selectedLead.title || (selectedIsHotlist ? 'Available Consultant' : 'Job Opportunity')}
+                  </p>
+                  {(selectedLead.company || selectedLead.location) && (
+                    <p className="mt-0.5 truncate text-[13px] text-gray-500">
+                      {selectedLead.company}{selectedLead.company && selectedLead.location ? ' · ' : ''}{selectedLead.location}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/feed', { replace: true })}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+                  aria-label="Close preview"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                <div className="flex flex-wrap gap-1.5 text-[11px]">
+                  {selectedLead.experienceYears != null && (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">{selectedLead.experienceYears}+ yrs</span>
+                  )}
+                  {selectedLead.hourlyRate && (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">{selectedLead.hourlyRate}</span>
+                  )}
+                  {selectedLead.employmentType && (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">{selectedLead.employmentType}</span>
+                  )}
+                  {selectedLead.workType && (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">{selectedLead.workType}</span>
+                  )}
+                  {selectedLead.visaTypes.map((visa) => (
+                    <span key={visa} className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">{visa}</span>
+                  ))}
+                </div>
+                {selectedLead.skills.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                    {selectedLead.skills.map((skill) => (
+                      <span key={skill} className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-600">{skill}</span>
+                    ))}
+                  </div>
+                )}
+                {(selectedLead.posterName || selectedLead.posterEmail) && (
+                  <p className="mt-3 text-[12px] text-gray-500">
+                    Posted by {selectedLead.posterName || 'Unknown'}{selectedLead.posterEmail ? ` · ${selectedLead.posterEmail}` : ''}
+                  </p>
+                )}
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  {selectedContentLoading ? (
+                    <div className="flex items-center justify-center py-6"><LogoSpinner size={20} /></div>
+                  ) : (
+                    <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700">
+                      {selectedContent ?? ''}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 border-t border-gray-100 p-3">
+                <button
+                  type="button"
+                  onClick={() => void shareLead(selectedLead, account?.id, user?.id)}
+                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-gray-50 text-[12px] font-semibold text-gray-600 hover:bg-gray-100"
+                >
+                  <Share2 size={14} />
+                  Share
+                </button>
+                {selectedLead.kind === 'job' && selectedLead.postSource === 'user_post' ? (
+                  <button
+                    type="button"
+                    onClick={() => setApplyModalLead(selectedLead)}
+                    className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 text-[12px] font-semibold text-white hover:bg-blue-700"
+                  >
+                    <Send size={14} />
+                    AI Submit
+                  </button>
+                ) : selectedIsAskPending || selectedIsVerified ? (
+                  <span
+                    className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] font-semibold ${selectedIsVerified ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}
+                  >
+                    {selectedIsVerified ? <BadgeCheck size={14} /> : <Check size={14} />}
+                    {selectedIsVerified ? 'Verified' : (selectedIsHotlist ? 'Requested' : 'Submitted')}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleAskAI(selectedLead)}
+                    disabled={!selectedCanAskAI || selectedIsProcessingAskAI}
+                    className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {selectedIsProcessingAskAI ? <LogoSpinner size={14} /> : selectedLead.postSource === 'user_post' ? (
+                      <><FileText size={14} />Request</>
+                    ) : (
+                      <><Sparkles size={14} />{selectedIsHotlist ? 'AI Request' : 'AI Submit'}</>
+                    )}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </aside>
+      </div>
     );
   };
 
@@ -5398,50 +5572,85 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
   }, [handleOpenPostChat, handleAskAI]);
 
+  // Shared by the card/table "Preview" button (unchanged) and the detail-panel
+  // layout's auto-fetch-on-select — same one-time credit charge either way,
+  // just triggered by a different UI entry point. Returns null only when the
+  // credit charge itself couldn't be completed (consumeCredits already shows
+  // its own UI for that, e.g. an out-of-credits prompt), so callers should
+  // treat null as "silently stop", not as an error to surface.
+  const fetchLeadRawContent = useCallback(async (lead: SocialLead): Promise<string | null> => {
+    const alreadyViewed = postContentViewedLeadIds.has(lead.id);
+    if (!alreadyViewed) {
+      const consumed = await consumeCredits(POST_CONTENT_COST, 'pulse_view_post_content', {
+        lead_id: lead.id,
+        platform: lead.platform,
+        title: lead.title,
+        company: lead.company,
+      }, { alwaysCharge: true });
+      if (!consumed) return null;
+
+      setPostContentViewedLeadIds((prev) => {
+        const next = new Set(prev);
+        next.add(lead.id);
+        return next;
+      });
+      setPostContentViewedAtByLeadId((prev) => ({ ...prev, [lead.id]: new Date().toISOString() }));
+      void persistLeadAction(lead.id, 'post_content_viewed');
+      showToast(`${POST_CONTENT_COST} credit${POST_CONTENT_COST === 1 ? '' : 's'} consumed for post preview`, 'success');
+    }
+
+    const previewIsHotlist = leadIsHotlist(lead);
+    const { data, error } = await supabase
+      .from(previewIsHotlist ? 'social_hotlist' : 'social_jobs')
+      .select(previewIsHotlist ? 'raw_post_content' : 'post_content')
+      .eq('id', lead.id)
+      .maybeSingle();
+    if (error || !data) throw new Error(error?.message || 'Could not load the post');
+
+    const content = String((previewIsHotlist ? (data as { raw_post_content: string | null }).raw_post_content : (data as { post_content: string | null }).post_content) ?? '').trim();
+    return content || 'No post content available.';
+  }, [consumeCredits, leadIsHotlist, persistLeadAction, postContentViewedLeadIds, showToast]);
+
   const handlePreviewPost = useCallback(async (lead: SocialLead) => {
     if (!user || loadingPostContentLeadId) return;
     setLoadingPostContentLeadId(lead.id);
     try {
-      const alreadyViewed = postContentViewedLeadIds.has(lead.id);
-      if (!alreadyViewed) {
-        const consumed = await consumeCredits(POST_CONTENT_COST, 'pulse_view_post_content', {
-          lead_id: lead.id,
-          platform: lead.platform,
-          title: lead.title,
-          company: lead.company,
-        }, { alwaysCharge: true });
-        if (!consumed) return;
-
-        setPostContentViewedLeadIds((prev) => {
-          const next = new Set(prev);
-          next.add(lead.id);
-          return next;
-        });
-        setPostContentViewedAtByLeadId((prev) => ({ ...prev, [lead.id]: new Date().toISOString() }));
-        void persistLeadAction(lead.id, 'post_content_viewed');
-        showToast(`${POST_CONTENT_COST} credit${POST_CONTENT_COST === 1 ? '' : 's'} consumed for post preview`, 'success');
-      }
-
-      const previewIsHotlist = leadIsHotlist(lead);
-      const { data, error } = await supabase
-        .from(previewIsHotlist ? 'social_hotlist' : 'social_jobs')
-        .select(previewIsHotlist ? 'raw_post_content' : 'post_content')
-        .eq('id', lead.id)
-        .maybeSingle();
-      if (error || !data) throw new Error(error?.message || 'Could not load the post');
-
-      const content = String((previewIsHotlist ? (data as { raw_post_content: string | null }).raw_post_content : (data as { post_content: string | null }).post_content) ?? '').trim();
+      const content = await fetchLeadRawContent(lead);
+      if (content == null) return;
       setPostContentPreview({
         leadId: lead.id,
-        title: lead.title || (previewIsHotlist ? 'Available Consultant' : 'Job Opportunity'),
-        content: content || 'No post content available.',
+        title: lead.title || (leadIsHotlist(lead) ? 'Available Consultant' : 'Job Opportunity'),
+        content,
       });
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not load the post', 'error');
     } finally {
       setLoadingPostContentLeadId(null);
     }
-  }, [consumeCredits, leadIsHotlist, loadingPostContentLeadId, persistLeadAction, postContentViewedLeadIds, showToast, user]);
+  }, [fetchLeadRawContent, leadIsHotlist, loadingPostContentLeadId, showToast, user]);
+
+  // Detail-panel layout: opening a post's panel is the new trigger for the
+  // same one-time credit charge the "Preview" button always charged — same
+  // cost, same postContentViewedLeadIds tracking, just fired by selecting a
+  // post instead of clicking a dedicated button.
+  useEffect(() => {
+    if (!isDetailLayout || !routeLeadId || !user) return;
+    if (detailPanelContent?.leadId === routeLeadId) return;
+    if (loadingDetailPanelLeadId === routeLeadId) return;
+
+    const lead = dedupedScopedFeed.find((candidate) => candidate.id === routeLeadId && candidate.kind === routeLeadKind);
+    if (!lead) return;
+
+    setLoadingDetailPanelLeadId(routeLeadId);
+    void fetchLeadRawContent(lead)
+      .then((content) => {
+        if (content != null) setDetailPanelContent({ leadId: routeLeadId, content });
+      })
+      .catch((error) => {
+        showToast(error instanceof Error ? error.message : 'Could not load the post', 'error');
+      })
+      .finally(() => setLoadingDetailPanelLeadId(null));
+  }, [isDetailLayout, routeLeadId, routeLeadKind, user, detailPanelContent, loadingDetailPanelLeadId, dedupedScopedFeed, fetchLeadRawContent, showToast]);
 
 
   const handleOpenBreakdown = useCallback(async (lead: SocialLead) => {
@@ -5831,12 +6040,16 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       {([
                         { id: 'card' as PulseLayoutMode, label: 'Cards', icon: LayoutGrid },
                         { id: 'table' as PulseLayoutMode, label: 'Table', icon: Table2 },
+                        { id: 'detail' as PulseLayoutMode, label: 'Detail', icon: PanelRight },
                         ...(SWIPE_LAYOUT_ENABLED ? [{ id: 'swipe' as PulseLayoutMode, label: 'Swipe', icon: Layers }] : []),
                       ]).map((view) => (
                         <button
                           key={view.id}
                           type="button"
-                          onClick={() => setLayoutMode(view.id)}
+                          onClick={() => {
+                            setLayoutMode(view.id);
+                            if (view.id !== 'detail' && routeLeadId) navigate('/feed', { replace: true });
+                          }}
                           title={view.label}
                           aria-label={view.label}
                           className={`inline-flex items-center justify-center rounded px-2 py-1 text-[11px] font-semibold transition ${layoutMode === view.id ? 'bg-white text-blue-700 shadow-sm dark:bg-[#2A2E35] dark:text-blue-300' : 'text-gray-500 hover:text-gray-700'}`}
@@ -6400,6 +6613,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isCombinedFeed ? 'No previewed leads yet.' : isHotlistFeed ? 'No previewed consultants yet.' : 'No previewed jobs yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopPreviewedFeed)
+                            ) : isDetailLayout ? (
+                              renderDetailSplitView(visibleDesktopPreviewedFeed)
                             ) : (
                               <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#1B1D21]">
                                 {renderLeadCards(visibleDesktopPreviewedFeed, 2)}
@@ -6410,6 +6625,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isCombinedFeed ? 'Nothing sent yet.' : isHotlistFeed ? 'No requested consultants yet.' : 'No submissions yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopAskedFeed)
+                            ) : isDetailLayout ? (
+                              renderDetailSplitView(visibleDesktopAskedFeed)
                             ) : (
                               <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#1B1D21]">
                                 {renderLeadCards(visibleDesktopAskedFeed, 2)}
@@ -6420,6 +6637,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isCombinedFeed ? 'No replies yet.' : isHotlistFeed ? 'No verified jobs yet.' : 'No replies yet.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopVerifiedFeed)
+                            ) : isDetailLayout ? (
+                              renderDetailSplitView(visibleDesktopVerifiedFeed)
                             ) : (
                               <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#1B1D21]">
                                 {renderLeadCards(visibleDesktopVerifiedFeed, 2)}
@@ -6430,6 +6649,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isCombinedFeed ? 'No recent leads.' : isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.'}</div>
                             ) : isTableLayout ? (
                               renderLeadTable(visibleDesktopRecentFeed)
+                            ) : isDetailLayout ? (
+                              renderDetailSplitView(visibleDesktopRecentFeed)
                             ) : (
                               <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#1B1D21]">
                                 {renderLeadCards(visibleDesktopRecentFeed, 2)}
