@@ -22,7 +22,6 @@ import {
   Layers,
   LayoutGrid,
   MapPin,
-  MoreHorizontal,
   Phone,
   Radar,
   RefreshCw,
@@ -2179,7 +2178,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
-  const [isAskAiOverflowOpen, setIsAskAiOverflowOpen] = useState(false);
   const [isRecentSearchesOpen, setIsRecentSearchesOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
@@ -2275,7 +2273,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const mobilePullArmedRef = useRef(false);
   const appliedSearchParamQueryRef = useRef<string | null>(null);
   const rangeMenuRef = useRef<HTMLDivElement | null>(null);
-  const askAiOverflowMenuRef = useRef<HTMLDivElement | null>(null);
   const recentSearchesRef = useRef<HTMLDivElement | null>(null);
   const desktopMatchesScrollRef = useRef<HTMLDivElement | null>(null);
   const pulseRowsCacheRef = useRef<PulseSocialFeedRpcRow[] | null>(null);
@@ -2321,28 +2318,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       document.removeEventListener('touchstart', handlePointerDown);
     };
   }, [isRangeMenuOpen]);
-
-  useEffect(() => {
-    if (!isAskAiOverflowOpen) return;
-
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as Node | null;
-      if (askAiOverflowMenuRef.current && target && !askAiOverflowMenuRef.current.contains(target)) {
-        setIsAskAiOverflowOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('touchstart', handlePointerDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('touchstart', handlePointerDown);
-    };
-  }, [isAskAiOverflowOpen]);
-
-  useEffect(() => {
-    if (!askAIPreview) setIsAskAiOverflowOpen(false);
-  }, [askAIPreview]);
 
   useEffect(() => {
     if (!isRecentSearchesOpen) return;
@@ -6510,104 +6485,77 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 <p className="mt-4 text-[13px] leading-relaxed text-gray-500">{askAIPreview.leadType === 'hotlist' ? 'Generating email draft for request' : 'Generating email draft for submission'}</p>
               </div>
             ) : <>
-            <div className="relative mt-3">
-              <input
-                value={askAIPreview.emailSubject}
-                onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailSubject: event.target.value } : current)}
-                disabled={Boolean(processingAskAILeadId)}
-                placeholder="Subject"
-                className="w-full rounded-md border border-gray-200 py-1.5 pl-3 pr-8 text-[13px] font-medium text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-              <button
-                type="button"
-                onClick={() => void copyText(askAIPreview.emailSubject, 'Subject')}
-                className="absolute right-1.5 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                aria-label="Copy subject"
-              >
-                <Copy size={11} />
-              </button>
-            </div>
-            <div className="relative mt-2">
-              <textarea
-                value={askAIPreview.emailContent}
-                onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailContent: event.target.value } : current)}
-                disabled={Boolean(processingAskAILeadId)}
-                rows={4}
-                placeholder="Write your message..."
-                className="w-full resize-none rounded-md border border-gray-200 py-2 pl-3 pr-8 text-[13px] leading-relaxed text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-              <button
-                type="button"
-                onClick={() => void copyText(askAIPreview.emailContent, 'Email body')}
-                className="absolute right-1.5 top-1.5 inline-flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                aria-label="Copy email body"
-              >
-                <Copy size={11} />
-              </button>
-            </div>
-            <div className="mt-2 flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5">
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-700">{askAIPreview.vendorEmail || 'No email on file'}</span>
-              <button
-                type="button"
-                onClick={() => void copyText(askAIPreview.vendorEmail, 'Email ID')}
-                disabled={!askAIPreview.vendorEmail}
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Copy email ID"
-              >
-                <Copy size={11} />
-              </button>
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-2">
-              {gmailIntegrationStatus === 'connected' ? (
+            <div className="mt-3 divide-y divide-gray-100 border-y border-gray-100 text-[13px]">
+              <div className="flex items-center gap-2 py-2">
+                <span className="w-14 shrink-0 text-gray-400">To</span>
+                <span className="min-w-0 flex-1 truncate text-gray-900">{askAIPreview.vendorEmail || 'No email on file'}</span>
                 <button
                   type="button"
-                  onClick={() => void handleSendViaGmail()}
-                  disabled={sendingViaGmail || !askAIPreview.vendorEmail || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim()}
-                  className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => void copyText(askAIPreview.vendorEmail, 'Email ID')}
+                  disabled={!askAIPreview.vendorEmail}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Copy email ID"
                 >
-                  {sendingViaGmail ? <LogoSpinner size={11} /> : <GmailIcon size={12} />}
-                  {sendingViaGmail ? 'Sending…' : 'Send via Gmail'}
+                  <Copy size={12} />
                 </button>
-              ) : (
+              </div>
+              <div className="flex items-center gap-2 py-2">
+                <span className="w-14 shrink-0 text-gray-400">Subject</span>
+                <input
+                  value={askAIPreview.emailSubject}
+                  onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailSubject: event.target.value } : current)}
+                  disabled={Boolean(processingAskAILeadId)}
+                  placeholder="Subject"
+                  className="min-w-0 flex-1 bg-transparent font-medium text-gray-900 outline-none"
+                />
                 <button
                   type="button"
-                  onClick={() => setShowGmailConnectPrompt(true)}
-                  className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 text-[12px] font-semibold text-white hover:bg-blue-700"
+                  onClick={() => void copyText(askAIPreview.emailSubject, 'Subject')}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  aria-label="Copy subject"
                 >
-                  <GmailIcon size={12} />
-                  Connect Gmail to send
+                  <Copy size={12} />
                 </button>
-              )}
-              <div ref={askAiOverflowMenuRef} className="relative shrink-0">
+              </div>
+              <div className="relative py-2">
+                <textarea
+                  value={askAIPreview.emailContent}
+                  onChange={(event) => setAskAIPreview((current) => current ? { ...current, emailContent: event.target.value } : current)}
+                  disabled={Boolean(processingAskAILeadId)}
+                  rows={6}
+                  placeholder="Write your message..."
+                  className="w-full resize-none bg-transparent pr-7 leading-relaxed text-gray-900 outline-none"
+                />
                 <button
                   type="button"
-                  onClick={() => setIsAskAiOverflowOpen((prev) => !prev)}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
-                  aria-label="More actions"
+                  onClick={() => void copyText(askAIPreview.emailContent, 'Email body')}
+                  className="absolute right-0 top-2 inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  aria-label="Copy email body"
                 >
-                  <MoreHorizontal size={14} />
+                  <Copy size={12} />
                 </button>
-                {isAskAiOverflowOpen && (
-                  <div className="absolute right-0 bottom-[calc(100%+6px)] z-40 min-w-[140px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void copyText(
-                          `${askAIPreview.vendorEmail}\n${askAIPreview.emailSubject}\n\n${askAIPreview.emailContent}`,
-                          'Email',
-                        );
-                        setIsAskAiOverflowOpen(false);
-                      }}
-                      disabled={!askAIPreview.vendorEmail || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim()}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Copy size={13} />
-                      Copy All
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
+            {gmailIntegrationStatus === 'connected' ? (
+              <button
+                type="button"
+                onClick={() => void handleSendViaGmail()}
+                disabled={sendingViaGmail || !askAIPreview.vendorEmail || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim()}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 py-2.5 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sendingViaGmail ? <LogoSpinner size={13} /> : <GmailIcon size={14} />}
+                {sendingViaGmail ? 'Sending…' : 'Send via Gmail'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowGmailConnectPrompt(true)}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 py-2.5 text-[13px] font-semibold text-white hover:bg-blue-700"
+              >
+                <GmailIcon size={14} />
+                Connect Gmail to Send (takes 30 seconds)
+              </button>
+            )}
             </>}
           </div>
         </div>
