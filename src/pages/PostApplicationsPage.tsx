@@ -218,18 +218,18 @@ export default function PostApplicationsPage() {
           </div>
 
           {!loading && applications.length > 0 && (
-            <div className="mb-2 flex shrink-0 flex-col gap-2">
-              <div className="relative">
+            <div className="mb-2 flex shrink-0 items-center gap-2">
+              <div className="relative w-40 shrink-0 sm:w-64">
                 <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by candidate name, email, or recruiter..."
+                  placeholder="Search applications..."
                   className="w-full rounded-md border border-[#dfdad2] bg-white py-1.5 pl-8 pr-3 text-[12px] text-gray-700 outline-none focus:border-blue-300 dark:border-white/10 dark:bg-[#1E2126] dark:text-slate-200"
                 />
               </div>
-              <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+              <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5">
                 {STATUS_TABS.map((tab) => {
                   const count = tab.id === 'all' ? applications.length : applications.filter((a) => a.status === tab.id).length;
                   const isActive = statusFilter === tab.id;
