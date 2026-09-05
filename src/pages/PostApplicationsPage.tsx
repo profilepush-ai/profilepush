@@ -276,7 +276,7 @@ export default function PostApplicationsPage() {
                 })}
               </div>
             ) : (
-              <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_380px] gap-3 p-2">
+              <div className="grid h-full min-h-0 grid-cols-[300px_minmax(0,1fr)] gap-3 p-2">
                 {/* Plain block stacking, not CSS grid, for this list column —
                     a grid's "auto" row-sizing pass measures nested-flex
                     content by min-content rather than actual rendered
