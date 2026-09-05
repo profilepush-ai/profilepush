@@ -245,10 +245,10 @@ export default function PostApplicationsPage() {
                           type="button"
                           disabled={!hasAnsweredTurn}
                           onClick={() => setWatchSubmissionAppId(app.id)}
-                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
+                          title="Watch Screening"
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-blue-200 bg-blue-50 text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
                         >
-                          <Video size={12} />
-                          Watch Screening
+                          <Video size={14} />
                         </button>
                         <button
                           type="button"

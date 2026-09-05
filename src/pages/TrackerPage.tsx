@@ -433,10 +433,10 @@ export default function TrackerPage() {
                             <button
                               type="button"
                               onClick={() => setWatchSubmissionAppId(row.id)}
-                              className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
+                              title="Watch Screening"
+                              className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
                             >
                               <Video size={10} strokeWidth={2.5} />
-                              Watch Screening
                             </button>
                           )}
                         </div>
@@ -550,10 +550,10 @@ export default function TrackerPage() {
                               <button
                                 type="button"
                                 onClick={() => setWatchSubmissionAppId(row.id)}
-                                className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
+                                title="Watch Screening"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300"
                               >
-                                <Video size={10} strokeWidth={2.5} />
-                                Watch Screening
+                                <Video size={12} strokeWidth={2.5} />
                               </button>
                             ) : <span className="text-[11px] text-gray-400 dark:text-[#64748B]">—</span>}
                           </td>
