@@ -22,6 +22,7 @@ import {
   Layers,
   LayoutGrid,
   MapPin,
+  MoreHorizontal,
   Phone,
   Radar,
   RefreshCw,
@@ -1153,7 +1154,7 @@ const LeadCard = memo(function LeadCard({
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
         >
           <Send size={15} strokeWidth={1.75} />
-          <span className="text-[12px] font-normal">Apply</span>
+          <span className="text-[12px] font-normal">AI Submit</span>
         </button>
       ) : isAskPending || isVerified ? (
         <span
@@ -2178,6 +2179,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
+  const [isAskAiOverflowOpen, setIsAskAiOverflowOpen] = useState(false);
   const [isRecentSearchesOpen, setIsRecentSearchesOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
@@ -2273,6 +2275,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const mobilePullArmedRef = useRef(false);
   const appliedSearchParamQueryRef = useRef<string | null>(null);
   const rangeMenuRef = useRef<HTMLDivElement | null>(null);
+  const askAiOverflowMenuRef = useRef<HTMLDivElement | null>(null);
   const recentSearchesRef = useRef<HTMLDivElement | null>(null);
   const desktopMatchesScrollRef = useRef<HTMLDivElement | null>(null);
   const pulseRowsCacheRef = useRef<PulseSocialFeedRpcRow[] | null>(null);
@@ -2318,6 +2321,28 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       document.removeEventListener('touchstart', handlePointerDown);
     };
   }, [isRangeMenuOpen]);
+
+  useEffect(() => {
+    if (!isAskAiOverflowOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (askAiOverflowMenuRef.current && target && !askAiOverflowMenuRef.current.contains(target)) {
+        setIsAskAiOverflowOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [isAskAiOverflowOpen]);
+
+  useEffect(() => {
+    if (!askAIPreview) setIsAskAiOverflowOpen(false);
+  }, [askAIPreview]);
 
   useEffect(() => {
     if (!isRecentSearchesOpen) return;
@@ -3554,7 +3579,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setApplyModalLead(lead); }}
-                        title="Submit a consultant to this job"
+                        title="AI Submit — submit a consultant to this job"
                         className={askButtonClass}
                       >
                         <Send size={12} strokeWidth={2} />
@@ -6538,7 +6563,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   type="button"
                   onClick={() => void handleSendViaGmail()}
                   disabled={sendingViaGmail || !askAIPreview.vendorEmail || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim()}
-                  className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {sendingViaGmail ? <LogoSpinner size={11} /> : <GmailIcon size={12} />}
                   {sendingViaGmail ? 'Sending…' : 'Send via Gmail'}
@@ -6547,24 +6572,41 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 <button
                   type="button"
                   onClick={() => setShowGmailConnectPrompt(true)}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-600 hover:underline"
+                  className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 text-[12px] font-semibold text-white hover:bg-blue-700"
                 >
                   <GmailIcon size={12} />
                   Connect Gmail to send
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => void copyText(
-                  `${askAIPreview.vendorEmail}\n${askAIPreview.emailSubject}\n\n${askAIPreview.emailContent}`,
-                  'Email',
+              <div ref={askAiOverflowMenuRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsAskAiOverflowOpen((prev) => !prev)}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                  aria-label="More actions"
+                >
+                  <MoreHorizontal size={14} />
+                </button>
+                {isAskAiOverflowOpen && (
+                  <div className="absolute right-0 bottom-[calc(100%+6px)] z-40 min-w-[140px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void copyText(
+                          `${askAIPreview.vendorEmail}\n${askAIPreview.emailSubject}\n\n${askAIPreview.emailContent}`,
+                          'Email',
+                        );
+                        setIsAskAiOverflowOpen(false);
+                      }}
+                      disabled={!askAIPreview.vendorEmail || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim()}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Copy size={13} />
+                      Copy All
+                    </button>
+                  </div>
                 )}
-                disabled={!askAIPreview.vendorEmail || !askAIPreview.emailSubject.trim() || !askAIPreview.emailContent.trim()}
-                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Copy size={11} />
-                Copy All
-              </button>
+              </div>
             </div>
             </>}
           </div>
