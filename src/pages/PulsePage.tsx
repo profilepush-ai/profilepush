@@ -3646,7 +3646,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     return (
       <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_380px] gap-3">
-        <div className="grid min-h-0 grid-cols-1 items-start gap-1.5 overflow-y-auto pr-1">
+        {/* Deliberately plain block stacking, not CSS grid/flex, for this
+            single list column: a grid's "auto" row-track sizing pass
+            measures each LeadCard (itself a nested flex column) using its
+            min-content contribution, which can land well below its actual
+            rendered height — every row collapsed to ~58px regardless of
+            real content and cards overlapped. Normal block flow has no such
+            pre-sizing pass; each card just takes its own height. */}
+        <div className="min-h-0 space-y-1.5 overflow-y-auto pr-1">
           {leads.map((lead, idx) => (
             <LeadCard
               key={lead.id}
