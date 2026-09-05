@@ -27,6 +27,10 @@ interface ApplicationRow {
 interface JobSummary {
   job_title: string;
   company_name: string;
+  location: string;
+  employment_type: string;
+  seniority_level: string;
+  salary_range: string;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -92,7 +96,7 @@ export default function PostApplicationsPage() {
     setLoading(true);
 
     const [jobResult, appsResult] = await Promise.all([
-      supabase.from('social_jobs').select('job_title, company_name').eq('id', jobId).maybeSingle(),
+      supabase.from('social_jobs').select('job_title, company_name, location, employment_type, seniority_level, salary_range').eq('id', jobId).maybeSingle(),
       supabase.rpc('get_post_applications' as never, { p_social_job_id: jobId } as never),
     ]);
 
@@ -213,7 +217,20 @@ export default function PostApplicationsPage() {
               <h1 className="truncate text-[15px] font-bold text-gray-900 dark:text-slate-100">
                 Applications{job?.job_title ? ` — ${job.job_title}` : ''}
               </h1>
-              {job?.company_name && <p className="truncate text-[12px] text-gray-400 dark:text-[#94A3B8]">{job.company_name}</p>}
+              {job && (
+                <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                  {[job.location, job.employment_type, job.seniority_level, job.salary_range]
+                    .filter(Boolean)
+                    .map((detail) => (
+                      <span
+                        key={detail}
+                        className="inline-flex items-center rounded-full border border-[#dfdad2] bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-[#94A3B8]"
+                      >
+                        {detail}
+                      </span>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
 
