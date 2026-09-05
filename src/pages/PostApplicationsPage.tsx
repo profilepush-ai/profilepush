@@ -352,28 +352,30 @@ export default function PostApplicationsPage() {
                           </div>
                         )}
 
-                        <div>
-                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">Screening Video</p>
-                          {selectedHasAnsweredTurn ? (
-                            <ScreeningSubmissionModal
-                              embedded
-                              applicationId={selectedApp.id}
-                              turns={selectedTurns}
-                              onClose={() => {}}
-                              showToast={showToast}
-                            />
-                          ) : (
-                            <p className="text-[12px] text-gray-400 dark:text-[#64748B]">No screening recorded yet.</p>
-                          )}
-                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">Screening Video</p>
+                            {selectedHasAnsweredTurn ? (
+                              <ScreeningSubmissionModal
+                                embedded
+                                applicationId={selectedApp.id}
+                                turns={selectedTurns}
+                                onClose={() => {}}
+                                showToast={showToast}
+                              />
+                            ) : (
+                              <p className="text-[12px] text-gray-400 dark:text-[#64748B]">No screening recorded yet.</p>
+                            )}
+                          </div>
 
-                        <div>
-                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">Resume</p>
-                          {selectedApp.resume_url ? (
-                            <iframe src={selectedApp.resume_url} className="h-[500px] w-full rounded-md border border-gray-200 bg-white dark:border-white/10" title="Resume" />
-                          ) : (
-                            <p className="text-[12px] text-gray-400 dark:text-[#64748B]">No resume on file.</p>
-                          )}
+                          <div>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">Resume</p>
+                            {selectedApp.resume_url ? (
+                              <iframe src={selectedApp.resume_url} className="h-[500px] w-full rounded-md border border-gray-200 bg-white dark:border-white/10" title="Resume" />
+                            ) : (
+                              <p className="text-[12px] text-gray-400 dark:text-[#64748B]">No resume on file.</p>
+                            )}
+                          </div>
                         </div>
                       </div>
 
