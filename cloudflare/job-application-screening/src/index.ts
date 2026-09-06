@@ -241,15 +241,35 @@ async function generateNextQuestion(
   return { done: false, question: String(payload.question ?? "") };
 }
 
-async function fetchJobContext(env: Env, socialJobId: string): Promise<{ jobTitle: string; jobDescription: string; companyName: string }> {
-  const res = await supabaseRest(env, `social_jobs?id=eq.${socialJobId}&select=job_title,job_description,post_content,company_name`);
-  const rows = res.ok ? (await res.json()) as Array<{ job_title: string; job_description: string; post_content: string; company_name: string }> : [];
+async function fetchJobContext(env: Env, socialJobId: string): Promise<{ jobTitle: string; jobDescription: string; companyName: string; createdByAccountId: string | null }> {
+  const res = await supabaseRest(env, `social_jobs?id=eq.${socialJobId}&select=job_title,job_description,post_content,company_name,created_by_account_id`);
+  const rows = res.ok ? (await res.json()) as Array<{ job_title: string; job_description: string; post_content: string; company_name: string; created_by_account_id: string | null }> : [];
   const job = rows[0];
   return {
     jobTitle: job?.job_title || "this role",
     jobDescription: job?.job_description || job?.post_content || "",
     companyName: job?.company_name || "",
+    createdByAccountId: job?.created_by_account_id ?? null,
   };
+}
+
+// Best-effort — a candidate's screening submission must always succeed even
+// if this fails (insufficient credits, RPC error, etc). Errors are logged,
+// never surfaced to the candidate or used to reject the submission.
+async function chargeScreeningCompletionCredit(env: Env, accountId: string | null, applicationId: string): Promise<void> {
+  if (!accountId) return;
+  try {
+    const res = await supabaseRest(env, "rpc/charge_screening_completion_credit", {
+      method: "POST",
+      body: JSON.stringify({ p_account_id: accountId, p_application_id: applicationId }),
+    });
+    const rows = res.ok ? (await res.json()) as Array<{ success: boolean; message: string }> : [];
+    if (!res.ok || !rows[0]?.success) {
+      console.error("Screening completion credit charge failed", applicationId, res.status, rows[0]?.message);
+    }
+  } catch (error) {
+    console.error("Screening completion credit charge threw", applicationId, error);
+  }
 }
 
 // ── Route handlers ──────────────────────────────────────────────────────────
@@ -379,8 +399,9 @@ async function handleFinalize(env: Env, token: string, req: Request): Promise<Re
     body: JSON.stringify({ video_r2_key: r2Key, video_content_type: contentType, status: "screening_completed" }),
   });
 
-  const { jobTitle } = await fetchJobContext(env, application.social_job_id);
+  const { jobTitle, createdByAccountId } = await fetchJobContext(env, application.social_job_id);
   await sendScreeningCompletedMessage(env, application, jobTitle);
+  await chargeScreeningCompletionCredit(env, createdByAccountId, application.id);
 
   return jsonResponse({ done: true });
 }

@@ -278,7 +278,7 @@ export default function ClaimPostsWidget({ onClaimed, showToast }: {
     <>
       <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[#dfdad2] bg-white px-3 py-2 dark:border-white/10 dark:bg-[#1E2126]">
         <p className="text-[12px] font-medium text-gray-700 dark:text-slate-200">
-          We found {visibleMatches.length} post{visibleMatches.length === 1 ? '' : 's'} under your email — claim {visibleMatches.length === 1 ? 'it' : 'them'} to manage here.
+          We found {visibleMatches.length} post{visibleMatches.length === 1 ? '' : 's'} under your email — claim {visibleMatches.length === 1 ? 'it' : 'them'} to manage applications and video screening here, and share the link to get applicants from anywhere.
         </p>
         <button
           type="button"

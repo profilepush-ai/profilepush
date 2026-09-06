@@ -2387,9 +2387,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setToast({ message, type });
   }, []);
 
-  const BREAKDOWN_COST = 0.1;
   const PREDICT_COST = 0.01;
-  const POST_CONTENT_COST = 1;
   const MAX_BULK_PREDICT = 5;
 
   const sortedLeaderboard = useMemo(() => {
@@ -5602,7 +5600,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
   const consumeCreditsLegacy = useCallback(async (
     amount: number,
-    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown' | 'pulse_predict_match' | 'pulse_view_post_content',
+    feature: 'pulse_predict_match',
   ) => {
     if (!account?.id) return false;
 
@@ -5655,15 +5653,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
   const consumeCredits = useCallback(async (
     amount: number,
-    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown' | 'pulse_predict_match' | 'pulse_view_post_content',
+    feature: 'pulse_predict_match',
     metadata: Record<string, unknown>,
-    options?: { alwaysCharge?: boolean },
   ) => {
-    // Preview moved onto the always-on 1-credit-per-action model (same as
-    // post creation / AI Pitch-Request) rather than the legacy fractional
-    // pulse_reveal_contact/breakdown/predict costs, which stay behind the
-    // disabled BILLING_GATES_ENABLED flag until that's re-enabled.
-    if (!options?.alwaysCharge && !shouldChargeCredits()) return true;
+    if (!shouldChargeCredits()) return true;
     if (!account?.id) {
       showToast('No account found for credit deduction', 'error');
       return false;
@@ -5754,14 +5747,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const fetchLeadRawContent = useCallback(async (lead: SocialLead): Promise<string | null> => {
     const alreadyViewed = postContentViewedLeadIds.has(lead.id);
     if (!alreadyViewed) {
-      const consumed = await consumeCredits(POST_CONTENT_COST, 'pulse_view_post_content', {
-        lead_id: lead.id,
-        platform: lead.platform,
-        title: lead.title,
-        company: lead.company,
-      }, { alwaysCharge: true });
-      if (!consumed) return null;
-
       setPostContentViewedLeadIds((prev) => {
         const next = new Set(prev);
         next.add(lead.id);
@@ -5781,7 +5766,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     const content = String((previewIsHotlist ? (data as { raw_post_content: string | null }).raw_post_content : (data as { post_content: string | null }).post_content) ?? '').trim();
     return content || 'No post content available.';
-  }, [consumeCredits, leadIsHotlist, persistLeadAction, postContentViewedLeadIds]);
+  }, [leadIsHotlist, persistLeadAction, postContentViewedLeadIds]);
 
   const handlePreviewPost = useCallback(async (lead: SocialLead) => {
     if (!user || loadingPostContentLeadId) return;
@@ -5830,21 +5815,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     try {
       const alreadyCharged = breakdownChargedLeadIds.has(lead.id);
       if (!alreadyCharged) {
-        const consumed = await consumeCredits(BREAKDOWN_COST, 'pulse_view_breakdown', {
-          lead_id: lead.id,
-          platform: lead.platform,
-          title: lead.title,
-          company: lead.company,
-        });
-        if (!consumed) return;
-
         setBreakdownChargedLeadIds((prev) => {
           const next = new Set(prev);
           next.add(lead.id);
           return next;
         });
         void persistLeadAction(lead.id, 'breakdown');
-        if (shouldChargeCredits()) showToast(`$${BREAKDOWN_COST.toFixed(2)} credits consumed for breakdown`, 'success');
       }
 
       setSelectedLead(lead);
@@ -5852,7 +5828,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } finally {
       setProcessingBreakdownLeadId(null);
     }
-  }, [breakdownChargedLeadIds, consumeCredits, persistLeadAction, showToast]);
+  }, [breakdownChargedLeadIds, persistLeadAction]);
 
   const applyFeedSearch = useCallback(async (queryOverride?: string) => {
     const rawQuery = (queryOverride ?? pendingFeedSearchQuery).trim();

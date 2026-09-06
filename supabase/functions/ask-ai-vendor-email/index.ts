@@ -9,8 +9,6 @@ const corsHeaders = {
 };
 
 const ASK_VENDOR_AI_URL = "https://profilepush-social-job-queue-consumer.profilepush-ai.workers.dev/ask-vendor-email-copy";
-const ASK_AI_COST = 0.05;
-const JOB_SUBMIT_COST = 0.05;
 const SENDER_NAME_TOKEN = "{{sender_name}}";
 
 function respond(payload: Record<string, unknown>, status = 200) {
@@ -67,7 +65,6 @@ Deno.serve(async (req: Request) => {
     const jobId = asString(body.job_id, 100);
     const leadType = asString(body.lead_type, 20) === "hotlist" ? "hotlist" : "job";
     const channel = asString(body.channel, 20) === "gmail" ? "gmail" : "mailgun";
-    const chargeAmount = leadType === "job" ? JOB_SUBMIT_COST : ASK_AI_COST;
     const resumeUrl = asString(body.resume_url, 2000);
     const resumeFileName = asString(body.resume_file_name, 255);
     const missingDetails = Array.isArray(body.missing_details)
@@ -297,7 +294,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: existingRequest } = await supabaseAdmin
         .from("pulse_ask_ai_requests")
-        .select("status, charged_amount, conversation_id")
+        .select("status, conversation_id")
         .eq("request_id", requestId)
         .eq("account_id", accountId)
         .eq("user_id", user.id)
@@ -307,7 +304,6 @@ Deno.serve(async (req: Request) => {
         return respond({
           ok: true,
           email_sent: true,
-          charged: Number(existingRequest.charged_amount ?? chargeAmount),
           vendor_name: vendorDisplayName,
           vendor_email: vendorEmail,
           missing_details: missingDetails,
@@ -315,64 +311,22 @@ Deno.serve(async (req: Request) => {
         });
       }
       return respond({
-        error: existingRequest?.status === "charged"
-          ? "This request was charged and is awaiting delivery confirmation"
-          : "This Ask AI request is already being processed",
+        error: "This Ask AI request is already being processed",
         request_status: existingRequest?.status ?? "unknown",
       }, 409);
     }
 
-    const { data: creditRows, error: creditError } = await supabaseUser.rpc("consume_feature_credit", {
-      p_account_id: accountId,
-      p_amount: chargeAmount,
-      p_feature: "pulse_ask_ai",
-      p_metadata: {
-        request_id: requestId,
-        job_id: leadType === "job" ? jobId : null,
-        hotlist_id: leadType === "hotlist" ? jobId : null,
-        vendor_email: vendorEmail,
-        missing_details: missingDetails,
-      },
-    });
-    const creditResult = Array.isArray(creditRows) ? creditRows[0] : null;
-    if (creditError || !creditResult?.success) {
-      await supabaseAdmin
-        .from("pulse_ask_ai_requests")
-        .update({ status: "failed", error_message: creditError?.message ?? creditResult?.message ?? "Credit charge failed", updated_at: new Date().toISOString() })
-        .eq("request_id", requestId);
-      return respond({ error: creditResult?.message ?? creditError?.message ?? "Could not charge Ask AI credits" }, 402);
-    }
-
-    const { error: chargedStatusError } = await supabaseAdmin
-      .from("pulse_ask_ai_requests")
-      .update({ status: "charged", charged_amount: chargeAmount, updated_at: new Date().toISOString() })
-      .eq("request_id", requestId);
-    if (chargedStatusError) {
-      const { error: refundError } = await supabaseAdmin.rpc("refund_feature_credit", {
-        p_account_id: accountId,
-        p_amount: chargeAmount,
-        p_feature: "pulse_ask_ai_state_failed",
-      });
-      console.error("Could not persist Ask AI charged state", chargedStatusError, refundError);
-      return respond({ error: refundError ? "Could not start the request; contact support about the credit charge" : "Could not start the request; the credit charge was refunded" }, 500);
-    }
-
-    const refundDeliveryFailure = async (deliveryError: string) => {
-      console.error("Ask AI Mailgun queue failed", deliveryError);
-      const { error: refundError } = await supabaseAdmin.rpc("refund_feature_credit", {
-        p_account_id: accountId,
-        p_amount: chargeAmount,
-        p_feature: "pulse_ask_ai_delivery_failed",
-      });
+    const failRequest = async (deliveryError: string) => {
+      console.error("Ask AI request failed", deliveryError);
       await supabaseAdmin
         .from("pulse_ask_ai_requests")
         .update({
-          status: refundError ? "failed" : "refunded",
-          error_message: refundError ? `${deliveryError}; refund failed: ${refundError.message}` : deliveryError,
+          status: "failed",
+          error_message: deliveryError,
           updated_at: new Date().toISOString(),
         })
         .eq("request_id", requestId);
-      return respond({ error: refundError ? "Could not send the request; contact support about the credit charge" : "Could not send the request; the credit charge was refunded" }, 502);
+      return respond({ error: "Could not send the request" }, 502);
     };
 
     const { data: conversation, error: conversationError } = await supabaseAdmin
@@ -393,7 +347,7 @@ Deno.serve(async (req: Request) => {
       .select("id")
       .single();
     if (conversationError || !conversation) {
-      return await refundDeliveryFailure(`Could not create conversation: ${conversationError?.message ?? "unknown error"}`);
+      return await failRequest(`Could not create conversation: ${conversationError?.message ?? "unknown error"}`);
     }
 
     const { data: outboundMessage, error: messageError } = await supabaseAdmin
@@ -414,7 +368,7 @@ Deno.serve(async (req: Request) => {
       .select("id")
       .single();
     if (messageError || !outboundMessage) {
-      return await refundDeliveryFailure(`Could not create outbound message: ${messageError?.message ?? "unknown error"}`);
+      return await failRequest(`Could not create outbound message: ${messageError?.message ?? "unknown error"}`);
     }
 
     const { error: requestConversationError } = await supabaseAdmin
@@ -422,7 +376,7 @@ Deno.serve(async (req: Request) => {
       .update({ conversation_id: conversation.id, updated_at: new Date().toISOString() })
       .eq("request_id", requestId);
     if (requestConversationError) {
-      return await refundDeliveryFailure(`Could not link conversation: ${requestConversationError.message}`);
+      return await failRequest(`Could not link conversation: ${requestConversationError.message}`);
     }
 
     let deliveryHttpStatus: number | null = null;
@@ -446,13 +400,13 @@ Deno.serve(async (req: Request) => {
           .update({ status: "open", gmail_thread_id: sendResult.threadId, last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq("id", conversation.id);
       } catch (error) {
-        return await refundDeliveryFailure(`Gmail send failed: ${(error as Error).message}`);
+        return await failRequest(`Gmail send failed: ${(error as Error).message}`);
       }
     } else {
       const vendorMailWorkerUrl = Deno.env.get("VENDOR_MAIL_WORKER_URL")?.trim();
       const vendorMailWorkerToken = Deno.env.get("VENDOR_MAIL_WORKER_TOKEN")?.trim();
       if (!vendorMailWorkerUrl || !vendorMailWorkerToken) {
-        return await refundDeliveryFailure("Vendor mail worker is not configured");
+        return await failRequest("Vendor mail worker is not configured");
       }
 
       let queueResponse: Response;
@@ -470,12 +424,12 @@ Deno.serve(async (req: Request) => {
           }),
         });
       } catch (error) {
-        return await refundDeliveryFailure(`Vendor mail queue request failed: ${(error as Error).message}`);
+        return await failRequest(`Vendor mail queue request failed: ${(error as Error).message}`);
       }
 
       const queueResponseText = (await queueResponse.text()).slice(0, 2_000);
       if (!queueResponse.ok) {
-        return await refundDeliveryFailure(`Vendor mail queue HTTP ${queueResponse.status}: ${queueResponseText.slice(0, 300)}`);
+        return await failRequest(`Vendor mail queue HTTP ${queueResponse.status}: ${queueResponseText.slice(0, 300)}`);
       }
       deliveryHttpStatus = queueResponse.status;
       deliveryResponse = queueResponseText || null;
@@ -498,7 +452,6 @@ Deno.serve(async (req: Request) => {
     return respond({
       ok: true,
       email_sent: true,
-      charged: chargeAmount,
       vendor_name: vendorDisplayName,
       vendor_email: vendorEmail,
       missing_details: missingDetails,

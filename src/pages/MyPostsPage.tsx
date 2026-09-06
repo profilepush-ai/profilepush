@@ -134,7 +134,7 @@ function matchesRange(post: UserPost, rangeId: string): boolean {
 }
 
 export default function MyPostsPage() {
-  const { account } = useAuth();
+  const { account, user } = useAuth();
   const { isDark } = useTheme();
   const navigate = useNavigate();
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
@@ -341,6 +341,38 @@ export default function MyPostsPage() {
     }
     showToast('Post deleted', 'success');
     void loadPosts();
+  }
+
+  // Lets a post owner grab their own post's public link so it can be shared
+  // to sources beyond the ProfilePush feed — applications from that link
+  // still flow into the normal job_applications/screening pipeline.
+  async function handleSharePost(post: UserPost) {
+    const url = `${window.location.origin}/${post.kind === 'hotlist' ? 'hotlist' : 'job'}/${post.id}`;
+    const title = post.kind === 'hotlist' ? (post.title || 'Available Consultant') : (post.title || 'Job Opportunity');
+    let shared = false;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, url });
+        shared = true;
+      } catch {
+        // AbortError (user cancelled) or unsupported — fall through to copy.
+      }
+    }
+    if (!shared) {
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast('Link copied to clipboard', 'success');
+      } catch {
+        showToast('Could not copy link', 'error');
+        return;
+      }
+    }
+    if (account?.id) {
+      void supabase.from('pulse_lead_actions').upsert(
+        { account_id: account.id, user_id: user?.id ?? null, lead_id: post.id, action_type: 'shared' },
+        { onConflict: 'account_id,user_id,lead_id,action_type', ignoreDuplicates: true },
+      );
+    }
   }
 
   // Applicants + application-detail columns only apply to job posts —
@@ -851,6 +883,9 @@ export default function MyPostsPage() {
                         <button type="button" onClick={() => void handleDelete(post)} title="Delete" className={`rounded p-1.5 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}>
                           <Trash2 size={15} />
                         </button>
+                        <button type="button" onClick={() => void handleSharePost(post)} title="Share" className={`rounded p-1.5 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                          <Share2 size={15} />
+                        </button>
                       </div>
                     </div>
                   );
@@ -961,6 +996,14 @@ export default function MyPostsPage() {
                             className={`rounded p-1 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}
                           >
                             <Trash2 size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); void handleSharePost(post); }}
+                            title="Share"
+                            className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}
+                          >
+                            <Share2 size={13} />
                           </button>
                         </div>
                       </div>

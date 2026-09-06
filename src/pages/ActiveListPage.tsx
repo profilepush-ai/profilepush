@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import { Check, ChevronLeft, ChevronRight, Clock3, Search, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
-import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 import LocationChipInput from '../components/LocationChipInput';
 import ActiveListTable, { type ActiveListContact } from '../components/ActiveListTable';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,7 +10,6 @@ import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { downloadCsv } from '../lib/csv';
 
-const EMAIL_DOWNLOAD_COST = 0.25;
 const PAGE_SIZE = 50;
 
 type ActiveListResponse = {
@@ -208,7 +206,7 @@ function toCsvRows(rows: ActiveListContact[]): string[][] {
 export default function ActiveListPage() {
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') === 'recruiters' ? 'recruiters' : 'vendors';
-  const { account, refreshAccount } = useAuth();
+  const { account } = useAuth();
   const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'vendors' | 'recruiters'>(initialTab);
   const [data, setData] = useState<ActiveListResponse>({ recruiters: [], vendors: [] });
@@ -225,7 +223,6 @@ export default function ActiveListPage() {
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [charging, setCharging] = useState(false);
-  const [showOutOfCredits, setShowOutOfCredits] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   async function loadData() {
@@ -358,49 +355,22 @@ export default function ActiveListPage() {
   async function handleDownload() {
     if (selectedRows.length === 0 || !account?.id || charging) return;
 
-    // Free-plan download limit check runs first, before any credits are
-    // touched — rejecting after a charge would mean "charged and got
-    // nothing." Independent of the credits system below.
+    // Free-plan download limit check — downloads are not an AI feature, so
+    // no credits are charged here, only rate-limited.
     setCharging(true);
     const { data: gateResult, error: gateError } = await supabase.rpc('check_and_log_active_list_download', {
       p_requested_count: selectedRows.length,
       p_download_type: activeTab,
     });
+    setCharging(false);
     const gateRow = Array.isArray(gateResult) ? gateResult[0] : null;
     if (gateError || !gateRow || gateRow.allowed_count !== selectedRows.length) {
-      setCharging(false);
       setToast({ message: gateRow?.message || gateError?.message || 'Could not verify download limit right now', type: 'error' });
       return;
     }
 
-    const cost = Math.round(selectedRows.length * EMAIL_DOWNLOAD_COST * 100) / 100;
-    if ((account.credits_balance ?? 0) < cost) {
-      setCharging(false);
-      setShowOutOfCredits(true);
-      return;
-    }
-
-    const { data: result, error } = await supabase.rpc('consume_feature_credit', {
-      p_account_id: account.id,
-      p_amount: cost,
-      p_feature: 'active_list_email_download',
-      p_metadata: { count: selectedRows.length, tab: activeTab },
-    });
-    setCharging(false);
-
-    const row = Array.isArray(result) ? result[0] : null;
-    if (error || !row?.success) {
-      if (String(row?.message ?? '').toLowerCase().includes('insufficient')) {
-        setShowOutOfCredits(true);
-      } else {
-        setToast({ message: row?.message || error?.message || 'Could not charge credits right now', type: 'error' });
-      }
-      return;
-    }
-
-    await refreshAccount();
     downloadCsv(`active-list-${activeTab}.csv`, ['Name', 'Email', 'Last Active On', 'Role Titles'], toCsvRows(selectedRows));
-    setToast({ message: `${cost} credit${cost === 1 ? '' : 's'} used for ${selectedRows.length} email${selectedRows.length === 1 ? '' : 's'}`, type: 'success' });
+    setToast({ message: `${selectedRows.length} email${selectedRows.length === 1 ? '' : 's'} downloaded`, type: 'success' });
     setSelectedEmails(new Set());
   }
 
@@ -481,7 +451,7 @@ export default function ActiveListPage() {
               )}
             </div>
           </div>
-          <p className="shrink-0 text-[11px] text-gray-400">Select rows to unlock and download their emails — {EMAIL_DOWNLOAD_COST} credit per email.</p>
+          <p className="shrink-0 text-[11px] text-gray-400">Select rows to unlock and download their emails.</p>
 
           <div className="flex min-h-0 flex-1 gap-3">
             <aside className="flex h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
@@ -645,12 +615,6 @@ export default function ActiveListPage() {
         </div>
       </main>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      <InsufficientCreditsModal
-        open={showOutOfCredits}
-        onClose={() => setShowOutOfCredits(false)}
-        balance={account?.credits_balance ?? 0}
-        actionLabel={`download ${selectedRows.length} email${selectedRows.length === 1 ? '' : 's'}`}
-      />
     </div>
   );
 }

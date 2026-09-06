@@ -49,7 +49,6 @@ import { supabase } from '../lib/supabase';
 import { HOTLIST_AI_SUGGESTIONS } from '../lib/hotlist-ai-suggestions';
 import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
 import { matchesPulseFeedSearch, type PulseFeedSearchScope } from '../lib/pulse-feed-search';
-import { shouldChargeCredits } from '../lib/feature-gates';
 import { normalizePostSource, type PostSource } from '../lib/post-source';
 import PostSourceBadge from '../components/PostSourceBadge';
 
@@ -919,7 +918,7 @@ function buildHotlistRolePayloadFromPersona(accountId: string, persona: PulsePer
 
 
 export default function ProfilesPage() {
-  const { account, user, refreshAccount } = useAuth();
+  const { account, user } = useAuth();
   const navigate = useNavigate();
   const [initialDirectorySnapshot] = useState(readPulseDirectorySnapshot);
 
@@ -989,9 +988,6 @@ export default function ProfilesPage() {
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
   }, []);
-
-  const REVEAL_CONTACT_COST = 0.25;
-  const BREAKDOWN_COST = 0.1;
 
   const sortedLeaderboard = useMemo(() => {
     return [...leaderboard]
@@ -2863,110 +2859,6 @@ export default function ProfilesPage() {
     setShowGeneratedEmailDraft(false);
   }, [selectedLead?.id]);
 
-  const consumeCreditsLegacy = useCallback(async (
-    amount: number,
-    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown',
-  ) => {
-    if (!account?.id) return false;
-
-    const roundedAmount = Number(amount.toFixed(4));
-
-    const { data: accountRow, error: accountError } = await supabase
-      .from('accounts')
-      .select('credits_balance')
-      .eq('id', account.id)
-      .maybeSingle();
-
-    if (accountError) {
-      showToast('Could not load credits balance', 'error');
-      return false;
-    }
-
-    const currentBalance = Number(accountRow?.credits_balance ?? 0);
-    if (currentBalance < roundedAmount) {
-      showToast('Insufficient credits', 'error');
-      return false;
-    }
-
-    const nextBalance = Number((currentBalance - roundedAmount).toFixed(4));
-
-    const { error: updateError } = await supabase
-      .from('accounts')
-      .update({ credits_balance: nextBalance })
-      .eq('id', account.id);
-
-    if (updateError) {
-      showToast('Could not update credits balance', 'error');
-      return false;
-    }
-
-    const { error: txError } = await supabase.from('credit_transactions').insert({
-      account_id: account.id,
-      user_id: user?.id ?? null,
-      type: 'usage',
-      amount: -roundedAmount,
-      description: `Pulse: ${feature}`,
-    });
-
-    if (txError) {
-      showToast('Credits deducted but usage log entry failed', 'error');
-    }
-
-    await refreshAccount();
-    return true;
-  }, [account?.id, refreshAccount, showToast, user?.id]);
-
-  const consumeCredits = useCallback(async (
-    amount: number,
-    feature: 'pulse_reveal_contact' | 'pulse_view_breakdown',
-    metadata: Record<string, unknown>,
-  ) => {
-    if (!shouldChargeCredits()) return true;
-    if (!account?.id) {
-      showToast('No account found for credit deduction', 'error');
-      return false;
-    }
-
-    const { data, error } = await supabase.rpc('consume_feature_credit', {
-      p_account_id: account.id,
-      p_amount: amount,
-      p_feature: feature,
-      p_metadata: metadata,
-    });
-
-    let rpcData = data;
-    let rpcError = error;
-
-    // Compatibility retry for environments that deployed a 3-arg version.
-    if (rpcError) {
-      const retry = await supabase.rpc('consume_feature_credit', {
-        p_account_id: account.id,
-        p_amount: amount,
-        p_feature: feature,
-      });
-      rpcData = retry.data;
-      rpcError = retry.error;
-    }
-
-    if (rpcError) {
-      const usedLegacy = await consumeCreditsLegacy(amount, feature);
-      if (!usedLegacy) {
-        showToast(rpcError.message || 'Could not consume credits right now', 'error');
-      }
-      return usedLegacy;
-    }
-
-    const row = Array.isArray(rpcData) ? rpcData[0] : null;
-    const success = Boolean(row?.success);
-    if (!success) {
-      showToast(String(row?.message ?? 'Insufficient credits'), 'error');
-      return false;
-    }
-
-    await refreshAccount();
-    return true;
-  }, [account?.id, consumeCreditsLegacy, refreshAccount, showToast]);
-
   const persistLeadAction = useCallback(async (leadId: string, actionType: LeadActionType) => {
     if (!account?.id) return;
 
@@ -3075,21 +2967,12 @@ export default function ProfilesPage() {
 
     try {
       if (!alreadyRevealed) {
-        const consumed = await consumeCredits(REVEAL_CONTACT_COST, 'pulse_reveal_contact', {
-          lead_id: lead.id,
-          platform: lead.platform,
-          title: lead.title,
-          company: lead.company,
-        });
-        if (!consumed) return;
-
         setRevealedLeadIds((prev) => {
           const next = new Set(prev);
           next.add(lead.id);
           return next;
         });
         void persistLeadAction(lead.id, 'revealed');
-        if (shouldChargeCredits()) showToast(`$${REVEAL_CONTACT_COST.toFixed(2)} credits consumed for reveal`, 'success');
       }
 
       const saved = await saveVendorToTracker(lead);
@@ -3107,28 +2990,19 @@ export default function ProfilesPage() {
     } finally {
       setProcessingLeadId(null);
     }
-  }, [consumeCredits, persistLeadAction, revealedLeadIds, saveVendorToTracker, showToast, user]);
+  }, [persistLeadAction, revealedLeadIds, saveVendorToTracker, showToast, user]);
 
   const handleOpenBreakdown = useCallback(async (lead: SocialLead) => {
     setProcessingBreakdownLeadId(lead.id);
     try {
       const alreadyCharged = breakdownChargedLeadIds.has(lead.id);
       if (!alreadyCharged) {
-        const consumed = await consumeCredits(BREAKDOWN_COST, 'pulse_view_breakdown', {
-          lead_id: lead.id,
-          platform: lead.platform,
-          title: lead.title,
-          company: lead.company,
-        });
-        if (!consumed) return;
-
         setBreakdownChargedLeadIds((prev) => {
           const next = new Set(prev);
           next.add(lead.id);
           return next;
         });
         void persistLeadAction(lead.id, 'breakdown');
-        if (shouldChargeCredits()) showToast(`$${BREAKDOWN_COST.toFixed(2)} credits consumed for breakdown`, 'success');
       }
 
       setSelectedLead(lead);
@@ -3136,7 +3010,7 @@ export default function ProfilesPage() {
     } finally {
       setProcessingBreakdownLeadId(null);
     }
-  }, [breakdownChargedLeadIds, consumeCredits, persistLeadAction, showToast]);
+  }, [breakdownChargedLeadIds, persistLeadAction]);
 
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] dark:bg-[#1B1D21] dark:text-slate-100 sm:pb-0">
