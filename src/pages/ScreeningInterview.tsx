@@ -46,6 +46,9 @@ export default function ScreeningInterview() {
   const [recordPhase, setRecordPhase] = useState<RecordPhase>('requesting_camera');
   const [errorMessage, setErrorMessage] = useState('');
   const [retakesUsed, setRetakesUsed] = useState(0);
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [declinedConsent, setDeclinedConsent] = useState(false);
+  const [submittedVideoUrl, setSubmittedVideoUrl] = useState<string | null>(null);
 
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -117,10 +120,17 @@ export default function ScreeningInterview() {
   }, []);
 
   useEffect(() => {
-    if (pageStatus !== 'active') return;
+    if (pageStatus !== 'active' || !consentGiven) return;
     void setupCamera();
     return () => stopCamera();
-  }, [pageStatus, setupCamera, stopCamera]);
+  }, [pageStatus, consentGiven, setupCamera, stopCamera]);
+
+  // The object URL is only ever created once (finalizeInterview sets it a
+  // single time, right before the page moves to 'completed'), so this only
+  // needs to revoke on unmount, not on every change.
+  useEffect(() => () => {
+    if (submittedVideoUrl) URL.revokeObjectURL(submittedVideoUrl);
+  }, [submittedVideoUrl]);
 
   useEffect(() => () => {
     stopCamera();
@@ -147,6 +157,7 @@ export default function ScreeningInterview() {
       const payload = (await res.json()) as { done?: boolean; error?: string };
       if (!res.ok) throw new Error(payload.error || 'Could not submit your recording');
       stopCamera();
+      setSubmittedVideoUrl(URL.createObjectURL(blob));
       setPageStatus('completed');
     } catch (error) {
       // The blob is still in masterBlobRef — retry re-sends the same bytes
@@ -291,15 +302,81 @@ export default function ScreeningInterview() {
 
   if (pageStatus === 'completed') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-10 max-w-sm text-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-8">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8 sm:p-10 max-w-lg w-full text-center">
           <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
             <PartyPopper size={26} className="text-emerald-500" />
           </div>
           <h1 className="text-base font-bold text-gray-900 mb-2">Screening Complete</h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 mb-5">
             Thanks{session?.candidateName ? `, ${session.candidateName.split(/\s+/)[0]}` : ''}! Your recruiter will review your answers and follow up with you.
           </p>
+          {submittedVideoUrl && (
+            <div className="text-left">
+              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">What you submitted</p>
+              <video controls src={submittedVideoUrl} className="w-full rounded-xl bg-gray-900 aspect-video" />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (pageStatus === 'active' && declinedConsent) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-10 max-w-sm text-center">
+          <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle size={24} className="text-gray-400" />
+          </div>
+          <h1 className="text-base font-bold text-gray-900 mb-2">Consent Required</h1>
+          <p className="text-sm text-gray-500 mb-5">This screening can't continue without your consent to be recorded and evaluated by AI. If you have questions, please contact your recruiter directly.</p>
+          <button
+            onClick={() => setDeclinedConsent(false)}
+            className="text-sm font-semibold text-blue-600 hover:underline"
+          >
+            Back to consent screen
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (pageStatus === 'active' && !consentGiven) {
+    return (
+      <div className="min-h-screen bg-gray-50 px-4 py-8 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 sm:p-8 max-w-lg w-full">
+          <div className="flex items-center gap-1.5 font-bold text-blue-600 text-sm mb-5">
+            <Logo size="sm" />
+          </div>
+          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mb-4">
+            <Video size={20} className="text-blue-600" />
+          </div>
+          <h1 className="text-lg font-bold text-gray-900 mb-2">Before you start: this interview is recorded</h1>
+          <p className="text-sm text-gray-600 mb-4">
+            You're applying to <strong>{session?.jobTitle}</strong>{session?.companyName ? ` at ${session.companyName}` : ''}. This is an AI-run video interview:
+          </p>
+          <ul className="space-y-2 text-sm text-gray-600 mb-5 list-disc pl-5">
+            <li>Your camera and microphone will be recorded for the full interview.</li>
+            <li>AI will transcribe each answer and ask follow-up questions based on what you say.</li>
+            <li>Once you finish, AI generates a written summary and score from your answers.</li>
+            <li>Your recruiter will see the full video, the AI summary, and your resume together.</li>
+          </ul>
+          <p className="text-xs text-gray-400 mb-6">By continuing, you consent to being recorded and evaluated by AI as part of this application.</p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => setConsentGiven(true)}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm px-6 py-3 rounded-xl transition-colors shadow-md shadow-blue-900/20"
+            >
+              I Consent & Continue
+            </button>
+            <button
+              onClick={() => setDeclinedConsent(true)}
+              className="w-full text-gray-400 hover:text-gray-600 text-xs font-semibold py-2 transition-colors"
+            >
+              I don't consent
+            </button>
+          </div>
         </div>
       </div>
     );
