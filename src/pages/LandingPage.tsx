@@ -23,6 +23,16 @@ const FEATURES = [
     topGlow: 'rgba(165,180,252,0.5)',
   },
   {
+    key: 'screening',
+    slug: 'video-screening',
+    headline: 'AI interviews every applicant. You just watch the highlights.',
+    subline: 'The moment a candidate applies to a job you\'ve posted, AI runs an adaptive video interview with them automatically — then hands you a scored AI summary, the full recording, and their resume side by side, so you qualify or pass in minutes instead of scheduling a call.',
+    accent: 'from-rose-50 to-white',
+    badge: 'bg-rose-100 text-rose-700',
+    badgeLabel: 'Video Screening',
+    topGlow: 'rgba(253,164,175,0.5)',
+  },
+  {
     key: 'pulse',
     slug: 'jobs',
     headline: 'Every requirement. The moment it posts.',
@@ -96,6 +106,10 @@ const FAQS = [
   {
     q: 'What are Jobs and Hotlist?',
     a: 'Jobs and Hotlist are live feeds — AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7. Jobs surfaces client requirements the moment they post; Hotlist surfaces available consultants the moment they\'re listed — so whichever side of the desk you\'re on, you see it before it\'s buried in a group feed.',
+  },
+  {
+    q: 'What is Video Screening?',
+    a: 'When a candidate applies to a job you\'ve posted on ProfilePush, AI automatically conducts an adaptive video interview with them, asking follow-up questions based on their answers. You get back a scored AI summary, the full video recording, and their resume together in one panel — so you can qualify or reject a candidate in minutes instead of scheduling a call.',
   },
   {
     q: 'What is AI Submit / AI Request?',
