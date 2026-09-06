@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import Logo from '../components/Logo';
 import SEO from '../components/SEO';
 
-const LAST_UPDATED = 'August 27, 2026';
+const LAST_UPDATED = 'September 7, 2026';
 
 export default function PrivacyPolicy() {
   return (
@@ -29,22 +29,33 @@ export default function PrivacyPolicy() {
         <div className="prose prose-gray max-w-none space-y-10">
           <Section title="1. Information We Collect">
             <p><strong>Customer Account Data:</strong> Names, email addresses, billing addresses, and payment information.</p>
-            <p><strong>Candidate Data:</strong> Resumes, work histories, contact information, and other Personally Identifiable Information (PII) uploaded by your recruiters.</p>
+            <p><strong>Candidate Data:</strong> Resumes, work histories, contact information, and other Personally Identifiable Information (PII) uploaded by your recruiters or submitted directly by candidates applying to a job posted on ProfilePush.</p>
+            <p><strong>Video Screening Data:</strong> When a candidate applies to a job posted on ProfilePush, we automatically record their camera and microphone during an AI-run video interview, and generate a transcript and a scored AI summary from that recording. See Section 3a for how this data is processed.</p>
+            <p><strong>Device & Notification Data:</strong> On the ProfilePush mobile app, we collect a device push-notification token so we can deliver alerts you've opted into.</p>
             <p><strong>Usage Data:</strong> Logs of platform activity to populate your team's tracking dashboard.</p>
           </Section>
 
           <Section title="2. How We Use Your Information">
-            <p>We use Customer Data to manage your Pro Plan subscription level and provide customer support. We use Candidate Data strictly to execute the automated workflows you request (parsing, matching, rewriting).</p>
+            <p>We use Customer Data to manage your subscription and provide customer support. We use Candidate Data strictly to execute the automated workflows you request or that a candidate triggers by applying (parsing, matching, video screening, outreach drafting).</p>
           </Section>
 
           <Section title="3. AI Processing & Third-Party Sub-Processors">
             <p>To provide our services, we share necessary data with trusted sub-processors:</p>
             <ul>
-              <li><strong>Large Language Models (LLMs):</strong> We use enterprise APIs (e.g., OpenAI, Anthropic). We enforce zero-retention policies. Your Candidate Data and system prompts are explicitly excluded from being used to train third-party AI models.</li>
+              <li><strong>AI models:</strong> We use Cloudflare Workers AI (Llama models for text generation, and Whisper for audio transcription) and Google's Gemini API for AI-generated matching, summaries, transcription, and outreach drafts. Your Candidate Data and prompts are not used by these providers to train their general-purpose models.</li>
               <li><strong>Supabase:</strong> Used for secure database storage and authentication.</li>
-              <li><strong>Cloudflare:</strong> Used for edge processing, content delivery, and storage needs to support platform performance and reliability.</li>
-              <li><strong>Razorpay:</strong> Used as our exclusive payment gateway for subscription management and automated tier adjustments. Razorpay securely tokens and handles all financial data; ProfilePush never stores raw credit card numbers on its servers.</li>
+              <li><strong>Cloudflare:</strong> Used for edge processing (Workers), content delivery, and object storage (R2) — including storage of Video Screening recordings — to support platform performance and reliability.</li>
+              <li><strong>Razorpay:</strong> Used as our exclusive payment gateway for subscription management and automated tier adjustments. Razorpay securely tokenizes and handles all financial data; ProfilePush never stores raw credit card numbers on its servers.</li>
+              <li><strong>OneSignal:</strong> Used to deliver push notifications to the ProfilePush mobile and web apps, for account owners who opt in.</li>
+              <li><strong>Mailgun and GMass:</strong> Used to deliver transactional and outreach email on ProfilePush's behalf, for accounts that have not connected their own Gmail account (see Section 5).</li>
+              <li><strong>Google Sign-In:</strong> Used as an optional authentication method — if you sign in with Google, we receive your name, email, and profile photo from your Google account.</li>
             </ul>
+          </Section>
+
+          <Section title="3a. Video Screening — Camera & Microphone Recording">
+            <p>Video Screening runs automatically whenever a candidate applies to a job posted on ProfilePush by one of our customers. It records the candidate's camera and microphone in the browser during an adaptive AI interview, transcribes each answer using Cloudflare Workers AI (Whisper), and generates follow-up questions and a scored AI summary from the conversation. The full video recording, transcript, and AI summary are then made available to the recruiter who posted the job, alongside the candidate's resume.</p>
+            <p>The recruiter who posts a job on ProfilePush is responsible for ensuring their own candidates are appropriately notified about this process before applying — see our <Link to="/terms">Terms &amp; Conditions</Link>, Section 5, for the allocation of that responsibility. ProfilePush does not use Video Screening recordings, transcripts, or summaries to train any AI model, and does not share them with anyone other than the recruiter who posted the job and, where applicable, that recruiter's own team members.</p>
+            <p>Video Screening recordings are retained as part of the associated job application record and are subject to the same retention and deletion terms as other Candidate Data — see Section 6.</p>
           </Section>
 
           <Section title="4. Data Protection & Security">
@@ -53,7 +64,7 @@ export default function PrivacyPolicy() {
               <li><strong>Encryption at rest:</strong> All databases, including candidate profiles, uploaded resumes, and OAuth tokens for connected accounts, are encrypted at rest using AES-256 encryption.</li>
               <li><strong>Encryption in transit:</strong> All communications between your browser, our backend, and third-party APIs are encrypted in transit using TLS 1.2 or higher.</li>
               <li><strong>Access control:</strong> Platform access requires secure, individual login credentials. Every action is logged and attributed to a specific user account. ProfilePush staff access to production databases is strictly limited by role and requires explicit logging and authorization.</li>
-              <li><strong>AI data isolation:</strong> Data sent to LLM providers for processing is isolated per request and discarded immediately after generating a response — see Section 3 for our zero-training guarantee with AI sub-processors.</li>
+              <li><strong>AI data isolation:</strong> Each request sent to an AI provider (Section 3) for text generation, matching, or transcription is isolated per request and is not retained by that provider once a response is generated. The resulting output — for example a Video Screening recording, transcript, or AI summary — is then stored durably by ProfilePush itself, subject to Section 6.</li>
               <li><strong>Infrastructure:</strong> ProfilePush is built on SOC2 Type II compliant infrastructure providers (Supabase, Cloudflare).</li>
             </ul>
             <p>Full details are published on our <Link to="/security">Security page</Link>. To report a security vulnerability, contact <a href="mailto:security@profilepush.ai">security@profilepush.ai</a>.</p>
@@ -71,7 +82,7 @@ export default function PrivacyPolicy() {
           </Section>
 
           <Section title="6. Data Retention and Deletion">
-            <p>Candidate data is retained on your organizational "Bench" as long as your account is active. If you cancel your subscription or fail to maintain an active tier, you have 30 days to export your data before it is permanently anonymized or deleted from our active databases.</p>
+            <p>Candidate Data — including resumes, application records, and Video Screening recordings, transcripts, and AI summaries (Section 3a) — is retained for as long as your account remains active. If you cancel your account, you have 30 days to export your data before it is permanently anonymized or deleted from our active databases.</p>
           </Section>
 
           <Section title="7. Your Rights">

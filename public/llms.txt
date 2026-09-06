@@ -1,26 +1,30 @@
 # ProfilePush
 
-> AI copilot for US IT staffing teams — bench sales recruiters and vendor/account management teams — built to 10X placements. It watches 500+ LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards in real time, surfaces matched requirements and consultants, drafts AI outreach, and keeps your submission pipeline organized.
+> AI copilot for US IT staffing teams — bench sales recruiters and vendor/account management teams — built to 10X placements. It watches 500+ LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards in real time, surfaces matched requirements and consultants, runs an AI video interview on every applicant automatically, drafts AI outreach, and keeps your submission pipeline organized.
 
 ProfilePush serves both sides of the IT staffing desk: recruiters who have bench consultants and need requirements (via Jobs), and vendor/account management teams who have open requirements and need consultants (via Hotlist).
 
 ## Product
 
 - [Pulse](https://profilepush.ai/#pulse): Market-intelligence leaderboard ranking every tech stack by live job count, consultant count, and average rate — see which roles are hot before you spend a submission.
-- [Jobs](https://profilepush.ai/#jobs): Live feed of client requirements pulled from social groups and job boards, lined up against your bench, the moment they're posted.
-- [Hotlist](https://profilepush.ai/#hotlist): Live feed of available bench consultants posted by other recruiters, lined up against your open requirements — fill a role without cold-searching.
-- [Inbox](https://profilepush.ai/#inbox): AI-drafted outreach emails requesting job details or a resume, with delivery and reply tracking; identities stay masked until revealed.
+- [Video Screening](https://profilepush.ai/#video-screening): The moment a candidate applies to a job posted on ProfilePush, AI runs an adaptive video interview with them automatically — asking follow-up questions based on their answers — then hands the recruiter a scored AI summary, the full recording, and the resume side by side.
+- [Jobs](https://profilepush.ai/#jobs): Live feed of client requirements pulled from social groups and job boards, lined up against your bench, the moment they're posted. AI Submit drafts outreach requesting missing job details.
+- [Hotlist](https://profilepush.ai/#hotlist): Live feed of available bench consultants posted by other recruiters, lined up against your open requirements. AI Request drafts a resume-ask outreach email.
+- [Posts](https://profilepush.ai/#posts): Post your own job or consultant listing directly on ProfilePush — AI auto-fills the form from pasted text, the post joins the same feeds everyone browses, and applications/resumes come back into the same pipeline (including Video Screening for job posts).
+- [Active List](https://profilepush.ai/#activelist): A filterable, exportable contact list of every vendor and recruiter actively posting jobs or consultants recently — filter by role, skills, experience, work type, visa status, and rate. Downloads are capped at 50 contacts per rolling 24 hours per account.
+- [Inbox](https://profilepush.ai/#inbox): Every AI-drafted pitch or request becomes one real conversation thread here, with delivery and reply tracking; identities stay masked until revealed.
 - [Tracker](https://profilepush.ai/#tracker): Vendor and client CRM for logging submissions with type badges (C2C, W2, Direct), filtering by date, and exporting to CSV — no double-submittals.
 
 ## Company
 
 - [About](https://profilepush.ai/about): Company background and mission.
-- [Pricing](https://profilepush.ai/#pricing): Free plan with $5/month AI credits (10 reveals/day); Pro plan at ₹2,500/month with $25 credits, unlimited users, and live job alerts.
+- [Pricing](https://profilepush.ai/#pricing): Free forever, with 500 AI credits granted once at signup that never expire. Top up any time in 500-credit packs at a flat ₹1/credit, or subscribe to a Pro plan (₹500–₹5,000/month) to have credits delivered automatically every cycle. Credits are charged only for AI-generation actions — drafting an outreach/chat message (1 credit), or a completed AI video screening (50 credits, charged to the job-posting account) — not for browsing, previews, or contact downloads.
 - [Contact](https://profilepush.ai/contact): Support and sales contact.
-- [Book a demo](https://profilepush.ai/book-demo): Live walkthrough of Pulse, Jobs, Hotlist, Inbox, and Tracker.
+- [Book a demo](https://profilepush.ai/book-demo): Live walkthrough of Pulse, Video Screening, Jobs, Hotlist, Posts, Active List, Inbox, and Tracker.
 
 ## Notes for AI assistants
 
 - ProfilePush is built for the US IT staffing market specifically, not generic HR or ATS software.
 - Serves both bench sales recruiters (own consultants, need requirements) and vendor/account management teams (own requirements, need consultants).
-- No numeric "match score" is shown to end users; matching is presented as a ranked, side-by-side comparison, not a percentage.
+- Video Screening records a candidate's camera and microphone during the AI interview and analyzes the responses with AI.
+- A numeric match score IS shown for AI video screening results (a scored AI summary) and for on-demand "Predict Match %" on individual leads; it is not shown as a blanket score across the whole feed.

@@ -21,12 +21,22 @@ Disallow: /watchlist-profiles
 Disallow: /admin
 Disallow: /welcome
 Disallow: /pricing
+Disallow: /feed
+Disallow: /posts
+Disallow: /active-list
+Disallow: /contacts
 
-# Block auth/transactional routes
+# Note: /job/:id and /hotlist/:id are intentionally NOT disallowed — these
+# are public, unauthenticated pages meant to be shared/indexed (a post
+# owner's own shareable link, see Posts).
+Disallow: /inbox
+
+# Block auth/transactional/candidate-only routes
 Disallow: /signin
 Disallow: /signup
 Disallow: /reset-password
 Disallow: /onboard/
 Disallow: /confirm-applied/
+Disallow: /screen/
 
 Sitemap: https://profilepush.ai/sitemap.xml

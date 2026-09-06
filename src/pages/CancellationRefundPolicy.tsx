@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import Logo from '../components/Logo';
 import SEO from '../components/SEO';
 
-const LAST_UPDATED = 'July 9, 2026';
+const LAST_UPDATED = 'September 7, 2026';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -45,11 +45,13 @@ export default function CancellationRefundPolicy() {
             </p>
           </Section>
 
-          <Section title="2. Free Trial">
+          <Section title="2. Free Plan">
             <p>
-              New accounts begin with a free trial period. No payment is required to start a trial. You may cancel
-              at any time during the trial without being charged. At the end of the trial period, your account
-              will require an active subscription to continue accessing paid features.
+              Every new account is free forever, with no payment or credit card required. New accounts receive
+              500 AI credits at signup, granted once, which never expire — there is no trial period and no point
+              at which the Free plan stops working or requires a subscription. Every feature of the Platform is
+              available on the Free plan; a paid Pro subscription only adds more AI credits, delivered
+              automatically each billing cycle.
             </p>
           </Section>
 
@@ -66,17 +68,9 @@ export default function CancellationRefundPolicy() {
 
           <Section title="4. Refund Policy">
             <p>
-              <strong>Monthly Subscriptions:</strong> We do not provide prorated refunds for partial months.
-              If you cancel mid-cycle, you retain access through the end of the billing period, after which
-              no further charges are made.
-            </p>
-            <p>
-              <strong>Annual Subscriptions (if applicable):</strong> Refund requests for annual plans may be
-              considered within 14 days of the billing date if the service has not been substantially used.
-              To request a refund, contact us at{' '}
-              <a href="mailto:poorna@profilepush.ai" className="text-blue-600 hover:underline">
-                poorna@profilepush.ai
-              </a>.
+              <strong>Pro Subscriptions:</strong> ProfilePush's Pro plan bills monthly only, in the tier (500–5,000
+              credits/month) you choose. We do not provide prorated refunds for partial months. If you cancel
+              mid-cycle, you retain access through the end of the billing period and are not charged again after that.
             </p>
             <p>
               <strong>AI Credit Top-Ups:</strong> Credits purchased as one-time top-ups are non-refundable once

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import Logo from '../components/Logo';
 import SEO from '../components/SEO';
 
-const LAST_UPDATED = 'July 10, 2026';
+const LAST_UPDATED = 'September 7, 2026';
 
 export default function TermsAndConditions() {
   return (
@@ -32,45 +32,53 @@ export default function TermsAndConditions() {
           </Section>
 
           <Section title="2. Description of Service">
-            <p>ProfilePush provides an AI-powered sourcing copilot that includes resume parsing, omni-board job search aggregation, AI-driven job matching, resume rewriting, and email drafting.</p>
-          </Section>
-
-          <Section title="3. Account Registration & Unlimited User Seats">
-            <p>ProfilePush operates on a single Pro Plan structure with multiple tiered levels. Regardless of the credit tier purchased, your active subscription permits an unlimited number of authorized users from your organization. You are strictly responsible for maintaining the confidentiality of your login credentials and for all activities that occur under your organization's account.</p>
-          </Section>
-
-          <Section title="4. Subscriptions, AI Wallet, and Tier Upgrades">
-            <p><strong>100% Drawdown Wallet:</strong> ProfilePush operates on a prepaid minimum commitment model. You purchase a subscription tier in Indian Rupees (INR), which is deposited into your organizational "Credit Wallet" as US Dollar (USD) credits to be used across the platform.</p>
-            <p><strong>Subscription Tiers:</strong> The available recurring subscription tiers are:</p>
+            <p>ProfilePush is an AI copilot for US IT staffing teams — both bench sales recruiters (who have consultants and need requirements) and vendor/account management teams (who have requirements and need consultants). The Platform includes:</p>
             <ul>
-              <li>₹2,500 translates to $25 in AI credits</li>
-              <li>₹5,000 translates to $50 in AI credits</li>
-              <li>₹10,000 translates to $100 in AI credits</li>
-              <li>₹20,000 translates to $200 in AI credits</li>
-              <li>₹30,000 translates to $300 in AI credits</li>
-              <li>₹40,000 translates to $400 in AI credits</li>
-              <li>₹50,000 translates to $500 in AI credits</li>
+              <li><strong>Pulse:</strong> a market-intelligence leaderboard ranking tech stacks by live job count, consultant count, and average rate.</li>
+              <li><strong>Jobs and Hotlist:</strong> live feeds of client requirements and available bench consultants, aggregated from public social groups and job boards.</li>
+              <li><strong>Video Screening:</strong> an automated, adaptive AI video interview run on candidates who apply to a job posted on ProfilePush — see Section 5.</li>
+              <li><strong>Posts:</strong> a feature letting you list your own job requirement or consultant directly on the Platform, joining the same feeds other users browse.</li>
+              <li><strong>Active List:</strong> a filterable, exportable list of contacts actively posting jobs or consultants.</li>
+              <li><strong>AI Submit / AI Request:</strong> AI-drafted outreach email generation, sendable via your own connected Gmail account or ProfilePush's own delivery infrastructure.</li>
+              <li><strong>Inbox:</strong> a unified conversation thread for outreach replies and in-app chats.</li>
+              <li><strong>Tracker:</strong> a CRM for logging submissions against vendors and clients.</li>
             </ul>
-            <p><strong>Credit Consumption:</strong> Credits are consumed in real-time based on usage (e.g., ~$0.05 per parse, ~$0.15 per omni-search).</p>
-            <p><strong>No Manual Top-Ups; Mandatory Upgrades:</strong> We do not offer standalone, manual credit top-ups. If your credit wallet reaches a zero balance mid-billing cycle, platform features will be paused. To resume usage and add credits immediately, you must log into your dashboard and upgrade your account to the next available higher subscription tier.</p>
-            <p><strong>Payments via Razorpay:</strong> All subscription billing, credit card tokenization, and tier upgrades are securely processed through Razorpay. By subscribing, you authorize Razorpay to store your payment credentials securely and automatically charge your card on a recurring basis until you cancel or change your tier.</p>
-            <p><strong>Non-Refundable:</strong> All tier payments and subscription charges are final, non-refundable, and non-transferable.</p>
           </Section>
 
-          <Section title="5. Acceptable Use & Scraping Acknowledgement">
-            <p>ProfilePush utilizes third-party APIs (including Apify) to aggregate public job listings from platforms such as LinkedIn, Dice, Indeed, and Monster.</p>
+          <Section title="3. Account Registration & Team Members">
+            <p>Every ProfilePush account permits an unlimited number of authorized users from your organization, on both the Free plan and any paid Pro subscription tier — team members share one organizational AI credit balance. You are responsible for maintaining the confidentiality of your login credentials and for all activity under your organization's account.</p>
+          </Section>
+
+          <Section title="4. Billing, AI Credits, and Subscriptions">
+            <p><strong>Free plan:</strong> Every new account receives 500 AI credits, granted once at signup, which never expire and are not refreshed on any recurring schedule. No credit card is required, and every feature of the Platform is accessible on the Free plan.</p>
+            <p><strong>One-time credit top-ups:</strong> Additional credits can be purchased at any time in increments of 500, up to 5,000, at a flat rate of ₹1 per credit. Top-up credits never expire.</p>
+            <p><strong>Pro subscription:</strong> You may optionally subscribe to have credits delivered automatically every billing cycle, choosing any amount from 500 to 5,000 credits per month at the same flat ₹1-per-credit rate. You may switch tiers or cancel at any time from Billing in your account settings; there is no minimum commitment period and no forced upgrade-only mechanic — running out of credits mid-cycle simply pauses AI-generation features until you top up or your next renewal, it does not lock your account.</p>
+            <p><strong>What actually costs credits:</strong> Credits are charged only for genuine AI-generation actions — drafting an outreach or chat message (1 credit), or a candidate completing a Video Screening interview on a job you posted (50 credits, charged to your account as the job's owner). Browsing Pulse, Jobs, Hotlist, and Active List, previewing a post, revealing contact details, and creating a post or a job listing do not consume credits. Downloading contacts from Active List is limited to 50 contacts per rolling 24 hours per account, independent of your credit balance.</p>
+            <p><strong>Payments via Razorpay:</strong> All billing — one-time top-ups and recurring subscription charges — is processed in Indian Rupees (INR) through Razorpay. Razorpay tokenizes and stores your payment method; ProfilePush never stores your raw card details.</p>
+            <p><strong>Refunds:</strong> Billing charges are governed by our <Link to="/cancellation-refund">Cancellation &amp; Refund Policy</Link>, which takes precedence over this section on refund questions.</p>
+          </Section>
+
+          <Section title="5. Video Screening — AI Interviews of Candidates">
+            <p>When a candidate applies to a job you have posted on ProfilePush, the Platform automatically initiates an adaptive AI video interview with that candidate: it records their camera and microphone in-browser, asks follow-up questions generated in response to their answers, transcribes their responses using AI, and produces a scored AI-generated summary alongside the full video recording. This runs automatically as part of the job-posting feature — you do not need to separately request or configure it.</p>
+            <p><strong>Your responsibility as the job poster:</strong> By posting a job on ProfilePush, you acknowledge that applicants to that job will be recorded and evaluated by AI as described above, and you are solely responsible for ensuring that directing candidates to this process complies with the laws applicable to your hiring — including any state or local requirements to notify a candidate that AI will analyze a video interview, or to obtain their consent, before the interview takes place. ProfilePush does not currently present its own candidate-facing notice or consent screen before recording begins; if your jurisdiction requires one, you must communicate that notice to candidates yourself (for example, in your job posting or application instructions) before directing them to apply.</p>
+            <p>You may not use Video Screening to evaluate candidates in a way that violates anti-discrimination law, and you remain solely responsible for hiring decisions made using the AI summary — the summary is a decision-support tool, not a hiring determination.</p>
+          </Section>
+
+          <Section title="6. Acceptable Use & Scraping Acknowledgement">
+            <p>ProfilePush aggregates public job listings and consultant posts from social platforms and job boards using both its own automated systems and third-party data infrastructure (including Apify).</p>
             <ul>
-              <li>You agree to use the omni-board search strictly for internal recruitment purposes.</li>
+              <li>You agree to use the Platform strictly for internal recruitment and staffing purposes.</li>
               <li>You agree not to reverse-engineer, mass-scrape our database, or use the Platform to build a competing product.</li>
+              <li>You agree not to use Posts or Active List to harvest contact data for purposes unrelated to legitimate staffing outreach, and not to use Video Screening on anyone who has not actually applied through your own job posting.</li>
             </ul>
           </Section>
 
-          <Section title="6. Intellectual Property & Candidate Data">
-            <p>You retain all ownership rights to the candidate data (resumes in PDF format) you upload. You grant ProfilePush a limited, secure license to process this data solely for the purpose of providing the service. ProfilePush retains all intellectual property rights to the Platform's code, UI, and proprietary AI workflows.</p>
+          <Section title="7. Intellectual Property & Candidate Data">
+            <p>You retain ownership of the candidate data you or your candidates upload or generate through the Platform — including resumes, and the video recordings, transcripts, and AI summaries produced by Video Screening. You grant ProfilePush a limited, secure license to process this data solely to provide the service. ProfilePush retains all intellectual property rights to the Platform's code, UI, and proprietary AI workflows.</p>
           </Section>
 
-          <Section title="7. Limitation of Liability">
-            <p>To the maximum extent permitted by law, ProfilePush shall not be liable for any indirect, incidental, or consequential damages arising out of your use of the Platform. Our total liability is capped at the total fees paid by you in the three (3) months preceding the claim.</p>
+          <Section title="8. Limitation of Liability">
+            <p>To the maximum extent permitted by law, ProfilePush shall not be liable for any indirect, incidental, or consequential damages arising out of your use of the Platform, including any hiring decision made using a Video Screening AI summary. Our total liability is capped at the total fees paid by you in the three (3) months preceding the claim, or ₹5,000, whichever is greater.</p>
           </Section>
         </div>
       </main>
