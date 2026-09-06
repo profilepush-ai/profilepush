@@ -1303,8 +1303,11 @@ const LeadCard = memo(function LeadCard({
         <span className="whitespace-nowrap">{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
       </div>
       {marketInsight && (
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-md border border-blue-100 bg-blue-50/70 px-2 py-1 text-[10px] font-medium text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/5 dark:text-blue-300">
-        <TrendingUp size={11} strokeWidth={2.25} className="shrink-0" />
+        <div
+          className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-md border border-yellow-200/70 px-2 py-1 text-[10px] font-medium text-gray-700 dark:border-yellow-300/20 dark:text-gray-200"
+          style={{ background: 'linear-gradient(135deg, #fffef5, #fff9c4)' }}
+        >
+        <TrendingUp size={11} strokeWidth={2.25} className="shrink-0 text-gray-500 dark:text-gray-300" />
         <span>{marketInsight.domainLabel} demand: {marketInsight.domainUniqueJobs} jobs · {marketInsight.domainUniqueVendors} vendors · {marketInsight.domainUniqueHotlists} hotlists (30d)</span>
         {marketInsight.roleAvgRate != null && (
           <span className="ml-auto whitespace-nowrap font-semibold">Avg ${Math.round(marketInsight.roleAvgRate)}/hr</span>
