@@ -80,6 +80,7 @@ export default function MyPostsPage() {
   const [formOpen, setFormOpen] = useState<PostKind | null>(null);
   const [editingPost, setEditingPost] = useState<UserPost | null>(null);
   const [previewPost, setPreviewPost] = useState<UserPost | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [landingPasteText, setLandingPasteText] = useState('');
   const [showKindChooser, setShowKindChooser] = useState(false);
@@ -322,6 +323,8 @@ export default function MyPostsPage() {
     () => posts.filter((post) => matchesSearch(post, searchQuery) && matchesRange(post, rangeId)),
     [posts, searchQuery, rangeId],
   );
+  const selectedPost = selectedPostId ? filteredPosts.find((post) => post.id === selectedPostId) ?? null : null;
+  const zeroMetrics = { previewCount: 0, chatCount: 0, shareCount: 0, applicationCount: 0 };
 
   const searchBoxEl = (
     <div className="relative flex min-w-[160px] flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
@@ -671,112 +674,187 @@ export default function MyPostsPage() {
                 })}
               </div>
             ) : (
-              <table className="w-full min-w-[900px] border-collapse text-left text-[12px]">
-                <thead>
-                  <tr className={`sticky top-0 z-10 border-b ${isDark ? 'border-white/10 bg-[#20242a]' : 'border-gray-200 bg-gray-50'}`}>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Post</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Status</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Posted</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-[#94A3B8]">Previews</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-[#94A3B8]">Chats</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-[#94A3B8]">Shares</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-[#94A3B8]">Applications</th>
-                    <th className="px-3 py-2 font-semibold text-gray-500 dark:text-[#94A3B8]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <div className="grid h-full min-h-0 grid-cols-[340px_minmax(0,1fr)] gap-3 p-2">
+                {/* Plain block stacking, not CSS grid, for this list column —
+                    a grid's "auto" row-sizing pass measures nested-flex
+                    content by min-content rather than actual rendered
+                    height (the same bug was found and fixed in PulsePage's
+                    and Applications' detail layouts: rows collapsed and
+                    overlapped). */}
+                <div className="min-h-0 space-y-1.5 overflow-y-auto pr-1">
                   {filteredPosts.map((post) => {
-                    const titleToneStyle = { color: isDark ? '#FFFFFF' : '#2563EB' };
-                    const metrics = metricsByPostId[post.id] ?? { previewCount: 0, chatCount: 0, shareCount: 0, applicationCount: 0 };
+                    const isSelected = selectedPostId === post.id;
+                    const metrics = metricsByPostId[post.id] ?? zeroMetrics;
                     const displayTitle = post.kind === 'hotlist' && post.candidateName
                       ? `${post.title || 'Available Consultant'} — ${post.candidateName}`
                       : (post.title || 'Job Opportunity');
                     const locationText = post.kind === 'job' ? post.location : post.locations.join(', ');
 
                     return (
-                      <tr key={post.id} className={`border-b ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-100 hover:bg-gray-50'}`}>
-                        <td className="max-w-xs px-3 py-2.5 align-top">
-                          <div className="mb-0.5 flex items-center gap-1.5">
-                            <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${post.kind === 'job' ? (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700') : (isDark ? 'border-purple-400/30 bg-purple-500/10 text-purple-300' : 'border-purple-200 bg-purple-50 text-purple-700')}`}>
-                              {post.kind === 'job' ? <Briefcase size={9} /> : <UserRound size={9} />}
-                              {post.kind === 'job' ? 'Job' : 'Hotlist'}
-                            </span>
-                          </div>
-                          <p className="truncate font-semibold leading-snug" style={titleToneStyle}>{displayTitle}</p>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
-                            {post.kind === 'job' && post.company && (
-                              <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                                <Building2 size={10} className="shrink-0 text-gray-400" />
-                                <span>{post.company}</span>
-                              </span>
-                            )}
-                            {locationText && (
-                              <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                                <MapPin size={10} className="shrink-0 text-gray-400" />
-                                <span className="truncate">{locationText}</span>
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2.5 align-top">
+                      <button
+                        key={post.id}
+                        type="button"
+                        onClick={() => setSelectedPostId(post.id)}
+                        className={`block w-full rounded-md border px-3 py-2.5 text-left transition-colors ${isSelected ? 'border-blue-300 bg-blue-50 dark:border-blue-400/40 dark:bg-blue-500/10' : 'border-transparent bg-white hover:bg-gray-50 dark:bg-[#1E2126] dark:hover:bg-white/5'}`}
+                      >
+                        <div className="mb-0.5 flex items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${post.kind === 'job' ? (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700') : (isDark ? 'border-purple-400/30 bg-purple-500/10 text-purple-300' : 'border-purple-200 bg-purple-50 text-purple-700')}`}>
+                            {post.kind === 'job' ? <Briefcase size={9} /> : <UserRound size={9} />}
+                            {post.kind === 'job' ? 'Job' : 'Hotlist'}
+                          </span>
                           <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${post.postStatus === 'open' ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500')}`}>
                             {post.postStatus === 'open' ? 'Open' : 'Closed'}
                           </span>
-                        </td>
-                        <td className="px-3 py-2.5 align-top text-gray-500 dark:text-[#94A3B8]">{formatAgo(post.createdAt)}</td>
-                        <td className="px-3 py-2.5 text-center align-top">
-                          <span className="inline-flex items-center gap-1 text-gray-600 dark:text-slate-300">
-                            <Eye size={11} className="text-gray-400" />
-                            {metrics.previewCount}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 text-center align-top">
-                          <span className="inline-flex items-center gap-1 text-gray-600 dark:text-slate-300">
-                            <MessageSquare size={11} className="text-gray-400" />
-                            {metrics.chatCount}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 text-center align-top">
-                          <span className="inline-flex items-center gap-1 text-gray-600 dark:text-slate-300">
-                            <Share2 size={11} className="text-gray-400" />
-                            {metrics.shareCount}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 text-center align-top">
-                          {post.kind === 'job' ? (
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/posts/applications/${post.id}`)}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${metrics.applicationCount > 0 ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300' : (isDark ? 'border-white/15 text-[#94A3B8] hover:bg-white/5' : 'border-gray-200 text-gray-600 hover:bg-gray-100')}`}
-                            >
-                              <Users size={11} />
-                              {metrics.applicationCount}
-                            </button>
-                          ) : (
-                            <span className="text-gray-400 dark:text-[#64748B]">—</span>
+                        </div>
+                        <p className="truncate text-[13px] font-semibold leading-snug" style={{ color: isDark ? '#FFFFFF' : '#2563EB' }}>{displayTitle}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#94A3B8]">
+                          {post.kind === 'job' && post.company && (
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                              <Building2 size={10} className="shrink-0 text-gray-400" />
+                              {post.company}
+                            </span>
                           )}
-                        </td>
-                        <td className="px-3 py-2.5 align-top">
-                          <div className="flex items-center gap-0.5">
-                            <button type="button" onClick={() => setPreviewPost(post)} title="Preview post" className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
-                              <Eye size={13} />
-                            </button>
-                            <button type="button" onClick={() => { setEditingPost(post); setFormOpen(post.kind); }} title="Edit" className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
-                              <Pencil size={13} />
-                            </button>
-                            <button type="button" onClick={() => void handleToggleStatus(post)} title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'} className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
-                              {post.postStatus === 'open' ? <XCircle size={13} /> : <RotateCcw size={13} />}
-                            </button>
-                            <button type="button" onClick={() => void handleDelete(post)} title="Delete" className={`rounded p-1 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}>
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                          {locationText && (
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                              <MapPin size={10} className="shrink-0 text-gray-400" />
+                              <span className="truncate">{locationText}</span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-2.5 text-[11px] text-gray-400 dark:text-[#94A3B8]">
+                          <span className="inline-flex items-center gap-1"><Eye size={10} />{metrics.previewCount}</span>
+                          <span className="inline-flex items-center gap-1"><MessageSquare size={10} />{metrics.chatCount}</span>
+                          <span className="inline-flex items-center gap-1"><Share2 size={10} />{metrics.shareCount}</span>
+                          <span>{formatAgo(post.createdAt)}</span>
+                        </div>
+                      </button>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+
+                <aside className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#1E2126]">
+                  {!selectedPost ? (
+                    <div className="flex flex-1 items-center justify-center p-6 text-center">
+                      <p className="text-[13px] text-gray-400 dark:text-[#64748B]">Select a post to review</p>
+                    </div>
+                  ) : (
+                    (() => {
+                      const metrics = metricsByPostId[selectedPost.id] ?? zeroMetrics;
+                      const displayTitle = selectedPost.kind === 'hotlist' && selectedPost.candidateName
+                        ? `${selectedPost.title || 'Available Consultant'} — ${selectedPost.candidateName}`
+                        : (selectedPost.title || 'Job Opportunity');
+                      const locationText = selectedPost.kind === 'job' ? selectedPost.location : selectedPost.locations.join(', ');
+
+                      return (
+                        <>
+                          <div className="flex items-start gap-2.5 border-b border-gray-100 p-4 dark:border-white/10">
+                            <div className="min-w-0 flex-1">
+                              <div className="mb-1 flex items-center gap-1.5">
+                                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${selectedPost.kind === 'job' ? (isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700') : (isDark ? 'border-purple-400/30 bg-purple-500/10 text-purple-300' : 'border-purple-200 bg-purple-50 text-purple-700')}`}>
+                                  {selectedPost.kind === 'job' ? <Briefcase size={9} /> : <UserRound size={9} />}
+                                  {selectedPost.kind === 'job' ? 'Job' : 'Hotlist'}
+                                </span>
+                                <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${selectedPost.postStatus === 'open' ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500')}`}>
+                                  {selectedPost.postStatus === 'open' ? 'Open' : 'Closed'}
+                                </span>
+                              </div>
+                              <p className="truncate text-[15px] font-semibold text-gray-900 dark:text-slate-100">{displayTitle}</p>
+                              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-gray-500 dark:text-[#94A3B8]">
+                                {selectedPost.kind === 'job' && selectedPost.company && (
+                                  <span className="inline-flex items-center gap-1"><Building2 size={11} className="shrink-0 text-gray-400" />{selectedPost.company}</span>
+                                )}
+                                {locationText && (
+                                  <span className="inline-flex items-center gap-1"><MapPin size={11} className="shrink-0 text-gray-400" />{locationText}</span>
+                                )}
+                                <span>· {formatAgo(selectedPost.createdAt)}</span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPostId(null)}
+                              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"
+                              aria-label="Close"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+
+                          {/* Analytics up top, per the request — a snapshot of
+                              this post's performance before you read the content. */}
+                          <div className="grid grid-cols-4 gap-2 border-b border-gray-100 p-4 dark:border-white/10">
+                            <div className="rounded-md border border-gray-100 p-2 text-center dark:border-white/10">
+                              <Eye size={13} className="mx-auto mb-1 text-gray-400" />
+                              <p className="text-[15px] font-bold text-gray-900 dark:text-slate-100">{metrics.previewCount}</p>
+                              <p className="text-[10px] text-gray-400 dark:text-[#64748B]">Previews</p>
+                            </div>
+                            <div className="rounded-md border border-gray-100 p-2 text-center dark:border-white/10">
+                              <MessageSquare size={13} className="mx-auto mb-1 text-gray-400" />
+                              <p className="text-[15px] font-bold text-gray-900 dark:text-slate-100">{metrics.chatCount}</p>
+                              <p className="text-[10px] text-gray-400 dark:text-[#64748B]">Chats</p>
+                            </div>
+                            <div className="rounded-md border border-gray-100 p-2 text-center dark:border-white/10">
+                              <Share2 size={13} className="mx-auto mb-1 text-gray-400" />
+                              <p className="text-[15px] font-bold text-gray-900 dark:text-slate-100">{metrics.shareCount}</p>
+                              <p className="text-[10px] text-gray-400 dark:text-[#64748B]">Shares</p>
+                            </div>
+                            {selectedPost.kind === 'job' ? (
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/posts/applications/${selectedPost.id}`)}
+                                className={`rounded-md border p-2 text-center transition-colors ${metrics.applicationCount > 0 ? 'border-blue-200 bg-blue-50 hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10' : 'border-gray-100 hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5'}`}
+                              >
+                                <Users size={13} className={`mx-auto mb-1 ${metrics.applicationCount > 0 ? 'text-blue-500' : 'text-gray-400'}`} />
+                                <p className={`text-[15px] font-bold ${metrics.applicationCount > 0 ? 'text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-slate-100'}`}>{metrics.applicationCount}</p>
+                                <p className="text-[10px] text-gray-400 dark:text-[#64748B]">Applications</p>
+                              </button>
+                            ) : (
+                              <div className="rounded-md border border-gray-100 p-2 text-center opacity-50 dark:border-white/10">
+                                <Users size={13} className="mx-auto mb-1 text-gray-400" />
+                                <p className="text-[15px] font-bold text-gray-900 dark:text-slate-100">—</p>
+                                <p className="text-[10px] text-gray-400 dark:text-[#64748B]">Applications</p>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">Post Content</p>
+                            <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700 dark:text-slate-300">
+                              {selectedPost.postContent || 'No post content available.'}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2 border-t border-gray-100 p-3 dark:border-white/10">
+                            <button
+                              type="button"
+                              onClick={() => { setEditingPost(selectedPost); setFormOpen(selectedPost.kind); }}
+                              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-200 bg-white text-[12px] font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                            >
+                              <Pencil size={14} />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleStatus(selectedPost)}
+                              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 text-[12px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-300"
+                            >
+                              {selectedPost.postStatus === 'open' ? <XCircle size={14} /> : <RotateCcw size={14} />}
+                              {selectedPost.postStatus === 'open' ? 'Close' : 'Reopen'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDelete(selectedPost)}
+                              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 text-[12px] font-semibold text-red-600 transition-colors hover:bg-red-100 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-300"
+                            >
+                              <Trash2 size={14} />
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      );
+                    })()
+                  )}
+                </aside>
+              </div>
             )}
           </div>
         </div>
