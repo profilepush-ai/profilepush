@@ -48,4 +48,18 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- The AI video screening flow calls getUserMedia() in the WebView;
+         Capacitor's BridgeWebChromeClient.onPermissionRequest() maps that
+         to a runtime CAMERA/RECORD_AUDIO permission request automatically,
+         but only if the app actually holds these permissions. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Not required — most users are on phones with a camera, but this
+         keeps the app installable (and listed) on Play for devices without
+         one, since the app has no camera-only feature that would need it. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 </manifest>
