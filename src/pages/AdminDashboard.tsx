@@ -1,16 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Search, Building2, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Pencil, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
-import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
 import AdminAiPromptsPanel from '../components/AdminAiPromptsPanel';
 import AdminChannelsPanel from '../components/AdminChannelsPanel';
 import { supabase } from '../lib/supabase';
-import { triggerRoleEmbedding } from '../lib/embeddings';
 import { filterAndSortAccountStats, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
-import { buildRoleFeedRowsFromMatches, buildRoleStatsSummary } from '../lib/hotlist-role-stats';
-import { splitPreferredLocations } from '../lib/location-normalization';
 
 interface AccountStats {
   id: string;
@@ -38,28 +34,6 @@ interface AccountStats {
   is_trial: boolean;
 }
 
-interface HotlistRoleRow {
-  id: string;
-  account_id: string;
-  target_role: string;
-  category: string | null;
-  min_years_exp: number | null;
-  max_years_exp: number | null;
-  visa_status: string | null;
-  employment_type: string | null;
-  work_type: string | null;
-  preferred_locations: string | null;
-  min_rate_usd_per_hr: number | null;
-  max_rate_usd_per_hr: number | null;
-  relocation_open: boolean | null;
-  priority_skills: string | null;
-  schedule_frequency: 'disabled' | 'hourly' | 'daily' | 'twice_daily' | 'weekly';
-  is_active: boolean;
-  avatar_url: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 interface LinkedinGroupRow {
   group_id: string;
   group_name: string | null;
@@ -83,7 +57,8 @@ interface LinkedinScraperConfig {
   updated_at: string;
 }
 
-type AdminView = 'stats' | 'hotlist' | 'scraper' | 'keyword-scraper' | 'scraper-logs' | 'ai-prompts' | 'channels';
+type AdminView = 'stats' | 'scraper' | 'scraper-logs' | 'ai-prompts' | 'channels';
+type ScraperConfigTab = 'group' | 'keyword';
 type LinkedinStatsRange = '24h' | '7d' | '30d' | 'all' | 'custom';
 
 type DatePreset = '7d' | '30d' | '90d' | 'all' | 'custom';
@@ -95,11 +70,6 @@ const DATE_PRESETS: { key: DatePreset; label: string }[] = [
   { key: 'all', label: 'All time' },
   { key: 'custom', label: 'Custom range' },
 ];
-
-const ROLE_CATEGORY_OPTIONS = ['all', 'front-end', 'backend', 'data', 'security', 'crm', 'qa', 'biz-dev', 'ai', 'ml', 'devops'];
-const VISA_TYPE_OPTIONS = ['US Citizen', 'Green Card', 'H1B', 'H4EAD', 'TN', 'OPT', 'CPT', 'F1', 'EAD', 'Other'];
-const EMPLOYMENT_TYPE_OPTIONS = ['C2C', 'W2', '1099', 'C2C or W2', 'Any'];
-const WORK_TYPE_OPTIONS = ['Remote', 'Hybrid', 'Onsite', 'Open'];
 
 function getDateRange(preset: DatePreset, customStart: string, customEnd: string): { start_date: string | null; end_date: string | null } {
   if (preset === 'all') return { start_date: null, end_date: null };
@@ -162,14 +132,8 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<AccountStats[]>([]);
-  const [rolesLoading, setRolesLoading] = useState(false);
-  const [roles, setRoles] = useState<HotlistRoleRow[]>([]);
-  const [rolesError, setRolesError] = useState('');
-  const [rolesNotice, setRolesNotice] = useState('');
-  const [roleStatsSummary, setRoleStatsSummary] = useState<Record<string, { job_count: number; watch_count: number; active_watch_count: number }>>({});
-  const [rolesSearchQuery, setRolesSearchQuery] = useState('');
-  const [rolesCategoryFilter, setRolesCategoryFilter] = useState('all');
   const [adminView, setAdminView] = useState<AdminView>('stats');
+  const [scraperConfigTab, setScraperConfigTab] = useState<ScraperConfigTab>('group');
   const [linkedinGroups, setLinkedinGroups] = useState<LinkedinGroupRow[]>([]);
   const [linkedinScraperConfig, setLinkedinScraperConfig] = useState<LinkedinScraperConfig>({
     is_enabled: true,
@@ -193,29 +157,6 @@ export default function AdminDashboard() {
   const [newLinkedinGroupId, setNewLinkedinGroupId] = useState('');
   const [newLinkedinGroupName, setNewLinkedinGroupName] = useState('');
   const [savingLinkedinGroupId, setSavingLinkedinGroupId] = useState<string | null>(null);
-
-  const [newRoleAccountId, setNewRoleAccountId] = useState('');
-  const [newRoleTargetRole, setNewRoleTargetRole] = useState('');
-  const [newRoleCategory, setNewRoleCategory] = useState('all');
-  const [newRoleMinYearsExp, setNewRoleMinYearsExp] = useState('');
-  const [newRoleMaxYearsExp, setNewRoleMaxYearsExp] = useState('');
-  const [newRoleVisaStatus, setNewRoleVisaStatus] = useState('');
-  const [newRoleEmploymentType, setNewRoleEmploymentType] = useState('');
-  const [newRoleWorkType, setNewRoleWorkType] = useState('');
-  const [newRolePreferredLocations, setNewRolePreferredLocations] = useState('');
-  const [newRoleMinRate, setNewRoleMinRate] = useState('');
-  const [newRoleMaxRate, setNewRoleMaxRate] = useState('');
-  const [newRolePrioritySkills, setNewRolePrioritySkills] = useState('');
-  const [newRoleRelocationOpen, setNewRoleRelocationOpen] = useState(false);
-  const [preferredLocationInput, setPreferredLocationInput] = useState('');
-  const [newRoleIsActive, setNewRoleIsActive] = useState(true);
-  const [newRoleSaving, setNewRoleSaving] = useState(false);
-  const [showAddRoleModal, setShowAddRoleModal] = useState(false);
-  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
-  const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
-  const [deleteConfirmRole, setDeleteConfirmRole] = useState<HotlistRoleRow | null>(null);
-  const [runningRoleMatchId, setRunningRoleMatchId] = useState<string | null>(null);
-  const [runningAllRolesMatch, setRunningAllRolesMatch] = useState(false);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -278,7 +219,7 @@ export default function AdminDashboard() {
   }
 
   async function refresh() {
-    await Promise.all([fetchStats(), fetchHotlistRoles(), fetchLinkedinGroups()]);
+    await Promise.all([fetchStats(), fetchLinkedinGroups()]);
   }
 
   async function fetchLinkedinGroups(
@@ -461,334 +402,6 @@ export default function AdminDashboard() {
     setSavingLinkedinGroupId(null);
   }
 
-  async function fetchHotlistRoles() {
-    setRolesLoading(true);
-    setRolesError('');
-    const { data, error } = await supabase
-      .from('hotlist_ai_roles')
-      .select('*')
-      .order('updated_at', { ascending: false })
-      .limit(500);
-
-    if (error) {
-      setRolesError(error.message);
-      setRolesLoading(false);
-      return;
-    }
-
-    const roleRows = (data ?? []) as HotlistRoleRow[];
-    setRoles(roleRows);
-
-    const roleIds = roleRows.map((role) => role.id);
-
-    const [matchRowsResult, watchesResult] = await Promise.all([
-      supabase
-        .from('radar_match_results')
-        .select('job_source, job_id, created_at')
-        .eq('job_source', 'social')
-        .order('created_at', { ascending: false })
-        .limit(5000),
-      roleIds.length > 0
-        ? supabase.from('watchlist_profiles').select('source_hotlist_role_id,is_watching').in('source_hotlist_role_id', roleIds)
-        : Promise.resolve({ data: [] as Array<{ source_hotlist_role_id: string | null; is_watching: boolean | null }>, error: null }),
-    ]);
-
-    if (matchRowsResult.error || watchesResult.error) {
-      setRoleStatsSummary({});
-    } else {
-      const matchRows = (matchRowsResult.data ?? []) as Array<{ job_source?: string | null; job_id?: string | null; created_at?: string | null }>;
-      const socialJobIds = Array.from(new Set(matchRows.map((row) => (row.job_id ?? '').trim()).filter(Boolean)));
-      let socialRows: Array<{ id?: string | null; extracted_role_normalized?: string | null; job_title?: string | null; post_content?: string | null }> = [];
-
-      if (socialJobIds.length > 0) {
-        const { data: socialData, error: socialError } = await supabase
-          .from('social_jobs')
-          .select('id, job_title, post_content, extracted_role_normalized')
-          .in('id', socialJobIds);
-
-        if (!socialError) {
-          socialRows = (socialData ?? []) as Array<{ id?: string | null; extracted_role_normalized?: string | null; job_title?: string | null; post_content?: string | null }>;
-        }
-      }
-
-      const feedRows = buildRoleFeedRowsFromMatches(matchRows, socialRows);
-      setRoleStatsSummary(buildRoleStatsSummary(
-        roleRows.map((role) => ({ id: role.id, target_role: role.target_role, priority_skills: role.priority_skills })),
-        feedRows,
-        (watchesResult.data ?? []) as Array<{ source_hotlist_role_id?: string | null; is_watching?: boolean | null }>
-      ));
-    }
-
-    setRolesLoading(false);
-  }
-
-  function resetNewRoleForm() {
-    setNewRoleAccountId(stats[0]?.id ?? '');
-    setNewRoleTargetRole('');
-    setNewRoleCategory('all');
-    setNewRoleMinYearsExp('');
-    setNewRoleMaxYearsExp('');
-    setNewRoleVisaStatus('');
-    setNewRoleEmploymentType('');
-    setNewRoleWorkType('');
-    setNewRolePreferredLocations('');
-    setNewRoleMinRate('');
-    setNewRoleMaxRate('');
-    setNewRolePrioritySkills('');
-    setNewRoleRelocationOpen(false);
-    setPreferredLocationInput('');
-    setNewRoleIsActive(true);
-  }
-
-  function openAddRoleModal() {
-    setEditingRoleId(null);
-    resetNewRoleForm();
-    setRolesError('');
-    setShowAddRoleModal(true);
-  }
-
-  function openEditRoleModal(role: HotlistRoleRow) {
-    setEditingRoleId(role.id);
-    setNewRoleAccountId(role.account_id);
-    setNewRoleTargetRole(role.target_role || '');
-    setNewRoleCategory(role.category || 'all');
-    setNewRoleMinYearsExp(role.min_years_exp != null ? String(role.min_years_exp) : '');
-    setNewRoleMaxYearsExp(role.max_years_exp != null ? String(role.max_years_exp) : '');
-    setNewRoleVisaStatus(role.visa_status || '');
-    setNewRoleEmploymentType(role.employment_type || '');
-    setNewRoleWorkType(role.work_type || '');
-    setNewRolePreferredLocations(role.preferred_locations || '');
-    setNewRoleMinRate(role.min_rate_usd_per_hr != null ? String(role.min_rate_usd_per_hr) : '');
-    setNewRoleMaxRate(role.max_rate_usd_per_hr != null ? String(role.max_rate_usd_per_hr) : '');
-    setNewRolePrioritySkills(role.priority_skills || '');
-    setNewRoleRelocationOpen(Boolean(role.relocation_open));
-    setPreferredLocationInput('');
-    setNewRoleIsActive(role.is_active);
-    setRolesError('');
-    setShowAddRoleModal(true);
-  }
-
-  function closeRoleModal() {
-    setShowAddRoleModal(false);
-    setEditingRoleId(null);
-  }
-
-  function toNumberOrNull(value: string) {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  function addPreferredLocation(value: string) {
-    const candidate = value.trim();
-    if (!candidate) return;
-    const current = splitPreferredLocations(newRolePreferredLocations);
-    const exists = current.some((loc) => loc.toLowerCase() === candidate.toLowerCase());
-    if (exists) {
-      setPreferredLocationInput('');
-      return;
-    }
-    setNewRolePreferredLocations([...current, candidate].join(' | '));
-    setPreferredLocationInput('');
-  }
-
-  function removePreferredLocation(value: string) {
-    const next = splitPreferredLocations(newRolePreferredLocations)
-      .filter((loc) => loc.toLowerCase() !== value.toLowerCase());
-    setNewRolePreferredLocations(next.join(' | '));
-  }
-
-  async function createRole() {
-    const accountId = newRoleAccountId || stats[0]?.id || '';
-    if (!accountId) {
-      setRolesError('No account found to attach this role.');
-      return;
-    }
-
-    if (!newRoleTargetRole.trim()) {
-      setRolesError('Target role is required to create a hotlist role.');
-      return;
-    }
-
-    setNewRoleSaving(true);
-    setRolesError('');
-
-    const payload = {
-      account_id: accountId,
-      target_role: newRoleTargetRole.trim(),
-      category: newRoleCategory,
-      min_years_exp: toNumberOrNull(newRoleMinYearsExp),
-      max_years_exp: toNumberOrNull(newRoleMaxYearsExp),
-      visa_status: newRoleVisaStatus.trim() || null,
-      employment_type: newRoleEmploymentType.trim() || null,
-      work_type: newRoleWorkType.trim() || null,
-      preferred_locations: newRolePreferredLocations.trim() || null,
-      min_rate_usd_per_hr: toNumberOrNull(newRoleMinRate),
-      max_rate_usd_per_hr: toNumberOrNull(newRoleMaxRate),
-      relocation_open: newRoleRelocationOpen,
-      priority_skills: newRolePrioritySkills.trim() || null,
-      schedule_frequency: 'daily' as const,
-      is_active: newRoleIsActive,
-    };
-
-    const { data, error } = await supabase
-      .from('hotlist_ai_roles')
-      .insert(payload)
-      .select('id')
-      .single();
-
-    if (error) {
-      setRolesError(error.message);
-      setNewRoleSaving(false);
-      return;
-    }
-
-    if (data?.id) {
-      void triggerRoleEmbedding(String(data.id));
-    }
-
-    resetNewRoleForm();
-    setShowAddRoleModal(false);
-    await fetchHotlistRoles();
-    setNewRoleSaving(false);
-  }
-
-  async function updateRole() {
-    if (!editingRoleId) return;
-
-    if (!newRoleTargetRole.trim()) {
-      setRolesError('Target role is required to update a hotlist role.');
-      return;
-    }
-
-    setNewRoleSaving(true);
-    setRolesError('');
-
-    const payload = {
-      account_id: newRoleAccountId,
-      target_role: newRoleTargetRole.trim(),
-      category: newRoleCategory,
-      min_years_exp: toNumberOrNull(newRoleMinYearsExp),
-      max_years_exp: toNumberOrNull(newRoleMaxYearsExp),
-      visa_status: newRoleVisaStatus.trim() || null,
-      employment_type: newRoleEmploymentType.trim() || null,
-      work_type: newRoleWorkType.trim() || null,
-      preferred_locations: newRolePreferredLocations.trim() || null,
-      min_rate_usd_per_hr: toNumberOrNull(newRoleMinRate),
-      max_rate_usd_per_hr: toNumberOrNull(newRoleMaxRate),
-      relocation_open: newRoleRelocationOpen,
-      priority_skills: newRolePrioritySkills.trim() || null,
-      is_active: newRoleIsActive,
-    };
-
-    const { error } = await supabase
-      .from('hotlist_ai_roles')
-      .update(payload)
-      .eq('id', editingRoleId);
-
-    if (error) {
-      setRolesError(error.message);
-      setNewRoleSaving(false);
-      return;
-    }
-
-    void triggerRoleEmbedding(editingRoleId);
-    closeRoleModal();
-    await fetchHotlistRoles();
-    setNewRoleSaving(false);
-  }
-
-  async function deleteRole(role: HotlistRoleRow) {
-    setDeletingRoleId(role.id);
-    setRolesError('');
-    setDeleteConfirmRole(null);
-
-    const { error } = await supabase
-      .from('hotlist_ai_roles')
-      .delete()
-      .eq('id', role.id);
-
-    if (error) {
-      setRolesError(error.message);
-      setDeletingRoleId(null);
-      return;
-    }
-
-    await fetchHotlistRoles();
-    setDeletingRoleId(null);
-  }
-
-  function openDeleteConfirm(role: HotlistRoleRow) {
-    if (deletingRoleId || runningRoleMatchId) return;
-    setDeleteConfirmRole(role);
-  }
-
-  function closeDeleteConfirm() {
-    if (deletingRoleId) return;
-    setDeleteConfirmRole(null);
-  }
-
-  async function runMatchesForRole(role: HotlistRoleRow) {
-    if (runningRoleMatchId || runningAllRolesMatch) return;
-
-    setRunningRoleMatchId(role.id);
-    setRolesError('');
-    setRolesNotice('');
-
-    const { data, error } = await supabase.functions.invoke('job-watch-trigger', {
-      body: {
-        trigger_source: 'manual_scoped',
-        role_id: role.id,
-      },
-    });
-
-    if (error) {
-      setRolesError(error.message || `Failed to run matches for ${role.target_role}.`);
-      setRunningRoleMatchId(null);
-      return;
-    }
-
-    const summary = typeof data?.message === 'string'
-      ? data.message
-      : `Match run completed for ${role.target_role}.`;
-    const profilesProcessed = typeof data?.profiles_processed === 'number' ? data.profiles_processed : 0;
-    const totalMatched = typeof data?.total_matched === 'number' ? data.total_matched : 0;
-    setRolesNotice(`${summary} Roles processed: ${profilesProcessed}. Matches added: ${totalMatched}.`);
-    await fetchHotlistRoles();
-    setRunningRoleMatchId(null);
-  }
-
-  async function runMatchesForAllRoles() {
-    if (runningAllRolesMatch || runningRoleMatchId) return;
-
-    setRunningAllRolesMatch(true);
-    setRolesError('');
-    setRolesNotice('');
-
-    const { data, error } = await supabase.functions.invoke('job-watch-trigger', {
-      body: {
-        trigger_source: 'manual_all',
-      },
-    });
-
-    if (error) {
-      setRolesError(error.message || 'Failed to run matches for all roles.');
-      setRunningAllRolesMatch(false);
-      return;
-    }
-
-    const summary = typeof data?.message === 'string'
-      ? data.message
-      : 'Match run completed for all active roles.';
-    const rolesFound = typeof data?.roles_found === 'number' ? data.roles_found : 0;
-    const profilesProcessed = typeof data?.profiles_processed === 'number' ? data.profiles_processed : 0;
-    const totalMatched = typeof data?.total_matched === 'number' ? data.total_matched : 0;
-    setRolesNotice(`${summary} Roles found: ${rolesFound}. Roles processed: ${profilesProcessed}. Matches added: ${totalMatched}.`);
-    await fetchHotlistRoles();
-    setRunningAllRolesMatch(false);
-  }
-
   // Re-fetch when date range changes (if already authed)
   useEffect(() => {
     if (authed && datePreset !== 'custom') {
@@ -798,15 +411,9 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (authed) {
-      void fetchHotlistRoles();
       void fetchLinkedinGroups();
     }
   }, [authed]);
-
-  useEffect(() => {
-    if (newRoleAccountId || stats.length === 0) return;
-    setNewRoleAccountId(stats[0]?.id ?? '');
-  }, [newRoleAccountId, stats]);
 
   function applyCustomRange() {
     if (customStart || customEnd) {
@@ -825,31 +432,6 @@ export default function AdminDashboard() {
     });
   }, [stats, searchQuery, customStart, customEnd, sortKey, sortDirection]);
 
-  const filteredRoles = useMemo(() => {
-    const q = rolesSearchQuery.trim().toLowerCase();
-    return roles.filter((role) => {
-      const category = (role.category || 'all').toLowerCase();
-      const categoryMatches = rolesCategoryFilter === 'all' || category === rolesCategoryFilter.toLowerCase();
-      if (!categoryMatches) return false;
-
-      if (!q) return true;
-
-      const haystack = [
-        role.target_role,
-        role.category,
-        role.visa_status,
-        role.employment_type,
-        role.work_type,
-        role.preferred_locations,
-        role.priority_skills,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [roles, rolesCategoryFilter, rolesSearchQuery]);
-
   const filteredLinkedinGroups = useMemo(() => {
     const query = linkedinGroupsSearch.trim().toLowerCase();
     if (!query) return linkedinGroups;
@@ -865,16 +447,6 @@ export default function AdminDashboard() {
       ? filteredStats.reduce((sum, s) => sum + ((s[col.key] as number) || 0), 0)
       : 0;
   }
-
-  const roleTotals = filteredRoles.reduce(
-    (acc, role) => {
-      const summary = roleStatsSummary[role.id];
-      acc.jobs += summary?.job_count ?? 0;
-      acc.watches += summary?.watch_count ?? 0;
-      return acc;
-    },
-    { jobs: 0, watches: 0 }
-  );
 
   const currentPresetLabel = DATE_PRESETS.find(p => p.key === datePreset)?.label ?? 'Last 7 days';
 
@@ -936,17 +508,15 @@ export default function AdminDashboard() {
                 <p className="truncate text-[10px] text-gray-500">
                   {adminView === 'stats'
                     ? `${filteredStats.length} of ${stats.length} accounts`
-                    : adminView === 'hotlist'
-                      ? `${roles.length} hotlist roles`
-                      : adminView === 'scraper'
+                    : adminView === 'scraper'
+                      ? (scraperConfigTab === 'group'
                         ? `${linkedinGroups.filter((group) => group.is_active).length} active of ${linkedinGroups.length} LinkedIn groups`
-                      : adminView === 'keyword-scraper'
-                        ? 'LinkedIn keyword search configuration'
-                        : adminView === 'scraper-logs'
-                          ? 'Hourly group and keyword pipeline logs'
-                          : adminView === 'channels'
-                            ? 'Team channels'
-                            : 'AI prompt configuration'}
+                        : 'LinkedIn keyword search configuration')
+                      : adminView === 'scraper-logs'
+                        ? 'Hourly group and keyword pipeline logs'
+                        : adminView === 'channels'
+                          ? 'Team channels'
+                          : 'AI prompt configuration'}
                 </p>
               </div>
             </div>
@@ -958,22 +528,10 @@ export default function AdminDashboard() {
                 Account Stats
               </button>
               <button
-                onClick={() => setAdminView('hotlist')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'hotlist' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Hotlist Roles
-              </button>
-              <button
                 onClick={() => setAdminView('scraper')}
                 className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'scraper' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
               >
                 Scraper Config
-              </button>
-              <button
-                onClick={() => setAdminView('keyword-scraper')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'keyword-scraper' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Keyword Scraper
               </button>
               <button
                 onClick={() => setAdminView('scraper-logs')}
@@ -997,11 +555,11 @@ export default function AdminDashboard() {
             <div className="ml-auto flex shrink-0 items-center gap-1 lg:ml-2">
               <button
                 onClick={refresh}
-                disabled={loading || rolesLoading || linkedinGroupsLoading}
+                disabled={loading || linkedinGroupsLoading}
                 title="Refresh dashboard"
                 className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
               >
-                <RefreshCcw size={13} className={loading || rolesLoading || linkedinGroupsLoading ? 'animate-spin' : ''} />
+                <RefreshCcw size={13} className={loading || linkedinGroupsLoading ? 'animate-spin' : ''} />
               </button>
               <button
                 onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); setStats([]); }}
@@ -1223,225 +781,24 @@ export default function AdminDashboard() {
           )
         )}
 
-        {adminView === 'hotlist' && (
-        <div className="mt-4 flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <div className="flex flex-wrap items-center justify-between border-b border-gray-200 px-3 py-3 gap-3 sm:px-4">
-            <div className="relative w-full max-w-md">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={rolesSearchQuery}
-                onChange={(e) => setRolesSearchQuery(e.target.value)}
-                placeholder="Search hotlist roles..."
-                className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-xs text-gray-900 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-              {rolesSearchQuery && (
-                <button
-                  onClick={() => setRolesSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-            <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
-              <select
-                value={rolesCategoryFilter}
-                onChange={(e) => setRolesCategoryFilter(e.target.value)}
-                className="h-9 rounded-md border border-gray-300 bg-white px-2.5 text-xs font-semibold text-gray-700 outline-none focus:border-blue-500"
-              >
-                <option value="all">All Categories</option>
-                {ROLE_CATEGORY_OPTIONS.filter((option) => option !== 'all').map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-              <button
-                onClick={() => void runMatchesForAllRoles()}
-                disabled={rolesLoading || runningAllRolesMatch || !!runningRoleMatchId || roles.length === 0}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-              >
-                {runningAllRolesMatch ? <RefreshCcw size={11} className="animate-spin" /> : <Play size={11} />} Run All Roles
-              </button>
-              <button
-                onClick={openAddRoleModal}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-blue-600 bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700"
-              >
-                <Plus size={11} /> Add New Role
-              </button>
-              <button
-                onClick={() => void fetchHotlistRoles()}
-                disabled={rolesLoading}
-                className="flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                <RefreshCcw size={11} className={rolesLoading ? 'animate-spin' : ''} /> Reload Roles
-              </button>
-            </div>
-          </div>
-
-          {rolesError && (
-            <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
-              {rolesError}
-            </div>
-          )}
-
-          {rolesNotice && (
-            <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">
-              {rolesNotice}
-            </div>
-          )}
-
-          {rolesLoading && roles.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center py-8">
-              <LogoSpinner size={18} />
-            </div>
-          ) : (
-            <div className="min-h-0 flex-1 overflow-x-scroll overflow-y-auto pb-2 pr-2" style={{ scrollbarGutter: 'stable both-edges' }}>
-              <table className="min-w-max w-full table-auto border-collapse border-spacing-0 text-left">
-                <thead className="sticky top-0 z-[2]">
-                  <tr className="border-b border-gray-200 bg-gray-50 text-[11px] uppercase tracking-wide text-gray-600">
-                    <th className="sticky left-0 z-[5] w-[160px] min-w-[160px] max-w-[160px] border-r border-gray-200 bg-gray-50 px-3 py-2 whitespace-normal">Role</th>
-                    <th className="sticky left-[160px] z-[5] w-[90px] min-w-[90px] max-w-[90px] border-r border-gray-200 bg-gray-50 px-3 py-2 whitespace-nowrap">Category</th>
-                    <th className="sticky left-[250px] z-[5] w-[70px] min-w-[70px] max-w-[70px] border-r border-gray-200 bg-gray-50 px-3 py-2 whitespace-nowrap">Jobs</th>
-                    <th className="sticky left-[320px] z-[5] w-[80px] min-w-[80px] max-w-[80px] border-r border-gray-200 bg-gray-50 px-3 py-2 whitespace-nowrap">Watches</th>
-                    <th className="min-w-[80px] px-3 py-2 whitespace-nowrap">Years</th>
-                    <th className="min-w-[80px] px-3 py-2 whitespace-nowrap">Visa</th>
-                    <th className="min-w-[100px] px-3 py-2 whitespace-nowrap">Emp Type</th>
-                    <th className="min-w-[90px] px-3 py-2 whitespace-nowrap">Work Type</th>
-                    <th className="min-w-[150px] px-3 py-2 whitespace-nowrap">Locations</th>
-                    <th className="min-w-[80px] px-3 py-2 whitespace-nowrap">Rate Min</th>
-                    <th className="min-w-[80px] px-3 py-2 whitespace-nowrap">Rate Max</th>
-                    <th className="min-w-[220px] px-3 py-2 whitespace-nowrap">Skills</th>
-                    <th className="min-w-[70px] px-3 py-2 whitespace-nowrap">Reloc</th>
-                    <th className="min-w-[90px] px-3 py-2 whitespace-nowrap">Status</th>
-                    <th className="min-w-[110px] px-3 py-2 whitespace-nowrap">Updated</th>
-                    <th
-                      className="sticky right-0 z-[6] min-w-[104px] bg-gray-50 px-1.5 py-2 whitespace-nowrap"
-                      style={{ boxShadow: '-14px 0 14px -14px rgba(255,255,255,1)' }}
-                    >
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-blue-200 bg-blue-50 text-xs">
-                    <td className="sticky left-0 z-[4] w-[160px] min-w-[160px] max-w-[160px] border-r border-blue-200 bg-blue-50 px-3 py-2 whitespace-normal break-words">
-                      <span className="block font-semibold text-blue-700">Totals</span>
-                    </td>
-                    <td className="sticky left-[160px] z-[4] w-[90px] min-w-[90px] max-w-[90px] border-r border-blue-200 bg-blue-50 px-3 py-2 whitespace-nowrap">
-                      <span className="text-blue-700">All</span>
-                    </td>
-                    <td className="sticky left-[250px] z-[4] w-[70px] min-w-[70px] max-w-[70px] border-r border-blue-200 bg-blue-50 px-3 py-2 whitespace-nowrap">
-                      <span className="font-semibold text-blue-700">{roleTotals.jobs}</span>
-                    </td>
-                    <td className="sticky left-[320px] z-[4] w-[80px] min-w-[80px] max-w-[80px] border-r border-blue-200 bg-blue-50 px-3 py-2 whitespace-nowrap">
-                      <span className="font-semibold text-blue-700">{roleTotals.watches}</span>
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap" colSpan={11} />
-                    <td
-                      className="sticky right-0 z-[6] min-w-[104px] bg-blue-50 px-1.5 py-2 whitespace-nowrap"
-                      style={{ boxShadow: '-14px 0 14px -14px rgba(255,255,255,1)' }}
-                    />
-                  </tr>
-
-                  {filteredRoles.map((role) => (
-                    <tr key={role.id} className="border-b border-gray-200 align-top text-xs text-gray-800 hover:bg-gray-50">
-                      <td className="sticky left-0 z-[4] w-[160px] min-w-[160px] max-w-[160px] border-r border-gray-200 bg-white px-3 py-2 whitespace-normal break-words">
-                        <span className="block font-medium leading-snug text-gray-900">{role.target_role || '-'}</span>
-                      </td>
-                      <td className="sticky left-[160px] z-[4] w-[90px] min-w-[90px] max-w-[90px] border-r border-gray-200 bg-white px-3 py-2 whitespace-nowrap">
-                        <span className="rounded bg-gray-100 px-2 py-1 text-[11px] text-gray-700">{role.category || 'all'}</span>
-                      </td>
-                      <td className="sticky left-[250px] z-[4] w-[70px] min-w-[70px] max-w-[70px] border-r border-gray-200 bg-white px-3 py-2 whitespace-nowrap">
-                        <span className="font-semibold text-gray-900">{roleStatsSummary[role.id]?.job_count ?? 0}</span>
-                      </td>
-                      <td className="sticky left-[320px] z-[4] w-[80px] min-w-[80px] max-w-[80px] border-r border-gray-200 bg-white px-3 py-2 whitespace-nowrap">
-                        <span className="font-semibold text-gray-900">{roleStatsSummary[role.id]?.watch_count ?? 0}</span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span>{(role.min_years_exp != null && role.max_years_exp != null) ? `${role.min_years_exp}-${role.max_years_exp}` : (role.min_years_exp ?? '-')}</span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span>{role.visa_status || '-'}</span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span>{role.employment_type || '-'}</span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span>{role.work_type || '-'}</span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span>{role.preferred_locations || '-'}</span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span>{role.min_rate_usd_per_hr != null ? `${role.min_rate_usd_per_hr}` : '-'}</span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span>{role.max_rate_usd_per_hr != null ? `${role.max_rate_usd_per_hr}` : '-'}</span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span>{role.priority_skills || '-'}</span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span>{role.relocation_open ? 'Yes' : 'No'}</span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span className={`rounded px-2 py-1 text-[11px] ${role.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                          {role.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-500">
-                        {new Date(role.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </td>
-                      <td
-                        className="sticky right-0 z-[6] min-w-[104px] bg-white px-1.5 py-2 whitespace-nowrap"
-                        style={{ boxShadow: '-14px 0 14px -14px rgba(255,255,255,1)' }}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => void runMatchesForRole(role)}
-                            disabled={runningAllRolesMatch || !!runningRoleMatchId || deletingRoleId === role.id}
-                            aria-label={`Run match for ${role.target_role || 'role'}`}
-                            title="Run match"
-                            className="rounded-md border border-emerald-300 bg-emerald-50 p-2 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-                          >
-                            {runningRoleMatchId === role.id ? <RefreshCcw size={14} className="animate-spin" /> : <Play size={14} />}
-                          </button>
-                          <button
-                            onClick={() => openEditRoleModal(role)}
-                            disabled={deletingRoleId === role.id || !!runningRoleMatchId}
-                            aria-label={`Edit ${role.target_role || 'role'}`}
-                            title="Edit"
-                            className="rounded-md border border-gray-300 bg-white p-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            onClick={() => openDeleteConfirm(role)}
-                            disabled={deletingRoleId === role.id || !!runningRoleMatchId}
-                            aria-label={`Delete ${role.target_role || 'role'}`}
-                            title="Delete"
-                            className="rounded-md border border-red-300 bg-red-50 p-2 text-red-700 hover:bg-red-100 disabled:opacity-50"
-                          >
-                            {deletingRoleId === role.id ? <RefreshCcw size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-
-                  {filteredRoles.length === 0 && !rolesLoading && (
-                    <tr>
-                      <td colSpan={15} className="px-4 py-8 text-center text-xs text-gray-500">No hotlist roles found.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-        )}
 
         {adminView === 'scraper' && (
+        <>
+        <div className="mt-4 flex items-center gap-1 border-b border-gray-200">
+          <button
+            onClick={() => setScraperConfigTab('group')}
+            className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${scraperConfigTab === 'group' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
+          >
+            Group Scraper
+          </button>
+          <button
+            onClick={() => setScraperConfigTab('keyword')}
+            className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${scraperConfigTab === 'keyword' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
+          >
+            Keyword Scraper
+          </button>
+        </div>
+        {scraperConfigTab === 'group' && (
         <div className="mt-4 grid h-full min-h-0 w-full min-w-0 max-w-full gap-4 overflow-y-auto lg:grid-cols-[320px_minmax(0,1fr)] lg:overflow-hidden">
           <aside className="rounded-lg border border-gray-200 bg-white lg:overflow-y-auto">
             <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3">
@@ -1656,8 +1013,9 @@ export default function AdminDashboard() {
         </div>
         </div>
         )}
-
-        {adminView === 'keyword-scraper' && <LinkedinKeywordScraperPanel />}
+        {scraperConfigTab === 'keyword' && <LinkedinKeywordScraperPanel />}
+        </>
+        )}
 
   {adminView === 'scraper-logs' && <AdminScraperLogsPanel />}
 
@@ -1665,252 +1023,6 @@ export default function AdminDashboard() {
         {adminView === 'channels' && <AdminChannelsPanel />}
       </div>
 
-      {adminView === 'hotlist' && showAddRoleModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl">
-            <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{editingRoleId ? 'Edit Role' : 'Add New Role'}</p>
-                <p className="text-[11px] text-gray-500">{editingRoleId ? 'Update role fields and save changes.' : 'Create a role with full match metadata.'}</p>
-              </div>
-              <button
-                onClick={closeRoleModal}
-                className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-6">
-              <label className="md:col-span-3">
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Target Role</span>
-                <input
-                  value={newRoleTargetRole}
-                  onChange={(e) => setNewRoleTargetRole(e.target.value)}
-                  placeholder="Senior Java Developer"
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                />
-              </label>
-
-              <label>
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Category</span>
-                <select
-                  value={newRoleCategory}
-                  onChange={(e) => setNewRoleCategory(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                >
-                  {ROLE_CATEGORY_OPTIONS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Status</span>
-                <select
-                  value={newRoleIsActive ? 'active' : 'inactive'}
-                  onChange={(e) => setNewRoleIsActive(e.target.value === 'active')}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </label>
-
-              <label>
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Min Years</span>
-                <input
-                  value={newRoleMinYearsExp}
-                  onChange={(e) => setNewRoleMinYearsExp(e.target.value)}
-                  placeholder="3"
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                />
-              </label>
-
-              <label>
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Max Years</span>
-                <input
-                  value={newRoleMaxYearsExp}
-                  onChange={(e) => setNewRoleMaxYearsExp(e.target.value)}
-                  placeholder="8"
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                />
-              </label>
-
-              <label>
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Visa Type</span>
-                <select
-                  value={newRoleVisaStatus}
-                  onChange={(e) => setNewRoleVisaStatus(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                >
-                  <option value="">Select</option>
-                  {VISA_TYPE_OPTIONS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Employment Type</span>
-                <select
-                  value={newRoleEmploymentType}
-                  onChange={(e) => setNewRoleEmploymentType(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                >
-                  <option value="">Select</option>
-                  {EMPLOYMENT_TYPE_OPTIONS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Work Type</span>
-                <select
-                  value={newRoleWorkType}
-                  onChange={(e) => setNewRoleWorkType(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                >
-                  <option value="">Select</option>
-                  {WORK_TYPE_OPTIONS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="md:col-span-2">
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Preferred Locations</span>
-                <div className="rounded-md border border-gray-300 bg-white p-2">
-                  <div className="mb-2 flex flex-wrap gap-1.5">
-                    {splitPreferredLocations(newRolePreferredLocations).map((loc) => (
-                      <span key={loc} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700">
-                        {loc}
-                        <button
-                          type="button"
-                          onClick={() => removePreferredLocation(loc)}
-                          className="text-blue-400 hover:text-red-500"
-                          aria-label={`Remove ${loc}`}
-                        >
-                          <X size={10} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <LocationAutosuggestInput
-                      value={preferredLocationInput}
-                      onChange={setPreferredLocationInput}
-                      onSelectPlace={(place) => addPreferredLocation(place.formatted || preferredLocationInput)}
-                      scope="any"
-                      placeholder="Type city/state/country and pick"
-                      className="flex-1"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => addPreferredLocation(preferredLocationInput)}
-                      className="h-[30px] rounded-md border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <label>
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Rate Min ($/hr)</span>
-                <input
-                  value={newRoleMinRate}
-                  onChange={(e) => setNewRoleMinRate(e.target.value)}
-                  placeholder="50"
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                />
-              </label>
-
-              <label>
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Rate Max ($/hr)</span>
-                <input
-                  value={newRoleMaxRate}
-                  onChange={(e) => setNewRoleMaxRate(e.target.value)}
-                  placeholder="80"
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                />
-              </label>
-
-              <label className="md:col-span-3">
-                <span className="mb-1 block text-[11px] font-semibold text-gray-600">Priority Skills</span>
-                <textarea
-                  value={newRolePrioritySkills}
-                  onChange={(e) => setNewRolePrioritySkills(e.target.value)}
-                  placeholder="Java, Spring Boot, AWS"
-                  rows={2}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500"
-                />
-              </label>
-
-              <div className="flex items-center gap-3 md:col-span-3">
-                <label className="inline-flex items-center gap-2 text-xs text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={newRoleRelocationOpen}
-                    onChange={(e) => setNewRoleRelocationOpen(e.target.checked)}
-                  />
-                  Relocation
-                </label>
-              </div>
-            </div>
-
-            <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-gray-200 bg-white px-4 py-3">
-              <button
-                onClick={closeRoleModal}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void (editingRoleId ? updateRole() : createRole())}
-                disabled={newRoleSaving}
-                className="inline-flex items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-              >
-                {newRoleSaving ? <LogoSpinner size={12} /> : <Plus size={11} />}
-                {editingRoleId ? 'Save Changes' : 'Add Role'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {deleteConfirmRole && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white shadow-xl">
-            <div className="border-b border-gray-200 px-4 py-3">
-              <p className="text-sm font-semibold text-gray-900">Delete role?</p>
-              <p className="mt-1 text-xs text-gray-500">
-                This will permanently remove <span className="font-medium text-gray-900">{deleteConfirmRole.target_role || 'this role'}</span>.
-              </p>
-            </div>
-            <div className="px-4 py-4 text-sm text-gray-700">
-              Are you sure you want to delete this hotlist role? This action cannot be undone.
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-4 py-3">
-              <button
-                onClick={closeDeleteConfirm}
-                disabled={!!deletingRoleId}
-                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void deleteRole(deleteConfirmRole)}
-                disabled={!!deletingRoleId}
-                className="rounded-md border border-red-300 bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                {deletingRoleId === deleteConfirmRole.id ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
