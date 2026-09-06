@@ -550,17 +550,6 @@ export default function MyPostsPage() {
     </div>
   );
 
-  const searchButtonEl = (
-    <button
-      type="button"
-      onClick={() => setSearchQuery(pendingSearchQuery.trim())}
-      className="shrink-0 rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700"
-      aria-label="Search"
-    >
-      <Search size={12} />
-    </button>
-  );
-
   const rangeMenuEl = (
     <div ref={rangeMenuRef} className="relative shrink-0">
       <button
@@ -727,6 +716,17 @@ export default function MyPostsPage() {
     </>
   );
 
+  const emptyPostsMessageEl = (
+    <>
+      <p className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">
+        {posts.length > 0 ? 'No posts match your search' : statusFilter === 'closed' ? 'No closed posts' : `No open ${kindFilter === 'all' ? '' : kindFilter === 'job' ? 'job ' : 'hotlist '}posts`}
+      </p>
+      <p className="mt-1 text-[12px] text-gray-400 dark:text-[#64748B]">
+        {posts.length > 0 ? 'Try a different search term.' : statusFilter === 'closed' ? 'Posts you close will show up here.' : 'Try switching to the Closed filter.'}
+      </p>
+    </>
+  );
+
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
       <AppNav />
@@ -748,11 +748,6 @@ export default function MyPostsPage() {
             <div className="flex shrink-0 items-center gap-2 pb-2">
               <div className="flex shrink-0 items-center gap-1">
                 {kindFilterButtonsEl(false)}
-              </div>
-              {searchBoxEl}
-              {searchButtonEl}
-              <div className="flex shrink-0 items-center gap-1">
-                {statusFilterButtonsEl(false)}
               </div>
               {rangeMenuEl}
               {addPostButtonEl(false)}
@@ -788,18 +783,11 @@ export default function MyPostsPage() {
           <div className={`min-h-0 overflow-auto ${showingDesktopColumns ? 'bg-transparent p-1' : 'rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126]'} ${!hasAnyPosts && !loading ? 'shrink-0' : 'flex-1'}`}>
             {loading ? (
               <div className="flex items-center justify-center py-16"><LogoSpinner size={22} /></div>
-            ) : filteredPosts.length === 0 && (posts.length > 0 || hasAnyPosts) ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">
-                  {posts.length > 0 ? 'No posts match your search' : statusFilter === 'closed' ? 'No closed posts' : `No open ${kindFilter === 'all' ? '' : kindFilter === 'job' ? 'job ' : 'hotlist '}posts`}
-                </p>
-                <p className="mt-1 text-[12px] text-gray-400 dark:text-[#64748B]">
-                  {posts.length > 0 ? 'Try a different search term.' : statusFilter === 'closed' ? 'Posts you close will show up here.' : 'Try switching to the Closed filter.'}
-                </p>
-              </div>
             ) : isMobileViewport ? (
               <div className="flex flex-col gap-2 p-2">
-                {filteredPosts.map((post) => {
+                {filteredPosts.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">{emptyPostsMessageEl}</div>
+                ) : filteredPosts.map((post) => {
                   const metrics = metricsByPostId[post.id] ?? { previewCount: 0, chatCount: 0, shareCount: 0, applicationCount: 0 };
                   const displayTitle = post.kind === 'hotlist' && post.candidateName
                     ? `${post.title || 'Available Consultant'} — ${post.candidateName}`
@@ -880,8 +868,26 @@ export default function MyPostsPage() {
                     intentionally match /feed's renderDetailSplitView. */}
 
                 {/* Column 1: Post Cards */}
-                <div className="min-h-0 space-y-1.5 overflow-y-auto pr-1">
-                  {filteredPosts.map((post) => {
+                <div className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white">
+                  <div className="space-y-2 border-b border-gray-100 p-4">
+                    <div className="relative">
+                      <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => { setPendingSearchQuery(e.target.value); setSearchQuery(e.target.value); }}
+                        placeholder="Search your posts..."
+                        className="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-7 pr-2 text-[12px] text-gray-700 outline-none focus:border-blue-300"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {statusFilterButtonsEl(false)}
+                    </div>
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-4">
+                  {filteredPosts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-center">{emptyPostsMessageEl}</div>
+                  ) : filteredPosts.map((post) => {
                     const isSelected = selectedPostId === post.id;
                     const metrics = metricsByPostId[post.id] ?? zeroMetrics;
                     const displayTitle = post.kind === 'hotlist' && post.candidateName
@@ -960,6 +966,7 @@ export default function MyPostsPage() {
                       </div>
                     );
                   })}
+                  </div>
                 </div>
 
                 {/* Column 2: Post Applicants (job posts only) */}
