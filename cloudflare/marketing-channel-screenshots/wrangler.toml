@@ -1,0 +1,42 @@
+name = "profilepush-marketing-channel-screenshots"
+main = "src/index.ts"
+compatibility_date = "2026-09-05"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# 09:30 UTC = 3:00 PM IST (Asia/Kolkata, UTC+5:30).
+[triggers]
+crons = ["30 9 * * *"]
+
+# @cloudflare/puppeteer needs a direct browser binding, not the standalone
+# REST "Quick Actions" screenshot endpoint — the REST endpoint only supports
+# cookies for auth, not localStorage, and this app's Supabase session lives
+# in localStorage. Puppeteer lets us open the page, inject the session into
+# localStorage exactly like the manual Playwright QA sessions this app has
+# been tested with all along, then navigate and screenshot for real.
+[browser]
+binding = "BROWSER"
+
+[vars]
+SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
+# Public anon key (safe to commit — same value baked into src/lib/supabase.ts).
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5od3FjcXp2b3RnZG5ndHh1bHdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NjY3NDQsImV4cCI6MjA5NjQ0Mjc0NH0.DCPM9hZwqEsfmStT1beaUtp3P-uDVkCZL8xv0ZFpCss"
+APP_ORIGIN = "https://profilepush.ai"
+WORKER_BASE_URL = "https://profilepush-marketing-channel-screenshots.profilepush-ai.workers.dev"
+# The exact key supabase-js stores its session under in localStorage —
+# "sb-<project-ref>-auth-token" — see src/lib/supabase.ts.
+SUPABASE_AUTH_STORAGE_KEY = "sb-nhwqcqzvotgdngtxulwi-auth-token"
+# Dedicated Supabase Auth user used only for driving authenticated-route
+# screenshots — isolated from real customer accounts. Created once via the
+# Admin API (see cloudflare/marketing-channel-screenshots/README.md).
+SCREENSHOT_BOT_EMAIL = "screenshot-bot@profilepush.ai"
+
+[[r2_buckets]]
+binding = "SCREENSHOTS_BUCKET"
+bucket_name = "profilepush-marketing-channel-screenshots"
+
+# Secrets (set via `wrangler secret put <NAME>`, not stored here):
+#   SUPABASE_SERVICE_ROLE_KEY — same value used by the other workers in this repo
+#   RUN_SECRET                — random string; required as ?key= on GET /run
+#                                so the daily batch can be triggered on demand
+#                                for testing without waiting for the cron
