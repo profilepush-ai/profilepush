@@ -476,6 +476,12 @@ export default function MyPostsPage() {
   const selectedApplicationCanDecide = selectedApplication
     ? (selectedApplication.status !== 'qualified' && selectedApplication.status !== 'rejected')
     : false;
+  // The desktop 3-column view should sit directly on the page background,
+  // matching /feed's detail layout (its wrapper is bg-transparent, not a
+  // white bordered card) — only loading/empty/mobile states keep the
+  // bordered white frame.
+  const showingDesktopColumns = !loading && !isMobileViewport
+    && !(filteredPosts.length === 0 && (posts.length > 0 || hasAnyPosts));
 
   const searchBoxEl = (
     <div className="relative flex min-w-[160px] flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
@@ -741,7 +747,7 @@ export default function MyPostsPage() {
             </div>
           ) : null}
 
-          <div className={`min-h-0 overflow-auto rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126] ${!hasAnyPosts && !loading ? 'shrink-0' : 'flex-1'}`}>
+          <div className={`min-h-0 overflow-auto ${showingDesktopColumns ? 'bg-transparent p-1' : 'rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126]'} ${!hasAnyPosts && !loading ? 'shrink-0' : 'flex-1'}`}>
             {loading ? (
               <div className="flex items-center justify-center py-16"><LogoSpinner size={22} /></div>
             ) : filteredPosts.length === 0 && (posts.length > 0 || hasAnyPosts) ? (
@@ -825,13 +831,15 @@ export default function MyPostsPage() {
                 })}
               </div>
             ) : (
-              <div className="grid h-full min-h-0 grid-cols-[280px_280px_minmax(0,1fr)] gap-3 p-2">
-                {/* Plain block stacking, not CSS grid, for these list
-                    columns — a grid's "auto" row-sizing pass measures
+              <div className="grid h-full min-h-0 grid-cols-3 gap-3">
+                {/* Plain block stacking, not CSS grid, for this list
+                    column — a grid's "auto" row-sizing pass measures
                     nested-flex content by min-content rather than actual
                     rendered height (the same bug was found and fixed in
                     PulsePage's and Applications' detail layouts: rows
-                    collapsed and overlapped). */}
+                    collapsed and overlapped). Column widths and the aside
+                    styling below (borders, padding, no dark: variants)
+                    intentionally match /feed's renderDetailSplitView. */}
 
                 {/* Column 1: Post Cards */}
                 <div className="min-h-0 space-y-1.5 overflow-y-auto pr-1">
@@ -917,18 +925,18 @@ export default function MyPostsPage() {
                 </div>
 
                 {/* Column 2: Post Applicants (job posts only) */}
-                <div className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#1E2126]">
+                <div className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white">
                   {!selectedPost ? (
                     <div className="flex flex-1 items-center justify-center p-6 text-center">
-                      <p className="text-[13px] text-gray-400 dark:text-[#64748B]">Select a post to see applicants</p>
+                      <p className="text-[13px] text-gray-400">Select a post to see applicants</p>
                     </div>
                   ) : selectedPost.kind !== 'job' ? (
                     <div className="flex flex-1 items-center justify-center p-6 text-center">
-                      <p className="text-[13px] text-gray-400 dark:text-[#64748B]">Applicants aren&apos;t tracked for hotlist posts</p>
+                      <p className="text-[13px] text-gray-400">Applicants aren&apos;t tracked for hotlist posts</p>
                     </div>
                   ) : (
                     <>
-                      <div className="border-b border-gray-100 p-2.5 dark:border-white/10">
+                      <div className="border-b border-gray-100 p-4">
                         <div className="relative">
                           <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                           <input
@@ -936,17 +944,17 @@ export default function MyPostsPage() {
                             value={applicantSearchQuery}
                             onChange={(e) => setApplicantSearchQuery(e.target.value)}
                             placeholder="Search applicants..."
-                            className="w-full rounded-md border border-[#dfdad2] bg-white py-1.5 pl-7 pr-2 text-[12px] text-gray-700 outline-none focus:border-blue-300 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-200"
+                            className="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-7 pr-2 text-[12px] text-gray-700 outline-none focus:border-blue-300"
                           />
                         </div>
                       </div>
-                      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
+                      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-4">
                         {applicationsLoading ? (
                           <div className="flex items-center justify-center py-10"><LogoSpinner size={18} /></div>
                         ) : applications.length === 0 ? (
-                          <p className="p-3 text-center text-[12px] text-gray-400 dark:text-[#64748B]">No applications yet</p>
+                          <p className="p-3 text-center text-[12px] text-gray-400">No applications yet</p>
                         ) : filteredApplications.length === 0 ? (
-                          <p className="p-3 text-center text-[12px] text-gray-400 dark:text-[#64748B]">No matching applicants</p>
+                          <p className="p-3 text-center text-[12px] text-gray-400">No matching applicants</p>
                         ) : (
                           filteredApplications.map((app) => {
                             const isAppSelected = selectedApplicationId === app.id;
@@ -955,17 +963,17 @@ export default function MyPostsPage() {
                                 key={app.id}
                                 type="button"
                                 onClick={() => setSelectedApplicationId(app.id)}
-                                className={`block w-full rounded-md border px-2.5 py-2 text-left transition-colors ${isAppSelected ? 'border-blue-300 bg-blue-50 dark:border-blue-400/40 dark:bg-blue-500/10' : 'border-transparent bg-gray-50 hover:bg-gray-100 dark:bg-[#171a1f] dark:hover:bg-white/5'}`}
+                                className={`block w-full rounded-md border px-2.5 py-2 text-left transition-colors ${isAppSelected ? 'border-blue-300 bg-blue-50' : 'border-transparent bg-gray-50 hover:bg-gray-100'}`}
                               >
                                 <div className="flex items-start justify-between gap-1.5">
-                                  <p className="min-w-0 truncate text-[12px] font-semibold text-gray-900 dark:text-slate-100">{app.candidate_name || 'Unnamed candidate'}</p>
+                                  <p className="min-w-0 truncate text-[12px] font-semibold text-gray-900">{app.candidate_name || 'Unnamed candidate'}</p>
                                   <span className={`shrink-0 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${APPLICATION_STATUS_STYLES[app.status] ?? APPLICATION_STATUS_STYLES.submitted}`}>
                                     {APPLICATION_STATUS_LABELS[app.status] ?? app.status}
                                   </span>
                                 </div>
-                                {app.candidate_email && <p className="truncate text-[10px] text-gray-400 dark:text-[#94A3B8]">{app.candidate_email}</p>}
+                                {app.candidate_email && <p className="truncate text-[10px] text-gray-400">{app.candidate_email}</p>}
                                 {app.ai_score !== null && (
-                                  <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[9px] font-semibold text-purple-700 dark:border-purple-400/30 dark:bg-purple-500/10 dark:text-purple-300">
+                                  <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[9px] font-semibold text-purple-700">
                                     <Sparkles size={8} strokeWidth={2.5} />
                                     {app.ai_score}/100
                                   </span>
@@ -980,18 +988,18 @@ export default function MyPostsPage() {
                 </div>
 
                 {/* Column 3: Post Application detail panel */}
-                <aside className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#1E2126]">
+                <aside className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white">
                   {!selectedApplication ? (
                     <div className="flex flex-1 items-center justify-center p-6 text-center">
-                      <p className="text-[13px] text-gray-400 dark:text-[#64748B]">Select an applicant to review</p>
+                      <p className="text-[13px] text-gray-400">Select an applicant to review</p>
                     </div>
                   ) : (
                     <>
-                      <div className="flex items-start gap-2.5 border-b border-gray-100 p-4 dark:border-white/10">
+                      <div className="flex items-start gap-2.5 border-b border-gray-100 p-4">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[15px] font-semibold text-gray-900 dark:text-slate-100">{selectedApplication.candidate_name || 'Unnamed candidate'}</p>
+                          <p className="truncate text-[15px] font-semibold text-gray-900">{selectedApplication.candidate_name || 'Unnamed candidate'}</p>
                           {(selectedApplication.candidate_email || selectedApplication.candidate_phone) && (
-                            <p className="truncate text-[12px] text-gray-500 dark:text-[#94A3B8]">
+                            <p className="truncate text-[12px] text-gray-500">
                               {selectedApplication.candidate_email}{selectedApplication.candidate_email && selectedApplication.candidate_phone ? ' · ' : ''}{selectedApplication.candidate_phone}
                             </p>
                           )}
@@ -1002,7 +1010,7 @@ export default function MyPostsPage() {
                         <button
                           type="button"
                           onClick={() => setSelectedApplicationId(null)}
-                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/10"
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
                           aria-label="Close"
                         >
                           <X size={14} />
@@ -1012,13 +1020,13 @@ export default function MyPostsPage() {
                       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
                         {selectedApplication.ai_summary && (
                           <div>
-                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">AI Summary</p>
-                            <p className="text-[13px] leading-relaxed text-gray-700 dark:text-slate-300">{selectedApplication.ai_summary}</p>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">AI Summary</p>
+                            <p className="text-[13px] leading-relaxed text-gray-700">{selectedApplication.ai_summary}</p>
                           </div>
                         )}
 
                         <div>
-                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">Screening Video</p>
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Screening Video</p>
                           {selectedApplicationHasAnsweredTurn ? (
                             <ScreeningSubmissionModal
                               embedded
@@ -1028,26 +1036,26 @@ export default function MyPostsPage() {
                               showToast={showToast}
                             />
                           ) : (
-                            <p className="text-[12px] text-gray-400 dark:text-[#64748B]">No screening recorded yet.</p>
+                            <p className="text-[12px] text-gray-400">No screening recorded yet.</p>
                           )}
                         </div>
 
                         <div>
-                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#94A3B8]">Resume</p>
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Resume</p>
                           {selectedApplication.resume_url ? (
-                            <iframe src={selectedApplication.resume_url} className="h-[400px] w-full rounded-md border border-gray-200 bg-white dark:border-white/10" title="Resume" />
+                            <iframe src={selectedApplication.resume_url} className="h-[400px] w-full rounded-md border border-gray-200 bg-white" title="Resume" />
                           ) : (
-                            <p className="text-[12px] text-gray-400 dark:text-[#64748B]">No resume on file.</p>
+                            <p className="text-[12px] text-gray-400">No resume on file.</p>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 border-t border-gray-100 p-3 dark:border-white/10">
+                      <div className="flex items-center gap-2 border-t border-gray-100 p-3">
                         <button
                           type="button"
                           disabled={chatBusyId === selectedApplication.id}
                           onClick={() => void handleApplicantChat(selectedApplication.id)}
-                          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-400"
+                          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-gray-50 text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-50"
                         >
                           {chatBusyId === selectedApplication.id ? <LogoSpinner size={14} /> : <MessageSquare size={14} />}
                           Chat
@@ -1069,7 +1077,7 @@ export default function MyPostsPage() {
                               type="button"
                               disabled={decisionBusyId === selectedApplication.id}
                               onClick={() => void handleReject(selectedApplication.id)}
-                              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 text-[12px] font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-300"
+                              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 text-[12px] font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
                             >
                               {decisionBusyId === selectedApplication.id ? <LogoSpinner size={14} /> : <XCircle size={14} />}
                               Reject
