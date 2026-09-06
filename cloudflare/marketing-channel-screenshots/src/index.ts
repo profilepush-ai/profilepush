@@ -30,32 +30,18 @@ type RouteSpec = {
   resolve?: (env: Env) => Promise<string | null>;
 };
 
-// Kept in sync with src/App.tsx by hand — Workers can't import the Vite/React
-// route table directly. Deliberately excludes: pure <Navigate> redirects
-// (they just land on a page already captured on its own), /admin and
-// /admin/commands (internal ops tools, not marketing-facing), and
+// Scope: the homepage plus logged-in-only views — no other public/marketing
+// pages (signup, signin, about, pricing comparisons, etc.), per explicit
+// request. Kept in sync with src/App.tsx by hand — Workers can't import the
+// Vite/React route table directly. Deliberately excludes: pure <Navigate>
+// redirects (they just land on a page already captured on its own), /admin
+// and /admin/commands (internal ops tools, not this bot's concern), and
 // /onboard/:token, /confirm-applied/:token, /screen/:token (one-time/
 // side-effecting candidate flows — ConfirmApplied.tsx writes an
 // activity_logs row just from loading, so auto-visiting daily would
 // corrupt real data).
 const ROUTES: RouteSpec[] = [
   { label: "Home", requiresAuth: false, path: "/" },
-  { label: "Sign up", requiresAuth: false, path: "/signup" },
-  { label: "Sign in", requiresAuth: false, path: "/signin" },
-  { label: "About", requiresAuth: false, path: "/about" },
-  { label: "Contact", requiresAuth: false, path: "/contact" },
-  { label: "How it works", requiresAuth: false, path: "/how-it-works" },
-  { label: "Why AI copilot", requiresAuth: false, path: "/why-ai-copilot" },
-  { label: "Security", requiresAuth: false, path: "/security" },
-  { label: "Privacy", requiresAuth: false, path: "/privacy" },
-  { label: "Terms", requiresAuth: false, path: "/terms" },
-  { label: "Cancellation & refund", requiresAuth: false, path: "/cancellation-refund" },
-  { label: "Book a demo", requiresAuth: false, path: "/book-demo" },
-  { label: "IT staffing vendor list", requiresAuth: false, path: "/it-staffing-vendor-list" },
-  { label: "IT staffing bench sales recruiters list", requiresAuth: false, path: "/it-staffing-bench-sales-recruiters-list" },
-  { label: "Vs. JobRight AI", requiresAuth: false, path: "/vs/jobright-ai" },
-  { label: "Vs. DriveTube AI", requiresAuth: false, path: "/vs/drivetube-ai" },
-  { label: "Vs. Apply NXT", requiresAuth: false, path: "/vs/apply-nxt" },
 
   { label: "Feed", requiresAuth: true, path: "/feed" },
   { label: "Posts", requiresAuth: true, path: "/posts" },
@@ -71,16 +57,6 @@ const ROUTES: RouteSpec[] = [
   { label: "Billing", requiresAuth: true, path: "/billing" },
   { label: "Watchlist profiles", requiresAuth: true, path: "/watchlist-profiles" },
 
-  {
-    label: "Job detail",
-    requiresAuth: false,
-    resolve: async (env) => prefixWithId("/job", await resolveLatestId(env, "social_jobs")),
-  },
-  {
-    label: "Hotlist detail",
-    requiresAuth: false,
-    resolve: async (env) => prefixWithId("/hotlist", await resolveLatestId(env, "social_hotlist")),
-  },
   {
     label: "Feed detail (job)",
     requiresAuth: true,
