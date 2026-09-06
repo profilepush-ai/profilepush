@@ -27,23 +27,23 @@ const PAGE_SIZE = 15;
 // One-time credit-pack purchases: 500-credit increments up to 5000, flat ₹1/credit.
 const CREDIT_TIERS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
 
-// What actually deducts credits today, and how much — sourced directly from
-// each feature's real charge amount (not the flat "1 credit" the page used
-// to imply everywhere): consume_feature_credit call sites in
-// ask-ai-vendor-email/index.ts, generate-chat-message/index.ts,
-// create_user_job_post/create_user_hotlist_post (new-post RPCs),
-// check_and_log_active_list_download, and the alwaysCharge: true calls in
-// PulsePage.tsx's consumeCredits(). Predict Match %, Match Breakdown, and
-// Reveal Contact have real per-use costs in code too, but currently charge
-// nothing — they're gated behind BILLING_GATES_ENABLED (feature-gates.ts),
-// which is off site-wide, so they're listed separately below as free.
+// What actually deducts credits today — credits are charged only for
+// genuine AI-generation calls, not for previews, exports, or post creation.
+// Sourced directly from the remaining consume_feature_credit call sites:
+// ask-ai-vendor-email/index.ts (pulse_ask_ai_preview_generate) and
+// generate-chat-message/index.ts (inbox_ai_chat_draft). Predict Match % has
+// a real per-use cost in code too (PulsePage.tsx's consumeCredits()), but
+// currently charges nothing — gated behind BILLING_GATES_ENABLED
+// (feature-gates.ts), which is off site-wide.
+//
+// Video screening completion charges the JOB OWNER's account 50 credits
+// (charge_screening_completion_credit RPC, called from the
+// job-application-screening Worker) — not the account taking an action
+// here, so it's listed as a note rather than a per-action row.
 const CREDIT_COST_ITEMS: { label: string; cost: string; note?: string }[] = [
-  { label: 'New job or hotlist post', cost: '1 credit' },
   { label: 'AI Submit / AI Request — generate draft', cost: '1 credit', note: 'Only the first generation per post; reopening an already-generated draft is free' },
-  { label: 'AI Submit / AI Request — send email', cost: '0.05 credit' },
   { label: 'Inbox AI chat draft', cost: '1 credit' },
-  { label: 'Preview original post (Jobs & Hotlist cards)', cost: '1 credit', note: 'Only the first view per post' },
-  { label: 'Active List — download a contact’s email', cost: '0.25 credit', note: 'Per email exported to CSV' },
+  { label: 'Video screening completed', cost: '50 credits', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
 ];
 
 interface UsageRow {

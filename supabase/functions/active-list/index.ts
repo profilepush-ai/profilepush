@@ -57,7 +57,7 @@ const ROW_RPC_BY_DOWNLOAD_TYPE: Record<string, string> = {
   recruiters: "get_active_list_recruiter_contacts_24h",
 };
 
-type DownloadGateRow = { allowed_count: number; is_free_plan: boolean; lifetime_downloaded: number; message: string };
+type DownloadGateRow = { allowed_count: number; downloaded_today: number; message: string };
 
 function mapRows(rows: ContactRow[] | null): ActiveListContact[] {
   return (rows ?? []).map((row) => ({
@@ -103,7 +103,7 @@ Deno.serve(async (request: Request) => {
 
     // download_type is set only by the public preview pages' "download full
     // list" action. When present, this is a download — gate it against the
-    // free-plan lifetime limit (check_and_log_active_list_download) and
+    // rolling 24h download cap (check_and_log_active_list_download) and
     // return only that one list, capped to what the account is allowed.
     // When absent (ActiveListPage.tsx's on-mount/filter-change fetch, which
     // populates the on-screen browsable table), behavior is unchanged: both
@@ -130,7 +130,7 @@ Deno.serve(async (request: Request) => {
       return respond({
         [downloadType]: slicedRows,
         limited: gateRow.allowed_count < allRows.length,
-        lifetime_downloaded: gateRow.lifetime_downloaded,
+        downloaded_today: gateRow.downloaded_today,
         message: gateRow.message,
       });
     }

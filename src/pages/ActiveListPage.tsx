@@ -451,7 +451,7 @@ export default function ActiveListPage() {
               )}
             </div>
           </div>
-          <p className="shrink-0 text-[11px] text-gray-400">Select rows to unlock and download their emails.</p>
+          <p className="shrink-0 text-[11px] text-gray-400">Select rows to unlock and download their emails — up to 50 per day.</p>
 
           <div className="flex min-h-0 flex-1 gap-3">
             <aside className="flex h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
