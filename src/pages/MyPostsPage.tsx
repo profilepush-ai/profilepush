@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Briefcase, Building2, Check, Clock3, Eye, LayoutGrid, MapPin, MessageSquare, Pencil, Plus, RotateCcw,
@@ -67,6 +67,44 @@ const RANGE_OPTIONS: Array<{ id: string; label: string; hours: number | null }> 
   { id: '7d', label: 'Last 7 days', hours: 168 },
   { id: '30d', label: 'Last 30 days', hours: 720 },
 ];
+
+// Collapses to 3 lines by default, same real-overflow-detection approach as
+// PulsePage's ClampedField (scrollHeight vs clientHeight via a ResizeObserver)
+// rather than a fixed character-count guess — so "Show more" only appears
+// when the summary actually overflows 3 lines at the panel's current width.
+function ClampedAiSummary({ text }: { text: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isClamped, setIsClamped] = useState(false);
+  const textRef = useRef<HTMLParagraphElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (isExpanded) return;
+    const el = textRef.current;
+    if (!el) return;
+    const measure = () => setIsClamped(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isExpanded, text]);
+
+  return (
+    <div>
+      <p ref={textRef} className={`text-[13px] leading-relaxed text-gray-700 ${isExpanded ? '' : 'line-clamp-3'}`}>
+        {text}
+      </p>
+      {(isExpanded || isClamped) && (
+        <button
+          type="button"
+          onClick={() => setIsExpanded((prev) => !prev)}
+          className="mt-1 text-[12px] font-semibold text-blue-600 hover:text-blue-700"
+        >
+          {isExpanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
+  );
+}
 
 function formatAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -1021,7 +1059,7 @@ export default function MyPostsPage() {
                         {selectedApplication.ai_summary && (
                           <div>
                             <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">AI Summary</p>
-                            <p className="text-[13px] leading-relaxed text-gray-700">{selectedApplication.ai_summary}</p>
+                            <ClampedAiSummary key={selectedApplication.id} text={selectedApplication.ai_summary} />
                           </div>
                         )}
 
