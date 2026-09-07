@@ -3032,6 +3032,44 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const canLoadMoreDesktopAsked = desktopAskedVisibleCount < askedVisibleFeed.length;
   const canLoadMoreDesktopVerified = desktopVerifiedVisibleCount < verifiedVisibleFeed.length;
 
+  // Same tab -> list mapping the detail-split render below uses, so the
+  // auto-selected lead always matches what's actually on screen.
+  const currentDetailFeed = selectedMatchesTab === 'previewed' ? visibleDesktopPreviewedFeed
+    : selectedMatchesTab === 'asked' ? visibleDesktopAskedFeed
+    : selectedMatchesTab === 'verified' ? visibleDesktopVerifiedFeed
+    : visibleDesktopRecentFeed;
+  // Checked against the full deduped feed, not the paginated
+  // currentDetailFeed — a direct/shared link (getLeadShareUrl) to a lead
+  // that exists but hasn't been paginated into the current tab's slice yet
+  // is still a valid selection and must not be redirected away from.
+  const hasValidDetailSelection = Boolean(
+    routeLeadId && dedupedScopedFeed.some((lead) => lead.id === routeLeadId && lead.kind === routeLeadKind),
+  );
+
+  // Detail-split layout with nothing selected — a fresh /feed load, or a
+  // routeLeadId that doesn't match any lead at all — would otherwise show
+  // two empty columns. Auto-select the first visible lead instead, same as
+  // Posts' 3-column layout.
+  //
+  // Guarded to fire at most once per tab: dedupedScopedFeed/currentDetailFeed
+  // keep changing reference as this feed streams in more data in the
+  // background (confirmed live — a fresh load can produce 900+ leads
+  // arriving over several seconds), so re-running this on every list change
+  // would re-navigate every time the "first" item shifts — verified via
+  // Playwright this produced 78 client-side navigations before settling.
+  // Firing once and then leaving the selection alone avoids that churn; the
+  // tradeoff (an early, not-fully-sorted "first" item once data is more
+  // complete) is preferable to constant flicker.
+  const autoSelectedTabRef = useRef<MatchesTabId | null>(null);
+  useEffect(() => {
+    if (!isDetailLayout || hasValidDetailSelection) return;
+    if (autoSelectedTabRef.current === selectedMatchesTab) return;
+    const first = currentDetailFeed[0];
+    if (!first) return;
+    autoSelectedTabRef.current = selectedMatchesTab;
+    navigate(`/feed/${first.kind}/${first.id}`, { replace: true });
+  }, [isDetailLayout, hasValidDetailSelection, currentDetailFeed, selectedMatchesTab, navigate]);
+
   const maybeLoadMoreMatches = useCallback((container: HTMLDivElement, canLoadMore: boolean, onLoadMore: () => void) => {
     if (!canLoadMore) return;
     const nearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 96;

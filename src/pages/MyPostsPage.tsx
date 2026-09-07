@@ -532,6 +532,19 @@ export default function MyPostsPage() {
     : null;
   const zeroMetrics = { previewCount: 0, chatCount: 0, shareCount: 0, applicationCount: 0 };
 
+  // Desktop 3-column layout with nothing selected — a fresh page load, or
+  // the selected post having been deleted — would otherwise show two empty
+  // columns. Auto-select the first visible post instead. Checked against
+  // selectedPost (looked up from the full list, not filteredPosts) rather
+  // than filteredPosts directly, so typing a search term that temporarily
+  // filters the selected post out of Column 1 doesn't fight this and force
+  // a reselect — see the comment on selectedPost above.
+  useEffect(() => {
+    if (isMobileViewport || loading || selectedPost) return;
+    const first = filteredPosts[0];
+    if (first) setSelectedPostId(first.id);
+  }, [isMobileViewport, loading, selectedPost, filteredPosts]);
+
   const normalizedApplicantSearch = searchQuery.trim().toLowerCase();
   const filteredApplications = applications.filter((app) => {
     if (!normalizedApplicantSearch) return true;
