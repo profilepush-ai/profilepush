@@ -235,8 +235,8 @@ export default function PostApplicationsPage() {
           </div>
 
           {!loading && applications.length > 0 && (
-            <div className="mb-2 flex shrink-0 items-center gap-2">
-              <div className="relative w-40 shrink-0 sm:w-64">
+            <div className="mb-2 flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative w-full shrink-0 sm:w-64">
                 <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
@@ -246,6 +246,9 @@ export default function PostApplicationsPage() {
                   className="w-full rounded-md border border-[#dfdad2] bg-white py-1.5 pl-8 pr-3 text-[12px] text-gray-700 outline-none focus:border-blue-300 dark:border-white/10 dark:bg-[#1E2126] dark:text-slate-200"
                 />
               </div>
+              {/* Full width of its own row on mobile (was squeezed next to
+                  the search input, leaving room for barely two of the six
+                  tabs before requiring a non-obvious horizontal scroll). */}
               <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5">
                 {STATUS_TABS.map((tab) => {
                   const count = tab.id === 'all' ? applications.length : applications.filter((a) => a.status === tab.id).length;
@@ -255,7 +258,7 @@ export default function PostApplicationsPage() {
                       key={tab.id}
                       type="button"
                       onClick={() => setStatusFilter(tab.id)}
-                      className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${isActive ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-400/40 dark:bg-blue-500/10 dark:text-blue-300' : 'border-[#dfdad2] bg-white text-gray-500 hover:bg-gray-50 dark:border-white/10 dark:bg-[#1E2126] dark:text-[#94A3B8] dark:hover:bg-white/5'}`}
+                      className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${isActive ? 'border-blue-600 bg-blue-600 text-white dark:border-white/25 dark:bg-[#2A2E35] dark:text-slate-100' : 'border-[#dfdad2] bg-white text-gray-500 hover:bg-gray-50 dark:border-white/10 dark:bg-[#1E2126] dark:text-[#94A3B8] dark:hover:bg-white/5'}`}
                     >
                       {tab.label} · {count}
                     </button>
