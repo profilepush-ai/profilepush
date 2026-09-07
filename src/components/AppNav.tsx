@@ -42,10 +42,15 @@ function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | 
 // filters). Vendor posts Jobs and sends outbound Hotlist Requests; Bench
 // Sales posts Hotlist and sends outbound job Applications.
 function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
+  // Feed is named for what it shows (the content being browsed): Vendor
+  // browses Hotlist to find consultants, Bench Sales browses Jobs to apply
+  // — the opposite of Posts, which is named for what each persona owns.
+  const feedLabel = persona === 'bench_sales' ? 'Jobs' : 'Hotlist';
+  const feedPath = persona === 'bench_sales' ? '/feed/jobs' : '/feed/hotlist';
   const postsLabel = persona === 'bench_sales' ? 'Hotlist' : 'Jobs';
   const trackerLabel = persona === 'bench_sales' ? 'Applications' : 'Requests';
   return [
-    { path: '/feed',        label: 'Feed',        mobileLabel: 'Feed',        icon: Briefcase, hideOnMobile: false },
+    { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: Briefcase, hideOnMobile: false },
     { path: '/posts',       label: postsLabel,    mobileLabel: postsLabel,    icon: Megaphone, hideOnMobile: false },
     { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,      hideOnMobile: false },
     { path: '/tracker',     label: trackerLabel,  mobileLabel: trackerLabel,  icon: FileText,  hideOnMobile: false },
@@ -301,6 +306,8 @@ export default function AppNav() {
   const { isDark, toggleTheme } = useTheme();
   const { user, account, signOut } = useAuth();
   const navItems = getNavItems(account?.active_persona);
+  const feedLabel = account?.active_persona === 'bench_sales' ? 'Jobs' : 'Hotlist';
+  const feedPath = account?.active_persona === 'bench_sales' ? '/feed/jobs' : '/feed/hotlist';
   const postsLabel = account?.active_persona === 'bench_sales' ? 'Hotlist' : 'Jobs';
   const trackerLabel = account?.active_persona === 'bench_sales' ? 'Applications' : 'Requests';
   const [menuOpen, setMenuOpen] = useState(false);
@@ -362,17 +369,19 @@ export default function AppNav() {
     <header className="min-h-12 bg-white flex items-center px-3 sm:px-4 gap-3 sm:gap-6 shrink-0 z-50 pt-[env(safe-area-inset-top)]">
       {user ? (
         <span className="flex items-center shrink-0">
-          <Logo size="sm" />
+          <Logo size="sm" hideTextOnMobile />
         </span>
       ) : (
         <Link to="/" className="flex items-center shrink-0">
-          <Logo size="sm" />
+          <Logo size="sm" hideTextOnMobile />
         </Link>
       )}
 
       {/* Mobile: credits chip + account avatar */}
       {user && (
         <span className="sm:hidden ml-auto flex items-center gap-1.5">
+          <PersonaSwitcher />
+          {shouldShowCreditsUi() && account != null && <CreditsChip balance={account.credits_balance} />}
           <button
             type="button"
             onClick={toggleTheme}
@@ -382,8 +391,6 @@ export default function AppNav() {
           >
             {isDark ? <SunMedium size={14} /> : <MoonStar size={14} />}
           </button>
-          <PersonaSwitcher />
-          {shouldShowCreditsUi() && account != null && <CreditsChip balance={account.credits_balance} />}
           <NotificationBell userId={user.id} />
           <Link to="/account" className="shrink-0" title="Account">
             <UserAvatar pictureUrl={pictureUrl} initials={initials} sizeClass="h-8 w-8 text-[13px]" />
@@ -534,11 +541,11 @@ export default function AppNav() {
       {user && (
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
           <Link
-            to="/feed"
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/feed' ? 'text-blue-600' : 'text-gray-500'}`}
+            to={feedPath}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/feed') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Briefcase size={24} />
-            <span>Feed</span>
+            <span>{feedLabel}</span>
           </Link>
           <Link
             to="/posts"

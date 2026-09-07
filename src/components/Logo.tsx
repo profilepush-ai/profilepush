@@ -2,6 +2,8 @@ interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
   /** Force the text to white (e.g. on dark backgrounds) */
   white?: boolean;
+  /** Hide the "ProfilePush" wordmark below the sm breakpoint, icon only */
+  hideTextOnMobile?: boolean;
 }
 
 const sizeMap = {
@@ -10,7 +12,7 @@ const sizeMap = {
   lg: { text: 'text-lg', h: 20 },
 };
 
-export default function Logo({ size = 'md', white = false }: LogoProps) {
+export default function Logo({ size = 'md', white = false, hideTextOnMobile = false }: LogoProps) {
   const { text, h } = sizeMap[size];
   const textCls = white ? 'text-white' : 'text-gray-900';
 
@@ -29,7 +31,7 @@ export default function Logo({ size = 'md', white = false }: LogoProps) {
 
   return (
     <span className={`inline-flex items-center gap-1.5 font-extrabold tracking-tight select-none ${text} ${textCls}`}>
-      ProfilePush
+      <span className={hideTextOnMobile ? 'hidden sm:inline' : undefined}>ProfilePush</span>
       <svg
         width={totalW}
         height={h}

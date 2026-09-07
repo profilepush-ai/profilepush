@@ -134,6 +134,23 @@ function AppEntry() {
   return <Navigate to={user ? '/feed' : '/signup'} replace />;
 }
 
+// /feed, /feed/jobs, /feed/hotlist, and /feed/:kind/:id (a specific lead's
+// permalink) all render the same PulsePage — this guard just makes sure the
+// URL path always matches the account's persona (Vendor -> Hotlist content
+// lives at /feed/hotlist, Bench Sales -> Jobs content at /feed/jobs), the
+// same "persona is the single source of truth" rule as everywhere else, so
+// a stale bookmark or a persona switch never leaves the URL pointing at the
+// wrong kind.
+function FeedRouteGuard() {
+  const { account } = useAuth();
+  const location = useLocation();
+  const expectedPath = account?.active_persona === 'bench_sales' ? '/feed/jobs' : '/feed/hotlist';
+  if (location.pathname !== expectedPath) {
+    return <Navigate to={expectedPath} replace />;
+  }
+  return <PulsePage feedKind="feed" />;
+}
+
 function SupabaseSetupRequired() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-6">
@@ -227,10 +244,12 @@ export default function App() {
             <Route path="/inbox/:conversationId" element={<ProtectedRoute><ErrorBoundary><InboxPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/jd-ai" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
             <Route path="/job-watch-ai" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
-            <Route path="/feed" element={<ProtectedRoute><ErrorBoundary><PulsePage feedKind="feed" /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/feed" element={<ProtectedRoute><ErrorBoundary><FeedRouteGuard /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/feed/jobs" element={<ProtectedRoute><ErrorBoundary><FeedRouteGuard /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/feed/hotlist" element={<ProtectedRoute><ErrorBoundary><FeedRouteGuard /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/feed/:kind/:id" element={<ProtectedRoute><ErrorBoundary><PulsePage feedKind="feed" /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/jobs" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
-            <Route path="/hotlist" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />
+            <Route path="/jobs" element={<ProtectedRoute><Navigate to="/feed/jobs" replace /></ProtectedRoute>} />
+            <Route path="/hotlist" element={<ProtectedRoute><Navigate to="/feed/hotlist" replace /></ProtectedRoute>} />
             <Route path="/posts" element={<ProtectedRoute><ErrorBoundary><MyPostsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/applications/:jobId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/applications/:jobId/:applicationId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
