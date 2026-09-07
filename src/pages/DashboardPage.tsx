@@ -44,12 +44,16 @@ const AI_SUGGESTIONS = [
   'Compare my vendor and recruiter activity',
 ];
 
+// Hidden for now (pending Gemini billing being restored) — flip back on
+// once the AI Insights panel can actually answer questions again.
+const SHOW_AI_INSIGHTS = false;
+
 // One header per persona column (instead of repeating "Vendor"/"Recruiter"
 // on every widget inside it) — the column itself is already the grouping.
 function ColumnHeader({ persona }: { persona: keyof typeof PERSONA_ACCENT }) {
   const accent = PERSONA_ACCENT[persona];
   return (
-    <div className="mb-1 flex items-center gap-2 px-1">
+    <div className="mb-1 hidden items-center gap-2 px-1 lg:flex">
       <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${accent.iconBg} ${accent.iconColor}`}>
         <accent.icon size={12} />
       </span>
@@ -225,6 +229,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [vendorActivity, setVendorActivity] = useState<VendorActivity | null>(null);
   const [recruiterActivity, setRecruiterActivity] = useState<RecruiterActivity | null>(null);
+  const [mobilePersonaTab, setMobilePersonaTab] = useState<keyof typeof PERSONA_ACCENT>('vendor');
 
   const range = RANGE_OPTIONS.find((option) => option.id === rangeId) ?? RANGE_OPTIONS[0];
 
@@ -312,14 +317,32 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              {/* Full-width AI Insights section, separate from the persona columns below. */}
-              <AiInsightsWidget days={range.days} rangeLabel={range.label} />
+              {SHOW_AI_INSIGHTS && (
+                <AiInsightsWidget days={range.days} rangeLabel={range.label} />
+              )}
+
+              {/* Below lg, the two columns stack full-height one after another,
+                  so a tab switcher lets the user jump straight to one persona
+                  instead of scrolling past the other. At lg+ both show side by
+                  side and this switcher is hidden. */}
+              <div className="mb-4 inline-flex rounded-full border border-gray-200 bg-white p-1 lg:hidden">
+                {(Object.keys(PERSONA_ACCENT) as Array<keyof typeof PERSONA_ACCENT>).map((persona) => (
+                  <button
+                    key={persona}
+                    type="button"
+                    onClick={() => setMobilePersonaTab(persona)}
+                    className={`rounded-full px-4 py-1.5 text-[12px] font-semibold transition ${mobilePersonaTab === persona ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+                  >
+                    {PERSONA_ACCENT[persona].label}
+                  </button>
+                ))}
+              </div>
 
               {/* Vendor and Recruiter each get their own dedicated column — no
                   interleaving — laid out top-to-bottom as: heatmap, stats,
                   funnels, daily trend. A single grid, no per-column scroll. */}
               <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-                <div className="flex flex-col">
+                <div className={`flex-col ${mobilePersonaTab === 'vendor' ? 'flex' : 'hidden'} lg:flex`}>
                   <ColumnHeader persona="vendor" />
 
                   <Widget persona="vendor" title="Activity Heatmap" tooltip="At-a-glance intensity of your Vendor-side activity (job previews, applications received, hotlist requests sent) each day in the selected range.">
@@ -366,7 +389,7 @@ export default function DashboardPage() {
                   </Widget>
                 </div>
 
-                <div className="flex flex-col">
+                <div className={`flex-col ${mobilePersonaTab === 'recruiter' ? 'flex' : 'hidden'} lg:flex`}>
                   <ColumnHeader persona="recruiter" />
 
                   <Widget persona="recruiter" title="Activity Heatmap" tooltip="At-a-glance intensity of your Recruiter-side activity (hotlist previews, requests received, jobs applied to) each day in the selected range.">
