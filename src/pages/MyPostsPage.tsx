@@ -139,7 +139,6 @@ export default function MyPostsPage() {
   const navigate = useNavigate();
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
-  const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [rangeId, setRangeId] = useState('all');
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
@@ -158,7 +157,6 @@ export default function MyPostsPage() {
   const [applicationsLoading, setApplicationsLoading] = useState(false);
   const [decisionBusyId, setDecisionBusyId] = useState<string | null>(null);
   const [chatBusyId, setChatBusyId] = useState<string | null>(null);
-  const [applicantSearchQuery, setApplicantSearchQuery] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [landingPasteText, setLandingPasteText] = useState('');
   const [showKindChooser, setShowKindChooser] = useState(false);
@@ -409,7 +407,6 @@ export default function MyPostsPage() {
 
   useEffect(() => {
     setSelectedApplicationId(null);
-    setApplicantSearchQuery('');
     if (!selectedPostId) {
       setApplications([]);
       setTurnsByApplication({});
@@ -526,10 +523,16 @@ export default function MyPostsPage() {
     () => posts.filter((post) => matchesSearch(post, searchQuery) && matchesRange(post, rangeId)),
     [posts, searchQuery, rangeId],
   );
-  const selectedPost = selectedPostId ? filteredPosts.find((post) => post.id === selectedPostId) ?? null : null;
+  // Looked up from the full, unfiltered list (not filteredPosts) — the
+  // global search box also filters applicants, so a term that matches an
+  // applicant but not the selected post's own title/company must not hide
+  // Columns 2/3 by knocking the post out of the filtered list.
+  const selectedPost = selectedPostId
+    ? [...jobPosts, ...hotlistPosts].find((post) => post.id === selectedPostId) ?? null
+    : null;
   const zeroMetrics = { previewCount: 0, chatCount: 0, shareCount: 0, applicationCount: 0 };
 
-  const normalizedApplicantSearch = applicantSearchQuery.trim().toLowerCase();
+  const normalizedApplicantSearch = searchQuery.trim().toLowerCase();
   const filteredApplications = applications.filter((app) => {
     if (!normalizedApplicantSearch) return true;
     return (
@@ -553,26 +556,24 @@ export default function MyPostsPage() {
   const showingDesktopColumns = !loading && !isMobileViewport
     && !(filteredPosts.length === 0 && (posts.length > 0 || hasAnyPosts));
 
+  // One global search box, styled to match /feed's (PulsePage.tsx) top
+  // search bar — filters both Column 1 (posts, via filteredPosts) and
+  // Column 2 (the selected post's applicants, via filteredApplications)
+  // from the same input, so there's no separate search per column.
   const searchBoxEl = (
     <div className="relative flex min-w-[160px] flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
       <Search size={11} className="text-gray-400" />
       <input
         type="text"
-        value={pendingSearchQuery}
-        onChange={(e) => setPendingSearchQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            setSearchQuery(pendingSearchQuery.trim());
-          }
-        }}
-        placeholder="Search your posts"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder="Search posts and applicants"
         className="w-full border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:text-slate-200 dark:placeholder:text-[#64748B]"
       />
-      {pendingSearchQuery && (
+      {searchQuery && (
         <button
           type="button"
-          onClick={() => { setPendingSearchQuery(''); setSearchQuery(''); }}
+          onClick={() => setSearchQuery('')}
           className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600 dark:hover:bg-white/10"
           aria-label="Clear search"
         >
@@ -781,6 +782,7 @@ export default function MyPostsPage() {
               <div className="flex shrink-0 items-center gap-1">
                 {kindFilterButtonsEl(false)}
               </div>
+              {searchBoxEl}
               {rangeMenuEl}
               {addPostButtonEl(false)}
             </div>
@@ -904,17 +906,7 @@ export default function MyPostsPage() {
 
                 {/* Column 1: Post Cards */}
                 <div className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white">
-                  <div className="space-y-2 border-b border-gray-100 p-4">
-                    <div className="relative">
-                      <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => { setPendingSearchQuery(e.target.value); setSearchQuery(e.target.value); }}
-                        placeholder="Search your posts..."
-                        className="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-7 pr-2 text-[12px] text-gray-700 outline-none focus:border-blue-300"
-                      />
-                    </div>
+                  <div className="border-b border-gray-100 p-4">
                     <div className="flex flex-wrap items-center gap-1.5">
                       {statusFilterButtonsEl(false)}
                     </div>
@@ -1023,19 +1015,6 @@ export default function MyPostsPage() {
                       <p className="text-[13px] text-gray-400">Applicants aren&apos;t tracked for hotlist posts</p>
                     </div>
                   ) : (
-                    <>
-                      <div className="border-b border-gray-100 p-4">
-                        <div className="relative">
-                          <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                          <input
-                            type="text"
-                            value={applicantSearchQuery}
-                            onChange={(e) => setApplicantSearchQuery(e.target.value)}
-                            placeholder="Search applicants..."
-                            className="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-7 pr-2 text-[12px] text-gray-700 outline-none focus:border-blue-300"
-                          />
-                        </div>
-                      </div>
                       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-4">
                         {applicationsLoading ? (
                           <div className="flex items-center justify-center py-10"><LogoSpinner size={18} /></div>
@@ -1071,7 +1050,6 @@ export default function MyPostsPage() {
                           })
                         )}
                       </div>
-                    </>
                   )}
                 </div>
 
