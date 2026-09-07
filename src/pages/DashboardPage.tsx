@@ -12,20 +12,24 @@ const RANGE_OPTIONS: Array<{ id: string; label: string; days: number }> = [
   { id: '90d', label: 'Last 90 days', days: 90 },
 ];
 
-type JobsFunnelTrend = {
-  received_funnel: { posted: number; previewed: number; applied: number; screening_completed: number; qualified: number; rejected: number };
-  sent_funnel: { submitted: number; screening_completed: number; qualified: number };
+type VendorActivity = {
+  jobs_received_funnel: { posted: number; previewed: number; applied: number; screening_completed: number; qualified: number; rejected: number };
+  hotlist_sent_funnel: { requested: number; fulfilled: number };
   conversations: number;
-  active_list_downloaded: number;
-  daily: Array<{ date: string; previews: number; applications: number; submitted: number }>;
+  contacts_downloaded: number;
+  daily: Array<{ date: string; previews: number; applications: number; requests: number }>;
 };
 
-type HotlistFunnelTrend = {
-  received_funnel: { posted: number; previewed: number; requested: number; fulfilled: number };
-  sent_funnel: { requested: number; fulfilled: number };
+type RecruiterActivity = {
+  hotlist_received_funnel: { posted: number; previewed: number; requested: number; fulfilled: number };
+  jobs_applying_funnel: {
+    reached_out: number; progressed: number; qualified: number;
+    via_submission_total: number; via_submission_screening_completed: number;
+    via_outreach_total: number; via_outreach_delivered: number;
+  };
   conversations: number;
-  active_list_downloaded: number;
-  daily: Array<{ date: string; previews: number; requests: number; sent_requests: number }>;
+  contacts_downloaded: number;
+  daily: Array<{ date: string; previews: number; requests: number; submitted: number }>;
 };
 
 function SmallStat({ icon: Icon, label, value }: { icon: typeof MessageSquare; label: string; value: number }) {
@@ -45,8 +49,8 @@ export default function DashboardPage() {
   const [rangeId, setRangeId] = useState('7d');
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [jobsTrend, setJobsTrend] = useState<JobsFunnelTrend | null>(null);
-  const [hotlistTrend, setHotlistTrend] = useState<HotlistFunnelTrend | null>(null);
+  const [vendorActivity, setVendorActivity] = useState<VendorActivity | null>(null);
+  const [recruiterActivity, setRecruiterActivity] = useState<RecruiterActivity | null>(null);
 
   const range = RANGE_OPTIONS.find((option) => option.id === rangeId) ?? RANGE_OPTIONS[0];
 
@@ -56,43 +60,42 @@ export default function DashboardPage() {
 
     void (async () => {
       setLoading(true);
-      const [jobsResult, hotlistResult] = await Promise.all([
-        supabase.rpc('get_account_jobs_funnel_trend' as never, { p_days: range.days } as never) as unknown as
-          Promise<{ data: JobsFunnelTrend | null }>,
-        supabase.rpc('get_account_hotlist_funnel_trend' as never, { p_days: range.days } as never) as unknown as
-          Promise<{ data: HotlistFunnelTrend | null }>,
-      ]);
+      const vendorCall = supabase.rpc('get_account_vendor_activity' as never, { p_days: range.days } as never) as unknown as
+        Promise<{ data: VendorActivity | null }>;
+      const recruiterCall = supabase.rpc('get_account_recruiter_activity' as never, { p_days: range.days } as never) as unknown as
+        Promise<{ data: RecruiterActivity | null }>;
+      const [vendorResult, recruiterResult] = await Promise.all([vendorCall, recruiterCall]);
       if (cancelled) return;
-      if (jobsResult.data) setJobsTrend(jobsResult.data);
-      if (hotlistResult.data) setHotlistTrend(hotlistResult.data);
+      if (vendorResult.data) setVendorActivity(vendorResult.data);
+      if (recruiterResult.data) setRecruiterActivity(recruiterResult.data);
       setLoading(false);
     })();
 
     return () => { cancelled = true; };
   }, [account?.id, range.days]);
 
-  const jobsReceivedStages = [
-    { label: 'Posted', value: jobsTrend?.received_funnel.posted ?? 0 },
-    { label: 'Previewed', value: jobsTrend?.received_funnel.previewed ?? 0 },
-    { label: 'Applied', value: jobsTrend?.received_funnel.applied ?? 0 },
-    { label: 'Screening Done', value: jobsTrend?.received_funnel.screening_completed ?? 0 },
-    { label: 'Qualified', value: jobsTrend?.received_funnel.qualified ?? 0 },
+  const vendorJobsStages = [
+    { label: 'Posted', value: vendorActivity?.jobs_received_funnel.posted ?? 0 },
+    { label: 'Previewed', value: vendorActivity?.jobs_received_funnel.previewed ?? 0 },
+    { label: 'Applied', value: vendorActivity?.jobs_received_funnel.applied ?? 0 },
+    { label: 'Screening Done', value: vendorActivity?.jobs_received_funnel.screening_completed ?? 0 },
+    { label: 'Qualified', value: vendorActivity?.jobs_received_funnel.qualified ?? 0 },
   ];
-  const jobsSentStages = [
-    { label: 'Submitted', value: jobsTrend?.sent_funnel.submitted ?? 0 },
-    { label: 'Screening Done', value: jobsTrend?.sent_funnel.screening_completed ?? 0 },
-    { label: 'Qualified', value: jobsTrend?.sent_funnel.qualified ?? 0 },
+  const vendorHotlistStages = [
+    { label: 'Requested', value: vendorActivity?.hotlist_sent_funnel.requested ?? 0 },
+    { label: 'Fulfilled', value: vendorActivity?.hotlist_sent_funnel.fulfilled ?? 0 },
   ];
 
-  const hotlistReceivedStages = [
-    { label: 'Posted', value: hotlistTrend?.received_funnel.posted ?? 0 },
-    { label: 'Previewed', value: hotlistTrend?.received_funnel.previewed ?? 0 },
-    { label: 'Requested', value: hotlistTrend?.received_funnel.requested ?? 0 },
-    { label: 'Fulfilled', value: hotlistTrend?.received_funnel.fulfilled ?? 0 },
+  const recruiterHotlistStages = [
+    { label: 'Posted', value: recruiterActivity?.hotlist_received_funnel.posted ?? 0 },
+    { label: 'Previewed', value: recruiterActivity?.hotlist_received_funnel.previewed ?? 0 },
+    { label: 'Requested', value: recruiterActivity?.hotlist_received_funnel.requested ?? 0 },
+    { label: 'Fulfilled', value: recruiterActivity?.hotlist_received_funnel.fulfilled ?? 0 },
   ];
-  const hotlistSentStages = [
-    { label: 'Requested', value: hotlistTrend?.sent_funnel.requested ?? 0 },
-    { label: 'Fulfilled', value: hotlistTrend?.sent_funnel.fulfilled ?? 0 },
+  const recruiterJobsStages = [
+    { label: 'Reached Out', value: recruiterActivity?.jobs_applying_funnel.reached_out ?? 0 },
+    { label: 'Progressed', value: recruiterActivity?.jobs_applying_funnel.progressed ?? 0 },
+    { label: 'Qualified', value: recruiterActivity?.jobs_applying_funnel.qualified ?? 0 },
   ];
 
   return (
@@ -135,81 +138,87 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
-              {/* Jobs column */}
+              {/* Vendor column — posts Jobs, requests from Hotlist */}
               <section className="rounded-lg border border-gray-200 bg-white p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-blue-50 text-blue-700">
                     <Briefcase size={15} />
                   </span>
                   <div>
-                    <p className="text-[14px] font-bold text-gray-900">Jobs</p>
-                    <p className="text-[11px] text-gray-400">{jobsTrend?.received_funnel.posted ?? 0} posted in {range.label.toLowerCase()}</p>
+                    <p className="text-[14px] font-bold text-gray-900">Vendor</p>
+                    <p className="text-[11px] text-gray-400">Posts Jobs · Requests consultants from Hotlist</p>
                   </div>
                 </div>
 
                 <div className="mb-4 grid grid-cols-2 gap-2">
-                  <SmallStat icon={MessageSquare} label="Conversations" value={jobsTrend?.conversations ?? 0} />
-                  <SmallStat icon={Download} label="Vendor contacts downloaded" value={jobsTrend?.active_list_downloaded ?? 0} />
+                  <SmallStat icon={MessageSquare} label="Conversations" value={vendorActivity?.conversations ?? 0} />
+                  <SmallStat icon={Download} label="Recruiter contacts downloaded" value={vendorActivity?.contacts_downloaded ?? 0} />
                 </div>
 
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">Received — from Posts</p>
-                <FunnelChart stages={jobsReceivedStages} color="#2563eb" />
-                {(jobsTrend?.received_funnel.rejected ?? 0) > 0 && (
-                  <p className="mt-2 text-[11px] text-gray-400">{jobsTrend?.received_funnel.rejected} rejected in this period</p>
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">My Jobs — Received</p>
+                <FunnelChart stages={vendorJobsStages} color="#2563eb" />
+                {(vendorActivity?.jobs_received_funnel.rejected ?? 0) > 0 && (
+                  <p className="mt-2 text-[11px] text-gray-400">{vendorActivity?.jobs_received_funnel.rejected} rejected in this period</p>
                 )}
 
-                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Sent — AI Submit &amp; Tracker</p>
-                <FunnelChart stages={jobsSentStages} color="#0d9488" />
+                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Hotlist — Requested by me</p>
+                <FunnelChart stages={vendorHotlistStages} color="#0d9488" />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Daily Trend</p>
                 <DailyBarChart
-                  data={jobsTrend?.daily ?? []}
+                  data={vendorActivity?.daily ?? []}
                   series={[
-                    { key: 'previews', label: 'Previews', color: '#93c5fd' },
+                    { key: 'previews', label: 'Job Previews', color: '#93c5fd' },
                     { key: 'applications', label: 'Applications', color: '#2563eb' },
-                    { key: 'submitted', label: 'Submitted', color: '#0d9488' },
+                    { key: 'requests', label: 'Hotlist Requests', color: '#0d9488' },
                   ]}
                 />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Activity Heatmap</p>
-                <HeatmapStrip data={jobsTrend?.daily ?? []} valueKeys={['previews', 'applications', 'submitted']} color="#2563eb" />
+                <HeatmapStrip data={vendorActivity?.daily ?? []} valueKeys={['previews', 'applications', 'requests']} color="#2563eb" />
               </section>
 
-              {/* Hotlist column */}
+              {/* Recruiter (bench sales) column — posts Hotlist, applies to Jobs */}
               <section className="rounded-lg border border-gray-200 bg-white p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-purple-50 text-purple-700">
                     <UserRound size={15} />
                   </span>
                   <div>
-                    <p className="text-[14px] font-bold text-gray-900">Hotlist</p>
-                    <p className="text-[11px] text-gray-400">{hotlistTrend?.received_funnel.posted ?? 0} posted in {range.label.toLowerCase()}</p>
+                    <p className="text-[14px] font-bold text-gray-900">Recruiter (Bench Sales)</p>
+                    <p className="text-[11px] text-gray-400">Posts Hotlist · Applies to Jobs with consultants</p>
                   </div>
                 </div>
 
                 <div className="mb-4 grid grid-cols-2 gap-2">
-                  <SmallStat icon={MessageSquare} label="Conversations" value={hotlistTrend?.conversations ?? 0} />
-                  <SmallStat icon={Download} label="Recruiter contacts downloaded" value={hotlistTrend?.active_list_downloaded ?? 0} />
+                  <SmallStat icon={MessageSquare} label="Conversations" value={recruiterActivity?.conversations ?? 0} />
+                  <SmallStat icon={Download} label="Vendor contacts downloaded" value={recruiterActivity?.contacts_downloaded ?? 0} />
                 </div>
 
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">Received — from Posts</p>
-                <FunnelChart stages={hotlistReceivedStages} color="#9333ea" />
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">My Hotlist — Received</p>
+                <FunnelChart stages={recruiterHotlistStages} color="#9333ea" />
 
-                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Sent — AI Request &amp; Tracker</p>
-                <FunnelChart stages={hotlistSentStages} color="#db2777" />
+                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Jobs — Applied to</p>
+                <FunnelChart stages={recruiterJobsStages} color="#db2777" />
+                {recruiterActivity && (recruiterActivity.jobs_applying_funnel.via_submission_total > 0 || recruiterActivity.jobs_applying_funnel.via_outreach_total > 0) && (
+                  <p className="mt-2 text-[11px] text-gray-400">
+                    {recruiterActivity.jobs_applying_funnel.via_submission_total} via consultant submission ({recruiterActivity.jobs_applying_funnel.via_submission_screening_completed} screened),
+                    {' '}{recruiterActivity.jobs_applying_funnel.via_outreach_total} via outreach email ({recruiterActivity.jobs_applying_funnel.via_outreach_delivered} delivered)
+                  </p>
+                )}
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Daily Trend</p>
                 <DailyBarChart
-                  data={hotlistTrend?.daily ?? []}
+                  data={recruiterActivity?.daily ?? []}
                   series={[
-                    { key: 'previews', label: 'Previews', color: '#d8b4fe' },
-                    { key: 'requests', label: 'Requests', color: '#9333ea' },
-                    { key: 'sent_requests', label: 'Sent Requests', color: '#db2777' },
+                    { key: 'previews', label: 'Hotlist Previews', color: '#d8b4fe' },
+                    { key: 'requests', label: 'Requests Received', color: '#9333ea' },
+                    { key: 'submitted', label: 'Jobs Applied', color: '#db2777' },
                   ]}
                 />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Activity Heatmap</p>
-                <HeatmapStrip data={hotlistTrend?.daily ?? []} valueKeys={['previews', 'requests', 'sent_requests']} color="#9333ea" />
+                <HeatmapStrip data={recruiterActivity?.daily ?? []} valueKeys={['previews', 'requests', 'submitted']} color="#9333ea" />
               </section>
             </div>
           )}
