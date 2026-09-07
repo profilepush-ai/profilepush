@@ -45,7 +45,7 @@ const WhyAICopilot = lazy(() => import('./pages/WhyAICopilot'));
 const HowItWorks = lazy(() => import('./pages/HowItWorks'));
 const PulsePage = lazy(() => import('./pages/PulsePage'));
 const MyPostsPage = lazy(() => import('./pages/MyPostsPage'));
-const ProfilesPage = lazy(() => import('./pages/ProfilesPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const InboxPage = lazy(() => import('./pages/InboxPage'));
 const WatchlistProfilesPage = lazy(() => import('./pages/WatchlistProfilesPage'));
@@ -234,7 +234,7 @@ export default function App() {
             <Route path="/posts" element={<ProtectedRoute><ErrorBoundary><MyPostsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/applications/:jobId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/applications/:jobId/:applicationId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><ProfilesPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><DashboardPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             </Routes>
           </Suspense>
