@@ -44,9 +44,23 @@ const AI_SUGGESTIONS = [
   'Compare my vendor and recruiter activity',
 ];
 
+// One header per persona column (instead of repeating "Vendor"/"Recruiter"
+// on every widget inside it) — the column itself is already the grouping.
+function ColumnHeader({ persona }: { persona: keyof typeof PERSONA_ACCENT }) {
+  const accent = PERSONA_ACCENT[persona];
+  return (
+    <div className="mb-1 flex items-center gap-2 px-1">
+      <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${accent.iconBg} ${accent.iconColor}`}>
+        <accent.icon size={12} />
+      </span>
+      <h2 className="text-[13px] font-bold uppercase tracking-wide text-gray-500">{accent.label}</h2>
+    </div>
+  );
+}
+
 // Every chart/funnel/stat is its own independent card sitting directly on
-// the page background — not nested inside one big per-persona container —
-// with a small persona badge and an info icon (native tooltip) in its header.
+// the page background — not nested inside one big per-persona container.
+// The tooltip's info icon sits on the title itself, never on a subtitle.
 function Widget({ persona, title, subtitle, tooltip, children }: {
   persona: keyof typeof PERSONA_ACCENT;
   title: string;
@@ -62,7 +76,6 @@ function Widget({ persona, title, subtitle, tooltip, children }: {
           <accent.icon size={13} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[11px] font-bold uppercase tracking-wide text-gray-400">{accent.label}</p>
           <div className="flex items-center gap-1">
             <p className="truncate text-[13px] font-bold text-gray-900">{title}</p>
             <span title={tooltip} className="shrink-0 cursor-help text-gray-300">
@@ -82,22 +95,19 @@ function StatWidget({ persona, icon: Icon, label, value, tooltip }: {
 }) {
   const accent = PERSONA_ACCENT[persona];
   return (
-    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
-      <div className="flex items-center gap-3">
-        <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${accent.iconBg} ${accent.iconColor}`}>
-          <Icon size={16} />
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${accent.iconBg} ${accent.iconColor}`}>
+          <Icon size={13} />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{accent.label}</p>
-          <p className="text-[18px] font-bold text-gray-900">{value}</p>
-          <div className="flex items-center gap-1">
-            <p className="truncate text-[11px] text-gray-500">{label}</p>
-            <span title={tooltip} className="shrink-0 cursor-help text-gray-300">
-              <Info size={10} />
-            </span>
-          </div>
+        <div className="flex min-w-0 items-start gap-1">
+          <p className="text-[12px] font-bold leading-tight text-gray-900">{label}</p>
+          <span title={tooltip} className="mt-0.5 shrink-0 cursor-help text-gray-300">
+            <Info size={10} />
+          </span>
         </div>
       </div>
+      <p className="text-[20px] font-bold text-gray-900">{value}</p>
     </div>
   );
 }
@@ -310,24 +320,28 @@ export default function DashboardPage() {
                   funnels, daily trend. A single grid, no per-column scroll. */}
               <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
                 <div className="flex flex-col">
+                  <ColumnHeader persona="vendor" />
+
                   <Widget persona="vendor" title="Activity Heatmap" tooltip="At-a-glance intensity of your Vendor-side activity (job previews, applications received, hotlist requests sent) each day in the selected range.">
                     <HeatmapStrip data={vendorActivity?.daily ?? []} valueKeys={['previews', 'applications', 'requests']} color="#2563eb" />
                   </Widget>
 
-                  <StatWidget
-                    persona="vendor"
-                    icon={MessageSquare}
-                    label="Conversations"
-                    value={vendorActivity?.conversations ?? 0}
-                    tooltip="Chat threads you're part of as a Vendor — either threads on jobs you posted, or threads you started requesting a Hotlist resume."
-                  />
-                  <StatWidget
-                    persona="vendor"
-                    icon={Download}
-                    label="Recruiter contacts downloaded"
-                    value={vendorActivity?.contacts_downloaded ?? 0}
-                    tooltip="Recruiter contact details you've unlocked via Active List, to source consultants for your job requirements."
-                  />
+                  <div className="mb-4 grid grid-cols-2 gap-4">
+                    <StatWidget
+                      persona="vendor"
+                      icon={MessageSquare}
+                      label="Conversations"
+                      value={vendorActivity?.conversations ?? 0}
+                      tooltip="Chat threads you're part of as a Vendor — either threads on jobs you posted, or threads you started requesting a Hotlist resume."
+                    />
+                    <StatWidget
+                      persona="vendor"
+                      icon={Download}
+                      label="Recruiter Contacts"
+                      value={vendorActivity?.contacts_downloaded ?? 0}
+                      tooltip="Recruiter contact details you've unlocked via Active List, to source consultants for your job requirements."
+                    />
+                  </div>
 
                   <Widget persona="vendor" title="My Jobs — Received" tooltip="How recruiters are engaging with the jobs you've posted: previews, applications received, screenings completed, and qualified candidates.">
                     <FunnelChart stages={vendorJobsStages} color="#2563eb" />
@@ -353,24 +367,28 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="flex flex-col">
+                  <ColumnHeader persona="recruiter" />
+
                   <Widget persona="recruiter" title="Activity Heatmap" tooltip="At-a-glance intensity of your Recruiter-side activity (hotlist previews, requests received, jobs applied to) each day in the selected range.">
                     <HeatmapStrip data={recruiterActivity?.daily ?? []} valueKeys={['previews', 'requests', 'submitted']} color="#9333ea" />
                   </Widget>
 
-                  <StatWidget
-                    persona="recruiter"
-                    icon={MessageSquare}
-                    label="Conversations"
-                    value={recruiterActivity?.conversations ?? 0}
-                    tooltip="Chat threads you're part of as a Recruiter — either threads on your Hotlist listings, or threads you started applying to a job."
-                  />
-                  <StatWidget
-                    persona="recruiter"
-                    icon={Download}
-                    label="Vendor contacts downloaded"
-                    value={recruiterActivity?.contacts_downloaded ?? 0}
-                    tooltip="Vendor contact details you've unlocked via Active List, to find companies to pitch your consultants to."
-                  />
+                  <div className="mb-4 grid grid-cols-2 gap-4">
+                    <StatWidget
+                      persona="recruiter"
+                      icon={MessageSquare}
+                      label="Conversations"
+                      value={recruiterActivity?.conversations ?? 0}
+                      tooltip="Chat threads you're part of as a Recruiter — either threads on your Hotlist listings, or threads you started applying to a job."
+                    />
+                    <StatWidget
+                      persona="recruiter"
+                      icon={Download}
+                      label="Vendor Contacts"
+                      value={recruiterActivity?.contacts_downloaded ?? 0}
+                      tooltip="Vendor contact details you've unlocked via Active List, to find companies to pitch your consultants to."
+                    />
+                  </div>
 
                   <Widget persona="recruiter" title="My Hotlist — Received" tooltip="How vendors are engaging with the Hotlist listings you've posted: previews, resume requests, and fulfillments.">
                     <FunnelChart stages={recruiterHotlistStages} color="#9333ea" />
