@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Briefcase, Check, ChevronDown, Clock3, Download, MessageSquare, UserRound } from 'lucide-react';
+import { Briefcase, Check, ChevronDown, Clock3, Download, Info, MessageSquare, Send, Sparkles, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
@@ -38,25 +38,37 @@ const PERSONA_ACCENT = {
   recruiter: { icon: UserRound, iconBg: 'bg-purple-50', iconColor: 'text-purple-700', label: 'Recruiter' },
 } as const;
 
+const AI_SUGGESTIONS = [
+  'How is my activity trending this period?',
+  'What should I focus on next?',
+  'Compare my vendor and recruiter activity',
+];
+
 // Every chart/funnel/stat is its own independent card sitting directly on
 // the page background — not nested inside one big per-persona container —
-// with a small persona badge in its header for context.
-function Widget({ persona, title, subtitle, children }: {
+// with a small persona badge and an info icon (native tooltip) in its header.
+function Widget({ persona, title, subtitle, tooltip, children }: {
   persona: keyof typeof PERSONA_ACCENT;
   title: string;
   subtitle?: string;
+  tooltip: string;
   children: React.ReactNode;
 }) {
   const accent = PERSONA_ACCENT[persona];
   return (
-    <div className="mb-4 break-inside-avoid rounded-lg border border-gray-200 bg-white p-4">
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
       <div className="mb-3 flex items-center gap-2">
         <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${accent.iconBg} ${accent.iconColor}`}>
           <accent.icon size={13} />
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-[11px] font-bold uppercase tracking-wide text-gray-400">{accent.label}</p>
-          <p className="truncate text-[13px] font-bold text-gray-900">{title}</p>
+          <div className="flex items-center gap-1">
+            <p className="truncate text-[13px] font-bold text-gray-900">{title}</p>
+            <span title={tooltip} className="shrink-0 cursor-help text-gray-300">
+              <Info size={11} />
+            </span>
+          </div>
           {subtitle && <p className="truncate text-[11px] text-gray-400">{subtitle}</p>}
         </div>
       </div>
@@ -65,22 +77,133 @@ function Widget({ persona, title, subtitle, children }: {
   );
 }
 
-function StatWidget({ persona, icon: Icon, label, value }: {
-  persona: keyof typeof PERSONA_ACCENT; icon: LucideIcon; label: string; value: number;
+function StatWidget({ persona, icon: Icon, label, value, tooltip }: {
+  persona: keyof typeof PERSONA_ACCENT; icon: LucideIcon; label: string; value: number; tooltip: string;
 }) {
   const accent = PERSONA_ACCENT[persona];
   return (
-    <div className="mb-4 break-inside-avoid rounded-lg border border-gray-200 bg-white p-4">
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
       <div className="flex items-center gap-3">
         <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${accent.iconBg} ${accent.iconColor}`}>
           <Icon size={16} />
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{accent.label}</p>
           <p className="text-[18px] font-bold text-gray-900">{value}</p>
-          <p className="truncate text-[11px] text-gray-500">{label}</p>
+          <div className="flex items-center gap-1">
+            <p className="truncate text-[11px] text-gray-500">{label}</p>
+            <span title={tooltip} className="shrink-0 cursor-help text-gray-300">
+              <Info size={10} />
+            </span>
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function AiInsightsWidget({ days, rangeLabel }: { days: number; rangeLabel: string }) {
+  const [question, setQuestion] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [conversation, setConversation] = useState<Array<{ question: string; answer: string }>>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  async function ask(raw: string) {
+    const trimmed = raw.trim();
+    if (!trimmed || asking) return;
+    setAsking(true);
+    setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/dashboard-ai-insights`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ question: trimmed, days }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to get an answer');
+      setConversation((prev) => [...prev, { question: trimmed, answer: data.answer || 'No answer returned.' }]);
+      setQuestion('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to reach the AI service.');
+    } finally {
+      setAsking(false);
+    }
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-600">
+          <Sparkles size={13} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[11px] font-bold uppercase tracking-wide text-gray-400">AI Insights</p>
+          <div className="flex items-center gap-1">
+            <p className="truncate text-[13px] font-bold text-gray-900">Ask about your data ({rangeLabel.toLowerCase()})</p>
+            <span
+              title="Ask a question in plain English and the AI answers using only your own Vendor and Recruiter activity data for the selected date range."
+              className="shrink-0 cursor-help text-gray-300"
+            >
+              <Info size={11} />
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {conversation.length > 0 && (
+        <div className="mb-3 max-h-72 space-y-3 overflow-y-auto pr-1">
+          {conversation.map((turn, i) => (
+            <div key={i} className="space-y-1">
+              <p className="text-[12px] font-semibold text-gray-800">{turn.question}</p>
+              <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-gray-600">{turn.answer}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {conversation.length === 0 && !asking && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {AI_SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => void ask(s)}
+              className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-500 transition hover:bg-gray-50"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {error && <p className="mb-2 text-[11px] text-red-500">{error}</p>}
+
+      <form
+        onSubmit={(e) => { e.preventDefault(); void ask(question); }}
+        className="flex items-center gap-2"
+      >
+        <input
+          type="text"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Ask a question about your activity…"
+          disabled={asking}
+          className="flex-1 rounded-full border border-gray-200 px-3.5 py-2 text-[12px] outline-none focus:border-gray-400 disabled:opacity-60"
+        />
+        <button
+          type="submit"
+          disabled={asking || !question.trim()}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-900 px-3.5 py-2 text-[12px] font-semibold text-white transition disabled:opacity-40"
+        >
+          {asking ? <LogoSpinner size={12} /> : <Send size={13} />}
+          Ask
+        </button>
+      </form>
     </div>
   );
 }
@@ -178,71 +301,104 @@ export default function DashboardPage() {
               <LogoSpinner size={22} />
             </div>
           ) : (
-            // Masonry-style flow (CSS columns, not a grid) so widgets of very
-            // different heights (a 2-row funnel next to a chart) pack
-            // tightly instead of a rigid grid leaving ragged empty gaps —
-            // and there's exactly one page scrollbar, no per-column ones.
-            <div className="columns-1 gap-4 sm:columns-2 xl:columns-3">
-              <StatWidget persona="vendor" icon={MessageSquare} label="Conversations" value={vendorActivity?.conversations ?? 0} />
-              <StatWidget persona="vendor" icon={Download} label="Recruiter contacts downloaded" value={vendorActivity?.contacts_downloaded ?? 0} />
-              <StatWidget persona="recruiter" icon={MessageSquare} label="Conversations" value={recruiterActivity?.conversations ?? 0} />
-              <StatWidget persona="recruiter" icon={Download} label="Vendor contacts downloaded" value={recruiterActivity?.contacts_downloaded ?? 0} />
+            <>
+              {/* Full-width AI Insights section, separate from the persona columns below. */}
+              <AiInsightsWidget days={range.days} rangeLabel={range.label} />
 
-              <Widget persona="vendor" title="My Jobs — Received">
-                <FunnelChart stages={vendorJobsStages} color="#2563eb" />
-                {(vendorActivity?.jobs_received_funnel.rejected ?? 0) > 0 && (
-                  <p className="mt-2 text-[11px] text-gray-400">{vendorActivity?.jobs_received_funnel.rejected} rejected in this period</p>
-                )}
-              </Widget>
+              {/* Vendor and Recruiter each get their own dedicated column — no
+                  interleaving — laid out top-to-bottom as: heatmap, stats,
+                  funnels, daily trend. A single grid, no per-column scroll. */}
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+                <div className="flex flex-col">
+                  <Widget persona="vendor" title="Activity Heatmap" tooltip="At-a-glance intensity of your Vendor-side activity (job previews, applications received, hotlist requests sent) each day in the selected range.">
+                    <HeatmapStrip data={vendorActivity?.daily ?? []} valueKeys={['previews', 'applications', 'requests']} color="#2563eb" />
+                  </Widget>
 
-              <Widget persona="vendor" title="Hotlist — Requested by me">
-                <FunnelChart stages={vendorHotlistStages} color="#0d9488" />
-              </Widget>
+                  <StatWidget
+                    persona="vendor"
+                    icon={MessageSquare}
+                    label="Conversations"
+                    value={vendorActivity?.conversations ?? 0}
+                    tooltip="Chat threads you're part of as a Vendor — either threads on jobs you posted, or threads you started requesting a Hotlist resume."
+                  />
+                  <StatWidget
+                    persona="vendor"
+                    icon={Download}
+                    label="Recruiter contacts downloaded"
+                    value={vendorActivity?.contacts_downloaded ?? 0}
+                    tooltip="Recruiter contact details you've unlocked via Active List, to source consultants for your job requirements."
+                  />
 
-              <Widget persona="recruiter" title="My Hotlist — Received">
-                <FunnelChart stages={recruiterHotlistStages} color="#9333ea" />
-              </Widget>
+                  <Widget persona="vendor" title="My Jobs — Received" tooltip="How recruiters are engaging with the jobs you've posted: previews, applications received, screenings completed, and qualified candidates.">
+                    <FunnelChart stages={vendorJobsStages} color="#2563eb" />
+                    {(vendorActivity?.jobs_received_funnel.rejected ?? 0) > 0 && (
+                      <p className="mt-2 text-[11px] text-gray-400">{vendorActivity?.jobs_received_funnel.rejected} rejected in this period</p>
+                    )}
+                  </Widget>
 
-              <Widget persona="recruiter" title="Jobs — Applied to">
-                <FunnelChart stages={recruiterJobsStages} color="#db2777" />
-                {recruiterActivity && (recruiterActivity.jobs_applying_funnel.via_submission_total > 0 || recruiterActivity.jobs_applying_funnel.via_outreach_total > 0) && (
-                  <p className="mt-2 text-[11px] text-gray-400">
-                    {recruiterActivity.jobs_applying_funnel.via_submission_total} via consultant submission ({recruiterActivity.jobs_applying_funnel.via_submission_screening_completed} screened),
-                    {' '}{recruiterActivity.jobs_applying_funnel.via_outreach_total} via outreach email ({recruiterActivity.jobs_applying_funnel.via_outreach_delivered} delivered)
-                  </p>
-                )}
-              </Widget>
+                  <Widget persona="vendor" title="Hotlist — Requested by me" tooltip="Resume requests you've sent on other recruiters' Hotlist posts, and how many were fulfilled.">
+                    <FunnelChart stages={vendorHotlistStages} color="#0d9488" />
+                  </Widget>
 
-              <Widget persona="vendor" title="Daily Trend">
-                <DailyBarChart
-                  data={vendorActivity?.daily ?? []}
-                  series={[
-                    { key: 'previews', label: 'Job Previews', color: '#93c5fd' },
-                    { key: 'applications', label: 'Applications', color: '#2563eb' },
-                    { key: 'requests', label: 'Hotlist Requests', color: '#0d9488' },
-                  ]}
-                />
-              </Widget>
+                  <Widget persona="vendor" title="Daily Trend" tooltip="Daily counts of job previews, applications received, and hotlist requests you sent, as a Vendor.">
+                    <DailyBarChart
+                      data={vendorActivity?.daily ?? []}
+                      series={[
+                        { key: 'previews', label: 'Job Previews', color: '#93c5fd' },
+                        { key: 'applications', label: 'Applications', color: '#2563eb' },
+                        { key: 'requests', label: 'Hotlist Requests', color: '#0d9488' },
+                      ]}
+                    />
+                  </Widget>
+                </div>
 
-              <Widget persona="recruiter" title="Daily Trend">
-                <DailyBarChart
-                  data={recruiterActivity?.daily ?? []}
-                  series={[
-                    { key: 'previews', label: 'Hotlist Previews', color: '#d8b4fe' },
-                    { key: 'requests', label: 'Requests Received', color: '#9333ea' },
-                    { key: 'submitted', label: 'Jobs Applied', color: '#db2777' },
-                  ]}
-                />
-              </Widget>
+                <div className="flex flex-col">
+                  <Widget persona="recruiter" title="Activity Heatmap" tooltip="At-a-glance intensity of your Recruiter-side activity (hotlist previews, requests received, jobs applied to) each day in the selected range.">
+                    <HeatmapStrip data={recruiterActivity?.daily ?? []} valueKeys={['previews', 'requests', 'submitted']} color="#9333ea" />
+                  </Widget>
 
-              <Widget persona="vendor" title="Activity Heatmap">
-                <HeatmapStrip data={vendorActivity?.daily ?? []} valueKeys={['previews', 'applications', 'requests']} color="#2563eb" />
-              </Widget>
+                  <StatWidget
+                    persona="recruiter"
+                    icon={MessageSquare}
+                    label="Conversations"
+                    value={recruiterActivity?.conversations ?? 0}
+                    tooltip="Chat threads you're part of as a Recruiter — either threads on your Hotlist listings, or threads you started applying to a job."
+                  />
+                  <StatWidget
+                    persona="recruiter"
+                    icon={Download}
+                    label="Vendor contacts downloaded"
+                    value={recruiterActivity?.contacts_downloaded ?? 0}
+                    tooltip="Vendor contact details you've unlocked via Active List, to find companies to pitch your consultants to."
+                  />
 
-              <Widget persona="recruiter" title="Activity Heatmap">
-                <HeatmapStrip data={recruiterActivity?.daily ?? []} valueKeys={['previews', 'requests', 'submitted']} color="#9333ea" />
-              </Widget>
-            </div>
+                  <Widget persona="recruiter" title="My Hotlist — Received" tooltip="How vendors are engaging with the Hotlist listings you've posted: previews, resume requests, and fulfillments.">
+                    <FunnelChart stages={recruiterHotlistStages} color="#9333ea" />
+                  </Widget>
+
+                  <Widget persona="recruiter" title="Jobs — Applied to" tooltip="Your outreach on jobs — via direct consultant submission or AI outreach email — and how far it progressed.">
+                    <FunnelChart stages={recruiterJobsStages} color="#db2777" />
+                    {recruiterActivity && (recruiterActivity.jobs_applying_funnel.via_submission_total > 0 || recruiterActivity.jobs_applying_funnel.via_outreach_total > 0) && (
+                      <p className="mt-2 text-[11px] text-gray-400">
+                        {recruiterActivity.jobs_applying_funnel.via_submission_total} via consultant submission ({recruiterActivity.jobs_applying_funnel.via_submission_screening_completed} screened),
+                        {' '}{recruiterActivity.jobs_applying_funnel.via_outreach_total} via outreach email ({recruiterActivity.jobs_applying_funnel.via_outreach_delivered} delivered)
+                      </p>
+                    )}
+                  </Widget>
+
+                  <Widget persona="recruiter" title="Daily Trend" tooltip="Daily counts of hotlist previews, requests received, and jobs you applied to, as a Recruiter.">
+                    <DailyBarChart
+                      data={recruiterActivity?.daily ?? []}
+                      series={[
+                        { key: 'previews', label: 'Hotlist Previews', color: '#d8b4fe' },
+                        { key: 'requests', label: 'Requests Received', color: '#9333ea' },
+                        { key: 'submitted', label: 'Jobs Applied', color: '#db2777' },
+                      ]}
+                    />
+                  </Widget>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </main>

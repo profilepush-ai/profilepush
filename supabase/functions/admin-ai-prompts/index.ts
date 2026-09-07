@@ -15,6 +15,7 @@ const ALLOWED_PROMPT_KEYS = new Set([
   "suggest-priority-skills",
   "generate-search-ideas",
   "dashboard-summary",
+  "dashboard-ai-insights",
   "score-job-match",
   "bench-match-extract",
   "bench-match-score",

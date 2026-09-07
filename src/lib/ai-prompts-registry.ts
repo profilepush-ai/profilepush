@@ -168,6 +168,22 @@ Parse ALL rows — do not skip any. If a row has minimal info, still create a pr
     lastUpdated: '2026-07-27',
   },
   {
+    id: 'dashboard-ai-insights',
+    name: 'Dashboard AI Insights',
+    description: 'Answers free-form questions about an account’s own Vendor/Recruiter activity data on the /pulse dashboard.',
+    source: 'supabase-function',
+    location: 'supabase/functions/dashboard-ai-insights/index.ts',
+    handler: 'dashboardAiInsightsHandler',
+    model: 'Gemini (gemini-2.x-flash lineage)',
+    userPrompt:
+      'You are a data assistant embedded in a bench-sales recruiting platform\'s personal analytics dashboard. Answer the user\'s question using ONLY the JSON activity data provided below, which reflects their own account\'s real activity over the selected date range.\n\nRules:\n- Be concise: a few short sentences, or a brief bulleted list if comparing several numbers.\n- Always cite the actual numbers from the data — never invent a number that isn\'t present.\n- The account may act as a Vendor (posts Jobs, requests Hotlist resumes) and/or a Recruiter/bench-sales (posts Hotlist listings, applies to Jobs) — refer to the correct persona\'s data for what\'s being asked.\n- If the question can\'t be answered from the data provided, say so plainly instead of guessing.\n- Do not restate the whole JSON back — extract only what\'s relevant to the question.',
+    jsonOutput: false,
+    temperature: 0.4,
+    maxTokens: 512,
+    notes: 'Data context is the account’s own get_account_vendor_activity/get_account_recruiter_activity RPC output — not other accounts’ data.',
+    lastUpdated: '2026-09-07',
+  },
+  {
     id: 'score-job-match',
     name: 'Score Job Match',
     description: 'Evaluates a candidate\u2019s fit for a job listing and returns a match score with breakdown.',

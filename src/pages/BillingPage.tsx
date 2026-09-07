@@ -76,6 +76,7 @@ const FN_LABELS: Record<string, string> = {
   'rewrite-field':         'Field Rewrite',
   'generate-search-ideas': 'Search Ideas',
   'dashboard-summary':     'Dashboard AI',
+  'dashboard-ai-insights': 'Dashboard AI Insights',
   'linkedin-search':       'LinkedIn Search',
   'dice-search':           'Dice Search',
   'indeed-search':         'Indeed Search',
@@ -100,7 +101,7 @@ function fnCategory(fn: string): CategoryKey {
   if (fn.includes('score') || fn.includes('radar'))    return 'AI Match';
   if (fn.includes('parse'))    return 'AI Extract';
   if (fn.includes('ideas'))    return 'AI Ideas';
-  if (fn.includes('summary'))  return 'AI Insights';
+  if (fn.includes('summary') || fn.includes('insights'))  return 'AI Insights';
   if (fn.includes('skill'))    return 'AI Skills';
   return 'Search';
 }
@@ -109,7 +110,7 @@ function fnIcon(fn: string) {
   if (fn.includes('score'))    return Target;
   if (fn.includes('parse'))    return Layers;
   if (fn.includes('ideas'))    return Sparkles;
-  if (fn.includes('summary'))  return Brain;
+  if (fn.includes('summary') || fn.includes('insights'))  return Brain;
   if (fn.includes('skill'))    return Activity;
   return Search;
 }
