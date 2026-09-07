@@ -224,7 +224,7 @@ export default function PostApplicationsPage() {
 
       <main className="flex-1 min-h-0 overflow-hidden">
         <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2">
-          <div className="mb-2 flex shrink-0 items-center gap-2.5">
+          <div className="mb-2 flex shrink-0 items-start gap-2.5">
             <button
               type="button"
               onClick={() => navigate('/posts')}
@@ -234,7 +234,7 @@ export default function PostApplicationsPage() {
               <ArrowLeft size={16} />
             </button>
             <div className="min-w-0">
-              <h1 className="truncate text-[15px] font-bold text-gray-900 dark:text-slate-100">
+              <h1 className="text-[15px] font-bold leading-snug text-gray-900 dark:text-slate-100">
                 Applications{job?.job_title ? ` — ${job.job_title}` : ''}
               </h1>
               {job && (
@@ -304,7 +304,11 @@ export default function PostApplicationsPage() {
             </div>
           )}
 
-          <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126]">
+          {/* Desktop's list+detail panels share this one frame (neither has
+              its own background/border), so it stays. Mobile's cards are
+              each already their own bordered white box, so wrapping them
+              in a second one too was a redundant box-in-a-box. */}
+          <div className={`min-h-0 flex-1 overflow-auto ${isMobileViewport ? '' : 'rounded-lg border border-[#dfdad2] bg-white dark:border-white/10 dark:bg-[#1E2126]'}`}>
             {loading ? (
               <div className="flex items-center justify-center py-16"><LogoSpinner size={20} /></div>
             ) : applications.length === 0 ? (
