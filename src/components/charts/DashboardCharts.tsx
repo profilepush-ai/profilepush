@@ -41,9 +41,15 @@ export function FunnelChart({ stages, color }: { stages: FunnelStage[]; color: s
   );
 }
 
+function formatShortDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 // Daily bar chart — two series (e.g. previews vs applications) as paired
-// bars per day, with a legend. Height-normalized to the max value across
-// both series so the two are visually comparable.
+// bars per day, with a legend, visible value labels above each bar (when
+// there's room), and a date axis below. Height-normalized to the max value
+// across both series so the two are visually comparable.
 export function DailyBarChart({ data, series, height = 100 }: {
   data: Array<Record<string, number | string>>;
   series: Array<{ key: string; label: string; color: string }>;
@@ -51,23 +57,44 @@ export function DailyBarChart({ data, series, height = 100 }: {
 }) {
   const max = Math.max(1, ...data.flatMap((d) => series.map((s) => Number(d[s.key]) || 0)));
   const barGroupWidth = 100 / Math.max(data.length, 1);
+  const showValueLabels = data.length <= 14;
+  const dateLabelStep = data.length <= 10 ? 1 : data.length <= 31 ? 5 : 14;
   return (
     <div>
-      <div className="flex items-end gap-0.5" style={{ height }}>
+      <div className="flex items-end gap-0.5" style={{ height: height + (showValueLabels ? 16 : 0) }}>
         {data.map((d) => (
-          <div key={String(d.date)} className="flex flex-1 items-end justify-center gap-[1.5px]" style={{ maxWidth: `${barGroupWidth}%` }}>
-            {series.map((s) => {
-              const value = Number(d[s.key]) || 0;
-              const h = Math.max((value / max) * (height - 4), value > 0 ? 2 : 0);
-              return (
-                <div
-                  key={s.key}
-                  title={`${d.date}: ${value} ${s.label}`}
-                  className="flex-1 rounded-t-sm transition-all"
-                  style={{ height: h, backgroundColor: s.color, minWidth: '3px' }}
-                />
-              );
-            })}
+          <div key={String(d.date)} className="flex h-full flex-1 flex-col items-center justify-end gap-0.5" style={{ maxWidth: `${barGroupWidth}%` }}>
+            {showValueLabels && (
+              <div className="flex items-end gap-[1.5px] text-[9px] font-bold leading-none text-gray-500">
+                {series.map((s) => {
+                  const value = Number(d[s.key]) || 0;
+                  return <span key={s.key} className="min-w-[3px] text-center">{value > 0 ? value : ''}</span>;
+                })}
+              </div>
+            )}
+            <div className="flex w-full flex-1 items-end justify-center gap-[1.5px]" style={{ height }}>
+              {series.map((s) => {
+                const value = Number(d[s.key]) || 0;
+                const h = Math.max((value / max) * (height - 4), value > 0 ? 2 : 0);
+                return (
+                  <div
+                    key={s.key}
+                    title={`${d.date}: ${value} ${s.label}`}
+                    className="flex-1 rounded-t-sm transition-all"
+                    style={{ height: h, backgroundColor: s.color, minWidth: '3px' }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex items-end gap-0.5">
+        {data.map((d, i) => (
+          <div key={String(d.date)} className="flex-1 text-center" style={{ maxWidth: `${barGroupWidth}%` }}>
+            {i % dateLabelStep === 0 && (
+              <span className="text-[9px] text-gray-400">{formatShortDate(String(d.date))}</span>
+            )}
           </div>
         ))}
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Briefcase, Check, ChevronDown, Clock3, UserRound } from 'lucide-react';
+import { Briefcase, Check, ChevronDown, Clock3, Download, MessageSquare, UserRound } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,17 +12,33 @@ const RANGE_OPTIONS: Array<{ id: string; label: string; days: number }> = [
   { id: '90d', label: 'Last 90 days', days: 90 },
 ];
 
-type DailyRow = { date: string; previews: number; applications?: number; requests?: number };
-
 type JobsFunnelTrend = {
-  funnel: { posted: number; previewed: number; applied: number; screening_completed: number; qualified: number; rejected: number };
-  daily: DailyRow[];
+  received_funnel: { posted: number; previewed: number; applied: number; screening_completed: number; qualified: number; rejected: number };
+  sent_funnel: { revealed: number; breakdown_viewed: number; submitted: number; screening_completed: number; qualified: number };
+  conversations: number;
+  active_list_downloaded: number;
+  daily: Array<{ date: string; previews: number; applications: number; revealed: number; submitted: number }>;
 };
 
 type HotlistFunnelTrend = {
-  funnel: { posted: number; previewed: number; requested: number; fulfilled: number };
-  daily: DailyRow[];
+  received_funnel: { posted: number; previewed: number; requested: number; fulfilled: number };
+  sent_funnel: { revealed: number; breakdown_viewed: number; requested: number; fulfilled: number };
+  conversations: number;
+  active_list_downloaded: number;
+  daily: Array<{ date: string; previews: number; requests: number; revealed: number; sent_requests: number }>;
 };
+
+function SmallStat({ icon: Icon, label, value }: { icon: typeof MessageSquare; label: string; value: number }) {
+  return (
+    <div className="flex items-center gap-2 rounded-md bg-gray-50 px-3 py-2">
+      <Icon size={13} className="text-gray-400" />
+      <div>
+        <p className="text-[13px] font-bold text-gray-900">{value}</p>
+        <p className="text-[10px] text-gray-500">{label}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { account } = useAuth();
@@ -55,19 +71,32 @@ export default function DashboardPage() {
     return () => { cancelled = true; };
   }, [account?.id, range.days]);
 
-  const jobsFunnelStages = [
-    { label: 'Posted', value: jobsTrend?.funnel.posted ?? 0 },
-    { label: 'Previewed', value: jobsTrend?.funnel.previewed ?? 0 },
-    { label: 'Applied', value: jobsTrend?.funnel.applied ?? 0 },
-    { label: 'Screening Done', value: jobsTrend?.funnel.screening_completed ?? 0 },
-    { label: 'Qualified', value: jobsTrend?.funnel.qualified ?? 0 },
+  const jobsReceivedStages = [
+    { label: 'Posted', value: jobsTrend?.received_funnel.posted ?? 0 },
+    { label: 'Previewed', value: jobsTrend?.received_funnel.previewed ?? 0 },
+    { label: 'Applied', value: jobsTrend?.received_funnel.applied ?? 0 },
+    { label: 'Screening Done', value: jobsTrend?.received_funnel.screening_completed ?? 0 },
+    { label: 'Qualified', value: jobsTrend?.received_funnel.qualified ?? 0 },
+  ];
+  const jobsSentStages = [
+    { label: 'Revealed', value: jobsTrend?.sent_funnel.revealed ?? 0 },
+    { label: 'Breakdown', value: jobsTrend?.sent_funnel.breakdown_viewed ?? 0 },
+    { label: 'Submitted', value: jobsTrend?.sent_funnel.submitted ?? 0 },
+    { label: 'Screening Done', value: jobsTrend?.sent_funnel.screening_completed ?? 0 },
+    { label: 'Qualified', value: jobsTrend?.sent_funnel.qualified ?? 0 },
   ];
 
-  const hotlistFunnelStages = [
-    { label: 'Posted', value: hotlistTrend?.funnel.posted ?? 0 },
-    { label: 'Previewed', value: hotlistTrend?.funnel.previewed ?? 0 },
-    { label: 'Requested', value: hotlistTrend?.funnel.requested ?? 0 },
-    { label: 'Fulfilled', value: hotlistTrend?.funnel.fulfilled ?? 0 },
+  const hotlistReceivedStages = [
+    { label: 'Posted', value: hotlistTrend?.received_funnel.posted ?? 0 },
+    { label: 'Previewed', value: hotlistTrend?.received_funnel.previewed ?? 0 },
+    { label: 'Requested', value: hotlistTrend?.received_funnel.requested ?? 0 },
+    { label: 'Fulfilled', value: hotlistTrend?.received_funnel.fulfilled ?? 0 },
+  ];
+  const hotlistSentStages = [
+    { label: 'Revealed', value: hotlistTrend?.sent_funnel.revealed ?? 0 },
+    { label: 'Breakdown', value: hotlistTrend?.sent_funnel.breakdown_viewed ?? 0 },
+    { label: 'Requested', value: hotlistTrend?.sent_funnel.requested ?? 0 },
+    { label: 'Fulfilled', value: hotlistTrend?.sent_funnel.fulfilled ?? 0 },
   ];
 
   return (
@@ -118,15 +147,23 @@ export default function DashboardPage() {
                   </span>
                   <div>
                     <p className="text-[14px] font-bold text-gray-900">Jobs</p>
-                    <p className="text-[11px] text-gray-400">{jobsTrend?.funnel.posted ?? 0} posted in {range.label.toLowerCase()}</p>
+                    <p className="text-[11px] text-gray-400">{jobsTrend?.received_funnel.posted ?? 0} posted in {range.label.toLowerCase()}</p>
                   </div>
                 </div>
 
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">Funnel</p>
-                <FunnelChart stages={jobsFunnelStages} color="#2563eb" />
-                {(jobsTrend?.funnel.rejected ?? 0) > 0 && (
-                  <p className="mt-2 text-[11px] text-gray-400">{jobsTrend?.funnel.rejected} rejected in this period</p>
+                <div className="mb-4 grid grid-cols-2 gap-2">
+                  <SmallStat icon={MessageSquare} label="Conversations" value={jobsTrend?.conversations ?? 0} />
+                  <SmallStat icon={Download} label="Vendor contacts downloaded" value={jobsTrend?.active_list_downloaded ?? 0} />
+                </div>
+
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">Received — from Posts</p>
+                <FunnelChart stages={jobsReceivedStages} color="#2563eb" />
+                {(jobsTrend?.received_funnel.rejected ?? 0) > 0 && (
+                  <p className="mt-2 text-[11px] text-gray-400">{jobsTrend?.received_funnel.rejected} rejected in this period</p>
                 )}
+
+                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Sent — from Feed &amp; Tracker</p>
+                <FunnelChart stages={jobsSentStages} color="#0d9488" />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Daily Trend</p>
                 <DailyBarChart
@@ -134,11 +171,13 @@ export default function DashboardPage() {
                   series={[
                     { key: 'previews', label: 'Previews', color: '#93c5fd' },
                     { key: 'applications', label: 'Applications', color: '#2563eb' },
+                    { key: 'revealed', label: 'Revealed', color: '#5eead4' },
+                    { key: 'submitted', label: 'Submitted', color: '#0d9488' },
                   ]}
                 />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Activity Heatmap</p>
-                <HeatmapStrip data={jobsTrend?.daily ?? []} valueKeys={['previews', 'applications']} color="#2563eb" />
+                <HeatmapStrip data={jobsTrend?.daily ?? []} valueKeys={['previews', 'applications', 'revealed', 'submitted']} color="#2563eb" />
               </section>
 
               {/* Hotlist column */}
@@ -149,12 +188,20 @@ export default function DashboardPage() {
                   </span>
                   <div>
                     <p className="text-[14px] font-bold text-gray-900">Hotlist</p>
-                    <p className="text-[11px] text-gray-400">{hotlistTrend?.funnel.posted ?? 0} posted in {range.label.toLowerCase()}</p>
+                    <p className="text-[11px] text-gray-400">{hotlistTrend?.received_funnel.posted ?? 0} posted in {range.label.toLowerCase()}</p>
                   </div>
                 </div>
 
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">Funnel</p>
-                <FunnelChart stages={hotlistFunnelStages} color="#9333ea" />
+                <div className="mb-4 grid grid-cols-2 gap-2">
+                  <SmallStat icon={MessageSquare} label="Conversations" value={hotlistTrend?.conversations ?? 0} />
+                  <SmallStat icon={Download} label="Recruiter contacts downloaded" value={hotlistTrend?.active_list_downloaded ?? 0} />
+                </div>
+
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">Received — from Posts</p>
+                <FunnelChart stages={hotlistReceivedStages} color="#9333ea" />
+
+                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Sent — from Feed &amp; Tracker</p>
+                <FunnelChart stages={hotlistSentStages} color="#db2777" />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Daily Trend</p>
                 <DailyBarChart
@@ -162,11 +209,13 @@ export default function DashboardPage() {
                   series={[
                     { key: 'previews', label: 'Previews', color: '#d8b4fe' },
                     { key: 'requests', label: 'Requests', color: '#9333ea' },
+                    { key: 'revealed', label: 'Revealed', color: '#fbcfe8' },
+                    { key: 'sent_requests', label: 'Sent Requests', color: '#db2777' },
                   ]}
                 />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Activity Heatmap</p>
-                <HeatmapStrip data={hotlistTrend?.daily ?? []} valueKeys={['previews', 'requests']} color="#9333ea" />
+                <HeatmapStrip data={hotlistTrend?.daily ?? []} valueKeys={['previews', 'requests', 'revealed', 'sent_requests']} color="#9333ea" />
               </section>
             </div>
           )}
