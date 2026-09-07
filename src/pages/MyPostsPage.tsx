@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Briefcase, Building2, Check, Clock3, Eye, LayoutGrid, MapPin, MessageSquare, Pencil, Plus, RotateCcw,
+  Briefcase, Building2, Check, Clock3, Eye, MapPin, MessageSquare, Pencil, Plus, RotateCcw,
   Search, Share2, Sparkles, Trash2, UserRound, Users, X, XCircle,
   type LucideIcon,
 } from 'lucide-react';
@@ -49,12 +49,6 @@ const APPLICATION_STATUS_LABELS: Record<string, string> = {
 
 type KindFilter = 'all' | 'job' | 'hotlist';
 type StatusFilter = 'open' | 'closed';
-
-const KIND_FILTER_OPTIONS: Array<{ id: KindFilter; label: string; icon: LucideIcon }> = [
-  { id: 'all', label: 'All', icon: LayoutGrid },
-  { id: 'job', label: 'Jobs', icon: Briefcase },
-  { id: 'hotlist', label: 'Hotlist', icon: UserRound },
-];
 
 const STATUS_FILTER_OPTIONS: Array<{ id: StatusFilter; label: string; icon: LucideIcon }> = [
   { id: 'open', label: 'Open', icon: Check },
@@ -137,7 +131,14 @@ export default function MyPostsPage() {
   const { account, user } = useAuth();
   const { isDark } = useTheme();
   const navigate = useNavigate();
-  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
+  // Derived from the account's global persona — Vendor's own posts are
+  // Jobs, Bench Sales' own posts are Hotlist. Falls back to 'all' only if
+  // persona is somehow unset.
+  const kindFilter: KindFilter = account?.active_persona === 'bench_sales'
+    ? 'hotlist'
+    : account?.active_persona === 'vendor'
+      ? 'job'
+      : 'all';
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [searchQuery, setSearchQuery] = useState('');
   const [rangeId, setRangeId] = useState('all');
@@ -169,21 +170,32 @@ export default function MyPostsPage() {
   const loadPosts = useCallback(async () => {
     if (!account?.id) return;
     setLoading(true);
+    // Only fetch the kind this persona actually posts — Vendor posts Jobs,
+    // Bench Sales posts Hotlist. Falls back to fetching both if persona is
+    // somehow unset.
+    const includeJobs = account.active_persona !== 'bench_sales';
+    const includeHotlist = account.active_persona !== 'vendor';
+    const emptyResult = { data: [], error: null } as const;
+
     const [jobResult, hotlistResult, metricsResult] = await Promise.all([
-      supabase
-        .from('social_jobs')
-        .select('id, job_title, company_name, location, employment_type, seniority_level, salary_range, job_description, post_content, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, poster_email, poster_phone, post_status, created_at')
-        .eq('created_by_account_id', account.id)
-        .eq('post_source', 'user_post')
-        .is('hidden_at', null)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('social_hotlist')
-        .select('id, role_title, candidate_name, core_skills, years_experience, visa_type, employment_type, work_type, locations, hourly_rate_min, hourly_rate_max, availability, candidate_summary, raw_post_content, bench_sales_recruiter_email, bench_sales_recruiter_phone, post_status, created_at')
-        .eq('created_by_account_id', account.id)
-        .eq('post_source', 'user_post')
-        .is('hidden_at', null)
-        .order('created_at', { ascending: false }),
+      includeJobs
+        ? supabase
+          .from('social_jobs')
+          .select('id, job_title, company_name, location, employment_type, seniority_level, salary_range, job_description, post_content, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, poster_email, poster_phone, post_status, created_at')
+          .eq('created_by_account_id', account.id)
+          .eq('post_source', 'user_post')
+          .is('hidden_at', null)
+          .order('created_at', { ascending: false })
+        : Promise.resolve(emptyResult),
+      includeHotlist
+        ? supabase
+          .from('social_hotlist')
+          .select('id, role_title, candidate_name, core_skills, years_experience, visa_type, employment_type, work_type, locations, hourly_rate_min, hourly_rate_max, availability, candidate_summary, raw_post_content, bench_sales_recruiter_email, bench_sales_recruiter_phone, post_status, created_at')
+          .eq('created_by_account_id', account.id)
+          .eq('post_source', 'user_post')
+          .is('hidden_at', null)
+          .order('created_at', { ascending: false })
+        : Promise.resolve(emptyResult),
       supabase.rpc('get_my_post_metrics' as never),
     ]);
 
@@ -278,7 +290,7 @@ export default function MyPostsPage() {
     }
 
     setLoading(false);
-  }, [account?.id]);
+  }, [account?.id, account?.active_persona]);
 
   useEffect(() => {
     void loadPosts();
@@ -629,40 +641,10 @@ export default function MyPostsPage() {
     </div>
   );
 
-  const kindCounts: Record<KindFilter, number> = {
-    all: jobPosts.filter((p) => p.postStatus === statusFilter).length + hotlistPosts.filter((p) => p.postStatus === statusFilter).length,
-    job: jobPosts.filter((p) => p.postStatus === statusFilter).length,
-    hotlist: hotlistPosts.filter((p) => p.postStatus === statusFilter).length,
-  };
   const statusCounts: Record<StatusFilter, number> = {
     open: jobPosts.filter((p) => p.postStatus === 'open').length + hotlistPosts.filter((p) => p.postStatus === 'open').length,
     closed: jobPosts.filter((p) => p.postStatus === 'closed').length + hotlistPosts.filter((p) => p.postStatus === 'closed').length,
   };
-
-  function kindFilterButtonsEl(fullWidth: boolean, compact = false) {
-    return KIND_FILTER_OPTIONS.map((option) => {
-      const isSelected = kindFilter === option.id;
-      const Icon = option.icon;
-      return (
-        <button
-          key={option.id}
-          type="button"
-          onClick={() => setKindFilter(option.id)}
-          title={option.label}
-          aria-label={option.label}
-          className={`inline-flex items-center justify-center gap-1 rounded-full font-semibold transition ${compact ? 'px-2 py-1.5' : 'px-3 py-1.5 text-[11px]'} ${fullWidth ? 'w-full' : ''} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
-        >
-          <Icon size={compact ? 13 : 11} />
-          {!compact && (
-            <>
-              <span>{option.label}</span>
-              <span>{kindCounts[option.id]}</span>
-            </>
-          )}
-        </button>
-      );
-    });
-  }
 
   function statusFilterButtonsEl(fullWidth: boolean, compact = false) {
     return STATUS_FILTER_OPTIONS.map((option) => {
@@ -786,15 +768,11 @@ export default function MyPostsPage() {
                 {addPostButtonEl(false)}
               </div>
               <div className="flex items-center gap-1">
-                {kindFilterButtonsEl(false, true)}
                 {statusFilterButtonsEl(false, true)}
               </div>
             </div>
           ) : (
             <div className="flex shrink-0 items-center gap-2 pb-2">
-              <div className="flex shrink-0 items-center gap-1">
-                {kindFilterButtonsEl(false)}
-              </div>
               {searchBoxEl}
               {rangeMenuEl}
               {addPostButtonEl(false)}
@@ -1025,7 +1003,7 @@ export default function MyPostsPage() {
                     </div>
                   ) : selectedPost.kind !== 'job' ? (
                     <div className="flex flex-1 items-center justify-center p-6 text-center">
-                      <p className="text-[13px] text-gray-400">Applicants aren&apos;t tracked for hotlist posts</p>
+                      <p className="text-[13px] text-gray-400">Requests on Hotlist posts aren&apos;t shown here yet — coming soon</p>
                     </div>
                   ) : (
                       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-4">

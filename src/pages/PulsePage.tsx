@@ -42,7 +42,6 @@ import {
   Flame,
   Workflow,
   User,
-  Users,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -445,12 +444,6 @@ const SEARCH_PLACEHOLDER_EXAMPLES = [
   'Business Analyst OPT remote',
   'Network Engineer C2C Texas',
   'ServiceNow Developer remote',
-];
-
-const FEED_KIND_FILTER_OPTIONS: Array<{ id: 'all' | 'job' | 'hotlist'; label: string; icon: LucideIcon }> = [
-  { id: 'all', label: 'All', icon: LayoutGrid },
-  { id: 'job', label: 'Jobs', icon: Briefcase },
-  { id: 'hotlist', label: 'Hotlist', icon: Users },
 ];
 
 type PulseLayoutMode = 'card' | 'table' | 'swipe' | 'detail';
@@ -2213,7 +2206,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
   const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('3d');
-  const [feedKindFilter, setFeedKindFilter] = useState<'all' | 'job' | 'hotlist'>('all');
+  // Derived from the account's global persona, not a user toggle — a Vendor
+  // only ever browses Hotlist (to request consultants), Bench Sales only
+  // ever browses Jobs (to apply). No in-page peeking at the other kind.
+  const feedKindFilter: 'all' | 'job' | 'hotlist' = isCombinedFeed
+    ? (account?.active_persona === 'bench_sales' ? 'job' : 'hotlist')
+    : 'all';
   const [animatedSearchPlaceholder, setAnimatedSearchPlaceholder] = useState(SEARCH_PLACEHOLDER_EXAMPLES[0]);
 
   // Typewriter-cycles the search bar's placeholder through example queries —
@@ -4776,15 +4774,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       return pulseRowsRequestRef.current.request;
     }
 
+    // Combined feed used to fetch both kinds and merge — now the account's
+    // persona always pins feedKindFilter to exactly one kind (Vendor →
+    // hotlist, Bench Sales → job), so only fetch that one and skip the
+    // wasted RPC call for the kind nobody can see anyway.
     const request = (
       isCombinedFeed
-        ? Promise.all([
-          loadGlobalPulseRows(rangeHours, 'jobs'),
-          loadGlobalPulseRows(rangeHours, 'hotlist'),
-        ]).then(([jobRows, hotlistRows]) => [
-          ...jobRows.map((row) => ({ ...row, _kind: 'jobs' as const })),
-          ...hotlistRows.map((row) => ({ ...row, _kind: 'hotlist' as const })),
-        ])
+        ? loadGlobalPulseRows(rangeHours, feedKindFilter === 'hotlist' ? 'hotlist' : 'jobs')
+          .then((rows) => rows.map((row) => ({ ...row, _kind: feedKindFilter === 'hotlist' ? 'hotlist' as const : 'jobs' as const })))
         : loadGlobalPulseRows(rangeHours, isHotlistFeed ? 'hotlist' : 'jobs')
     )
       .then((rows) => {
@@ -4800,7 +4797,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
     pulseRowsRequestRef.current = { hours: rangeHours, timeBasis: feedTimeBasis, request };
     return request;
-  }, [feedTimeBasis, isCombinedFeed, isHotlistFeed, loadGlobalPulseRows]);
+  }, [feedKindFilter, feedTimeBasis, isCombinedFeed, isHotlistFeed, loadGlobalPulseRows]);
 
   const loadProfileStats = useCallback(async (rowsOverride?: PulseSocialFeedRpcRow[]) => {
     if (sortedLeaderboard.length === 0) {
@@ -6091,24 +6088,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 } : undefined}
               >
                 <div className="flex items-center gap-2">
-                  {isCombinedFeed && !isMobileViewport && (
-                    <div className="flex shrink-0 items-center gap-1" aria-label="Filter by kind">
-                      {FEED_KIND_FILTER_OPTIONS.map((option) => {
-                        const isSelected = feedKindFilter === option.id;
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => setFeedKindFilter(option.id)}
-                            className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
-                          >
-                            <option.icon size={12} />
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
                   <div ref={recentSearchesRef} className="relative flex flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5">
                     <Search size={11} className="text-gray-400" />
                     <input
@@ -6699,26 +6678,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   }}
                 >
                   <div className="flex w-full items-stretch gap-1">
-                    {isCombinedFeed && (
-                      <>
-                        {FEED_KIND_FILTER_OPTIONS.map((option) => {
-                          const isSelected = feedKindFilter === option.id;
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              onClick={() => setFeedKindFilter(option.id)}
-                              title={option.label}
-                              aria-label={option.label}
-                              className={`inline-flex flex-1 items-center justify-center rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
-                            >
-                              <option.icon size={13} />
-                            </button>
-                          );
-                        })}
-                        <div className="mx-0.5 my-1 w-px shrink-0 bg-gray-300 dark:bg-white/10" />
-                      </>
-                    )}
                     {matchesTabDefinitions.map((tab) => {
                       const isSelected = selectedMatchesTab === tab.id;
                       const count = matchesTabCounts[tab.id];

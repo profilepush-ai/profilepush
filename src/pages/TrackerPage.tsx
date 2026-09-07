@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Briefcase, Check, CheckCircle2, Clock3, ExternalLink, LayoutGrid,
+  Briefcase, Check, CheckCircle2, Clock3, ExternalLink,
   MessageSquare, Search, Sparkles, UserRound, Video, X, XCircle,
   type LucideIcon,
 } from 'lucide-react';
@@ -15,12 +15,6 @@ import { supabase } from '../lib/supabase';
 
 type KindFilter = 'all' | 'job' | 'hotlist';
 type StatusFilter = 'open' | 'closed';
-
-const KIND_FILTER_OPTIONS: Array<{ id: KindFilter; label: string; icon: LucideIcon }> = [
-  { id: 'all', label: 'All', icon: LayoutGrid },
-  { id: 'job', label: 'Jobs', icon: Briefcase },
-  { id: 'hotlist', label: 'Hotlist', icon: UserRound },
-];
 
 const STATUS_FILTER_OPTIONS: Array<{ id: StatusFilter; label: string; icon: LucideIcon }> = [
   { id: 'open', label: 'Open', icon: Check },
@@ -143,7 +137,14 @@ export default function TrackerPage() {
   const { isDark } = useTheme();
   const navigate = useNavigate();
 
-  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
+  // Derived from the account's global persona — Vendor's outbound activity
+  // is Hotlist requests they sent, Bench Sales' outbound activity is Jobs
+  // they applied to. Falls back to 'all' only if persona is somehow unset.
+  const kindFilter: KindFilter = account?.active_persona === 'bench_sales'
+    ? 'job'
+    : account?.active_persona === 'vendor'
+      ? 'hotlist'
+      : 'all';
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -172,19 +173,34 @@ export default function TrackerPage() {
     if (!account?.id) return;
     setLoading(true);
 
+    // Only fetch the source(s) this persona can actually see — no point
+    // querying job_applications for a Vendor (they never apply to jobs) or
+    // the hotlist-ask/chat sources for Bench Sales (they never request
+    // resumes off Hotlist). Falls back to fetching both if persona is
+    // somehow unset.
+    const includeJobApplications = account.active_persona !== 'vendor';
+    const includeHotlistOutbound = account.active_persona !== 'bench_sales';
+    const emptyResult = { data: [], error: null } as const;
+
     const [appsResult, askResult, chatResult] = await Promise.all([
-      supabase
-        .from('job_applications')
-        .select('id, social_job_id, candidate_name, status, ai_score, screening_token, created_at, social_jobs(job_title, company_name)')
-        .eq('created_by_account_id', account.id)
-        .order('created_at', { ascending: false }),
-      supabase.rpc('get_my_hotlist_ask_requests' as never),
-      supabase
-        .from('post_chat_threads')
-        .select('id, hotlist_id, subject, owner_display_name, status, participant_unread_count, created_at')
-        .eq('participant_account_id', account.id)
-        .eq('post_kind', 'hotlist')
-        .order('created_at', { ascending: false }),
+      includeJobApplications
+        ? supabase
+          .from('job_applications')
+          .select('id, social_job_id, candidate_name, status, ai_score, screening_token, created_at, social_jobs(job_title, company_name)')
+          .eq('created_by_account_id', account.id)
+          .order('created_at', { ascending: false })
+        : Promise.resolve(emptyResult),
+      includeHotlistOutbound
+        ? supabase.rpc('get_my_hotlist_ask_requests' as never)
+        : Promise.resolve(emptyResult),
+      includeHotlistOutbound
+        ? supabase
+          .from('post_chat_threads')
+          .select('id, hotlist_id, subject, owner_display_name, status, participant_unread_count, created_at')
+          .eq('participant_account_id', account.id)
+          .eq('post_kind', 'hotlist')
+          .order('created_at', { ascending: false })
+        : Promise.resolve(emptyResult),
     ]);
 
     if (!appsResult.error) {
@@ -247,7 +263,7 @@ export default function TrackerPage() {
     setHotlistRows(combinedHotlist);
 
     setLoading(false);
-  }, [account?.id]);
+  }, [account?.id, account?.active_persona]);
 
   useEffect(() => { void loadData(); }, [loadData]);
 
@@ -261,40 +277,10 @@ export default function TrackerPage() {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [kindFilter, allRows, applications, hotlistRows, statusFilter, searchQuery]);
 
-  const kindCounts: Record<KindFilter, number> = {
-    all: allRows.filter((r) => (statusFilter === 'closed' ? isRowClosed(r) : !isRowClosed(r))).length,
-    job: applications.filter((r) => (statusFilter === 'closed' ? isRowClosed(r) : !isRowClosed(r))).length,
-    hotlist: hotlistRows.filter((r) => (statusFilter === 'closed' ? isRowClosed(r) : !isRowClosed(r))).length,
-  };
   const statusCounts: Record<StatusFilter, number> = {
     open: allRows.filter((r) => !isRowClosed(r)).length,
     closed: allRows.filter((r) => isRowClosed(r)).length,
   };
-
-  function kindFilterButtonsEl(compact = false) {
-    return KIND_FILTER_OPTIONS.map((option) => {
-      const isSelected = kindFilter === option.id;
-      const Icon = option.icon;
-      return (
-        <button
-          key={option.id}
-          type="button"
-          onClick={() => setKindFilter(option.id)}
-          title={option.label}
-          aria-label={option.label}
-          className={`inline-flex items-center justify-center gap-1 rounded-full font-semibold transition ${compact ? 'px-2 py-1.5' : 'px-3 py-1.5 text-[11px]'} ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
-        >
-          <Icon size={compact ? 13 : 11} />
-          {!compact && (
-            <>
-              <span>{option.label}</span>
-              <span>{kindCounts[option.id]}</span>
-            </>
-          )}
-        </button>
-      );
-    });
-  }
 
   function statusFilterButtonsEl(compact = false) {
     return STATUS_FILTER_OPTIONS.map((option) => {
@@ -353,15 +339,11 @@ export default function TrackerPage() {
               <div className="flex shrink-0 flex-col gap-1.5 pb-2">
                 {searchBoxEl}
                 <div className="flex items-center gap-1">
-                  {kindFilterButtonsEl(true)}
                   {statusFilterButtonsEl(true)}
                 </div>
               </div>
             ) : (
               <div className="flex shrink-0 items-center gap-2 pb-2">
-                <div className="flex shrink-0 items-center gap-1">
-                  {kindFilterButtonsEl()}
-                </div>
                 <div className="min-w-[160px] flex-1">{searchBoxEl}</div>
                 <button
                   type="button"

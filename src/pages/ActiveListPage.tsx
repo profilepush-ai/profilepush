@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { Check, ChevronLeft, ChevronRight, Clock3, Search, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
@@ -204,11 +203,14 @@ function toCsvRows(rows: ActiveListContact[]): string[][] {
 }
 
 export default function ActiveListPage() {
-  const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get('tab') === 'recruiters' ? 'recruiters' : 'vendors';
   const { account } = useAuth();
   const { isDark } = useTheme();
-  const [activeTab, setActiveTab] = useState<'vendors' | 'recruiters'>(initialTab);
+  // Persona is the single source of truth for which list this account sees
+  // — Vendor sources consultants ('recruiters'-type contacts), Bench Sales
+  // prospects companies ('vendors'-type contacts). No in-page toggle
+  // anymore; the two lists are still both fetched together below (the
+  // active-list edge function always returns both regardless).
+  const activeTab: 'vendors' | 'recruiters' = account?.active_persona === 'bench_sales' ? 'vendors' : 'recruiters';
   const [data, setData] = useState<ActiveListResponse>({ recruiters: [], vendors: [] });
   const [loading, setLoading] = useState(true);
   const [rangeId, setRangeId] = useState<RangeId>('3d');
@@ -285,6 +287,10 @@ export default function ActiveListPage() {
   const totalPages = Math.max(1, Math.ceil(activeFilteredRows.length / PAGE_SIZE));
   const pageRows = useMemo(() => activeFilteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [activeFilteredRows, page]);
   useEffect(() => { setPage(1); }, [activeTab, facetFilters, textFilters, rangeId]);
+  // Mirrors the old manual tab-switch behavior — if the account's global
+  // persona flips while this page is mounted, activeTab changes identity
+  // and any stale filters/selection from the other list should clear too.
+  useEffect(() => { clearAllFilters(); setSelectedEmails(new Set()); }, [activeTab]);
 
   // Matches /jobs' feedFacetCounts — computed once per textScopedRows/filter
   // change rather than per-category inside the sidebar's render loop. Each
@@ -328,12 +334,6 @@ export default function ActiveListPage() {
       const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
       return { ...prev, [category]: next };
     });
-  }
-
-  function handleTabChange(key: string) {
-    setActiveTab(key as 'vendors' | 'recruiters');
-    clearAllFilters();
-    setSelectedEmails(new Set());
   }
 
   function toggleRow(email: string) {
@@ -409,20 +409,6 @@ export default function ActiveListPage() {
             >
               <Search size={12} />
             </button>
-
-            <div className="flex shrink-0 items-center gap-1">
-              {(['vendors', 'recruiters'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => handleTabChange(tab)}
-                  className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${activeTab === tab ? 'border border-blue-600 bg-blue-600 text-white' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700'}`}
-                >
-                  <span>{tab === 'vendors' ? 'Vendors' : 'Recruiters'}</span>
-                  <span>{tab === 'vendors' ? data.vendors.length : data.recruiters.length}</span>
-                </button>
-              ))}
-            </div>
 
             <div ref={rangeMenuRef} className="relative shrink-0">
               <button

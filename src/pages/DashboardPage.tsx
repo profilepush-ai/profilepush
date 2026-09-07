@@ -33,38 +33,18 @@ type RecruiterActivity = {
   daily: Array<{ date: string; previews: number; requests: number; submitted: number }>;
 };
 
+// Matches the account's global persona (accounts.active_persona) — this
+// dashboard now only ever renders ONE persona's widgets at a time, full
+// width. The global header switcher (AppNav) is the only way to see the
+// other persona's view; there's no local toggle here anymore.
 const PERSONA_ACCENT = {
   vendor: { icon: Briefcase, iconBg: 'bg-blue-50', iconColor: 'text-blue-700', label: 'Vendor' },
-  recruiter: { icon: UserRound, iconBg: 'bg-purple-50', iconColor: 'text-purple-700', label: 'Recruiter' },
+  bench_sales: { icon: UserRound, iconBg: 'bg-purple-50', iconColor: 'text-purple-700', label: 'Bench Sales' },
 } as const;
 
-const AI_SUGGESTIONS = [
-  'How is my activity trending this period?',
-  'What should I focus on next?',
-  'Compare my vendor and recruiter activity',
-];
-
-// Hidden for now (pending Gemini billing being restored) — flip back on
-// once the AI Insights panel can actually answer questions again.
-const SHOW_AI_INSIGHTS = false;
-
-// One header per persona column (instead of repeating "Vendor"/"Recruiter"
-// on every widget inside it) — the column itself is already the grouping.
-function ColumnHeader({ persona }: { persona: keyof typeof PERSONA_ACCENT }) {
-  const accent = PERSONA_ACCENT[persona];
-  return (
-    <div className="mb-1 hidden items-center gap-2 px-1 lg:flex">
-      <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${accent.iconBg} ${accent.iconColor}`}>
-        <accent.icon size={12} />
-      </span>
-      <h2 className="text-[13px] font-bold uppercase tracking-wide text-gray-500">{accent.label}</h2>
-    </div>
-  );
-}
-
 // Every chart/funnel/stat is its own independent card sitting directly on
-// the page background — not nested inside one big per-persona container.
-// The tooltip's info icon sits on the title itself, never on a subtitle.
+// the page background. The tooltip's info icon sits on the title itself,
+// never on a subtitle.
 function Widget({ persona, title, subtitle, tooltip, children }: {
   persona: keyof typeof PERSONA_ACCENT;
   title: string;
@@ -116,6 +96,16 @@ function StatWidget({ persona, icon: Icon, label, value, tooltip }: {
   );
 }
 
+const AI_SUGGESTIONS = [
+  'How is my activity trending this period?',
+  'What should I focus on next?',
+  'Compare my vendor and bench sales activity',
+];
+
+// Hidden for now (pending Gemini billing being restored) — flip back on
+// once the AI Insights panel can actually answer questions again.
+const SHOW_AI_INSIGHTS = false;
+
 function AiInsightsWidget({ days, rangeLabel }: { days: number; rangeLabel: string }) {
   const [question, setQuestion] = useState('');
   const [asking, setAsking] = useState(false);
@@ -160,7 +150,7 @@ function AiInsightsWidget({ days, rangeLabel }: { days: number; rangeLabel: stri
           <div className="flex items-center gap-1">
             <p className="truncate text-[13px] font-bold text-gray-900">Ask about your data ({rangeLabel.toLowerCase()})</p>
             <span
-              title="Ask a question in plain English and the AI answers using only your own Vendor and Recruiter activity data for the selected date range."
+              title="Ask a question in plain English and the AI answers using only your own Vendor and Bench Sales activity data for the selected date range."
               className="shrink-0 cursor-help text-gray-300"
             >
               <Info size={11} />
@@ -224,12 +214,12 @@ function AiInsightsWidget({ days, rangeLabel }: { days: number; rangeLabel: stri
 
 export default function DashboardPage() {
   const { account } = useAuth();
+  const persona: keyof typeof PERSONA_ACCENT = account?.active_persona === 'bench_sales' ? 'bench_sales' : 'vendor';
   const [rangeId, setRangeId] = useState('7d');
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [vendorActivity, setVendorActivity] = useState<VendorActivity | null>(null);
   const [recruiterActivity, setRecruiterActivity] = useState<RecruiterActivity | null>(null);
-  const [mobilePersonaTab, setMobilePersonaTab] = useState<keyof typeof PERSONA_ACCENT>('vendor');
 
   const range = RANGE_OPTIONS.find((option) => option.id === rangeId) ?? RANGE_OPTIONS[0];
 
@@ -239,19 +229,23 @@ export default function DashboardPage() {
 
     void (async () => {
       setLoading(true);
-      const vendorCall = supabase.rpc('get_account_vendor_activity' as never, { p_days: range.days } as never) as unknown as
-        Promise<{ data: VendorActivity | null }>;
-      const recruiterCall = supabase.rpc('get_account_recruiter_activity' as never, { p_days: range.days } as never) as unknown as
-        Promise<{ data: RecruiterActivity | null }>;
-      const [vendorResult, recruiterResult] = await Promise.all([vendorCall, recruiterCall]);
-      if (cancelled) return;
-      if (vendorResult.data) setVendorActivity(vendorResult.data);
-      if (recruiterResult.data) setRecruiterActivity(recruiterResult.data);
-      setLoading(false);
+      // Only call the RPC for the account's active persona — the other
+      // persona's data isn't shown anywhere on this page anymore, so
+      // there's no reason to fetch it.
+      if (persona === 'vendor') {
+        const { data } = await supabase.rpc('get_account_vendor_activity' as never, { p_days: range.days } as never) as unknown as
+          { data: VendorActivity | null };
+        if (!cancelled && data) setVendorActivity(data);
+      } else {
+        const { data } = await supabase.rpc('get_account_recruiter_activity' as never, { p_days: range.days } as never) as unknown as
+          { data: RecruiterActivity | null };
+        if (!cancelled && data) setRecruiterActivity(data);
+      }
+      if (!cancelled) setLoading(false);
     })();
 
     return () => { cancelled = true; };
-  }, [account?.id, range.days]);
+  }, [account?.id, persona, range.days]);
 
   const vendorJobsStages = [
     { label: 'Posted', value: vendorActivity?.jobs_received_funnel.posted ?? 0 },
@@ -281,30 +275,9 @@ export default function DashboardPage() {
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
       <main className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4">
-          <div className="mb-4 flex items-center gap-2">
-            {/* Below lg, the two columns stack full-height one after another,
-                so a tab switcher lets the user jump straight to one persona
-                instead of scrolling past the other. At lg+ both show side by
-                side and this switcher is hidden. */}
-            <div className="flex shrink-0 items-center gap-1 lg:hidden">
-              {(Object.keys(PERSONA_ACCENT) as Array<keyof typeof PERSONA_ACCENT>).map((persona) => (
-                <button
-                  key={persona}
-                  type="button"
-                  onClick={() => setMobilePersonaTab(persona)}
-                  className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
-                    mobilePersonaTab === persona
-                      ? 'border border-blue-600 bg-blue-600 text-white'
-                      : 'border border-transparent bg-white text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {PERSONA_ACCENT[persona].label}
-                </button>
-              ))}
-            </div>
-
-            <div className="relative ml-auto">
+        <div className="mx-auto max-w-3xl px-3 py-4 sm:px-4">
+          <div className="mb-4 flex items-center justify-end">
+            <div className="relative">
               <button
                 type="button"
                 onClick={() => setIsRangeMenuOpen((prev) => !prev)}
@@ -341,108 +314,100 @@ export default function DashboardPage() {
               {SHOW_AI_INSIGHTS && (
                 <AiInsightsWidget days={range.days} rangeLabel={range.label} />
               )}
+              {persona === 'vendor' ? (
+            <div className="flex flex-col">
+              <Widget persona="vendor" title="Activity Heatmap" tooltip="At-a-glance intensity of your Vendor-side activity (job previews, applications received, hotlist requests sent) each day in the selected range.">
+                <HeatmapStrip data={vendorActivity?.daily ?? []} valueKeys={['previews', 'applications', 'requests']} color="#2563eb" />
+              </Widget>
 
-              {/* Vendor and Recruiter each get their own dedicated column — no
-                  interleaving — laid out top-to-bottom as: heatmap, stats,
-                  funnels, daily trend. A single grid, no per-column scroll. */}
-              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-                <div className={`flex-col ${mobilePersonaTab === 'vendor' ? 'flex' : 'hidden'} lg:flex`}>
-                  <ColumnHeader persona="vendor" />
-
-                  <Widget persona="vendor" title="Activity Heatmap" tooltip="At-a-glance intensity of your Vendor-side activity (job previews, applications received, hotlist requests sent) each day in the selected range.">
-                    <HeatmapStrip data={vendorActivity?.daily ?? []} valueKeys={['previews', 'applications', 'requests']} color="#2563eb" />
-                  </Widget>
-
-                  <div className="mb-4 grid grid-cols-2 gap-4">
-                    <StatWidget
-                      persona="vendor"
-                      icon={MessageSquare}
-                      label="Conversations"
-                      value={vendorActivity?.conversations ?? 0}
-                      tooltip="Chat threads you're part of as a Vendor — either threads on jobs you posted, or threads you started requesting a Hotlist resume."
-                    />
-                    <StatWidget
-                      persona="vendor"
-                      icon={Download}
-                      label="Recruiter Contacts"
-                      value={vendorActivity?.contacts_downloaded ?? 0}
-                      tooltip="Recruiter contact details you've unlocked via Active List, to source consultants for your job requirements."
-                    />
-                  </div>
-
-                  <Widget persona="vendor" title="My Jobs — Received" tooltip="How recruiters are engaging with the jobs you've posted: previews, applications received, screenings completed, and qualified candidates.">
-                    <FunnelChart stages={vendorJobsStages} color="#2563eb" />
-                    {(vendorActivity?.jobs_received_funnel.rejected ?? 0) > 0 && (
-                      <p className="mt-2 text-[11px] text-gray-400">{vendorActivity?.jobs_received_funnel.rejected} rejected in this period</p>
-                    )}
-                  </Widget>
-
-                  <Widget persona="vendor" title="Hotlist — Requested by me" tooltip="Resume requests you've sent on other recruiters' Hotlist posts, and how many were fulfilled.">
-                    <FunnelChart stages={vendorHotlistStages} color="#0d9488" />
-                  </Widget>
-
-                  <Widget persona="vendor" title="Daily Trend" tooltip="Daily counts of job previews, applications received, and hotlist requests you sent, as a Vendor.">
-                    <DailyBarChart
-                      data={vendorActivity?.daily ?? []}
-                      series={[
-                        { key: 'previews', label: 'Job Previews', color: '#93c5fd' },
-                        { key: 'applications', label: 'Applications', color: '#2563eb' },
-                        { key: 'requests', label: 'Hotlist Requests', color: '#0d9488' },
-                      ]}
-                    />
-                  </Widget>
-                </div>
-
-                <div className={`flex-col ${mobilePersonaTab === 'recruiter' ? 'flex' : 'hidden'} lg:flex`}>
-                  <ColumnHeader persona="recruiter" />
-
-                  <Widget persona="recruiter" title="Activity Heatmap" tooltip="At-a-glance intensity of your Recruiter-side activity (hotlist previews, requests received, jobs applied to) each day in the selected range.">
-                    <HeatmapStrip data={recruiterActivity?.daily ?? []} valueKeys={['previews', 'requests', 'submitted']} color="#9333ea" />
-                  </Widget>
-
-                  <div className="mb-4 grid grid-cols-2 gap-4">
-                    <StatWidget
-                      persona="recruiter"
-                      icon={MessageSquare}
-                      label="Conversations"
-                      value={recruiterActivity?.conversations ?? 0}
-                      tooltip="Chat threads you're part of as a Recruiter — either threads on your Hotlist listings, or threads you started applying to a job."
-                    />
-                    <StatWidget
-                      persona="recruiter"
-                      icon={Download}
-                      label="Vendor Contacts"
-                      value={recruiterActivity?.contacts_downloaded ?? 0}
-                      tooltip="Vendor contact details you've unlocked via Active List, to find companies to pitch your consultants to."
-                    />
-                  </div>
-
-                  <Widget persona="recruiter" title="My Hotlist — Received" tooltip="How vendors are engaging with the Hotlist listings you've posted: previews, resume requests, and fulfillments.">
-                    <FunnelChart stages={recruiterHotlistStages} color="#9333ea" />
-                  </Widget>
-
-                  <Widget persona="recruiter" title="Jobs — Applied to" tooltip="Your outreach on jobs — via direct consultant submission or AI outreach email — and how far it progressed.">
-                    <FunnelChart stages={recruiterJobsStages} color="#db2777" />
-                    {recruiterActivity && (recruiterActivity.jobs_applying_funnel.via_submission_total > 0 || recruiterActivity.jobs_applying_funnel.via_outreach_total > 0) && (
-                      <p className="mt-2 text-[11px] text-gray-400">
-                        {recruiterActivity.jobs_applying_funnel.via_submission_total} via consultant submission ({recruiterActivity.jobs_applying_funnel.via_submission_screening_completed} screened),
-                        {' '}{recruiterActivity.jobs_applying_funnel.via_outreach_total} via outreach email ({recruiterActivity.jobs_applying_funnel.via_outreach_delivered} delivered)
-                      </p>
-                    )}
-                  </Widget>
-
-                  <Widget persona="recruiter" title="Daily Trend" tooltip="Daily counts of hotlist previews, requests received, and jobs you applied to, as a Recruiter.">
-                    <DailyBarChart
-                      data={recruiterActivity?.daily ?? []}
-                      series={[
-                        { key: 'previews', label: 'Hotlist Previews', color: '#d8b4fe' },
-                        { key: 'requests', label: 'Requests Received', color: '#9333ea' },
-                        { key: 'submitted', label: 'Jobs Applied', color: '#db2777' },
-                      ]}
-                    />
-                  </Widget>
-                </div>
+              <div className="mb-4 grid grid-cols-2 gap-4">
+                <StatWidget
+                  persona="vendor"
+                  icon={MessageSquare}
+                  label="Conversations"
+                  value={vendorActivity?.conversations ?? 0}
+                  tooltip="Chat threads you're part of as a Vendor — either threads on jobs you posted, or threads you started requesting a Hotlist resume."
+                />
+                <StatWidget
+                  persona="vendor"
+                  icon={Download}
+                  label="Bench Sales Contacts"
+                  value={vendorActivity?.contacts_downloaded ?? 0}
+                  tooltip="Bench Sales contact details you've unlocked via Active List, to source consultants for your job requirements."
+                />
               </div>
+
+              <Widget persona="vendor" title="My Jobs — Received" tooltip="How Bench Sales recruiters are engaging with the jobs you've posted: previews, applications received, screenings completed, and qualified candidates.">
+                <FunnelChart stages={vendorJobsStages} color="#2563eb" />
+                {(vendorActivity?.jobs_received_funnel.rejected ?? 0) > 0 && (
+                  <p className="mt-2 text-[11px] text-gray-400">{vendorActivity?.jobs_received_funnel.rejected} rejected in this period</p>
+                )}
+              </Widget>
+
+              <Widget persona="vendor" title="Hotlist — Requested by me" tooltip="Resume requests you've sent on other Bench Sales recruiters' Hotlist posts, and how many were fulfilled.">
+                <FunnelChart stages={vendorHotlistStages} color="#0d9488" />
+              </Widget>
+
+              <Widget persona="vendor" title="Daily Trend" tooltip="Daily counts of job previews, applications received, and hotlist requests you sent, as a Vendor.">
+                <DailyBarChart
+                  data={vendorActivity?.daily ?? []}
+                  series={[
+                    { key: 'previews', label: 'Job Previews', color: '#93c5fd' },
+                    { key: 'applications', label: 'Applications', color: '#2563eb' },
+                    { key: 'requests', label: 'Hotlist Requests', color: '#0d9488' },
+                  ]}
+                />
+              </Widget>
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              <Widget persona="bench_sales" title="Activity Heatmap" tooltip="At-a-glance intensity of your Bench Sales activity (hotlist previews, requests received, jobs applied to) each day in the selected range.">
+                <HeatmapStrip data={recruiterActivity?.daily ?? []} valueKeys={['previews', 'requests', 'submitted']} color="#9333ea" />
+              </Widget>
+
+              <div className="mb-4 grid grid-cols-2 gap-4">
+                <StatWidget
+                  persona="bench_sales"
+                  icon={MessageSquare}
+                  label="Conversations"
+                  value={recruiterActivity?.conversations ?? 0}
+                  tooltip="Chat threads you're part of as Bench Sales — either threads on your Hotlist listings, or threads you started applying to a job."
+                />
+                <StatWidget
+                  persona="bench_sales"
+                  icon={Download}
+                  label="Vendor Contacts"
+                  value={recruiterActivity?.contacts_downloaded ?? 0}
+                  tooltip="Vendor contact details you've unlocked via Active List, to find companies to pitch your consultants to."
+                />
+              </div>
+
+              <Widget persona="bench_sales" title="My Hotlist — Received" tooltip="How Vendors are engaging with the Hotlist listings you've posted: previews, resume requests, and fulfillments.">
+                <FunnelChart stages={recruiterHotlistStages} color="#9333ea" />
+              </Widget>
+
+              <Widget persona="bench_sales" title="Jobs — Applied to" tooltip="Your outreach on jobs — via direct consultant submission or AI outreach email — and how far it progressed.">
+                <FunnelChart stages={recruiterJobsStages} color="#db2777" />
+                {recruiterActivity && (recruiterActivity.jobs_applying_funnel.via_submission_total > 0 || recruiterActivity.jobs_applying_funnel.via_outreach_total > 0) && (
+                  <p className="mt-2 text-[11px] text-gray-400">
+                    {recruiterActivity.jobs_applying_funnel.via_submission_total} via consultant submission ({recruiterActivity.jobs_applying_funnel.via_submission_screening_completed} screened),
+                    {' '}{recruiterActivity.jobs_applying_funnel.via_outreach_total} via outreach email ({recruiterActivity.jobs_applying_funnel.via_outreach_delivered} delivered)
+                  </p>
+                )}
+              </Widget>
+
+              <Widget persona="bench_sales" title="Daily Trend" tooltip="Daily counts of hotlist previews, requests received, and jobs you applied to, as Bench Sales.">
+                <DailyBarChart
+                  data={recruiterActivity?.daily ?? []}
+                  series={[
+                    { key: 'previews', label: 'Hotlist Previews', color: '#d8b4fe' },
+                    { key: 'requests', label: 'Requests Received', color: '#9333ea' },
+                    { key: 'submitted', label: 'Jobs Applied', color: '#db2777' },
+                  ]}
+                />
+              </Widget>
+            </div>
+              )}
             </>
           )}
         </div>

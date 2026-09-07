@@ -283,7 +283,6 @@ export default function InboxPage() {
   const lastAutoScrolledConversationId = useRef<string | null>(null);
   const [query, setQuery] = useState('');
   const [pendingQuery, setPendingQuery] = useState('');
-  const [filter, setFilter] = useState<'recent' | 'job' | 'hotlist'>('recent');
   const [rangeId, setRangeId] = useState<InboxRangeId>('7d');
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -322,7 +321,19 @@ export default function InboxPage() {
       // conversations should still load rather than the whole page failing.
       console.error('Could not load post chat threads', chatError);
     }
-    const conversationRows = ((data ?? []) as unknown as Omit<Conversation, 'radar_job_details' | 'source'>[]).map((row) => ({ ...row, source: 'sent' as const }));
+    // vendor_conversations/pulse_ask_ai_previews are always this account's
+    // own outbound outreach (one-directional, no owner/participant split),
+    // so a straight kind check is correct: Vendor's own outbound kind is
+    // Hotlist (requesting resumes); Bench Sales' own outbound kind is Job
+    // (reaching out re: a job). post_chat_threads (below) is bidirectional
+    // and needs the owner/participant role too, not just kind.
+    const persona = account.active_persona;
+    const matchesOutboundKind = (hotlistId: string | null) =>
+      !persona || (persona === 'vendor' ? Boolean(hotlistId) : !hotlistId);
+
+    const conversationRows = ((data ?? []) as unknown as Omit<Conversation, 'radar_job_details' | 'source'>[])
+      .filter((row) => matchesOutboundKind(row.hotlist_id))
+      .map((row) => ({ ...row, source: 'sent' as const }));
     type PreviewRow = {
       id: string;
       vendor_name: string;
@@ -336,7 +347,9 @@ export default function InboxPage() {
       social_jobs: SocialJobDetails | null;
       social_hotlist: SocialHotlistDetails | null;
     };
-    const draftRows = ((previewData ?? []) as unknown as PreviewRow[]).map((row) => ({
+    const draftRows = ((previewData ?? []) as unknown as PreviewRow[])
+      .filter((row) => matchesOutboundKind(row.hotlist_id))
+      .map((row) => ({
       id: row.id,
       source: 'draft' as const,
       vendor_name: row.vendor_name,
@@ -371,7 +384,19 @@ export default function InboxPage() {
       social_jobs: SocialJobDetails | null;
       social_hotlist: SocialHotlistDetails | null;
     };
-    const chatRows = ((chatData ?? []) as unknown as ChatThreadRow[]).map((row) => {
+    // post_chat_threads is bidirectional — this account can be owner on one
+    // kind and participant on the other (e.g. a Vendor owns their Job
+    // threads but is only ever a participant on a Hotlist thread, since
+    // that's the Bench Sales poster's own listing). Kind alone isn't enough
+    // here; role matters too.
+    const matchesChatRole = (hotlistId: string | null, isOwner: boolean) => {
+      if (!persona) return true;
+      const isHotlistKind = Boolean(hotlistId);
+      return persona === 'vendor' ? (isHotlistKind ? !isOwner : isOwner) : (isHotlistKind ? isOwner : !isOwner);
+    };
+    const chatRows = ((chatData ?? []) as unknown as ChatThreadRow[])
+      .filter((row) => matchesChatRole(row.hotlist_id, row.owner_account_id === account.id))
+      .map((row) => {
       const isOwner = row.owner_account_id === account.id;
       return {
         id: row.id,
@@ -426,7 +451,7 @@ export default function InboxPage() {
       .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
     setConversations(rows);
     setSelectedId((current) => current ?? (window.matchMedia('(min-width: 640px)').matches ? rows[0]?.id ?? null : null));
-  }, [account?.id]);
+  }, [account?.id, account?.active_persona]);
 
   const loadChatMessages = useCallback(async (threadId: string) => {
     setLoadingMessages(true);
@@ -572,17 +597,10 @@ export default function InboxPage() {
     });
   }, [conversations, query, rangeId]);
 
-  const tabCounts = useMemo(() => ({
-    recent: scopedConversations.length,
-    job: scopedConversations.filter((item) => !item.hotlist_id).length,
-    hotlist: scopedConversations.filter((item) => Boolean(item.hotlist_id)).length,
-  }), [scopedConversations]);
-
-  const filtered = useMemo(() => scopedConversations.filter((item) => {
-    if (filter === 'job') return !item.hotlist_id;
-    if (filter === 'hotlist') return Boolean(item.hotlist_id);
-    return true;
-  }), [filter, scopedConversations]);
+  // Job/Hotlist kind is now fully resolved by persona at the source
+  // (loadConversations) — conversations already only contains this
+  // persona's own threads, so no further kind-based filtering happens here.
+  const filtered = scopedConversations;
 
   function selectConversation(id: string) {
     navigate(`/inbox/${id}`, { replace: true });
@@ -734,23 +752,6 @@ export default function InboxPage() {
                   </div>
                 )}
               </div>
-            </div>
-            <div className="mt-1.5 grid w-full grid-cols-3 gap-1">
-              {([
-                { id: 'recent' as const, label: 'Recent' },
-                { id: 'job' as const, label: 'Jobs' },
-                { id: 'hotlist' as const, label: 'Hotlist' },
-              ]).map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setFilter(option.id)}
-                  className={`inline-flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${filter === option.id ? (isDark ? 'border border-white/25 bg-[#22262c] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-[#1e2228] hover:text-slate-300' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
-                >
-                  <span>{option.label}</span>
-                  <span>{tabCounts[option.id]}</span>
-                </button>
-              ))}
             </div>
           </div>
 

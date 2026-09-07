@@ -37,14 +37,22 @@ function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | 
   );
 }
 
-const navItems = [
-  { path: '/feed',          label: 'Feed',           mobileLabel: 'Feed',    icon: Briefcase, hideOnMobile: false },
-  { path: '/posts',        label: 'Posts',          mobileLabel: 'Posts',   icon: Megaphone, hideOnMobile: false },
-  { path: '/inbox',        label: 'Inbox',          mobileLabel: 'Inbox',   icon: Mail,      hideOnMobile: false },
-  { path: '/tracker',       label: 'Tracker',        mobileLabel: 'Tracker', icon: FileText,  hideOnMobile: false },
-  { path: '/pulse',        label: 'Pulse',          mobileLabel: 'Pulse',   icon: Activity,  hideOnMobile: false },
-  { path: '/active-list',   label: 'List',           mobileLabel: 'List', icon: Database,  hideOnMobile: false },
-];
+// Posts and Tracker are the only two nav items whose label depends on
+// persona (Feed/Inbox/List/Pulse keep their names — only their content
+// filters). Vendor posts Jobs and sends outbound Hotlist Requests; Bench
+// Sales posts Hotlist and sends outbound job Applications.
+function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
+  const postsLabel = persona === 'bench_sales' ? 'Hotlist' : 'Jobs';
+  const trackerLabel = persona === 'bench_sales' ? 'Applications' : 'Requests';
+  return [
+    { path: '/feed',        label: 'Feed',        mobileLabel: 'Feed',        icon: Briefcase, hideOnMobile: false },
+    { path: '/posts',       label: postsLabel,    mobileLabel: postsLabel,    icon: Megaphone, hideOnMobile: false },
+    { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,      hideOnMobile: false },
+    { path: '/tracker',     label: trackerLabel,  mobileLabel: trackerLabel,  icon: FileText,  hideOnMobile: false },
+    { path: '/pulse',       label: 'Pulse',       mobileLabel: 'Pulse',       icon: Activity,  hideOnMobile: false },
+    { path: '/active-list', label: 'List',        mobileLabel: 'List',       icon: Database,  hideOnMobile: false },
+  ];
+}
 
 function CreditsChip({ balance }: { balance: number }) {
   const { isDark } = useTheme();
@@ -88,6 +96,55 @@ function CreditsChip({ balance }: { balance: number }) {
       <CreditCard size={9} />
       {creditsLabel}
     </Link>
+  );
+}
+
+const PERSONA_OPTIONS = [
+  { id: 'vendor', label: 'Vendor' },
+  { id: 'bench_sales', label: 'Bench Sales' },
+] as const;
+
+// Global persona toggle — same branded pill style used across the app's
+// other segmented controls (ActiveListPage/TrackerPage/MyPostsPage): each
+// button independently rounded-full, no outer tray, selected = solid
+// brand blue. Flipping it writes straight to the account via
+// set_active_persona and refreshes context, so every page reading
+// account.active_persona re-renders immediately.
+function PersonaSwitcher() {
+  const { account, refreshAccount } = useAuth();
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
+
+  if (!account?.active_persona) return null;
+
+  async function choose(persona: string) {
+    if (switchingTo || persona === account?.active_persona) return;
+    setSwitchingTo(persona);
+    try {
+      const { error } = await supabase.rpc('set_active_persona' as never, { p_persona: persona } as never);
+      if (!error) await refreshAccount();
+    } finally {
+      setSwitchingTo(null);
+    }
+  }
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      {PERSONA_OPTIONS.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          onClick={() => void choose(option.id)}
+          disabled={switchingTo != null}
+          className={`inline-flex items-center justify-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition disabled:opacity-60 ${
+            account.active_persona === option.id
+              ? 'border border-blue-600 bg-blue-600 text-white'
+              : 'border border-transparent bg-white text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -240,6 +297,9 @@ export default function AppNav() {
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
   const { user, account, signOut } = useAuth();
+  const navItems = getNavItems(account?.active_persona);
+  const postsLabel = account?.active_persona === 'bench_sales' ? 'Hotlist' : 'Jobs';
+  const trackerLabel = account?.active_persona === 'bench_sales' ? 'Applications' : 'Requests';
   const [menuOpen, setMenuOpen] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -319,6 +379,7 @@ export default function AppNav() {
           >
             {isDark ? <SunMedium size={14} /> : <MoonStar size={14} />}
           </button>
+          <PersonaSwitcher />
           {shouldShowCreditsUi() && account != null && <CreditsChip balance={account.credits_balance} />}
           <NotificationBell userId={user.id} />
           <Link to="/account" className="shrink-0" title="Account">
@@ -389,6 +450,10 @@ export default function AppNav() {
           >
             {isDark ? <SunMedium size={13} /> : <MoonStar size={13} />}
           </button>
+
+          <span className="hidden sm:block">
+            <PersonaSwitcher />
+          </span>
 
           {shouldShowCreditsUi() && account != null && (
             <span className="hidden sm:block">
@@ -477,7 +542,7 @@ export default function AppNav() {
             className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Megaphone size={24} />
-            <span>Posts</span>
+            <span>{postsLabel}</span>
           </Link>
           <Link
             to="/inbox"
@@ -492,7 +557,7 @@ export default function AppNav() {
             className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <FileText size={24} />
-            <span>Tracker</span>
+            <span>{trackerLabel}</span>
           </Link>
           <Link
             to="/pulse"

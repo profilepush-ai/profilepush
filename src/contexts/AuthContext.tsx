@@ -8,6 +8,7 @@ interface Account {
   owner_id: string;
   credits_balance: number;
   is_trial: boolean;
+  active_persona: 'vendor' | 'bench_sales' | null;
 }
 
 export interface Subscription {
@@ -40,6 +41,7 @@ interface AuthContextValue {
   membership: AccountMember | null;
   subscription: Subscription | null;
   loading: boolean;
+  accountLoading: boolean;
   refreshAccount: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -51,6 +53,7 @@ const AuthContext = createContext<AuthContextValue>({
   membership: null,
   subscription: null,
   loading: true,
+  accountLoading: true,
   refreshAccount: async () => {},
   signOut: async () => {},
 });
@@ -62,6 +65,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [membership, setMembership] = useState<AccountMember | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
+  // Tracks specifically whether the initial post-auth account fetch is in
+  // flight — distinct from `loading` (which only flips false once, on the
+  // very first INITIAL_SESSION event). Right after a fresh signup's
+  // SIGNED_IN event, `loading` can already be false while `account` is
+  // still null; ProtectedRoute needs this to tell "not fetched yet" apart
+  // from "fetched, no persona set" so it doesn't flash the persona gate.
+  const [accountLoading, setAccountLoading] = useState(true);
 
   const loadAccount = useCallback(async (u: User) => {
     const { data: mem } = await supabase
@@ -113,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       setUser(s?.user ?? null);
+      setAccountLoading(true);
       (async () => {
         try {
           if (s?.user) {
@@ -128,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSubscription(null);
         } finally {
           if (event === 'INITIAL_SESSION') setLoading(false);
+          setAccountLoading(false);
         }
       })();
     });
@@ -143,8 +155,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, session, account, membership, subscription, loading, refreshAccount, signOut }),
-    [user, session, account, membership, subscription, loading, refreshAccount, signOut],
+    () => ({ user, session, account, membership, subscription, loading, accountLoading, refreshAccount, signOut }),
+    [user, session, account, membership, subscription, loading, accountLoading, refreshAccount, signOut],
   );
 
   return (
