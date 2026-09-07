@@ -4,7 +4,7 @@ import {
   ChevronDown, HelpCircle, LogOut, Settings,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, Briefcase, MoonStar, SunMedium, Mail, Megaphone, Database, UserRound,
+  Activity, Briefcase, MoonStar, SunMedium, Mail, Database, UserRound, Send,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -42,20 +42,31 @@ function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | 
 // filters). Vendor posts Jobs and sends outbound Hotlist Requests; Bench
 // Sales posts Hotlist and sends outbound job Applications.
 function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
-  // Feed is named for what it shows (the content being browsed): Vendor
-  // browses Hotlist to find consultants, Bench Sales browses Jobs to apply
-  // — the opposite of Posts, which is named for what each persona owns.
-  const feedLabel = persona === 'bench_sales' ? 'Jobs' : 'Hotlist';
-  const feedPath = persona === 'bench_sales' ? '/feed/jobs' : '/feed/hotlist';
-  const postsLabel = persona === 'bench_sales' ? 'Hotlist' : 'Jobs';
-  const trackerLabel = persona === 'bench_sales' ? 'Applications' : 'Requests';
+  const isBenchSales = persona === 'bench_sales';
+  // Feed is named (and iconed) for what it shows — the content being
+  // browsed: Vendor browses Hotlist (consultants, UserRound icon) to find
+  // consultants, Bench Sales browses Jobs (Briefcase icon) to apply. Posts
+  // is the opposite: named/iconed for what each persona owns, so its icons
+  // are swapped relative to Feed's.
+  const feedLabel = isBenchSales ? 'Jobs' : 'Hotlist';
+  const feedPath = isBenchSales ? '/feed/jobs' : '/feed/hotlist';
+  const feedIcon = isBenchSales ? Briefcase : UserRound;
+  const postsLabel = isBenchSales ? 'My Hotlist' : 'My Jobs';
+  const postsPath = isBenchSales ? '/posts/hotlist' : '/posts/jobs';
+  const postsIcon = isBenchSales ? UserRound : Briefcase;
+  // Requests (Vendor's outbound Hotlist asks) gets an outbound-style icon;
+  // Applications (Bench Sales' outbound job applications) keeps the
+  // document icon it already had.
+  const trackerLabel = isBenchSales ? 'Applications' : 'Requests';
+  const trackerPath = isBenchSales ? '/tracker/applications' : '/tracker/requests';
+  const trackerIcon = isBenchSales ? FileText : Send;
   return [
-    { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: Briefcase, hideOnMobile: false },
-    { path: '/posts',       label: postsLabel,    mobileLabel: postsLabel,    icon: Megaphone, hideOnMobile: false },
-    { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,      hideOnMobile: false },
-    { path: '/tracker',     label: trackerLabel,  mobileLabel: trackerLabel,  icon: FileText,  hideOnMobile: false },
-    { path: '/pulse',       label: 'Pulse',       mobileLabel: 'Pulse',       icon: Activity,  hideOnMobile: false },
-    { path: '/active-list', label: 'List',        mobileLabel: 'List',       icon: Database,  hideOnMobile: false },
+    { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },
+    { path: postsPath,      label: postsLabel,    mobileLabel: postsLabel,    icon: postsIcon,   hideOnMobile: false },
+    { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
+    { path: trackerPath,    label: trackerLabel,  mobileLabel: trackerLabel,  icon: trackerIcon, hideOnMobile: false },
+    { path: '/pulse',       label: 'Pulse',       mobileLabel: 'Pulse',       icon: Activity,    hideOnMobile: false },
+    { path: '/active-list', label: 'List',        mobileLabel: 'List',       icon: Database,    hideOnMobile: false },
   ];
 }
 
@@ -306,10 +317,12 @@ export default function AppNav() {
   const { isDark, toggleTheme } = useTheme();
   const { user, account, signOut } = useAuth();
   const navItems = getNavItems(account?.active_persona);
-  const feedLabel = account?.active_persona === 'bench_sales' ? 'Jobs' : 'Hotlist';
-  const feedPath = account?.active_persona === 'bench_sales' ? '/feed/jobs' : '/feed/hotlist';
-  const postsLabel = account?.active_persona === 'bench_sales' ? 'Hotlist' : 'Jobs';
-  const trackerLabel = account?.active_persona === 'bench_sales' ? 'Applications' : 'Requests';
+  // Mobile bottom nav below reuses these same computed items (path, label,
+  // icon) rather than re-deriving persona logic a third time.
+  const [feedItem, postsItem, , trackerItem] = navItems;
+  const FeedIcon = feedItem.icon;
+  const PostsIcon = postsItem.icon;
+  const TrackerIcon = trackerItem.icon;
   const [menuOpen, setMenuOpen] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -541,18 +554,18 @@ export default function AppNav() {
       {user && (
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
           <Link
-            to={feedPath}
+            to={feedItem.path}
             className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/feed') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <Briefcase size={24} />
-            <span>{feedLabel}</span>
+            <FeedIcon size={24} />
+            <span>{feedItem.label}</span>
           </Link>
           <Link
-            to="/posts"
+            to={postsItem.path}
             className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <Megaphone size={24} />
-            <span>{postsLabel}</span>
+            <PostsIcon size={24} />
+            <span>{postsItem.label}</span>
           </Link>
           <Link
             to="/inbox"
@@ -563,11 +576,11 @@ export default function AppNav() {
             {inboxUnread > 0 && <span className="absolute right-[24%] top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
           </Link>
           <Link
-            to="/tracker"
+            to={trackerItem.path}
             className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <FileText size={24} />
-            <span>{trackerLabel}</span>
+            <TrackerIcon size={24} />
+            <span>{trackerItem.label}</span>
           </Link>
           <Link
             to="/pulse"

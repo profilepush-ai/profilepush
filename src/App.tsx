@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, useParams, Navigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -144,11 +144,52 @@ function AppEntry() {
 function FeedRouteGuard() {
   const { account } = useAuth();
   const location = useLocation();
+  // /feed/:kind/:id is a specific lead's permalink (singular 'job'/'hotlist'
+  // — SocialLead.kind), distinct from the /feed/jobs and /feed/hotlist
+  // listing paths above. A stale or switched-persona mismatch here drops
+  // the specific lead and lands on the correct listing instead, rather
+  // than leaving the address bar pointed at content the account can no
+  // longer see.
+  const params = useParams<{ kind?: string }>();
   const expectedPath = account?.active_persona === 'bench_sales' ? '/feed/jobs' : '/feed/hotlist';
+  const expectedLeadKind = account?.active_persona === 'bench_sales' ? 'job' : 'hotlist';
+
+  if (params.kind) {
+    if (params.kind !== expectedLeadKind) {
+      return <Navigate to={expectedPath} replace />;
+    }
+    return <PulsePage feedKind="feed" />;
+  }
+
   if (location.pathname !== expectedPath) {
     return <Navigate to={expectedPath} replace />;
   }
   return <PulsePage feedKind="feed" />;
+}
+
+// Same pattern as FeedRouteGuard — Vendor's own posts live at /posts/jobs,
+// Bench Sales' at /posts/hotlist. MyPostsPage itself already derives which
+// kind to show from persona; this only keeps the URL in sync with it.
+function PostsRouteGuard() {
+  const { account } = useAuth();
+  const location = useLocation();
+  const expectedPath = account?.active_persona === 'bench_sales' ? '/posts/hotlist' : '/posts/jobs';
+  if (location.pathname !== expectedPath) {
+    return <Navigate to={expectedPath} replace />;
+  }
+  return <MyPostsPage />;
+}
+
+// Same pattern again — Vendor's outbound activity lives at /tracker/requests,
+// Bench Sales' at /tracker/applications.
+function TrackerRouteGuard() {
+  const { account } = useAuth();
+  const location = useLocation();
+  const expectedPath = account?.active_persona === 'bench_sales' ? '/tracker/applications' : '/tracker/requests';
+  if (location.pathname !== expectedPath) {
+    return <Navigate to={expectedPath} replace />;
+  }
+  return <TrackerPage />;
 }
 
 function SupabaseSetupRequired() {
@@ -236,7 +277,9 @@ export default function App() {
             <Route path="/support" element={<ProtectedRoute><ErrorBoundary><SupportPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/roadmap" element={<ProtectedRoute><ErrorBoundary><RoadmapPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/tracker/requests" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/tracker/applications" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/contacts" element={<ProtectedRoute><ErrorBoundary><ContactsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/active-list" element={<ProtectedRoute><ErrorBoundary><ActiveListPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/alerts" element={<ProtectedRoute><ErrorBoundary><AlertsPage /></ErrorBoundary></ProtectedRoute>} />
@@ -247,10 +290,12 @@ export default function App() {
             <Route path="/feed" element={<ProtectedRoute><ErrorBoundary><FeedRouteGuard /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/feed/jobs" element={<ProtectedRoute><ErrorBoundary><FeedRouteGuard /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/feed/hotlist" element={<ProtectedRoute><ErrorBoundary><FeedRouteGuard /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/feed/:kind/:id" element={<ProtectedRoute><ErrorBoundary><PulsePage feedKind="feed" /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/feed/:kind/:id" element={<ProtectedRoute><ErrorBoundary><FeedRouteGuard /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/jobs" element={<ProtectedRoute><Navigate to="/feed/jobs" replace /></ProtectedRoute>} />
             <Route path="/hotlist" element={<ProtectedRoute><Navigate to="/feed/hotlist" replace /></ProtectedRoute>} />
-            <Route path="/posts" element={<ProtectedRoute><ErrorBoundary><MyPostsPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/posts" element={<ProtectedRoute><ErrorBoundary><PostsRouteGuard /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/posts/jobs" element={<ProtectedRoute><ErrorBoundary><PostsRouteGuard /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/posts/hotlist" element={<ProtectedRoute><ErrorBoundary><PostsRouteGuard /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/applications/:jobId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/applications/:jobId/:applicationId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><DashboardPage /></ErrorBoundary></ProtectedRoute>} />
