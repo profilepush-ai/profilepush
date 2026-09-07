@@ -61,7 +61,7 @@ function CreditsChip({ balance }: { balance: number }) {
         title="No credits remaining — top up"
       >
         <AlertTriangle size={9} />
-        0 credits
+        0
       </Link>
     );
   }
@@ -74,7 +74,7 @@ function CreditsChip({ balance }: { balance: number }) {
         title="Low credits"
       >
         <AlertTriangle size={9} />
-        {`${creditsLabel} credit${creditsLabel === '1' ? '' : 's'}`}
+        {creditsLabel}
       </Link>
     );
   }
@@ -86,7 +86,7 @@ function CreditsChip({ balance }: { balance: number }) {
       title="Credits remaining"
     >
       <CreditCard size={9} />
-      {`${creditsLabel} credits`}
+      {creditsLabel}
     </Link>
   );
 }
