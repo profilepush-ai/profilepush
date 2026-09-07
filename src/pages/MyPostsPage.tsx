@@ -774,6 +774,9 @@ export default function MyPostsPage() {
           ) : (
             <div className="flex shrink-0 items-center gap-2 pb-2">
               {searchBoxEl}
+              <div className="flex shrink-0 items-center gap-1">
+                {statusFilterButtonsEl(false)}
+              </div>
               {rangeMenuEl}
               {addPostButtonEl(false)}
             </div>
@@ -897,11 +900,6 @@ export default function MyPostsPage() {
 
                 {/* Column 1: Post Cards */}
                 <div className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white">
-                  <div className="border-b border-gray-100 p-4">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {statusFilterButtonsEl(false)}
-                    </div>
-                  </div>
                   <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-4">
                   {filteredPosts.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-10 text-center">{emptyPostsMessageEl}</div>
