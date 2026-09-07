@@ -14,18 +14,18 @@ const RANGE_OPTIONS: Array<{ id: string; label: string; days: number }> = [
 
 type JobsFunnelTrend = {
   received_funnel: { posted: number; previewed: number; applied: number; screening_completed: number; qualified: number; rejected: number };
-  sent_funnel: { revealed: number; breakdown_viewed: number; submitted: number; screening_completed: number; qualified: number };
+  sent_funnel: { submitted: number; screening_completed: number; qualified: number };
   conversations: number;
   active_list_downloaded: number;
-  daily: Array<{ date: string; previews: number; applications: number; revealed: number; submitted: number }>;
+  daily: Array<{ date: string; previews: number; applications: number; submitted: number }>;
 };
 
 type HotlistFunnelTrend = {
   received_funnel: { posted: number; previewed: number; requested: number; fulfilled: number };
-  sent_funnel: { revealed: number; breakdown_viewed: number; requested: number; fulfilled: number };
+  sent_funnel: { requested: number; fulfilled: number };
   conversations: number;
   active_list_downloaded: number;
-  daily: Array<{ date: string; previews: number; requests: number; revealed: number; sent_requests: number }>;
+  daily: Array<{ date: string; previews: number; requests: number; sent_requests: number }>;
 };
 
 function SmallStat({ icon: Icon, label, value }: { icon: typeof MessageSquare; label: string; value: number }) {
@@ -79,8 +79,6 @@ export default function DashboardPage() {
     { label: 'Qualified', value: jobsTrend?.received_funnel.qualified ?? 0 },
   ];
   const jobsSentStages = [
-    { label: 'Revealed', value: jobsTrend?.sent_funnel.revealed ?? 0 },
-    { label: 'Breakdown', value: jobsTrend?.sent_funnel.breakdown_viewed ?? 0 },
     { label: 'Submitted', value: jobsTrend?.sent_funnel.submitted ?? 0 },
     { label: 'Screening Done', value: jobsTrend?.sent_funnel.screening_completed ?? 0 },
     { label: 'Qualified', value: jobsTrend?.sent_funnel.qualified ?? 0 },
@@ -93,8 +91,6 @@ export default function DashboardPage() {
     { label: 'Fulfilled', value: hotlistTrend?.received_funnel.fulfilled ?? 0 },
   ];
   const hotlistSentStages = [
-    { label: 'Revealed', value: hotlistTrend?.sent_funnel.revealed ?? 0 },
-    { label: 'Breakdown', value: hotlistTrend?.sent_funnel.breakdown_viewed ?? 0 },
     { label: 'Requested', value: hotlistTrend?.sent_funnel.requested ?? 0 },
     { label: 'Fulfilled', value: hotlistTrend?.sent_funnel.fulfilled ?? 0 },
   ];
@@ -162,7 +158,7 @@ export default function DashboardPage() {
                   <p className="mt-2 text-[11px] text-gray-400">{jobsTrend?.received_funnel.rejected} rejected in this period</p>
                 )}
 
-                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Sent — from Feed &amp; Tracker</p>
+                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Sent — AI Submit &amp; Tracker</p>
                 <FunnelChart stages={jobsSentStages} color="#0d9488" />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Daily Trend</p>
@@ -171,13 +167,12 @@ export default function DashboardPage() {
                   series={[
                     { key: 'previews', label: 'Previews', color: '#93c5fd' },
                     { key: 'applications', label: 'Applications', color: '#2563eb' },
-                    { key: 'revealed', label: 'Revealed', color: '#5eead4' },
                     { key: 'submitted', label: 'Submitted', color: '#0d9488' },
                   ]}
                 />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Activity Heatmap</p>
-                <HeatmapStrip data={jobsTrend?.daily ?? []} valueKeys={['previews', 'applications', 'revealed', 'submitted']} color="#2563eb" />
+                <HeatmapStrip data={jobsTrend?.daily ?? []} valueKeys={['previews', 'applications', 'submitted']} color="#2563eb" />
               </section>
 
               {/* Hotlist column */}
@@ -200,7 +195,7 @@ export default function DashboardPage() {
                 <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">Received — from Posts</p>
                 <FunnelChart stages={hotlistReceivedStages} color="#9333ea" />
 
-                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Sent — from Feed &amp; Tracker</p>
+                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Sent — AI Request &amp; Tracker</p>
                 <FunnelChart stages={hotlistSentStages} color="#db2777" />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Daily Trend</p>
@@ -209,13 +204,12 @@ export default function DashboardPage() {
                   series={[
                     { key: 'previews', label: 'Previews', color: '#d8b4fe' },
                     { key: 'requests', label: 'Requests', color: '#9333ea' },
-                    { key: 'revealed', label: 'Revealed', color: '#fbcfe8' },
                     { key: 'sent_requests', label: 'Sent Requests', color: '#db2777' },
                   ]}
                 />
 
                 <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Activity Heatmap</p>
-                <HeatmapStrip data={hotlistTrend?.daily ?? []} valueKeys={['previews', 'requests', 'revealed', 'sent_requests']} color="#9333ea" />
+                <HeatmapStrip data={hotlistTrend?.daily ?? []} valueKeys={['previews', 'requests', 'sent_requests']} color="#9333ea" />
               </section>
             </div>
           )}
