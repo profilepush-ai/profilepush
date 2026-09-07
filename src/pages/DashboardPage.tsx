@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Briefcase, Check, ChevronDown, Clock3, Download, MessageSquare, UserRound } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import { useAuth } from '../contexts/AuthContext';
@@ -32,13 +33,53 @@ type RecruiterActivity = {
   daily: Array<{ date: string; previews: number; requests: number; submitted: number }>;
 };
 
-function SmallStat({ icon: Icon, label, value }: { icon: typeof MessageSquare; label: string; value: number }) {
+const PERSONA_ACCENT = {
+  vendor: { icon: Briefcase, iconBg: 'bg-blue-50', iconColor: 'text-blue-700', label: 'Vendor' },
+  recruiter: { icon: UserRound, iconBg: 'bg-purple-50', iconColor: 'text-purple-700', label: 'Recruiter' },
+} as const;
+
+// Every chart/funnel/stat is its own independent card sitting directly on
+// the page background — not nested inside one big per-persona container —
+// with a small persona badge in its header for context.
+function Widget({ persona, title, subtitle, children }: {
+  persona: keyof typeof PERSONA_ACCENT;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  const accent = PERSONA_ACCENT[persona];
   return (
-    <div className="flex items-center gap-2 rounded-md bg-gray-50 px-3 py-2">
-      <Icon size={13} className="text-gray-400" />
-      <div>
-        <p className="text-[13px] font-bold text-gray-900">{value}</p>
-        <p className="text-[10px] text-gray-500">{label}</p>
+    <div className="mb-4 break-inside-avoid rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${accent.iconBg} ${accent.iconColor}`}>
+          <accent.icon size={13} />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-[11px] font-bold uppercase tracking-wide text-gray-400">{accent.label}</p>
+          <p className="truncate text-[13px] font-bold text-gray-900">{title}</p>
+          {subtitle && <p className="truncate text-[11px] text-gray-400">{subtitle}</p>}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function StatWidget({ persona, icon: Icon, label, value }: {
+  persona: keyof typeof PERSONA_ACCENT; icon: LucideIcon; label: string; value: number;
+}) {
+  const accent = PERSONA_ACCENT[persona];
+  return (
+    <div className="mb-4 break-inside-avoid rounded-lg border border-gray-200 bg-white p-4">
+      <div className="flex items-center gap-3">
+        <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${accent.iconBg} ${accent.iconColor}`}>
+          <Icon size={16} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{accent.label}</p>
+          <p className="text-[18px] font-bold text-gray-900">{value}</p>
+          <p className="truncate text-[11px] text-gray-500">{label}</p>
+        </div>
       </div>
     </div>
   );
@@ -137,34 +178,42 @@ export default function DashboardPage() {
               <LogoSpinner size={22} />
             </div>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {/* Vendor column — posts Jobs, requests from Hotlist */}
-              <section className="rounded-lg border border-gray-200 bg-white p-4">
-                <div className="mb-4 flex items-center gap-2">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-blue-50 text-blue-700">
-                    <Briefcase size={15} />
-                  </span>
-                  <div>
-                    <p className="text-[14px] font-bold text-gray-900">Vendor</p>
-                    <p className="text-[11px] text-gray-400">Posts Jobs · Requests consultants from Hotlist</p>
-                  </div>
-                </div>
+            // Masonry-style flow (CSS columns, not a grid) so widgets of very
+            // different heights (a 2-row funnel next to a chart) pack
+            // tightly instead of a rigid grid leaving ragged empty gaps —
+            // and there's exactly one page scrollbar, no per-column ones.
+            <div className="columns-1 gap-4 sm:columns-2 xl:columns-3">
+              <StatWidget persona="vendor" icon={MessageSquare} label="Conversations" value={vendorActivity?.conversations ?? 0} />
+              <StatWidget persona="vendor" icon={Download} label="Recruiter contacts downloaded" value={vendorActivity?.contacts_downloaded ?? 0} />
+              <StatWidget persona="recruiter" icon={MessageSquare} label="Conversations" value={recruiterActivity?.conversations ?? 0} />
+              <StatWidget persona="recruiter" icon={Download} label="Vendor contacts downloaded" value={recruiterActivity?.contacts_downloaded ?? 0} />
 
-                <div className="mb-4 grid grid-cols-2 gap-2">
-                  <SmallStat icon={MessageSquare} label="Conversations" value={vendorActivity?.conversations ?? 0} />
-                  <SmallStat icon={Download} label="Recruiter contacts downloaded" value={vendorActivity?.contacts_downloaded ?? 0} />
-                </div>
-
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">My Jobs — Received</p>
+              <Widget persona="vendor" title="My Jobs — Received">
                 <FunnelChart stages={vendorJobsStages} color="#2563eb" />
                 {(vendorActivity?.jobs_received_funnel.rejected ?? 0) > 0 && (
                   <p className="mt-2 text-[11px] text-gray-400">{vendorActivity?.jobs_received_funnel.rejected} rejected in this period</p>
                 )}
+              </Widget>
 
-                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Hotlist — Requested by me</p>
+              <Widget persona="vendor" title="Hotlist — Requested by me">
                 <FunnelChart stages={vendorHotlistStages} color="#0d9488" />
+              </Widget>
 
-                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Daily Trend</p>
+              <Widget persona="recruiter" title="My Hotlist — Received">
+                <FunnelChart stages={recruiterHotlistStages} color="#9333ea" />
+              </Widget>
+
+              <Widget persona="recruiter" title="Jobs — Applied to">
+                <FunnelChart stages={recruiterJobsStages} color="#db2777" />
+                {recruiterActivity && (recruiterActivity.jobs_applying_funnel.via_submission_total > 0 || recruiterActivity.jobs_applying_funnel.via_outreach_total > 0) && (
+                  <p className="mt-2 text-[11px] text-gray-400">
+                    {recruiterActivity.jobs_applying_funnel.via_submission_total} via consultant submission ({recruiterActivity.jobs_applying_funnel.via_submission_screening_completed} screened),
+                    {' '}{recruiterActivity.jobs_applying_funnel.via_outreach_total} via outreach email ({recruiterActivity.jobs_applying_funnel.via_outreach_delivered} delivered)
+                  </p>
+                )}
+              </Widget>
+
+              <Widget persona="vendor" title="Daily Trend">
                 <DailyBarChart
                   data={vendorActivity?.daily ?? []}
                   series={[
@@ -173,41 +222,9 @@ export default function DashboardPage() {
                     { key: 'requests', label: 'Hotlist Requests', color: '#0d9488' },
                   ]}
                 />
+              </Widget>
 
-                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Activity Heatmap</p>
-                <HeatmapStrip data={vendorActivity?.daily ?? []} valueKeys={['previews', 'applications', 'requests']} color="#2563eb" />
-              </section>
-
-              {/* Recruiter (bench sales) column — posts Hotlist, applies to Jobs */}
-              <section className="rounded-lg border border-gray-200 bg-white p-4">
-                <div className="mb-4 flex items-center gap-2">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-purple-50 text-purple-700">
-                    <UserRound size={15} />
-                  </span>
-                  <div>
-                    <p className="text-[14px] font-bold text-gray-900">Recruiter (Bench Sales)</p>
-                    <p className="text-[11px] text-gray-400">Posts Hotlist · Applies to Jobs with consultants</p>
-                  </div>
-                </div>
-
-                <div className="mb-4 grid grid-cols-2 gap-2">
-                  <SmallStat icon={MessageSquare} label="Conversations" value={recruiterActivity?.conversations ?? 0} />
-                  <SmallStat icon={Download} label="Vendor contacts downloaded" value={recruiterActivity?.contacts_downloaded ?? 0} />
-                </div>
-
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-400">My Hotlist — Received</p>
-                <FunnelChart stages={recruiterHotlistStages} color="#9333ea" />
-
-                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Jobs — Applied to</p>
-                <FunnelChart stages={recruiterJobsStages} color="#db2777" />
-                {recruiterActivity && (recruiterActivity.jobs_applying_funnel.via_submission_total > 0 || recruiterActivity.jobs_applying_funnel.via_outreach_total > 0) && (
-                  <p className="mt-2 text-[11px] text-gray-400">
-                    {recruiterActivity.jobs_applying_funnel.via_submission_total} via consultant submission ({recruiterActivity.jobs_applying_funnel.via_submission_screening_completed} screened),
-                    {' '}{recruiterActivity.jobs_applying_funnel.via_outreach_total} via outreach email ({recruiterActivity.jobs_applying_funnel.via_outreach_delivered} delivered)
-                  </p>
-                )}
-
-                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Daily Trend</p>
+              <Widget persona="recruiter" title="Daily Trend">
                 <DailyBarChart
                   data={recruiterActivity?.daily ?? []}
                   series={[
@@ -216,10 +233,15 @@ export default function DashboardPage() {
                     { key: 'submitted', label: 'Jobs Applied', color: '#db2777' },
                   ]}
                 />
+              </Widget>
 
-                <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-gray-400">Activity Heatmap</p>
+              <Widget persona="vendor" title="Activity Heatmap">
+                <HeatmapStrip data={vendorActivity?.daily ?? []} valueKeys={['previews', 'applications', 'requests']} color="#2563eb" />
+              </Widget>
+
+              <Widget persona="recruiter" title="Activity Heatmap">
                 <HeatmapStrip data={recruiterActivity?.daily ?? []} valueKeys={['previews', 'requests', 'submitted']} color="#9333ea" />
-              </section>
+              </Widget>
             </div>
           )}
         </div>
