@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, FileText, MessageSquare, Search, Sparkles, Video, X, XCircle } from 'lucide-react';
+import { ArrowLeft, Check, FileText, Filter, MessageSquare, Search, Sparkles, Video, X, XCircle } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
@@ -78,6 +78,8 @@ export default function PostApplicationsPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
+  const statusMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   useEffect(() => {
@@ -88,6 +90,24 @@ export default function PostApplicationsPage() {
     mediaQuery.addEventListener('change', updateViewport);
     return () => mediaQuery.removeEventListener('change', updateViewport);
   }, []);
+
+  // Same pattern as the range-menu dropdowns elsewhere (MyPostsPage, etc.):
+  // a compact trigger button + a dropdown, closed on any outside pointer.
+  useEffect(() => {
+    if (!isStatusMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (statusMenuRef.current && target && !statusMenuRef.current.contains(target)) {
+        setIsStatusMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [isStatusMenuOpen]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => setToast({ message, type }), []);
 
@@ -235,8 +255,8 @@ export default function PostApplicationsPage() {
           </div>
 
           {!loading && applications.length > 0 && (
-            <div className="mb-2 flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative w-full shrink-0 sm:w-64">
+            <div className="mb-2 flex shrink-0 items-center gap-2">
+              <div className="relative min-w-0 flex-1">
                 <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
@@ -246,24 +266,40 @@ export default function PostApplicationsPage() {
                   className="w-full rounded-md border border-[#dfdad2] bg-white py-1.5 pl-8 pr-3 text-[12px] text-gray-700 outline-none focus:border-blue-300 dark:border-white/10 dark:bg-[#1E2126] dark:text-slate-200"
                 />
               </div>
-              {/* Full width of its own row on mobile (was squeezed next to
-                  the search input, leaving room for barely two of the six
-                  tabs before requiring a non-obvious horizontal scroll). */}
-              <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5">
-                {STATUS_TABS.map((tab) => {
-                  const count = tab.id === 'all' ? applications.length : applications.filter((a) => a.status === tab.id).length;
-                  const isActive = statusFilter === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setStatusFilter(tab.id)}
-                      className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${isActive ? 'border-blue-600 bg-blue-600 text-white dark:border-white/25 dark:bg-[#2A2E35] dark:text-slate-100' : 'border-[#dfdad2] bg-white text-gray-500 hover:bg-gray-50 dark:border-white/10 dark:bg-[#1E2126] dark:text-[#94A3B8] dark:hover:bg-white/5'}`}
-                    >
-                      {tab.label} · {count}
-                    </button>
-                  );
-                })}
+              {/* Same filter-dropdown pattern used for date ranges elsewhere
+                  (MyPostsPage, etc.): a compact trigger next to the search
+                  box instead of a row of always-visible tabs that didn't
+                  fit on mobile. */}
+              <div ref={statusMenuRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsStatusMenuOpen((prev) => !prev)}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${statusFilter !== 'all' ? 'border-blue-600 bg-blue-600 text-white' : 'border-[#dfdad2] bg-white text-gray-600 hover:bg-gray-50 dark:border-white/10 dark:bg-[#1E2126] dark:text-[#94A3B8] dark:hover:bg-white/5'}`}
+                  aria-label="Filter by status"
+                >
+                  <Filter size={12} />
+                  <span>{STATUS_TABS.find((tab) => tab.id === statusFilter)?.label ?? 'All'}</span>
+                </button>
+
+                {isStatusMenuOpen && (
+                  <div className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[190px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg dark:border-white/10 dark:bg-[#20242a]">
+                    {STATUS_TABS.map((tab) => {
+                      const count = tab.id === 'all' ? applications.length : applications.filter((a) => a.status === tab.id).length;
+                      const isActive = statusFilter === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => { setStatusFilter(tab.id); setIsStatusMenuOpen(false); }}
+                          className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${isActive ? (isDark ? 'bg-[#2A2E35] text-slate-100' : 'bg-gray-100 text-gray-800') : (isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50')}`}
+                        >
+                          <span>{tab.label} · {count}</span>
+                          {isActive ? <Check size={11} /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}
