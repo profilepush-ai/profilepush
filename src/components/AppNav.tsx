@@ -4,7 +4,7 @@ import {
   ChevronDown, HelpCircle, LogOut, Settings,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, Briefcase, MoonStar, SunMedium, Mail, Megaphone, Database,
+  Activity, Briefcase, MoonStar, SunMedium, Mail, Megaphone, Database, UserRound,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -100,8 +100,8 @@ function CreditsChip({ balance }: { balance: number }) {
 }
 
 const PERSONA_OPTIONS = [
-  { id: 'vendor', label: 'Vendor' },
-  { id: 'bench_sales', label: 'Bench Sales' },
+  { id: 'vendor', label: 'Vendor', icon: Briefcase },
+  { id: 'bench_sales', label: 'Bench Sales', icon: UserRound },
 ] as const;
 
 // Global persona toggle — same branded pill style used across the app's
@@ -135,13 +135,16 @@ function PersonaSwitcher() {
           type="button"
           onClick={() => void choose(option.id)}
           disabled={switchingTo != null}
-          className={`inline-flex items-center justify-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition disabled:opacity-60 ${
+          title={option.label}
+          aria-label={option.label}
+          className={`inline-flex items-center justify-center gap-1 rounded-full px-1.5 py-1 text-[11px] font-semibold transition disabled:opacity-60 sm:px-2.5 ${
             account.active_persona === option.id
               ? 'border border-blue-600 bg-blue-600 text-white'
               : 'border border-transparent bg-white text-gray-500 hover:text-gray-700'
           }`}
         >
-          {option.label}
+          <option.icon size={12} />
+          <span className="hidden sm:inline">{option.label}</span>
         </button>
       ))}
     </div>
@@ -369,7 +372,7 @@ export default function AppNav() {
 
       {/* Mobile: credits chip + account avatar */}
       {user && (
-        <span className="sm:hidden ml-auto flex items-center gap-3">
+        <span className="sm:hidden ml-auto flex items-center gap-1.5">
           <button
             type="button"
             onClick={toggleTheme}
