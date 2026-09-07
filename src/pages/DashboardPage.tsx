@@ -282,8 +282,29 @@ export default function DashboardPage() {
       <AppNav />
       <main className="flex-1 min-h-0 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4">
-          <div className="mb-4 flex items-center justify-end">
-            <div className="relative">
+          <div className="mb-4 flex items-center gap-2">
+            {/* Below lg, the two columns stack full-height one after another,
+                so a tab switcher lets the user jump straight to one persona
+                instead of scrolling past the other. At lg+ both show side by
+                side and this switcher is hidden. */}
+            <div className="flex shrink-0 items-center gap-1 lg:hidden">
+              {(Object.keys(PERSONA_ACCENT) as Array<keyof typeof PERSONA_ACCENT>).map((persona) => (
+                <button
+                  key={persona}
+                  type="button"
+                  onClick={() => setMobilePersonaTab(persona)}
+                  className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                    mobilePersonaTab === persona
+                      ? 'border border-blue-600 bg-blue-600 text-white'
+                      : 'border border-transparent bg-white text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {PERSONA_ACCENT[persona].label}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative ml-auto">
               <button
                 type="button"
                 onClick={() => setIsRangeMenuOpen((prev) => !prev)}
@@ -320,23 +341,6 @@ export default function DashboardPage() {
               {SHOW_AI_INSIGHTS && (
                 <AiInsightsWidget days={range.days} rangeLabel={range.label} />
               )}
-
-              {/* Below lg, the two columns stack full-height one after another,
-                  so a tab switcher lets the user jump straight to one persona
-                  instead of scrolling past the other. At lg+ both show side by
-                  side and this switcher is hidden. */}
-              <div className="mb-4 inline-flex rounded-full border border-gray-200 bg-white p-1 lg:hidden">
-                {(Object.keys(PERSONA_ACCENT) as Array<keyof typeof PERSONA_ACCENT>).map((persona) => (
-                  <button
-                    key={persona}
-                    type="button"
-                    onClick={() => setMobilePersonaTab(persona)}
-                    className={`rounded-full px-4 py-1.5 text-[12px] font-semibold transition ${mobilePersonaTab === persona ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
-                  >
-                    {PERSONA_ACCENT[persona].label}
-                  </button>
-                ))}
-              </div>
 
               {/* Vendor and Recruiter each get their own dedicated column — no
                   interleaving — laid out top-to-bottom as: heatmap, stats,
