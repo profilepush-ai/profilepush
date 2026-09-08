@@ -9,6 +9,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
+import AddToHomeScreenPrompt from './AddToHomeScreenPrompt';
 import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
@@ -591,6 +592,7 @@ export default function AppNav() {
           </Link>
         </nav>
       )}
+      <AddToHomeScreenPrompt />
     </>
   );
 }
