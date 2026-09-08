@@ -306,7 +306,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
         <MarketingNav activePersona={persona} />
 
         {/* ── HERO ── */}
-        <section className="relative pt-16 md:pt-20 pb-6 md:pb-12 px-6 text-center overflow-hidden">
+        <section className="relative pt-24 md:pt-20 pb-6 md:pb-12 px-6 text-center overflow-hidden">
           <div className="relative max-w-3xl mx-auto">
             <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
               <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">{content.heroHeadline}</span>
@@ -333,7 +333,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                 <span className="text-gray-400">·</span>
                 <span>No Credit Card Required</span>
               </p>
-              <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="hidden sm:flex flex-wrap items-center justify-center gap-2">
                 {['SOC2 Type II Infrastructure', 'AES-256 Encrypted', '100% Privacy-First — Your Data Never Sold'].map(badge => (
                   <span key={badge} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">
                     <ShieldCheck size={11} className="text-emerald-500 shrink-0" />
