@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useNavigate } from 'react-router-dom';
 import {
   Briefcase, Building2, Check, Clock3, Eye, MapPin, MessageSquare, Pencil, Plus, RotateCcw,
-  Search, Share2, Sparkles, Trash2, UserRound, Users, X, XCircle,
+  Search, Send, Share2, Sparkles, Trash2, UserRound, Users, X, XCircle,
   type LucideIcon,
 } from 'lucide-react';
 import AppNav from '../components/AppNav';
@@ -14,6 +14,7 @@ import { supabase } from '../lib/supabase';
 import PostFormModal, { type PostKind, type UserPost } from '../components/posts/PostFormModal';
 import ClaimPostsWidget from '../components/posts/ClaimPostsWidget';
 import ScreeningSubmissionModal, { type ScreeningTurn } from '../components/ScreeningSubmissionModal';
+import SubmitHotlistResumeModal from '../components/SubmitHotlistResumeModal';
 
 interface ApplicationRow {
   id: string;
@@ -45,6 +46,36 @@ const APPLICATION_STATUS_LABELS: Record<string, string> = {
   screening_completed: 'Screening Submitted',
   qualified: 'Qualified',
   rejected: 'Rejected',
+};
+
+interface HotlistRequestRow {
+  request_id: string;
+  status: string;
+  submission_resume_url: string | null;
+  submission_resume_file_name: string | null;
+  submission_note: string | null;
+  fulfilled_at: string | null;
+  created_at: string;
+  requested_by_account_name: string | null;
+  requested_by_user_email: string | null;
+}
+
+const REQUEST_STATUS_STYLES: Record<string, string> = {
+  processing: 'border-gray-200 bg-gray-100 text-gray-600',
+  charged: 'border-gray-200 bg-gray-100 text-gray-600',
+  completed: 'border-blue-200 bg-blue-50 text-blue-700',
+  fulfilled: 'border-emerald-300 bg-emerald-100 text-emerald-800',
+  failed: 'border-red-200 bg-red-50 text-red-600',
+  refunded: 'border-red-200 bg-red-50 text-red-600',
+};
+
+const REQUEST_STATUS_LABELS: Record<string, string> = {
+  processing: 'Requesting…',
+  charged: 'Requesting…',
+  completed: 'Awaiting Resume',
+  fulfilled: 'Resume Sent',
+  failed: 'Failed',
+  refunded: 'Refunded',
 };
 
 type KindFilter = 'all' | 'job' | 'hotlist';
@@ -158,6 +189,10 @@ export default function MyPostsPage() {
   const [applicationsLoading, setApplicationsLoading] = useState(false);
   const [decisionBusyId, setDecisionBusyId] = useState<string | null>(null);
   const [chatBusyId, setChatBusyId] = useState<string | null>(null);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+  const [hotlistRequests, setHotlistRequests] = useState<HotlistRequestRow[]>([]);
+  const [hotlistRequestsLoading, setHotlistRequestsLoading] = useState(false);
+  const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [landingPasteText, setLandingPasteText] = useState('');
   const [showKindChooser, setShowKindChooser] = useState(false);
@@ -417,19 +452,39 @@ export default function MyPostsPage() {
     setApplicationsLoading(false);
   }, [showToast]);
 
+  const loadHotlistRequestsForPost = useCallback(async (hotlistId: string) => {
+    setHotlistRequestsLoading(true);
+    const { data, error } = await supabase.rpc('get_hotlist_post_requests' as never, { p_hotlist_id: hotlistId } as never);
+    if (error) {
+      showToast(error.message, 'error');
+      setHotlistRequestsLoading(false);
+      return;
+    }
+    setHotlistRequests((data ?? []) as unknown as HotlistRequestRow[]);
+    setHotlistRequestsLoading(false);
+  }, [showToast]);
+
   useEffect(() => {
     setSelectedApplicationId(null);
+    setSelectedRequestId(null);
     if (!selectedPostId) {
       setApplications([]);
       setTurnsByApplication({});
+      setHotlistRequests([]);
       return;
     }
     const post = [...jobPosts, ...hotlistPosts].find((p) => p.id === selectedPostId);
     if (post?.kind === 'job') {
       void loadApplicationsForPost(selectedPostId);
+      setHotlistRequests([]);
+    } else if (post?.kind === 'hotlist') {
+      void loadHotlistRequestsForPost(selectedPostId);
+      setApplications([]);
+      setTurnsByApplication({});
     } else {
       setApplications([]);
       setTurnsByApplication({});
+      setHotlistRequests([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPostId]);
@@ -574,6 +629,15 @@ export default function MyPostsPage() {
   const selectedApplicationCanDecide = selectedApplication
     ? (selectedApplication.status !== 'qualified' && selectedApplication.status !== 'rejected')
     : false;
+  const filteredRequests = hotlistRequests.filter((req) => {
+    if (!normalizedApplicantSearch) return true;
+    return (
+      req.requested_by_account_name?.toLowerCase().includes(normalizedApplicantSearch) ||
+      req.requested_by_user_email?.toLowerCase().includes(normalizedApplicantSearch)
+    );
+  });
+  const selectedRequest = selectedRequestId ? hotlistRequests.find((r) => r.request_id === selectedRequestId) ?? null : null;
+  const respondingRequest = respondingRequestId ? hotlistRequests.find((r) => r.request_id === respondingRequestId) ?? null : null;
   // The desktop 3-column view should sit directly on the page background,
   // matching /feed's detail layout (its wrapper is bg-transparent, not a
   // white bordered card) — only loading/empty/mobile states keep the
@@ -1009,16 +1073,34 @@ export default function MyPostsPage() {
                       <p className="text-[13px] text-gray-400">Select a post to see applicants</p>
                     </div>
                   ) : selectedPost.kind !== 'job' ? (
-                    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-                      <p className="text-[13px] text-gray-400">View and respond to resume requests on this Hotlist post</p>
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/posts/requests/${selectedPost.id}`)}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700"
-                      >
-                        <Users size={13} />
-                        View Requests
-                      </button>
+                    <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-4">
+                      {hotlistRequestsLoading ? (
+                        <div className="flex items-center justify-center py-10"><LogoSpinner size={18} /></div>
+                      ) : hotlistRequests.length === 0 ? (
+                        <p className="p-3 text-center text-[12px] text-gray-400">No requests yet</p>
+                      ) : filteredRequests.length === 0 ? (
+                        <p className="p-3 text-center text-[12px] text-gray-400">No matching requests</p>
+                      ) : (
+                        filteredRequests.map((req) => {
+                          const isReqSelected = selectedRequestId === req.request_id;
+                          return (
+                            <button
+                              key={req.request_id}
+                              type="button"
+                              onClick={() => setSelectedRequestId(req.request_id)}
+                              className={`block w-full rounded-md border px-2.5 py-2 text-left transition-colors ${isReqSelected ? 'border-blue-300 bg-blue-50' : 'border-transparent bg-gray-50 hover:bg-gray-100'}`}
+                            >
+                              <div className="flex items-start justify-between gap-1.5">
+                                <p className="min-w-0 truncate text-[12px] font-semibold text-gray-900">{req.requested_by_account_name || 'A vendor'}</p>
+                                <span className={`shrink-0 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${REQUEST_STATUS_STYLES[req.status] ?? REQUEST_STATUS_STYLES.completed}`}>
+                                  {REQUEST_STATUS_LABELS[req.status] ?? req.status}
+                                </span>
+                              </div>
+                              {req.requested_by_user_email && <p className="truncate text-[10px] text-gray-400">{req.requested_by_user_email}</p>}
+                            </button>
+                          );
+                        })
+                      )}
                     </div>
                   ) : (
                       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-4">
@@ -1059,9 +1141,67 @@ export default function MyPostsPage() {
                   )}
                 </div>
 
-                {/* Column 3: Post Application detail panel */}
+                {/* Column 3: Post Application / Request detail panel */}
                 <aside className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white">
-                  {!selectedApplication ? (
+                  {selectedPost?.kind === 'hotlist' ? (
+                    !selectedRequest ? (
+                      <div className="flex flex-1 items-center justify-center p-6 text-center">
+                        <p className="text-[13px] text-gray-400">Select a request to review</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start gap-2.5 border-b border-gray-100 p-4">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[15px] font-semibold text-gray-900">{selectedRequest.requested_by_account_name || 'A vendor'}</p>
+                            {selectedRequest.requested_by_user_email && (
+                              <p className="truncate text-[12px] text-gray-500">{selectedRequest.requested_by_user_email}</p>
+                            )}
+                            <span className={`mt-1 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${REQUEST_STATUS_STYLES[selectedRequest.status] ?? REQUEST_STATUS_STYLES.completed}`}>
+                              {REQUEST_STATUS_LABELS[selectedRequest.status] ?? selectedRequest.status}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRequestId(null)}
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+                            aria-label="Close"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+
+                        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+                          {selectedRequest.submission_note && (
+                            <div>
+                              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Note</p>
+                              <p className="text-[12px] italic text-gray-600">“{selectedRequest.submission_note}”</p>
+                            </div>
+                          )}
+                          <div>
+                            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Resume Sent</p>
+                            {selectedRequest.submission_resume_url ? (
+                              <iframe src={selectedRequest.submission_resume_url} className="h-[400px] w-full rounded-md border border-gray-200 bg-white" title="Resume" />
+                            ) : (
+                              <p className="text-[12px] text-gray-400">Not sent yet.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {selectedRequest.status === 'completed' && (
+                          <div className="flex items-center gap-2 border-t border-gray-100 p-3">
+                            <button
+                              type="button"
+                              onClick={() => setRespondingRequestId(selectedRequest.request_id)}
+                              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700"
+                            >
+                              <Send size={14} />
+                              Respond
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )
+                  ) : !selectedApplication ? (
                     <div className="flex flex-1 items-center justify-center p-6 text-center">
                       <p className="text-[13px] text-gray-400">Select an applicant to review</p>
                     </div>
@@ -1174,6 +1314,18 @@ export default function MyPostsPage() {
           onClose={() => { setFormOpen(null); setEditingPost(null); setSeedPasteText(undefined); }}
           onSaved={() => { setFormOpen(null); setEditingPost(null); setSeedPasteText(undefined); void loadPosts(); }}
           showToast={showToast}
+        />
+      )}
+
+      {respondingRequest && (
+        <SubmitHotlistResumeModal
+          requestId={respondingRequest.request_id}
+          roleTitle={selectedPost?.title || 'this request'}
+          onClose={() => setRespondingRequestId(null)}
+          onSubmitted={() => {
+            setRespondingRequestId(null);
+            if (selectedPostId) void loadHotlistRequestsForPost(selectedPostId);
+          }}
         />
       )}
 
