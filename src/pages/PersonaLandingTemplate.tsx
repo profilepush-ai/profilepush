@@ -65,7 +65,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     title: 'ProfilePush for Vendors — Fill Requirements Faster with an AI Copilot',
     description: 'ProfilePush is the AI copilot for Vendor teams sourcing C2C requirements. Browse a live Hotlist of consultants, get AI-drafted outreach, and let AI pre-screen every applicant before you open a resume.',
     canonical: 'https://profilepush.ai/vendors',
-    heroHeadline: 'Stop scrolling groups. Start filling requirements.',
+    heroHeadline: 'AI Copilot for Vendor Teams to hit 10X placements.',
     heroSub: 'One AI copilot finds consultants, drafts your outreach, and pre-screens every applicant — before you ever open a resume.',
     heroFeatureKey: 'hotlist',
     features: [
@@ -149,7 +149,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     title: 'ProfilePush for Bench Sales — Get Your Consultants Placed Faster',
     description: 'ProfilePush is the AI copilot for Bench Sales recruiters. Post your whole bench in one paste, submit to jobs with one click, and let AI run the screening call for you.',
     canonical: 'https://profilepush.ai/bench-sales',
-    heroHeadline: 'Stop retyping resumes. Start getting placed.',
+    heroHeadline: 'AI Copilot for Bench Sales Recruiters to hit 10X placements.',
     heroSub: 'Post your whole bench in one paste, submit to jobs with one click, and let AI run the screening call for you.',
     heroFeatureKey: 'posts',
     features: [
