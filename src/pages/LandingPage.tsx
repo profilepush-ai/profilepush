@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowRight, ChevronRight, Plus, Minus, ShieldCheck,
+  ArrowRight, Briefcase, Check, ChevronRight, Plus, Minus, ShieldCheck, UserRound,
 } from 'lucide-react';
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
@@ -10,134 +10,88 @@ import MarketingNav from '../components/MarketingNav';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
-// ── Feature definitions ────────────────────────────────────────────────────────
-const FEATURES = [
+// The hero visual reuses the same uploaded "Jobs" feed clip the persona
+// pages use for their own hero/feature slots — one shared asset, no new
+// recording needed.
+const HERO_FEATURE = { key: 'pulse', accent: 'from-blue-100 to-white', topGlow: 'rgba(147,197,253,0.6)' };
+
+interface WorkflowCard {
+  persona: 'vendor' | 'bench_sales';
+  icon: typeof Briefcase;
+  title: string;
+  tagline: string;
+  bullets: string[];
+  accent: string;
+  iconBg: string;
+  iconColor: string;
+  buttonClass: string;
+  path: string;
+  cta: string;
+}
+
+const WORKFLOW_CARDS: WorkflowCard[] = [
   {
-    key: 'marketpulse',
-    slug: 'pulse',
-    headline: '1 leaderboard. Every hot role.',
-    subline: 'Ranks every tech stack by live demand and rate, so you stop guessing and chase the roles that actually convert.',
-    accent: 'from-indigo-50 to-white',
-    badge: 'bg-indigo-100 text-indigo-700',
-    badgeLabel: 'Pulse',
-    topGlow: 'rgba(165,180,252,0.5)',
+    persona: 'vendor',
+    icon: Briefcase,
+    title: 'Vendor',
+    tagline: 'Post requirements, source consultants, close faster.',
+    bullets: [
+      'Post a requirement in seconds — AI fills the form',
+      'Browse a live Hotlist of available consultants',
+      'One-click AI-drafted resume requests',
+      'Every applicant AI-screened before you open a resume',
+    ],
+    accent: 'from-blue-600 to-indigo-500',
+    iconBg: 'bg-blue-50',
+    iconColor: 'text-blue-600',
+    buttonClass: 'bg-blue-600 hover:bg-blue-700',
+    path: '/vendors',
+    cta: 'See the Vendor Workflow',
   },
   {
-    key: 'screening',
-    slug: 'video-screening',
-    headline: 'AI interviews every applicant. You just watch the highlights.',
-    subline: 'The moment a candidate applies to a job you\'ve posted, AI runs an adaptive video interview with them automatically — then hands you a scored AI summary, the full recording, and their resume side by side, so you qualify or pass in minutes instead of scheduling a call.',
-    accent: 'from-rose-50 to-white',
-    badge: 'bg-rose-100 text-rose-700',
-    badgeLabel: 'Video Screening',
-    topGlow: 'rgba(253,164,175,0.5)',
-  },
-  {
-    key: 'pulse',
-    slug: 'jobs',
-    headline: 'Every requirement. The moment it posts.',
-    subline: 'AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7 — new requirements surface the moment they post, then AI Submit drafts your outreach so you\'re never starting from a blank page.',
-    accent: 'from-blue-100 to-white',
-    badge: 'bg-blue-100 text-blue-700',
-    badgeLabel: 'Jobs',
-    topGlow: 'rgba(147,197,253,0.6)',
-  },
-  {
-    key: 'hotlist',
-    slug: 'hotlist',
-    headline: 'Live in seconds. Every consultant.',
-    subline: 'AI watches the same groups and boards 24/7 for new consultant listings — available candidates surface the moment they\'re posted, then AI Request drafts your resume ask so you spend time closing, not typing.',
-    accent: 'from-amber-50 to-white',
-    badge: 'bg-amber-100 text-amber-700',
-    badgeLabel: 'Hotlist',
-    topGlow: 'rgba(252,211,77,0.5)',
-  },
-  {
-    key: 'posts',
-    slug: 'posts',
-    headline: 'Post it yourself. Get matched instantly.',
-    subline: 'Paste your listing and AI fills the form instantly — it joins the same feeds everyone browses, so interested recruiters can reach you in-app within minutes.',
-    accent: 'from-teal-50 to-white',
-    badge: 'bg-teal-100 text-teal-700',
-    badgeLabel: 'Posts',
-    topGlow: 'rgba(94,234,212,0.5)',
-  },
-  {
-    key: 'activelist',
-    slug: 'active-list',
-    headline: 'Every active vendor and recruiter. One list.',
-    subline: 'A filterable contact list of everyone actively posting jobs or consultants — skip the manual scrolling, filter by exactly what you need, and export the emails in seconds.',
-    accent: 'from-sky-50 to-white',
-    badge: 'bg-sky-100 text-sky-700',
-    badgeLabel: 'Active List',
-    topGlow: 'rgba(125,211,252,0.5)',
-  },
-  {
-    key: 'inbox',
-    slug: 'inbox',
-    headline: '1 submission. A real conversation.',
-    subline: 'Every AI-drafted pitch and request opens into one real conversation here — no more digging through your email for who replied to what.',
-    accent: 'from-purple-50 to-white',
-    badge: 'bg-purple-100 text-purple-700',
-    badgeLabel: 'Inbox',
-    topGlow: 'rgba(216,180,254,0.5)',
-  },
-  {
-    key: 'tracker',
-    slug: 'tracker',
-    headline: '0 double-submittals. Ever.',
-    subline: 'Every vendor and client in one CRM — log submissions, filter by date, export to CSV, and never lose a placement to a duplicate submittal.',
-    accent: 'from-emerald-50 to-white',
-    badge: 'bg-emerald-100 text-emerald-700',
-    badgeLabel: 'Tracker',
-    topGlow: 'rgba(110,231,183,0.5)',
+    persona: 'bench_sales',
+    icon: UserRound,
+    title: 'Bench Sales',
+    tagline: 'Post your bench, submit to jobs, get placed faster.',
+    bullets: [
+      'Post your whole bench in one paste',
+      'Browse a live feed of new job requirements',
+      'One-click AI Submit with resume auto-parse',
+      'Share a self-serve AI screening link — no call needed',
+    ],
+    accent: 'from-orange-500 to-amber-400',
+    iconBg: 'bg-orange-50',
+    iconColor: 'text-orange-600',
+    buttonClass: 'bg-orange-500 hover:bg-orange-600',
+    path: '/bench-sales',
+    cta: 'See the Bench Sales Workflow',
   },
 ];
 
 const FAQS = [
   {
-    q: 'What is ProfilePush?',
-    a: 'ProfilePush is an AI copilot built for IT staffing — bench sales recruiters and vendor teams alike. It watches job posts and consultant listings across social platforms in real time, surfaces your best matches, drafts your outreach, and keeps your pipeline organized, so you can 10X your placements without 10x the headcount.',
+    q: 'What does ProfilePush actually do?',
+    a: 'ProfilePush is an AI copilot for IT staffing. It watches live job and consultant activity around the clock, drafts your outreach the moment something matches, runs automatic AI video screening on every applicant, and keeps every conversation and submission organized in one place — so you place faster without adding headcount.',
   },
   {
-    q: 'What is Pulse?',
-    a: 'Pulse is your market-intelligence dashboard — it ranks every tech stack by live demand and rate, so you chase the roles that convert instead of guessing.',
-  },
-  {
-    q: 'What are Jobs and Hotlist?',
-    a: 'Jobs and Hotlist are live feeds — AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7. Jobs surfaces client requirements the moment they post; Hotlist surfaces available consultants the moment they\'re listed — so whichever side of the desk you\'re on, you see it before it\'s buried in a group feed.',
-  },
-  {
-    q: 'What is Video Screening?',
-    a: 'When a candidate applies to a job you\'ve posted on ProfilePush, AI automatically conducts an adaptive video interview with them, asking follow-up questions based on their answers. You get back a scored AI summary, the full video recording, and their resume together in one panel — so you can qualify or reject a candidate in minutes instead of scheduling a call.',
-  },
-  {
-    q: 'What is AI Submit / AI Request?',
-    a: 'AI Submit (on Jobs) and AI Request (on Hotlist) draft a personalized outreach email for you in seconds — requesting missing job details or a resume. You review the draft, then send it straight from your own connected Gmail address, or copy it and send it yourself.',
-  },
-  {
-    q: 'What is Posts?',
-    a: 'Posts lets you list your own job or consultant directly on ProfilePush — paste what you\'d normally post to a group, AI auto-fills the form, and it joins the same feeds everyone else browses so interested recruiters can chat with you in-app immediately.',
-  },
-  {
-    q: 'What is Active List?',
-    a: 'Active List is a consolidated, filterable contact list of every vendor and recruiter who\'s posted a job requirement or consultant listing recently — filter by role, skills, experience, work type, visa status, and rate, then download names and emails. Free accounts can download up to 50 contacts at a time, 500 total; Pro accounts have no cap.',
-  },
-  {
-    q: 'What is Inbox?',
-    a: 'Inbox is where every AI-drafted pitch or request becomes a real conversation — replies, opens, and any in-app chats from your own Posts, all in one thread, instead of scattered across email.',
-  },
-  {
-    q: 'What is Tracker?',
-    a: 'Tracker is your vendor and client CRM. Add contacts, log submissions with type badges (C2C, W2, Direct, Client, Vendor), filter by date range, and export everything to CSV. It keeps your pipeline organized so you never double-submit.',
+    q: 'Should I sign up as a Vendor or a Bench Sales recruiter?',
+    a: 'Whichever describes your day-to-day: choose Vendor if you post open requirements and source consultants to fill them, or Bench Sales if you market consultants and submit them against open jobs. See exactly how each workflow works above, and switch your persona anytime from the app header.',
   },
   {
     q: 'How does ProfilePush actually get me to 10X placements?',
-    a: 'Every stage removes a step that used to cost you time: AI watches social channels and job boards 24/7 so you see a post the moment it\'s live instead of scrolling groups yourself; AI Submit/Request hands you a drafted email instead of a blank page, ready to send straight from your own connected Gmail; Inbox keeps every reply in one thread instead of scattered across email; and Tracker stops you from double-submitting the same consultant. Less time per placement means more placements in the same day.',
+    a: 'Every stage removes a step that used to cost you time — AI surfaces a match the moment it\'s live instead of you scrolling groups, drafts your outreach instead of a blank page, screens every applicant automatically instead of a scheduled call, and keeps every reply and submission in one place instead of scattered across email. Less time per placement means more placements in the same day.',
   },
   {
     q: 'How much does ProfilePush cost?',
-    a: 'ProfilePush is free to start — no credit card required. Every account gets 500 free AI credits, one time, that never expire. Generating an email draft, an AI chat draft, or a new post each cost 1 credit. Top up any time in 500-credit packs at a flat ₹1 per credit, or subscribe to Pro from ₹500/month to have credits delivered automatically every cycle.',
+    a: 'Free to start, no credit card required — every account gets 500 AI credits, one time, that never expire. Posting, generating an AI draft, and each chat message cost 1 credit; a completed AI video screening costs 50 credits. Top up in 500-credit packs at ₹1/credit, or subscribe to Pro from ₹500/month for credits delivered automatically.',
+  },
+  {
+    q: 'Is my data safe?',
+    a: 'Yes — infrastructure runs on SOC2 Type II certified providers, everything is encrypted with AES-256, and your data is never sold to third parties.',
+  },
+  {
+    q: 'Can my whole team use one account?',
+    a: 'Yes — every plan includes unlimited team members at no extra cost, so your whole desk can share the same pipeline, Inbox, and Tracker.',
   },
 ];
 
@@ -179,12 +133,10 @@ export default function LandingPage() {
   const canEdit = user?.email === 'poornapotluri27@gmail.com';
 
   const storageBaseUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/landing-assets/features`;
-  const fallbackScreenshots = FEATURES.reduce<Record<string, string>>((acc, f) => {
-    acc[f.key] = `${storageBaseUrl}/${f.key}.webm`;
-    return acc;
-  }, {});
 
-  const [screenshots, setScreenshots] = useState<Record<string, string>>(fallbackScreenshots);
+  const [screenshots, setScreenshots] = useState<Record<string, string>>({
+    [HERO_FEATURE.key]: `${storageBaseUrl}/${HERO_FEATURE.key}.webm`,
+  });
 
   useEffect(() => {
     supabase
@@ -208,8 +160,7 @@ export default function LandingPage() {
     setScreenshots(prev => ({ ...prev, [key]: url }));
   }
 
-  const pulseFeature = FEATURES.find(f => f.key === 'pulse');
-  const pulseImageUrl = screenshots.pulse ?? null;
+  const heroImageUrl = screenshots[HERO_FEATURE.key] ?? null;
 
   return (
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
@@ -264,51 +215,63 @@ export default function LandingPage() {
 
         </div>
 
-        {pulseFeature && (
-          <div className="relative z-10 mt-8 max-w-6xl mx-auto text-left">
-            <GifSlot
-              featureKey={pulseFeature.key}
-              imageUrl={pulseImageUrl}
-              canEdit={canEdit}
-              onUploaded={handleUploaded}
-              accent={pulseFeature.accent}
-              topGlow={pulseFeature.topGlow}
-            />
-          </div>
-        )}
+        <div className="relative z-10 mt-8 max-w-6xl mx-auto text-left">
+          <GifSlot
+            featureKey={HERO_FEATURE.key}
+            imageUrl={heroImageUrl}
+            canEdit={canEdit}
+            onUploaded={handleUploaded}
+            accent={HERO_FEATURE.accent}
+            topGlow={HERO_FEATURE.topGlow}
+          />
+        </div>
       </section>
 
-      {/* ── FEATURES ── */}
-      <div id="features">
-        {FEATURES.map((f, idx) => (
-          <section
-            key={f.key}
-            id={f.slug}
-            className={`py-16 md:py-20 px-6 border-t border-gray-100 scroll-mt-16 ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
-          >
-            <div className="max-w-6xl mx-auto">
-              <div className="text-left mb-10">
-                <span className={`inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-4 ${f.badge} w-fit`}>
-                  {f.badgeLabel}
-                </span>
-                <h3 className="text-4xl md:text-5xl font-extrabold tracking-[-0.02em] leading-[1.08] mb-4">
-                  <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">{f.headline}</span>
-                </h3>
-                <p className="text-base text-gray-500 leading-relaxed">{f.subline}</p>
-              </div>
+      {/* ── VENDOR VS BENCH SALES ── */}
+      <section id="workflows" className="py-20 md:py-24 px-6 bg-gray-50 border-t border-gray-100">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-14">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Built for Both Sides of the Desk</p>
+            <h2 className="text-3xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight mb-4">
+              <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">Which side are you on?</span>
+            </h2>
+            <p className="text-base text-gray-500 max-w-xl mx-auto leading-relaxed">
+              Same AI copilot, two different workflows — pick yours and see exactly how it works.
+            </p>
+          </div>
 
-              <GifSlot
-                featureKey={f.key}
-                imageUrl={screenshots[f.key] ?? null}
-                canEdit={canEdit}
-                onUploaded={handleUploaded}
-                accent={f.accent}
-                topGlow={f.topGlow}
-              />
-            </div>
-          </section>
-        ))}
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+            {WORKFLOW_CARDS.map((card) => (
+              <div key={card.persona} className="rounded-2xl p-px gradient-border-frame shadow-xl shadow-gray-200/60">
+                <div className="relative flex h-full flex-col rounded-2xl bg-white p-8 overflow-hidden">
+                  <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${card.accent}`} />
+                  <span className={`inline-flex h-12 w-12 items-center justify-center rounded-xl ${card.iconBg} ${card.iconColor} mb-5`}>
+                    <card.icon size={22} />
+                  </span>
+                  <h3 className="text-2xl font-extrabold text-gray-900 mb-1.5">{card.title}</h3>
+                  <p className="text-sm text-gray-500 mb-6">{card.tagline}</p>
+                  <ul className="space-y-3 mb-8 flex-1">
+                    {card.bullets.map((bullet) => (
+                      <li key={bullet} className="flex items-start gap-2.5 text-sm text-gray-700">
+                        <span className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${card.iconBg}`}>
+                          <Check size={10} className={card.iconColor} strokeWidth={3} />
+                        </span>
+                        {bullet}
+                      </li>
+                    ))}
+                  </ul>
+                  <Link
+                    to={card.path}
+                    className={`w-full text-center text-white text-sm font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-1.5 ${card.buttonClass}`}
+                  >
+                    {card.cta} <ArrowRight size={14} />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ── HOW IT WORKS ── */}
       <section id="how-it-works" className="py-24 px-6 bg-white border-y border-gray-100">
