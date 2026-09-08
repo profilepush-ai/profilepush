@@ -73,7 +73,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // from "fetched, no persona set" so it doesn't flash the persona gate.
   const [accountLoading, setAccountLoading] = useState(true);
 
-  const loadAccount = useCallback(async (u: User) => {
+  // There's no DB trigger that provisions accounts/account_members on
+  // signup (see account-provisioning.ts) — every signup/sign-in flow
+  // creates that row itself, client-side, *after* the auth session already
+  // exists. That session change fires this same loadAccount (via the
+  // onAuthStateChange listener below) immediately, which can race ahead of
+  // those inserts and find no membership yet. Without a retry, that single
+  // early "not found" result becomes the final state — and since
+  // ProtectedRoute's persona gate only fires when `account` is truthy, a
+  // stuck-null account bypasses the gate entirely instead of showing it,
+  // dropping a brand-new signup straight into a persona-less app. Retrying
+  // a few times gives the real insert time to land before concluding the
+  // user genuinely has no account (e.g. an invite-pending case).
+  const loadAccount = useCallback(async (u: User, attempt = 0): Promise<void> => {
     const { data: mem } = await supabase
       .from('account_members')
       .select('*')
@@ -107,6 +119,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .update({ user_id: u.id, status: 'active' })
         .eq('id', invite.id);
       await loadAccount(u);
+      return;
+    }
+
+    if (attempt < 4) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await loadAccount(u, attempt + 1);
       return;
     }
 

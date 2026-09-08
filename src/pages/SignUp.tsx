@@ -246,16 +246,6 @@ export default function SignUp() {
     if (found) setPhoneCountry(found);
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <LogoSpinner size={20} />
-      </div>
-    );
-  }
-
-  if (user) return <Navigate to="/feed" replace />;
-
   async function handleGoogleSignUp() {
     setOauthSubmitting(true);
     setError(null);
@@ -360,6 +350,24 @@ export default function SignUp() {
     script.onload = initializeGoogleButton;
     document.head.appendChild(script);
   }, [googleClientId, handleGoogleCredential]);
+
+  // Guards moved here, after every hook declaration — `loading` starts true
+  // on this component's very first render (before AuthProvider's own effect
+  // has run), so an early return placed before the useCallback/useEffect
+  // above skipped them on that first render but called them once loading
+  // flipped false, changing the hook count between renders. That's a hard
+  // React invariant violation ("Rendered more hooks than during the
+  // previous render") — it crashed this page on effectively every direct
+  // page load of /signup, which is exactly how a first-time visitor arrives.
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <LogoSpinner size={20} />
+      </div>
+    );
+  }
+
+  if (user) return <Navigate to="/feed" replace />;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
