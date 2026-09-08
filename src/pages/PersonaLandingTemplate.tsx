@@ -4,7 +4,7 @@ import { ArrowRight, ChevronRight, Plus, Minus, ShieldCheck } from 'lucide-react
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
 import GifSlot from '../components/GifSlot';
-import PersonaMarketingNav from '../components/PersonaMarketingNav';
+import MarketingNav from '../components/MarketingNav';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -312,7 +312,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
           jsonLd={faqJsonLd}
         />
 
-        <PersonaMarketingNav active={persona} />
+        <MarketingNav activePersona={persona} />
 
         {/* ── HERO ── */}
         <section className="relative pt-20 md:pt-28 pb-6 md:pb-12 px-6 text-center overflow-hidden">

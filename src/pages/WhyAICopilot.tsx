@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, Clock, User, Zap, Target, FileText, Search, BarChart2, Mail } from 'lucide-react';
-import Logo from '../components/Logo';
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
+import MarketingNav from '../components/MarketingNav';
 
 const READING_TIME = '12 min read';
 
@@ -32,25 +32,7 @@ export default function WhyAICopilot() {
         jsonLd={WHY_AI_JSONLD}
       />
 
-      {/* Nav */}
-      <nav className="fixed top-0 inset-x-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 text-blue-600 font-bold text-base">
-            <Logo size="sm" />
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link to="/signin" className="hidden sm:block text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
-              Sign in
-            </Link>
-            <Link
-              to="/signup"
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-            >
-              Start free <ArrowRight size={13} />
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <MarketingNav />
 
       {/* Hero */}
       <header className="relative pt-24 md:pt-32 pb-12 md:pb-16 px-6 overflow-hidden">

@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import SEO from '../components/SEO';
-import Logo from '../components/Logo';
 import SiteFooter from '../components/SiteFooter';
+import MarketingNav from '../components/MarketingNav';
 
 const phases = [
   {
@@ -101,29 +101,7 @@ export default function HowItWorks() {
         jsonLd={HOW_IT_WORKS_JSONLD}
       />
 
-      {/* Nav */}
-      <nav className="fixed top-0 inset-x-0 z-50 border-b border-gray-100 bg-white/95 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/"><Logo size="md" /></Link>
-          <div className="hidden md:flex items-center gap-8 text-sm text-gray-500">
-            <Link to="/" className="hover:text-gray-900 transition-colors">Home</Link>
-            <Link to="/#pricing" className="hover:text-gray-900 transition-colors">Pricing</Link>
-            <Link to="/why-ai-copilot" className="hover:text-gray-900 transition-colors">Why AI Co-pilot</Link>
-            <Link to="/how-it-works" className="hover:text-gray-900 transition-colors">How it Works</Link>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link to="/signin" className="hidden sm:block text-sm text-gray-500 hover:text-gray-900 transition-colors">
-              Sign In
-            </Link>
-            <Link
-              to="/signup"
-              className="bg-blue-600 hover:bg-blue-700 transition-colors text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-sm"
-            >
-              Start Free <ArrowRight size={13} />
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <MarketingNav />
 
       {/* Hero */}
       <section className="relative overflow-hidden bg-gradient-to-b from-slate-50 to-white pt-32 pb-16 sm:pt-40 sm:pb-20">

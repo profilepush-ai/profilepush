@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import {
   ArrowRight, ChevronRight, Plus, Minus, ShieldCheck,
 } from 'lucide-react';
-import Logo from '../components/Logo';
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
 import GifSlot from '../components/GifSlot';
+import MarketingNav from '../components/MarketingNav';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -221,33 +221,7 @@ export default function LandingPage() {
         jsonLd={LANDING_FAQ_JSONLD}
       />
 
-      {/* ── NAV ── */}
-      <nav className="fixed top-0 inset-x-0 z-50 border-b border-gray-100 bg-white/95 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div>
-            <Logo size="md" />
-          </div>
-          <div className="hidden md:flex items-center gap-8 text-sm text-gray-500">
-            <a href="#features" className="hover:text-gray-900 transition-colors">Features</a>
-            <a href="#pricing" className="hover:text-gray-900 transition-colors">Pricing</a>
-            <Link to="/vendors" className="hover:text-gray-900 transition-colors">For Vendors</Link>
-            <Link to="/bench-sales" className="hover:text-gray-900 transition-colors">For Bench Sales</Link>
-            <Link to="/it-staffing-vendor-list" className="hover:text-gray-900 transition-colors">Vendors List</Link>
-            <Link to="/it-staffing-bench-sales-recruiters-list" className="hover:text-gray-900 transition-colors">Recruiters List</Link>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link to="/signin" className="hidden sm:block text-sm text-gray-500 hover:text-gray-900 transition-colors">
-              Sign In
-            </Link>
-            <Link
-              to="/signup"
-              className="bg-blue-600 hover:bg-blue-700 transition-colors text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5"
-            >
-              Start Free <ArrowRight size={13} />
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <MarketingNav />
 
       {/* ── HERO ── */}
       <section className="relative pt-20 md:pt-28 pb-6 md:pb-12 px-6 text-center overflow-hidden">

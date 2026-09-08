@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
-import Logo from '../components/Logo';
+import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO';
+import MarketingNav from '../components/MarketingNav';
 import SiteFooter from '../components/SiteFooter';
 import { type ActiveListContact } from '../components/ActiveListTable';
 import GatedPreviewTable from '../components/GatedPreviewTable';
@@ -218,18 +217,8 @@ export default function ItStaffingBenchSalesRecruitersListPage() {
         canonical={canonicalUrl}
         jsonLd={jsonLd}
       />
-      <nav className="sticky top-0 z-50 border-b border-gray-100 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-6">
-          <Link to="/"><Logo size="md" /></Link>
-          <div className="flex items-center gap-3">
-            <Link to="/signin" className="hidden text-sm text-gray-500 transition-colors hover:text-gray-900 sm:block">Sign In</Link>
-            <Link to="/signup" className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
-              Start Free <ArrowRight size={13} />
-            </Link>
-          </div>
-        </div>
-      </nav>
-      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <MarketingNav />
+      <div className="mx-auto max-w-4xl px-4 pt-24 pb-10 sm:px-6">
         <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{title}</h1>
         <p className="mt-3 text-sm leading-6 text-gray-600">
           Below are the bench sales recruiters our system has seen most recently posting available consultants — sourced from live market activity rather than a static directory that goes stale within weeks. If you're a recruiter looking for consultants to submit against your open requirements, this is who's actively marketing candidates right now.

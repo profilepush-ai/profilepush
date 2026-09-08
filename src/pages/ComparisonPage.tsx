@@ -1,8 +1,8 @@
 import { Link, useParams, Navigate } from 'react-router-dom';
 import { Check, X, ArrowRight, Zap, Target, Users, Search, Brain, FileText, Activity, Star, ChevronRight } from 'lucide-react';
-import Logo from '../components/Logo';
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
+import MarketingNav from '../components/MarketingNav';
 
 // ── Competitor data ────────────────────────────────────────────────────────────
 interface Competitor {
@@ -234,30 +234,6 @@ function Cell({ value, primary }: { value: true | false | 'partial'; primary?: b
   );
 }
 
-// ── Nav ────────────────────────────────────────────────────────────────────────
-function ComparisonNav() {
-  return (
-    <nav className="fixed top-0 inset-x-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 text-blue-600 font-bold text-base">
-          <Logo size="sm" />
-        </Link>
-        <div className="flex items-center gap-3">
-          <Link to="/signin" className="hidden sm:block text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
-            Sign in
-          </Link>
-          <Link
-            to="/signup"
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-          >
-            Start free <ArrowRight size={13} />
-          </Link>
-        </div>
-      </div>
-    </nav>
-  );
-}
-
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function ComparisonPage() {
   const { competitor } = useParams<{ competitor: string }>();
@@ -303,9 +279,9 @@ export default function ComparisonPage() {
         canonical={canonicalUrl}
         jsonLd={jsonLd}
       />
-      <ComparisonNav />
+      <MarketingNav />
 
-      <main className="pt-14">
+      <main className="pt-16">
         {/* ── Hero ── */}
         <section className="bg-white border-b border-gray-100 py-16 md:py-24">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
