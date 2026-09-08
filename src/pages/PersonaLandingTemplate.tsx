@@ -306,7 +306,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
         <MarketingNav activePersona={persona} />
 
         {/* ── HERO ── */}
-        <section className="relative pt-20 md:pt-28 pb-6 md:pb-12 px-6 text-center overflow-hidden">
+        <section className="relative pt-16 md:pt-20 pb-6 md:pb-12 px-6 text-center overflow-hidden">
           <div className="relative max-w-3xl mx-auto">
             <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
               <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">{content.heroHeadline}</span>
