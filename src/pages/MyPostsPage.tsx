@@ -854,7 +854,7 @@ export default function MyPostsPage() {
                         <span className="inline-flex items-center gap-1"><Eye size={11} className="text-gray-400" />{metrics.previewCount}</span>
                         <span className="inline-flex items-center gap-1"><MessageSquare size={11} className="text-gray-400" />{metrics.chatCount}</span>
                         <span className="inline-flex items-center gap-1"><Share2 size={11} className="text-gray-400" />{metrics.shareCount}</span>
-                        {post.kind === 'job' && (
+                        {post.kind === 'job' ? (
                           <button
                             type="button"
                             onClick={() => navigate(`/posts/applications/${post.id}`)}
@@ -862,6 +862,15 @@ export default function MyPostsPage() {
                           >
                             <Users size={11} />
                             {metrics.applicationCount} Application{metrics.applicationCount === 1 ? '' : 's'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/posts/requests/${post.id}`)}
+                            className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${isDark ? 'border-white/15 text-[#94A3B8]' : 'border-gray-200 text-gray-600'}`}
+                          >
+                            <Users size={11} />
+                            Requests
                           </button>
                         )}
                       </div>
@@ -1000,8 +1009,16 @@ export default function MyPostsPage() {
                       <p className="text-[13px] text-gray-400">Select a post to see applicants</p>
                     </div>
                   ) : selectedPost.kind !== 'job' ? (
-                    <div className="flex flex-1 items-center justify-center p-6 text-center">
-                      <p className="text-[13px] text-gray-400">Requests on Hotlist posts aren&apos;t shown here yet — coming soon</p>
+                    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+                      <p className="text-[13px] text-gray-400">View and respond to resume requests on this Hotlist post</p>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/posts/requests/${selectedPost.id}`)}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700"
+                      >
+                        <Users size={13} />
+                        View Requests
+                      </button>
                     </div>
                   ) : (
                       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-4">

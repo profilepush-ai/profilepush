@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Briefcase, Check, CheckCircle2, Clock3, ExternalLink,
+  Briefcase, Check, CheckCircle2, Clock3, ExternalLink, FileText,
   MessageSquare, Search, Sparkles, UserRound, Video, X, XCircle,
   type LucideIcon,
 } from 'lucide-react';
@@ -43,6 +43,7 @@ const ASK_AI_STATUS_STYLES: Record<string, string> = {
   processing: 'border-blue-200 bg-blue-50 text-blue-700',
   charged: 'border-blue-200 bg-blue-50 text-blue-700',
   completed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  fulfilled: 'border-emerald-300 bg-emerald-100 text-emerald-800',
   failed: 'border-red-200 bg-red-50 text-red-600',
   refunded: 'border-gray-200 bg-gray-100 text-gray-500',
 };
@@ -50,6 +51,7 @@ const ASK_AI_STATUS_LABELS: Record<string, string> = {
   processing: 'Requesting…',
   charged: 'Requesting…',
   completed: 'Requested',
+  fulfilled: 'Resume Received',
   failed: 'Failed',
   refunded: 'Refunded',
 };
@@ -86,6 +88,9 @@ interface HotlistAskRow {
   companyName: string;
   status: string;
   createdAt: string;
+  submissionResumeUrl: string | null;
+  submissionResumeFileName: string | null;
+  submissionNote: string | null;
 }
 
 interface HotlistChatRow {
@@ -240,6 +245,7 @@ export default function TrackerPage() {
     const askRows = (!askResult.error ? (askResult.data ?? []) : []) as unknown as Array<{
       id: string; hotlist_id: string; role_title: string; candidate_name: string;
       company_name: string; status: string; created_at: string;
+      submission_resume_url: string | null; submission_resume_file_name: string | null; submission_note: string | null;
     }>;
     const chatRows = (!chatResult.error ? (chatResult.data ?? []) : []) as unknown as Array<{
       id: string; hotlist_id: string; subject: string; owner_display_name: string;
@@ -252,6 +258,9 @@ export default function TrackerPage() {
         id: r.id, hotlistId: r.hotlist_id, roleTitle: r.role_title,
         candidateName: r.candidate_name, companyName: r.company_name,
         status: r.status, createdAt: r.created_at,
+        submissionResumeUrl: r.submission_resume_url,
+        submissionResumeFileName: r.submission_resume_file_name,
+        submissionNote: r.submission_note,
       })),
       ...chatRows.map((r): HotlistChatRow => ({
         kind: 'hotlist', type: 'chat',
@@ -463,6 +472,22 @@ export default function TrackerPage() {
                           Open chat
                         </button>
                       )}
+                      {!isChat && row.status === 'fulfilled' && row.submissionResumeUrl && (
+                        <>
+                          <a
+                            href={row.submissionResumeUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                          >
+                            <FileText size={9} strokeWidth={2.5} />
+                            Resume
+                          </a>
+                          {row.submissionNote && (
+                            <p className="mt-1 text-[11px] italic text-gray-500 dark:text-[#94A3B8]">“{row.submissionNote}”</p>
+                          )}
+                        </>
+                      )}
                     </div>
                   );
                 })}
@@ -588,6 +613,18 @@ export default function TrackerPage() {
                               <MessageSquare size={9} strokeWidth={2.5} />
                               Open chat
                             </button>
+                          )}
+                          {!isChat && row.status === 'fulfilled' && row.submissionResumeUrl && (
+                            <a
+                              href={row.submissionResumeUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                              title={row.submissionNote ?? undefined}
+                            >
+                              <FileText size={9} strokeWidth={2.5} />
+                              Resume
+                            </a>
                           )}
                         </td>
                       </tr>
