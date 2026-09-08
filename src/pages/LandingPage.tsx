@@ -1,19 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, Briefcase, Check, ChevronRight, Plus, Minus, ShieldCheck, UserRound,
 } from 'lucide-react';
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
-import GifSlot from '../components/GifSlot';
 import MarketingNav from '../components/MarketingNav';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
-
-// The hero visual reuses the same uploaded "Jobs" feed clip the persona
-// pages use for their own hero/feature slots — one shared asset, no new
-// recording needed.
-const HERO_FEATURE = { key: 'pulse', accent: 'from-blue-100 to-white', topGlow: 'rgba(147,197,253,0.6)' };
 
 interface WorkflowCard {
   persona: 'vendor' | 'bench_sales';
@@ -129,39 +121,6 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 
 // ── Landing Page ───────────────────────────────────────────────────────────────
 export default function LandingPage() {
-  const { user } = useAuth();
-  const canEdit = user?.email === 'poornapotluri27@gmail.com';
-
-  const storageBaseUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/landing-assets/features`;
-
-  const [screenshots, setScreenshots] = useState<Record<string, string>>({
-    [HERO_FEATURE.key]: `${storageBaseUrl}/${HERO_FEATURE.key}.webm`,
-  });
-
-  useEffect(() => {
-    supabase
-      .from('landing_screenshots')
-      .select('feature_key, image_url')
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn('Failed to load landing screenshots:', error.message);
-          return;
-        }
-        if (data && data.length > 0) {
-          const map: Record<string, string> = {};
-          data.forEach(r => { map[r.feature_key] = r.image_url; });
-          setScreenshots(prev => ({ ...prev, ...map }));
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  function handleUploaded(key: string, url: string) {
-    setScreenshots(prev => ({ ...prev, [key]: url }));
-  }
-
-  const heroImageUrl = screenshots[HERO_FEATURE.key] ?? null;
-
   return (
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
       <main>
@@ -175,7 +134,7 @@ export default function LandingPage() {
       <MarketingNav />
 
       {/* ── HERO ── */}
-      <section className="relative pt-20 md:pt-28 pb-6 md:pb-12 px-6 text-center overflow-hidden">
+      <section className="relative pt-20 md:pt-28 pb-16 md:pb-24 px-6 text-center overflow-hidden">
         <div className="relative max-w-3xl mx-auto">
 
           <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
@@ -183,7 +142,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-base md:text-lg text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
-            Built for both sides of the desk — whether you're filling your bench with requirements or filling a requirement with a consultant, one AI copilot runs the whole loop.
+            One AI copilot that watches the market, drafts your outreach, and screens every candidate automatically — built for Vendors and Bench Sales recruiters alike.
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4">
@@ -213,17 +172,6 @@ export default function LandingPage() {
             </div>
           </div>
 
-        </div>
-
-        <div className="relative z-10 mt-8 max-w-6xl mx-auto text-left">
-          <GifSlot
-            featureKey={HERO_FEATURE.key}
-            imageUrl={heroImageUrl}
-            canEdit={canEdit}
-            onUploaded={handleUploaded}
-            accent={HERO_FEATURE.accent}
-            topGlow={HERO_FEATURE.topGlow}
-          />
         </div>
       </section>
 
@@ -273,43 +221,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── HOW IT WORKS ── */}
-      <section id="how-it-works" className="py-24 px-6 bg-white border-y border-gray-100">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-16">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">The workflow</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-              From market signal to placement
-            </h2>
-          </div>
-
-          <div className="relative">
-            {/* Vertical connector */}
-            <div className="absolute left-6 top-6 bottom-6 w-px bg-gray-100" />
-
-            <div className="space-y-0">
-              {[
-                { n: '1', t: 'See what\'s hot', d: 'Pulse shows you exactly where the demand is, so you stop guessing and start where it counts.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
-                { n: '2', t: 'Jobs & Hotlist go live', d: 'AI watches LinkedIn, Facebook, WhatsApp, Reddit groups, and job boards 24/7 — new requirements and available consultants surface the moment they post, preview any post before you act.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
-                { n: '3', t: 'AI drafts your outreach', d: 'AI Submit or AI Request drafts the email for you — send it straight from your own connected Gmail, or copy it and tweak it yourself.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
-                { n: '4', t: 'Track it, close it', d: 'Every reply lands in Inbox as one real conversation; log it in Tracker so you never lose a placement to a duplicate submittal.', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
-              ].map((step) => (
-                <div key={step.n} className="relative flex gap-8 pb-10 last:pb-0">
-                  {/* Circle */}
-                  <div className={`relative z-10 w-12 h-12 shrink-0 rounded-full bg-white ring-4 ${step.ring} border border-gray-100 shadow-sm flex items-center justify-center`}>
-                    <span className={`text-base font-black ${step.num}`}>{step.n}</span>
-                  </div>
-                  {/* Content */}
-                  <div className="mt-[13px] min-w-0">
-                    <div className="font-semibold text-gray-900 text-base mb-1">{step.t}</div>
-                    <div className="text-sm text-gray-500 leading-relaxed">{step.d}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* ── PRICING ── */}
       <section id="pricing" className="py-24 px-6 bg-white border-y border-gray-100">
