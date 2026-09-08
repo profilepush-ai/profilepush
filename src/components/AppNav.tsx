@@ -56,10 +56,10 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   const postsPath = isBenchSales ? '/posts/hotlist' : '/posts/jobs';
   const postsIcon = isBenchSales ? UserRound : Briefcase;
   // Requests (Vendor's outbound Hotlist asks) gets an outbound-style icon;
-  // Applications (Bench Sales' outbound job applications) keeps the
+  // Submissions (Bench Sales' outbound job applications) keeps the
   // document icon it already had.
-  const trackerLabel = isBenchSales ? 'Applications' : 'Requests';
-  const trackerPath = isBenchSales ? '/tracker/applications' : '/tracker/requests';
+  const trackerLabel = isBenchSales ? 'Submissions' : 'Requests';
+  const trackerPath = isBenchSales ? '/tracker/submissions' : '/tracker/requests';
   const trackerIcon = isBenchSales ? FileText : Send;
   return [
     { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },

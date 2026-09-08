@@ -54,6 +54,8 @@ const OnboardingVideo = lazy(() => import('./pages/OnboardingVideo'));
 const ActiveListPage = lazy(() => import('./pages/ActiveListPage'));
 const ItStaffingVendorListPage = lazy(() => import('./pages/ItStaffingVendorListPage'));
 const ItStaffingBenchSalesRecruitersListPage = lazy(() => import('./pages/ItStaffingBenchSalesRecruitersListPage'));
+const VendorsLandingPage = lazy(() => import('./pages/VendorsLandingPage'));
+const BenchSalesLandingPage = lazy(() => import('./pages/BenchSalesLandingPage'));
 
 function PageLoader() {
   return (
@@ -182,11 +184,11 @@ function PostsRouteGuard() {
 }
 
 // Same pattern again — Vendor's outbound activity lives at /tracker/requests,
-// Bench Sales' at /tracker/applications.
+// Bench Sales' at /tracker/submissions.
 function TrackerRouteGuard() {
   const { account } = useAuth();
   const location = useLocation();
-  const expectedPath = account?.active_persona === 'bench_sales' ? '/tracker/applications' : '/tracker/requests';
+  const expectedPath = account?.active_persona === 'bench_sales' ? '/tracker/submissions' : '/tracker/requests';
   if (location.pathname !== expectedPath) {
     return <Navigate to={expectedPath} replace />;
   }
@@ -257,6 +259,8 @@ export default function App() {
             <Route path="/about" element={<ErrorBoundary><AboutUs /></ErrorBoundary>} />
             <Route path="/it-staffing-vendor-list" element={<ErrorBoundary><ItStaffingVendorListPage /></ErrorBoundary>} />
             <Route path="/it-staffing-bench-sales-recruiters-list" element={<ErrorBoundary><ItStaffingBenchSalesRecruitersListPage /></ErrorBoundary>} />
+            <Route path="/vendors" element={<ErrorBoundary><VendorsLandingPage /></ErrorBoundary>} />
+            <Route path="/bench-sales" element={<ErrorBoundary><BenchSalesLandingPage /></ErrorBoundary>} />
             <Route path="/contact" element={<ErrorBoundary><ContactUs /></ErrorBoundary>} />
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
             <Route path="/cancellation-refund" element={<ErrorBoundary><CancellationRefundPolicy /></ErrorBoundary>} />
@@ -280,7 +284,8 @@ export default function App() {
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker/requests" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/tracker/applications" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/tracker/submissions" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/tracker/applications" element={<ProtectedRoute><Navigate to="/tracker/submissions" replace /></ProtectedRoute>} />
             <Route path="/contacts" element={<ProtectedRoute><ErrorBoundary><ContactsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/active-list" element={<ProtectedRoute><ErrorBoundary><ActiveListPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/alerts" element={<ProtectedRoute><ErrorBoundary><AlertsPage /></ErrorBoundary></ProtectedRoute>} />
