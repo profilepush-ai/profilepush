@@ -125,7 +125,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     ],
     faq: [
       { q: 'Do I have to screen every candidate myself?', a: 'No — the moment someone applies to your job, AI automatically runs an adaptive video interview and hands you a 0-100 score plus a written summary alongside their resume, so you can qualify or pass in minutes instead of scheduling a call.' },
-      { q: 'What does it cost to post a requirement?', a: '1 credit per new job post, out of your 500 free credits — editing an existing post is always free.' },
+      { q: 'What does it cost to post a requirement or screen a candidate?', a: '1 credit per new job post, out of your 500 free credits — editing an existing post is always free. Each completed AI video screening costs 50 credits, charged automatically once the candidate finishes.' },
       { q: 'Can I request a resume from a consultant I found on LinkedIn, not just ProfilePush?', a: 'Yes — AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups for consultant listings too. On any scraped Hotlist post, one click drafts and sends a personalized resume request from your own connected Gmail.' },
       { q: 'Where do my resume requests and applicants end up?', a: 'Every resume ask lives in Tracker, and every applicant to your posted jobs lives in one view with their resume, AI score, and screening video side by side — nothing gets lost in email.' },
       { q: 'Is my data safe?', a: 'Yes — ProfilePush runs on SOC2 Type II certified infrastructure with AES-256 encryption, and your data is never sold to third parties.' },
@@ -213,7 +213,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
       { q: 'Can I post more than one consultant at a time?', a: 'Yes — paste a table of consultants and AI detects every candidate automatically. Review the batch once, then post them all with a single click.' },
       { q: 'Does my candidate need a ProfilePush account to complete screening?', a: 'No — share the screening link and they complete an adaptive AI video interview on their own time, no account required, no call to schedule.' },
       { q: 'What happens when a vendor requests a resume off my Hotlist post?', a: 'It shows up in your Submissions view with a status of Awaiting Resume — upload the file and an optional note, and the vendor sees it immediately with a notification.' },
-      { q: 'What does it cost to submit a candidate?', a: 'Submitting to a job is free — only generating a new AI-drafted outreach message or a new post costs 1 credit, out of your 500 free credits.' },
+      { q: 'What does it cost to submit a candidate?', a: 'Submitting to a job is free — only generating a new AI-drafted outreach message or a new post costs 1 credit, out of your 500 free credits. The AI video screening itself is free for you too; that 50-credit cost is billed to the vendor who posted the job.' },
       { q: 'Is my data safe?', a: 'Yes — ProfilePush runs on SOC2 Type II certified infrastructure with AES-256 encryption, and your data is never sold to third parties.' },
     ],
     ctaHeadlineLine1: 'Ready to',
