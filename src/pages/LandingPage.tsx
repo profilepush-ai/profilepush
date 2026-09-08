@@ -134,16 +134,12 @@ export default function LandingPage() {
       <MarketingNav />
 
       {/* ── HERO ── */}
-      <section className="relative pt-20 md:pt-28 pb-16 md:pb-24 px-6 text-center overflow-hidden">
+      <section className="relative pt-16 md:pt-20 pb-16 md:pb-24 px-6 text-center overflow-hidden">
         <div className="relative max-w-3xl mx-auto">
 
-          <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
+          <h1 className="text-[clamp(2rem,6vw,3.75rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-6">
             <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for US IT Staffing Teams to hit 10X placements.</span>
           </h1>
-
-          <p className="text-base md:text-lg text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
-            One AI copilot that watches the market, drafts your outreach, and screens every candidate automatically — built for Vendors and Bench Sales recruiters alike.
-          </p>
 
           <div className="flex flex-col items-center justify-center gap-4">
             <Link
@@ -173,25 +169,12 @@ export default function LandingPage() {
           </div>
 
         </div>
-      </section>
 
-      {/* ── VENDOR VS BENCH SALES ── */}
-      <section id="workflows" className="py-20 md:py-24 px-6 bg-gray-50 border-t border-gray-100">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Built for Both Sides of the Desk</p>
-            <h2 className="text-3xl md:text-5xl font-extrabold tracking-[-0.02em] leading-tight mb-4">
-              <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">Which side are you on?</span>
-            </h2>
-            <p className="text-base text-gray-500 max-w-xl mx-auto leading-relaxed">
-              Same AI copilot, two different workflows — pick yours and see exactly how it works.
-            </p>
-          </div>
-
+        <div className="relative z-10 mt-8 md:mt-10 max-w-5xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
             {WORKFLOW_CARDS.map((card) => (
               <div key={card.persona} className="rounded-2xl p-px gradient-border-frame shadow-xl shadow-gray-200/60">
-                <div className="relative flex h-full flex-col rounded-2xl bg-white p-8 overflow-hidden">
+                <div className="relative flex h-full flex-col rounded-2xl bg-white p-8 overflow-hidden text-left">
                   <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${card.accent}`} />
                   <span className={`inline-flex h-12 w-12 items-center justify-center rounded-xl ${card.iconBg} ${card.iconColor} mb-5`}>
                     <card.icon size={22} />
@@ -220,7 +203,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
 
       {/* ── PRICING ── */}
       <section id="pricing" className="py-24 px-6 bg-white border-y border-gray-100">
