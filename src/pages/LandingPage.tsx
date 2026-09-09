@@ -38,7 +38,7 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     iconColor: 'text-blue-600',
     buttonClass: 'bg-blue-600 hover:bg-blue-700',
     path: '/vendors',
-    cta: 'See the Vendor Workflow',
+    cta: 'Explore',
   },
   {
     persona: 'bench_sales',
@@ -56,7 +56,7 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     iconColor: 'text-orange-600',
     buttonClass: 'bg-orange-500 hover:bg-orange-600',
     path: '/bench-sales',
-    cta: 'See the Bench Sales Workflow',
+    cta: 'Explore',
   },
 ];
 
