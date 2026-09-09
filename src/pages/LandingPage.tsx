@@ -125,8 +125,8 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
       <main>
       <SEO
-        title="ProfilePush — AI Copilot Built to 10X Placements for IT Staffing Teams"
-        description="ProfilePush is the AI copilot for bench sales recruiters and vendor teams. It watches 500+ LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards, surfaces your best matches, drafts your outreach, and keeps your pipeline organized — so you 10X your placements without 10x the headcount."
+        title="ProfilePush — AI Copilot for Vendors & Bench Sales in US IT Staffing"
+        description="ProfilePush is the AI copilot for both sides of US IT staffing. Vendors get AI video screening that catches fake resumes and proxy interviews before submission. Bench Sales get a live list of vendors actively posting requirements, one-paste bulk posting, and free unlimited submissions."
         canonical="https://profilepush.ai/"
         jsonLd={LANDING_FAQ_JSONLD}
       />

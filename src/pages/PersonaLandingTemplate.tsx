@@ -60,8 +60,8 @@ interface PersonaContent {
 
 const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
   vendor: {
-    title: 'ProfilePush for Vendors — Fill Requirements Faster with an AI Copilot',
-    description: 'ProfilePush is the AI copilot for Vendor teams sourcing C2C requirements. Browse a live Hotlist of consultants, get AI-drafted outreach, and let AI pre-screen every applicant before you open a resume.',
+    title: 'ProfilePush for Vendors — AI Video Screening Catches Fake Resumes & Proxies',
+    description: 'ProfilePush is the AI copilot for Vendor teams. Every job applicant completes a recorded, adaptive AI video interview before you review them — built to catch fake resumes and proxy interviews early, before the client ever sees a bad consultant.',
     canonical: 'https://profilepush.ai/vendors',
     heroHeadline: 'The AI Copilot that finds fake resumes and proxies early.',
     heroFeatureKey: 'screening',
@@ -147,8 +147,8 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     ctaSub: 'Let the copilot interview first.',
   },
   bench_sales: {
-    title: 'ProfilePush for Bench Sales — Get Your Consultants Placed Faster',
-    description: 'ProfilePush is the AI copilot for Bench Sales recruiters. Post your whole bench in one paste, submit to jobs with one click, and let AI run the screening call for you.',
+    title: 'ProfilePush for Bench Sales — Connect Your Bench to Prime Vendors',
+    description: 'ProfilePush is the AI copilot for Bench Sales recruiters. Find the vendors actually posting requirements right now, post your whole bench in one paste, and submit candidates for free — with no limit.',
     canonical: 'https://profilepush.ai/bench-sales',
     heroHeadline: 'The AI Copilot that connects the bench to prime vendors.',
     heroFeatureKey: 'activelist',
@@ -289,14 +289,35 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
   const content = PERSONA_CONTENT[persona];
   const faqEntries = content.faq;
 
-  const faqJsonLd = {
+  const personaLabel = persona === 'vendor' ? 'Vendors' : 'Bench Sales';
+  const pageJsonLd = {
     '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: faqEntries.map(f => ({
-      '@type': 'Question',
-      name: f.q,
-      acceptedAnswer: { '@type': 'Answer', text: f.a },
-    })),
+    '@graph': [
+      {
+        '@type': 'WebPage',
+        '@id': `${content.canonical}#webpage`,
+        url: content.canonical,
+        name: content.title,
+        description: content.description,
+        isPartOf: { '@id': 'https://profilepush.ai/#website' },
+        about: { '@id': 'https://profilepush.ai/#organization' },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://profilepush.ai/' },
+          { '@type': 'ListItem', position: 2, name: personaLabel, item: content.canonical },
+        ],
+      },
+      {
+        '@type': 'FAQPage',
+        mainEntity: faqEntries.map(f => ({
+          '@type': 'Question',
+          name: f.q,
+          acceptedAnswer: { '@type': 'Answer', text: f.a },
+        })),
+      },
+    ],
   };
 
   const storageBaseUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/landing-assets/features`;
@@ -340,7 +361,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
           title={content.title}
           description={content.description}
           canonical={content.canonical}
-          jsonLd={faqJsonLd}
+          jsonLd={pageJsonLd}
         />
 
         <MarketingNav activePersona={persona} />

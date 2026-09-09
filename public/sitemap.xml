@@ -6,9 +6,23 @@
 
   <url>
     <loc>https://profilepush.ai/</loc>
-    <lastmod>2026-08-04</lastmod>
+    <lastmod>2026-09-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+  </url>
+
+  <url>
+    <loc>https://profilepush.ai/vendors</loc>
+    <lastmod>2026-09-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>
+
+  <url>
+    <loc>https://profilepush.ai/bench-sales</loc>
+    <lastmod>2026-09-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
   </url>
 
   <url>

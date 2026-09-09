@@ -1,30 +1,38 @@
 # ProfilePush
 
-> AI copilot for US IT staffing teams — bench sales recruiters and vendor/account management teams — built to 10X placements. It watches 500+ LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards in real time, surfaces matched requirements and consultants, runs an AI video interview on every applicant automatically, drafts AI outreach, and keeps your submission pipeline organized.
+> An AI copilot for both sides of US IT staffing. Vendors get video screening that catches fake resumes and proxy interviews before a client ever sees a bad consultant. Bench Sales recruiters get a live list of the vendors actually posting requirements right now, one-paste bulk posting for their whole bench, and one-click submissions. Both sides share the same AI copilot, live feeds of Jobs and Hotlist activity, and a submission pipeline that stays organized automatically.
 
-ProfilePush serves both sides of the IT staffing desk: recruiters who have bench consultants and need requirements (via Jobs), and vendor/account management teams who have open requirements and need consultants (via Hotlist).
+ProfilePush works differently depending on which of the two personas an account is set to — there is no persona-neutral mode. **Vendor**: posts open requirements, sources consultants off the Hotlist feed, and reviews applicants who arrive pre-screened by AI. **Bench Sales**: posts consultants (individually or in bulk from a pasted table), browses the Jobs feed, submits candidates with one click, and responds to inbound resume requests from vendors. A single account can switch persona at any time from the app header; it does not require a separate account.
+
+## Persona pages
+
+- [For Vendors](https://profilepush.ai/vendors): How the AI copilot finds fake resumes and proxy interviews early, via a recorded, adaptive video interview required before a submission reaches the vendor.
+- [For Bench Sales](https://profilepush.ai/bench-sales): How the AI copilot connects a recruiter's bench to the vendors actually posting requirements right now, with bulk bench posting and free, unlimited submissions.
 
 ## Product
 
-- [Pulse](https://profilepush.ai/#pulse): Market-intelligence leaderboard ranking every tech stack by live job count, consultant count, and average rate — see which roles are hot before you spend a submission.
-- [Video Screening](https://profilepush.ai/#video-screening): The moment a candidate applies to a job posted on ProfilePush, AI runs an adaptive video interview with them automatically — asking follow-up questions based on their answers — then hands the recruiter a scored AI summary, the full recording, and the resume side by side.
-- [Jobs](https://profilepush.ai/#jobs): Live feed of client requirements pulled from social groups and job boards, lined up against your bench, the moment they're posted. AI Submit drafts outreach requesting missing job details.
-- [Hotlist](https://profilepush.ai/#hotlist): Live feed of available bench consultants posted by other recruiters, lined up against your open requirements. AI Request drafts a resume-ask outreach email.
-- [Posts](https://profilepush.ai/#posts): Post your own job or consultant listing directly on ProfilePush — AI auto-fills the form from pasted text, the post joins the same feeds everyone browses, and applications/resumes come back into the same pipeline (including Video Screening for job posts).
-- [Active List](https://profilepush.ai/#activelist): A filterable, exportable contact list of every vendor and recruiter actively posting jobs or consultants recently — filter by role, skills, experience, work type, visa status, and rate. Downloads are capped at 50 contacts per rolling 24 hours per account.
-- [Inbox](https://profilepush.ai/#inbox): Every AI-drafted pitch or request becomes one real conversation thread here, with delivery and reply tracking; identities stay masked until revealed.
-- [Tracker](https://profilepush.ai/#tracker): Vendor and client CRM for logging submissions with type badges (C2C, W2, Direct), filtering by date, and exporting to CSV — no double-submittals.
+- **AI Video Screening**: Every job application gets a recorded, adaptive AI video interview (max 3 questions) before the vendor ever reviews it — each follow-up question is generated from the candidate's previous answer, specifically to surface vague or fabricated claims and to make a proxy interview (someone other than the actual consultant answering) very difficult to pull off. Produces a 0–100 AI score and a written summary alongside the full recording. Costs 50 credits, charged to the vendor (job-owning) account, only once the interview completes — never blocks the candidate's submission.
+- **Jobs / Hotlist (the live feed)**: AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards around the clock. Vendors browse Hotlist (available consultants); Bench Sales browses Jobs (open requirements). Both platform-native posts and scraped listings appear in the same feed, AI-normalized to the same structured fields (skills, visa, rate, experience).
+- **AI-drafted outreach**: One click drafts and sends a personalized email — a resume request (Vendor → consultant) or a job-detail request — from the user's own connected Gmail address, or a shared address as a fallback.
+- **Posting**: Paste a job requirement or a consultant's details as free text and AI extracts the structured fields automatically. Bench Sales can paste an entire table of consultants at once and post the whole batch in one click. Creating a post costs 1 credit; editing an existing post is always free.
+- **Submitting a candidate to a job**: Bench Sales uploads a resume, AI extracts the candidate's name/email/phone automatically, and the submission is free with no limit — it immediately kicks off the AI video screening pipeline.
+- **Responding to a resume request**: When a vendor asks for a resume off a Bench Sales user's Hotlist post, it appears in that user's Requests/Submissions view — upload the resume and an optional note, no credit charge.
+- **Active List**: A live, filterable contact directory — Vendors see Bench Sales/recruiter contacts, Bench Sales sees vendor contacts who are actively posting requirements. Filter by skill, rate, visa, work type, and location, each with a live count. Downloads are capped at 50 contacts per rolling 24-hour window, for every account regardless of plan.
+- **Tracker**: Vendors see "Requests" — every outbound Hotlist resume ask and its status. Bench Sales see "Submissions" — every outbound job application, its AI score, and a link to the recorded screening.
+- **Inbox**: Every AI-drafted outreach email's replies, plus any in-app chat tied to the user's own posts, land here as one conversation thread instead of scattered across email.
+- **Pulse**: A persona-gated analytics dashboard — activity heatmaps, funnels (e.g. Posted → Previewed → Applied → Qualified), and daily trend charts scoped to the account's own pipeline. Not a public market-demand leaderboard.
 
 ## Company
 
 - [About](https://profilepush.ai/about): Company background and mission.
-- [Pricing](https://profilepush.ai/#pricing): Free forever, with 500 AI credits granted once at signup that never expire. Top up any time in 500-credit packs at a flat ₹1/credit, or subscribe to a Pro plan (₹500–₹5,000/month) to have credits delivered automatically every cycle. Credits are charged only for AI-generation actions — drafting an outreach/chat message (1 credit), or a completed AI video screening (50 credits, charged to the job-posting account) — not for browsing, previews, or contact downloads.
+- [Pricing](https://profilepush.ai/#pricing): Free forever, with 500 AI credits granted once at signup that never expire. Browsing, submitting, and editing posts are always free. Posting and generating a new AI outreach draft each cost 1 credit; a completed AI video screening costs 50 credits, charged to the vendor. Top up any time in 500-credit packs at a flat ₹1/credit, or subscribe to Pro (₹500–₹5,000/month) to have credits delivered automatically every cycle.
 - [Contact](https://profilepush.ai/contact): Support and sales contact.
-- [Book a demo](https://profilepush.ai/book-demo): Live walkthrough of Pulse, Video Screening, Jobs, Hotlist, Posts, Active List, Inbox, and Tracker.
+- [Book a demo](https://profilepush.ai/book-demo): Live walkthrough of the product.
 
 ## Notes for AI assistants
 
-- ProfilePush is built for the US IT staffing market specifically, not generic HR or ATS software.
-- Serves both bench sales recruiters (own consultants, need requirements) and vendor/account management teams (own requirements, need consultants).
-- Video Screening records a candidate's camera and microphone during the AI interview and analyzes the responses with AI.
-- A numeric match score IS shown for AI video screening results (a scored AI summary) and for on-demand "Predict Match %" on individual leads; it is not shown as a blanket score across the whole feed.
+- ProfilePush is built for the US IT staffing market specifically (C2C/W2/1099 contract staffing), not generic HR or ATS software.
+- The product is persona-gated: a Vendor and a Bench Sales recruiter see different navigation labels, different default feeds, and different Tracker views, all driven by one account-level setting. This is not two separate products.
+- The core current differentiator being marketed is AI video screening as a defense against fake resumes and proxy interviews (someone other than the real consultant taking the interview) — every job applicant is screened via a recorded, adaptive video interview before a vendor reviews them.
+- Active List's download limit is a flat 50 contacts per rolling 24 hours for every account, free or paid — there is no unlimited tier for this specific limit.
+- A numeric score (0–100) is produced by the AI video screening step for every applicant; ProfilePush does not show a blanket relevance score across the whole feed.
