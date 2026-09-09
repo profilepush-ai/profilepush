@@ -64,7 +64,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     description: 'ProfilePush is the AI copilot for Vendor teams. Every job applicant completes a recorded, adaptive AI video interview before you review them — built to catch fake resumes and proxy interviews early, before the client ever sees a bad consultant.',
     canonical: 'https://profilepush.ai/vendors',
     heroHeadline: 'The AI Copilot that finds fake resumes and proxies early.',
-    heroFeatureKey: 'screening',
+    heroFeatureKey: 'hotlist',
     features: [
       {
         key: 'screening',
@@ -151,7 +151,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     description: 'ProfilePush is the AI copilot for Bench Sales recruiters. Find the vendors actually posting requirements right now, post your whole bench in one paste, and submit candidates for free — with no limit.',
     canonical: 'https://profilepush.ai/bench-sales',
     heroHeadline: 'The AI Copilot that connects the bench to prime vendors.',
-    heroFeatureKey: 'activelist',
+    heroFeatureKey: 'posts',
     features: [
       {
         key: 'activelist',
