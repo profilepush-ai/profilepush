@@ -26,7 +26,7 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     persona: 'vendor',
     icon: Briefcase,
     title: 'Vendor',
-    tagline: 'Keep the client happy.',
+    tagline: 'Protect the client relationship.',
     bullets: [
       'Interviews every consultant on video before submission',
       'Finds fake resumes and proxies early',

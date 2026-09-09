@@ -15,6 +15,7 @@ interface FeatureEntry {
   slug: string;
   headline: string;
   subline: string;
+  note?: string;
   accent: string;
   badge: string;
   badgeLabel: string;
@@ -59,7 +60,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     description: 'ProfilePush is the AI copilot for Vendor teams sourcing C2C requirements. Browse a live Hotlist of consultants, get AI-drafted outreach, and let AI pre-screen every applicant before you open a resume.',
     canonical: 'https://profilepush.ai/vendors',
     heroHeadline: 'The AI Copilot that finds fake resumes and proxies early.',
-    heroFeatureKey: 'hotlist',
+    heroFeatureKey: 'screening',
     problem: {
       eyebrow: 'The Problem',
       headline: 'One bad consultant can lose the client.',
@@ -150,55 +151,70 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     title: 'ProfilePush for Bench Sales — Get Your Consultants Placed Faster',
     description: 'ProfilePush is the AI copilot for Bench Sales recruiters. Post your whole bench in one paste, submit to jobs with one click, and let AI run the screening call for you.',
     canonical: 'https://profilepush.ai/bench-sales',
-    heroHeadline: 'AI Copilot for Bench Sales Recruiters to hit 10X placements.',
-    heroSub: 'Post your whole bench in one paste, submit to jobs with one click, and let AI run the screening call for you.',
+    heroHeadline: 'The AI Copilot that submits faster and knows the bench better.',
     heroFeatureKey: 'posts',
+    problem: {
+      eyebrow: 'The Problem',
+      headline: 'Marketing the wrong consultant costs a month.',
+      body: 'Weeks of submissions. Weeks of calls with vendors. Then the consultant fails the first interview. That is one month lost. It is also one vendor who may not answer again.',
+    },
     features: [
       {
-        key: 'posts',
-        slug: 'post-your-bench',
-        headline: 'Post your whole bench. One paste.',
-        subline: 'Paste a table of consultants and AI detects every candidate automatically — review the batch once, then post them all with one click.',
-        accent: 'from-teal-50 to-white',
-        badge: 'bg-teal-100 text-teal-700',
-        badgeLabel: 'Post',
-        topGlow: 'rgba(94,234,212,0.5)',
-      },
-      {
-        key: 'pulse',
-        slug: 'browse-jobs',
-        headline: 'Every requirement. The moment it posts.',
-        subline: 'AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups plus job boards 24/7 — new requirements surface the moment they\'re live, so you\'re first in, not fiftieth.',
-        accent: 'from-blue-100 to-white',
-        badge: 'bg-blue-100 text-blue-700',
-        badgeLabel: 'Jobs',
-        topGlow: 'rgba(147,197,253,0.6)',
+        key: 'screening',
+        slug: 'screening',
+        headline: 'The copilot checks the bench first.',
+        subline: 'Every submitted consultant does a video interview. The recruiter watches it too. Now it is clear who can handle a technical call. It is also clear who needs practice first. Recruiters learn this early, not from an unhappy vendor.',
+        note: 'The copilot never contacts the consultant. The screening link goes only to the recruiter. The recruiter shares it. No emails, no account, no marketing. Nobody comes between the recruiter and the bench.',
+        accent: 'from-rose-50 to-white',
+        badge: 'bg-rose-100 text-rose-700',
+        badgeLabel: 'Screening',
+        topGlow: 'rgba(253,164,175,0.5)',
       },
       {
         key: 'pulse',
         slug: 'ai-submit',
-        headline: '0 retyping. Ever.',
-        subline: 'Upload a resume and AI extracts the candidate\'s name, email, and phone automatically — one click submits, no retyping a single field.',
+        headline: 'The copilot fills the submission.',
+        subline: 'Upload the resume. The copilot reads the name, email and phone. One click to submit. Submissions never cost a credit.',
         accent: 'from-blue-100 to-white',
         badge: 'bg-blue-100 text-blue-700',
         badgeLabel: 'AI Submit',
         topGlow: 'rgba(147,197,253,0.6)',
       },
       {
-        key: 'screening',
-        slug: 'self-serve-screening',
-        headline: 'The interview happens without you.',
-        subline: 'Share one link — your candidate completes an adaptive AI video interview on their own time, no ProfilePush account, no call to schedule. You get the score and recording back automatically.',
-        accent: 'from-rose-50 to-white',
-        badge: 'bg-rose-100 text-rose-700',
-        badgeLabel: 'Video Screening',
-        topGlow: 'rgba(253,164,175,0.5)',
+        key: 'pulse',
+        slug: 'jobs',
+        headline: 'The copilot finds the right reqs.',
+        subline: 'LinkedIn, Facebook, WhatsApp and job boards. All day, every day. Filter by skill, rate and visa. Submit the same minute a good req appears.',
+        accent: 'from-blue-100 to-white',
+        badge: 'bg-blue-100 text-blue-700',
+        badgeLabel: 'Jobs',
+        topGlow: 'rgba(147,197,253,0.6)',
+      },
+      {
+        key: 'activelist',
+        slug: 'demand',
+        headline: 'The copilot shows what vendors want now.',
+        subline: 'Every live req, filtered by skill, rate, visa and location. Each filter shows a live count. See which skills vendors are posting this week.',
+        accent: 'from-sky-50 to-white',
+        badge: 'bg-sky-100 text-sky-700',
+        badgeLabel: 'Demand',
+        topGlow: 'rgba(125,211,252,0.5)',
+      },
+      {
+        key: 'posts',
+        slug: 'post',
+        headline: 'The copilot posts the whole bench.',
+        subline: 'Paste the hotlist table exactly as it is. The copilot reads every consultant. All of them go live together.',
+        accent: 'from-teal-50 to-white',
+        badge: 'bg-teal-100 text-teal-700',
+        badgeLabel: 'Post',
+        topGlow: 'rgba(94,234,212,0.5)',
       },
       {
         key: 'hotlist',
-        slug: 'inbound-requests',
-        headline: '0 missed requests. Ever.',
-        subline: 'When a vendor asks for a resume off your Hotlist post, it shows up in one screen — upload the file, add a note, done.',
+        slug: 'hotlist-requests',
+        headline: 'The copilot collects every request.',
+        subline: 'Every vendor asking for a resume, in one list. Clear status on each one. Upload the resume, add a note, done.',
         accent: 'from-amber-50 to-white',
         badge: 'bg-amber-100 text-amber-700',
         badgeLabel: 'Hotlist Requests',
@@ -206,31 +222,33 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
       },
       {
         key: 'tracker',
-        slug: 'track-submissions',
-        headline: 'Every submission. One score. One place.',
-        subline: 'Submissions shows the status and AI score for every candidate you\'ve sent, so you know exactly who to follow up with.',
+        slug: 'submissions',
+        headline: 'The copilot tracks every submission.',
+        subline: 'Status, score, recording and the vendor\'s answer. All in one place. Always clear what to follow up on today.',
         accent: 'from-emerald-50 to-white',
         badge: 'bg-emerald-100 text-emerald-700',
         badgeLabel: 'Submissions',
         topGlow: 'rgba(110,231,183,0.5)',
       },
     ],
+    workflowEyebrow: 'The Workflow',
+    workflowHeading: 'What the copilot does in the background.',
     howItWorks: [
-      { n: '1', t: 'See what\'s hot', d: 'Jobs shows you requirements the moment they post — platform listings and scraped requirements in one feed.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
-      { n: '2', t: 'Post your consultant(s)', d: 'Paste one or a whole table — AI fills the form and reviews the batch for you.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
-      { n: '3', t: 'AI submits & screens automatically', d: 'One click submits with an auto-parsed resume; the candidate completes the AI video screening on their own time.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
-      { n: '4', t: 'Track responses, get placed', d: 'Submissions keeps status and AI score in one place, so you know exactly who to follow up with.', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
+      { n: '1', t: 'Watches', d: 'every group and job board for matching reqs', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
+      { n: '2', t: 'Posts', d: 'the whole bench, from one pasted table', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
+      { n: '3', t: 'Fills', d: 'every submission, from the resume', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
+      { n: '4', t: 'Interviews', d: 'the consultant on video, with a score', dot: 'bg-rose-500', num: 'text-rose-500', ring: 'ring-rose-100' },
     ],
+    workflowClosing: 'The recruiter: markets only the consultants who are ready.',
     faq: [
-      { q: 'Can I post more than one consultant at a time?', a: 'Yes — paste a table of consultants and AI detects every candidate automatically. Review the batch once, then post them all with a single click.' },
-      { q: 'Does my candidate need a ProfilePush account to complete screening?', a: 'No — share the screening link and they complete an adaptive AI video interview on their own time, no account required, no call to schedule.' },
-      { q: 'What happens when a vendor requests a resume off my Hotlist post?', a: 'It shows up in your Submissions view with a status of Awaiting Resume — upload the file and an optional note, and the vendor sees it immediately with a notification.' },
-      { q: 'What does it cost to submit a candidate?', a: 'Submitting to a job is free — only generating a new AI-drafted outreach message or a new post costs 1 credit, out of your 500 free credits. The AI video screening itself is free for you too; that 50-credit cost is billed to the vendor who posted the job.' },
-      { q: 'Is my data safe?', a: 'Yes — ProfilePush runs on SOC2 Type II certified infrastructure with AES-256 encryption, and your data is never sold to third parties.' },
+      { q: 'How does screening help the recruiter?', a: 'The recruiter watches the recording too. It shows who can handle a technical call. It shows who needs practice. This is clear before a month is spent on marketing.' },
+      { q: 'Does the consultant need an account?', a: 'No. And the copilot never contacts them. The link goes to the recruiter. The recruiter shares it. That is the only contact.' },
+      { q: 'Can recruiters see which skills are in demand?', a: 'Yes. Every live req can be filtered by skill, rate, visa and location. Each filter shows a live count. It is clear what vendors are posting this week.' },
+      { q: 'What does submitting cost?', a: 'Nothing. Submissions are free and unlimited. Screening credits are charged to the vendor who owns the req.' },
+      { q: 'Is the data safe?', a: 'Yes. All data is encrypted. It is never sold or shared. Vendors get no way to contact the consultants on a hotlist.' },
     ],
-    ctaHeadlineLine1: 'Ready to',
-    ctaHeadlineLine2: 'get your bench placed faster?',
-    ctaSub: 'Stop retyping resumes. Start getting placed.',
+    ctaHeadlineLine1: 'Market the right consultants.',
+    ctaSub: 'Stop pasting hotlists into forty groups.',
   },
 };
 
@@ -402,6 +420,11 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                     <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">{f.headline}</span>
                   </h3>
                   <p className="text-base text-gray-500 leading-relaxed">{f.subline}</p>
+                  {f.note && (
+                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      <span className="font-bold">Important: </span>{f.note}
+                    </div>
+                  )}
                 </div>
 
                 <GifSlot
