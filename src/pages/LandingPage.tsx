@@ -171,21 +171,22 @@ export default function LandingPage() {
         </div>
 
         <div className="relative z-10 mt-8 md:mt-10 max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+          <div className="grid grid-cols-2 gap-3 sm:gap-6 md:gap-8">
             {WORKFLOW_CARDS.map((card) => (
-              <div key={card.persona} className="rounded-2xl p-px gradient-border-frame shadow-xl shadow-gray-200/60">
-                <div className="relative flex h-full flex-col rounded-2xl bg-white p-8 overflow-hidden text-left">
+              <div key={card.persona} className="rounded-xl sm:rounded-2xl p-px gradient-border-frame shadow-xl shadow-gray-200/60">
+                <div className="relative flex h-full flex-col rounded-xl sm:rounded-2xl bg-white p-3.5 sm:p-6 md:p-8 overflow-hidden text-left">
                   <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${card.accent}`} />
-                  <span className={`inline-flex h-12 w-12 items-center justify-center rounded-xl ${card.iconBg} ${card.iconColor} mb-5`}>
-                    <card.icon size={22} />
+                  <span className={`inline-flex h-8 w-8 sm:h-11 sm:w-11 md:h-12 md:w-12 items-center justify-center rounded-lg sm:rounded-xl ${card.iconBg} ${card.iconColor} mb-2.5 sm:mb-4 md:mb-5`}>
+                    <card.icon size={16} className="sm:hidden" />
+                    <card.icon size={20} className="hidden sm:block" />
                   </span>
-                  <h3 className="text-2xl font-extrabold text-gray-900 mb-1.5">{card.title}</h3>
-                  <p className="text-sm text-gray-500 mb-6">{card.tagline}</p>
-                  <ul className="space-y-3 mb-8 flex-1">
+                  <h3 className="text-base sm:text-xl md:text-2xl font-extrabold text-gray-900 mb-1 sm:mb-1.5">{card.title}</h3>
+                  <p className="text-[11px] sm:text-sm text-gray-500 mb-3 sm:mb-5 md:mb-6">{card.tagline}</p>
+                  <ul className="space-y-1.5 sm:space-y-3 mb-4 sm:mb-6 md:mb-8 flex-1">
                     {card.bullets.map((bullet) => (
-                      <li key={bullet} className="flex items-start gap-2.5 text-sm text-gray-700">
-                        <span className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${card.iconBg}`}>
-                          <Check size={10} className={card.iconColor} strokeWidth={3} />
+                      <li key={bullet} className="flex items-start gap-1.5 sm:gap-2.5 text-[11px] sm:text-sm text-gray-700">
+                        <span className={`mt-0.5 inline-flex h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 items-center justify-center rounded-full ${card.iconBg}`}>
+                          <Check size={9} className={card.iconColor} strokeWidth={3} />
                         </span>
                         {bullet}
                       </li>
@@ -193,9 +194,9 @@ export default function LandingPage() {
                   </ul>
                   <Link
                     to={card.path}
-                    className={`w-full text-center text-white text-sm font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-1.5 ${card.buttonClass}`}
+                    className={`w-full text-center text-white text-[11px] sm:text-sm font-semibold py-2 sm:py-3 rounded-lg sm:rounded-xl transition-colors flex items-center justify-center gap-1 sm:gap-1.5 ${card.buttonClass}`}
                   >
-                    {card.cta} <ArrowRight size={14} />
+                    {card.cta} <ArrowRight size={12} className="hidden sm:inline" />
                   </Link>
                 </div>
               </div>
