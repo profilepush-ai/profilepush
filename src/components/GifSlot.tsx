@@ -50,7 +50,12 @@ export default function GifSlot({
       if (uploadErr) throw uploadErr;
 
       const { data: urlData } = supabase.storage.from('landing-assets').getPublicUrl(path);
-      const publicUrl = urlData.publicUrl;
+      // upsert:true overwrites the same storage path, so re-uploading with the
+      // same file extension produces a byte-identical URL to the old one —
+      // browsers and the Supabase CDN then keep serving the stale cached
+      // video at that URL indefinitely. A cache-busting query param forces
+      // every upload to be a genuinely new URL nobody has cached yet.
+      const publicUrl = `${urlData.publicUrl}?v=${Date.now()}`;
 
       await supabase
         .from('landing_screenshots')
