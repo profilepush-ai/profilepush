@@ -32,18 +32,24 @@ interface HowItWorksStep {
 
 interface FaqPair { q: string; a: string; }
 
+interface ProblemBlock { eyebrow: string; headline: string; body: string; }
+
 interface PersonaContent {
   title: string;
   description: string;
   canonical: string;
   heroHeadline: string;
-  heroSub: string;
+  heroSub?: string;
   heroFeatureKey: string;
+  problem?: ProblemBlock;
   features: FeatureEntry[];
+  workflowEyebrow?: string;
+  workflowHeading?: string;
   howItWorks: HowItWorksStep[];
+  workflowClosing?: string;
   faq: FaqPair[];
   ctaHeadlineLine1: string;
-  ctaHeadlineLine2: string;
+  ctaHeadlineLine2?: string;
   ctaSub: string;
 }
 
@@ -52,15 +58,29 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     title: 'ProfilePush for Vendors — Fill Requirements Faster with an AI Copilot',
     description: 'ProfilePush is the AI copilot for Vendor teams sourcing C2C requirements. Browse a live Hotlist of consultants, get AI-drafted outreach, and let AI pre-screen every applicant before you open a resume.',
     canonical: 'https://profilepush.ai/vendors',
-    heroHeadline: 'AI Copilot for Vendor Teams to hit 10X placements.',
-    heroSub: 'One AI copilot finds consultants, drafts your outreach, and pre-screens every applicant — before you ever open a resume.',
+    heroHeadline: 'The AI copilot video screens and finds fake resumes and proxies.',
     heroFeatureKey: 'hotlist',
+    problem: {
+      eyebrow: 'The Problem',
+      headline: 'One bad consultant can lose the client.',
+      body: 'A fake resume gets through. A proxy takes the screening call. The client then interviews someone who cannot do the work. The client remembers who sent that person. That trust is very hard to win back.',
+    },
     features: [
+      {
+        key: 'screening',
+        slug: 'screening',
+        headline: 'The copilot interviews first.',
+        subline: 'The consultant answers questions on video. Each new question comes from the last answer. The copilot asks for a real number, a real tool, a real project. A fake resume will not pass. A proxy cannot hide on video. The recording, the score and the summary all arrive before the client sees anyone.',
+        accent: 'from-rose-50 to-white',
+        badge: 'bg-rose-100 text-rose-700',
+        badgeLabel: 'Screening',
+        topGlow: 'rgba(253,164,175,0.5)',
+      },
       {
         key: 'posts',
         slug: 'post-a-job',
-        headline: 'Post it in seconds. AI fills the rest.',
-        subline: 'Paste your requirement — AI extracts the title, skills, visa type, and rate automatically, then it joins the same feed every Bench Sales recruiter is already browsing.',
+        headline: 'The copilot fills the form.',
+        subline: 'Paste the req exactly as it would go into a group. The copilot pulls out the skills, visa, rate and experience.',
         accent: 'from-teal-50 to-white',
         badge: 'bg-teal-100 text-teal-700',
         badgeLabel: 'Post a Job',
@@ -68,9 +88,9 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
       },
       {
         key: 'hotlist',
-        slug: 'browse-hotlist',
-        headline: 'Every available consultant. Live.',
-        subline: 'AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups 24/7 for new consultant listings — available candidates surface the moment they post, so you\'re never chasing a name everyone else already called.',
+        slug: 'hotlist',
+        headline: 'The copilot watches every group.',
+        subline: 'LinkedIn, Facebook, WhatsApp and job boards. All day, every day. Consultants appear the day they become available.',
         accent: 'from-amber-50 to-white',
         badge: 'bg-amber-100 text-amber-700',
         badgeLabel: 'Hotlist',
@@ -79,28 +99,18 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
       {
         key: 'inbox',
         slug: 'ai-outreach',
-        headline: '0 blank emails. Ever.',
-        subline: 'One click drafts a personalized resume request and sends it from your own connected Gmail — every reply lands in Inbox as one real conversation, not scattered across your email.',
+        headline: 'The copilot writes the email.',
+        subline: 'Each email is about that one consultant. It sends from a real Gmail address. One click to approve. All replies arrive in one place.',
         accent: 'from-purple-50 to-white',
         badge: 'bg-purple-100 text-purple-700',
         badgeLabel: 'AI Outreach',
         topGlow: 'rgba(216,180,254,0.5)',
       },
       {
-        key: 'screening',
-        slug: 'pre-screened',
-        headline: 'AI interviews every applicant. You just watch the highlights.',
-        subline: 'The moment someone applies to your job, AI runs an adaptive video interview with them automatically — you get a scored summary, the full recording, and their resume side by side, so you qualify or pass in minutes instead of scheduling a call.',
-        accent: 'from-rose-50 to-white',
-        badge: 'bg-rose-100 text-rose-700',
-        badgeLabel: 'Video Screening',
-        topGlow: 'rgba(253,164,175,0.5)',
-      },
-      {
         key: 'tracker',
-        slug: 'track-requests',
-        headline: '0 lost requests. Ever.',
-        subline: 'Every resume ask lives in one place — see what\'s Requested, what came back, and what failed, without digging through email.',
+        slug: 'tracker',
+        headline: 'The copilot keeps every record.',
+        subline: 'Every request sent. Every reply received. Every resume downloaded. Nothing is asked twice.',
         accent: 'from-emerald-50 to-white',
         badge: 'bg-emerald-100 text-emerald-700',
         badgeLabel: 'Tracker',
@@ -109,30 +119,32 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
       {
         key: 'activelist',
         slug: 'active-list',
-        headline: 'Every active recruiter. One list.',
-        subline: 'A filterable directory of everyone actively posting consultants recently — filter by exactly what you need and export the emails in seconds.',
+        headline: 'The copilot updates the list daily.',
+        subline: 'Every bench sales recruiter posting right now. Filter by skill, visa, experience, rate and location.',
         accent: 'from-sky-50 to-white',
         badge: 'bg-sky-100 text-sky-700',
         badgeLabel: 'Active List',
         topGlow: 'rgba(125,211,252,0.5)',
       },
     ],
+    workflowEyebrow: 'The Workflow',
+    workflowHeading: 'What the copilot does in the background.',
     howItWorks: [
-      { n: '1', t: 'See who\'s on the bench', d: 'Hotlist shows you available consultants the moment they\'re listed — platform posts and scraped listings in one feed.', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
-      { n: '2', t: 'Post your requirement', d: 'Paste the JD, AI fills the form, and it joins the same feed every recruiter already browses.', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
-      { n: '3', t: 'AI drafts outreach & screens applicants', d: 'One click sends a personalized resume request; every applicant gets an automatic AI video interview and score.', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
-      { n: '4', t: 'Review your shortlist, close faster', d: 'Tracker keeps every ask organized so you spend your time closing, not chasing status.', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
+      { n: '1', t: 'Watches', d: 'every group and job board for available consultants', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
+      { n: '2', t: 'Fills', d: 'the req form, from pasted text', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
+      { n: '3', t: 'Writes', d: 'a resume request email, sent from a real inbox', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
+      { n: '4', t: 'Interviews', d: 'every consultant on video, with a score and a summary', dot: 'bg-rose-500', num: 'text-rose-500', ring: 'ring-rose-100' },
     ],
+    workflowClosing: 'The vendor: submits only the consultants who are ready for the client.',
     faq: [
-      { q: 'Do I have to screen every candidate myself?', a: 'No — the moment someone applies to your job, AI automatically runs an adaptive video interview and hands you a 0-100 score plus a written summary alongside their resume, so you can qualify or pass in minutes instead of scheduling a call.' },
-      { q: 'What does it cost to post a requirement or screen a candidate?', a: '1 credit per new job post, out of your 500 free credits — editing an existing post is always free. Each completed AI video screening costs 50 credits, charged automatically once the candidate finishes.' },
-      { q: 'Can I request a resume from a consultant I found on LinkedIn, not just ProfilePush?', a: 'Yes — AI watches LinkedIn, Facebook, WhatsApp, and Reddit groups for consultant listings too. On any scraped Hotlist post, one click drafts and sends a personalized resume request from your own connected Gmail.' },
-      { q: 'Where do my resume requests and applicants end up?', a: 'Every resume ask lives in Tracker, and every applicant to your posted jobs lives in one view with their resume, AI score, and screening video side by side — nothing gets lost in email.' },
-      { q: 'Is my data safe?', a: 'Yes — ProfilePush runs on SOC2 Type II certified infrastructure with AES-256 encryption, and your data is never sold to third parties.' },
+      { q: 'How does this stop proxy interviews?', a: 'The interview is on video and recorded. Each question is based on the last answer. Nobody can prepare a script in advance. The person on the client call is the same person on the recording.' },
+      { q: 'How does it find a fake resume?', a: 'The first question comes from the resume itself. Every next question asks for details. A real number. A real tool. A real project. False claims fail in ninety seconds.' },
+      { q: 'Does every consultant get screened?', a: 'Yes. Every submission arrives with a video interview, a score from 0 to 100, and a short written summary. The summary lists both good points and problems.' },
+      { q: 'What costs credits?', a: 'A post costs 1 credit. An AI email costs 1 credit, refunded if it fails. A finished screening costs 50 credits, charged to the req owner. Editing is free.' },
+      { q: 'Is the data safe?', a: 'Yes. All data is encrypted. It is never sold or shared. Emails send from a connected Gmail address.' },
     ],
-    ctaHeadlineLine1: 'Ready to',
-    ctaHeadlineLine2: 'fill your next requirement faster?',
-    ctaSub: 'Stop scrolling groups. Start filling requirements.',
+    ctaHeadlineLine1: 'Protect the client relationship.',
+    ctaSub: 'Let the copilot interview first.',
   },
   bench_sales: {
     title: 'ProfilePush for Bench Sales — Get Your Consultants Placed Faster',
@@ -308,13 +320,15 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
         {/* ── HERO ── */}
         <section className="relative pt-24 md:pt-20 pb-6 md:pb-12 px-6 text-center overflow-hidden">
           <div className="relative max-w-3xl mx-auto">
-            <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
+            <h1 className={`text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] ${content.heroSub ? 'mb-5' : 'mb-8'}`}>
               <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">{content.heroHeadline}</span>
             </h1>
 
-            <p className="text-base md:text-lg text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
-              {content.heroSub}
-            </p>
+            {content.heroSub && (
+              <p className="text-base md:text-lg text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
+                {content.heroSub}
+              </p>
+            )}
 
             <div className="flex flex-col items-center justify-center gap-4">
               <Link
@@ -334,7 +348,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                 <span>No Credit Card Required</span>
               </p>
               <div className="hidden sm:flex flex-wrap items-center justify-center gap-2">
-                {['SOC2 Type II Infrastructure', 'AES-256 Encrypted', '100% Privacy-First — Your Data Never Sold'].map(badge => (
+                {['AES-256 Encrypted', '100% Privacy-First — Your Data Never Sold'].map(badge => (
                   <span key={badge} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">
                     <ShieldCheck size={11} className="text-emerald-500 shrink-0" />
                     {badge}
@@ -355,6 +369,21 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
             />
           </div>
         </section>
+
+        {/* ── PROBLEM ── */}
+        {content.problem && (
+          <section className="py-16 md:py-20 px-6 bg-red-50/50 border-t border-gray-100">
+            <div className="max-w-3xl mx-auto text-center">
+              <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-4 bg-red-100 text-red-700 w-fit">
+                {content.problem.eyebrow}
+              </span>
+              <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.02em] leading-tight text-gray-900 mb-4">
+                {content.problem.headline}
+              </h2>
+              <p className="text-base text-gray-500 leading-relaxed">{content.problem.body}</p>
+            </div>
+          </section>
+        )}
 
         {/* ── FEATURES ── */}
         <div id="features">
@@ -392,9 +421,9 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
         <section id="how-it-works" className="py-24 px-6 bg-white border-y border-gray-100">
           <div className="max-w-2xl mx-auto">
             <div className="text-center mb-16">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">The workflow</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">{content.workflowEyebrow ?? 'The workflow'}</p>
               <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-                From live signal to placement
+                {content.workflowHeading ?? 'From live signal to placement'}
               </h2>
             </div>
 
@@ -414,6 +443,12 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                 ))}
               </div>
             </div>
+
+            {content.workflowClosing && (
+              <p className="mt-4 text-center text-base font-semibold text-gray-900 border-t border-gray-100 pt-8">
+                {content.workflowClosing}
+              </p>
+            )}
           </div>
         </section>
 
@@ -520,8 +555,12 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
             </div>
             <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 mb-4">
               {content.ctaHeadlineLine1}
-              <br />
-              <span className="text-blue-600">{content.ctaHeadlineLine2}</span>
+              {content.ctaHeadlineLine2 && (
+                <>
+                  <br />
+                  <span className="text-blue-600">{content.ctaHeadlineLine2}</span>
+                </>
+              )}
             </h2>
             <p className="text-gray-500 mb-10">
               {content.ctaSub}
