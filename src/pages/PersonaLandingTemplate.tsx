@@ -58,7 +58,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     title: 'ProfilePush for Vendors — Fill Requirements Faster with an AI Copilot',
     description: 'ProfilePush is the AI copilot for Vendor teams sourcing C2C requirements. Browse a live Hotlist of consultants, get AI-drafted outreach, and let AI pre-screen every applicant before you open a resume.',
     canonical: 'https://profilepush.ai/vendors',
-    heroHeadline: 'The AI copilot video screens and finds fake resumes and proxies.',
+    heroHeadline: 'The AI Copilot that finds fake resumes and proxies early.',
     heroFeatureKey: 'hotlist',
     problem: {
       eyebrow: 'The Problem',
