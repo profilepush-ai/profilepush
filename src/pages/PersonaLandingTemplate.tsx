@@ -48,6 +48,10 @@ interface PersonaContent {
   workflowHeading?: string;
   howItWorks: HowItWorksStep[];
   workflowClosing?: string;
+  pricingHeading?: string;
+  pricingBody?: string;
+  freeBullets?: string[];
+  proBullets?: string[];
   faq: FaqPair[];
   ctaHeadlineLine1: string;
   ctaHeadlineLine2?: string;
@@ -61,11 +65,6 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     canonical: 'https://profilepush.ai/vendors',
     heroHeadline: 'The AI Copilot that finds fake resumes and proxies early.',
     heroFeatureKey: 'screening',
-    problem: {
-      eyebrow: 'The Problem',
-      headline: 'One bad consultant can lose the client.',
-      body: 'A fake resume gets through. A proxy takes the screening call. The client then interviews someone who cannot do the work. The client remembers who sent that person. That trust is very hard to win back.',
-    },
     features: [
       {
         key: 'screening',
@@ -151,103 +150,114 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     title: 'ProfilePush for Bench Sales — Get Your Consultants Placed Faster',
     description: 'ProfilePush is the AI copilot for Bench Sales recruiters. Post your whole bench in one paste, submit to jobs with one click, and let AI run the screening call for you.',
     canonical: 'https://profilepush.ai/bench-sales',
-    heroHeadline: 'The AI Copilot that submits faster and knows the bench better.',
-    heroFeatureKey: 'posts',
-    problem: {
-      eyebrow: 'The Problem',
-      headline: 'Marketing the wrong consultant costs a month.',
-      body: 'Weeks of submissions. Weeks of calls with vendors. Then the consultant fails the first interview. That is one month lost. It is also one vendor who may not answer again.',
-    },
+    heroHeadline: 'The AI Copilot that connects the bench to prime vendors.',
+    heroFeatureKey: 'activelist',
     features: [
+      {
+        key: 'activelist',
+        slug: 'prime-vendors',
+        headline: 'The copilot finds the vendors who are actually posting.',
+        subline: 'A live list of every vendor posting reqs right now. Filter by skill, rate, visa, work type and location. Each filter shows a live count. No old lists. No dead contacts. Download up to 50 vendor contacts per day.',
+        accent: 'from-sky-50 to-white',
+        badge: 'bg-sky-100 text-sky-700',
+        badgeLabel: 'Prime Vendors',
+        topGlow: 'rgba(125,211,252,0.5)',
+      },
+      {
+        key: 'pulse',
+        slug: 'reqs',
+        headline: 'The copilot watches every group, all day.',
+        subline: 'LinkedIn, Facebook, WhatsApp groups and job boards. Every new req appears the minute it posts. Filter by skill, rate and visa. Repeated posts are removed automatically. Submit first, not fiftieth.',
+        accent: 'from-blue-100 to-white',
+        badge: 'bg-blue-100 text-blue-700',
+        badgeLabel: 'Reqs',
+        topGlow: 'rgba(147,197,253,0.6)',
+      },
+      {
+        key: 'pulse',
+        slug: 'submissions',
+        headline: 'The copilot fills every submission.',
+        subline: 'Upload the resume. The copilot reads the name, email and phone. One click to submit. Nothing is typed twice. Submissions never cost a credit, and there is no limit.',
+        accent: 'from-blue-100 to-white',
+        badge: 'bg-blue-100 text-blue-700',
+        badgeLabel: 'Submissions',
+        topGlow: 'rgba(147,197,253,0.6)',
+      },
+      {
+        key: 'posts',
+        slug: 'post-the-bench',
+        headline: 'The copilot posts the whole bench in one paste.',
+        subline: 'Paste the hotlist table exactly as it is. The copilot reads every consultant on it. All of them go live to every vendor at once. Editing is always free.',
+        accent: 'from-teal-50 to-white',
+        badge: 'bg-teal-100 text-teal-700',
+        badgeLabel: 'Post the Bench',
+        topGlow: 'rgba(94,234,212,0.5)',
+      },
+      {
+        key: 'hotlist',
+        slug: 'inbound-requests',
+        headline: 'The copilot collects every resume request.',
+        subline: 'When a vendor wants a resume from the hotlist, it appears in one list. Clear status on every request. Upload the resume, add a note, done. No credit charge.',
+        accent: 'from-amber-50 to-white',
+        badge: 'bg-amber-100 text-amber-700',
+        badgeLabel: 'Inbound Requests',
+        topGlow: 'rgba(252,211,77,0.5)',
+      },
+      {
+        key: 'tracker',
+        slug: 'tracking',
+        headline: 'The copilot tracks every submission in one place.',
+        subline: 'Status, score, and the vendor\'s answer. All in one view. Always clear which submissions are moving and which need a follow up today.',
+        accent: 'from-emerald-50 to-white',
+        badge: 'bg-emerald-100 text-emerald-700',
+        badgeLabel: 'Tracking',
+        topGlow: 'rgba(110,231,183,0.5)',
+      },
       {
         key: 'screening',
         slug: 'screening',
-        headline: 'The copilot checks the bench first.',
-        subline: 'Every submitted consultant does a video interview. The recruiter watches it too. Now it is clear who can handle a technical call. It is also clear who needs practice first. Recruiters learn this early, not from an unhappy vendor.',
-        note: 'The copilot never contacts the consultant. The screening link goes only to the recruiter. The recruiter shares it. No emails, no account, no marketing. Nobody comes between the recruiter and the bench.',
+        headline: 'The copilot helps every submission get noticed.',
+        subline: 'Each submission comes with a short video interview link. The recruiter shares it with the consultant. The vendor then sees a real person, a score and a recording. Submissions with a screening get answered faster than a plain resume.',
+        note: 'The copilot never contacts the consultant. The link goes only to the recruiter. No emails, no account, no marketing. Nobody comes between the recruiter and the bench.',
         accent: 'from-rose-50 to-white',
         badge: 'bg-rose-100 text-rose-700',
         badgeLabel: 'Screening',
         topGlow: 'rgba(253,164,175,0.5)',
       },
-      {
-        key: 'pulse',
-        slug: 'ai-submit',
-        headline: 'The copilot fills the submission.',
-        subline: 'Upload the resume. The copilot reads the name, email and phone. One click to submit. Submissions never cost a credit.',
-        accent: 'from-blue-100 to-white',
-        badge: 'bg-blue-100 text-blue-700',
-        badgeLabel: 'AI Submit',
-        topGlow: 'rgba(147,197,253,0.6)',
-      },
-      {
-        key: 'pulse',
-        slug: 'jobs',
-        headline: 'The copilot finds the right reqs.',
-        subline: 'LinkedIn, Facebook, WhatsApp and job boards. All day, every day. Filter by skill, rate and visa. Submit the same minute a good req appears.',
-        accent: 'from-blue-100 to-white',
-        badge: 'bg-blue-100 text-blue-700',
-        badgeLabel: 'Jobs',
-        topGlow: 'rgba(147,197,253,0.6)',
-      },
-      {
-        key: 'activelist',
-        slug: 'demand',
-        headline: 'The copilot shows what vendors want now.',
-        subline: 'Every live req, filtered by skill, rate, visa and location. Each filter shows a live count. See which skills vendors are posting this week.',
-        accent: 'from-sky-50 to-white',
-        badge: 'bg-sky-100 text-sky-700',
-        badgeLabel: 'Demand',
-        topGlow: 'rgba(125,211,252,0.5)',
-      },
-      {
-        key: 'posts',
-        slug: 'post',
-        headline: 'The copilot posts the whole bench.',
-        subline: 'Paste the hotlist table exactly as it is. The copilot reads every consultant. All of them go live together.',
-        accent: 'from-teal-50 to-white',
-        badge: 'bg-teal-100 text-teal-700',
-        badgeLabel: 'Post',
-        topGlow: 'rgba(94,234,212,0.5)',
-      },
-      {
-        key: 'hotlist',
-        slug: 'hotlist-requests',
-        headline: 'The copilot collects every request.',
-        subline: 'Every vendor asking for a resume, in one list. Clear status on each one. Upload the resume, add a note, done.',
-        accent: 'from-amber-50 to-white',
-        badge: 'bg-amber-100 text-amber-700',
-        badgeLabel: 'Hotlist Requests',
-        topGlow: 'rgba(252,211,77,0.5)',
-      },
-      {
-        key: 'tracker',
-        slug: 'submissions',
-        headline: 'The copilot tracks every submission.',
-        subline: 'Status, score, recording and the vendor\'s answer. All in one place. Always clear what to follow up on today.',
-        accent: 'from-emerald-50 to-white',
-        badge: 'bg-emerald-100 text-emerald-700',
-        badgeLabel: 'Submissions',
-        topGlow: 'rgba(110,231,183,0.5)',
-      },
     ],
     workflowEyebrow: 'The Workflow',
     workflowHeading: 'What the copilot does in the background.',
     howItWorks: [
-      { n: '1', t: 'Watches', d: 'every group and job board for matching reqs', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
-      { n: '2', t: 'Posts', d: 'the whole bench, from one pasted table', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
-      { n: '3', t: 'Fills', d: 'every submission, from the resume', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
-      { n: '4', t: 'Interviews', d: 'the consultant on video, with a score', dot: 'bg-rose-500', num: 'text-rose-500', ring: 'ring-rose-100' },
+      { n: '1', t: 'Finds', d: 'the vendors posting reqs right now', dot: 'bg-sky-500', num: 'text-sky-500', ring: 'ring-sky-100' },
+      { n: '2', t: 'Watches', d: 'every group and job board for new reqs', dot: 'bg-blue-600', num: 'text-blue-600', ring: 'ring-blue-100' },
+      { n: '3', t: 'Posts', d: 'the whole bench, from one pasted table', dot: 'bg-indigo-500', num: 'text-indigo-500', ring: 'ring-indigo-100' },
+      { n: '4', t: 'Fills', d: 'every submission, straight from the resume', dot: 'bg-purple-500', num: 'text-purple-500', ring: 'ring-purple-100' },
+      { n: '5', t: 'Tracks', d: 'every submission and every reply', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
     ],
-    workflowClosing: 'The recruiter: markets only the consultants who are ready.',
+    workflowClosing: 'The recruiter: picks the vendors and closes the deal.',
+    pricingHeading: 'Free forever. Pro when needed.',
+    pricingBody: '500 credits that never expire. Browsing, submitting and editing are always free.',
+    freeBullets: [
+      'All features included',
+      'Unlimited team members',
+      '50 vendor contacts per day',
+      '1 credit per post or AI email',
+    ],
+    proBullets: [
+      'Everything in Free',
+      '500–5,000 credits every month',
+      'Credits arrive automatically',
+      'Cancel anytime',
+    ],
     faq: [
-      { q: 'How does screening help the recruiter?', a: 'The recruiter watches the recording too. It shows who can handle a technical call. It shows who needs practice. This is clear before a month is spent on marketing.' },
-      { q: 'Does the consultant need an account?', a: 'No. And the copilot never contacts them. The link goes to the recruiter. The recruiter shares it. That is the only contact.' },
-      { q: 'Can recruiters see which skills are in demand?', a: 'Yes. Every live req can be filtered by skill, rate, visa and location. Each filter shows a live count. It is clear what vendors are posting this week.' },
+      { q: 'How does the copilot find prime vendors?', a: 'It builds a live list from vendors posting reqs right now. Filter by skill, rate, visa and location. Every filter shows a live count.' },
+      { q: 'Can the whole bench be posted at once?', a: 'Yes. Paste the hotlist table. The copilot reads every consultant and posts them all together.' },
       { q: 'What does submitting cost?', a: 'Nothing. Submissions are free and unlimited. Screening credits are charged to the vendor who owns the req.' },
+      { q: 'Does the consultant need an account?', a: 'No. And the copilot never contacts them. The screening link goes to the recruiter only.' },
+      { q: 'Can recruiters see which skills are in demand?', a: 'Yes. Every live req can be filtered by skill, rate, visa and location, with a live count on each.' },
       { q: 'Is the data safe?', a: 'Yes. All data is encrypted. It is never sold or shared. Vendors get no way to contact the consultants on a hotlist.' },
     ],
-    ctaHeadlineLine1: 'Market the right consultants.',
+    ctaHeadlineLine1: 'Get the bench in front of prime vendors.',
     ctaSub: 'Stop pasting hotlists into forty groups.',
   },
 };
@@ -475,16 +485,16 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
           </div>
         </section>
 
-        {/* ── PRICING (shared, unchanged) ── */}
+        {/* ── PRICING ── */}
         <section id="pricing" className="py-24 px-6 bg-white border-y border-gray-100">
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-14">
               <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Pricing</p>
               <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-                Simple, transparent pricing.
+                {content.pricingHeading ?? 'Simple, transparent pricing.'}
               </h2>
               <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">
-                Start free with credits that never expire. Upgrade to Pro when you want them delivered automatically.
+                {content.pricingBody ?? 'Start free with credits that never expire. Upgrade to Pro when you want them delivered automatically.'}
               </p>
             </div>
 
@@ -500,12 +510,12 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                 </div>
                 <p className="text-xs text-gray-500 mb-8">500 credits, one time · no card required</p>
                 <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
-                  {[
+                  {(content.freeBullets ?? [
                     'Pulse, Jobs, Hotlist, Posts, Active List, Inbox & Tracker included',
                     'Unlimited team members',
                     'Active List: 50 contacts/download, 500 lifetime',
                     '1 credit per email draft, AI chat draft, or new post',
-                  ].map(item => (
+                  ]).map(item => (
                     <li key={item} className="flex items-center gap-2.5">
                       <span className="w-4 h-4 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
                         <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.5 6L6.5 2" stroke="#ca8a04" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -531,12 +541,12 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                 </div>
                 <p className="text-xs text-blue-300/70 mb-8">500–5,000 credits/mo, your choice</p>
                 <ul className="space-y-3 text-sm text-white flex-1 mb-8">
-                  {[
+                  {(content.proBullets ?? [
                     'Everything in Free',
                     'Unlimited Active List downloads',
                     'Credits delivered automatically, never run out mid-month',
                     'Change your tier or cancel any time',
-                  ].map(item => (
+                  ]).map(item => (
                     <li key={item} className="flex items-center gap-2.5">
                       <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                         <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.5 6L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -594,7 +604,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
             >
               Create Free Account <ArrowRight size={16} />
             </Link>
-            <p className="text-xs text-gray-500 mt-5">No credit card required.</p>
+            <p className="text-xs text-gray-500 mt-5">No card needed.</p>
           </div>
         </section>
       </main>
