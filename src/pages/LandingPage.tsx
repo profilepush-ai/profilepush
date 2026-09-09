@@ -26,12 +26,12 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     persona: 'vendor',
     icon: Briefcase,
     title: 'Vendor',
-    tagline: 'Post requirements, source consultants, close faster.',
+    tagline: 'Keep the client happy.',
     bullets: [
-      'Post a requirement in seconds — AI fills the form',
-      'Browse a live Hotlist of available consultants',
-      'One-click AI-drafted resume requests',
-      'Every applicant AI-screened before you open a resume',
+      'Interviews every consultant on video before submission',
+      'Finds fake resumes and proxies early',
+      'Watches every group for available consultants',
+      'Writes every resume request',
     ],
     accent: 'from-blue-600 to-indigo-500',
     iconBg: 'bg-blue-50',
@@ -44,12 +44,12 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     persona: 'bench_sales',
     icon: UserRound,
     title: 'Bench Sales',
-    tagline: 'Post your bench, submit to jobs, get placed faster.',
+    tagline: 'Market the right consultants.',
     bullets: [
-      'Post your whole bench in one paste',
-      'Browse a live feed of new job requirements',
-      'One-click AI Submit with resume auto-parse',
-      'Share a self-serve AI screening link — no call needed',
+      'Shows how a consultant really answers questions',
+      'Fills every submission from the resume',
+      'Shows which skills vendors are posting now',
+      'Submissions are always free',
     ],
     accent: 'from-orange-500 to-amber-400',
     iconBg: 'bg-orange-50',
@@ -62,28 +62,28 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
 
 const FAQS = [
   {
-    q: 'What does ProfilePush actually do?',
-    a: 'ProfilePush is an AI copilot for IT staffing. It watches live job and consultant activity around the clock, drafts your outreach the moment something matches, runs automatic AI video screening on every applicant, and keeps every conversation and submission organized in one place — so you place faster without adding headcount.',
+    q: 'What is ProfilePush?',
+    a: 'An AI copilot for US IT staffing. It watches every group for reqs and consultants. It writes the emails. It interviews every consultant on video.',
   },
   {
-    q: 'Should I sign up as a Vendor or a Bench Sales recruiter?',
-    a: 'Whichever describes your day-to-day: choose Vendor if you post open requirements and source consultants to fill them, or Bench Sales if you market consultants and submit them against open jobs. See exactly how each workflow works above, and switch your persona anytime from the app header.',
+    q: 'Vendor or Bench Sales?',
+    a: 'Vendor for reqs. Bench sales for consultants. One switch in the header. Same account either way.',
   },
   {
-    q: 'How does ProfilePush actually get me to 10X placements?',
-    a: 'Every stage removes a step that used to cost you time — AI surfaces a match the moment it\'s live instead of you scrolling groups, drafts your outreach instead of a blank page, screens every applicant automatically instead of a scheduled call, and keeps every reply and submission in one place instead of scattered across email. Less time per placement means more placements in the same day.',
+    q: 'How does video screening find fake resumes?',
+    a: 'The interview is recorded. Each new question is based on the last answer. The copilot asks for a real number, a real tool, a real project. False claims fail fast.',
   },
   {
-    q: 'How much does ProfilePush cost?',
-    a: 'Free to start, no credit card required — every account gets 500 AI credits, one time, that never expire. Posting, generating an AI draft, and each chat message cost 1 credit; a completed AI video screening costs 50 credits. Top up in 500-credit packs at ₹1/credit, or subscribe to Pro from ₹500/month for credits delivered automatically.',
+    q: 'What does it cost?',
+    a: 'Free. 500 credits that never expire. A post costs 1 credit. An AI email costs 1 credit, refunded if it fails. Submitting is always free.',
   },
   {
-    q: 'Is my data safe?',
-    a: 'Yes — infrastructure runs on SOC2 Type II certified providers, everything is encrypted with AES-256, and your data is never sold to third parties.',
+    q: 'Is the data safe?',
+    a: 'Yes. All data is encrypted. It is never sold. It is never shared between accounts.',
   },
   {
-    q: 'Can my whole team use one account?',
-    a: 'Yes — every plan includes unlimited team members at no extra cost, so your whole desk can share the same pipeline, Inbox, and Tracker.',
+    q: 'Can a team share one account?',
+    a: 'Yes. Unlimited members. No extra cost per person.',
   },
 ];
 
@@ -138,7 +138,7 @@ export default function LandingPage() {
         <div className="relative max-w-3xl mx-auto">
 
           <h1 className="text-[clamp(2rem,6vw,3.75rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-6">
-            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">AI Copilot for US IT Staffing Teams to hit 10X placements.</span>
+            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">An AI copilot for both sides of US IT staffing.</span>
           </h1>
 
           <div className="flex flex-col items-center justify-center gap-4">
@@ -159,7 +159,7 @@ export default function LandingPage() {
               <span>No Credit Card Required</span>
             </p>
             <div className="hidden sm:flex flex-wrap items-center justify-center gap-2">
-              {['SOC2 Type II Infrastructure', 'AES-256 Encrypted', '100% Privacy-First — Your Data Never Sold'].map(badge => (
+              {['AES-256 Encrypted', '100% Privacy-First — Your Data Never Sold'].map(badge => (
                 <span key={badge} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">
                   <ShieldCheck size={11} className="text-emerald-500 shrink-0" />
                   {badge}
@@ -212,10 +212,10 @@ export default function LandingPage() {
           <div className="text-center mb-14">
             <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Pricing</p>
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              Simple, transparent pricing.
+              Free. Then cheap.
             </h2>
             <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">
-              Start free with credits that never expire. Upgrade to Pro when you want them delivered automatically.
+              500 credits that never expire. Browsing, submitting and editing are always free.
             </p>
           </div>
 
@@ -235,10 +235,10 @@ export default function LandingPage() {
 
               <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
                 {[
-                  'Pulse, Jobs, Hotlist, Posts, Active List, Inbox & Tracker included',
+                  'All features included',
                   'Unlimited team members',
-                  'Active List: 50 contacts/download, 500 lifetime',
-                  '1 credit per email draft, AI chat draft, or new post',
+                  '50 Active List contacts per day',
+                  '1 credit per post or AI email',
                 ].map(item => (
                   <li key={item} className="flex items-center gap-2.5">
                     <span className="w-4 h-4 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
@@ -270,9 +270,9 @@ export default function LandingPage() {
               <ul className="space-y-3 text-sm text-white flex-1 mb-8">
                 {[
                   'Everything in Free',
-                  'Unlimited Active List downloads',
-                  'Credits delivered automatically, never run out mid-month',
-                  'Change your tier or cancel any time',
+                  '500–5,000 credits every month',
+                  'Credits arrive automatically',
+                  'Cancel anytime',
                 ].map(item => (
                   <li key={item} className="flex items-center gap-2.5">
                     <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
@@ -318,12 +318,10 @@ export default function LandingPage() {
             <span className="h-1 w-2 rounded-full bg-yellow-400" />
           </div>
           <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 mb-4">
-            Ready to
-            <br />
-            <span className="text-blue-600">10X your placements?</span>
+            Let the AI copilot power your workflow.
           </h2>
           <p className="text-gray-500 mb-10">
-            Stop scrolling groups. Start closing.
+            Stop scrolling groups. Start closing deals.
           </p>
           <Link
             to="/signup"
@@ -331,7 +329,7 @@ export default function LandingPage() {
           >
             Create Free Account <ArrowRight size={16} />
           </Link>
-          <p className="text-xs text-gray-500 mt-5">No credit card required.</p>
+          <p className="text-xs text-gray-500 mt-5">No card needed.</p>
         </div>
       </section>
 
