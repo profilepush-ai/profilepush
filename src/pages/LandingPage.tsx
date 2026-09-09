@@ -36,7 +36,7 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     accent: 'from-blue-600 to-indigo-500',
     iconBg: 'bg-blue-50',
     iconColor: 'text-blue-600',
-    buttonClass: 'bg-blue-600 hover:bg-blue-700',
+    buttonClass: 'border-2 border-blue-600 text-blue-600 hover:bg-blue-50',
     path: '/vendors',
     cta: 'Explore',
   },
@@ -54,7 +54,7 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     accent: 'from-orange-500 to-amber-400',
     iconBg: 'bg-orange-50',
     iconColor: 'text-orange-600',
-    buttonClass: 'bg-orange-500 hover:bg-orange-600',
+    buttonClass: 'border-2 border-orange-500 text-orange-500 hover:bg-orange-50',
     path: '/bench-sales',
     cta: 'Explore',
   },
@@ -194,7 +194,7 @@ export default function LandingPage() {
                   </ul>
                   <Link
                     to={card.path}
-                    className={`w-full text-center text-white text-[11px] sm:text-sm font-semibold py-2 sm:py-3 rounded-lg sm:rounded-xl transition-colors flex items-center justify-center gap-1 sm:gap-1.5 ${card.buttonClass}`}
+                    className={`w-full text-center bg-white text-[11px] sm:text-sm font-semibold py-2 sm:py-3 rounded-lg sm:rounded-xl transition-colors flex items-center justify-center gap-1 sm:gap-1.5 ${card.buttonClass}`}
                   >
                     {card.cta} <ArrowRight size={12} className="hidden sm:inline" />
                   </Link>
