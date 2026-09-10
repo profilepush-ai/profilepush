@@ -6,7 +6,11 @@
 -- id per email (their most recent post, across whichever source), keeping
 -- the exact same anti-join dedup cursor (against market_stats_email_sends
 -- and auth.users) so no candidate is skipped or re-sent across runs.
-create or replace function public.get_market_stats_outreach_backfill_batch(p_limit integer default 25)
+-- Postgres refuses CREATE OR REPLACE when the OUT-parameter row shape
+-- changes (adding job_id/hotlist_id here) — must drop first.
+drop function if exists public.get_market_stats_outreach_backfill_batch(integer);
+
+create function public.get_market_stats_outreach_backfill_batch(p_limit integer default 25)
 returns table(email text, source text, job_id uuid, hotlist_id uuid)
 language sql
 security definer
