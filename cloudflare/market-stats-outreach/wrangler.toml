@@ -6,13 +6,36 @@ workers_dev = true
 [triggers]
 crons = ["*/30 * * * *"]
 
+[ai]
+binding = "AI"
+
 [[services]]
 binding = "EMAIL_WORKER"
 service = "profilepush-email-notifications"
 
 [vars]
+# Set to "true" and redeploy to pause outbound sends entirely (queued/new
+# leads are held and retried later instead of hitting GMass) — flipped on
+# 2026-09-10 after this stream's sends contributed to the shared GMass
+# mailbox (Insights@profilepush.ai) hitting Google's daily sending limit,
+# which then blocked an unrelated signup notification from the same
+# mailbox. Do not flip back to "false" until GMass's bounce/complaint
+# dashboard and the mailbox's daily send volume have been reviewed.
+OUTREACH_PAUSED = "true"
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 APP_BASE_URL = "https://profilepush.ai"
 WORKER_BASE_URL = "https://profilepush-market-stats-outreach.profilepush-ai.workers.dev"
 EMAIL_WORKER_URL = "https://profilepush-email-notifications.profilepush-ai.workers.dev"
 BACKFILL_BATCH_SIZE = "25"
+PARSER_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
+
+[[queues.producers]]
+binding = "LEAD_QUEUE"
+queue = "market-stats-outreach-leads"
+
+[[queues.consumers]]
+queue = "market-stats-outreach-leads"
+max_batch_size = 10
+max_batch_timeout = 10
+max_retries = 5
+dead_letter_queue = "market-stats-outreach-leads-dlq"

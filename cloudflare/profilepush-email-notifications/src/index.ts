@@ -9,6 +9,7 @@ export interface Env {
   SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   WORKER_AUTH_TOKEN: string;
+  MARKET_STATS_AUTH_TOKEN: string;
   UNSUBSCRIBE_SECRET: string;
   APP_BASE_URL: string;
   WORKER_BASE_URL: string;
@@ -391,8 +392,15 @@ async function sendGmassEmail(env: Env, job: EmailJob): Promise<void> {
   }
 }
 
+// Accepts either the general admin token or market-stats-outreach's own
+// dedicated token — kept independent so rotating one never risks breaking
+// the other's caller (send-welcome-email also authenticates with
+// WORKER_AUTH_TOKEN via its own EMAIL_WORKER_TOKEN secret).
 async function handleSendRequest(request: Request, env: Env): Promise<Response> {
-  if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
+  const token = getBearerToken(request);
+  if (token !== env.WORKER_AUTH_TOKEN && token !== env.MARKET_STATS_AUTH_TOKEN) {
+    return jsonResponse({ error: "Unauthorized" }, 401);
+  }
   const body = await request.json<Partial<EmailJob>>();
   const to = typeof body.to === "string" ? body.to.trim() : "";
   const subject = typeof body.subject === "string" ? body.subject : "";
