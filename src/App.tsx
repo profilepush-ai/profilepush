@@ -8,6 +8,7 @@ import LandingPage from './pages/LandingPage';
 import LogoSpinner from './components/LogoSpinner';
 import StartupSplash from './components/StartupSplash';
 import UserActivityTracker from './components/UserActivityTracker';
+import PostPromptNudge from './components/PostPromptNudge';
 import { useAuth } from './contexts/AuthContext';
 import { isSupabaseConfigured, supabaseConfigMissing } from './lib/supabase';
 import { initializeOneSignal, setOneSignalExternalUserId } from './lib/onesignal';
@@ -238,6 +239,7 @@ export default function App() {
           <ScrollToTop />
           <OneSignalIdentitySync />
           <UserActivityTracker />
+          <PostPromptNudge />
           <PersistentJobFinder />
           <PersistentWishlist />
           <Suspense fallback={<PageLoader />}>
