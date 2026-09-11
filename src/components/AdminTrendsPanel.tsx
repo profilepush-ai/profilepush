@@ -16,6 +16,9 @@ type DailyRow = {
   chats: number;
 };
 
+type CohortWeek = { week_number: number; retained: number; pct: number };
+type CohortRow = { cohort_week: string; size: number; weeks: CohortWeek[] };
+
 type TrendsResponse = {
   daily: DailyRow[];
   signups_total: number;
@@ -27,7 +30,71 @@ type TrendsResponse = {
   ai_pitches_total: number;
   ai_requests_total: number;
   chats_total: number;
+  cohorts: CohortRow[];
 };
+
+function formatCohortDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+// Green-shaded heatmap cell, standard cohort-grid convention — darker/more
+// opaque means higher retention. Cells for weeks the cohort hasn't reached
+// yet (too young) render blank rather than a false "0%".
+function RetentionGrid({ cohorts }: { cohorts: CohortRow[] }) {
+  if (cohorts.length === 0) {
+    return <p className="py-6 text-center text-[12px] text-gray-400">No cohorts with signups in this window yet.</p>;
+  }
+  const maxWeek = Math.max(0, ...cohorts.map((c) => c.weeks.length > 0 ? Math.max(...c.weeks.map((w) => w.week_number)) : 0));
+  const columns = Array.from({ length: maxWeek + 1 }, (_, i) => i);
+  const now = new Date();
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-left text-[11px]">
+        <thead>
+          <tr>
+            <th className="sticky left-0 bg-white px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">Cohort</th>
+            <th className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">Size</th>
+            {columns.map((w) => (
+              <th key={w} className="px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wide text-gray-400">W{w}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {cohorts.map((cohort) => {
+            const cohortStart = new Date(`${cohort.cohort_week}T00:00:00`);
+            const byWeek = new Map(cohort.weeks.map((w) => [w.week_number, w]));
+            return (
+              <tr key={cohort.cohort_week}>
+                <td className="sticky left-0 whitespace-nowrap bg-white px-2 py-1 font-semibold text-gray-700">{formatCohortDate(cohort.cohort_week)}</td>
+                <td className="px-2 py-1 text-gray-500">{cohort.size}</td>
+                {columns.map((w) => {
+                  const weekStart = new Date(cohortStart);
+                  weekStart.setDate(weekStart.getDate() + w * 7);
+                  const reached = weekStart <= now;
+                  const cell = byWeek.get(w);
+                  if (!reached) return <td key={w} className="px-2 py-1" />;
+                  const pct = cell?.pct ?? 0;
+                  return (
+                    <td key={w} className="px-1 py-1 text-center">
+                      <div
+                        className="rounded px-1.5 py-1 font-semibold text-white"
+                        style={{ backgroundColor: '#16a34a', opacity: pct === 0 ? 0.08 : 0.15 + (pct / 100) * 0.85, color: pct > 35 ? '#fff' : '#166534' }}
+                      >
+                        {pct}%
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 const RANGE_OPTIONS = [
   { label: '7d', days: 7 },
@@ -168,6 +235,15 @@ export default function AdminTrendsPanel() {
             data={data.daily}
             series={[{ key: 'chats', label: 'Chats', color: '#64748b' }]}
           />
+        </ChartCard>
+      </div>
+
+      <div className="mt-3">
+        <ChartCard title="Weekly retention cohorts">
+          <p className="mb-2 text-[11px] text-gray-400">
+            % of each signup-week cohort with real product activity in that later week — W0 is same-week activation, not automatically 100%. Fixed at the last 12 weeks.
+          </p>
+          <RetentionGrid cohorts={data.cohorts} />
         </ChartCard>
       </div>
     </div>
