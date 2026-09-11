@@ -33,17 +33,12 @@ function csvEscape(value: string): string {
 }
 
 function downloadCsv(kind: Kind, rows: PostRow[]) {
-  const headers = ['post_url', 'title', 'company', 'created_at', 'matching_count', 'comment', 'content'];
+  const headers = ['post_url', 'comment'];
   const lines = [headers.join(',')];
   for (const row of rows) {
     lines.push([
       row.post_url ?? '',
-      row.title ?? '',
-      row.company ?? '',
-      row.created_at ?? '',
-      String(row.matching_count ?? ''),
       row.comment ?? '',
-      row.content ?? '',
     ].map((v) => csvEscape(String(v))).join(','));
   }
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -78,9 +73,17 @@ function CopyButton({ text }: { text: string }) {
 
 const PAGE_SIZE = 50;
 
+function last24hStartIso(): string {
+  return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+}
+
 export default function AdminPostOutreachPanel() {
   const [kind, setKind] = useState<Kind>('job');
-  const [startDate, setStartDate] = useState('');
+  // Full ISO timestamps internally (for a real rolling 24h window by
+  // default), even though the <input type="date"> pickers below only ever
+  // show/accept the date portion — picking a date manually sets that day's
+  // start/end-of-day boundaries instead.
+  const [startDate, setStartDate] = useState(last24hStartIso());
   const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<PostRow[]>([]);
@@ -204,15 +207,15 @@ export default function AdminPostOutreachPanel() {
         <div className="flex items-center gap-1.5">
           <input
             type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            value={startDate.slice(0, 10)}
+            onChange={(e) => setStartDate(e.target.value ? `${e.target.value}T00:00:00.000Z` : '')}
             className="rounded-md border border-gray-200 px-2 py-1.5 text-[12px]"
           />
           <span className="text-[12px] text-gray-400">to</span>
           <input
             type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            value={endDate.slice(0, 10)}
+            onChange={(e) => setEndDate(e.target.value ? `${e.target.value}T23:59:59.999Z` : '')}
             className="rounded-md border border-gray-200 px-2 py-1.5 text-[12px]"
           />
           <button
