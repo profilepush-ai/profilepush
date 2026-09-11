@@ -27,34 +27,30 @@ async function handleList(
   limit: number,
   offset: number,
 ) {
-  const table = kind === "job" ? "social_jobs" : "social_hotlist";
-  const columns = kind === "job"
-    ? "id, post_url, post_content, job_title, company_name, created_at, posted_at"
-    : "id, post_url, raw_post_content, role_title, bench_sales_company_name, created_at, posted_at";
-
-  let query = supabase
-    .from(table)
-    .select(columns, { count: "exact" })
-    .eq("post_source", "linkedin_scrape")
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (startDate) query = query.gte("created_at", startDate);
-  if (endDate) query = query.lte("created_at", endDate);
-
-  const { data, error, count } = await query;
+  // Deduped by the poster's own profile link (one row per profile, most
+  // recent post kept) — the same recruiter/vendor frequently posts the
+  // identical req or consultant across several groups.
+  const rpc = kind === "job" ? "get_admin_job_posts_page" : "get_admin_hotlist_posts_page";
+  const { data, error } = await supabase.rpc(rpc, {
+    p_start_date: startDate,
+    p_end_date: endDate,
+    p_limit: limit,
+    p_offset: offset,
+  });
   if (error) throw new Error(error.message);
 
-  const rows = (data ?? []).map((row: Record<string, unknown>) => ({
+  const rawRows = (data ?? []) as Array<Record<string, unknown>>;
+  const rows = rawRows.map((row) => ({
     id: row.id,
     post_url: row.post_url,
-    content: kind === "job" ? row.post_content : row.raw_post_content,
-    title: kind === "job" ? row.job_title : row.role_title,
-    company: kind === "job" ? row.company_name : row.bench_sales_company_name,
+    content: row.content,
+    title: row.title,
+    company: row.company,
     created_at: row.created_at,
   }));
+  const total = rawRows[0]?.total_count ?? 0;
 
-  return { rows, total: count ?? rows.length };
+  return { rows, total };
 }
 
 // Thin proxies to the admin-post-outreach Cloudflare Worker, which owns the
