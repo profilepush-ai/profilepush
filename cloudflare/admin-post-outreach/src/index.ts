@@ -97,8 +97,8 @@ async function countMatching(env: Env, kind: Kind, postId: string): Promise<numb
 // slotted into a fixed template is both simpler and strictly more reliable.
 function buildComment(kind: Kind, roleName: string, matchingCount: number, link: string): string {
   return kind === "job"
-    ? `We have ${matchingCount} ${roleName} hotlist posts posted in the last 7 days by bench sales recruiters. Signup and reach out to them in a single click: ${link}`
-    : `We have ${matchingCount} jobs for ${roleName} posted in the last 7 days. Signup and reach out to them in a single click: ${link}`;
+    ? `We have ${matchingCount} ${roleName} hotlist posts posted in the last 7 days by bench sales recruiters. Signup and request resume and video screening in a single click: ${link}`
+    : `We have ${matchingCount} jobs for ${roleName} posted in the last 7 days. Signup and submit in a single click: ${link}`;
 }
 
 async function upsertResult(
