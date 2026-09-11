@@ -76,10 +76,13 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+const PAGE_SIZE = 50;
+
 export default function AdminPostOutreachPanel() {
   const [kind, setKind] = useState<Kind>('job');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [page, setPage] = useState(0);
   const [rows, setRows] = useState<PostRow[]>([]);
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -87,7 +90,9 @@ export default function AdminPostOutreachPanel() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
 
-  async function loadPosts() {
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  async function loadPosts(pageToLoad: number) {
     setLoading(true);
     setError('');
     try {
@@ -96,7 +101,8 @@ export default function AdminPostOutreachPanel() {
         kind,
         start_date: startDate || null,
         end_date: endDate || null,
-        limit: 100,
+        limit: PAGE_SIZE,
+        offset: pageToLoad * PAGE_SIZE,
       });
       setRows((data.rows ?? []) as PostRow[]);
       setTotal((data.total as number) ?? 0);
@@ -109,9 +115,16 @@ export default function AdminPostOutreachPanel() {
   }
 
   useEffect(() => {
-    void loadPosts();
+    setPage(0);
+    void loadPosts(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind]);
+
+  function goToPage(next: number) {
+    const clamped = Math.max(0, Math.min(next, totalPages - 1));
+    setPage(clamped);
+    void loadPosts(clamped);
+  }
 
   function toggleSelected(id: string) {
     setSelected((prev) => {
@@ -125,18 +138,42 @@ export default function AdminPostOutreachPanel() {
     setSelected((prev) => (prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.id))));
   }
 
+  function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   async function handleGenerate() {
     const ids = selected.size > 0 ? Array.from(selected) : rows.map((r) => r.id);
     if (ids.length === 0) return;
     setGenerating(true);
     setError('');
     try {
-      const data = await callAdminPosts({ action: 'generate_comments', kind, ids });
-      const byId = new Map(((data.results ?? []) as Array<{ id: string; comment: string; matching_count: number }>).map((r) => [r.id, r]));
-      setRows((prev) => prev.map((row) => {
-        const result = byId.get(row.id);
-        return result ? { ...row, comment: result.comment, matching_count: result.matching_count } : row;
-      }));
+      // The worker enqueues onto a Cloudflare Queue and returns immediately
+      // — comments land in admin_post_comments asynchronously, so poll for
+      // results rather than expecting them in this response.
+      await callAdminPosts({ action: 'generate_comments', kind, ids });
+
+      const pending = new Set(ids);
+      const POLL_INTERVAL_MS = 2000;
+      const MAX_POLLS = 30; // ~60s ceiling
+      for (let attempt = 0; attempt < MAX_POLLS && pending.size > 0; attempt++) {
+        await sleep(POLL_INTERVAL_MS);
+        const data = await callAdminPosts({ action: 'comment_status', ids: Array.from(pending) });
+        const results = (data.results ?? []) as Array<{ post_id: string; comment: string | null; matching_count: number | null; status: string }>;
+        if (results.length === 0) continue;
+        const byId = new Map(results.map((r) => [r.post_id, r]));
+        setRows((prev) => prev.map((row) => {
+          const result = byId.get(row.id);
+          if (!result || result.status !== 'done') return row;
+          return { ...row, comment: result.comment ?? undefined, matching_count: result.matching_count ?? undefined };
+        }));
+        for (const result of results) {
+          if (result.status === 'done' || result.status === 'failed') pending.delete(result.post_id);
+        }
+      }
+      if (pending.size > 0) {
+        setError(`${pending.size} comment(s) are still processing — they'll appear once ready. You can re-check by refreshing.`);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -180,7 +217,7 @@ export default function AdminPostOutreachPanel() {
           />
           <button
             type="button"
-            onClick={() => void loadPosts()}
+            onClick={() => goToPage(0)}
             className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-gray-600 hover:bg-gray-50"
           >
             Filter
@@ -209,9 +246,29 @@ export default function AdminPostOutreachPanel() {
         </div>
       </div>
 
-      <p className="mb-2 text-[11px] text-gray-400">
-        {total} scraped {kind === 'job' ? 'job' : 'hotlist'} posts in range · showing {rows.length}
-      </p>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[11px] text-gray-400">
+          {total} scraped {kind === 'job' ? 'job' : 'hotlist'} posts in range · page {page + 1} of {totalPages} · up to {PAGE_SIZE} per page and per bulk generate
+        </p>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => goToPage(page - 1)}
+            disabled={page === 0 || loading}
+            className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ← Prev
+          </button>
+          <button
+            type="button"
+            onClick={() => goToPage(page + 1)}
+            disabled={page >= totalPages - 1 || loading}
+            className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
 
       {error && <div className="mb-3 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-600">{error}</div>}
 

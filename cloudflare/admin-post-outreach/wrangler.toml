@@ -1,0 +1,22 @@
+name = "profilepush-admin-post-outreach"
+main = "src/index.ts"
+compatibility_date = "2026-08-13"
+workers_dev = true
+
+[ai]
+binding = "AI"
+
+[vars]
+SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
+PARSER_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
+
+[[queues.producers]]
+binding = "COMMENT_QUEUE"
+queue = "admin-post-comments"
+
+[[queues.consumers]]
+queue = "admin-post-comments"
+max_batch_size = 10
+max_batch_timeout = 10
+max_retries = 5
+dead_letter_queue = "admin-post-comments-dlq"
