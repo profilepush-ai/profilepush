@@ -66,16 +66,22 @@ function chunkArray<T>(items: T[], chunkSize: number): T[][] {
   return chunks;
 }
 
-async function fetchPostRole(env: Env, kind: Kind, postId: string): Promise<string | null> {
+interface PostInfo {
+  role: string;
+  postUrl: string | null;
+}
+
+async function fetchPostInfo(env: Env, kind: Kind, postId: string): Promise<PostInfo | null> {
   const table = kind === "job" ? "social_jobs" : "social_hotlist";
-  const select = kind === "job" ? "job_title,extracted_role_normalized" : "role_title";
+  const select = kind === "job" ? "job_title,extracted_role_normalized,post_url" : "role_title,post_url";
   const response = await supabaseRequest(env, `${table}?id=eq.${postId}&select=${select}&limit=1`);
   if (!response.ok) throw new Error(`fetch ${table} failed: HTTP ${response.status}`);
   const rows = await response.json<Record<string, string>[]>();
   const row = rows[0];
   if (!row) return null;
   const role = kind === "job" ? (row.extracted_role_normalized || row.job_title) : row.role_title;
-  return role?.trim() || null;
+  if (!role?.trim()) return null;
+  return { role: role.trim(), postUrl: row.post_url ?? null };
 }
 
 async function countMatching(env: Env, kind: Kind, postId: string): Promise<number> {
@@ -105,7 +111,7 @@ async function upsertResult(
   env: Env,
   postId: string,
   kind: Kind,
-  fields: { comment?: string; matching_count?: number; status: "done" | "failed" },
+  fields: { comment?: string; matching_count?: number; status: "done" | "failed"; post_url?: string | null; title?: string },
 ): Promise<void> {
   const response = await supabaseRequest(env, "admin_post_comments?on_conflict=post_id", {
     method: "POST",
@@ -169,24 +175,25 @@ export default {
     for (const message of batch.messages) {
       try {
         const { post_id, kind } = message.body;
-        const roleName = await fetchPostRole(env, kind, post_id);
-        if (!roleName) {
+        const info = await fetchPostInfo(env, kind, post_id);
+        if (!info) {
           // Post no longer exists / role missing — nothing useful to
           // retry towards, acknowledge and move on.
           message.ack();
           continue;
         }
         const matchingCount = await countMatching(env, kind, post_id);
-        if (matchingCount <= 0) {
-          // A "0 matches" claim has nothing real to say — skip drafting
-          // entirely rather than post a hollow comment.
-          await upsertResult(env, post_id, kind, { comment: undefined, matching_count: 0, status: "done" });
+        const MIN_MATCHES_TO_COMMENT = 10;
+        if (matchingCount < MIN_MATCHES_TO_COMMENT) {
+          // Too thin a claim to be worth commenting on — skip drafting
+          // entirely rather than post a weak/hollow comment.
+          await upsertResult(env, post_id, kind, { comment: undefined, matching_count: matchingCount, status: "done", post_url: info.postUrl, title: info.role });
           message.ack();
           continue;
         }
         const link = kind === "job" ? "https://profilepush.ai/vendors" : "https://profilepush.ai/bench-sales";
-        const comment = buildComment(kind, roleName, matchingCount, link);
-        await upsertResult(env, post_id, kind, { comment, matching_count: matchingCount, status: "done" });
+        const comment = buildComment(kind, info.role, matchingCount, link);
+        await upsertResult(env, post_id, kind, { comment, matching_count: matchingCount, status: "done", post_url: info.postUrl, title: info.role });
         message.ack();
       } catch (error) {
         console.error("admin-post-outreach queue job failed", error);
