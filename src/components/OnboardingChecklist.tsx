@@ -13,13 +13,12 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Persistent floating checklist nudging a new account through the three
-// actions retention data showed most accounts never take at all: browsing a
-// listing, posting one, and trying AI outreach. Fully unmounts once all
-// three are done (or the account is more than 14 days old — this is an
-// activation nudge, not a permanent fixture). The close button only hides
-// it for the rest of the day, not forever, since the whole point is
-// nudging toward actions that are still missing.
+// Persistent floating checklist nudging every account — new and existing —
+// through the three actions retention data showed most accounts never take
+// at all: browsing a listing, posting one, and trying AI outreach. Fully
+// unmounts once all three are done, no account-age cutoff. The close
+// button only hides it for the rest of the day, not forever, since the
+// whole point is nudging toward actions that are still missing.
 export default function OnboardingChecklist() {
   const { account } = useAuth();
   const { isDark } = useTheme();
@@ -29,8 +28,6 @@ export default function OnboardingChecklist() {
   const [dismissedToday, setDismissedToday] = useState(false);
 
   const persona = account?.active_persona ?? null;
-  const accountAgeMs = account?.created_at ? Date.now() - new Date(account.created_at).getTime() : Infinity;
-  const isRecentAccount = accountAgeMs < 14 * 24 * 60 * 60 * 1000;
 
   useEffect(() => {
     try {
@@ -41,16 +38,16 @@ export default function OnboardingChecklist() {
   }, []);
 
   useEffect(() => {
-    if (!persona || !isRecentAccount) return;
+    if (!persona) return;
     void supabase.rpc('get_my_onboarding_status').then(({ data, error }) => {
       if (!error && data) setStatus(data as Status);
     });
     // Re-check whenever the route changes — the most likely moment a step
     // just got completed (posted, browsed, asked AI) is right after
     // navigating away from the page where it happened.
-  }, [persona, isRecentAccount, location.pathname]);
+  }, [persona, location.pathname]);
 
-  if (!persona || !isRecentAccount || !status || dismissedToday) return null;
+  if (!persona || !status || dismissedToday) return null;
   if (status.browsed && status.posted && status.ai_outreach) return null;
 
   const browseRoute = persona === 'vendor' ? '/feed/hotlist' : '/feed/jobs';
