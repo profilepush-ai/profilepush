@@ -182,8 +182,8 @@ export default function AdminPostOutreachPanel() {
   }
 
   return (
-    <div className="p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div className="flex h-full min-h-0 flex-col p-4">
+      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -246,7 +246,7 @@ export default function AdminPostOutreachPanel() {
         </div>
       </div>
 
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex shrink-0 items-center justify-between">
         <p className="text-[11px] text-gray-400">
           {total} scraped {kind === 'job' ? 'job' : 'hotlist'} posts in range · page {page + 1} of {totalPages} · up to {PAGE_SIZE} per page and per bulk generate
         </p>
@@ -270,14 +270,14 @@ export default function AdminPostOutreachPanel() {
         </div>
       </div>
 
-      {error && <div className="mb-3 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-600">{error}</div>}
+      {error && <div className="mb-3 shrink-0 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-600">{error}</div>}
 
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 size={20} className="animate-spin text-gray-400" /></div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-gray-200">
           <table className="w-full text-left text-[12px]">
-            <thead className="bg-gray-50 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+            <thead className="sticky top-0 z-[1] bg-gray-50 text-[10px] font-bold uppercase tracking-wide text-gray-400">
               <tr>
                 <th className="px-2 py-2">
                   <input type="checkbox" checked={rows.length > 0 && selected.size === rows.length} onChange={toggleSelectAll} />

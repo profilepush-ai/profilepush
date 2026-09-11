@@ -77,12 +77,17 @@ async function countMatching(env: Env, kind: Kind, postId: string): Promise<numb
   return await response.json<number>();
 }
 
-function normalizeComment(raw: string, link: string): string | null {
+// Validates against the SPECIFIC matching count given, not just "contains a
+// digit somewhere" — smaller models (llama-3.1-8b) will happily echo an
+// unrelated number already present in the source post content instead of
+// the count they were told to use, which passes a looser digit check but
+// produces a misleading comment.
+function normalizeComment(raw: string, link: string, matchingCount: number): string | null {
   const comment = raw.trim().replace(/^```[a-z]*\s*/i, "").replace(/```$/i, "").replace(/^["'`]|["'`]$/g, "").trim();
   const wordCount = comment.split(/\s+/).filter(Boolean).length;
   if (!comment) return null;
   if (wordCount > 30) return null;
-  if (!/\d/.test(comment)) return null;
+  if (!comment.includes(String(matchingCount))) return null;
   if (!comment.includes(link)) return null;
   return comment;
 }
@@ -112,7 +117,7 @@ async function draftComment(env: Env, kind: Kind, postContent: string, matchingC
       max_tokens: 100,
     });
     const raw = String((aiResult as Record<string, unknown>)?.response ?? "");
-    const normalized = normalizeComment(raw, link);
+    const normalized = normalizeComment(raw, link, matchingCount);
     if (normalized) return normalized;
     throw new Error("AI comment failed validation");
   } catch (error) {
@@ -197,6 +202,13 @@ export default {
           continue;
         }
         const matchingCount = await countMatching(env, kind, post_id);
+        if (matchingCount <= 0) {
+          // A "0 matches" comment has nothing real to hook on — skip AI
+          // drafting entirely rather than let the model fabricate a claim.
+          await upsertResult(env, post_id, kind, { comment: undefined, matching_count: 0, status: "done" });
+          message.ack();
+          continue;
+        }
         const comment = await draftComment(env, kind, content, matchingCount);
         await upsertResult(env, post_id, kind, { comment, matching_count: matchingCount, status: "done" });
         message.ack();
