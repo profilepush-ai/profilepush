@@ -9,6 +9,7 @@ import LogoSpinner from './components/LogoSpinner';
 import StartupSplash from './components/StartupSplash';
 import UserActivityTracker from './components/UserActivityTracker';
 import PostPromptNudge from './components/PostPromptNudge';
+import OnboardingChecklist from './components/OnboardingChecklist';
 import { useAuth } from './contexts/AuthContext';
 import { isSupabaseConfigured, supabaseConfigMissing } from './lib/supabase';
 import { initializeOneSignal, setOneSignalExternalUserId } from './lib/onesignal';
@@ -240,6 +241,7 @@ export default function App() {
           <OneSignalIdentitySync />
           <UserActivityTracker />
           <PostPromptNudge />
+          <OnboardingChecklist />
           <PersistentJobFinder />
           <PersistentWishlist />
           <Suspense fallback={<PageLoader />}>

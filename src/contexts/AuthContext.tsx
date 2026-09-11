@@ -9,6 +9,7 @@ interface Account {
   credits_balance: number;
   is_trial: boolean;
   active_persona: 'vendor' | 'bench_sales' | null;
+  created_at: string;
 }
 
 export interface Subscription {

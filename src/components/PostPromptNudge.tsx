@@ -7,6 +7,11 @@ import PostFormModal from './posts/PostFormModal';
 import Toast from './Toast';
 
 const ACTIVE_THRESHOLD_MS = 60_000;
+// Retention data showed activation itself (not just return visits) is the
+// bigger problem — many first sessions show zero recorded activity at all.
+// Brand-new accounts get nudged much sooner than the standard 60s.
+const NEW_ACCOUNT_ACTIVE_THRESHOLD_MS = 10_000;
+const NEW_ACCOUNT_WINDOW_MS = 60 * 60 * 1000;
 const DISMISS_KEY_PREFIX = 'pp_post_nudge_shown_';
 
 function todayKey() {
@@ -39,6 +44,8 @@ export default function PostPromptNudge() {
   const persona = account?.active_persona ?? null;
   const onPostsPage = location.pathname.startsWith('/posts/');
   const kind = persona === 'vendor' ? 'job' : 'hotlist';
+  const isNewAccount = !!account?.created_at && (Date.now() - new Date(account.created_at).getTime()) < NEW_ACCOUNT_WINDOW_MS;
+  const activeThresholdMs = isNewAccount ? NEW_ACCOUNT_ACTIVE_THRESHOLD_MS : ACTIVE_THRESHOLD_MS;
 
   useEffect(() => {
     if (!persona || onPostsPage) return;
@@ -61,7 +68,7 @@ export default function PostPromptNudge() {
       } else {
         lastTickRef.current = null;
       }
-      if (activeMsRef.current >= ACTIVE_THRESHOLD_MS) {
+      if (activeMsRef.current >= activeThresholdMs) {
         setShowPasteBox(true);
         try { localStorage.setItem(DISMISS_KEY_PREFIX + todayKey(), '1'); } catch { /* storage unavailable — worst case it re-prompts */ }
         window.clearInterval(intervalId);
@@ -70,7 +77,7 @@ export default function PostPromptNudge() {
 
     const intervalId = window.setInterval(tick, 1000);
     return () => window.clearInterval(intervalId);
-  }, [persona, onPostsPage]);
+  }, [persona, onPostsPage, activeThresholdMs]);
 
   useEffect(() => {
     if (!showPasteBox) return;
