@@ -29,8 +29,8 @@ function getBearerToken(request: Request): string {
 // Deno env, and the same key this worker independently holds as a secret.
 // No new shared secret needs provisioning on either side.
 function isAuthorized(request: Request, env: Env): boolean {
-  const token = getBearerToken(request);
-  return !!token && token === env.SUPABASE_SERVICE_ROLE_KEY;
+  const token = getBearerToken(request).trim();
+  return !!token && token === env.SUPABASE_SERVICE_ROLE_KEY.trim();
 }
 
 function serviceHeaders(env: Env, json = false): Record<string, string> {
