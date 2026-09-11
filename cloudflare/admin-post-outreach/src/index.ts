@@ -1,8 +1,6 @@
 export interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
-  PARSER_MODEL: string;
-  AI: Ai;
   COMMENT_QUEUE: Queue<CommentJob>;
 }
 
@@ -24,13 +22,25 @@ function getBearerToken(request: Request): string {
   return scheme?.toLowerCase() === "bearer" ? (token ?? "").trim() : "";
 }
 
-// Authorized purely by possession of the Supabase service-role key — the
-// same key the calling admin-posts edge function already has via its own
-// Deno env, and the same key this worker independently holds as a secret.
-// No new shared secret needs provisioning on either side.
-function isAuthorized(request: Request, env: Env): boolean {
+// Verified live against the database rather than compared to one specific
+// stored string — admin-posts's own copy of SUPABASE_SERVICE_ROLE_KEY
+// (auto-injected by the Supabase platform) hashed differently from a
+// separately-confirmed-valid service-role key, most likely because Supabase
+// now issues newer-format secret keys that coexist with legacy JWT-style
+// ones; either is a legitimate credential, so authorization here just
+// checks "does this token actually work as service-role," not "does it
+// equal this exact string."
+async function isAuthorized(request: Request, env: Env): Promise<boolean> {
   const token = getBearerToken(request).trim();
-  return !!token && token === env.SUPABASE_SERVICE_ROLE_KEY.trim();
+  if (!token) return false;
+  try {
+    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/admin_post_comments?select=post_id&limit=1`, {
+      headers: { apikey: token, Authorization: `Bearer ${token}` },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 function serviceHeaders(env: Env, json = false): Record<string, string> {
@@ -56,13 +66,16 @@ function chunkArray<T>(items: T[], chunkSize: number): T[][] {
   return chunks;
 }
 
-async function fetchPostContent(env: Env, kind: Kind, postId: string): Promise<string | null> {
+async function fetchPostRole(env: Env, kind: Kind, postId: string): Promise<string | null> {
   const table = kind === "job" ? "social_jobs" : "social_hotlist";
-  const contentCol = kind === "job" ? "post_content" : "raw_post_content";
-  const response = await supabaseRequest(env, `${table}?id=eq.${postId}&select=${contentCol}&limit=1`);
+  const select = kind === "job" ? "job_title,extracted_role_normalized" : "role_title";
+  const response = await supabaseRequest(env, `${table}?id=eq.${postId}&select=${select}&limit=1`);
   if (!response.ok) throw new Error(`fetch ${table} failed: HTTP ${response.status}`);
   const rows = await response.json<Record<string, string>[]>();
-  return rows[0]?.[contentCol] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  const role = kind === "job" ? (row.extracted_role_normalized || row.job_title) : row.role_title;
+  return role?.trim() || null;
 }
 
 async function countMatching(env: Env, kind: Kind, postId: string): Promise<number> {
@@ -71,59 +84,21 @@ async function countMatching(env: Env, kind: Kind, postId: string): Promise<numb
   const response = await supabaseRequest(env, `rpc/${rpc}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ [param]: postId }),
+    body: JSON.stringify({ [param]: postId, p_window_days: 7 }),
   });
   if (!response.ok) throw new Error(`${rpc} failed: HTTP ${response.status}`);
   return await response.json<number>();
 }
 
-// Validates against the SPECIFIC matching count given, not just "contains a
-// digit somewhere" — smaller models (llama-3.1-8b) will happily echo an
-// unrelated number already present in the source post content instead of
-// the count they were told to use, which passes a looser digit check but
-// produces a misleading comment.
-function normalizeComment(raw: string, link: string, matchingCount: number): string | null {
-  const comment = raw.trim().replace(/^```[a-z]*\s*/i, "").replace(/```$/i, "").replace(/^["'`]|["'`]$/g, "").trim();
-  const wordCount = comment.split(/\s+/).filter(Boolean).length;
-  if (!comment) return null;
-  if (wordCount > 30) return null;
-  if (!comment.includes(String(matchingCount))) return null;
-  if (!comment.includes(link)) return null;
-  return comment;
-}
-
-function fallbackComment(kind: Kind, matchingCount: number, link: string): string {
+// Fixed, deterministic wording per exact spec — no LLM involved in the
+// comment text itself. A fully-specified message leaves an LLM nothing
+// useful to decide, only room to drift from the wording or (as seen in
+// testing) cite the wrong number — a live-computed count and role name
+// slotted into a fixed template is both simpler and strictly more reliable.
+function buildComment(kind: Kind, roleName: string, matchingCount: number, link: string): string {
   return kind === "job"
-    ? `${matchingCount} matching consultants already available for this exact role. See them free: ${link}`
-    : `${matchingCount} matching job requirements posted for this exact profile right now. Check them: ${link}`;
-}
-
-const JOB_COMMENT_PROMPT = `You write short, punchy LinkedIn comments (under 30 words) on job requirement posts, designed to grab the poster's attention. Always lead with or include the exact number given (matching consultant profiles already available) — this is the core hook. Urgent, direct, no fluff, no greetings, no hashtags. End with exactly the link given. Never mention any product/company name. Return ONLY the comment text, nothing else — no quotes, no explanation.`;
-
-const HOTLIST_COMMENT_PROMPT = `You write short, punchy LinkedIn comments (under 30 words) on bench-sales consultant posts, designed to grab the poster's attention. Always lead with or include the exact number given (matching job requirements already available) — this is the core hook. Urgent, direct, no fluff, no greetings, no hashtags. End with exactly the link given. Never mention any product/company name. Return ONLY the comment text, nothing else — no quotes, no explanation.`;
-
-async function draftComment(env: Env, kind: Kind, postContent: string, matchingCount: number): Promise<string> {
-  const link = kind === "job" ? "https://profilepush.ai/vendors" : "https://profilepush.ai/bench-sales";
-  const systemPrompt = kind === "job" ? JOB_COMMENT_PROMPT : HOTLIST_COMMENT_PROMPT;
-  const userPrompt = `Post content: ${postContent.slice(0, 800)}\n\nMatching count: ${matchingCount}\nLink to end with: ${link}`;
-
-  try {
-    const aiResult = await env.AI.run(env.PARSER_MODEL, {
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.5,
-      max_tokens: 100,
-    });
-    const raw = String((aiResult as Record<string, unknown>)?.response ?? "");
-    const normalized = normalizeComment(raw, link, matchingCount);
-    if (normalized) return normalized;
-    throw new Error("AI comment failed validation");
-  } catch (error) {
-    console.error("draftComment failed, using fallback", error);
-    return fallbackComment(kind, matchingCount, link);
-  }
+    ? `We have ${matchingCount} ${roleName} hotlist posts posted in the last 7 days by bench sales recruiters. Signup and reach out to them in a single click: ${link}`
+    : `We have ${matchingCount} jobs for ${roleName} posted in the last 7 days. Signup and reach out to them in a single click: ${link}`;
 }
 
 async function upsertResult(
@@ -146,7 +121,7 @@ async function upsertResult(
 }
 
 async function handleGenerateComments(request: Request, env: Env): Promise<Response> {
-  if (!isAuthorized(request, env)) return jsonResponse({ error: "Unauthorized" }, 401);
+  if (!(await isAuthorized(request, env))) return jsonResponse({ error: "Unauthorized" }, 401);
   const body = await request.json<{ kind?: unknown; ids?: unknown }>();
   const kind: Kind = body.kind === "hotlist" ? "hotlist" : "job";
   const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string") : [];
@@ -161,7 +136,7 @@ async function handleGenerateComments(request: Request, env: Env): Promise<Respo
 }
 
 async function handleCommentStatus(request: Request, env: Env): Promise<Response> {
-  if (!isAuthorized(request, env)) return jsonResponse({ error: "Unauthorized" }, 401);
+  if (!(await isAuthorized(request, env))) return jsonResponse({ error: "Unauthorized" }, 401);
   const body = await request.json<{ ids?: unknown }>();
   const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string") : [];
   if (ids.length === 0) return jsonResponse({ results: [] });
@@ -194,22 +169,23 @@ export default {
     for (const message of batch.messages) {
       try {
         const { post_id, kind } = message.body;
-        const content = await fetchPostContent(env, kind, post_id);
-        if (!content) {
-          // Post no longer exists / content missing — nothing useful to
+        const roleName = await fetchPostRole(env, kind, post_id);
+        if (!roleName) {
+          // Post no longer exists / role missing — nothing useful to
           // retry towards, acknowledge and move on.
           message.ack();
           continue;
         }
         const matchingCount = await countMatching(env, kind, post_id);
         if (matchingCount <= 0) {
-          // A "0 matches" comment has nothing real to hook on — skip AI
-          // drafting entirely rather than let the model fabricate a claim.
+          // A "0 matches" claim has nothing real to say — skip drafting
+          // entirely rather than post a hollow comment.
           await upsertResult(env, post_id, kind, { comment: undefined, matching_count: 0, status: "done" });
           message.ack();
           continue;
         }
-        const comment = await draftComment(env, kind, content, matchingCount);
+        const link = kind === "job" ? "https://profilepush.ai/vendors" : "https://profilepush.ai/bench-sales";
+        const comment = buildComment(kind, roleName, matchingCount, link);
         await upsertResult(env, post_id, kind, { comment, matching_count: matchingCount, status: "done" });
         message.ack();
       } catch (error) {

@@ -3,12 +3,8 @@ main = "src/index.ts"
 compatibility_date = "2026-08-13"
 workers_dev = true
 
-[ai]
-binding = "AI"
-
 [vars]
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
-PARSER_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
 
 [[queues.producers]]
 binding = "COMMENT_QUEUE"
