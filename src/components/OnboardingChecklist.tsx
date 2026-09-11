@@ -38,9 +38,17 @@ export default function OnboardingChecklist() {
   }, []);
 
   useEffect(() => {
-    if (!persona) return;
+    if (!persona) {
+      console.debug('[OnboardingChecklist] no persona set, not showing');
+      return;
+    }
     void supabase.rpc('get_my_onboarding_status').then(({ data, error }) => {
-      if (!error && data) setStatus(data as Status);
+      if (error) {
+        console.debug('[OnboardingChecklist] RPC error', error);
+        return;
+      }
+      console.debug('[OnboardingChecklist] status', data);
+      if (data) setStatus(data as Status);
     });
     // Re-check whenever the route changes — the most likely moment a step
     // just got completed (posted, browsed, asked AI) is right after
@@ -55,14 +63,14 @@ export default function OnboardingChecklist() {
 
   const steps: Array<{ key: keyof Status; label: string; onClick: () => void }> = [
     {
-      key: 'browsed',
-      label: persona === 'vendor' ? 'Browse available consultants' : 'Browse open requirements',
-      onClick: () => navigate(browseRoute),
-    },
-    {
       key: 'posted',
       label: persona === 'vendor' ? 'Post a job requirement' : 'Post a consultant',
       onClick: () => navigate(postRoute),
+    },
+    {
+      key: 'browsed',
+      label: persona === 'vendor' ? 'Browse available consultants' : 'Browse open requirements',
+      onClick: () => navigate(browseRoute),
     },
     {
       key: 'ai_outreach',
