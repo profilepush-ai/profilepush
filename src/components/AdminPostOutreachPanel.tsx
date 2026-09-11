@@ -19,7 +19,21 @@ async function callAdminPosts(body: Record<string, unknown>): Promise<Record<str
   const { data, error } = await supabase.functions.invoke('admin-posts', {
     body: { password: sessionStorage.getItem('admin_authed') || '', ...body },
   });
-  if (error || data?.error) throw new Error(error?.message || data.error);
+  if (error) {
+    // FunctionsHttpError's own .message is a generic wrapper ("Edge
+    // Function returned a non-2xx status code") — the real detail is in
+    // the response body itself, reachable via .context.
+    let detail = error.message;
+    try {
+      const ctx = (error as unknown as { context?: Response }).context;
+      if (ctx) {
+        const body = await ctx.clone().json().catch(() => null);
+        if (body?.error) detail = body.error;
+      }
+    } catch { /* fall back to the generic message */ }
+    throw new Error(detail);
+  }
+  if (data?.error) throw new Error(data.error);
   return data;
 }
 
