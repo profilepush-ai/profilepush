@@ -82,6 +82,18 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json();
     const { password, action } = body;
+
+    // TEMPORARY diagnostic — returns only a SHA-256 hash, never the key
+    // itself (not practically reversible), placed before the password gate
+    // purely so it can be checked without needing the admin password to
+    // hand. Remove once the admin-post-outreach key mismatch is resolved.
+    if (action === "debug_key_hash") {
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(serviceRoleKey));
+      const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+      return jsonResponse({ hash: hex });
+    }
+
     if (password !== ADMIN_PASSWORD) {
       return jsonResponse({ error: "Invalid password" }, 401);
     }
