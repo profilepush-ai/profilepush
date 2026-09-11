@@ -110,6 +110,33 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(result);
     }
 
+    if (action === "list_generated") {
+      // Unlike "list"/"generate_comments", kind here is optional — null
+      // means "both kinds together" for this persisted browse view.
+      const generatedKind = body.kind === "job" || body.kind === "hotlist" ? body.kind : null;
+      const limit = typeof body.limit === "number" ? Math.min(body.limit, 50) : 50;
+      const offset = typeof body.offset === "number" ? body.offset : 0;
+      const { data, error } = await supabase.rpc("get_admin_generated_comments", {
+        p_kind: generatedKind,
+        p_start_date: body.start_date ?? null,
+        p_end_date: body.end_date ?? null,
+        p_limit: limit,
+        p_offset: offset,
+      });
+      if (error) throw new Error(error.message);
+      const rawRows = (data ?? []) as Array<Record<string, unknown>>;
+      const rows = rawRows.map((row) => ({
+        id: row.post_id,
+        kind: row.kind,
+        post_url: row.post_url,
+        title: row.title,
+        comment: row.comment,
+        matching_count: row.matching_count,
+        generated_at: row.generated_at,
+      }));
+      return jsonResponse({ rows, total: rawRows[0]?.total_count ?? 0 });
+    }
+
     return jsonResponse({ error: "Unknown action" }, 400);
   } catch (err) {
     return jsonResponse({ error: (err as Error).message }, 500);
