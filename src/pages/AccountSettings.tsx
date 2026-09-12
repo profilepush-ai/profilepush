@@ -7,6 +7,8 @@ import {
   ArrowRight, ChevronRight, RefreshCw, Info,
   UserCheck, Plug, Loader2,
 } from 'lucide-react';
+import { Browser } from '@capacitor/browser';
+import { Capacitor } from '@capacitor/core';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import { supabase } from '../lib/supabase';
@@ -805,6 +807,36 @@ export default function AccountSettings() {
 
             </>
           )}
+
+          {/* Always visible regardless of which settings section is active —
+              the mobile app has no other reachable path to these pages
+              (the marketing SiteFooter that normally links to them never
+              renders inside the native app). */}
+          <Card>
+            <CardHeader icon={Info} title="About" />
+            <div className="divide-y divide-gray-100 px-4 sm:px-6">
+              <button
+                onClick={() => void Browser.open({ url: 'https://profilepush.ai/privacy' })}
+                className="flex w-full items-center justify-between py-3.5 text-left text-[13px] font-semibold text-gray-700 hover:text-gray-900"
+              >
+                Privacy Policy <ChevronRight size={14} className="text-gray-300" />
+              </button>
+              <button
+                onClick={() => void Browser.open({ url: 'https://profilepush.ai/terms' })}
+                className="flex w-full items-center justify-between py-3.5 text-left text-[13px] font-semibold text-gray-700 hover:text-gray-900"
+              >
+                Terms of Service <ChevronRight size={14} className="text-gray-300" />
+              </button>
+              {Capacitor.isNativePlatform() && (
+                <button
+                  onClick={() => void Browser.open({ url: 'https://play.google.com/store/apps/details?id=com.profilepush.app' })}
+                  className="flex w-full items-center justify-between py-3.5 text-left text-[13px] font-semibold text-gray-700 hover:text-gray-900"
+                >
+                  Rate ProfilePush <ChevronRight size={14} className="text-gray-300" />
+                </button>
+              )}
+            </div>
+          </Card>
 
         </div>
       </div>

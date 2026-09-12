@@ -10,6 +10,7 @@ import StartupSplash from './components/StartupSplash';
 import UserActivityTracker from './components/UserActivityTracker';
 import PostPromptNudge from './components/PostPromptNudge';
 import OnboardingChecklist from './components/OnboardingChecklist';
+import AndroidBackButtonHandler from './components/AndroidBackButtonHandler';
 import { useAuth } from './contexts/AuthContext';
 import { isSupabaseConfigured, supabaseConfigMissing } from './lib/supabase';
 import { initializeOneSignal, setOneSignalExternalUserId } from './lib/onesignal';
@@ -239,6 +240,7 @@ export default function App() {
         <AuthProvider>
           <ScrollToTop />
           <OneSignalIdentitySync />
+          <AndroidBackButtonHandler />
           <UserActivityTracker />
           <PostPromptNudge />
           <OnboardingChecklist />
