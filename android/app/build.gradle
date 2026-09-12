@@ -6,8 +6,12 @@ def releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
 def releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
 def releaseVersionCode = System.getenv("ANDROID_VERSION_CODE")
 def releaseVersionName = System.getenv("ANDROID_VERSION_NAME")
-def resolvedVersionCode = Integer.parseInt(releaseVersionCode ?: "2")
-def resolvedVersionName = releaseVersionName ?: "1.0.1"
+// Fallback defaults only apply if ANDROID_VERSION_CODE/NAME aren't set —
+// bump these whenever a release actually ships, so the default itself never
+// drifts stale relative to what's really on Play Console (it already had,
+// once: this said "2" while Play Console was at version code 6).
+def resolvedVersionCode = Integer.parseInt(releaseVersionCode ?: "7")
+def resolvedVersionName = releaseVersionName ?: "1.0.6"
 
 android {
     namespace "com.profilepush.app"
