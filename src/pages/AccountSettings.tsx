@@ -792,7 +792,7 @@ export default function AccountSettings() {
                     {shouldShowCreditsUi() && (
                       <div className="bg-gray-50 rounded-xl p-4">
                         <p className="text-[11px] text-gray-400 mb-1">AI Credits Balance</p>
-                        <p className="text-2xl font-black text-gray-900">${Number(account?.credits_balance ?? 0).toFixed(2)}</p>
+                        <p className="text-2xl font-black text-gray-900">{Math.floor(Math.max(0, Number(account?.credits_balance ?? 0))).toLocaleString('en-IN')} credits</p>
                         <p className="text-[11px] text-gray-400 mt-0.5">Available for AI features</p>
                       </div>
                     )}
