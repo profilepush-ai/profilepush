@@ -556,21 +556,21 @@ export default function AppNav() {
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
           <Link
             to={feedItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/feed') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium ${location.pathname.startsWith('/feed') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <FeedIcon size={24} />
             <span>{feedItem.label}</span>
           </Link>
           <Link
             to={postsItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <PostsIcon size={24} />
             <span>{postsItem.label}</span>
           </Link>
           <Link
             to="/inbox"
-            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Mail size={24} />
             <span>Inbox</span>
@@ -578,14 +578,14 @@ export default function AppNav() {
           </Link>
           <Link
             to={trackerItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname.startsWith('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium ${location.pathname.startsWith('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <TrackerIcon size={24} />
             <span>{trackerItem.label}</span>
           </Link>
           <Link
             to="/pulse"
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[13px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Activity size={24} />
             <span>Pulse</span>
