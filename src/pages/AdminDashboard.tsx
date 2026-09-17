@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Table as TableIcon } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
@@ -9,7 +9,7 @@ import AdminMarketPanel from '../components/AdminMarketPanel';
 import AdminTrendsPanel from '../components/AdminTrendsPanel';
 import AdminPostOutreachPanel from '../components/AdminPostOutreachPanel';
 import { supabase } from '../lib/supabase';
-import { filterAndSortAccountStats, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
+import { filterAndSortAccountStats, formatUserType, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
 
 interface AccountStats {
   id: string;
@@ -17,6 +17,7 @@ interface AccountStats {
   created_at: string;
   user_name: string;
   user_email: string;
+  active_persona: 'vendor' | 'bench_sales' | null;
   credits_balance: number;
   searches_count: number;
   job_posts_count: number;
@@ -88,9 +89,10 @@ function getDateRange(preset: DatePreset, customStart: string, customEnd: string
   return { start_date: d.toISOString(), end_date: null };
 }
 
-const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.ReactNode; kind: 'text' | 'number' | 'duration' | 'age' | 'date'; widthClass: string }> = [
+const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.ReactNode; kind: 'text' | 'persona' | 'number' | 'duration' | 'age' | 'date'; widthClass: string }> = [
   { key: 'user_name', label: 'User Name', icon: <UserCheck size={12} />, kind: 'text', widthClass: 'w-[140px]' },
   { key: 'user_email', label: 'User Email', icon: <Mail size={12} />, kind: 'text', widthClass: 'w-[210px]' },
+  { key: 'active_persona', label: 'User Type', icon: <UserRound size={12} />, kind: 'persona', widthClass: 'w-[125px]' },
   { key: 'credits_balance', label: 'Credits', icon: <Database size={12} />, kind: 'number', widthClass: 'w-[110px]' },
   { key: 'searches_count', label: 'Searches', icon: <Search size={12} />, kind: 'number', widthClass: 'w-[95px]' },
   { key: 'job_posts_count', label: 'Job Posts', icon: <Megaphone size={12} />, kind: 'number', widthClass: 'w-[100px]' },
@@ -109,6 +111,11 @@ const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.React
   { key: 'last_activity_at', label: 'Last Activity', icon: <Activity size={12} />, kind: 'date', widthClass: 'w-[155px]' },
   { key: 'last_logged_in', label: 'Last Logged In', icon: <Calendar size={12} />, kind: 'date', widthClass: 'w-[155px]' },
 ];
+
+const STATS_PANES = [
+  { key: 'cards', label: 'Summary', icon: LayoutGrid },
+  { key: 'table', label: 'Accounts', icon: TableIcon },
+] as const;
 
 function formatCompactDateTime(value: string | null) {
   if (!value) return '-';
@@ -167,6 +174,12 @@ export default function AdminDashboard() {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [showDateDropdown, setShowDateDropdown] = useState(false);
+  // Below lg the summary grid and the ~2200px-wide table can't usefully
+  // share one viewport — the cards push the table off-screen and the table's
+  // horizontal scroll swallows the page. So on small screens only one pane
+  // renders at a time; from lg up both show together as before and this is
+  // ignored.
+  const [statsPane, setStatsPane] = useState<'cards' | 'table'>('cards');
   const [sortKey, setSortKey] = useState<AdminStatsSortKey>('created_at');
   const [sortDirection, setSortDirection] = useState<AdminStatsSortDirection>('desc');
   const dateDropdownRef = useRef<HTMLDivElement>(null);
@@ -453,6 +466,30 @@ export default function AdminDashboard() {
 
   const currentPresetLabel = DATE_PRESETS.find(p => p.key === datePreset)?.label ?? 'Last 7 days';
 
+  // Summary cards. A raw sum only means something for activity counters —
+  // adding up credits_balance across accounts totals everyone's *remaining*
+  // balance, which says nothing about the cohort, so it's deliberately not a
+  // card. What an admin actually reads this view for is composition (who
+  // these accounts are) and engagement (what they did in the selected
+  // range), so the counters that split by persona are paired back together
+  // with the split shown underneath.
+  const accountCount = filteredStats.length;
+  const vendorCount = filteredStats.filter((s) => s.active_persona === 'vendor').length;
+  const benchSalesCount = filteredStats.filter((s) => s.active_persona === 'bench_sales').length;
+  // "Active" = did anything at all in the range. session_count comes from
+  // user_activity_daily, which admin-stats already filters to the same date
+  // range, so a 0 here means genuinely dormant for the period — the single
+  // most useful number on the page and previously absent.
+  const activeAccounts = filteredStats.filter((s) => (s.session_count || 0) > 0).length;
+  const totalPosts = (totals.job_posts_count ?? 0) + (totals.hotlist_posts_count ?? 0);
+  const totalPreviews = (totals.job_previews_count ?? 0) + (totals.hotlist_previews_count ?? 0);
+  const totalAiAsks = (totals.ai_pitches_count ?? 0) + (totals.ai_requests_count ?? 0);
+  const totalDownloads = (totals.vendor_downloads_count ?? 0) + (totals.recruiter_downloads_count ?? 0);
+  // Averaged over *active* accounts, not all of them — dividing by dormant
+  // accounts drags the number toward zero and hides how long real users stay.
+  const avgActiveSeconds = activeAccounts > 0 ? Math.round((totals.active_seconds ?? 0) / activeAccounts) : 0;
+  const shareOfAccounts = (count: number) => (accountCount > 0 ? `${Math.round((count / accountCount) * 100)}% of accounts` : '-');
+
   if (!authed) {
     return (
       <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center p-6">
@@ -707,30 +744,49 @@ export default function AdminDashboard() {
             </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col gap-3">
-              <div className="grid shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-4 lg:grid-cols-6">
+              <div className="flex shrink-0 items-center gap-1 lg:hidden">
+                {STATS_PANES.map((pane) => (
+                  <button
+                    key={pane.key}
+                    type="button"
+                    onClick={() => setStatsPane(pane.key)}
+                    aria-pressed={statsPane === pane.key}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                      statsPane === pane.key
+                        ? 'border border-blue-600 bg-blue-600 text-white'
+                        : 'border border-gray-300 bg-white text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <pane.icon size={12} />
+                    {pane.label}
+                  </button>
+                ))}
+              </div>
+              <div className={`shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-4 lg:grid lg:grid-cols-6 ${statsPane === 'cards' ? 'grid' : 'hidden'}`}>
                 {[
-                  { label: 'Accounts', value: filteredStats.length.toLocaleString() },
-                  { label: 'Searches', value: (totals.searches_count ?? 0).toLocaleString() },
-                  { label: 'Job Posts', value: (totals.job_posts_count ?? 0).toLocaleString() },
-                  { label: 'Hotlist Posts', value: (totals.hotlist_posts_count ?? 0).toLocaleString() },
-                  { label: 'Job Previews', value: (totals.job_previews_count ?? 0).toLocaleString() },
-                  { label: 'Hotlist Previews', value: (totals.hotlist_previews_count ?? 0).toLocaleString() },
-                  { label: 'AI Pitches', value: (totals.ai_pitches_count ?? 0).toLocaleString() },
-                  { label: 'AI Requests', value: (totals.ai_requests_count ?? 0).toLocaleString() },
-                  { label: 'Chats', value: (totals.chats_count ?? 0).toLocaleString() },
-                  { label: 'Credits', value: (totals.credits_balance ?? 0).toLocaleString() },
-                  { label: 'Sessions', value: (totals.session_count ?? 0).toLocaleString() },
-                  { label: 'Active Time', value: formatActiveTime(totals.active_seconds ?? 0) },
+                  { label: 'Accounts', value: accountCount.toLocaleString(), hint: currentPresetLabel },
+                  { label: 'Vendors', value: vendorCount.toLocaleString(), hint: shareOfAccounts(vendorCount) },
+                  { label: 'Bench Sales', value: benchSalesCount.toLocaleString(), hint: shareOfAccounts(benchSalesCount) },
+                  { label: 'Active', value: activeAccounts.toLocaleString(), hint: shareOfAccounts(activeAccounts) },
+                  { label: 'Sessions', value: (totals.session_count ?? 0).toLocaleString(), hint: 'sign-ins in range' },
+                  { label: 'Avg Active Time', value: formatActiveTime(avgActiveSeconds), hint: 'per active account' },
+                  { label: 'Searches', value: (totals.searches_count ?? 0).toLocaleString(), hint: 'profile searches' },
+                  { label: 'Posts', value: totalPosts.toLocaleString(), hint: `${(totals.job_posts_count ?? 0).toLocaleString()} job · ${(totals.hotlist_posts_count ?? 0).toLocaleString()} hotlist` },
+                  { label: 'Previews', value: totalPreviews.toLocaleString(), hint: `${(totals.job_previews_count ?? 0).toLocaleString()} job · ${(totals.hotlist_previews_count ?? 0).toLocaleString()} hotlist` },
+                  { label: 'AI Asks', value: totalAiAsks.toLocaleString(), hint: `${(totals.ai_pitches_count ?? 0).toLocaleString()} pitch · ${(totals.ai_requests_count ?? 0).toLocaleString()} request` },
+                  { label: 'Chats', value: (totals.chats_count ?? 0).toLocaleString(), hint: 'messages sent' },
+                  { label: 'Downloads', value: totalDownloads.toLocaleString(), hint: `${(totals.vendor_downloads_count ?? 0).toLocaleString()} vendor · ${(totals.recruiter_downloads_count ?? 0).toLocaleString()} recruiter` },
                 ].map((metric) => (
                   <div key={metric.label} className="border-b border-r border-gray-200 px-4 py-3 [&:nth-child(2n)]:border-r-0 [&:nth-child(n+11)]:border-b-0 sm:[&:nth-child(4n)]:border-r-0 sm:[&:nth-child(n+9)]:border-b-0 lg:[&:nth-child(6n)]:border-r-0 lg:[&:nth-child(n+7)]:border-b-0">
                     <p className="text-[10px] font-semibold uppercase text-gray-500">{metric.label}</p>
                     <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{metric.value}</p>
+                    <p className="mt-0.5 truncate text-[10px] text-gray-400" title={metric.hint}>{metric.hint}</p>
                   </div>
                 ))}
               </div>
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <div className={`min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white lg:flex ${statsPane === 'table' ? 'flex' : 'hidden'}`}>
               <div className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full min-w-[2080px] table-fixed text-left">
+              <table className="w-full min-w-[2205px] table-fixed text-left">
                 <thead className="sticky top-0 z-[4]">
                   <tr className="border-b border-gray-200 bg-gray-50">
                     {COLUMNS.map(col => (
@@ -786,6 +842,14 @@ export default function AdminDashboard() {
                               <span className="text-xs tabular-nums font-normal text-gray-700">
                                 {`${Math.max(0, (value as number) || 0).toLocaleString()}d`}
                               </span>
+                            ) : col.kind === 'persona' ? (
+                              value ? (
+                                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${value === 'vendor' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                  {formatUserType(value as AccountStats['active_persona'])}
+                                </span>
+                              ) : (
+                                <span className="text-xs font-normal text-gray-400">-</span>
+                              )
                             ) : col.kind === 'date' ? (
                               <span className="block truncate text-xs font-normal text-gray-600 whitespace-nowrap">
                                 {typeof value === 'string' ? formatCompactDateTime(value) : '-'}
