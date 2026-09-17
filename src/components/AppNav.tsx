@@ -116,9 +116,12 @@ function CreditsChip({ balance }: { balance: number }) {
   );
 }
 
+// Selected colour is per-persona, matching how each side's content reads
+// everywhere else: Vendor works the Jobs side (blue), Bench Sales the
+// hotlist side (orange).
 const PERSONA_OPTIONS = [
-  { id: 'vendor', label: 'Vendor', icon: Briefcase },
-  { id: 'bench_sales', label: 'Bench Sales', icon: UserRound },
+  { id: 'vendor', label: 'Vendor', icon: Briefcase, selectedClass: 'border-blue-600 bg-blue-600 text-white' },
+  { id: 'bench_sales', label: 'Bench Sales', icon: UserRound, selectedClass: 'border-orange-500 bg-orange-500 text-white' },
 ] as const;
 
 // Global persona toggle — same branded pill style used across the app's
@@ -145,7 +148,7 @@ function PersonaSwitcher() {
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-1">
+    <div role="group" aria-label="User type" className="flex shrink-0 items-center gap-1">
       {PERSONA_OPTIONS.map((option) => (
         <button
           key={option.id}
@@ -154,13 +157,14 @@ function PersonaSwitcher() {
           disabled={switchingTo != null}
           title={option.label}
           aria-label={option.label}
-          className={`inline-flex items-center justify-center gap-1 rounded-full px-1.5 py-1 text-[11px] font-semibold transition disabled:opacity-60 sm:px-2.5 ${
+          aria-pressed={account.active_persona === option.id}
+          className={`inline-flex h-8 min-w-8 touch-manipulation items-center justify-center gap-1 rounded-full text-[11px] font-semibold transition disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-gray-400 sm:h-auto sm:min-w-0 sm:px-2.5 sm:py-1 ${
             account.active_persona === option.id
-              ? 'border border-blue-600 bg-blue-600 text-white'
-              : 'border border-transparent bg-white text-gray-500 hover:text-gray-700'
+              ? `border ${option.selectedClass}`
+              : 'border border-gray-200 bg-white text-gray-500 hover:text-gray-700 sm:border-transparent'
           }`}
         >
-          <option.icon size={12} />
+          <option.icon className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
           <span className="hidden sm:inline">{option.label}</span>
         </button>
       ))}
@@ -391,10 +395,20 @@ export default function AppNav() {
         </Link>
       )}
 
+      {/* Persona switcher sits beside the logo on mobile: the right-hand
+          cluster already carries credits, theme, bell and avatar, which
+          squeezed these two into ~24px targets — too small to hit reliably
+          for the one control that changes what the whole app shows. From sm
+          up it stays in the right-hand cluster as before. */}
+      {user && (
+        <span className="sm:hidden">
+          <PersonaSwitcher />
+        </span>
+      )}
+
       {/* Mobile: credits chip + account avatar */}
       {user && (
         <span className="sm:hidden ml-auto flex items-center gap-1.5">
-          <PersonaSwitcher />
           {shouldShowCreditsUi() && account != null && <CreditsChip balance={account.credits_balance} />}
           <button
             type="button"
