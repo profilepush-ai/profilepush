@@ -139,9 +139,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, loadAccount]);
 
   useEffect(() => {
+    // supabase-js re-checks (and often refreshes) the stored session every
+    // time a backgrounded tab becomes visible again, re-emitting SIGNED_IN /
+    // TOKEN_REFRESHED for the *same* already-signed-in user. Treating those
+    // like a fresh sign-in flipped `accountLoading` back on, and
+    // ProtectedRoute's full-screen spinner unmounts the entire page tree —
+    // so switching to another tab and back looked like a full page refresh
+    // and dropped the user's place (scroll, filters, open panels, and any
+    // route the guards then redirected away from). The account is therefore
+    // only (re)loaded when the signed-in identity actually changes.
+    let loadedUserId: string | null = null;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      const nextUser = s?.user ?? null;
       setSession(s);
-      setUser(s?.user ?? null);
+      // Preserve the User object identity across token refreshes too, so
+      // effects elsewhere that depend on `user` don't re-fire on tab focus.
+      setUser((previous) => (previous && nextUser && previous.id === nextUser.id ? previous : nextUser));
+
+      const isSameUser = nextUser != null && nextUser.id === loadedUserId;
+      loadedUserId = nextUser?.id ?? null;
+
+      // USER_UPDATED is a real profile change, so it still refetches.
+      if (isSameUser && event !== 'USER_UPDATED') {
+        if (event === 'INITIAL_SESSION') setLoading(false);
+        return;
+      }
+
       setAccountLoading(true);
       (async () => {
         try {
@@ -153,6 +177,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setSubscription(null);
           }
         } catch {
+          // Leave the identity unmarked so the next auth event retries the
+          // load instead of leaving the account permanently null.
+          if (loadedUserId === (s?.user?.id ?? null)) loadedUserId = null;
           setAccount(null);
           setMembership(null);
           setSubscription(null);
