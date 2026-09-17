@@ -31,7 +31,7 @@ Deno.serve(async (req: Request) => {
     // Fetch all accounts
     const { data: accounts } = await supabase
       .from("accounts")
-      .select("id, name, owner_id, credits_balance, is_trial, created_at")
+      .select("id, name, owner_id, credits_balance, is_trial, active_persona, created_at")
       .order("created_at", { ascending: false });
 
     if (!accounts || accounts.length === 0) {
@@ -269,6 +269,7 @@ Deno.serve(async (req: Request) => {
         created_at: a.created_at,
         user_name: primaryMember?.display_name || authUser?.full_name || a.name || "-",
         user_email: authUser?.email || primaryMember?.invited_email || "-",
+        active_persona: a.active_persona ?? null,
         credits_balance: a.credits_balance ?? 0,
         searches_count: searchesCounts[a.id] || 0,
         job_posts_count: postsJobsCounts[a.id] || 0,

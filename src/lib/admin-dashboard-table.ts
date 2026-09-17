@@ -4,6 +4,7 @@ export interface AdminAccountStatsRow {
   created_at: string;
   user_name: string;
   user_email: string;
+  active_persona: 'vendor' | 'bench_sales' | null;
   credits_balance: number;
   searches_count: number;
   job_posts_count: number;
@@ -24,7 +25,7 @@ export interface AdminAccountStatsRow {
   is_trial: boolean;
 }
 
-export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'credits_balance' | 'searches_count' | 'job_posts_count' | 'hotlist_posts_count' | 'job_previews_count' | 'hotlist_previews_count' | 'ai_pitches_count' | 'ai_requests_count' | 'chats_count' | 'vendor_downloads_count' | 'recruiter_downloads_count' | 'account_age_days' | 'session_count' | 'active_seconds' | 'active_days' | 'last_activity_at' | 'last_logged_in' | 'created_at';
+export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'active_persona' | 'credits_balance' | 'searches_count' | 'job_posts_count' | 'hotlist_posts_count' | 'job_previews_count' | 'hotlist_previews_count' | 'ai_pitches_count' | 'ai_requests_count' | 'chats_count' | 'vendor_downloads_count' | 'recruiter_downloads_count' | 'account_age_days' | 'session_count' | 'active_seconds' | 'active_days' | 'last_activity_at' | 'last_logged_in' | 'created_at';
 export type AdminStatsSortDirection = 'asc' | 'desc';
 
 export interface AdminStatsFilterState {
@@ -33,6 +34,12 @@ export interface AdminStatsFilterState {
   endDate: string;
   sortKey: AdminStatsSortKey;
   sortDirection: AdminStatsSortDirection;
+}
+
+export function formatUserType(persona: AdminAccountStatsRow['active_persona']) {
+  if (persona === 'vendor') return 'Vendor';
+  if (persona === 'bench_sales') return 'Bench Sales';
+  return '-';
 }
 
 function toDateValue(value: string | null | undefined) {
@@ -50,7 +57,7 @@ export function filterAndSortAccountStats(
   const endDate = filterState.endDate ? new Date(`${filterState.endDate}T23:59:59.999Z`).getTime() : null;
 
   const filtered = rows.filter((row) => {
-    const haystack = [row.name, row.user_name, row.user_email].filter(Boolean).join(' ').toLowerCase();
+    const haystack = [row.name, row.user_name, row.user_email, formatUserType(row.active_persona)].filter(Boolean).join(' ').toLowerCase();
     const matchesQuery = !query || haystack.includes(query);
 
     const createdAt = toDateValue(row.created_at);
