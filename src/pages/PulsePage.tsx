@@ -4047,7 +4047,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => navigate('/feed', { replace: true })}
+                  onClick={() => {
+                    const search = searchParams.toString();
+                    navigate({ pathname: '/feed', search: search ? `?${search}` : '' }, { replace: true });
+                  }}
                   className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
                   aria-label="Close preview"
                 >
@@ -6459,7 +6462,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           setFeedSearchQuery('');
                           setFeedSearchFilters(DEFAULT_FEED_SEARCH_FILTERS);
                           setIsRecentSearchesOpen(false);
-                          appliedSearchParamQueryRef.current = null;
+                          // Mark the query that is still in the URL as already
+                          // applied, rather than nulling the ref. The URL is
+                          // rewritten by an effect a render later, and until
+                          // then the ?q= effect would read the stale param,
+                          // see a ref that doesn't match, and "restore" the
+                          // search we are in the middle of clearing.
+                          appliedSearchParamQueryRef.current = (searchParams.get('q') ?? '').trim() || null;
                           setAppliedRawSearchQuery('');
                         }}
                         className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600"
