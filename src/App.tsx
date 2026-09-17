@@ -146,7 +146,9 @@ function AppEntry() {
 // lives at /feed/hotlist, Bench Sales -> Jobs content at /feed/jobs), the
 // same "persona is the single source of truth" rule as everywhere else, so
 // a stale bookmark or a persona switch never leaves the URL pointing at the
-// wrong kind.
+// wrong kind. The redirects carry location.search through: the feed keeps its
+// search query, date range and page number there, and a bare `to={path}` would
+// silently drop them on any persona-driven redirect.
 function FeedRouteGuard() {
   const { account } = useAuth();
   const location = useLocation();
@@ -162,13 +164,13 @@ function FeedRouteGuard() {
 
   if (params.kind) {
     if (params.kind !== expectedLeadKind) {
-      return <Navigate to={expectedPath} replace />;
+      return <Navigate to={{ pathname: expectedPath, search: location.search }} replace />;
     }
     return <PulsePage feedKind="feed" />;
   }
 
   if (location.pathname !== expectedPath) {
-    return <Navigate to={expectedPath} replace />;
+    return <Navigate to={{ pathname: expectedPath, search: location.search }} replace />;
   }
   return <PulsePage feedKind="feed" />;
 }
@@ -181,7 +183,7 @@ function PostsRouteGuard() {
   const location = useLocation();
   const expectedPath = account?.active_persona === 'bench_sales' ? '/posts/hotlist' : '/posts/jobs';
   if (location.pathname !== expectedPath) {
-    return <Navigate to={expectedPath} replace />;
+    return <Navigate to={{ pathname: expectedPath, search: location.search }} replace />;
   }
   return <MyPostsPage />;
 }
@@ -193,7 +195,7 @@ function TrackerRouteGuard() {
   const location = useLocation();
   const expectedPath = account?.active_persona === 'bench_sales' ? '/tracker/submissions' : '/tracker/requests';
   if (location.pathname !== expectedPath) {
-    return <Navigate to={expectedPath} replace />;
+    return <Navigate to={{ pathname: expectedPath, search: location.search }} replace />;
   }
   return <TrackerPage />;
 }

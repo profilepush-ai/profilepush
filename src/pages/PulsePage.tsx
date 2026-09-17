@@ -55,7 +55,6 @@ import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { HOTLIST_AI_SUGGESTIONS } from '../lib/hotlist-ai-suggestions';
 import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
-import { matchesPulseFeedSearch } from '../lib/pulse-feed-search';
 import { shouldChargeCredits } from '../lib/feature-gates';
 import { normalizePostSource, type PostSource } from '../lib/post-source';
 import PostSourceBadge from '../components/PostSourceBadge';
@@ -368,6 +367,64 @@ type FeedSearchFilters = {
 
 type FeedFacetCategory = 'experienceRange' | 'workType' | 'employmentType' | 'visaStatus';
 
+// Cursor for the paged feed. Browsing keys off the last row's sort tuple;
+// searching orders by FTS rank, which isn't keyset-able, so it pages by offset.
+type FeedCursor = { postedAt: string | null; leadId: string | null; offset: number };
+
+// The sidebar filters, in the shape the _v2 RPCs take. Empty means "no filter
+// for this category", matching the empty-array short-circuit in
+// matchesLeadFilters.
+// Sidebar filters <-> query string. The multi-selects use repeated params
+// rather than a comma-joined list because location values legitimately contain
+// commas ("Austin, TX"), which a split would tear in half.
+const FEED_FILTER_URL_KEYS = ['exp', 'work', 'emp', 'visa', 'loc', 'skills', 'rate', 'rmin', 'rmax'] as const;
+
+function readFeedFiltersFromUrl(params: URLSearchParams): FeedSearchFilters {
+  const rateMode = params.get('rate');
+  return {
+    experienceRange: params.getAll('exp'),
+    workType: params.getAll('work'),
+    employmentType: params.getAll('emp'),
+    visaStatus: params.getAll('visa'),
+    location: params.getAll('loc'),
+    skillsQuery: params.get('skills') ?? '',
+    rateMode: rateMode === 'has_rate' || rateMode === 'range' ? rateMode : 'all',
+    rateMin: params.get('rmin') ?? '',
+    rateMax: params.get('rmax') ?? '',
+  };
+}
+
+function writeFeedFiltersToUrl(params: URLSearchParams, filters: FeedSearchFilters) {
+  for (const key of FEED_FILTER_URL_KEYS) params.delete(key);
+  for (const value of filters.experienceRange) params.append('exp', value);
+  for (const value of filters.workType) params.append('work', value);
+  for (const value of filters.employmentType) params.append('emp', value);
+  for (const value of filters.visaStatus) params.append('visa', value);
+  for (const value of filters.location) params.append('loc', value);
+  if (filters.skillsQuery.trim()) params.set('skills', filters.skillsQuery.trim());
+  if (filters.rateMode !== 'all') params.set('rate', filters.rateMode);
+  if (filters.rateMode === 'range') {
+    if (filters.rateMin) params.set('rmin', filters.rateMin);
+    if (filters.rateMax) params.set('rmax', filters.rateMax);
+  }
+}
+
+function buildFeedFilterArgs(filters: FeedSearchFilters) {
+  const rateMin = Number(filters.rateMin);
+  const rateMax = Number(filters.rateMax);
+  return {
+    p_experience_ranges: filters.experienceRange.length > 0 ? filters.experienceRange : null,
+    p_work_types: filters.workType.length > 0 ? filters.workType : null,
+    p_employment_types: filters.employmentType.length > 0 ? filters.employmentType : null,
+    p_visa_statuses: filters.visaStatus.length > 0 ? filters.visaStatus : null,
+    p_locations: filters.location.length > 0 ? filters.location : null,
+    p_skills_query: filters.skillsQuery.trim() || null,
+    p_rate_mode: filters.rateMode === 'all' ? null : filters.rateMode,
+    p_rate_min: filters.rateMode === 'range' && Number.isFinite(rateMin) ? rateMin : null,
+    p_rate_max: filters.rateMode === 'range' && Number.isFinite(rateMax) ? rateMax : null,
+  };
+}
+
 async function getFunctionErrorMessage(error: unknown, fallback: string) {
   if (error && typeof error === 'object' && 'context' in error) {
     const context = (error as { context?: unknown }).context;
@@ -424,6 +481,16 @@ type PulseLeadActionRow = {
 
 const LEADERBOARD_RPC_LIMIT = 500;
 const FEED_WINDOW_HOURS = 48;
+// Server page size. The feed no longer drains the window into the browser; it
+// asks for this many rows at a time and keys the next request off the last row.
+const FEED_PAGE_SIZE = 100;
+// Profile stats and the leaderboard aggregate across *every* row in the window
+// (buildRowMatchProfile / matchesPersonaProfile run per role, in JS), so
+// letting them follow the 30-day picker would re-introduce exactly the
+// full-window download the paged feed exists to remove. They stay pinned to
+// 72h — the feed's default range before this change — so the numbers they show
+// are the ones they show today.
+const PROFILE_STATS_WINDOW_HOURS = 72;
 const PULSE_ROWS_CACHE_TTL_MS = 30_000;
 const PULSE_CACHE_WORKER_URL = (import.meta.env.VITE_PULSE_CACHE_WORKER_URL ?? '').trim();
 const PULSE_CACHE_WORKER_TOKEN = (import.meta.env.VITE_PULSE_CACHE_WORKER_TOKEN ?? '').trim();
@@ -2200,12 +2267,43 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [activePersona, setActivePersona] = useState<PulsePersona | null>(null);
   const [feed, setFeed] = useState<SocialLead[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
+  // Paging state for the server-side feed. feedCursorRef is a ref, not state,
+  // because appending a page must not race a second "load more" triggered by
+  // the same scroll gesture — the guard has to be readable synchronously.
+  const feedCursorRef = useRef<FeedCursor | null>(null);
+  const feedPageInFlightRef = useRef(false);
+  // The scroll handlers are declared ~2000 lines above loadMoreFeedPage (which
+  // can't move, because it depends on loadFeed). They call it through this ref
+  // rather than closing over a binding that is still in its temporal dead zone
+  // at that point in the render.
+  // One cursor per page start, so Previous can re-fetch an earlier page.
+  // Index 0 is always null (the first page needs no cursor).
+  const feedCursorStackRef = useRef<Array<FeedCursor | null>>([null]);
+  // The pagination bar renders far above where these are defined (they depend
+  // on loadFeed), so it calls them through refs rather than closing over
+  // bindings still in their temporal dead zone at that point in the render.
+  const goToNextFeedPageRef = useRef<() => Promise<void>>(async () => {});
+  const goToPrevFeedPageRef = useRef<() => Promise<void>>(async () => {});
+  const [feedPageIndex, setFeedPageIndex] = useState(0);
+  // Read once on mount and consumed by the feed loader effect. A ref, not
+  // state, because it must not itself trigger a render or a second fetch.
+  const pendingRestorePageRef = useRef<number | null>((() => {
+    const raw = Number(new URLSearchParams(window.location.search).get('page'));
+    return Number.isFinite(raw) && raw > 1 ? Math.floor(raw) - 1 : null;
+  })());
+  const [feedHasMore, setFeedHasMore] = useState(false);
+  const [feedPageLoading, setFeedPageLoading] = useState(false);
   const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
-  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>('3d');
+  const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('range');
+    return PROFILE_RANGE_OPTIONS.some((option) => option.id === fromUrl)
+      ? (fromUrl as ProfileRangeOption['id'])
+      : '30d';
+  });
   // Derived from the account's global persona, not a user toggle — a Vendor
   // only ever browses Hotlist (to request consultants), Bench Sales only
   // ever browses Jobs (to apply). No in-page peeking at the other kind.
@@ -2268,7 +2366,29 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [isRecentSearchesOpen, setIsRecentSearchesOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
-  const [feedSearchFilters, setFeedSearchFilters] = useState<FeedSearchFilters>(DEFAULT_FEED_SEARCH_FILTERS);
+  // The raw text the user searched for, as opposed to feedSearchQuery which is
+  // the parsed role. Kept because it is what belongs in ?q=, and because the
+  // URL is written from state by a single effect rather than by each handler:
+  // react-router's setSearchParams closes over the params of the render that
+  // created it, so several handlers writing their own snapshots race, and the
+  // last stale one wins -- which is what was dropping ?q=.
+  const [appliedRawSearchQuery, setAppliedRawSearchQuery] = useState(
+    () => (new URLSearchParams(window.location.search).get('q') ?? '').trim(),
+  );
+  const [feedSearchFilters, setFeedSearchFilters] = useState<FeedSearchFilters>(
+    () => readFeedFiltersFromUrl(new URLSearchParams(window.location.search)),
+  );
+  // Filters are sent to the server now, so the free-text boxes inside them
+  // (skillsQuery, rate bounds) need a beat before they turn into a request.
+  const [appliedFeedFilters, setAppliedFeedFilters] = useState<FeedSearchFilters>(
+    () => readFeedFiltersFromUrl(new URLSearchParams(window.location.search)),
+  );
+  const [serverFacetCounts, setServerFacetCounts] = useState<Record<FeedFacetCategory, Record<string, number>>>({
+    experienceRange: {}, workType: {}, employmentType: {}, visaStatus: {},
+  });
+  // Total matching the current window + filters, which the client can no
+  // longer derive from feed.length now that feed holds only loaded pages.
+  const [feedTotalCount, setFeedTotalCount] = useState<number | null>(null);
   // Free-text/numeric filter fields (skills, rate range) apply on
   // blur/Enter/an explicit Apply click rather than live per-keystroke —
   // scopedFeed re-filters the whole (potentially thousand-plus-row) feed on
@@ -2283,8 +2403,6 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   const [pendingRateMin, setPendingRateMin] = useState(feedSearchFilters.rateMin);
   const [pendingRateMax, setPendingRateMax] = useState(feedSearchFilters.rateMax);
   const [pendingFeedSearchQuery, setPendingFeedSearchQuery] = useState('');
-  const [vectorSearchLeadIds, setVectorSearchLeadIds] = useState<string[] | null>(null);
-  const [vectorSearchLoading, setVectorSearchLoading] = useState(false);
   const [selectedProfilesView, setSelectedProfilesView] = useState<'all' | 'watching'>('all');
   const [profilePage, setProfilePage] = useState(1);
   const visibleProfilesCount = profilePage * TOP_PROFILES_PAGE_SIZE;
@@ -2714,34 +2832,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       next = next.filter((lead) => lead.kind === feedKindFilter);
     }
 
-    if (feedSearchQuery.trim()) {
-      if (Array.isArray(vectorSearchLeadIds) && vectorSearchLeadIds.length > 0) {
-        const rankById = new Map<string, number>();
-        vectorSearchLeadIds.forEach((id, idx) => rankById.set(id, idx));
-        next = next
-          .filter((lead) => rankById.has(lead.id))
-          .sort((a, b) => (rankById.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rankById.get(b.id) ?? Number.MAX_SAFE_INTEGER));
-      } else {
-        next = next.filter((lead) => matchesPulseFeedSearch({
-          title: lead.title,
-          roleTitle: lead.roleTitle,
-          company: lead.company,
-          location: lead.location,
-          posterName: lead.posterName,
-          employmentType: lead.employmentType,
-          seniority: lead.seniority,
-          salaryRange: lead.salaryRange,
-          hourlyRate: lead.hourlyRate,
-          snippet: lead.snippet,
-          skills: lead.skills,
-          experienceYears: lead.experienceYears,
-          visaTypes: lead.visaTypes,
-        }, feedSearchQuery, 'all'));
-      }
-    }
+    // No query filtering here any more. The rows in `feed` are whatever
+    // get_*_feed_page_v2 returned for p_query, already ranked by FTS relevance
+    // across the full window. Re-running a client-side match over them would
+    // only be able to remove rows the server deliberately matched — silently
+    // shrinking pages, since it has no way to fetch replacements.
 
     return next;
-  }, [baseScopedFeed, feedKindFilter, feedSearchQuery, isCombinedFeed, vectorSearchLeadIds]);
+  }, [baseScopedFeed, feedKindFilter, isCombinedFeed]);
 
   const matchesLeadFilters = useCallback((lead: SocialLead, excludeCategory?: FeedFacetCategory) => {
     const fields = getLeadFilterContext(lead);
@@ -2781,32 +2879,13 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     [queryScopedFeed, matchesLeadFilters],
   );
 
-  const feedFacetCounts = useMemo(() => {
-    const counts: Record<FeedFacetCategory, Record<string, number>> = {
-      experienceRange: {}, workType: {}, employmentType: {}, visaStatus: {},
-    };
-    for (const lead of queryScopedFeed) {
-      const fields = getLeadFilterContext(lead);
-      if (matchesLeadFilters(lead, 'experienceRange')) {
-        for (const opt of EXPERIENCE_RANGE_OPTIONS) {
-          if (opt.id === 'all') continue;
-          if (matchesExperienceRange(fields.experienceYears, opt.id)) {
-            counts.experienceRange[opt.id] = (counts.experienceRange[opt.id] ?? 0) + 1;
-          }
-        }
-      }
-      if (matchesLeadFilters(lead, 'workType')) {
-        counts.workType[fields.workType] = (counts.workType[fields.workType] ?? 0) + 1;
-      }
-      if (matchesLeadFilters(lead, 'employmentType')) {
-        counts.employmentType[fields.employmentType] = (counts.employmentType[fields.employmentType] ?? 0) + 1;
-      }
-      if (matchesLeadFilters(lead, 'visaStatus')) {
-        counts.visaStatus[fields.visaStatus] = (counts.visaStatus[fields.visaStatus] ?? 0) + 1;
-      }
-    }
-    return counts;
-  }, [queryScopedFeed, matchesLeadFilters, getLeadFilterContext]);
+  // Facet counts come from the server now. They used to be tallied from
+  // queryScopedFeed, which only worked while the browser held the entire
+  // window — with 100-row pages that would have counted the current page and
+  // reported "Remote 7" for a window holding hundreds. The RPC counts the
+  // whole window, and each category is counted with its own selection
+  // excluded, exactly as matchesLeadFilters(lead, category) did.
+  const feedFacetCounts = serverFacetCounts;
 
   const toggleFeedFacetOption = useCallback((category: FeedFacetCategory, optionValue: string) => {
     setFeedSearchFilters((prev) => {
@@ -2899,6 +2978,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     // to the Requested/Submitted tab instead of lingering here with its
     // action button disabled.
     const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id) && !globalAskedJobStateByLeadId[lead.id]);
+    // While searching, the server returns rows ranked by FTS relevance and
+    // pages by offset within that ranking. Re-sorting here would scramble the
+    // order the cursor is walking, so page 2 would interleave with page 1.
+    if (feedSearchQuery.trim()) return recent;
     return recent.sort((a, b) => {
       if (isCombinedFeed || isHotlistFeed) return compareByRecency(a, b, feedTimeBasis);
       const aTs = new Date(!isHotlistFeed && a.matchedAt
@@ -2909,7 +2992,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         : (feedTimeBasis === 'created' ? b.createdAt : b.postedAt)).getTime();
       return bTs - aTs;
     });
-  }, [dedupedScopedFeed, feedTimeBasis, globalAskedJobStateByLeadId, isCombinedFeed, isHotlistFeed, revealedLeadIds]);
+  }, [dedupedScopedFeed, feedSearchQuery, feedTimeBasis, globalAskedJobStateByLeadId, isCombinedFeed, isHotlistFeed, revealedLeadIds]);
 
   const previewedVisibleFeed = useMemo(() => {
     // Same reasoning as Recent: once a lead has been requested/submitted, it
@@ -2950,13 +3033,20 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   }, [askedLeadsById, dedupedScopedFeed]);
 
   const matchesTabCounts = useMemo(() => ({
-    all: dedupedScopedFeed.length,
+    // The browse tabs count the whole window, from the facets RPC — not the
+    // pages that happen to be loaded. Counting `feed` here is what made a
+    // 30-day window report 85: that was one server page of 100, minus the
+    // rows client-side dedupe collapses. feedTotalCount is null only until the
+    // first facets response lands, and the loaded count stands in until then.
+    all: feedTotalCount ?? dedupedScopedFeed.length,
     breakdown: dedupedScopedFeed.filter((lead) => breakdownChargedLeadIds.has(lead.id)).length,
+    // These three are driven by the account's own actions rather than by the
+    // window, so they stay local.
     previewed: previewedVisibleFeed.length,
     asked: askedVisibleFeed.length,
     verified: verifiedVisibleFeed.length,
-    queued: recentVisibleFeed.length,
-  }), [askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, previewedVisibleFeed.length, recentVisibleFeed.length, verifiedVisibleFeed.length]);
+    queued: feedTotalCount ?? recentVisibleFeed.length,
+  }), [askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, feedTotalCount, previewedVisibleFeed.length, recentVisibleFeed.length, verifiedVisibleFeed.length]);
 
   const matchesTabDefinitions = useMemo((): Array<{ id: MatchesTabId; label: string; icon: LucideIcon }> => (
     isCombinedFeed
@@ -2998,13 +3088,66 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } else {
       selectedFeed = dedupedScopedFeed;
     }
-    if (isCombinedFeed || (selectedMatchesTab === 'queued' && isHotlistFeed)) {
+    // Same reasoning as recentVisibleFeed: preserve the server's ranking while
+    // a search is active.
+    if (feedSearchQuery.trim()) return selectedFeed;
+    // The browse feed is newest-first now. It used to rank by completeness
+    // (compareDetailsAndPostedDate), which can't be paged server-side — no
+    // index can serve a computed rank, and the client only holds the pages it
+    // has fetched. The other tabs are driven by the account's own actions, are
+    // small, and keep the completeness ordering.
+    if (isCombinedFeed || selectedMatchesTab === 'queued') {
       return [...selectedFeed].sort((a, b) => compareByRecency(a, b, feedTimeBasis));
     }
     return [...selectedFeed].sort(compareDetailsAndPostedDate);
-  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, feedTimeBasis, isCombinedFeed, isHotlistFeed, previewedVisibleFeed, recentVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
+  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, feedSearchQuery, feedTimeBasis, isCombinedFeed, isHotlistFeed, previewedVisibleFeed, recentVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
 
   const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
+
+  // Pagination bar for the browse feed. The feed is paged on the server now,
+  // so the end of a page is a real boundary the user has to be able to cross —
+  // and to come back from, which is what the cursor stack is for.
+  const renderFeedPagingFooter = useCallback(() => {
+    const pageRowCount = feed.length;
+    if (pageRowCount === 0 && feedPageIndex === 0) return null;
+
+    const firstOnPage = feedPageIndex * FEED_PAGE_SIZE + 1;
+    const lastOnPage = feedPageIndex * FEED_PAGE_SIZE + pageRowCount;
+    const totalPages = feedTotalCount != null && feedTotalCount > 0
+      ? Math.max(1, Math.ceil(feedTotalCount / FEED_PAGE_SIZE))
+      : null;
+
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-3 py-3 dark:border-gray-700">
+        <span className="text-[12px] text-gray-500">
+          {feedTotalCount != null
+            ? `Showing ${firstOnPage.toLocaleString()}-${lastOnPage.toLocaleString()} of ${feedTotalCount.toLocaleString()}`
+            : `Showing ${firstOnPage.toLocaleString()}-${lastOnPage.toLocaleString()}`}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void goToPrevFeedPageRef.current()}
+            disabled={feedPageIndex === 0 || feedPageLoading}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-[12px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="text-[12px] tabular-nums text-gray-500">
+            {totalPages != null ? `Page ${feedPageIndex + 1} of ${totalPages.toLocaleString()}` : `Page ${feedPageIndex + 1}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => void goToNextFeedPageRef.current()}
+            disabled={!feedHasMore || feedPageLoading}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-[12px] font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {feedPageLoading ? 'Loading...' : 'Next'}
+          </button>
+        </div>
+      </div>
+    );
+  }, [feed.length, feedHasMore, feedPageIndex, feedPageLoading, feedTotalCount]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
 
   const visibleDesktopRecentFeed = useMemo(
@@ -3025,6 +3168,14 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     () => [...verifiedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopVerifiedVisibleCount),
     [desktopVerifiedVisibleCount, verifiedVisibleFeed],
   );
+
+  // Whichever list the detail pane is currently showing.
+  const detailLeadsForActiveTab = useMemo(() => (
+    selectedMatchesTab === 'previewed' ? visibleDesktopPreviewedFeed
+      : selectedMatchesTab === 'asked' ? visibleDesktopAskedFeed
+        : selectedMatchesTab === 'verified' ? visibleDesktopVerifiedFeed
+          : visibleDesktopRecentFeed
+  ), [selectedMatchesTab, visibleDesktopAskedFeed, visibleDesktopPreviewedFeed, visibleDesktopRecentFeed, visibleDesktopVerifiedFeed]);
   const canLoadMoreDesktopRecent = desktopRecentVisibleCount < recentVisibleFeed.length;
   const canLoadMoreDesktopPreviewed = desktopPreviewedVisibleCount < previewedVisibleFeed.length;
   const canLoadMoreDesktopAsked = desktopAskedVisibleCount < askedVisibleFeed.length;
@@ -3819,13 +3970,26 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   // previously forced all 30+ cards to re-render on every selection change,
   // not just the newly- and previously-selected ones.
   const handleSelectDetailLead = useCallback((selected: SocialLead) => {
-    navigate(`/feed/${selected.kind}/${selected.id}`, { replace: true });
-  }, [navigate]);
+    // Carry the query string across: the feed's search, range, page and
+    // filters live there now, and a bare path would drop all of them the
+    // moment a card is opened.
+    const search = searchParams.toString();
+    navigate(
+      { pathname: `/feed/${selected.kind}/${selected.id}`, search: search ? `?${search}` : '' },
+      { replace: true },
+    );
+  }, [navigate, searchParams]);
 
-  const renderDetailSplitView = (leads: SocialLead[]) => {
-    const selectedLead = routeLeadId
+  const renderDetailSplitView = (leads: SocialLead[], showPaging = false) => {
+    // Fall back to the first result rather than leaving the detail pane blank.
+    // The URL's lead only survives while it is still in the list; a search, a
+    // filter change or paging forward all replace the list with rows that
+    // don't include it, and the pane would otherwise sit empty next to a full
+    // column of results.
+    const routedLead = routeLeadId
       ? leads.find((lead) => lead.id === routeLeadId && lead.kind === routeLeadKind) ?? null
       : null;
+    const selectedLead = routedLead ?? leads[0] ?? null;
     const selectedIsHotlist = selectedLead ? leadIsHotlist(selectedLead) : false;
     const selectedGlobalState = selectedLead ? globalAskedJobStateByLeadId[selectedLead.id] : undefined;
     const selectedIsAskPending = selectedGlobalState === 'asked';
@@ -3838,7 +4002,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const selectedContentLoading = selectedLead ? loadingDetailPanelLeadId === selectedLead.id : false;
 
     return (
-      <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_380px] gap-3">
+      <div className="grid h-full min-h-0 grid-cols-[minmax(0,420px)_minmax(0,1fr)] gap-3">
         {/* Deliberately plain block stacking, not CSS grid/flex, for this
             single list column: a grid's "auto" row-track sizing pass
             measures each LeadCard (itself a nested flex column) using its
@@ -3856,6 +4020,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               onSelect={handleSelectDetailLead}
             />
           ))}
+          {/* Paging belongs to the list, not to the split view: spanning both
+              columns would put it under the detail pane it has nothing to do
+              with, and inside this scroller it lands at the end of the posts. */}
+          {showPaging ? renderFeedPagingFooter() : null}
         </div>
 
         <aside className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white">
@@ -4799,6 +4967,100 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     return request;
   }, [feedKindFilter, feedTimeBasis, isCombinedFeed, isHotlistFeed, loadGlobalPulseRows]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAppliedFeedFilters(feedSearchFilters), 300);
+    return () => window.clearTimeout(timer);
+  }, [feedSearchFilters]);
+
+  // Facet counts + the total, for the whole window rather than the loaded pages.
+  useEffect(() => {
+    let cancelled = false;
+    const facetKind: 'jobs' | 'hotlist' = isCombinedFeed
+      ? (feedKindFilter === 'hotlist' ? 'hotlist' : 'jobs')
+      : (isHotlistFeed ? 'hotlist' : 'jobs');
+    const since = new Date(Date.now() - (selectedProfileRange.hours * 60 * 60 * 1000)).toISOString();
+    const query = feedSearchQuery.trim();
+
+    void (async () => {
+      const { data, error } = await supabase.rpc(
+        facetKind === 'hotlist' ? 'get_social_hotlist_feed_facets' : 'get_pulse_social_feed_facets',
+        {
+          p_since: since,
+          p_query: query || null,
+          ...buildFeedFilterArgs(appliedFeedFilters),
+        } as never,
+      );
+      // Counts are decoration: a failure leaves the previous numbers rather
+      // than blanking the sidebar or surfacing a toast for something the user
+      // didn't ask for.
+      if (cancelled || error || !Array.isArray(data)) return;
+
+      const nextCounts: Record<FeedFacetCategory, Record<string, number>> = {
+        experienceRange: {}, workType: {}, employmentType: {}, visaStatus: {},
+      };
+      let total: number | null = null;
+      for (const row of data as Array<{ facet_category: string; facet_value: string; facet_count: number }>) {
+        if (row.facet_category === 'total') {
+          total = Number(row.facet_count) || 0;
+          continue;
+        }
+        const bucket = nextCounts[row.facet_category as FeedFacetCategory];
+        if (!bucket) continue;
+        bucket[row.facet_value] = Number(row.facet_count) || 0;
+      }
+      setServerFacetCounts(nextCounts);
+      setFeedTotalCount(total);
+    })();
+
+    return () => { cancelled = true; };
+  }, [appliedFeedFilters, feedKindFilter, feedSearchQuery, isCombinedFeed, isHotlistFeed, selectedProfileRange.hours]);
+
+  // One page of the feed, straight from the _v2 RPCs. Browsing pages by keyset
+  // on (effective_posted_at, lead_id); searching orders by FTS rank, so it
+  // pages by offset instead. Filters go with the request either way, so a page
+  // never arrives pre-filtered on the server and then thinned again here.
+  const fetchFeedPage = useCallback(async (options: {
+    rangeHours: number;
+    kind: 'jobs' | 'hotlist';
+    query: string;
+    filters: FeedSearchFilters;
+    cursor: FeedCursor | null;
+  }): Promise<{ rows: PulseSocialFeedRpcRow[]; nextCursor: FeedCursor | null }> => {
+    const since = new Date(Date.now() - (options.rangeHours * 60 * 60 * 1000)).toISOString();
+    const query = options.query.trim();
+    const isSearching = query.length > 0;
+
+    const { data, error } = await supabase.rpc(
+      options.kind === 'hotlist' ? 'get_social_hotlist_feed_page_v2' : 'get_pulse_social_feed_page_v2',
+      {
+        p_since: since,
+        p_before_posted_at: options.cursor?.postedAt ?? null,
+        p_before_lead_id: options.cursor?.leadId ?? null,
+        p_limit: FEED_PAGE_SIZE,
+        p_query: isSearching ? query : null,
+        // Honoured by the RPC whenever no keyset cursor is sent, which is how a
+        // refreshed ?page=3 lands on page three without walking the chain.
+        p_offset: options.cursor?.offset ?? 0,
+        ...buildFeedFilterArgs(options.filters),
+      } as never,
+    );
+    if (error) throw error;
+
+    const rows = (data ?? []) as PulseSocialFeedRpcRow[];
+    // A short page means the window is exhausted. A full one might be the last
+    // page exactly, in which case the next request simply comes back empty.
+    if (rows.length < FEED_PAGE_SIZE) return { rows, nextCursor: null };
+
+    const last = rows[rows.length - 1];
+    const nextCursor: FeedCursor = isSearching
+      ? { postedAt: null, leadId: null, offset: (options.cursor?.offset ?? 0) + rows.length }
+      : { postedAt: last?.effective_posted_at ?? null, leadId: last?.lead_id ?? null, offset: 0 };
+    // Without both keyset parts the cursor can't advance; stop rather than
+    // re-request the same page forever.
+    if (!isSearching && (!nextCursor.postedAt || !nextCursor.leadId)) return { rows, nextCursor: null };
+    return { rows, nextCursor };
+  }, []);
+
   const loadProfileStats = useCallback(async (rowsOverride?: PulseSocialFeedRpcRow[]) => {
     if (sortedLeaderboard.length === 0) {
       setProfileStatsByRole({});
@@ -4808,7 +5070,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setProfileStatsLoading(true);
     let rpcRows: PulseSocialFeedRpcRow[] = [];
     try {
-      rpcRows = rowsOverride ?? await getGlobalPulseRows(selectedProfileRange.hours);
+      rpcRows = rowsOverride ?? await getGlobalPulseRows(PROFILE_STATS_WINDOW_HOURS);
     } catch {
       showToast('Could not load profile stats', 'error');
       setProfileStatsLoading(false);
@@ -4893,11 +5155,32 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     _persona: PulsePersona | null,
     _personaFilters: PulsePersona[] = [],
     rowsOverride?: PulseSocialFeedRpcRow[],
+    options?: { cursor?: FeedCursor | null },
   ) => {
     setFeedLoading(true);
+
+    const feedRowKind: 'jobs' | 'hotlist' = isCombinedFeed
+      ? (feedKindFilter === 'hotlist' ? 'hotlist' : 'jobs')
+      : (isHotlistFeed ? 'hotlist' : 'jobs');
+
     let rpcRows: PulseSocialFeedRpcRow[] = [];
     try {
-      rpcRows = rowsOverride ?? await getGlobalPulseRows(selectedProfileRange.hours);
+      if (rowsOverride) {
+        rpcRows = rowsOverride;
+      } else {
+        const page = await fetchFeedPage({
+          rangeHours: selectedProfileRange.hours,
+          kind: feedRowKind,
+          query: feedSearchQuery,
+          filters: appliedFeedFilters,
+          cursor: options?.cursor ?? null,
+        });
+        rpcRows = isCombinedFeed
+          ? page.rows.map((row) => ({ ...row, _kind: feedRowKind }))
+          : page.rows;
+        feedCursorRef.current = page.nextCursor;
+        setFeedHasMore(page.nextCursor != null);
+      }
     } catch {
       showToast('Failed to load social matches', 'error');
       setFeedLoading(false);
@@ -5106,23 +5389,94 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       });
 
     setFeed(finalFiltered);
-    setVisibleMatchesCount(MATCHES_PAGE_SIZE);
-    setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+
+    // A page is a page: reveal all of it rather than trickling it out, so the
+    // pagination bar sits at the end of 100 results and not after the first 12.
+    setVisibleMatchesCount(FEED_PAGE_SIZE);
+    setDesktopRecentVisibleCount(FEED_PAGE_SIZE);
+    // The action-driven tabs are unaffected by feed paging and keep their own
+    // incremental reveal.
     setDesktopPreviewedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
     setDesktopAskedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
     setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
 
     setFeedLoading(false);
-  }, [feedTimeBasis, getGlobalPulseRows, isHotlistFeed, selectedProfileRange.hours, showToast]);
+  }, [appliedFeedFilters, feedKindFilter, feedSearchQuery, feedTimeBasis, fetchFeedPage, isCombinedFeed, isHotlistFeed, selectedProfileRange.hours, showToast]);
+
+  const goToNextFeedPage = useCallback(async () => {
+    const cursor = feedCursorRef.current;
+    if (cursor == null || feedPageInFlightRef.current) return;
+    feedPageInFlightRef.current = true;
+    setFeedPageLoading(true);
+    try {
+      feedCursorStackRef.current[feedPageIndex + 1] = cursor;
+      await loadFeed(null, [], undefined, { cursor });
+      setFeedPageIndex((current) => current + 1);
+    } finally {
+      feedPageInFlightRef.current = false;
+      setFeedPageLoading(false);
+    }
+  }, [feedPageIndex, loadFeed]);
+
+  const goToPrevFeedPage = useCallback(async () => {
+    if (feedPageIndex === 0 || feedPageInFlightRef.current) return;
+    feedPageInFlightRef.current = true;
+    setFeedPageLoading(true);
+    try {
+      await loadFeed(null, [], undefined, { cursor: feedCursorStackRef.current[feedPageIndex - 1] ?? null });
+      setFeedPageIndex((current) => current - 1);
+    } finally {
+      feedPageInFlightRef.current = false;
+      setFeedPageLoading(false);
+    }
+  }, [feedPageIndex, loadFeed]);
 
   useEffect(() => {
+    goToNextFeedPageRef.current = goToNextFeedPage;
+    goToPrevFeedPageRef.current = goToPrevFeedPage;
+  }, [goToNextFeedPage, goToPrevFeedPage]);
+
+  // loadFeed's dependencies now include the range, the applied search query and
+  // the applied filters, so this single effect re-runs (and resets the cursor,
+  // because append defaults to false) whenever any of them change.
+  useEffect(() => {
+    const restoreToPage = pendingRestorePageRef.current;
+    pendingRestorePageRef.current = null;
+
+    if (restoreToPage != null && restoreToPage > 0) {
+      // Rebuild the cursor stack as offsets so Previous works immediately from
+      // a restored page, rather than dead-ending because pages 1..N-1 were
+      // never fetched in this session.
+      feedCursorStackRef.current = Array.from({ length: restoreToPage + 1 }, (_unused, index) => (
+        index === 0 ? null : { postedAt: null, leadId: null, offset: index * FEED_PAGE_SIZE }
+      ));
+      feedCursorRef.current = null;
+      setFeedPageIndex(restoreToPage);
+      void loadFeed(null, [], undefined, { cursor: feedCursorStackRef.current[restoreToPage] });
+      return;
+    }
+
+    feedCursorRef.current = null;
+    feedCursorStackRef.current = [null];
+    setFeedPageIndex(0);
     void loadFeed(null);
   }, [loadFeed]);
 
-  // Re-fetch matches when date range changes
+  // Mirror the range and page into the URL so a refresh or a shared link comes
+  // back to the same view. Defaults are omitted to keep ordinary URLs clean.
   useEffect(() => {
-    void loadFeed(null);
-  }, [loadFeed, selectedProfileRange.hours]);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (appliedRawSearchQuery) next.set('q', appliedRawSearchQuery);
+      else next.delete('q');
+      if (profileRangeId === '30d') next.delete('range');
+      else next.set('range', profileRangeId);
+      if (feedPageIndex === 0) next.delete('page');
+      else next.set('page', String(feedPageIndex + 1));
+      writeFeedFiltersToUrl(next, appliedFeedFilters);
+      return next;
+    }, { replace: true });
+  }, [appliedFeedFilters, appliedRawSearchQuery, feedPageIndex, profileRangeId, setSearchParams]);
 
   useEffect(() => {
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
@@ -5844,6 +6198,23 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       .finally(() => setLoadingDetailPanelLeadId(null));
   }, [isDetailLayout, routeLeadId, routeLeadKind, user, detailPanelContent, loadingDetailPanelLeadId, dedupedScopedFeed, fetchLeadRawContent, showToast]);
 
+  // Keep a lead selected in the detail layout. Searching, filtering or paging
+  // replaces the list with rows that don't include whatever was open, and the
+  // pane would sit empty beside a full column of results. This routes through
+  // handleSelectDetailLead rather than just picking leads[0] for display,
+  // because the panel's content loader keys off the routed lead id — deriving
+  // a selection without navigating renders the header and leaves the body
+  // permanently blank.
+  useEffect(() => {
+    if (!isDetailLayout || feedLoading) return;
+    const routedLeadIsVisible = Boolean(routeLeadId)
+      && detailLeadsForActiveTab.some((lead) => lead.id === routeLeadId && lead.kind === routeLeadKind);
+    if (routedLeadIsVisible) return;
+    const firstLead = detailLeadsForActiveTab[0];
+    if (!firstLead) return;
+    handleSelectDetailLead(firstLead);
+  }, [detailLeadsForActiveTab, feedLoading, handleSelectDetailLead, isDetailLayout, routeLeadId, routeLeadKind]);
+
 
   const handleOpenBreakdown = useCallback(async (lead: SocialLead) => {
     setProcessingBreakdownLeadId(lead.id);
@@ -5865,15 +6236,32 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     }
   }, [breakdownChargedLeadIds, persistLeadAction]);
 
-  const applyFeedSearch = useCallback(async (queryOverride?: string) => {
+  const applyFeedSearch = useCallback(async (
+    queryOverride?: string,
+    options?: { filtersOverride?: FeedSearchFilters },
+  ) => {
     const rawQuery = (queryOverride ?? pendingFeedSearchQuery).trim();
     const parsed = parseFeedSearchIntent(rawQuery);
     const appliedQuery = parsed.roleQuery;
-    const appliedFilters = mergeFeedFiltersWithIntent(DEFAULT_FEED_SEARCH_FILTERS, parsed.inferred);
+    // A fresh search resets the sidebar to whatever the query text implies.
+    // Restoring from a URL is the exception: the link carries its own filters
+    // and they must survive, or opening a shared link would drop every filter
+    // the sender had set.
+    const appliedFilters = options?.filtersOverride
+      ?? mergeFeedFiltersWithIntent(DEFAULT_FEED_SEARCH_FILTERS, parsed.inferred);
 
     setFeedSearchQuery(appliedQuery);
     setFeedSearchFilters(appliedFilters);
     setIsRecentSearchesOpen(false);
+
+    // Keep the query in the URL so a refresh (or a shared link) restores the
+    // search instead of dropping back to an unfiltered feed. Marking the ref
+    // first stops the ?q= effect below treating our own write as a new
+    // incoming search and re-running it — which would log a duplicate entry
+    // in job_search_history. replace: true so searching doesn't stack history
+    // entries the user has to click back through.
+    appliedSearchParamQueryRef.current = rawQuery || null;
+    setAppliedRawSearchQuery(rawQuery);
 
     if (rawQuery && user?.id) {
       await supabase
@@ -5887,60 +6275,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       void loadRecentSearches();
     }
 
-    if (!appliedQuery) {
-      setVectorSearchLeadIds(null);
-      setVectorSearchLoading(false);
-      return;
-    }
-
-    if (isHotlistFeed || isCombinedFeed) {
-      // Hotlist rows aren't indexed by the jobs-only FTS/vector RPCs; combined
-      // mode relies on the client-side matchesPulseFeedSearch fallback in
-      // queryScopedFeed so both kinds are searched consistently.
-      setVectorSearchLeadIds(null);
-      setVectorSearchLoading(false);
-      return;
-    }
-
-    setVectorSearchLoading(true);
-    const since = new Date(Date.now() - (selectedProfileRange.hours * 60 * 60 * 1000)).toISOString();
-
-    const ftsResult = await supabase.rpc('search_pulse_social_feed_fts', {
-      p_query: appliedQuery,
-      p_since: since,
-      p_limit: 2000,
-      p_offset: 0,
-    } as never);
-
-    if (!ftsResult.error && Array.isArray(ftsResult.data)) {
-      const ftsIds = (ftsResult.data as Array<{ lead_id?: string | null }>)
-        .map((row) => (row.lead_id ?? '').trim())
-        .filter(Boolean);
-
-      if (ftsIds.length > 0) {
-        setVectorSearchLeadIds(ftsIds);
-        setVectorSearchLoading(false);
-        return;
-      }
-    }
-
-    const vectorResult = await supabase.rpc('search_pulse_social_feed_vector', {
-      p_role_query: appliedQuery,
-      p_limit: 2000,
-      p_similarity_threshold: 0.58,
-    } as never);
-
-    if (!vectorResult.error && Array.isArray(vectorResult.data)) {
-      const ids = (vectorResult.data as Array<{ lead_id?: string | null }>)
-        .map((row) => (row.lead_id ?? '').trim())
-        .filter(Boolean);
-      setVectorSearchLeadIds(ids.length > 0 ? ids : null);
-    } else {
-      setVectorSearchLeadIds(null);
-    }
-
-    setVectorSearchLoading(false);
-  }, [account?.id, isCombinedFeed, isHotlistFeed, loadRecentSearches, pendingFeedSearchQuery, selectedProfileRange.hours, user?.id]);
+    // Search itself is server-side now: feedSearchQuery is a loadFeed
+    // dependency, so setting it above refetches page 1 with p_query set, across
+    // the whole window rather than across whatever happened to be downloaded.
+  }, [account?.id, isCombinedFeed, isHotlistFeed, loadRecentSearches, pendingFeedSearchQuery, user?.id]);
 
   useEffect(() => {
     const queryFromParams = (searchParams.get('q') ?? '').trim();
@@ -5951,7 +6289,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     if (appliedSearchParamQueryRef.current === queryFromParams) return;
     appliedSearchParamQueryRef.current = queryFromParams;
     setPendingFeedSearchQuery(queryFromParams);
-    void applyFeedSearch(queryFromParams);
+    const filtersFromUrl = readFeedFiltersFromUrl(searchParams);
+    const urlCarriesFilters = JSON.stringify(filtersFromUrl) !== JSON.stringify(DEFAULT_FEED_SEARCH_FILTERS);
+    void applyFeedSearch(queryFromParams, urlCarriesFilters ? { filtersOverride: filtersFromUrl } : undefined);
   }, [applyFeedSearch, searchParams]);
 
   const leaderboardJobsLabel = isCombinedFeed ? 'Leads' : isHotlistFeed ? 'Consultants' : 'Jobs';
@@ -6118,8 +6458,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           setPendingFeedSearchQuery('');
                           setFeedSearchQuery('');
                           setFeedSearchFilters(DEFAULT_FEED_SEARCH_FILTERS);
-                          setVectorSearchLeadIds(null);
                           setIsRecentSearchesOpen(false);
+                          appliedSearchParamQueryRef.current = null;
+                          setAppliedRawSearchQuery('');
                         }}
                         className="rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600"
                         aria-label="Clear search field"
@@ -6154,10 +6495,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                       void applyFeedSearch();
                     }}
                     className="rounded-full border border-blue-600 bg-blue-600 p-1.5 text-white transition hover:bg-blue-700 disabled:opacity-60"
-                    disabled={vectorSearchLoading}
+                    disabled={feedLoading}
                     aria-label="Search"
                   >
-                    <Search size={12} className={vectorSearchLoading ? 'animate-pulse' : ''} />
+                    <Search size={12} className={feedLoading ? 'animate-pulse' : ''} />
                   </button>
 
                   {SWIPE_LAYOUT_ENABLED && isMobileViewport && (
@@ -6213,7 +6554,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           type="button"
                           onClick={() => {
                             setLayoutMode(view.id);
-                            if (view.id !== 'detail' && routeLeadId) navigate('/feed', { replace: true });
+                            if (view.id !== 'detail' && routeLeadId) {
+                              const search = searchParams.toString();
+                              navigate({ pathname: '/feed', search: search ? `?${search}` : '' }, { replace: true });
+                            }
                           }}
                           title={view.label}
                           aria-label={view.label}
@@ -6735,6 +7079,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         ) : (
                           <div className="space-y-2 bg-[#f3f2ee] px-1.5 pt-1 pb-4 dark:bg-[#1B1D21]">
                             {renderLeadCards(visibleFeed)}
+                            {renderFeedPagingFooter()}
                           </div>
                         )}
                       </div>
@@ -6793,12 +7138,18 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             recentVisibleFeed.length === 0 ? (
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isCombinedFeed ? 'No recent leads.' : isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.'}</div>
                             ) : isTableLayout ? (
-                              renderLeadTable(visibleDesktopRecentFeed)
+                              <>
+                                {renderLeadTable(visibleDesktopRecentFeed)}
+                                {renderFeedPagingFooter()}
+                              </>
                             ) : isDetailLayout ? (
-                              renderDetailSplitView(visibleDesktopRecentFeed)
+                              renderDetailSplitView(visibleDesktopRecentFeed, true)
                             ) : (
-                              <div className="grid grid-cols-2 items-stretch gap-1.5 bg-[#f3f2ee] p-1.5 dark:bg-[#1B1D21]">
-                                {renderLeadCards(visibleDesktopRecentFeed, 2)}
+                              <div className="bg-[#f3f2ee] dark:bg-[#1B1D21]">
+                                <div className="grid grid-cols-2 items-stretch gap-1.5 p-1.5">
+                                  {renderLeadCards(visibleDesktopRecentFeed, 2)}
+                                </div>
+                                {renderFeedPagingFooter()}
                               </div>
                             )
                           )}
