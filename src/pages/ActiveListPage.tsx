@@ -16,8 +16,10 @@ type ActiveListResponse = {
   vendors: ActiveListContact[];
 };
 
-// Matches /jobs' PROFILE_RANGE_OPTIONS, default '3d' — same range picker,
-// same default (/jobs itself defaults to 3 days, not 24h).
+// Matches /jobs' PROFILE_RANGE_OPTIONS, default '30d' — same range picker,
+// same default. /jobs moved to 30 days when its feed started paging on the
+// server rather than downloading the whole window, and this picker follows it
+// so the two don't disagree about what "recent" means.
 type RangeId = '24h' | '3d' | '7d' | '15d' | '30d';
 const RANGE_OPTIONS: { id: RangeId; label: string; shortLabel: string; hours: number }[] = [
   { id: '24h', label: 'Last 24 hours', shortLabel: '24h', hours: 24 },
@@ -213,7 +215,7 @@ export default function ActiveListPage() {
   const activeTab: 'vendors' | 'recruiters' = account?.active_persona === 'bench_sales' ? 'vendors' : 'recruiters';
   const [data, setData] = useState<ActiveListResponse>({ recruiters: [], vendors: [] });
   const [loading, setLoading] = useState(true);
-  const [rangeId, setRangeId] = useState<RangeId>('3d');
+  const [rangeId, setRangeId] = useState<RangeId>('30d');
   const [isRangeMenuOpen, setIsRangeMenuOpen] = useState(false);
   const rangeMenuRef = useRef<HTMLDivElement | null>(null);
   const [pendingRoleQuery, setPendingRoleQuery] = useState('');
