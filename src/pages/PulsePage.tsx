@@ -4984,14 +4984,31 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const since = new Date(Date.now() - (selectedProfileRange.hours * 60 * 60 * 1000)).toISOString();
     const query = feedSearchQuery.trim();
 
+    const countArgs = {
+      p_since: since,
+      p_query: query || null,
+      ...buildFeedFilterArgs(appliedFeedFilters),
+    };
+
+    // The total is fetched on its own, ahead of the breakdown. It is the number
+    // the Recent tab shows, and it has to be right: deriving it from the facet
+    // RPC meant that whenever that slower query timed out, the tab quietly fell
+    // back to counting loaded rows and reported the page size (100) as though
+    // it were the whole window.
+    void (async () => {
+      const { data, error } = await supabase.rpc(
+        facetKind === 'hotlist' ? 'get_social_hotlist_feed_total' : 'get_pulse_social_feed_total',
+        countArgs as never,
+      );
+      if (cancelled || error) return;
+      const total = Number(data);
+      setFeedTotalCount(Number.isFinite(total) ? total : null);
+    })();
+
     void (async () => {
       const { data, error } = await supabase.rpc(
         facetKind === 'hotlist' ? 'get_social_hotlist_feed_facets' : 'get_pulse_social_feed_facets',
-        {
-          p_since: since,
-          p_query: query || null,
-          ...buildFeedFilterArgs(appliedFeedFilters),
-        } as never,
+        countArgs as never,
       );
       // Counts are decoration: a failure leaves the previous numbers rather
       // than blanking the sidebar or surfacing a toast for something the user
@@ -5001,18 +5018,15 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       const nextCounts: Record<FeedFacetCategory, Record<string, number>> = {
         experienceRange: {}, workType: {}, employmentType: {}, visaStatus: {},
       };
-      let total: number | null = null;
       for (const row of data as Array<{ facet_category: string; facet_value: string; facet_count: number }>) {
-        if (row.facet_category === 'total') {
-          total = Number(row.facet_count) || 0;
-          continue;
-        }
+        // The RPC still returns a 'total' row; it is owned by the dedicated
+        // total RPC above now, so it is ignored here rather than racing it.
+        if (row.facet_category === 'total') continue;
         const bucket = nextCounts[row.facet_category as FeedFacetCategory];
         if (!bucket) continue;
         bucket[row.facet_value] = Number(row.facet_count) || 0;
       }
       setServerFacetCounts(nextCounts);
-      setFeedTotalCount(total);
     })();
 
     return () => { cancelled = true; };
