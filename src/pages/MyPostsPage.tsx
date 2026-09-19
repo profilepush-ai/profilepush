@@ -897,6 +897,22 @@ export default function MyPostsPage() {
                           {post.postStatus === 'open' ? 'Open' : 'Closed'}
                         </span>
                         <span className="text-[11px] text-gray-400 dark:text-[#64748B]">{formatAgo(post.createdAt)}</span>
+                        {/* Secondary actions as icons, so the bottom row can hold
+                            the two that matter: Share and Applicants/Requests. */}
+                        <div className="ml-auto flex items-center gap-0.5">
+                          <button type="button" onClick={() => setPreviewPost(post)} title="Preview post" aria-label="Preview post" className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                            <Eye size={15} />
+                          </button>
+                          <button type="button" onClick={() => { setEditingPost(post); setFormOpen(post.kind); }} title="Edit" aria-label="Edit" className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                            <Pencil size={15} />
+                          </button>
+                          <button type="button" onClick={() => void handleToggleStatus(post)} title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'} aria-label={post.postStatus === 'open' ? 'Close post' : 'Reopen post'} className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                            {post.postStatus === 'open' ? <XCircle size={15} /> : <RotateCcw size={15} />}
+                          </button>
+                          <button type="button" onClick={() => void handleDelete(post)} title="Delete" aria-label="Delete" className={`rounded p-1 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}>
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </div>
                       <p className="truncate text-[13px] font-semibold leading-snug" style={{ color: isDark ? '#FFFFFF' : '#2563EB' }}>{displayTitle}</p>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#94A3B8]">
@@ -918,42 +934,24 @@ export default function MyPostsPage() {
                         <span className="inline-flex items-center gap-1"><Eye size={11} className="text-gray-400" />{metrics.previewCount}</span>
                         <span className="inline-flex items-center gap-1"><MessageSquare size={11} className="text-gray-400" />{metrics.chatCount}</span>
                         <span className="inline-flex items-center gap-1"><Share2 size={11} className="text-gray-400" />{metrics.shareCount}</span>
-                        {post.kind === 'job' ? (
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/posts/applications/${post.id}`)}
-                            className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${metrics.applicationCount > 0 ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300' : (isDark ? 'border-white/15 text-[#94A3B8]' : 'border-gray-200 text-gray-600')}`}
-                          >
-                            <Users size={11} />
-                            {metrics.applicationCount} Application{metrics.applicationCount === 1 ? '' : 's'}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/posts/requests/${post.id}`)}
-                            className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${isDark ? 'border-white/15 text-[#94A3B8]' : 'border-gray-200 text-gray-600'}`}
-                          >
-                            <Users size={11} />
-                            Requests
-                          </button>
-                        )}
                       </div>
 
-                      <div className="mt-2.5 flex items-center justify-around border-t border-gray-100 pt-2 dark:border-white/10">
-                        <button type="button" onClick={() => setPreviewPost(post)} title="Preview post" className={`rounded p-1.5 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
-                          <Eye size={15} />
+                      <div className="mt-2.5 grid grid-cols-2 gap-2 border-t border-gray-100 pt-2.5 dark:border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => void handleSharePost(post)}
+                          className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-md text-[12px] font-medium transition-colors ${isDark ? 'bg-white/5 text-slate-200 hover:bg-white/10' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                        >
+                          <Share2 size={14} />
+                          Share
                         </button>
-                        <button type="button" onClick={() => { setEditingPost(post); setFormOpen(post.kind); }} title="Edit" className={`rounded p-1.5 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
-                          <Pencil size={15} />
-                        </button>
-                        <button type="button" onClick={() => void handleToggleStatus(post)} title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'} className={`rounded p-1.5 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
-                          {post.postStatus === 'open' ? <XCircle size={15} /> : <RotateCcw size={15} />}
-                        </button>
-                        <button type="button" onClick={() => void handleDelete(post)} title="Delete" className={`rounded p-1.5 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}>
-                          <Trash2 size={15} />
-                        </button>
-                        <button type="button" onClick={() => void handleSharePost(post)} title="Share" className={`rounded p-1.5 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
-                          <Share2 size={15} />
+                        <button
+                          type="button"
+                          onClick={() => navigate(post.kind === 'job' ? `/posts/applications/${post.id}` : `/posts/requests/${post.id}`)}
+                          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-blue-50 text-[12px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/20"
+                        >
+                          <Users size={14} />
+                          {post.kind === 'job' ? `Applicants${metrics.applicationCount > 0 ? ` (${metrics.applicationCount})` : ''}` : 'Requests'}
                         </button>
                       </div>
                     </div>
@@ -1001,6 +999,17 @@ export default function MyPostsPage() {
                           <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${post.postStatus === 'open' ? (isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDark ? 'border-white/15 bg-white/5 text-[#94A3B8]' : 'border-gray-200 bg-gray-100 text-gray-500')}`}>
                             {post.postStatus === 'open' ? 'Open' : 'Closed'}
                           </span>
+                          <div className="ml-auto flex items-center gap-0.5">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setEditingPost(post); setFormOpen(post.kind); }} title="Edit" aria-label="Edit" className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                              <Pencil size={13} />
+                            </button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); void handleToggleStatus(post); }} title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'} aria-label={post.postStatus === 'open' ? 'Close post' : 'Reopen post'} className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}>
+                              {post.postStatus === 'open' ? <XCircle size={13} /> : <RotateCcw size={13} />}
+                            </button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); void handleDelete(post); }} title="Delete" aria-label="Delete" className={`rounded p-1 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}>
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </div>
                         <p className="truncate text-[13px] font-semibold leading-snug" style={{ color: isDark ? '#FFFFFF' : '#2563EB' }}>{displayTitle}</p>
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#94A3B8]">
@@ -1021,43 +1030,26 @@ export default function MyPostsPage() {
                           <span className="inline-flex items-center gap-1"><Eye size={10} />{metrics.previewCount}</span>
                           <span className="inline-flex items-center gap-1"><MessageSquare size={10} />{metrics.chatCount}</span>
                           <span className="inline-flex items-center gap-1"><Share2 size={10} />{metrics.shareCount}</span>
-                          {post.kind === 'job' && (
-                            <span className="inline-flex items-center gap-1"><Users size={10} />{metrics.applicationCount}</span>
-                          )}
                           <span className="ml-auto">{formatAgo(post.createdAt)}</span>
                         </div>
-                        <div className="mt-2 flex items-center gap-1 border-t border-gray-100 pt-1.5 dark:border-white/10">
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setEditingPost(post); setFormOpen(post.kind); }}
-                            title="Edit"
-                            className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}
-                          >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); void handleToggleStatus(post); }}
-                            title={post.postStatus === 'open' ? 'Close post' : 'Reopen post'}
-                            className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}
-                          >
-                            {post.postStatus === 'open' ? <XCircle size={13} /> : <RotateCcw size={13} />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); void handleDelete(post); }}
-                            title="Delete"
-                            className={`rounded p-1 transition-colors ${isDark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                        <div className="mt-2 grid grid-cols-2 gap-1.5 border-t border-gray-100 pt-2 dark:border-white/10">
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); void handleSharePost(post); }}
-                            title="Share"
-                            className={`rounded p-1 transition-colors ${isDark ? 'text-[#94A3B8] hover:bg-white/5' : 'text-gray-500 hover:bg-gray-100'}`}
+                            className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md text-[12px] font-medium transition-colors ${isDark ? 'bg-white/5 text-slate-200 hover:bg-white/10' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                           >
                             <Share2 size={13} />
+                            Share
+                          </button>
+                          {/* On desktop the applicants/requests list is the panel
+                              beside this column, which selecting the post opens. */}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSelectedPostId(post.id); }}
+                            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-blue-50 text-[12px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/20"
+                          >
+                            <Users size={13} />
+                            {post.kind === 'job' ? `Applicants${metrics.applicationCount > 0 ? ` (${metrics.applicationCount})` : ''}` : 'Requests'}
                           </button>
                         </div>
                       </div>
