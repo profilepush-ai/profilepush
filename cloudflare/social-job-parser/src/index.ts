@@ -7,6 +7,10 @@ export interface Env {
   // rotate the original shared secret every other caller already uses.
   SCREENING_WORKER_TOKEN?: string;
   PARSER_MODEL?: string;
+  // AI Match scoring. Larger than PARSER_MODEL on purpose: judging visa,
+  // seniority and skills fit across ten candidates at once is well beyond what
+  // the 8B parser model does reliably.
+  MATCH_MODEL?: string;
   PARSER_VISION_MODEL?: string;
   WHISPER_MODEL?: string;
   HOTLIST_IMAGES_PUBLIC_BASE_URL?: string;
@@ -36,6 +40,45 @@ type PredictMatchJobContext = {
   workType?: string;
   location?: string;
   employmentType?: string;
+};
+
+type AiMatchScoreRequest = {
+  // The complete scoring prompt, built by the ai-match edge function. It stays
+  // there (not here) because it reads the admin-editable 'ai-match-rank'
+  // prompt override from Supabase, and one copy of the prompt is enough.
+  prompt?: string;
+  // Optional per-call override, for comparing models without a redeploy.
+  model?: string;
+};
+
+const AI_MATCH_SYSTEM_PROMPT =
+  "You are an expert US IT staffing recruiter scoring candidate fit. " +
+  "Output ONLY a JSON object of the form {\"scores\":[{\"index\":number,\"score\":number,\"reason\":string}]}, " +
+  "one entry per candidate, no markdown and no commentary.";
+
+// Structured output for the Workers AI models that support it. The edge
+// function still validates every entry, so this narrows failures rather than
+// being relied on for correctness.
+const AI_MATCH_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: {
+    type: "object",
+    properties: {
+      scores: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            index: { type: "integer" },
+            score: { type: "integer" },
+            reason: { type: "string" },
+          },
+          required: ["index", "score", "reason"],
+        },
+      },
+    },
+    required: ["scores"],
+  },
 };
 
 type PredictMatchRequest = {
@@ -652,6 +695,55 @@ export default {
           || (score >= 80 ? "Strong match" : score >= 60 ? "Good match" : score >= 40 ? "Moderate match" : "Weak match");
 
         return jsonResponse({ score, verdict, categories });
+      } catch (error) {
+        return jsonResponse({ error: (error as Error).message }, 500);
+      }
+    }
+
+    if (new URL(req.url).pathname.replace(/\/+$/, "") === "/ai-match-score") {
+      try {
+        const body = (await req.json()) as AiMatchScoreRequest;
+        const prompt = (body.prompt ?? "").trim();
+        if (!prompt) return jsonResponse({ error: "prompt is required" }, 400);
+        const requested = (body.model ?? "").trim();
+        const model = requested.startsWith("@cf/")
+          ? requested
+          : (env.MATCH_MODEL ?? "@cf/meta/llama-3.3-70b-instruct-fp8-fast").trim();
+
+        let aiResult: unknown;
+        let aiError: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            aiResult = await env.AI.run(model as keyof AiModels, {
+              messages: [
+                { role: "system", content: AI_MATCH_SYSTEM_PROMPT },
+                { role: "user", content: prompt },
+              ],
+              temperature: 0.1,
+              // Ten candidates at ~40 tokens each, with headroom.
+              max_tokens: 1500,
+              response_format: AI_MATCH_RESPONSE_FORMAT,
+            } as never);
+            aiError = undefined;
+            break;
+          } catch (error) {
+            aiError = error;
+            if (attempt < 2 && isRateLimitError(error)) {
+              await sleep(1000 * (attempt + 1));
+              continue;
+            }
+            break;
+          }
+        }
+        if (aiError) throw aiError;
+
+        // With a json_schema response_format Workers AI may hand back an
+        // already-parsed object; without one, a string. Normalise to text so
+        // the edge function has a single parsing path.
+        const raw = (aiResult as Record<string, unknown>)?.response ?? aiResult;
+        const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+        if (!text.trim()) return jsonResponse({ error: "Model returned an empty response" }, 422);
+        return jsonResponse({ text, model });
       } catch (error) {
         return jsonResponse({ error: (error as Error).message }, 500);
       }
