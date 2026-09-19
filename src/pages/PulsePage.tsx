@@ -5611,7 +5611,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     ? null
     : aiMatchHasRun
       ? 'No close matches in 30 days'
-      : 'Top matches from the last 30 days, scored 1-10';
+      : '';
 
   // Restore the last run on load, once, so a refresh shows the same results
   // instead of an empty page that would cost a credit to repopulate. Skipped
@@ -6612,49 +6612,63 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
               {aiMatch && (
                 <div className={isMobileViewport ? 'shrink-0 px-1 pt-1.5 pb-1' : 'shrink-0 px-2 py-2'}>
                   {aiMatchComposerOpen ? (
-                    <div className="rounded-xl border border-gray-200 bg-white p-2 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:border-white/10 dark:bg-[#171A1F]">
-                      <textarea
-                        value={aiMatchDescription}
-                        onChange={(e) => {
-                          setAiMatchDescription(e.target.value);
-                          if (aiMatchError) setAiMatchError(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                            e.preventDefault();
-                            void runAiMatch();
-                          }
-                        }}
-                        rows={isMobileViewport ? 4 : 5}
-                        maxLength={8000}
-                        autoFocus={!isMobileViewport && !aiMatchHasRun}
-                        placeholder={aiMatchTarget === 'jobs' ? 'Paste consultant hotlist' : 'Paste job description'}
-                        aria-label={aiMatchTarget === 'jobs' ? 'Consultant hotlist' : 'Job description'}
-                        className="w-full resize-none border-0 bg-transparent px-1 py-1 text-[13px] leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 dark:text-slate-100"
-                      />
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        <span className={`min-w-0 truncate pl-1 text-[11px] ${aiMatchError ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
-                          {aiMatchError ?? '1 credit'}
-                        </span>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          {aiMatchHasRun && (
-                            <button
-                              type="button"
-                              onClick={() => setAiMatchComposerOpen(false)}
-                              className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5"
-                            >
-                              Cancel
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void runAiMatch()}
-                            disabled={aiMatchRunning || aiMatchDescription.trim().length < AI_MATCH_MIN_DESCRIPTION_CHARS}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            <Sparkles size={13} />
-                            {aiMatchRunning ? 'Matching' : 'Match'}
-                          </button>
+                    // Before the first run this is the page: centred, about half
+                    // the screen, big input and button. Once results exist it
+                    // shrinks back so the list below gets the room.
+                    <div className={aiMatchHasRun ? '' : 'flex min-h-[55vh] flex-col justify-center py-4'}>
+                      <div className="mx-auto w-full max-w-3xl">
+                        {!aiMatchHasRun && (
+                          <div className="mb-4 flex items-center justify-center gap-2.5">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30">
+                              <Sparkles size={20} />
+                            </span>
+                            <h1 className="text-xl font-semibold text-gray-900 dark:text-slate-100">AI Match</h1>
+                          </div>
+                        )}
+                        <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:border-white/10 dark:bg-[#171A1F]">
+                          <textarea
+                            value={aiMatchDescription}
+                            onChange={(e) => {
+                              setAiMatchDescription(e.target.value);
+                              if (aiMatchError) setAiMatchError(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                e.preventDefault();
+                                void runAiMatch();
+                              }
+                            }}
+                            maxLength={8000}
+                            autoFocus={!isMobileViewport && !aiMatchHasRun}
+                            placeholder={aiMatchTarget === 'jobs' ? 'Paste consultant hotlist' : 'Paste job description'}
+                            aria-label={aiMatchTarget === 'jobs' ? 'Consultant hotlist' : 'Job description'}
+                            className={`w-full resize-none border-0 bg-transparent px-1 py-1 text-[15px] leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 dark:text-slate-100 ${aiMatchHasRun ? 'min-h-[7.5rem]' : 'min-h-[30vh]'}`}
+                          />
+                          <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <span className={`text-center text-[12px] sm:pl-1 sm:text-left ${aiMatchError ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
+                              {aiMatchError ?? '1 credit · last 30 days'}
+                            </span>
+                            <div className="flex gap-2">
+                              {aiMatchHasRun && (
+                                <button
+                                  type="button"
+                                  onClick={() => setAiMatchComposerOpen(false)}
+                                  className="h-12 rounded-xl px-5 text-[15px] font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void runAiMatch()}
+                                disabled={aiMatchRunning || aiMatchDescription.trim().length < AI_MATCH_MIN_DESCRIPTION_CHARS}
+                                className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-7 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
+                              >
+                                <Sparkles size={18} />
+                                {aiMatchRunning ? 'Matching...' : 'Find matches'}
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -6663,11 +6677,13 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                       type="button"
                       onClick={() => setAiMatchComposerOpen(true)}
                       title="Edit"
-                      className="flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left dark:border-white/10 dark:bg-[#171A1F]"
+                      className="flex w-full items-start gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left dark:border-white/10 dark:bg-[#171A1F]"
                     >
-                      <Sparkles size={13} className="shrink-0 text-indigo-500" />
-                      <span className="min-w-0 flex-1 truncate text-[12px] text-gray-700 dark:text-slate-300">
-                        {aiMatchDescription.trim().split('\n')[0]}
+                      <Sparkles size={13} className="mt-0.5 shrink-0 text-indigo-500" />
+                      {/* Two lines of the description, whitespace collapsed so a
+                          pasted hotlist's line breaks don't waste them. */}
+                      <span className="line-clamp-2 min-w-0 flex-1 text-[12px] leading-snug text-gray-700 dark:text-slate-300">
+                        {aiMatchDescription.trim().replace(/\s+/g, ' ')}
                       </span>
                       <span className="shrink-0 text-[11px] font-medium tabular-nums text-gray-400">{recentVisibleFeed.length}</span>
                       <Pencil size={12} className="shrink-0 text-gray-400" />
@@ -7338,12 +7354,16 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                             onPitch={handleSwipePitch}
                           />
                         ) : filteredFeed.length === 0 ? (
+                          // Before a first AI Match run the input panel above is
+                          // the whole page; an empty-state icon under it is noise.
+                          aiMatchEmptyMessage === '' ? null : (
                           <div className="flex items-center justify-center p-6 text-center">
                             <div>
                               <Radar size={16} className="mx-auto text-gray-300" />
                               <p className="mt-1.5 text-[12px] text-gray-500">{aiMatchEmptyMessage ?? 'No matches yet'}</p>
                             </div>
                           </div>
+                          )
                         ) : (
                           <div className="space-y-2 bg-[#f3f2ee] px-1.5 pt-1 pb-4 dark:bg-[#1B1D21]">
                             {renderLeadCards(visibleFeed)}
@@ -7404,6 +7424,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                             )
                           ) : (
                             recentVisibleFeed.length === 0 ? (
+                              aiMatchEmptyMessage === '' ? null :
                               <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{aiMatchEmptyMessage ?? (isCombinedFeed ? 'No recent leads.' : isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.')}</div>
                             ) : isTableLayout ? (
                               <>
