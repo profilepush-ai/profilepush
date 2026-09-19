@@ -1249,20 +1249,6 @@ const LeadCard = memo(function LeadCard({
     <div className="mt-auto flex items-stretch divide-x divide-gray-200 border-t border-gray-200 dark:divide-white/10 dark:border-white/10">
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
-        disabled={isLoadingPreview}
-        title="Preview original post"
-        className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
-      >
-        {isLoadingPreview ? <LogoSpinner size={14} /> : (
-          <>
-            <Eye size={17} strokeWidth={1.75} />
-            <span className="text-[12px] font-normal">Preview</span>
-          </>
-        )}
-      </button>
-      <button
-        type="button"
         onClick={(e) => { e.stopPropagation(); void shareLead(lead, accountId, userId).then((copied) => { if (copied) { setJustCopiedShare(true); setTimeout(() => setJustCopiedShare(false), 1500); } }); }}
         title="Share this post"
         className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
@@ -1326,7 +1312,26 @@ const LeadCard = memo(function LeadCard({
       <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
       <div>
         <div className="min-w-0 pr-14">
-          <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
+          {hideActions ? (
+            // Detail layout: the whole card selects the lead and the post opens
+            // in the pane beside it, so the title stays plain text there.
+            <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
+          ) : (
+            // The title is the way to open the original post; it replaced the
+            // separate Preview button and calls the same handler, so the
+            // one-time preview charge and the modal behave exactly as before.
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
+              disabled={isLoadingPreview}
+              title="Open post"
+              className="text-left text-[13px] font-semibold leading-snug underline-offset-2 hover:underline disabled:cursor-wait"
+              style={titleToneStyle}
+            >
+              {lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}
+              {isLoadingPreview && <span className="ml-1.5 inline-block align-middle"><LogoSpinner size={11} /></span>}
+            </button>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-1">
               {lead.aiMatchScore != null && (
                 <span
