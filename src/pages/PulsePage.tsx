@@ -35,6 +35,8 @@ import {
   ChevronUp,
   Server,
   Sparkles,
+  Pencil,
+  Mail,
   Table2,
   Gauge,
   TrendingUp,
@@ -116,6 +118,10 @@ type SocialLead = {
   authorName: string | null;
   avatarUrl: string | null;
   kind: 'job' | 'hotlist';
+  // Set only on AI Match results: the 1-10 fit score and the model's one-line
+  // reason. Absent everywhere else, which is what keeps the badge off the feed.
+  aiMatchScore?: number | null;
+  aiMatchReason?: string | null;
 };
 
 function compareDetailsAndPostedDate(a: SocialLead, b: SocialLead): number {
@@ -156,6 +162,53 @@ function extractPrimaryEmail(raw: string | null | undefined): string {
   // first token that actually looks like a single valid email instead.
   const candidates = (raw ?? '').split(/[,;/|\s]+/).map((part) => part.trim()).filter(Boolean);
   return candidates.find((candidate) => /^\S+@\S+\.\S+$/.test(candidate)) ?? '';
+}
+
+// The last AI Match run, per browser tab. sessionStorage rather than
+// localStorage: results are a snapshot of a moving 30-day window and shouldn't
+// resurface days later as if current. Wrapped because storage can be
+// unavailable (private mode, blocked site data) and the page must work anyway.
+const AI_MATCH_SESSION_KEY = 'pulse:ai-match:last-run';
+const AI_MATCH_MIN_DESCRIPTION_CHARS = 40;
+
+type AiMatchSession = {
+  description: string;
+  target: 'jobs' | 'hotlist';
+  rows: PulseSocialFeedRpcRow[];
+};
+
+function readAiMatchSession(): AiMatchSession | null {
+  try {
+    const raw = window.sessionStorage.getItem(AI_MATCH_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<AiMatchSession>;
+    if (typeof parsed.description !== 'string' || !Array.isArray(parsed.rows)) return null;
+    if (parsed.target !== 'jobs' && parsed.target !== 'hotlist') return null;
+    return parsed as AiMatchSession;
+  } catch {
+    return null;
+  }
+}
+
+function writeAiMatchSession(session: AiMatchSession) {
+  try {
+    window.sessionStorage.setItem(AI_MATCH_SESSION_KEY, JSON.stringify(session));
+  } catch {
+    // Quota or disabled storage: the results are on screen; only restore-on-
+    // refresh is lost.
+  }
+}
+
+// Green for a strong fit, blue for a workable one, grey below that — the same
+// three bands the scoring prompt defines.
+function aiMatchScoreToneClass(score: number, isDark: boolean): string {
+  if (score >= 8) return isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (score >= 5) return isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700';
+  return isDark ? 'border-white/15 bg-white/5 text-slate-400' : 'border-gray-200 bg-gray-50 text-gray-500';
+}
+
+function compareByAiMatchScore(a: SocialLead, b: SocialLead): number {
+  return (b.aiMatchScore ?? 0) - (a.aiMatchScore ?? 0);
 }
 
 function compareByRecency(a: SocialLead, b: SocialLead, feedTimeBasis: FeedTimeBasis): number {
@@ -301,6 +354,8 @@ type PulseSocialFeedRpcRow = {
   author_display_name?: string | null;
   avatar_url?: string | null;
   _kind?: 'jobs' | 'hotlist';
+  ai_score?: number | null;
+  ai_reason?: string | null;
 };
 
 type PulseFeedCacheWorkerResponse = {
@@ -1222,7 +1277,7 @@ const LeadCard = memo(function LeadCard({
           title="Submit a consultant to this job"
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
         >
-          <Send size={15} strokeWidth={1.75} />
+          <Mail size={15} strokeWidth={1.75} />
           <span className="text-[12px] font-normal">AI Submit</span>
         </button>
       ) : isAskPending || isVerified ? (
@@ -1247,7 +1302,10 @@ const LeadCard = memo(function LeadCard({
             </>
           ) : (
             <>
-              <Sparkles size={15} strokeWidth={1.75} />
+              {/* A hotlist request asks for the consultant's resume, so it carries
+                  the document icon the plain Request button already uses; a job
+                  gets the email icon, since AI Submit sends the recruiter an email. */}
+              {isHotlistFeed ? <FileText size={15} strokeWidth={1.75} /> : <Mail size={15} strokeWidth={1.75} />}
               <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Submit'}</span>
             </>
           )}
@@ -1270,6 +1328,15 @@ const LeadCard = memo(function LeadCard({
         <div className="min-w-0 pr-14">
           <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
           <div className="mt-1 flex flex-wrap items-center gap-1">
+              {lead.aiMatchScore != null && (
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${aiMatchScoreToneClass(lead.aiMatchScore, isDark)}`}
+                  title="AI fit score"
+                >
+                  <Sparkles size={9} strokeWidth={2.5} />
+                  {lead.aiMatchScore}/10
+                </span>
+              )}
               {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
               {predictResult && (
                 <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${predictToneClass(predictResult.score, isDark)}`}>
@@ -1294,6 +1361,9 @@ const LeadCard = memo(function LeadCard({
                 </span>
               )}
             </div>
+          {lead.aiMatchReason && (
+            <p className="mt-1 text-[11px] leading-snug text-gray-600 dark:text-slate-400">{lead.aiMatchReason}</p>
+          )}
         </div>
       </div>
       {(() => {
@@ -2242,12 +2312,19 @@ function buildHotlistRolePayloadFromPersona(accountId: string, persona: PulsePer
 
 type PulsePageProps = {
   feedKind?: 'jobs' | 'hotlist' | 'feed';
+  // AI Match mode: the same page, cards and actions, but the list comes from
+  // the ai-match function (a pasted description scored against the last 30
+  // days) instead of the paged feed.
+  aiMatch?: boolean;
 };
 
-export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
+export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulsePageProps) {
   const { account, user, refreshAccount } = useAuth();
   const { isDark } = useTheme();
   const isHotlistFeed = feedKind === 'hotlist';
+  // Where this page's own routes live: opening, closing and auto-selecting a
+  // lead must stay inside AI Match rather than bouncing the user to /feed.
+  const feedBasePath = aiMatch ? '/match' : '/feed';
   const isCombinedFeed = feedKind === 'feed';
   // Per-lead kind check: in combined mode every lead carries its own
   // job/hotlist kind, so callers acting on a specific lead must derive from
@@ -2293,6 +2370,18 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   })());
   const [feedHasMore, setFeedHasMore] = useState(false);
   const [feedPageLoading, setFeedPageLoading] = useState(false);
+  // AI Match. The description is kept per tab so a refresh keeps what was
+  // typed; the last run's results are restored the same way (see
+  // AI_MATCH_SESSION_KEY) so reloading the page never costs a second credit.
+  const [aiMatchDescription, setAiMatchDescription] = useState(
+    () => readAiMatchSession()?.description ?? '',
+  );
+  const [aiMatchRunning, setAiMatchRunning] = useState(false);
+  const [aiMatchError, setAiMatchError] = useState<string | null>(null);
+  const [aiMatchHasRun, setAiMatchHasRun] = useState(false);
+  // Collapsed to a one-line summary once there are results, so the list gets
+  // the screen — the textarea is most of a phone's viewport otherwise.
+  const [aiMatchComposerOpen, setAiMatchComposerOpen] = useState(true);
   const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -2978,6 +3067,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     // to the Requested/Submitted tab instead of lingering here with its
     // action button disabled.
     const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id) && !globalAskedJobStateByLeadId[lead.id]);
+    // AI Match: best score first. That's the whole point of the view.
+    if (aiMatch) return [...recent].sort(compareByAiMatchScore);
     // While searching, the server returns rows ranked by FTS relevance and
     // pages by offset within that ranking. Re-sorting here would scramble the
     // order the cursor is walking, so page 2 would interleave with page 1.
@@ -2992,7 +3083,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         : (feedTimeBasis === 'created' ? b.createdAt : b.postedAt)).getTime();
       return bTs - aTs;
     });
-  }, [dedupedScopedFeed, feedSearchQuery, feedTimeBasis, globalAskedJobStateByLeadId, isCombinedFeed, isHotlistFeed, revealedLeadIds]);
+  }, [aiMatch, dedupedScopedFeed, feedSearchQuery, feedTimeBasis, globalAskedJobStateByLeadId, isCombinedFeed, isHotlistFeed, revealedLeadIds]);
 
   const previewedVisibleFeed = useMemo(() => {
     // Same reasoning as Recent: once a lead has been requested/submitted, it
@@ -3048,8 +3139,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     queued: feedTotalCount ?? recentVisibleFeed.length,
   }), [askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, feedTotalCount, previewedVisibleFeed.length, recentVisibleFeed.length, verifiedVisibleFeed.length]);
 
-  const matchesTabDefinitions = useMemo((): Array<{ id: MatchesTabId; label: string; icon: LucideIcon }> => (
-    isCombinedFeed
+  const matchesTabDefinitions = useMemo((): Array<{ id: MatchesTabId; label: string; icon: LucideIcon }> => {
+    const tabs: Array<{ id: MatchesTabId; label: string; icon: LucideIcon }> = isCombinedFeed
       ? [
         { id: 'queued', label: 'Recent', icon: Clock3 },
         { id: 'previewed', label: 'Previewed', icon: Eye },
@@ -3065,8 +3156,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         { id: 'queued', label: 'Recent', icon: Clock3 },
         { id: 'previewed', label: 'Previewed', icon: Eye },
         { id: 'asked', label: 'Submitted', icon: Send },
-      ]
-  ), [isCombinedFeed, isHotlistFeed]);
+      ];
+    // In AI Match the first tab holds the ranked shortlist, not recent posts.
+    return aiMatch
+      ? tabs.map((tab) => (tab.id === 'queued' ? { ...tab, label: 'Matches', icon: Sparkles } : tab))
+      : tabs;
+  }, [aiMatch, isCombinedFeed, isHotlistFeed]);
 
   const profileViewCounts = useMemo(() => ({
     all: filteredJobsRankedLeaderboard.length,
@@ -3088,6 +3183,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     } else {
       selectedFeed = dedupedScopedFeed;
     }
+    if (aiMatch) return [...selectedFeed].sort(compareByAiMatchScore);
     // Same reasoning as recentVisibleFeed: preserve the server's ranking while
     // a search is active.
     if (feedSearchQuery.trim()) return selectedFeed;
@@ -3100,7 +3196,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       return [...selectedFeed].sort((a, b) => compareByRecency(a, b, feedTimeBasis));
     }
     return [...selectedFeed].sort(compareDetailsAndPostedDate);
-  }, [askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, feedSearchQuery, feedTimeBasis, isCombinedFeed, isHotlistFeed, previewedVisibleFeed, recentVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
+  }, [aiMatch, askedVisibleFeed, breakdownChargedLeadIds, dedupedScopedFeed, feedSearchQuery, feedTimeBasis, isCombinedFeed, isHotlistFeed, previewedVisibleFeed, recentVisibleFeed, selectedMatchesTab, verifiedVisibleFeed]);
 
   const visibleFeed = useMemo(() => filteredFeed.slice(0, visibleMatchesCount), [filteredFeed, visibleMatchesCount]);
 
@@ -3108,6 +3204,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
   // so the end of a page is a real boundary the user has to be able to cross —
   // and to come back from, which is what the cursor stack is for.
   const renderFeedPagingFooter = useCallback(() => {
+    // AI Match returns one scored shortlist; there is no next page to fetch.
+    if (aiMatch) return null;
     const pageRowCount = feed.length;
     if (pageRowCount === 0 && feedPageIndex === 0) return null;
 
@@ -3147,7 +3245,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
         </div>
       </div>
     );
-  }, [feed.length, feedHasMore, feedPageIndex, feedPageLoading, feedTotalCount]);
+  }, [aiMatch, feed.length, feedHasMore, feedPageIndex, feedPageLoading, feedTotalCount]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
 
   const visibleDesktopRecentFeed = useMemo(
@@ -3216,8 +3314,12 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     const first = currentDetailFeed[0];
     if (!first) return;
     autoSelectedTabRef.current = selectedMatchesTab;
-    navigate(`/feed/${first.kind}/${first.id}`, { replace: true });
-  }, [isDetailLayout, hasValidDetailSelection, currentDetailFeed, selectedMatchesTab, navigate]);
+    const search = searchParams.toString();
+    navigate(
+      { pathname: `${feedBasePath}/${first.kind}/${first.id}`, search: search ? `?${search}` : '' },
+      { replace: true },
+    );
+  }, [isDetailLayout, hasValidDetailSelection, currentDetailFeed, selectedMatchesTab, navigate, feedBasePath, searchParams]);
 
   const maybeLoadMoreMatches = useCallback((container: HTMLDivElement, canLoadMore: boolean, onLoadMore: () => void) => {
     if (!canLoadMore) return;
@@ -3915,7 +4017,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         title="AI Submit — submit a consultant to this job"
                         className={askButtonClass}
                       >
-                        <Send size={12} strokeWidth={2} />
+                        <Mail size={12} strokeWidth={2} />
                       </button>
                     ) : isAskPending || isVerified ? (
                       <span
@@ -3936,7 +4038,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                         title={!lead.posterEmail ? 'No email' : (lead.postSource === 'user_post' ? 'Request' : 'Send Email')}
                         className={askButtonClass}
                       >
-                        {processingAskAILeadId === lead.id ? <span>...</span> : leadHotlist ? <FileText size={12} strokeWidth={2} /> : <Send size={12} strokeWidth={2} />}
+                        {processingAskAILeadId === lead.id ? <span>...</span> : leadHotlist ? <FileText size={12} strokeWidth={2} /> : <Mail size={12} strokeWidth={2} />}
                       </button>
                     )}
                     <button
@@ -3975,10 +4077,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     // moment a card is opened.
     const search = searchParams.toString();
     navigate(
-      { pathname: `/feed/${selected.kind}/${selected.id}`, search: search ? `?${search}` : '' },
+      { pathname: `${feedBasePath}/${selected.kind}/${selected.id}`, search: search ? `?${search}` : '' },
       { replace: true },
     );
-  }, [navigate, searchParams]);
+  }, [feedBasePath, navigate, searchParams]);
 
   const renderDetailSplitView = (leads: SocialLead[], showPaging = false) => {
     // Fall back to the first result rather than leaving the detail pane blank.
@@ -4049,7 +4151,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   type="button"
                   onClick={() => {
                     const search = searchParams.toString();
-                    navigate({ pathname: '/feed', search: search ? `?${search}` : '' }, { replace: true });
+                    navigate({ pathname: feedBasePath, search: search ? `?${search}` : '' }, { replace: true });
                   }}
                   className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
                   aria-label="Close preview"
@@ -4114,7 +4216,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     onClick={() => setApplyModalLead(selectedLead)}
                     className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 text-[12px] font-semibold text-white hover:bg-blue-700"
                   >
-                    <Send size={14} />
+                    <Mail size={14} />
                     AI Submit
                   </button>
                 ) : selectedIsAskPending || selectedIsVerified ? (
@@ -4134,7 +4236,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     {selectedIsProcessingAskAI ? <LogoSpinner size={14} /> : selectedLead.postSource === 'user_post' ? (
                       <><FileText size={14} />Request</>
                     ) : (
-                      <><Sparkles size={14} />{selectedIsHotlist ? 'AI Request' : 'AI Submit'}</>
+                      <>{selectedIsHotlist ? <FileText size={14} /> : <Mail size={14} />}{selectedIsHotlist ? 'AI Request' : 'AI Submit'}</>
                     )}
                   </button>
                 )}
@@ -4977,6 +5079,9 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
   // Facet counts + the total, for the whole window rather than the loaded pages.
   useEffect(() => {
+    // AI Match shows a scored shortlist, not the window; its count is simply
+    // the number of results, which the tab falls back to when this is null.
+    if (aiMatch) return;
     let cancelled = false;
     const facetKind: 'jobs' | 'hotlist' = isCombinedFeed
       ? (feedKindFilter === 'hotlist' ? 'hotlist' : 'jobs')
@@ -5030,7 +5135,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     })();
 
     return () => { cancelled = true; };
-  }, [appliedFeedFilters, feedKindFilter, feedSearchQuery, isCombinedFeed, isHotlistFeed, selectedProfileRange.hours]);
+  }, [aiMatch, appliedFeedFilters, feedKindFilter, feedSearchQuery, isCombinedFeed, isHotlistFeed, selectedProfileRange.hours]);
 
   // One page of the feed, straight from the _v2 RPCs. Browsing pages by keyset
   // on (effective_posted_at, lead_id); searching orders by FTS rank, so it
@@ -5247,6 +5352,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       author_display_name: row.author_display_name ?? null,
       avatar_url: row.avatar_url ?? null,
       _kind: row._kind,
+      ai_score: row.ai_score ?? null,
+      ai_reason: row.ai_reason ?? null,
     } as SocialJobRow & Record<string, unknown>));
 
     const newestMatchByJobId = new Map<string, RadarSocialMatchRow>();
@@ -5327,7 +5434,10 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
       return score;
     };
 
-    const rangeCutoffMs = nowMs - (selectedProfileRange.hours * 60 * 60 * 1000);
+    // AI Match results are already windowed to 30 days by the server, and the
+    // range picker (which may hold e.g. ?range=3d from the feed) isn't shown
+    // in that mode — applying it here would silently drop scored matches.
+    const rangeCutoffMs = aiMatch ? 0 : nowMs - (selectedProfileRange.hours * 60 * 60 * 1000);
     const finalFiltered = socialData
       .filter((row) => {
         const postedTs = getPostedTimestamp(row);
@@ -5402,6 +5512,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
           authorName: row.author_display_name ?? null,
           avatarUrl: row.avatar_url?.trim() || null,
           kind: rowIsHotlist ? 'hotlist' : 'job',
+          aiMatchScore: safeNumber((row as SocialJobRow & Record<string, unknown>).ai_score),
+          aiMatchReason: ((row as SocialJobRow & Record<string, unknown>).ai_reason as string | null) ?? null,
         } as SocialLead;
       });
 
@@ -5418,7 +5530,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
 
     setFeedLoading(false);
-  }, [appliedFeedFilters, feedKindFilter, feedSearchQuery, feedTimeBasis, fetchFeedPage, isCombinedFeed, isHotlistFeed, selectedProfileRange.hours, showToast]);
+  }, [aiMatch, appliedFeedFilters, feedKindFilter, feedSearchQuery, feedTimeBasis, fetchFeedPage, isCombinedFeed, isHotlistFeed, selectedProfileRange.hours, showToast]);
 
   const goToNextFeedPage = useCallback(async () => {
     const cursor = feedCursorRef.current;
@@ -5453,10 +5565,75 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     goToPrevFeedPageRef.current = goToPrevFeedPage;
   }, [goToNextFeedPage, goToPrevFeedPage]);
 
+  // Bench sales match their consultant against jobs; vendors match their job
+  // against hotlists — the same persona split the feed itself uses.
+  const aiMatchTarget: 'jobs' | 'hotlist' = account?.active_persona === 'bench_sales' ? 'jobs' : 'hotlist';
+
+  const runAiMatch = useCallback(async () => {
+    const description = aiMatchDescription.trim();
+    if (description.length < AI_MATCH_MIN_DESCRIPTION_CHARS) {
+      setAiMatchError(`Add a bit more detail — at least ${AI_MATCH_MIN_DESCRIPTION_CHARS} characters.`);
+      return;
+    }
+    setAiMatchRunning(true);
+    setAiMatchError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-match', {
+        body: { target: aiMatchTarget, description },
+      });
+      if (error) {
+        setAiMatchError(await getFunctionErrorMessage(error, 'AI Match failed. You have not been charged.'));
+        return;
+      }
+      const rows = ((data?.results ?? []) as PulseSocialFeedRpcRow[])
+        .map((row) => ({ ...row, _kind: aiMatchTarget }));
+      // The run also publishes the pasted description as the user's own post.
+      // Only a new post is worth a word; a duplicate or a skipped extraction
+      // stays quiet rather than adding noise to every run.
+      const post = data?.post as { status?: string; count?: number } | undefined;
+      if (post?.status === 'created') {
+        const where = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
+        showToast(post.count && post.count > 1 ? `${post.count} posts added to ${where}` : `Posted to ${where}`, 'success');
+      }
+      await loadFeed(null, [], rows);
+      setAiMatchHasRun(true);
+      setAiMatchComposerOpen(rows.length === 0);
+      writeAiMatchSession({ description, target: aiMatchTarget, rows });
+      // The run cost a credit (or was refunded if nothing matched); either way
+      // the header balance should reflect the server's number.
+      void refreshAccount();
+    } finally {
+      setAiMatchRunning(false);
+    }
+  }, [aiMatchDescription, aiMatchTarget, loadFeed, refreshAccount, showToast]);
+
+  const aiMatchEmptyMessage = !aiMatch
+    ? null
+    : aiMatchHasRun
+      ? 'No close matches in 30 days'
+      : 'Top matches from the last 30 days, scored 1-10';
+
+  // Restore the last run on load, once, so a refresh shows the same results
+  // instead of an empty page that would cost a credit to repopulate. Skipped
+  // if the persona changed since — those results are the other kind.
+  const aiMatchRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!aiMatch || aiMatchRestoredRef.current || !account) return;
+    aiMatchRestoredRef.current = true;
+    const saved = readAiMatchSession();
+    if (!saved || saved.target !== aiMatchTarget || saved.rows.length === 0) return;
+    void loadFeed(null, [], saved.rows).then(() => {
+      setAiMatchHasRun(true);
+      setAiMatchComposerOpen(false);
+    });
+  }, [account, aiMatch, aiMatchTarget, loadFeed]);
+
   // loadFeed's dependencies now include the range, the applied search query and
   // the applied filters, so this single effect re-runs (and resets the cursor,
   // because append defaults to false) whenever any of them change.
   useEffect(() => {
+    // AI Match fills the list from runAiMatch, not the paged feed.
+    if (aiMatch) return;
     const restoreToPage = pendingRestorePageRef.current;
     pendingRestorePageRef.current = null;
 
@@ -5477,7 +5654,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
     feedCursorStackRef.current = [null];
     setFeedPageIndex(0);
     void loadFeed(null);
-  }, [loadFeed]);
+  }, [aiMatch, loadFeed]);
 
   // Mirror the range and page into the URL so a refresh or a shared link comes
   // back to the same view. Defaults are omitted to keep ordinary URLs clean.
@@ -6432,9 +6609,76 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                   </button>
                 </div>
 
+              {aiMatch && (
+                <div className={isMobileViewport ? 'shrink-0 px-1 pt-1.5 pb-1' : 'shrink-0 px-2 py-2'}>
+                  {aiMatchComposerOpen ? (
+                    <div className="rounded-xl border border-gray-200 bg-white p-2 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:border-white/10 dark:bg-[#171A1F]">
+                      <textarea
+                        value={aiMatchDescription}
+                        onChange={(e) => {
+                          setAiMatchDescription(e.target.value);
+                          if (aiMatchError) setAiMatchError(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                            e.preventDefault();
+                            void runAiMatch();
+                          }
+                        }}
+                        rows={isMobileViewport ? 4 : 5}
+                        maxLength={8000}
+                        autoFocus={!isMobileViewport && !aiMatchHasRun}
+                        placeholder={aiMatchTarget === 'jobs' ? 'Paste consultant hotlist' : 'Paste job description'}
+                        aria-label={aiMatchTarget === 'jobs' ? 'Consultant hotlist' : 'Job description'}
+                        className="w-full resize-none border-0 bg-transparent px-1 py-1 text-[13px] leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 dark:text-slate-100"
+                      />
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <span className={`min-w-0 truncate pl-1 text-[11px] ${aiMatchError ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
+                          {aiMatchError ?? '1 credit'}
+                        </span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {aiMatchHasRun && (
+                            <button
+                              type="button"
+                              onClick={() => setAiMatchComposerOpen(false)}
+                              className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void runAiMatch()}
+                            disabled={aiMatchRunning || aiMatchDescription.trim().length < AI_MATCH_MIN_DESCRIPTION_CHARS}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-sm transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Sparkles size={13} />
+                            {aiMatchRunning ? 'Matching' : 'Match'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAiMatchComposerOpen(true)}
+                      title="Edit"
+                      className="flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left dark:border-white/10 dark:bg-[#171A1F]"
+                    >
+                      <Sparkles size={13} className="shrink-0 text-indigo-500" />
+                      <span className="min-w-0 flex-1 truncate text-[12px] text-gray-700 dark:text-slate-300">
+                        {aiMatchDescription.trim().split('\n')[0]}
+                      </span>
+                      <span className="shrink-0 text-[11px] font-medium tabular-nums text-gray-400">{recentVisibleFeed.length}</span>
+                      <Pencil size={12} className="shrink-0 text-gray-400" />
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Mobile search/filter row — controls job feed search */}
               <div
-                className={isMobileViewport ? `sticky top-0 z-30 shrink-0 bg-[#f3f2ee] px-0 transition-[max-height,opacity,transform] duration-200 ease-out dark:bg-[#1B1D21] ${isRangeMenuOpen || isRecentSearchesOpen ? 'overflow-visible' : 'overflow-hidden'}` : 'px-2 py-2'}
+                className={aiMatch ? 'hidden' : isMobileViewport ? `sticky top-0 z-30 shrink-0 bg-[#f3f2ee] px-0 transition-[max-height,opacity,transform] duration-200 ease-out dark:bg-[#1B1D21] ${isRangeMenuOpen || isRecentSearchesOpen ? 'overflow-visible' : 'overflow-hidden'}` : 'px-2 py-2'}
                 style={isMobileViewport ? {
                   maxHeight: isMobileTopCollapsed ? '0px' : '52px',
                   opacity: isMobileTopCollapsed ? 0 : 1,
@@ -6535,7 +6779,8 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                     </button>
                   )}
 
-                  {!isMobileViewport && !isSwipeLayout && (
+                  {/* AI Match is one ranked list; the action tabs are feed furniture. */}
+                  {!isMobileViewport && !isSwipeLayout && !aiMatch && (
                     <div className="flex shrink-0 items-center gap-1">
                       {matchesTabDefinitions.map((tab) => {
                         const isSelected = selectedMatchesTab === tab.id;
@@ -6579,7 +6824,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             setLayoutMode(view.id);
                             if (view.id !== 'detail' && routeLeadId) {
                               const search = searchParams.toString();
-                              navigate({ pathname: '/feed', search: search ? `?${search}` : '' }, { replace: true });
+                              navigate({ pathname: feedBasePath, search: search ? `?${search}` : '' }, { replace: true });
                             }
                           }}
                           title={view.label}
@@ -6630,7 +6875,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
               </div>
 
               <div className="flex min-h-0 flex-1 gap-3">
-              {!isMobileViewport && (
+              {!isMobileViewport && !aiMatch && (
                 <aside className="flex h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
                   <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-3 pb-2.5 dark:border-white/10">
                     <span className="text-[12px] font-bold text-gray-900 dark:text-slate-100">Filters</span>
@@ -7033,7 +7278,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                 </div>
               </section>}
 
-              {isMobileViewport && !isSwipeLayout && (
+              {isMobileViewport && !isSwipeLayout && !aiMatch && (
                 <div
                   className="sticky top-0 z-40 shrink-0 overflow-hidden bg-[#f3f2ee] px-1.5 transition-[max-height,opacity,transform] duration-200 ease-out transform-gpu backface-hidden dark:bg-[#1B1D21]"
                   style={{
@@ -7077,7 +7322,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
 
               <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
                 <div className={`min-h-0 ${isMobileViewport ? '' : 'flex-1 overflow-hidden'}`}>
-                  {feedLoading ? (
+                  {feedLoading || aiMatchRunning ? (
                     <div className={`${isMobileViewport ? 'flex min-h-[50vh] w-full' : 'flex h-full min-h-0 w-full'} items-center justify-center`}>
                       <LogoSpinner size={20} />
                     </div>
@@ -7096,7 +7341,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                           <div className="flex items-center justify-center p-6 text-center">
                             <div>
                               <Radar size={16} className="mx-auto text-gray-300" />
-                              <p className="mt-1.5 text-[12px] text-gray-500">No matches yet</p>
+                              <p className="mt-1.5 text-[12px] text-gray-500">{aiMatchEmptyMessage ?? 'No matches yet'}</p>
                             </div>
                           </div>
                         ) : (
@@ -7159,7 +7404,7 @@ export default function PulsePage({ feedKind = 'jobs' }: PulsePageProps) {
                             )
                           ) : (
                             recentVisibleFeed.length === 0 ? (
-                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{isCombinedFeed ? 'No recent leads.' : isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.'}</div>
+                              <div className="flex h-full items-center justify-center px-3 py-6 text-center text-[13px] text-gray-400">{aiMatchEmptyMessage ?? (isCombinedFeed ? 'No recent leads.' : isHotlistFeed ? 'No recent consultants.' : 'No recent jobs.')}</div>
                             ) : isTableLayout ? (
                               <>
                                 {renderLeadTable(visibleDesktopRecentFeed)}

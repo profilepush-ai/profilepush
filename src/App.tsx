@@ -305,6 +305,11 @@ export default function App() {
             <Route path="/feed/jobs" element={<ProtectedRoute><ErrorBoundary><FeedRouteGuard /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/feed/hotlist" element={<ProtectedRoute><ErrorBoundary><FeedRouteGuard /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/feed/:kind/:id" element={<ProtectedRoute><ErrorBoundary><FeedRouteGuard /></ErrorBoundary></ProtectedRoute>} />
+            {/* AI Match renders the feed page in its match mode, so results use the
+                same cards, detail view and submit flow. keyed so moving between
+                /feed and /match never carries one list's state into the other. */}
+            <Route path="/match" element={<ProtectedRoute><ErrorBoundary><PulsePage key="ai-match" feedKind="feed" aiMatch /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/match/:kind/:id" element={<ProtectedRoute><ErrorBoundary><PulsePage key="ai-match" feedKind="feed" aiMatch /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/jobs" element={<ProtectedRoute><Navigate to="/feed/jobs" replace /></ProtectedRoute>} />
             <Route path="/hotlist" element={<ProtectedRoute><Navigate to="/feed/hotlist" replace /></ProtectedRoute>} />
             <Route path="/posts" element={<ProtectedRoute><ErrorBoundary><PostsRouteGuard /></ErrorBoundary></ProtectedRoute>} />
