@@ -599,8 +599,11 @@ export default function AppNav() {
             className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-semibold ${location.pathname.startsWith('/match') ? 'text-blue-600' : 'text-gray-600'}`}
           >
             <span className="relative h-6 w-full">
-              <span className={`absolute bottom-0 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/40 ring-4 ring-white transition-transform active:scale-95 ${location.pathname.startsWith('/match') ? 'scale-105' : ''}`}>
-                <Sparkles size={24} strokeWidth={2.25} />
+              {/* 48px, not 56: at 56 with a 4px ring it swamped the other icons
+                  and sat on its own label in the installed app. bottom-1 leaves
+                  a clear gap above the label. */}
+              <span className="absolute bottom-1 left-1/2 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30 ring-[3px] ring-white transition-transform active:scale-95">
+                <Sparkles size={22} strokeWidth={2.25} />
               </span>
             </span>
             <span>AI Match</span>
