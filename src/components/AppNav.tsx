@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  ChevronDown, HelpCircle, LogOut, Settings,
+  ChevronDown, HelpCircle, LogOut, Settings, Sparkles,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
   Activity, Briefcase, MoonStar, SunMedium, Mail, Database, UserRound, Send,
@@ -63,6 +63,7 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   const trackerIcon = isBenchSales ? FileText : Send;
   return [
     { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },
+    { path: '/match',       label: 'AI Match',    mobileLabel: 'AI Match',    icon: Sparkles,    hideOnMobile: false },
     { path: postsPath,      label: postsLabel,    mobileLabel: postsLabel,    icon: postsIcon,   hideOnMobile: false },
     { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
     { path: trackerPath,    label: trackerLabel,  mobileLabel: trackerLabel,  icon: trackerIcon, hideOnMobile: false },
@@ -324,7 +325,12 @@ export default function AppNav() {
   const navItems = getNavItems(account?.active_persona);
   // Mobile bottom nav below reuses these same computed items (path, label,
   // icon) rather than re-deriving persona logic a third time.
-  const [feedItem, postsItem, , trackerItem] = navItems;
+  // Picked by path, not by position. This used to destructure navItems by
+  // index, so adding AI Match to the desktop list shifted every slot after it
+  // and the mobile bar rendered "AI Match" and "Inbox" twice each.
+  const feedItem = navItems.find((item) => item.path.startsWith('/feed'))!;
+  const postsItem = navItems.find((item) => item.path.startsWith('/posts'))!;
+  const trackerItem = navItems.find((item) => item.path.startsWith('/tracker'))!;
   const FeedIcon = feedItem.icon;
   const PostsIcon = postsItem.icon;
   const TrackerIcon = trackerItem.icon;
@@ -570,21 +576,38 @@ export default function AppNav() {
         <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
           <Link
             to={feedItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium ${location.pathname.startsWith('/feed') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/feed') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <FeedIcon size={24} />
             <span>{feedItem.label}</span>
           </Link>
           <Link
             to={postsItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <PostsIcon size={24} />
             <span>{postsItem.label}</span>
           </Link>
+          {/* AI Match is the centre action, raised above the bar so it reads as
+              the primary thing to do. It uses the same py-2 / gap-1 / 24px icon
+              slot as the other four items so every label sits on one baseline;
+              the circle is positioned out of that slot upwards and takes no
+              layout space, which is what keeps the row aligned. */}
+          <Link
+            to="/match"
+            aria-label="AI Match"
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-semibold ${location.pathname.startsWith('/match') ? 'text-blue-600' : 'text-gray-600'}`}
+          >
+            <span className="relative h-6 w-full">
+              <span className={`absolute bottom-0 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/40 ring-4 ring-white transition-transform active:scale-95 ${location.pathname.startsWith('/match') ? 'scale-105' : ''}`}>
+                <Sparkles size={24} strokeWidth={2.25} />
+              </span>
+            </span>
+            <span>AI Match</span>
+          </Link>
           <Link
             to="/inbox"
-            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Mail size={24} />
             <span>Inbox</span>
@@ -592,17 +615,10 @@ export default function AppNav() {
           </Link>
           <Link
             to={trackerItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium ${location.pathname.startsWith('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <TrackerIcon size={24} />
             <span>{trackerItem.label}</span>
-          </Link>
-          <Link
-            to="/pulse"
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium ${location.pathname === '/pulse' ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <Activity size={24} />
-            <span>Pulse</span>
           </Link>
         </nav>
       )}
