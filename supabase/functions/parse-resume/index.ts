@@ -140,6 +140,11 @@ Deno.serve(async (req: Request) => {
   // Accept both multipart/form-data (UI upload) and application/json (queue processor)
   let plainText = "";
   let filename = "resume";
+  // AI Match wants the document's text, not a structured candidate profile:
+  // it embeds the text, and the post it creates is structured later by
+  // extract-post-fields anyway. Skipping the model here keeps that upload
+  // free and fast.
+  let textOnly = false;
   const contentType = req.headers.get("content-type") ?? "";
 
   const SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".rtf", ".txt"];
@@ -147,6 +152,7 @@ Deno.serve(async (req: Request) => {
   if (contentType.includes("application/json")) {
     const body = await req.json().catch(() => ({}));
     filename = body.filename ?? "resume.pdf";
+    textOnly = body.text_only === true;
     if (typeof body.plain_text === "string" && body.plain_text.trim()) {
       plainText = body.plain_text;
     } else if (typeof body.base64_pdf === "string" && body.base64_pdf) {
@@ -167,6 +173,7 @@ Deno.serve(async (req: Request) => {
 
     const file = formData.get("resume") as File | null;
     if (!file) return jsonError("Missing 'resume' field in form data");
+    textOnly = String(formData.get("text_only") ?? "") === "true";
 
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
     if (ext === ".doc") {
@@ -194,6 +201,13 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!plainText.trim()) return jsonError(`Could not extract any text from the ${ext} file.`);
+  }
+
+  if (textOnly) {
+    return new Response(JSON.stringify({ plain_text: plainText, filename }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
   }
 
   // ── Call Cloudflare Workers AI via social-job-parser ────────────────────────
