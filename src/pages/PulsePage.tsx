@@ -35,6 +35,7 @@ import {
   ChevronUp,
   Server,
   Sparkles,
+  Paperclip,
   Pencil,
   Mail,
   Table2,
@@ -2474,6 +2475,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // Phones get the rail as a second tab instead of a column: same list, but it
   // takes the screen only while they are looking at it.
   const [aiMatchMobileTab, setAiMatchMobileTab] = useState<'match' | 'recent'>('match');
+  const [aiMatchFileReading, setAiMatchFileReading] = useState(false);
+  const [aiMatchFileName, setAiMatchFileName] = useState('');
+  const aiMatchFileInputRef = useRef<HTMLInputElement | null>(null);
   const [aiMatchError, setAiMatchError] = useState<string | null>(null);
   const [aiMatchHasRun, setAiMatchHasRun] = useState(false);
   // Collapsed to a one-line summary once there are results, so the list gets
@@ -5903,6 +5907,53 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     [aiMatchRecents, aiMatchTarget],
   );
 
+  // Most bench sales already have the consultant as a file; retyping it into
+  // the box was the main reason not to bother. This reads the document and
+  // drops its text in — the run then treats it exactly like a paste, including
+  // publishing it as their own post.
+  const AI_MATCH_FILE_TYPES = '.pdf,.docx,.rtf,.txt';
+  const handleAiMatchFile = useCallback(async (file: File) => {
+    setAiMatchFileReading(true);
+    setAiMatchError(null);
+    setAiMatchFileName(file.name);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const formData = new FormData();
+      formData.append('resume', file, file.name);
+      // Text only: no model runs here, so the upload costs nothing.
+      formData.append('text_only', 'true');
+      const headers: Record<string, string> = {};
+      if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+      const response = await fetch(`${supabaseFunctionsUrl}/parse-resume`, { method: 'POST', headers, body: formData });
+      const payload = await response.json().catch(() => null) as { plain_text?: string; error?: string } | null;
+      if (!response.ok) {
+        setAiMatchFileName('');
+        setAiMatchError(payload?.error ?? "Couldn't read that file. Try a PDF, DOCX, RTF or TXT.");
+        return;
+      }
+      const text = (payload?.plain_text ?? '').trim();
+      if (!text) {
+        setAiMatchFileName('');
+        setAiMatchError('That file had no readable text — it may be a scan. Paste the text instead.');
+        return;
+      }
+      // The box caps at 8000 characters and the server truncates anyway; a long
+      // resume's opening pages are the part worth matching on.
+      setAiMatchDescription(text.slice(0, 8000));
+      // Filename minus extension is a better label than nothing, and they can
+      // edit it out; the auto-posted version gets a proper title from
+      // extract-post-fields.
+      setAiMatchFromTitle(file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim());
+      setAiMatchComposerOpen(true);
+      setAiMatchMobileTab('match');
+    } catch (error) {
+      setAiMatchFileName('');
+      setAiMatchError((error as Error).message || "Couldn't read that file");
+    } finally {
+      setAiMatchFileReading(false);
+    }
+  }, []);
+
   const selectAiMatchText = useCallback((description: string, title: string) => {
     setAiMatchMobileTab('match');
     setAiMatchDescription(description);
@@ -7198,12 +7249,22 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                             Matching for <span className="font-semibold text-gray-900 dark:text-slate-100">{aiMatchFromTitle}</span>
                           </p>
                         )}
-                        <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:border-white/10 dark:bg-[#171A1F]">
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); }}
+                          onDrop={(e) => {
+                            const file = e.dataTransfer.files?.[0];
+                            if (!file) return;
+                            e.preventDefault();
+                            void handleAiMatchFile(file);
+                          }}
+                          className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:border-white/10 dark:bg-[#171A1F]"
+                        >
                           <div className={isMobileViewport ? '' : 'flex items-start gap-3'}>
                             <textarea
                               value={aiMatchDescription}
                               onChange={(e) => {
                                 setAiMatchDescription(e.target.value);
+                                if (aiMatchFileName) setAiMatchFileName('');
                                 if (aiMatchError) setAiMatchError(null);
                               }}
                               onKeyDown={(e) => {
@@ -7235,13 +7296,38 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                             )}
                           </div>
                           <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <span className={`text-center text-[12px] sm:pl-1 sm:text-left ${aiMatchError ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
-                              {aiMatchError ?? (
-                                aiMatchDescription.trim().length > 0 && aiMatchDescription.trim().length < AI_MATCH_MIN_DESCRIPTION_CHARS
-                                  ? `${AI_MATCH_MIN_DESCRIPTION_CHARS - aiMatchDescription.trim().length} more characters`
-                                  : `Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits · 1 per match · last 30 days`
-                              )}
-                            </span>
+                            <div className="flex min-w-0 items-center justify-center gap-2 sm:justify-start">
+                              <input
+                                ref={aiMatchFileInputRef}
+                                type="file"
+                                accept={AI_MATCH_FILE_TYPES}
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  // Cleared so picking the same file twice still fires.
+                                  e.target.value = '';
+                                  if (file) void handleAiMatchFile(file);
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => aiMatchFileInputRef.current?.click()}
+                                disabled={aiMatchFileReading || aiMatchRunning}
+                                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-2 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                              >
+                                <Paperclip size={12} />
+                                {aiMatchFileReading ? 'Reading\u2026' : aiMatchTarget === 'jobs' ? 'Upload resume' : 'Upload JD'}
+                              </button>
+                              <span className={`min-w-0 truncate text-[12px] ${aiMatchError ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
+                                {aiMatchError ?? (
+                                  aiMatchDescription.trim().length > 0 && aiMatchDescription.trim().length < AI_MATCH_MIN_DESCRIPTION_CHARS
+                                    ? `${AI_MATCH_MIN_DESCRIPTION_CHARS - aiMatchDescription.trim().length} more characters`
+                                    : aiMatchFileName
+                                      ? `From ${aiMatchFileName}`
+                                      : `Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits · 1 per match · last 30 days`
+                                )}
+                              </span>
+                            </div>
                             <div className="flex gap-2">
                               {aiMatchHasRun && (
                                 <button
