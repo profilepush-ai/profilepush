@@ -41,6 +41,14 @@ const CREDIT_TIERS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
 // (charge_screening_completion_credit RPC, called from the
 // job-application-screening Worker) — not the account taking an action
 // here, so it's listed as a note rather than a per-action row.
+// Milestone grants (grant_milestone_credits, awarded by trigger). Listed here
+// so the app can show what is still unearned — an incentive nobody is told
+// about changes nobody's behaviour.
+const CREDIT_MILESTONES: { key: string; label: string; amount: number; hint: string }[] = [
+  { key: 'first_post', label: 'Publish your first post', amount: 10, hint: 'A consultant or a job of your own — worth one AI Match run' },
+  { key: 'first_submission', label: 'Send your first submission', amount: 10, hint: 'Submit a consultant to any job' },
+];
+
 const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: string }[] = [
   // ai-match/index.ts holds RESULT_LIMIT credits up front and refunds
   // everything it does not deliver, so a thin window or a rematch that finds
@@ -222,6 +230,7 @@ export default function BillingPage() {
   const autoOpenPlanRef = useRef(false);
 
   const [usageLogs, setUsageLogs] = useState<UsageRow[]>([]);
+  const [earnedMilestones, setEarnedMilestones] = useState<Set<string>>(new Set());
   const [visibleBalance, setVisibleBalance] = useState<number | null>(null);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading]     = useState(true);
@@ -251,11 +260,13 @@ export default function BillingPage() {
     const since = timeframe > 0 ? new Date(Date.now() - timeframe * 86_400_000).toISOString() : null;
     const q = supabase.from('api_usage_log').select('*').eq('account_id', accountId).order('created_at', { ascending: false });
     if (since) q.gte('created_at', since);
-    const [{ data }, { data: members }, { data: balanceRow }] = await Promise.all([
+    const [{ data }, { data: members }, { data: balanceRow }, { data: milestoneRows }] = await Promise.all([
       q,
       supabase.from('account_members').select('user_id, display_name, invited_email').eq('account_id', accountId),
       supabase.from('accounts').select('credits_balance').eq('id', accountId).maybeSingle(),
+      supabase.rpc('get_earned_milestones' as never),
     ]);
+    setEarnedMilestones(new Set(((milestoneRows ?? []) as { milestone_key: string }[]).map((row) => row.milestone_key)));
     setUsageLogs(data ?? []);
     setVisibleBalance(Number(balanceRow?.credits_balance ?? account?.credits_balance ?? 0));
     const names: Record<string, string> = {};
@@ -667,6 +678,33 @@ export default function BillingPage() {
                   )}
                 </div>
               </div>
+
+              {/* Earn credits — only worth showing while something is unearned */}
+              {CREDIT_MILESTONES.some(m => !earnedMilestones.has(m.key)) && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5">
+                  <p className="text-[13px] font-bold text-gray-800">Earn more credits</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5 mb-3">One-off bonuses, added the moment you qualify.</p>
+                  <div className="divide-y divide-emerald-100">
+                    {CREDIT_MILESTONES.map(({ key, label, amount, hint }) => {
+                      const earned = earnedMilestones.has(key);
+                      return (
+                        <div key={key} className="flex items-center justify-between gap-3 py-2.5">
+                          <div className="min-w-0 flex items-start gap-2">
+                            <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${earned ? 'bg-emerald-600' : 'border border-emerald-300 bg-white'}`}>
+                              {earned && <Check size={9} className="text-white" strokeWidth={3} />}
+                            </div>
+                            <div className="min-w-0">
+                              <p className={`text-[13px] font-semibold ${earned ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{label}</p>
+                              <p className="text-[11px] text-gray-400 mt-0.5">{earned ? 'Earned' : hint}</p>
+                            </div>
+                          </div>
+                          <span className={`shrink-0 text-[13px] font-bold ${earned ? 'text-gray-400' : 'text-emerald-700'}`}>+{amount}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Credit costs by feature */}
               <div className="rounded-2xl border border-gray-200 bg-white p-5">

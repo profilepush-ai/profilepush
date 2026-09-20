@@ -150,14 +150,42 @@ Deno.serve(async (req: Request) => {
   const workerToken = (Deno.env.get("CLOUDFLARE_WORKER_TOKEN") ?? "").trim();
   if (!openAiKey || !workerUrl) return jsonError("AI Match is not configured", 500);
 
-  const maxCharge = RESULT_LIMIT * CREDITS_PER_RESULT;
-  const { data: chargeRows, error: chargeError } = await userClient.rpc("consume_feature_credit", {
-    p_account_id: accountId,
-    p_amount: maxCharge,
-    p_feature: FEATURE_KEY,
-    p_metadata: { target, description_chars: description.length, max_results: RESULT_LIMIT },
-  });
-  const charge = Array.isArray(chargeRows) ? chargeRows[0] as { success: boolean; message: string } : null;
+  // The hold is RESULT_LIMIT because how many matches come back is not known
+  // until scoring ends. Whoever has less than that would otherwise be refused
+  // with credits still on the counter — a dead end rather than a spend — so a
+  // short balance buys a shorter run instead of nothing.
+  const holdCredits = async (amount: number, limit: number) => {
+    const { data, error } = await userClient.rpc("consume_feature_credit", {
+      p_account_id: accountId,
+      p_amount: amount,
+      p_feature: FEATURE_KEY,
+      p_metadata: { target, description_chars: description.length, max_results: limit },
+    });
+    return {
+      row: Array.isArray(data) ? data[0] as { success: boolean; message: string } : null,
+      error,
+    };
+  };
+
+  let resultLimit = RESULT_LIMIT;
+  let maxCharge = RESULT_LIMIT * CREDITS_PER_RESULT;
+  let { row: charge, error: chargeError } = await holdCredits(maxCharge, resultLimit);
+
+  if (!charge?.success) {
+    const { data: accountRow } = await supabaseAdmin
+      .from("accounts")
+      .select("credits_balance")
+      .eq("id", accountId)
+      .maybeSingle();
+    // Whole credits only: a partial one cannot buy a match.
+    const affordable = Math.floor(Number(accountRow?.credits_balance ?? 0) / CREDITS_PER_RESULT);
+    if (affordable >= 1) {
+      resultLimit = Math.min(RESULT_LIMIT, affordable);
+      maxCharge = resultLimit * CREDITS_PER_RESULT;
+      ({ row: charge, error: chargeError } = await holdCredits(maxCharge, resultLimit));
+    }
+  }
+
   if (chargeError || !charge?.success) {
     return jsonError(charge?.message ?? chargeError?.message ?? "Insufficient credits", 402, "insufficient_credits");
   }
@@ -267,7 +295,7 @@ Deno.serve(async (req: Request) => {
       // Score first, then how much of the checkable detail actually agreed, so
       // two 8s are separated by fact rather than by retrieval order.
       .sort((a, b) => (b.ai_score - a.ai_score) || (b.rule_agreement - a.rule_agreement) || (b.similarity - a.similarity))
-      .slice(0, RESULT_LIMIT);
+      .slice(0, resultLimit);
 
     if (results.length === 0) {
       await refund();
@@ -287,6 +315,9 @@ Deno.serve(async (req: Request) => {
       results,
       window_days: WINDOW_DAYS,
       credits_charged: creditsCharged,
+      // So the caller can say "10 matches" vs "3 matches — that is what your
+      // remaining credits covered" rather than looking like a thin window.
+      result_limit: resultLimit,
       new_count: freshResults.length,
       matched_for: matchedFor,
       post,
