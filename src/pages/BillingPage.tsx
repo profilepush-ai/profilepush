@@ -41,18 +41,19 @@ const CREDIT_TIERS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
 // (charge_screening_completion_credit RPC, called from the
 // job-application-screening Worker) — not the account taking an action
 // here, so it's listed as a note rather than a per-action row.
-const CREDIT_COST_ITEMS: { label: string; cost: string; note?: string }[] = [
+const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: string }[] = [
   // ai-match/index.ts holds RESULT_LIMIT credits up front and refunds
   // everything it does not deliver, so a thin window or a rematch that finds
   // nothing new costs nothing — but the hold still needs the headroom.
   {
     label: 'AI Match — per match returned',
     cost: '1 credit',
+    short: '1 credit per AI Match result, up to 10 a run',
     note: 'Up to 10 per run, and only for matches you have not already been charged for: a rematch on the same text re-shows the previous results free and bills only the new ones. A run that finds nothing is refunded in full, though it needs 10 credits free to start.',
   },
-  { label: 'AI Submit / AI Request — generate draft', cost: '1 credit', note: 'Only the first generation per post; reopening an already-generated draft is free' },
-  { label: 'Inbox AI chat draft', cost: '1 credit' },
-  { label: 'Video screening completed', cost: '50 credits', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
+  { label: 'AI Submit / AI Request — generate draft', cost: '1 credit', short: '1 credit to generate an AI Submit or Request draft', note: 'Only the first generation per post; reopening an already-generated draft is free' },
+  { label: 'Inbox AI chat draft', cost: '1 credit', short: '1 credit per Inbox AI chat draft' },
+  { label: 'Video screening completed', cost: '50 credits', short: '50 credits when a candidate completes a video screening', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
 ];
 
 interface UsageRow {
@@ -1227,7 +1228,12 @@ function BuyCreditsModal({
             <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
           <ul className="space-y-2.5 mb-5">
-            {['1 credit to generate an AI Submit/Request draft, 0.05 to send it', '1 credit per Inbox AI chat draft or new post', '0.25 credit per Active List email download', 'Credits never expire'].map(f => (
+            {/* Read from CREDIT_COST_ITEMS, never hand-written: this list had
+                drifted into charging 0.05 to send a draft, a credit per new
+                post and 0.25 per Active List download — none of which exist in
+                any consume_feature_credit call site — while omitting AI Match,
+                which is the one people actually spend on. */}
+            {[...CREDIT_COST_ITEMS.map(item => item.short), 'Credits never expire'].map(f => (
               <li key={f} className="flex items-start gap-2.5 text-[15px] text-gray-700">
                 <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                   <Check size={9} className="text-white" strokeWidth={3} />
