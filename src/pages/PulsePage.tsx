@@ -123,6 +123,9 @@ type SocialLead = {
   // reason. Absent everywhere else, which is what keeps the badge off the feed.
   aiMatchScore?: number | null;
   aiMatchReason?: string | null;
+  // Why the rules capped the score, when they did: a stated fact the two sides
+  // disagree on, such as the job being USC-only.
+  aiMatchRuleNote?: string | null;
 };
 
 function compareDetailsAndPostedDate(a: SocialLead, b: SocialLead): number {
@@ -196,6 +199,10 @@ type AiMatchOwnPost = { id: string; title: string; subtitle: string; description
 type AiMatchRecent = {
   description: string;
   title: string;
+  // Set when the run started from one of their own posts. Text alone is a poor
+  // key: a bulk paste posts several consultants that all share it, and a run on
+  // one of them matches on fields rather than on the pasted text.
+  postId?: string;
   target: 'jobs' | 'hotlist';
   at: string;
   count: number;
@@ -414,6 +421,7 @@ type PulseSocialFeedRpcRow = {
   _kind?: 'jobs' | 'hotlist';
   ai_score?: number | null;
   ai_reason?: string | null;
+  ai_rule_note?: string | null;
 };
 
 type PulseFeedCacheWorkerResponse = {
@@ -1400,6 +1408,13 @@ const LeadCard = memo(function LeadCard({
             // The title is the way to open the original post; it replaced the
             // separate Preview button and calls the same handler, so the
             // one-time preview charge and the modal behave exactly as before.
+            lead.kind === 'hotlist' ? (
+              // A consultant's original post is a bulk hotlist of ten people;
+              // the card's own parsed fields are the useful view.
+              <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>
+                {lead.title || 'Available Consultant'}
+              </p>
+            ) : (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
@@ -1411,6 +1426,7 @@ const LeadCard = memo(function LeadCard({
               {lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}
               {isLoadingPreview && <span className="ml-1.5 inline-block align-middle"><LogoSpinner size={11} /></span>}
             </button>
+            )
           )}
           <div className="mt-1 flex flex-wrap items-center gap-1">
               {lead.aiMatchScore != null && (
@@ -1448,6 +1464,14 @@ const LeadCard = memo(function LeadCard({
             </div>
           {lead.aiMatchReason && (
             <p className="mt-1 text-[11px] leading-snug text-gray-600 dark:text-slate-400">{lead.aiMatchReason}</p>
+          )}
+          {lead.aiMatchRuleNote && (
+            // The score was capped by a stated fact, not by the model's read of
+            // the text, so it is called out rather than folded into the reason.
+            <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+              <Shield size={9} strokeWidth={2.5} />
+              {lead.aiMatchRuleNote}
+            </p>
           )}
         </div>
       </div>
@@ -2467,7 +2491,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const [aiMatchProgress, setAiMatchProgress] = useState<string | null>(null);
   // What the last run did, shown above the results: without it people see a
   // list of cards with no idea what was searched or how many came back.
-  const [aiMatchSummary, setAiMatchSummary] = useState<{ returned: number; fresh: number | null; scanned: number; best: number | null; credits: number; posted: number } | null>(null);
+  const [aiMatchSummary, setAiMatchSummary] = useState<{ returned: number; fresh: number | null; scanned: number; best: number | null; credits: number; posted: number; matchedFor: string | null; saved?: boolean } | null>(null);
   const [aiMatchFromTitle, setAiMatchFromTitle] = useState('');
   const [aiMatchRecents, setAiMatchRecents] = useState<AiMatchRecent[]>(() => readAiMatchRecents());
   const [aiMatchOwnPosts, setAiMatchOwnPosts] = useState<AiMatchOwnPost[]>([]);
@@ -2478,6 +2502,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const [aiMatchFileReading, setAiMatchFileReading] = useState(false);
   const [aiMatchFileName, setAiMatchFileName] = useState('');
   const aiMatchFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [aiMatchOwnPostsReloadKey, setAiMatchOwnPostsReloadKey] = useState(0);
   const [aiMatchError, setAiMatchError] = useState<string | null>(null);
   const [aiMatchHasRun, setAiMatchHasRun] = useState(false);
   // Collapsed to a one-line summary once there are results, so the list gets
@@ -2637,7 +2662,13 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const [feedTimeBasis] = useState<FeedTimeBasis>('posted');
   const [layoutMode, setLayoutMode] = useState<PulseLayoutMode>(getInitialPulseLayoutMode);
   const isTableLayout = layoutMode === 'table' && !isMobileViewport;
-  const isDetailLayout = layoutMode === 'detail' && !isMobileViewport;
+  // Hotlist posts from social are bulk: one scraped post carries ten
+  // consultants, and every sibling row stores the same raw text. The parsed
+  // fields on the card are per-consultant and correct; the original post is
+  // not worth showing, so hotlist feeds are cards only and no hotlist lead
+  // opens a post preview anywhere.
+  const hotlistOnlyFeed = feedKind === 'hotlist';
+  const isDetailLayout = layoutMode === 'detail' && !isMobileViewport && !hotlistOnlyFeed;
   const isSwipeLayout = SWIPE_LAYOUT_ENABLED && layoutMode === 'swipe';
   // Selected post for the detail-panel layout — a real path param (not just
   // component state) so a post has a genuine, shareable, back/forward-able
@@ -3936,7 +3967,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       onExpandSkills: expandCardSkills,
       onCollapseSkills: collapseCardSkills,
       onToggleField: toggleCardField,
-      marketInsight: marketPulseInsightByLeadId.get(lead.id),
+      // AI Match results answer "does this fit my consultant"; market-wide
+      // demand counts belong to browsing the feed, not to a shortlist.
+      marketInsight: aiMatch ? undefined : marketPulseInsightByLeadId.get(lead.id),
     };
   };
 
@@ -4160,15 +4193,17 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                         {processingAskAILeadId === lead.id ? <span>...</span> : leadHotlist ? <FileText size={12} strokeWidth={2} /> : <Mail size={12} strokeWidth={2} />}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); void handlePreviewPost(lead); }}
-                      disabled={loadingPostContentLeadId === lead.id}
-                      title="Preview original post"
-                      className={postContentViewedLeadIds.has(lead.id) ? previewButtonUsedClass : predictButtonClass}
-                    >
-                      {loadingPostContentLeadId === lead.id ? <span>...</span> : <Eye size={12} strokeWidth={2} />}
-                    </button>
+                    {!leadHotlist && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); void handlePreviewPost(lead); }}
+                        disabled={loadingPostContentLeadId === lead.id}
+                        title="Preview original post"
+                        className={postContentViewedLeadIds.has(lead.id) ? previewButtonUsedClass : predictButtonClass}
+                      >
+                        {loadingPostContentLeadId === lead.id ? <span>...</span> : <Eye size={12} strokeWidth={2} />}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -4309,6 +4344,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                     Posted by {selectedLead.posterName || 'Unknown'}{selectedLead.posterEmail ? ` · ${selectedLead.posterEmail}` : ''}
                   </p>
                 )}
+                {!selectedIsHotlist && (
                 <div className="mt-3 border-t border-gray-100 pt-3">
                   {selectedContentLoading ? (
                     <div className="flex items-center justify-center py-6"><LogoSpinner size={20} /></div>
@@ -4318,6 +4354,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                     </p>
                   )}
                 </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 border-t border-gray-100 p-3">
@@ -5473,6 +5510,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       _kind: row._kind,
       ai_score: row.ai_score ?? null,
       ai_reason: row.ai_reason ?? null,
+      ai_rule_note: row.ai_rule_note ?? null,
     } as SocialJobRow & Record<string, unknown>));
 
     const newestMatchByJobId = new Map<string, RadarSocialMatchRow>();
@@ -5633,6 +5671,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
           kind: rowIsHotlist ? 'hotlist' : 'job',
           aiMatchScore: safeNumber((row as SocialJobRow & Record<string, unknown>).ai_score),
           aiMatchReason: ((row as SocialJobRow & Record<string, unknown>).ai_reason as string | null) ?? null,
+          aiMatchRuleNote: ((row as SocialJobRow & Record<string, unknown>).ai_rule_note as string | null) ?? null,
         } as SocialLead;
       });
 
@@ -5691,7 +5730,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // The overrides let the sidebar run one of their own posts without a detour
   // through state — setState is async, so reading the box back would run the
   // previous post's text.
-  const runAiMatch = useCallback(async (overrideDescription?: string, overrideTitle?: string) => {
+  const runAiMatch = useCallback(async (overrideDescription?: string, overrideTitle?: string, overridePostId?: string) => {
     const description = (overrideDescription ?? aiMatchDescription).trim();
     const runTitle = overrideTitle ?? (overrideDescription !== undefined ? '' : aiMatchFromTitle);
     if (description.length < AI_MATCH_MIN_DESCRIPTION_CHARS) {
@@ -5740,7 +5779,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let data: { results?: unknown; post?: unknown; credits_charged?: number; new_count?: number } | null = null;
+      let data: { results?: unknown; post?: unknown; credits_charged?: number; new_count?: number; matched_for?: string | null } | null = null;
       let streamError: string | null = null;
       let scanned = 0;
 
@@ -5763,6 +5802,10 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
           if (event.phase === 'preparing') setAiMatchProgress('Reading what you pasted');
           else if (event.phase === 'searching') setAiMatchProgress(`Searching ${noun} from the last 30 days`);
           else if (event.phase === 'found') setAiMatchProgress(`Found ${Number(event.found ?? 0)} ${noun} to score`);
+          else if (event.phase === 'split') {
+            const posted = Number(event.posted ?? 0);
+            setAiMatchProgress(`Saved ${posted} consultants · matching ${String(event.matched_for ?? 'the last one')}`);
+          }
           else if (event.phase === 'scoring') setAiMatchProgress(`Scoring ${Number(event.scored ?? 0)} of ${Number(event.total ?? 0)} ${noun}`);
           else if (event.phase === 'error') streamError = String(event.error ?? 'AI Match failed');
           else if (event.phase === 'done') data = event as { results?: unknown; post?: unknown };
@@ -5800,15 +5843,20 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         best: rows.reduce((top, row) => Math.max(top, Number(row.ai_score ?? 0)), 0) || null,
         credits: Number(data?.credits_charged ?? 0),
         posted: post?.status === 'created' ? (post.count ?? 1) : 0,
+        matchedFor: (data?.matched_for ?? null) || null,
       });
       if (post?.status === 'created') {
         const where = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
         showToast(post.count && post.count > 1 ? `${post.count} posts added to ${where}` : `Posted to ${where}`, 'success');
+        // The rail is loaded once; without this the posts just created aren't
+        // there to match the rest of the batch from.
+        setAiMatchOwnPostsReloadKey((key) => key + 1);
       } else if (post?.status === 'failed' || post?.status === 'skipped') {
         // Silence here is what hid auto-posting failing entirely: the matches
         // arrived, nothing was posted, and nobody could tell why.
         showToast(`Matches ready, but the post wasn't created${post.reason ? `: ${post.reason}` : ''}`, 'error');
       }
+      if (data?.matched_for) setAiMatchFromTitle(String(data.matched_for));
       await loadFeed(null, [], rows);
       setAiMatchHasRun(true);
       setAiMatchComposerOpen(rows.length === 0);
@@ -5816,7 +5864,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       setAiMatchRecents((previous) => {
         // Same text moves to the front rather than piling up.
         const rest = previous.filter((item) => item.description !== description);
-        const next = [{ description, title: runTitle, target: aiMatchTarget, at: new Date().toISOString(), count: rows.length, rows }, ...rest]
+        const next = [{ description, title: runTitle, postId: overridePostId, target: aiMatchTarget, at: new Date().toISOString(), count: rows.length, rows }, ...rest]
           .slice(0, AI_MATCH_RECENTS_LIMIT);
         writeAiMatchRecents(next);
         return next;
@@ -5962,25 +6010,77 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     setAiMatchError(null);
   }, []);
 
+  // Clicking a row used to only refill the box, which read as nothing having
+  // happened when results from another run were still on screen. A row whose
+  // run was saved now puts those matches back, free — the credits were spent
+  // when they were found.
+  const showSavedRun = useCallback((item: AiMatchRecent | undefined) => {
+    const rows = item?.rows ?? [];
+    if (!item || rows.length === 0) return;
+    void loadFeed(null, [], rows).then(() => {
+      setAiMatchHasRun(true);
+      setAiMatchSummary({
+        returned: rows.length,
+        fresh: null,
+        scanned: 0,
+        best: rows.reduce((top, row) => Math.max(top, Number(row.ai_score ?? 0)), 0) || null,
+        credits: 0,
+        posted: 0,
+        matchedFor: item.title || null,
+        saved: true,
+      });
+    });
+  }, [loadFeed]);
+
   const selectAiMatchRecent = useCallback((item: AiMatchRecent) => {
     selectAiMatchText(item.description, item.title ?? '');
-  }, [selectAiMatchText]);
+    showSavedRun(item);
+  }, [selectAiMatchText, showSavedRun]);
 
-  // What each own post's last run returned, so a row can say "8 matches"
-  // instead of offering a blind Rematch.
-  const aiMatchLastRunByText = useMemo(() => {
-    const map = new Map<string, AiMatchRecent>();
+  // What a post's last run returned, so a row can say "8 matches · Rematch"
+  // rather than offering a blind Match. A run is recognised by the post it came
+  // from, the text it ran on, or the consultant it named: a bulk paste matches
+  // on the last consultant's fields, so text alone would leave that consultant
+  // looking unmatched a second after matching them. Newest wins.
+  const aiMatchRunIndex = useMemo(() => {
+    const byPost = new Map<string, AiMatchRecent>();
+    const byText = new Map<string, AiMatchRecent>();
+    const byTitle = new Map<string, AiMatchRecent>();
     for (const item of aiMatchRecents) {
-      if (item.target === aiMatchTarget && !map.has(item.description)) map.set(item.description, item);
+      if (item.target !== aiMatchTarget) continue;
+      if (item.postId && !byPost.has(item.postId)) byPost.set(item.postId, item);
+      if (!byText.has(item.description)) byText.set(item.description, item);
+      const title = item.title.trim().toLowerCase();
+      if (title && !byTitle.has(title)) byTitle.set(title, item);
     }
-    return map;
+    return { byPost, byText, byTitle };
   }, [aiMatchRecents, aiMatchTarget]);
+
+  const selectAiMatchPost = useCallback((post: AiMatchOwnPost, lastRun: AiMatchRecent | undefined) => {
+    // A post with no stored body would otherwise fill the box with nothing and
+    // leave the button disabled.
+    const text = post.description.trim() || [post.title, post.subtitle].filter(Boolean).join('\n');
+    selectAiMatchText(text, post.title);
+    showSavedRun(lastRun);
+  }, [selectAiMatchText, showSavedRun]);
+
+  const aiMatchLastRunForPost = useCallback((post: AiMatchOwnPost) => (
+    aiMatchRunIndex.byPost.get(post.id)
+      ?? aiMatchRunIndex.byText.get(post.description)
+      ?? aiMatchRunIndex.byTitle.get(post.title.trim().toLowerCase())
+  ), [aiMatchRunIndex]);
 
   // Ad-hoc pastes only: anything that came from a post is already a row above.
   const aiMatchLooseRecents = useMemo(() => {
-    const ownText = new Set(aiMatchOwnPosts.map((post) => post.description));
-    return aiMatchRecents.filter((item) => item.target === aiMatchTarget && !ownText.has(item.description));
-  }, [aiMatchOwnPosts, aiMatchRecents, aiMatchTarget]);
+    const shownAbove = new Set<AiMatchRecent>();
+    for (const post of aiMatchOwnPosts) {
+      const item = aiMatchRunIndex.byPost.get(post.id)
+        ?? aiMatchRunIndex.byText.get(post.description)
+        ?? aiMatchRunIndex.byTitle.get(post.title.trim().toLowerCase());
+      if (item) shownAbove.add(item);
+    }
+    return aiMatchRecents.filter((item) => item.target === aiMatchTarget && !shownAbove.has(item));
+  }, [aiMatchOwnPosts, aiMatchRecents, aiMatchRunIndex, aiMatchTarget]);
 
   const aiMatchOwnPostsLabel = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
   const aiMatchOwnPostsPath = aiMatchTarget === 'jobs' ? '/posts/hotlist' : '/posts/jobs';
@@ -6047,10 +6147,10 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       const query = ownKind === 'hotlist'
         ? supabase
           .from('social_hotlist')
-          .select('id, role_title, candidate_name, core_skills, candidate_summary, raw_post_content, post_status, created_at')
+          .select('id, role_title, candidate_name, core_skills, years_experience, visa_type, employment_type, work_type, locations, availability, candidate_summary, raw_post_content, post_status, created_at')
         : supabase
           .from('social_jobs')
-          .select('id, job_title, company_name, extracted_skills, job_description, post_content, post_status, created_at');
+          .select('id, job_title, company_name, location, employment_type, seniority_level, extracted_skills, extracted_experience_years, extracted_visa_types, job_description, post_content, post_status, created_at');
       const { data, error } = await query
         .eq('created_by_account_id', account.id)
         .eq('post_source', 'user_post')
@@ -6071,11 +6171,42 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         const subtitle = ownKind === 'hotlist'
           ? (str('role_title') && str('candidate_name') ? str('role_title') : skills.slice(0, 3).join(' · '))
           : (str('company_name') || skills.slice(0, 3).join(' \u00b7 '));
-        // Same preference order as the Matches button on My Posts: the raw
-        // paste first, because that is what the post was created from.
-        const description = ownKind === 'hotlist'
-          ? (str('raw_post_content') || str('candidate_summary') || title)
-          : (str('post_content') || str('job_description') || title);
+        // Built from this row's own fields rather than from raw_post_content:
+        // a bulk paste stores the same raw text on every consultant it created,
+        // so the raw version would match one consultant against all ten. The
+        // raw paste is the fallback for posts that have nothing structured.
+        const num = (key: string) => {
+          const value = Number(row[key]);
+          return Number.isFinite(value) && value > 0 ? value : null;
+        };
+        const composed = ownKind === 'hotlist'
+          ? [
+            str('role_title'),
+            str('candidate_name') ? `Consultant: ${str('candidate_name')}` : '',
+            skills.length ? `Skills: ${skills.join(', ')}` : '',
+            num('years_experience') ? `Experience: ${num('years_experience')} years` : '',
+            str('visa_type') ? `Visa: ${str('visa_type')}` : '',
+            str('employment_type') ? `Employment: ${str('employment_type')}` : '',
+            str('work_type') ? `Work type: ${str('work_type')}` : '',
+            list('locations').length ? `Locations: ${list('locations').join(', ')}` : '',
+            str('availability') ? `Availability: ${str('availability')}` : '',
+            str('candidate_summary'),
+          ].filter(Boolean).join('\n')
+          : [
+            str('job_title'),
+            str('company_name') ? `Company: ${str('company_name')}` : '',
+            str('location') ? `Location: ${str('location')}` : '',
+            skills.length ? `Skills: ${skills.join(', ')}` : '',
+            num('extracted_experience_years') ? `Experience: ${num('extracted_experience_years')} years` : '',
+            list('extracted_visa_types').length ? `Visa: ${list('extracted_visa_types').join(', ')}` : '',
+            str('employment_type') ? `Employment: ${str('employment_type')}` : '',
+            str('seniority_level') ? `Seniority: ${str('seniority_level')}` : '',
+            str('job_description'),
+          ].filter(Boolean).join('\n');
+        const raw = ownKind === 'hotlist' ? str('raw_post_content') : str('post_content');
+        // Long enough to match on: a bare title would be rejected by the run's
+        // own minimum.
+        const description = composed.length >= 40 ? composed : (raw || composed || title);
         return {
           id: String(row.id),
           title: title || 'Untitled',
@@ -6087,7 +6218,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       }));
     })();
     return () => { cancelled = true; };
-  }, [account?.id, aiMatch, aiMatchTarget]);
+  }, [account?.id, aiMatch, aiMatchOwnPostsReloadKey, aiMatchTarget]);
 
   // loadFeed's dependencies now include the range, the applied search query and
   // the applied filters, so this single effect re-runs (and resets the cursor,
@@ -6814,6 +6945,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
 
   const handlePreviewPost = useCallback(async (lead: SocialLead) => {
     if (!user || loadingPostContentLeadId) return;
+    // Consultants have no post worth opening, and this path is what charges
+    // the one-time preview credit — a bulk blob is not something to bill for.
+    if (leadIsHotlist(lead)) return;
     setLoadingPostContentLeadId(lead.id);
     try {
       const content = await fetchLeadRawContent(lead);
@@ -6841,6 +6975,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
 
     const lead = dedupedScopedFeed.find((candidate) => candidate.id === routeLeadId && candidate.kind === routeLeadKind);
     if (!lead) return;
+    // Same rule as the preview: no raw post for a consultant, so no fetch and
+    // no charge. The pane's parsed fields above still describe them.
+    if (leadIsHotlist(lead)) return;
 
     setLoadingDetailPanelLeadId(routeLeadId);
     void fetchLeadRawContent(lead)
@@ -6851,7 +6988,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         showToast(error instanceof Error ? error.message : 'Could not load the post', 'error');
       })
       .finally(() => setLoadingDetailPanelLeadId(null));
-  }, [isDetailLayout, routeLeadId, routeLeadKind, user, detailPanelContent, loadingDetailPanelLeadId, dedupedScopedFeed, fetchLeadRawContent, showToast]);
+  }, [isDetailLayout, routeLeadId, routeLeadKind, user, detailPanelContent, leadIsHotlist, loadingDetailPanelLeadId, dedupedScopedFeed, fetchLeadRawContent, showToast]);
 
   // Keep a lead selected in the detail layout. Searching, filtering or paging
   // replaces the list with rows that don't include whatever was open, and the
@@ -6972,38 +7109,48 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                   </div>
                 ) : (
                   aiMatchOwnPosts.map((post) => {
-                    const lastRun = aiMatchLastRunByText.get(post.description);
+                    const lastRun = aiMatchLastRunForPost(post);
                     const isActive = post.description === aiMatchDescription;
                     return (
+                      // The whole card is the target — a name is a small thing
+                      // to hit — with Match as the one nested control.
                       <div
                         key={post.id}
-                        className={`rounded-xl border px-2.5 py-2 transition-colors ${
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => selectAiMatchPost(post, lastRun)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectAiMatchPost(post, lastRun); }
+                        }}
+                        title={post.title}
+                        className={`cursor-pointer rounded-xl border p-2.5 transition-colors ${
                           isActive
-                            ? 'border-indigo-300 bg-indigo-50/70 dark:border-indigo-400/40 dark:bg-indigo-500/10'
-                            : 'border-gray-200 bg-white hover:border-gray-300 dark:border-white/10 dark:bg-[#1B1E24]'
+                            ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-400/50 dark:bg-indigo-500/10'
+                            : 'border-gray-200 bg-white hover:border-indigo-200 hover:bg-indigo-50/40 dark:border-white/10 dark:bg-[#1B1E24] dark:hover:border-indigo-400/30 dark:hover:bg-white/5'
                         }`}
                       >
-                        <button
-                          type="button"
-                          onClick={() => selectAiMatchText(post.description, post.title)}
-                          title={post.title}
-                          className="block w-full text-left"
-                        >
-                          <span className="block truncate text-[12px] font-semibold text-gray-900 dark:text-slate-100">{post.title}</span>
-                          {post.subtitle && (
-                            <span className="mt-0.5 block truncate text-[11px] text-gray-500 dark:text-slate-400">{post.subtitle}</span>
-                          )}
-                        </button>
-                        <div className="mt-1.5 flex items-center justify-between gap-2">
-                          <span className="truncate text-[10px] text-gray-400 dark:text-slate-500">
-                            {lastRun ? `${lastRun.count} ${lastRun.count === 1 ? 'match' : 'matches'}` : 'Not matched yet'}
+                        {/* Two lines, not an ellipsis: these are people's names
+                            and a truncated one is not recognisable. */}
+                        <p className="line-clamp-2 break-words text-[12px] font-semibold leading-snug text-gray-900 dark:text-slate-100">
+                          {post.title}
+                        </p>
+                        {post.subtitle && (
+                          <p className="mt-0.5 line-clamp-1 break-words text-[11px] leading-snug text-gray-500 dark:text-slate-400">
+                            {post.subtitle}
+                          </p>
+                        )}
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className="min-w-0 truncate text-[10px] text-gray-400 dark:text-slate-500">
+                            {lastRun
+                              ? `${lastRun.count} ${lastRun.count === 1 ? 'match' : 'matches'}`
+                              : 'Not matched yet'}
                           </span>
                           <button
                             type="button"
-                            onClick={() => void runAiMatch(post.description, post.title)}
+                            onClick={(e) => { e.stopPropagation(); void runAiMatch(post.description, post.title, post.id); }}
                             disabled={aiMatchRunning}
-                            title={`Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits \u00b7 1 per match`}
-                            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2 py-1 text-[10px] font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                            title={lastRun ? `Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits \u00b7 1 per new match` : `Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits \u00b7 1 per match`}
+                            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2 text-[10px] font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <Sparkles size={10} />
                             {lastRun ? 'Rematch' : 'Match'}
@@ -7018,19 +7165,42 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                   <div className="pt-2">
                     <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Recent pastes</p>
                     {aiMatchLooseRecents.map((item) => (
-                      <button
+                      // Same shape as a post row: these have all run before, so
+                      // they always show their count and always say Rematch.
+                      <div
                         key={`${item.at}-${item.description.slice(0, 24)}`}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         onClick={() => selectAiMatchRecent(item)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectAiMatchRecent(item); }
+                        }}
                         title={item.description.slice(0, 300)}
-                        className={`mb-1 block w-full rounded-lg px-2 py-1.5 text-left text-[11px] transition-colors ${
+                        className={`mb-1.5 cursor-pointer rounded-xl border p-2.5 transition-colors ${
                           item.description === aiMatchDescription
-                            ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
-                            : 'text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/5'
+                            ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-400/50 dark:bg-indigo-500/10'
+                            : 'border-gray-200 bg-white hover:border-indigo-200 hover:bg-indigo-50/40 dark:border-white/10 dark:bg-[#1B1E24] dark:hover:border-indigo-400/30 dark:hover:bg-white/5'
                         }`}
                       >
-                        <span className="block truncate">{aiMatchRecentLabel(item)}</span>
-                      </button>
+                        <p className="line-clamp-2 break-words text-[12px] font-semibold leading-snug text-gray-900 dark:text-slate-100">
+                          {aiMatchRecentLabel(item)}
+                        </p>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className="truncate text-[10px] text-gray-400 dark:text-slate-500">
+                            {item.count} {item.count === 1 ? 'match' : 'matches'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); void runAiMatch(item.description, item.title, item.postId); }}
+                            disabled={aiMatchRunning}
+                            title={`Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits \u00b7 1 per new match`}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2 py-1 text-[10px] font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Sparkles size={10} />
+                            Rematch
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -7056,7 +7226,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
               // consultants (or jobs), each one tap from a fresh run. Desktop
               // only — on a phone the same list is the recents row under the
               // box, because a rail would eat the screen the composer needs.
-              <aside className="flex w-60 shrink-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
+              <aside className="flex w-64 shrink-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white xl:w-72 dark:border-white/10 dark:bg-[#171A1F]">
                 <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 px-3 py-2.5 dark:border-white/10">
                   <span className="text-[12px] font-semibold text-gray-900 dark:text-slate-100">
                     {aiMatchOwnPostsLabel}
@@ -7231,11 +7401,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                     // half-screen hero would just be a lot of empty space.
                     <div className={!isMobileViewport || aiMatchHasRun ? '' : 'flex min-h-[55vh] flex-col justify-center py-4'}>
                       <div className={isMobileViewport ? 'mx-auto w-full max-w-3xl' : 'w-full'}>
-                        {isMobileViewport && !aiMatchHasRun && aiMatchFromTitle && (
-                          <p className="mb-2 text-center text-[12px] text-gray-500 dark:text-slate-400">
-                            Matching for <span className="font-semibold text-gray-900 dark:text-slate-100">{aiMatchFromTitle}</span>
-                          </p>
-                        )}
                         {isMobileViewport && !aiMatchHasRun && (
                           <div className="mb-4 flex items-center justify-center gap-2.5">
                             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30">
@@ -7243,11 +7408,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                             </span>
                             <h1 className="text-xl font-semibold text-gray-900 dark:text-slate-100">AI Match</h1>
                           </div>
-                        )}
-                        {!isMobileViewport && aiMatchFromTitle && (
-                          <p className="mb-1.5 text-[12px] text-gray-500 dark:text-slate-400">
-                            Matching for <span className="font-semibold text-gray-900 dark:text-slate-100">{aiMatchFromTitle}</span>
-                          </p>
                         )}
                         <div
                           onDragOver={(e) => { e.preventDefault(); }}
@@ -7407,9 +7567,14 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                           · {aiMatchSummary.fresh} new
                         </span>
                       )}
+                      {aiMatchSummary.saved && <span>· saved</span>}
+                      {/* Only when the box is hidden: with it open, its first
+                          line already says who this is for. */}
+                      {aiMatchSummary.matchedFor && !aiMatchComposerOpen && (
+                        <span>· for <span className="font-semibold text-gray-900 dark:text-slate-100">{aiMatchSummary.matchedFor}</span></span>
+                      )}
                       {aiMatchSummary.best != null && <span>· best {aiMatchSummary.best}/10</span>}
                       {aiMatchSummary.scanned > 0 && <span>· from {aiMatchSummary.scanned.toLocaleString()} scanned</span>}
-                      <span>· last 30 days</span>
                       {aiMatchSummary.credits > 0 && <span>· {aiMatchSummary.credits} credits</span>}
                       {aiMatchSummary.posted > 0 && (
                         <button
@@ -7417,7 +7582,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                           onClick={() => navigate(aiMatchTarget === 'jobs' ? '/posts/hotlist' : '/posts/jobs')}
                           className="text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
                         >
-                          · posted to {aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs'}
+                          · {aiMatchSummary.posted > 1 ? `${aiMatchSummary.posted} posted to ` : 'posted to '}
+                          {aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs'}
                         </button>
                       )}
                         </>
@@ -7572,7 +7738,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                       {([
                         { id: 'card' as PulseLayoutMode, label: 'Cards', icon: LayoutGrid },
                         { id: 'table' as PulseLayoutMode, label: 'Table', icon: Table2 },
-                        { id: 'detail' as PulseLayoutMode, label: 'Detail', icon: PanelRight },
+                        ...(hotlistOnlyFeed ? [] : [{ id: 'detail' as PulseLayoutMode, label: 'Detail', icon: PanelRight }]),
                         ...(SWIPE_LAYOUT_ENABLED ? [{ id: 'swipe' as PulseLayoutMode, label: 'Swipe', icon: Layers }] : []),
                       ]).map((view) => (
                         <button

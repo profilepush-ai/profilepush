@@ -169,18 +169,25 @@ Deno.serve(async (req: Request) => {
       .rpc("refund_feature_credit", { p_account_id: accountId, p_amount: amount, p_feature: FEATURE_KEY })
       .then(() => {}, () => {});
 
+  // What was pasted, which is the opposite kind to what is being searched.
+  const briefKind: "job" | "hotlist" = target === "jobs" ? "hotlist" : "job";
+
+  // One extraction, two consumers: the post that gets created from the paste,
+  // and the rules below that check candidates against what was actually asked
+  // for. It used to live inside the post step, which meant a re-paste (skipped
+  // as a duplicate) had no fields to apply rules with.
+  const extractedPromise = extractBriefFields(supabaseUrl, authHeader, briefKind, description);
+
   // Publish the pasted description as the user's own post, concurrently with
   // the match so it adds no wait. Awaited before responding so the UI can say
   // it happened; its failure is reported, never thrown.
   const postPromise = logPostOutcome(autoPostDescription({
     supabaseAdmin,
     userClient,
-    supabaseUrl,
-    authHeader,
     accountId,
-    // What was pasted, which is the opposite kind to what is being searched.
-    kind: target === "jobs" ? "hotlist" : "job",
+    kind: briefKind,
     description,
+    extractedPromise,
     openAiKey,
     embeddingModel,
   }).catch((error) => ({ status: "failed" as const, reason: (error as Error).message.slice(0, 200) })));
@@ -196,7 +203,24 @@ Deno.serve(async (req: Request) => {
     }
 
     emit({ phase: "searching" });
-    const [queryEmbedding] = await embedTexts([description], openAiKey, embeddingModel);
+    // The post runs concurrently, and for a bulk paste it decides what this run
+    // actually matches on, so wait for it here rather than at the end. The
+    // embedding of the pasted text runs alongside so the wait costs nothing
+    // when the paste turns out to be a single consultant.
+    const [post, pastedEmbedding] = await Promise.all([
+      postPromise,
+      embedTexts([description], openAiKey, embeddingModel),
+    ]);
+
+    let queryText = description;
+    let queryEmbedding = pastedEmbedding[0];
+    let matchedFor: string | null = null;
+    if (post.status === "created" && post.subject && post.subject.text.trim().length > 0) {
+      queryText = post.subject.text;
+      matchedFor = post.subject.title || null;
+      emit({ phase: "split", posted: post.count, matched_for: matchedFor });
+      [queryEmbedding] = await embedTexts([queryText], openAiKey, embeddingModel);
+    }
     const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const { data: candidateRows, error: matchError } = await supabaseAdmin.rpc(
       target === "jobs" ? "ai_match_jobs" : "ai_match_hotlist",
@@ -208,30 +232,46 @@ Deno.serve(async (req: Request) => {
     emit({ phase: "found", found: candidates.length });
     if (candidates.length === 0) {
       await refund();
-      return { ok: true, results: [], refunded: true, credits_charged: 0, post: await postPromise };
+      return { ok: true, results: [], refunded: true, credits_charged: 0, post, matched_for: matchedFor };
     }
 
     emit({ phase: "scoring", scored: 0, total: candidates.length });
     const { scores, usedModel, usage } = await scoreCandidates(
-      supabaseAdmin, workerUrl, workerToken, target, description, candidates,
+      supabaseAdmin, workerUrl, workerToken, target, queryText, candidates,
       (scored) => emit({ phase: "scoring", scored, total: candidates.length }),
     );
     logUsage(supabaseAdmin, userId, accountId, usedModel, usage);
 
+    // The brief's own fields, used to check the model's score against facts
+    // both sides state. Already resolved by now — the post step awaited it.
+    const briefSide = sideFromExtraction(await extractedPromise, briefKind);
     const results = candidates
       .map((row, index) => {
         const scored = scores.get(index);
-        return scored ? { ...row, ai_score: scored.score, ai_reason: scored.reason } : null;
+        if (!scored) return null;
+        const verdict = briefSide ? applyRules(briefSide, row, target) : null;
+        return {
+          ...row,
+          // Rules only ever cap: a 9 that is USC-only for an OPT consultant
+          // becomes a 3, and nothing is ever promoted.
+          ai_score: verdict ? Math.min(scored.score, verdict.cap) : scored.score,
+          ai_model_score: scored.score,
+          ai_reason: scored.reason,
+          ai_rule_note: verdict?.note || null,
+          rule_agreement: verdict?.agreement ?? 0.5,
+        };
       })
-      .filter((row): row is FeedRow & { ai_score: number; ai_reason: string } => row !== null)
-      // Score first; similarity breaks ties so equal scores keep the order the
-      // retrieval step thought was closest.
-      .sort((a, b) => (b.ai_score - a.ai_score) || (b.similarity - a.similarity))
+      .filter((row): row is FeedRow & {
+        ai_score: number; ai_model_score: number; ai_reason: string; ai_rule_note: string | null; rule_agreement: number;
+      } => row !== null)
+      // Score first, then how much of the checkable detail actually agreed, so
+      // two 8s are separated by fact rather than by retrieval order.
+      .sort((a, b) => (b.ai_score - a.ai_score) || (b.rule_agreement - a.rule_agreement) || (b.similarity - a.similarity))
       .slice(0, RESULT_LIMIT);
 
     if (results.length === 0) {
       await refund();
-      return { ok: true, results: [], refunded: true, credits_charged: 0, post: await postPromise };
+      return { ok: true, results: [], refunded: true, credits_charged: 0, post, matched_for: matchedFor };
     }
 
     // A thin window can yield fewer than RESULT_LIMIT, and a rematch re-returns
@@ -248,7 +288,8 @@ Deno.serve(async (req: Request) => {
       window_days: WINDOW_DAYS,
       credits_charged: creditsCharged,
       new_count: freshResults.length,
-      post: await postPromise,
+      matched_for: matchedFor,
+      post,
     };
   };
 
@@ -447,8 +488,14 @@ async function logPostOutcome(promise: Promise<PostOutcome>): Promise<PostOutcom
   return outcome;
 }
 
+// A bulk hotlist paste becomes several posts. Matching the whole paste would
+// blend every consultant into one query vector and return jobs that suit none
+// of them, so the run matches the last consultant of the batch and the others
+// are one tap away in the rail.
+type MatchSubject = { title: string; text: string };
+
 type PostOutcome =
-  | { status: "created"; count: number }
+  | { status: "created"; count: number; subject?: MatchSubject }
   | { status: "duplicate" }
   | { status: "skipped"; reason: string }
   | { status: "failed"; reason: string };
@@ -458,11 +505,10 @@ const DUPLICATE_WINDOW_DAYS = 30;
 async function autoPostDescription(input: {
   supabaseAdmin: SupabaseClient;
   userClient: SupabaseClient;
-  supabaseUrl: string;
-  authHeader: string;
   accountId: string;
   kind: "job" | "hotlist";
   description: string;
+  extractedPromise: Promise<Record<string, unknown> | null>;
   openAiKey: string;
   embeddingModel: string;
 }): Promise<PostOutcome> {
@@ -479,22 +525,8 @@ async function autoPostDescription(input: {
     .gte("created_at", since);
   if ((existing ?? 0) > 0) return { status: "duplicate" };
 
-  // Same extraction the Post form's auto-fill uses (Workers AI via the parser
-  // worker), called as the user so its auth rules apply unchanged.
-  const extractRes = await fetch(`${input.supabaseUrl}/functions/v1/extract-post-fields`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: input.authHeader,
-      apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-    },
-    body: JSON.stringify({ kind, text: description }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  const extracted = await extractRes.json().catch(() => ({})) as Record<string, unknown>;
-  if (!extractRes.ok || !extracted.ok) {
-    return { status: "skipped", reason: String(extracted.error ?? `extraction HTTP ${extractRes.status}`).slice(0, 200) };
-  }
+  const extracted = await input.extractedPromise;
+  if (!extracted) return { status: "skipped", reason: "extraction failed" };
 
   // First meaningful line of what was pasted, used when the extractor finds no
   // role/job title. Without it a run silently posts nothing, which is worse
@@ -516,6 +548,8 @@ async function autoPostDescription(input: {
 
   let created = 0;
   let rpcError: { message: string } | null = null;
+  // Only set for a batch: a single post is already what the caller pasted.
+  let subject: MatchSubject | null = null;
 
   if (kind === "job") {
     const f = (extracted.fields ?? {}) as Record<string, unknown>;
@@ -564,6 +598,24 @@ async function autoPostDescription(input: {
     });
 
     if (usable.length > 1) {
+      const last = toCandidate(usable[usable.length - 1]);
+      subject = {
+        title: last.candidate_name || last.role_title,
+        // The fields as prose: what gets embedded and scored, in the shape the
+        // scorer reads best.
+        text: [
+          last.role_title,
+          last.candidate_name ? `Consultant: ${last.candidate_name}` : "",
+          last.core_skills.length ? `Skills: ${last.core_skills.join(", ")}` : "",
+          last.years_experience ? `Experience: ${last.years_experience} years` : "",
+          last.visa_type ? `Visa: ${last.visa_type}` : "",
+          last.employment_type ? `Employment: ${last.employment_type}` : "",
+          last.work_type ? `Work type: ${last.work_type}` : "",
+          last.locations.length ? `Locations: ${last.locations.join(", ")}` : "",
+          last.availability ? `Availability: ${last.availability}` : "",
+          last.candidate_summary,
+        ].filter(Boolean).join("\n"),
+      };
       // A hotlist table: one post per consultant, as the Post form does.
       const { error } = await userClient.rpc("create_user_hotlist_posts_batch", {
         p_candidates: usable.map(toCandidate),
@@ -595,6 +647,7 @@ async function autoPostDescription(input: {
         });
         rpcError = single.error;
         if (!single.error) created = 1;
+        subject = null;
       }
     } else {
       const c = toCandidate(usable[0]);
@@ -634,7 +687,288 @@ async function autoPostDescription(input: {
     : embedMissingHotlists(supabaseAdmin, input.openAiKey, input.embeddingModel, Math.max(10, created)))
     .catch(() => 0);
 
-  return { status: "created", count: created };
+  return { status: "created", count: created, subject: subject ?? undefined };
+}
+
+// ---------------------------------------------------------------------------
+// Brief extraction and rules
+
+// Same extraction the Post form's auto-fill uses (Workers AI via the parser
+// worker), called as the user so its auth rules apply unchanged. Returns null
+// rather than throwing: a run without fields still works, it just falls back to
+// similarity and the model alone.
+async function extractBriefFields(
+  supabaseUrl: string,
+  authHeader: string,
+  kind: "job" | "hotlist",
+  text: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/extract-post-fields`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: authHeader,
+        apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      },
+      body: JSON.stringify({ kind, text }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const body = await res.json().catch(() => null) as Record<string, unknown> | null;
+    if (!res.ok || !body?.ok) return null;
+    return body;
+  } catch {
+    return null;
+  }
+}
+
+// Scoring by language model alone is generous about facts it can check: it will
+// happily rate a Java job 9/10 for a Java consultant when the job is USC-only
+// and the consultant is on OPT, because everything else reads as a fit. These
+// rules re-check the structured fields both sides already carry and cap the
+// score where they disagree. They only ever lower a score — a rule never
+// invents a match the model didn't see — and each cap carries the reason, so a
+// 3/10 says why it is a 3.
+
+type Sided = {
+  title: string;
+  skills: string[];
+  visas: string[];
+  years: number | null;
+  employmentType: string;
+  workType: string;
+  locations: string[];
+  rateMin: number | null;
+  rateMax: number | null;
+};
+
+const TITLE_NOISE = new Set([
+  "senior", "sr", "junior", "jr", "lead", "principal", "staff", "engineer", "developer", "dev",
+  "consultant", "specialist", "analyst", "architect", "manager", "years", "year", "exp", "experience",
+  "remote", "onsite", "hybrid", "contract", "fulltime", "full", "time", "position", "role", "opening",
+  "urgent", "immediate", "hiring", "need", "needed", "required", "usc", "gc", "h1b", "c2c", "w2",
+]);
+
+const words = (value: string) => value.toLowerCase().replace(/[^a-z0-9+#.\s]/g, " ").split(/\s+/).filter(Boolean);
+
+const titleTokens = (value: string) => new Set(words(value).filter((w) => w.length > 1 && !TITLE_NOISE.has(w)));
+
+const skillKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9+#.]/g, "");
+
+// "Bay Area, CA" and "San Jose CA" share a token; "Dallas, TX" and "Newark, NJ"
+// do not. Crude, but it only ever needs to answer "plausibly the same place".
+const placeTokens = (values: string[]) => {
+  const set = new Set<string>();
+  for (const value of values) {
+    for (const word of words(value)) {
+      if (word.length > 1 && !["usa", "us", "united", "states", "area", "metro", "city"].includes(word)) set.add(word);
+    }
+  }
+  return set;
+};
+
+const isRemote = (side: Sided) =>
+  /remote|anywhere/.test(`${side.workType} ${side.locations.join(" ")}`.toLowerCase());
+
+const EMPLOYMENT_GROUPS: Array<[RegExp, string]> = [
+  [/c2c|corp.?to.?corp/i, "c2c"],
+  [/1099/i, "1099"],
+  [/w2/i, "w2"],
+  [/full.?time|fte|permanent|direct.?hire/i, "full_time"],
+  [/part.?time/i, "part_time"],
+  [/contract|c2h|contract.?to.?hire/i, "contract"],
+];
+
+const employmentGroup = (value: string) => {
+  for (const [pattern, group] of EMPLOYMENT_GROUPS) if (pattern.test(value)) return group;
+  return "";
+};
+
+// A visa list means "these are acceptable". Overlap is a pass; two non-empty
+// lists that never intersect is the disqualifier this whole rule set exists for.
+const VISA_ALIASES: Array<[RegExp, string]> = [
+  [/\busc\b|citizen/i, "usc"],
+  [/green.?card|\bgc\b|permanent resident/i, "gc"],
+  [/h1|h-1/i, "h1b"],
+  [/\bead\b/i, "ead"],
+  [/\bopt\b/i, "opt"],
+  [/\bcpt\b/i, "cpt"],
+  [/\btn\b/i, "tn"],
+];
+
+const visaCodes = (values: string[]) => {
+  const set = new Set<string>();
+  for (const value of values) {
+    for (const [pattern, code] of VISA_ALIASES) if (pattern.test(value)) set.add(code);
+  }
+  return set;
+};
+
+// GC and USC are accepted anywhere either is, and an EAD is what most GC/OPT
+// holders present, so these are treated as satisfying each other rather than as
+// separate statuses to mismatch on.
+const VISA_IMPLIES: Record<string, string[]> = {
+  usc: ["usc", "gc", "ead"],
+  gc: ["gc", "ead"],
+  ead: ["ead"],
+  h1b: ["h1b"],
+  opt: ["opt", "ead"],
+  cpt: ["cpt"],
+  tn: ["tn"],
+};
+
+function sideFromRow(row: FeedRow): Sided {
+  const list = (value: unknown) => Array.isArray(value) ? (value as unknown[]).map(String).filter(Boolean) : [];
+  const num = (value: unknown) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const location = String(row.location ?? "").trim();
+  return {
+    title: String(row.job_title ?? row.role_title ?? ""),
+    skills: list(row.core_skills).length ? list(row.core_skills) : list(row.extracted_skills),
+    visas: list(row.visa_types).length ? list(row.visa_types) : list(row.extracted_visa_types),
+    years: num(row.years_experience ?? row.extracted_experience_years),
+    employmentType: String(row.employment_type ?? ""),
+    workType: String(row.work_type ?? ""),
+    locations: list(row.locations).length ? list(row.locations) : (location ? [location] : []),
+    rateMin: num(row.hourly_rate_min ?? row.extracted_hourly_rate_min),
+    rateMax: num(row.hourly_rate_max ?? row.extracted_hourly_rate_max),
+  };
+}
+
+function sideFromExtraction(extracted: Record<string, unknown> | null, kind: "job" | "hotlist"): Sided | null {
+  if (!extracted) return null;
+  const fields = (extracted.fields ?? {}) as Record<string, unknown>;
+  // A bulk hotlist extracts as a list; the run matches its last consultant, so
+  // the rules must judge against that same one.
+  const candidates = Array.isArray(extracted.candidates) ? extracted.candidates as Record<string, unknown>[] : [];
+  const source = kind === "hotlist" && candidates.length > 0 ? candidates[candidates.length - 1] : fields;
+  const list = (value: unknown) => Array.isArray(value) ? (value as unknown[]).map(String).filter(Boolean)
+    : String(value ?? "").split(/[,;|]/).map((v) => v.trim()).filter(Boolean);
+  const num = (value: unknown) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const side: Sided = {
+    title: String(source.role_title ?? source.job_title ?? ""),
+    skills: list(source.core_skills ?? source.skills),
+    visas: list(source.visa_type ?? source.visa_types),
+    years: num(source.years_experience ?? source.experience_years),
+    employmentType: String(source.employment_type ?? ""),
+    workType: String(source.work_type ?? ""),
+    locations: list(source.locations ?? source.location),
+    rateMin: num(source.hourly_rate_min),
+    rateMax: num(source.hourly_rate_max),
+  };
+  // Nothing usable came back — better to skip the rules than to cap everything
+  // against an empty brief.
+  if (!side.title && side.skills.length === 0 && side.visas.length === 0 && side.years == null) return null;
+  return side;
+}
+
+type RuleVerdict = { cap: number; note: string; agreement: number };
+
+function applyRules(brief: Sided, row: FeedRow, target: Target): RuleVerdict {
+  const cand = sideFromRow(row);
+  // target "jobs": the brief is the consultant and the row is the job, so the
+  // requirement side is the row. The other direction is the mirror image.
+  const job = target === "jobs" ? cand : brief;
+  const person = target === "jobs" ? brief : cand;
+
+  let cap = 10;
+  const notes: string[] = [];
+  let checks = 0;
+  let agreed = 0;
+  const fail = (limit: number, note: string) => {
+    cap = Math.min(cap, limit);
+    notes.push(note);
+  };
+
+  // Work authorization: the disqualifier that similarity is blindest to.
+  const jobVisas = visaCodes(job.visas);
+  const personVisas = visaCodes(person.visas);
+  if (jobVisas.size > 0 && personVisas.size > 0) {
+    checks += 1;
+    // A citizen or green card holder is employable on any requirement, even one
+    // written as "H1B only" (which means transfers are welcome, not that a USC
+    // is excluded). Without this they get penalised for being the strongest
+    // status on the list.
+    const unrestricted = personVisas.has("usc") || personVisas.has("gc");
+    const accepted = unrestricted
+      || [...personVisas].some((code) => (VISA_IMPLIES[code] ?? [code]).some((implied) => jobVisas.has(implied)));
+    if (accepted) agreed += 1;
+    else fail(3, `Job takes ${[...jobVisas].join("/").toUpperCase()} only`);
+  }
+
+  // Role: a Java job and a ServiceNow consultant can read as similar because
+  // both are "senior engineer, 8 years, remote".
+  const briefTitleTokens = titleTokens(brief.title);
+  const candTitleTokens = titleTokens(cand.title);
+  if (briefTitleTokens.size > 0 && candTitleTokens.size > 0) {
+    checks += 1;
+    const shared = [...briefTitleTokens].filter((token) => candTitleTokens.has(token));
+    if (shared.length > 0) agreed += 1;
+    else fail(6, `Different role: ${cand.title.trim().slice(0, 40)}`);
+  }
+
+  const briefSkills = new Set(brief.skills.map(skillKey).filter(Boolean));
+  const candSkillKeys = new Set(cand.skills.map(skillKey).filter(Boolean));
+  if (briefSkills.size >= 3 && candSkillKeys.size > 0) {
+    checks += 1;
+    const overlap = [...briefSkills].filter((skill) => candSkillKeys.has(skill)).length;
+    if (overlap > 0) agreed += 1;
+    else fail(5, "No overlapping skills");
+  }
+
+  // Experience: the job's number is the requirement, the person's is what they
+  // have. Two years of slack, because both numbers are extracted, not stated.
+  if (job.years != null && person.years != null) {
+    checks += 1;
+    if (person.years >= job.years - 2) agreed += 1;
+    else fail(6, `Needs ${job.years} yrs, has ${person.years}`);
+  }
+
+  const jobEmployment = employmentGroup(job.employmentType);
+  const personEmployment = employmentGroup(person.employmentType);
+  if (jobEmployment && personEmployment) {
+    checks += 1;
+    // Contract, C2C, W2 and 1099 are all contract-shaped; full-time against any
+    // of them is the mismatch worth flagging.
+    const contractish = new Set(["c2c", "w2", "1099", "contract"]);
+    const compatible = jobEmployment === personEmployment
+      || (contractish.has(jobEmployment) && contractish.has(personEmployment));
+    if (compatible) agreed += 1;
+    else fail(7, `${job.employmentType.trim()} vs ${person.employmentType.trim()}`);
+  }
+
+  // Location only matters when neither side is remote.
+  if (!isRemote(job) && !isRemote(person)) {
+    const jobPlaces = placeTokens(job.locations);
+    const personPlaces = placeTokens(person.locations);
+    if (jobPlaces.size > 0 && personPlaces.size > 0) {
+      checks += 1;
+      const shared = [...jobPlaces].some((token) => personPlaces.has(token));
+      if (shared) agreed += 1;
+      else if (row.relocation_required === true) agreed += 1;
+      else fail(6, `Onsite ${job.locations[0]?.trim().slice(0, 28)}`);
+    }
+  }
+
+  // Rate: only when the gap is real, not when one side rounded.
+  if (job.rateMax != null && person.rateMin != null) {
+    checks += 1;
+    if (job.rateMax >= person.rateMin * 0.9) agreed += 1;
+    else fail(6, `Pays to $${job.rateMax}, asking $${person.rateMin}`);
+  }
+
+  return {
+    cap,
+    note: notes.slice(0, 2).join(" · "),
+    // Only used to break ties between equal scores; with nothing checkable it
+    // stays neutral rather than pretending to agreement.
+    agreement: checks === 0 ? 0.5 : agreed / checks,
+  };
 }
 
 // ---------------------------------------------------------------------------
