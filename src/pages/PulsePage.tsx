@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
+import { useSearchParams, useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   Activity,
   AtSign,
@@ -54,7 +54,7 @@ import GmailIcon from '../components/GmailIcon';
 import GmailConnectPrompt from '../components/GmailConnectPrompt';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseAnonKey, supabaseFunctionsUrl, buildSupabaseFunctionHeaders } from '../lib/supabase';
 import { HOTLIST_AI_SUGGESTIONS } from '../lib/hotlist-ai-suggestions';
 import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
 import { shouldChargeCredits } from '../lib/feature-gates';
@@ -169,13 +169,70 @@ function extractPrimaryEmail(raw: string | null | undefined): string {
 // resurface days later as if current. Wrapped because storage can be
 // unavailable (private mode, blocked site data) and the page must work anyway.
 const AI_MATCH_SESSION_KEY = 'pulse:ai-match:last-run';
+// Recents are the descriptions themselves, not their results: results go stale
+// as the 30-day window moves, whereas "match this consultant again" is exactly
+// what people come back for. localStorage (not session) so they survive a new
+// tab, and capped so the row stays a row.
+const AI_MATCH_RECENTS_KEY = 'pulse:ai-match:recents';
+const AI_MATCH_RECENTS_LIMIT = 8;
+// How many matches a rematch keeps on screen across runs.
+const AI_MATCH_MAX_KEPT_MATCHES = 50;
 const AI_MATCH_MIN_DESCRIPTION_CHARS = 40;
+// Mirrors RESULT_LIMIT in the ai-match function: each match returned costs a
+// credit, so a full run costs this many.
+const AI_MATCH_MAX_CREDITS_PER_RUN = 10;
 
 type AiMatchSession = {
   description: string;
   target: 'jobs' | 'hotlist';
   rows: PulseSocialFeedRpcRow[];
 };
+
+// One of the user's own posts, reduced to what the sidebar needs: a label, a
+// line of context and the text a match runs on.
+type AiMatchOwnPost = { id: string; title: string; subtitle: string; description: string; status: string; createdAt: string };
+
+type AiMatchRecent = {
+  description: string;
+  title: string;
+  target: 'jobs' | 'hotlist';
+  at: string;
+  count: number;
+  // The run's own rows, so a rematch can show what it found last time even for
+  // matches that have since aged out of the 30-day window.
+  rows?: PulseSocialFeedRpcRow[];
+};
+
+function readAiMatchRecents(): AiMatchRecent[] {
+  try {
+    const raw = window.localStorage.getItem(AI_MATCH_RECENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as AiMatchRecent[];
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item?.description === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeAiMatchRecents(items: AiMatchRecent[]) {
+  const capped = items.slice(0, AI_MATCH_RECENTS_LIMIT);
+  // Rows are by far the bulk of this. On a quota error keep them only for the
+  // newest runs, then drop them entirely: a recent without rows still refills
+  // the box and rematches, it just can't show the old matches.
+  const attempts = [
+    capped,
+    capped.map((item, index) => (index < 2 ? item : { ...item, rows: undefined })),
+    capped.map((item) => ({ ...item, rows: undefined })),
+  ];
+  for (const attempt of attempts) {
+    try {
+      window.localStorage.setItem(AI_MATCH_RECENTS_KEY, JSON.stringify(attempt));
+      return;
+    } catch {
+      // Try the next, smaller payload.
+    }
+  }
+}
 
 function readAiMatchSession(): AiMatchSession | null {
   try {
@@ -552,6 +609,28 @@ const PULSE_CACHE_WORKER_TOKEN = (import.meta.env.VITE_PULSE_CACHE_WORKER_TOKEN 
 const TOP_PROFILES_PAGE_SIZE = 10;
 const MATCHES_PAGE_SIZE = 5;
 const DESKTOP_MATCHES_PAGE_SIZE = 12;
+
+// AI Match takes a whole consultant or requirement, not a search phrase, so its
+// examples are short pastes rather than keywords — they double as a hint about
+// what to put in (skills, years, visa, rate, location).
+const AI_MATCH_PLACEHOLDER_EXAMPLES: Record<'jobs' | 'hotlist', string[]> = {
+  // Bench sales paste a consultant to find jobs.
+  jobs: [
+    'Sr. Java Full Stack Developer — 11 yrs, Spring Boot, React, AWS, Kafka. H1B, relocate, $65/hr C2C',
+    'Salesforce Developer — 8 yrs, Apex, LWC, Service Cloud. GC, Dallas TX hybrid, $70/hr',
+    'Data Engineer — 9 yrs, Snowflake, dbt, Airflow, Python. USC, remote, $75/hr',
+    'DevOps Engineer — 7 yrs, AWS, Terraform, Kubernetes, Jenkins. H1B transfer, $68/hr C2C',
+    'Power BI Developer — 6 yrs, DAX, SQL Server, Azure. EAD, Chicago onsite, $55/hr',
+  ],
+  // Vendors paste a requirement to find consultants.
+  hotlist: [
+    'Sr. Java Developer — Spring Boot, Microservices, AWS. 10+ yrs, Jersey City NJ hybrid, C2C',
+    'Salesforce Developer — Apex, LWC, 8+ yrs, remote, USC/GC only, $70/hr W2',
+    'Data Engineer — Snowflake, dbt, Python. 8+ yrs, Austin TX onsite, C2C $75/hr',
+    'ServiceNow Developer — ITSM, 6+ yrs, remote, any visa, long term contract',
+    'QA Automation Engineer — Selenium, Playwright, 5+ yrs, Charlotte NC, W2',
+  ],
+};
 
 const SEARCH_PLACEHOLDER_EXAMPLES = [
   'Solutions Architect C2C $45',
@@ -2382,6 +2461,19 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     () => readAiMatchSession()?.description ?? '',
   );
   const [aiMatchRunning, setAiMatchRunning] = useState(false);
+  // Live progress from the streaming ai-match run, so a ~13s wait shows real
+  // counts instead of a bare spinner.
+  const [aiMatchProgress, setAiMatchProgress] = useState<string | null>(null);
+  // What the last run did, shown above the results: without it people see a
+  // list of cards with no idea what was searched or how many came back.
+  const [aiMatchSummary, setAiMatchSummary] = useState<{ returned: number; fresh: number | null; scanned: number; best: number | null; credits: number; posted: number } | null>(null);
+  const [aiMatchFromTitle, setAiMatchFromTitle] = useState('');
+  const [aiMatchRecents, setAiMatchRecents] = useState<AiMatchRecent[]>(() => readAiMatchRecents());
+  const [aiMatchOwnPosts, setAiMatchOwnPosts] = useState<AiMatchOwnPost[]>([]);
+  const [aiMatchOwnPostsLoading, setAiMatchOwnPostsLoading] = useState(false);
+  // Phones get the rail as a second tab instead of a column: same list, but it
+  // takes the screen only while they are looking at it.
+  const [aiMatchMobileTab, setAiMatchMobileTab] = useState<'match' | 'recent'>('match');
   const [aiMatchError, setAiMatchError] = useState<string | null>(null);
   const [aiMatchHasRun, setAiMatchHasRun] = useState(false);
   // Collapsed to a one-line summary once there are results, so the list gets
@@ -2389,6 +2481,17 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const [aiMatchComposerOpen, setAiMatchComposerOpen] = useState(true);
   const [lastMatchAt, setLastMatchAt] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const routerLocation = useLocation();
+  // Set when arriving from a post's "Matches" button: that post's text seeds the
+  // box, ready to run. It is not auto-run, because a run spends a credit.
+  const aiMatchSeed = typeof (routerLocation.state as { aiMatchDescription?: unknown } | null)?.aiMatchDescription === 'string'
+    ? ((routerLocation.state as { aiMatchDescription: string }).aiMatchDescription).trim()
+    : '';
+  // The post's title, when arriving from a post's Matches button, so the page
+  // can say what it is about to match rather than showing a bare box.
+  const aiMatchSeedTitle = typeof (routerLocation.state as { aiMatchFrom?: unknown } | null)?.aiMatchFrom === 'string'
+    ? ((routerLocation.state as { aiMatchFrom: string }).aiMatchFrom).trim()
+    : '';
   const navigate = useNavigate();
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
@@ -2405,6 +2508,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     ? (account?.active_persona === 'bench_sales' ? 'job' : 'hotlist')
     : 'all';
   const [animatedSearchPlaceholder, setAnimatedSearchPlaceholder] = useState(SEARCH_PLACEHOLDER_EXAMPLES[0]);
+  const [animatedAiMatchPlaceholder, setAnimatedAiMatchPlaceholder] = useState('');
 
   // Typewriter-cycles the search bar's placeholder through example queries —
   // types a phrase out, pauses, deletes it, then moves to the next one.
@@ -3254,10 +3358,16 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
 
   const visibleDesktopRecentFeed = useMemo(
-    () => [...recentVisibleFeed]
-      .sort((a, b) => ((isCombinedFeed || isHotlistFeed) ? compareByRecency(a, b, feedTimeBasis) : compareDetailsAndPostedDate(a, b)))
-      .slice(0, desktopRecentVisibleCount),
-    [desktopRecentVisibleCount, feedTimeBasis, isCombinedFeed, isHotlistFeed, recentVisibleFeed],
+    () => (
+      // AI Match arrives already ordered by fit score (recentVisibleFeed sorts
+      // it). Re-sorting here by recency is what made the desktop card, table
+      // and detail lists show matches newest-first instead of best-first.
+      aiMatch
+        ? [...recentVisibleFeed]
+        : [...recentVisibleFeed]
+          .sort((a, b) => ((isCombinedFeed || isHotlistFeed) ? compareByRecency(a, b, feedTimeBasis) : compareDetailsAndPostedDate(a, b)))
+    ).slice(0, desktopRecentVisibleCount),
+    [aiMatch, desktopRecentVisibleCount, feedTimeBasis, isCombinedFeed, isHotlistFeed, recentVisibleFeed],
   );
   const visibleDesktopPreviewedFeed = useMemo(
     () => [...previewedVisibleFeed].sort(compareDetailsAndPostedDate).slice(0, desktopPreviewedVisibleCount),
@@ -5574,43 +5684,274 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // against hotlists — the same persona split the feed itself uses.
   const aiMatchTarget: 'jobs' | 'hotlist' = account?.active_persona === 'bench_sales' ? 'jobs' : 'hotlist';
 
-  const runAiMatch = useCallback(async () => {
-    const description = aiMatchDescription.trim();
+  // The overrides let the sidebar run one of their own posts without a detour
+  // through state — setState is async, so reading the box back would run the
+  // previous post's text.
+  const runAiMatch = useCallback(async (overrideDescription?: string, overrideTitle?: string) => {
+    const description = (overrideDescription ?? aiMatchDescription).trim();
+    const runTitle = overrideTitle ?? (overrideDescription !== undefined ? '' : aiMatchFromTitle);
     if (description.length < AI_MATCH_MIN_DESCRIPTION_CHARS) {
       setAiMatchError(`Add a bit more detail — at least ${AI_MATCH_MIN_DESCRIPTION_CHARS} characters.`);
       return;
     }
+    // A rematch of text that has run before keeps that run's matches on screen
+    // and tells the server not to charge for them again.
+    const previousRun = aiMatchRecents.find((item) => item.target === aiMatchTarget && item.description === description);
+    const previousRows = previousRun?.rows ?? [];
+    if (overrideDescription !== undefined) {
+      setAiMatchDescription(overrideDescription);
+      setAiMatchFromTitle(runTitle);
+      // Started from the rail or the Recent tab: the progress and the results
+      // are on the match side.
+      setAiMatchMobileTab('match');
+    }
     setAiMatchRunning(true);
     setAiMatchError(null);
+    setAiMatchProgress('Starting');
+    setAiMatchSummary(null);
     try {
-      const { data, error } = await supabase.functions.invoke('ai-match', {
-        body: { target: aiMatchTarget, description },
+      // A direct fetch, not functions.invoke: invoke buffers the whole
+      // response, which would discard the progress events.
+      // buildSupabaseFunctionHeaders returns Authorization only when there is a
+      // session, and that optional-property union isn't assignable to
+      // HeadersInit, so it is set conditionally.
+      const authHeaders = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession()) as { Authorization?: string };
+      const headers: Record<string, string> = {
+        apikey: supabaseAnonKey,
+        'Content-Type': 'application/json',
+      };
+      if (authHeaders.Authorization) headers.Authorization = authHeaders.Authorization;
+      const response = await fetch(`${supabaseFunctionsUrl}/ai-match`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ target: aiMatchTarget, description, stream: true, seen_ids: previousRows.map((row) => row.lead_id) }),
       });
-      if (error) {
-        setAiMatchError(await getFunctionErrorMessage(error, 'AI Match failed. You have not been charged.'));
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        setAiMatchError(payload?.error ?? 'AI Match failed. You have not been charged.');
         return;
       }
-      const rows = ((data?.results ?? []) as PulseSocialFeedRpcRow[])
+
+      const noun = aiMatchTarget === 'jobs' ? 'jobs' : 'consultants';
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let data: { results?: unknown; post?: unknown; credits_charged?: number; new_count?: number } | null = null;
+      let streamError: string | null = null;
+      let scanned = 0;
+
+      // Newline-delimited JSON: one event per line, the last carrying results.
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let event: Record<string, unknown>;
+          try {
+            event = JSON.parse(line) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
+          if (event.phase === 'found') scanned = Number(event.found ?? 0);
+          if (event.phase === 'preparing') setAiMatchProgress('Reading what you pasted');
+          else if (event.phase === 'searching') setAiMatchProgress(`Searching ${noun} from the last 30 days`);
+          else if (event.phase === 'found') setAiMatchProgress(`Found ${Number(event.found ?? 0)} ${noun} to score`);
+          else if (event.phase === 'scoring') setAiMatchProgress(`Scoring ${Number(event.scored ?? 0)} of ${Number(event.total ?? 0)} ${noun}`);
+          else if (event.phase === 'error') streamError = String(event.error ?? 'AI Match failed');
+          else if (event.phase === 'done') data = event as { results?: unknown; post?: unknown };
+        }
+      }
+
+      if (streamError || !data) {
+        setAiMatchError(streamError ?? 'AI Match failed. You have not been charged.');
+        return;
+      }
+
+      const freshRows = ((data?.results ?? []) as PulseSocialFeedRpcRow[])
         .map((row) => ({ ...row, _kind: aiMatchTarget }));
+      // This run's version of a row wins — the score is from the current
+      // scoring pass — and anything only the old run had is kept below it.
+      const mergedById = new Map<string, PulseSocialFeedRpcRow>();
+      for (const row of [...freshRows, ...previousRows]) {
+        if (!mergedById.has(row.lead_id)) mergedById.set(row.lead_id, row);
+      }
+      const similarityOf = (row: PulseSocialFeedRpcRow) => Number((row as { similarity?: number }).similarity ?? 0);
+      // Capped so repeated rematches can't grow the list (or the stored recent,
+      // or the seen_ids the next run sends) without bound.
+      const rows = [...mergedById.values()]
+        .sort((a, b) => (Number(b.ai_score ?? 0) - Number(a.ai_score ?? 0)) || (similarityOf(b) - similarityOf(a)))
+        .slice(0, AI_MATCH_MAX_KEPT_MATCHES);
+      const newCount = Number(data?.new_count ?? freshRows.length);
       // The run also publishes the pasted description as the user's own post.
       // Only a new post is worth a word; a duplicate or a skipped extraction
       // stays quiet rather than adding noise to every run.
-      const post = data?.post as { status?: string; count?: number } | undefined;
+      const post = data?.post as { status?: string; count?: number; reason?: string } | undefined;
+      setAiMatchSummary({
+        returned: rows.length,
+        fresh: previousRows.length > 0 ? newCount : null,
+        scanned,
+        best: rows.reduce((top, row) => Math.max(top, Number(row.ai_score ?? 0)), 0) || null,
+        credits: Number(data?.credits_charged ?? 0),
+        posted: post?.status === 'created' ? (post.count ?? 1) : 0,
+      });
       if (post?.status === 'created') {
         const where = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
         showToast(post.count && post.count > 1 ? `${post.count} posts added to ${where}` : `Posted to ${where}`, 'success');
+      } else if (post?.status === 'failed' || post?.status === 'skipped') {
+        // Silence here is what hid auto-posting failing entirely: the matches
+        // arrived, nothing was posted, and nobody could tell why.
+        showToast(`Matches ready, but the post wasn't created${post.reason ? `: ${post.reason}` : ''}`, 'error');
       }
       await loadFeed(null, [], rows);
       setAiMatchHasRun(true);
       setAiMatchComposerOpen(rows.length === 0);
       writeAiMatchSession({ description, target: aiMatchTarget, rows });
+      setAiMatchRecents((previous) => {
+        // Same text moves to the front rather than piling up.
+        const rest = previous.filter((item) => item.description !== description);
+        const next = [{ description, title: runTitle, target: aiMatchTarget, at: new Date().toISOString(), count: rows.length, rows }, ...rest]
+          .slice(0, AI_MATCH_RECENTS_LIMIT);
+        writeAiMatchRecents(next);
+        return next;
+      });
       // The run cost a credit (or was refunded if nothing matched); either way
       // the header balance should reflect the server's number.
       void refreshAccount();
+    } catch (error) {
+      setAiMatchError(error instanceof Error ? error.message : 'AI Match failed. You have not been charged.');
     } finally {
       setAiMatchRunning(false);
+      setAiMatchProgress(null);
     }
-  }, [aiMatchDescription, aiMatchTarget, loadFeed, refreshAccount, showToast]);
+  }, [aiMatchDescription, aiMatchFromTitle, aiMatchRecents, aiMatchTarget, loadFeed, refreshAccount, showToast]);
+
+  // Seed the box from the post that sent us here, once, then drop the router
+  // state so a refresh doesn't put it back over anything typed since.
+  const aiMatchSeedAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!aiMatch || !aiMatchSeed || aiMatchSeedAppliedRef.current) return;
+    aiMatchSeedAppliedRef.current = true;
+    aiMatchRestoredRef.current = true;
+    setAiMatchDescription(aiMatchSeed);
+    setAiMatchFromTitle(aiMatchSeedTitle);
+    // Open, not collapsed: the collapsed bar has no Find matches button, and
+    // arriving from a post the whole point is that the next step is obvious.
+    setAiMatchComposerOpen(true);
+    setAiMatchSummary(null);
+    navigate(`${routerLocation.pathname}${routerLocation.search}`, { replace: true, state: null });
+  }, [aiMatch, aiMatchSeed, aiMatchSeedTitle, navigate, routerLocation.pathname, routerLocation.search]);
+
+  // Same typewriter as the feed's search bar, on the AI Match box. It only runs
+  // while the box is empty and open: once there is text the placeholder is
+  // hidden anyway, and animating offscreen work is wasted.
+  const aiMatchPlaceholderActive = aiMatch && aiMatchComposerOpen && aiMatchDescription.length === 0 && !aiMatchRunning;
+  useEffect(() => {
+    if (!aiMatchPlaceholderActive) return;
+    const phrases = AI_MATCH_PLACEHOLDER_EXAMPLES[aiMatchTarget];
+    let cancelled = false;
+    let phraseIndex = 0;
+    let charCount = 0;
+    let isDeleting = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const TYPE_MS = 28;
+    const DELETE_MS = 12;
+    const PAUSE_AFTER_TYPE_MS = 2200;
+    const PAUSE_AFTER_DELETE_MS = 300;
+
+    const tick = () => {
+      if (cancelled) return;
+      const phrase = phrases[phraseIndex];
+      if (!isDeleting) {
+        charCount += 1;
+        setAnimatedAiMatchPlaceholder(phrase.slice(0, charCount));
+        if (charCount >= phrase.length) {
+          isDeleting = true;
+          timeoutId = setTimeout(tick, PAUSE_AFTER_TYPE_MS);
+          return;
+        }
+        timeoutId = setTimeout(tick, TYPE_MS);
+        return;
+      }
+      charCount -= 1;
+      setAnimatedAiMatchPlaceholder(phrase.slice(0, charCount));
+      if (charCount <= 0) {
+        isDeleting = false;
+        phraseIndex = (phraseIndex + 1) % phrases.length;
+        timeoutId = setTimeout(tick, PAUSE_AFTER_DELETE_MS);
+        return;
+      }
+      timeoutId = setTimeout(tick, DELETE_MS);
+    };
+
+    timeoutId = setTimeout(tick, 400);
+    return () => { cancelled = true; clearTimeout(timeoutId); };
+  }, [aiMatchPlaceholderActive, aiMatchTarget]);
+
+  // A consultant's name beats the first words of a pasted block, so prefer the
+  // title the run was seeded with.
+  const aiMatchRecentLabel = (item: AiMatchRecent) => {
+    const base = (item.title || item.description).trim().replace(/\s+/g, ' ');
+    return base.length > 34 ? `${base.slice(0, 33)}\u2026` : base;
+  };
+
+  const aiMatchRecentsForTarget = useMemo(
+    () => aiMatchRecents.filter((item) => item.target === aiMatchTarget),
+    [aiMatchRecents, aiMatchTarget],
+  );
+
+  const selectAiMatchText = useCallback((description: string, title: string) => {
+    setAiMatchMobileTab('match');
+    setAiMatchDescription(description);
+    setAiMatchFromTitle(title);
+    setAiMatchComposerOpen(true);
+    setAiMatchError(null);
+  }, []);
+
+  const selectAiMatchRecent = useCallback((item: AiMatchRecent) => {
+    selectAiMatchText(item.description, item.title ?? '');
+  }, [selectAiMatchText]);
+
+  // What each own post's last run returned, so a row can say "8 matches"
+  // instead of offering a blind Rematch.
+  const aiMatchLastRunByText = useMemo(() => {
+    const map = new Map<string, AiMatchRecent>();
+    for (const item of aiMatchRecents) {
+      if (item.target === aiMatchTarget && !map.has(item.description)) map.set(item.description, item);
+    }
+    return map;
+  }, [aiMatchRecents, aiMatchTarget]);
+
+  // Ad-hoc pastes only: anything that came from a post is already a row above.
+  const aiMatchLooseRecents = useMemo(() => {
+    const ownText = new Set(aiMatchOwnPosts.map((post) => post.description));
+    return aiMatchRecents.filter((item) => item.target === aiMatchTarget && !ownText.has(item.description));
+  }, [aiMatchOwnPosts, aiMatchRecents, aiMatchTarget]);
+
+  const aiMatchOwnPostsLabel = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
+  const aiMatchOwnPostsPath = aiMatchTarget === 'jobs' ? '/posts/hotlist' : '/posts/jobs';
+
+  // Back to a clean page: the results, the summary and the restored session all
+  // go, so a reload doesn't bring the old run back. The recents stay.
+  const clearAiMatchResults = useCallback(() => {
+    setFeed([]);
+    setAiMatchSummary(null);
+    setAiMatchHasRun(false);
+    setAiMatchComposerOpen(true);
+    setAiMatchDescription('');
+    setAiMatchFromTitle('');
+    setAiMatchMobileTab('match');
+    try {
+      window.sessionStorage.removeItem(AI_MATCH_SESSION_KEY);
+    } catch {
+      // Nothing to clean up if storage is unavailable.
+    }
+    // A detail URL names a row that no longer exists on the page.
+    if (routeLeadId) navigate(feedBasePath, { replace: true });
+  }, [feedBasePath, navigate, routeLeadId]);
 
   const aiMatchEmptyMessage = !aiMatch
     ? null
@@ -5618,20 +5959,84 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       ? 'No close matches in 30 days'
       : '';
 
-  // Restore the last run on load, once, so a refresh shows the same results
-  // instead of an empty page that would cost a credit to repopulate. Skipped
-  // if the persona changed since — those results are the other kind.
+  // Landing on /match starts clean: the last run's results used to reappear and
+  // fill the page, which buried the thing the page is for and left no way back
+  // to an empty box. Recents below the composer are how you return to a
+  // previous match, and they cost nothing to show.
+  //
+  // The one exception is a refresh on /match/:kind/:id — that URL names a row
+  // from the last run, so without the restore the detail pane would be empty.
   const aiMatchRestoredRef = useRef(false);
   useEffect(() => {
     if (!aiMatch || aiMatchRestoredRef.current || !account) return;
+    // A seeded description wins over the previous run's results.
+    if (aiMatchSeed) return;
     aiMatchRestoredRef.current = true;
+    if (!routeLeadId) return;
     const saved = readAiMatchSession();
     if (!saved || saved.target !== aiMatchTarget || saved.rows.length === 0) return;
     void loadFeed(null, [], saved.rows).then(() => {
       setAiMatchHasRun(true);
-      setAiMatchComposerOpen(false);
+      setAiMatchDescription(saved.description);
+      // Open, not collapsed: a one-line bar above the results hides the fact
+      // that this is where you start a match.
+      setAiMatchComposerOpen(true);
     });
-  }, [account, aiMatch, aiMatchTarget, loadFeed]);
+  }, [account, aiMatch, aiMatchSeed, aiMatchTarget, loadFeed, routeLeadId]);
+
+  // The sidebar runs off the user's own posts, so load them once on /match.
+  // Same rows My Hotlist / My Jobs shows (own account, user_post, not hidden),
+  // trimmed to the columns a list row and a match run need.
+  useEffect(() => {
+    if (!aiMatch || !account?.id) return;
+    let cancelled = false;
+    const ownKind: 'hotlist' | 'job' = aiMatchTarget === 'jobs' ? 'hotlist' : 'job';
+    setAiMatchOwnPostsLoading(true);
+    void (async () => {
+      const query = ownKind === 'hotlist'
+        ? supabase
+          .from('social_hotlist')
+          .select('id, role_title, candidate_name, core_skills, candidate_summary, raw_post_content, post_status, created_at')
+        : supabase
+          .from('social_jobs')
+          .select('id, job_title, company_name, extracted_skills, job_description, post_content, post_status, created_at');
+      const { data, error } = await query
+        .eq('created_by_account_id', account.id)
+        .eq('post_source', 'user_post')
+        .is('hidden_at', null)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (cancelled) return;
+      setAiMatchOwnPostsLoading(false);
+      if (error || !data) return;
+      const rows = data as Array<Record<string, unknown>>;
+      setAiMatchOwnPosts(rows.map((row): AiMatchOwnPost => {
+        const str = (key: string) => (typeof row[key] === 'string' ? (row[key] as string).trim() : '');
+        const list = (key: string) => (Array.isArray(row[key]) ? (row[key] as string[]).filter(Boolean) : []);
+        const title = ownKind === 'hotlist'
+          ? (str('candidate_name') || str('role_title'))
+          : str('job_title');
+        const skills = list(ownKind === 'hotlist' ? 'core_skills' : 'extracted_skills');
+        const subtitle = ownKind === 'hotlist'
+          ? (str('role_title') && str('candidate_name') ? str('role_title') : skills.slice(0, 3).join(' · '))
+          : (str('company_name') || skills.slice(0, 3).join(' \u00b7 '));
+        // Same preference order as the Matches button on My Posts: the raw
+        // paste first, because that is what the post was created from.
+        const description = ownKind === 'hotlist'
+          ? (str('raw_post_content') || str('candidate_summary') || title)
+          : (str('post_content') || str('job_description') || title);
+        return {
+          id: String(row.id),
+          title: title || 'Untitled',
+          subtitle,
+          description,
+          status: str('post_status') || 'open',
+          createdAt: str('created_at'),
+        };
+      }));
+    })();
+    return () => { cancelled = true; };
+  }, [account?.id, aiMatch, aiMatchTarget]);
 
   // loadFeed's dependencies now include the range, the applied search query and
   // the applied filters, so this single effect re-runs (and resets the cursor,
@@ -6496,6 +6901,91 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const leaderboardJobsLabel = isCombinedFeed ? 'Leads' : isHotlistFeed ? 'Consultants' : 'Jobs';
   const leaderboardVendorsLabel = isCombinedFeed ? 'Recruiters' : isHotlistFeed ? 'Bench Recruiters' : 'Vendors';
 
+  // One list, two homes: the desktop left rail and the mobile Recent tab.
+  const renderAiMatchRailItems = () => (
+    <>
+                {aiMatchOwnPostsLoading && aiMatchOwnPosts.length === 0 ? (
+                  <div className="flex justify-center py-6"><LogoSpinner size={18} /></div>
+                ) : aiMatchOwnPosts.length === 0 ? (
+                  <div className="px-1 py-5 text-center">
+                    <p className="text-[12px] text-gray-500 dark:text-slate-400">
+                      {aiMatchTarget === 'jobs' ? 'No consultants posted yet.' : 'No jobs posted yet.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate(aiMatchOwnPostsPath)}
+                      className="mt-2 text-[11px] font-semibold text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                    >
+                      {aiMatchTarget === 'jobs' ? 'Add a consultant' : 'Add a job'}
+                    </button>
+                  </div>
+                ) : (
+                  aiMatchOwnPosts.map((post) => {
+                    const lastRun = aiMatchLastRunByText.get(post.description);
+                    const isActive = post.description === aiMatchDescription;
+                    return (
+                      <div
+                        key={post.id}
+                        className={`rounded-xl border px-2.5 py-2 transition-colors ${
+                          isActive
+                            ? 'border-indigo-300 bg-indigo-50/70 dark:border-indigo-400/40 dark:bg-indigo-500/10'
+                            : 'border-gray-200 bg-white hover:border-gray-300 dark:border-white/10 dark:bg-[#1B1E24]'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => selectAiMatchText(post.description, post.title)}
+                          title={post.title}
+                          className="block w-full text-left"
+                        >
+                          <span className="block truncate text-[12px] font-semibold text-gray-900 dark:text-slate-100">{post.title}</span>
+                          {post.subtitle && (
+                            <span className="mt-0.5 block truncate text-[11px] text-gray-500 dark:text-slate-400">{post.subtitle}</span>
+                          )}
+                        </button>
+                        <div className="mt-1.5 flex items-center justify-between gap-2">
+                          <span className="truncate text-[10px] text-gray-400 dark:text-slate-500">
+                            {lastRun ? `${lastRun.count} ${lastRun.count === 1 ? 'match' : 'matches'}` : 'Not matched yet'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void runAiMatch(post.description, post.title)}
+                            disabled={aiMatchRunning}
+                            title={`Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits \u00b7 1 per match`}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2 py-1 text-[10px] font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Sparkles size={10} />
+                            {lastRun ? 'Rematch' : 'Match'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+
+                {aiMatchLooseRecents.length > 0 && (
+                  <div className="pt-2">
+                    <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Recent pastes</p>
+                    {aiMatchLooseRecents.map((item) => (
+                      <button
+                        key={`${item.at}-${item.description.slice(0, 24)}`}
+                        type="button"
+                        onClick={() => selectAiMatchRecent(item)}
+                        title={item.description.slice(0, 300)}
+                        className={`mb-1 block w-full rounded-lg px-2 py-1.5 text-left text-[11px] transition-colors ${
+                          item.description === aiMatchDescription
+                            ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+                            : 'text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="block truncate">{aiMatchRecentLabel(item)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+    </>
+  );
+
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
       <AppNav />
@@ -6509,7 +6999,43 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
               <LogoSpinner size={24} />
             </div>
           ) : (
-            <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
+            <div className="flex h-full min-h-0 gap-2.5 overflow-hidden">
+            {aiMatch && !isMobileViewport && (
+              // The left rail is the whole point of coming back: their own
+              // consultants (or jobs), each one tap from a fresh run. Desktop
+              // only — on a phone the same list is the recents row under the
+              // box, because a rail would eat the screen the composer needs.
+              <aside className="flex w-60 shrink-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 px-3 py-2.5 dark:border-white/10">
+                  <span className="text-[12px] font-semibold text-gray-900 dark:text-slate-100">
+                    {aiMatchOwnPostsLabel}
+                    {aiMatchOwnPosts.length > 0 && <span className="ml-1 text-gray-400 dark:text-slate-500">{aiMatchOwnPosts.length}</span>}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => navigate(aiMatchOwnPostsPath)}
+                    className="text-[11px] text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                  >
+                    Manage
+                  </button>
+                </div>
+
+                <div className="slim-scrollbar min-h-0 flex-1 space-y-1.5 overflow-y-auto px-2 py-2">
+                  {renderAiMatchRailItems()}
+                </div>
+
+                <div className="shrink-0 border-t border-gray-100 px-2 py-2 dark:border-white/10">
+                  <button
+                    type="button"
+                    onClick={clearAiMatchResults}
+                    className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                  >
+                    New match
+                  </button>
+                </div>
+              </aside>
+            )}
+            <div className="flex h-full min-w-0 min-h-0 flex-1 flex-col gap-2 overflow-hidden">
               {/* Category Pills (desktop horizontal scroll) */}
               <div className="hidden shrink-0 hide-scrollbar w-full overflow-x-auto">
                 <div className="flex w-max min-w-full gap-1.5">
@@ -6614,15 +7140,52 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                   </button>
                 </div>
 
-              {aiMatch && (
+              {aiMatch && isMobileViewport && (aiMatchOwnPosts.length > 0 || aiMatchRecentsForTarget.length > 0) && (
+                <div className="shrink-0 px-1 pt-1.5">
+                  <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-white/5">
+                    {([
+                      { id: 'match' as const, label: 'Match' },
+                      { id: 'recent' as const, label: 'Recent', count: aiMatchOwnPosts.length + aiMatchLooseRecents.length },
+                    ]).map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setAiMatchMobileTab(tab.id)}
+                        className={`flex-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                          aiMatchMobileTab === tab.id
+                            ? 'bg-white text-gray-900 shadow-sm dark:bg-[#22262c] dark:text-slate-100'
+                            : 'text-gray-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {tab.label}
+                        {tab.count ? <span className="ml-1 text-gray-400 dark:text-slate-500">{tab.count}</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {aiMatch && isMobileViewport && aiMatchMobileTab === 'recent' && (
+                <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-1.5 pb-4 pt-2">
+                  {renderAiMatchRailItems()}
+                </div>
+              )}
+
+              {aiMatch && !(isMobileViewport && aiMatchMobileTab === 'recent') && (
                 <div className={isMobileViewport ? 'shrink-0 px-1 pt-1.5 pb-1' : 'shrink-0 px-2 py-2'}>
                   {aiMatchComposerOpen ? (
-                    // Before the first run this is the page: centred, about half
-                    // the screen, big input and button. Once results exist it
-                    // shrinks back so the list below gets the room.
-                    <div className={aiMatchHasRun ? '' : 'flex min-h-[55vh] flex-col justify-center py-4'}>
-                      <div className="mx-auto w-full max-w-3xl">
-                        {!aiMatchHasRun && (
+                    // Two shapes. On a phone, before the first run, this is the
+                    // page: centred and about half the screen. On desktop it is
+                    // a full-width bar with the action on the right, where a
+                    // half-screen hero would just be a lot of empty space.
+                    <div className={!isMobileViewport || aiMatchHasRun ? '' : 'flex min-h-[55vh] flex-col justify-center py-4'}>
+                      <div className={isMobileViewport ? 'mx-auto w-full max-w-3xl' : 'w-full'}>
+                        {isMobileViewport && !aiMatchHasRun && aiMatchFromTitle && (
+                          <p className="mb-2 text-center text-[12px] text-gray-500 dark:text-slate-400">
+                            Matching for <span className="font-semibold text-gray-900 dark:text-slate-100">{aiMatchFromTitle}</span>
+                          </p>
+                        )}
+                        {isMobileViewport && !aiMatchHasRun && (
                           <div className="mb-4 flex items-center justify-center gap-2.5">
                             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30">
                               <Sparkles size={20} />
@@ -6630,31 +7193,53 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                             <h1 className="text-xl font-semibold text-gray-900 dark:text-slate-100">AI Match</h1>
                           </div>
                         )}
+                        {!isMobileViewport && aiMatchFromTitle && (
+                          <p className="mb-1.5 text-[12px] text-gray-500 dark:text-slate-400">
+                            Matching for <span className="font-semibold text-gray-900 dark:text-slate-100">{aiMatchFromTitle}</span>
+                          </p>
+                        )}
                         <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:border-white/10 dark:bg-[#171A1F]">
-                          <textarea
-                            value={aiMatchDescription}
-                            onChange={(e) => {
-                              setAiMatchDescription(e.target.value);
-                              if (aiMatchError) setAiMatchError(null);
-                            }}
-                            onKeyDown={(e) => {
-                              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                                e.preventDefault();
-                                void runAiMatch();
-                              }
-                            }}
-                            maxLength={8000}
-                            autoFocus={!isMobileViewport && !aiMatchHasRun}
-                            placeholder={aiMatchTarget === 'jobs' ? 'Paste consultant hotlist' : 'Paste job description'}
-                            aria-label={aiMatchTarget === 'jobs' ? 'Consultant hotlist' : 'Job description'}
-                            className={`w-full resize-none border-0 bg-transparent px-1 py-1 text-[15px] leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 dark:text-slate-100 ${aiMatchHasRun ? 'min-h-[7.5rem]' : 'min-h-[30vh]'}`}
-                          />
+                          <div className={isMobileViewport ? '' : 'flex items-start gap-3'}>
+                            <textarea
+                              value={aiMatchDescription}
+                              onChange={(e) => {
+                                setAiMatchDescription(e.target.value);
+                                if (aiMatchError) setAiMatchError(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                  e.preventDefault();
+                                  void runAiMatch();
+                                }
+                              }}
+                              maxLength={8000}
+                              autoFocus={!isMobileViewport && !aiMatchHasRun}
+                              placeholder={animatedAiMatchPlaceholder || (aiMatchTarget === 'jobs' ? 'Paste consultant hotlist' : 'Paste job description')}
+                              aria-label={aiMatchTarget === 'jobs' ? 'Consultant hotlist' : 'Job description'}
+                              className={`w-full resize-none border-0 bg-transparent px-1 py-1 text-[15px] leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 dark:text-slate-100 ${
+                                isMobileViewport
+                                  ? (aiMatchHasRun ? 'min-h-[7.5rem]' : 'min-h-[30vh]')
+                                  : 'max-h-56 min-h-[3.25rem] flex-1'
+                              }`}
+                            />
+                            {!isMobileViewport && (
+                              <button
+                                type="button"
+                                onClick={() => void runAiMatch()}
+                                disabled={aiMatchRunning || aiMatchDescription.trim().length === 0}
+                                className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-6 text-[14px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Sparkles size={17} />
+                                {aiMatchRunning ? 'Matching...' : 'Find matches'}
+                              </button>
+                            )}
+                          </div>
                           <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <span className={`text-center text-[12px] sm:pl-1 sm:text-left ${aiMatchError ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
                               {aiMatchError ?? (
                                 aiMatchDescription.trim().length > 0 && aiMatchDescription.trim().length < AI_MATCH_MIN_DESCRIPTION_CHARS
                                   ? `${AI_MATCH_MIN_DESCRIPTION_CHARS - aiMatchDescription.trim().length} more characters`
-                                  : '1 credit · last 30 days'
+                                  : `Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits · 1 per match · last 30 days`
                               )}
                             </span>
                             <div className="flex gap-2">
@@ -6662,45 +7247,103 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                                 <button
                                   type="button"
                                   onClick={() => setAiMatchComposerOpen(false)}
-                                  className="h-12 rounded-xl px-5 text-[15px] font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5"
+                                  className={`rounded-xl px-5 text-[15px] font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5 ${isMobileViewport ? 'h-12' : 'h-9 text-[13px]'}`}
                                 >
-                                  Cancel
+                                  Hide
                                 </button>
                               )}
-                              <button
-                                type="button"
-                                onClick={() => void runAiMatch()}
-                                // Enabled as soon as anything is typed. Gating on the
-                                // minimum length left the button greyed out with
-                                // nothing on screen saying why; runAiMatch reports
-                                // it inline instead.
-                                disabled={aiMatchRunning || aiMatchDescription.trim().length === 0}
-                                className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-7 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
-                              >
-                                <Sparkles size={18} />
-                                {aiMatchRunning ? 'Matching...' : 'Find matches'}
-                              </button>
+                              {isMobileViewport && (
+                                <button
+                                  type="button"
+                                  onClick={() => void runAiMatch()}
+                                  disabled={aiMatchRunning || aiMatchDescription.trim().length === 0}
+                                  className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-7 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <Sparkles size={18} />
+                                  {aiMatchRunning ? 'Matching...' : 'Find matches'}
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setAiMatchComposerOpen(true)}
-                      title="Edit"
-                      className="flex w-full items-start gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left dark:border-white/10 dark:bg-[#171A1F]"
-                    >
+                    <div className="flex w-full items-start gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left dark:border-white/10 dark:bg-[#171A1F]">
                       <Sparkles size={13} className="mt-0.5 shrink-0 text-indigo-500" />
-                      {/* Two lines of the description, whitespace collapsed so a
-                          pasted hotlist's line breaks don't waste them. */}
-                      <span className="line-clamp-2 min-w-0 flex-1 text-[12px] leading-snug text-gray-700 dark:text-slate-300">
-                        {aiMatchDescription.trim().replace(/\s+/g, ' ')}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setAiMatchComposerOpen(true)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAiMatchComposerOpen(true); } }}
+                        className="min-w-0 flex-1 cursor-pointer"
+                      >
+                        {aiMatchFromTitle && (
+                          <span className="block truncate text-[12px] font-semibold text-gray-900 dark:text-slate-100">{aiMatchFromTitle}</span>
+                        )}
+                        {/* Two lines of the description, whitespace collapsed so a
+                            pasted hotlist's line breaks don't waste them. */}
+                        <span className="line-clamp-2 block text-[12px] leading-snug text-gray-700 dark:text-slate-300">
+                          {aiMatchDescription.trim().replace(/\s+/g, ' ')}
+                        </span>
                       </span>
-                      <span className="shrink-0 text-[11px] font-medium tabular-nums text-gray-400">{recentVisibleFeed.length}</span>
-                      <Pencil size={12} className="shrink-0 text-gray-400" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setAiMatchComposerOpen(true)}
+                        title="Edit"
+                        aria-label="Edit"
+                        className="mt-0.5 shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/5"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runAiMatch()}
+                        disabled={aiMatchRunning}
+                        className="shrink-0 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2.5 py-1 text-[11px] font-semibold text-white transition active:scale-95 disabled:opacity-40"
+                      >
+                        {aiMatchRunning ? 'Matching' : 'Rematch'}
+                      </button>
+                    </div>
+                  )}
+
+                  {(aiMatchSummary || aiMatchHasRun) && !aiMatchRunning && (
+                    // Results with no explanation read as a random list. This
+                    // says what was searched, how much of it, and what it cost.
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 px-1 text-[11px] text-gray-500 dark:text-slate-400">
+                      {aiMatchSummary && (
+                        <>
+                      <span className="font-semibold text-gray-900 dark:text-slate-100">
+                        {aiMatchSummary.returned} {aiMatchSummary.returned === 1 ? 'match' : 'matches'}
+                      </span>
+                      {aiMatchSummary.fresh != null && (
+                        <span className={aiMatchSummary.fresh > 0 ? 'font-semibold text-emerald-600 dark:text-emerald-400' : ''}>
+                          · {aiMatchSummary.fresh} new
+                        </span>
+                      )}
+                      {aiMatchSummary.best != null && <span>· best {aiMatchSummary.best}/10</span>}
+                      {aiMatchSummary.scanned > 0 && <span>· from {aiMatchSummary.scanned.toLocaleString()} scanned</span>}
+                      <span>· last 30 days</span>
+                      {aiMatchSummary.credits > 0 && <span>· {aiMatchSummary.credits} credits</span>}
+                      {aiMatchSummary.posted > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(aiMatchTarget === 'jobs' ? '/posts/hotlist' : '/posts/jobs')}
+                          className="text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                        >
+                          · posted to {aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs'}
+                        </button>
+                      )}
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={clearAiMatchResults}
+                        className="text-gray-500 underline-offset-2 hover:underline dark:text-slate-400"
+                      >
+                        {aiMatchSummary ? '· Clear' : 'Clear results'}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -7349,9 +7992,15 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
+              {!(aiMatch && isMobileViewport && aiMatchMobileTab === 'recent') && (
               <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
                 <div className={`min-h-0 ${isMobileViewport ? '' : 'flex-1 overflow-hidden'}`}>
-                  {feedLoading || aiMatchRunning ? (
+                  {aiMatchRunning ? (
+                    <div className="flex min-h-[40vh] w-full flex-col items-center justify-center gap-3">
+                      <LogoSpinner size={22} />
+                      <p className="px-6 text-center text-[12px] text-gray-500">{aiMatchProgress ?? 'Matching'}</p>
+                    </div>
+                  ) : feedLoading ? (
                     <div className={`${isMobileViewport ? 'flex min-h-[50vh] w-full' : 'flex h-full min-h-0 w-full'} items-center justify-center`}>
                       <LogoSpinner size={20} />
                     </div>
@@ -7461,10 +8110,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                   )}
                 </div>
               </section>
+              )}
 
               </div>
               </div>
               </div>
+            </div>
             </div>
           )}
         </div>

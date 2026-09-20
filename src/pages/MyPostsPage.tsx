@@ -158,6 +158,14 @@ function matchesRange(post: UserPost, rangeId: string): boolean {
   return new Date(post.createdAt).getTime() >= cutoff;
 }
 
+// AI Match runs on whatever the post was written from — the pasted text if
+// there was any, otherwise the description the user typed.
+function matchTextForPost(post: UserPost): string {
+  return [post.postContent, post.kind === 'job' ? post.jobDescription : post.candidateSummary, post.title]
+    .map((value) => (value ?? '').trim())
+    .find((value) => value.length > 0) ?? '';
+}
+
 export default function MyPostsPage() {
   const { account, user } = useAuth();
   const { isDark } = useTheme();
@@ -936,7 +944,15 @@ export default function MyPostsPage() {
                         <span className="inline-flex items-center gap-1"><Share2 size={11} className="text-gray-400" />{metrics.shareCount}</span>
                       </div>
 
-                      <div className="mt-2.5 grid grid-cols-2 gap-2 border-t border-gray-100 pt-2.5 dark:border-white/10">
+                      <div className="mt-2.5 grid grid-cols-3 gap-2 border-t border-gray-100 pt-2.5 dark:border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => navigate('/match', { state: { aiMatchDescription: matchTextForPost(post), aiMatchFrom: post.title } })}
+                          className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-md text-[12px] font-medium transition-colors ${isDark ? 'bg-white/5 text-slate-200 hover:bg-white/10' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                        >
+                          <Sparkles size={14} />
+                          Matches
+                        </button>
                         <button
                           type="button"
                           onClick={() => void handleSharePost(post)}
@@ -1032,7 +1048,15 @@ export default function MyPostsPage() {
                           <span className="inline-flex items-center gap-1"><Share2 size={10} />{metrics.shareCount}</span>
                           <span className="ml-auto">{formatAgo(post.createdAt)}</span>
                         </div>
-                        <div className="mt-2 grid grid-cols-2 gap-1.5 border-t border-gray-100 pt-2 dark:border-white/10">
+                        <div className="mt-2 grid grid-cols-3 gap-1.5 border-t border-gray-100 pt-2 dark:border-white/10">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); navigate('/match', { state: { aiMatchDescription: matchTextForPost(post), aiMatchFrom: post.title } }); }}
+                            className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md text-[12px] font-medium transition-colors ${isDark ? 'bg-white/5 text-slate-200 hover:bg-white/10' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                          >
+                            <Sparkles size={13} />
+                            Matches
+                          </button>
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); void handleSharePost(post); }}

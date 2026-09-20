@@ -9,7 +9,11 @@ const envSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL ?? '').trim();
 const envSupabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
 
 const supabaseUrl = envSupabaseUrl || DEFAULT_SUPABASE_URL;
-const supabaseAnonKey = envSupabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY;
+// Exported for the few callers that fetch an edge function directly rather
+// than through supabase.functions.invoke (streaming responses, which invoke
+// buffers).
+export const supabaseAnonKey = envSupabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY;
+export const supabaseFunctionsUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1`;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const supabaseConfigMissing = {
