@@ -15,8 +15,10 @@ import { getPromptOverride } from "../_shared/prompts.ts";
 // judge of things like visa or experience fit, which is what recruiters care
 // about most.
 //
-// Costs 1 credit per run, charged up front and refunded if the run fails or
-// finds nothing — the caller only pays for a delivered result.
+// Costs 1 credit per match returned (RESULT_LIMIT of them). The full amount is
+// taken up front, so a run that cannot be paid for is refused rather than
+// half-delivered, and whatever isn't returned — a thin window, a failed run —
+// is refunded. The caller only pays for matches actually delivered.
 //
 // Every run also publishes what was pasted as a post of the user's own: a
 // bench-sales consultant becomes a hotlist post, a vendor's job becomes a job
@@ -32,7 +34,12 @@ const corsHeaders = {
 
 const FEATURE_KEY = "ai_match_run";
 const WINDOW_DAYS = 30;
+// Scored pool vs. what is returned. The model still judges 60 candidates so
+// the top of the list is genuinely the best of the window; only the top
+// RESULT_LIMIT are returned, and each returned match costs a credit.
 const CANDIDATE_LIMIT = 60;
+const RESULT_LIMIT = 10;
+const CREDITS_PER_RESULT = 1;
 const MIN_DESCRIPTION_CHARS = 40;
 const MAX_DESCRIPTION_CHARS = 8000;
 // Hotlists aren't embedded on insert (they arrive through several different
@@ -57,6 +64,7 @@ const SCORING_BUDGET_MS = 60_000;
 const SCORING_CALL_TIMEOUT_MS = 25_000;
 
 type Target = "jobs" | "hotlist";
+type Emit = (event: Record<string, unknown>) => void;
 type FeedRow = Record<string, unknown> & { lead_id: string; similarity: number };
 
 function json(payload: Record<string, unknown>, status = 200) {
@@ -129,31 +137,42 @@ Deno.serve(async (req: Request) => {
     return jsonError(`Paste a fuller description — at least ${MIN_DESCRIPTION_CHARS} characters.`, 400, "description_too_short");
   }
 
+  // Ids the caller already has from a previous run on this same text. They are
+  // re-delivered (a rematch shows the old matches alongside the new ones) but
+  // not re-charged: the first run paid for them.
+  const seenIds = Array.isArray(body?.seen_ids)
+    ? new Set((body.seen_ids as unknown[]).map((value) => String(value)).filter(Boolean).slice(0, 100))
+    : new Set<string>();
+
   // OpenAI stays for embeddings only: the stored job vectors were made with
   // it, and a query embedded by any other model wouldn't be comparable.
   const workerUrl = (Deno.env.get("CLOUDFLARE_WORKER_URL") ?? "").trim().replace(/\/$/, "");
   const workerToken = (Deno.env.get("CLOUDFLARE_WORKER_TOKEN") ?? "").trim();
   if (!openAiKey || !workerUrl) return jsonError("AI Match is not configured", 500);
 
+  const maxCharge = RESULT_LIMIT * CREDITS_PER_RESULT;
   const { data: chargeRows, error: chargeError } = await userClient.rpc("consume_feature_credit", {
     p_account_id: accountId,
-    p_amount: 1,
+    p_amount: maxCharge,
     p_feature: FEATURE_KEY,
-    p_metadata: { target, description_chars: description.length },
+    p_metadata: { target, description_chars: description.length, max_results: RESULT_LIMIT },
   });
   const charge = Array.isArray(chargeRows) ? chargeRows[0] as { success: boolean; message: string } : null;
   if (chargeError || !charge?.success) {
     return jsonError(charge?.message ?? chargeError?.message ?? "Insufficient credits", 402, "insufficient_credits");
   }
 
-  const refund = () => supabaseAdmin
-    .rpc("refund_feature_credit", { p_account_id: accountId, p_amount: 1, p_feature: FEATURE_KEY })
-    .then(() => {}, () => {});
+  // Anything charged for but not delivered goes back.
+  const refund = (amount = maxCharge) => amount <= 0
+    ? Promise.resolve()
+    : supabaseAdmin
+      .rpc("refund_feature_credit", { p_account_id: accountId, p_amount: amount, p_feature: FEATURE_KEY })
+      .then(() => {}, () => {});
 
   // Publish the pasted description as the user's own post, concurrently with
   // the match so it adds no wait. Awaited before responding so the UI can say
   // it happened; its failure is reported, never thrown.
-  const postPromise = autoPostDescription({
+  const postPromise = logPostOutcome(autoPostDescription({
     supabaseAdmin,
     userClient,
     supabaseUrl,
@@ -164,15 +183,19 @@ Deno.serve(async (req: Request) => {
     description,
     openAiKey,
     embeddingModel,
-  }).catch((error) => ({ status: "failed" as const, reason: (error as Error).message.slice(0, 200) }));
+  }).catch((error) => ({ status: "failed" as const, reason: (error as Error).message.slice(0, 200) })));
 
-  try {
+  // The work, reporting progress as it goes. A run takes ~13s, so the caller
+  // gets real counts (candidates found, how many scored) rather than a spinner.
+  const executeRun = async (emit: Emit) => {
+    emit({ phase: "preparing" });
     if (target === "hotlist") {
       await embedMissingHotlists(supabaseAdmin, openAiKey, embeddingModel, CATCH_UP_LIMIT);
     } else {
       await embedMissingJobs(supabaseAdmin, openAiKey, embeddingModel, CATCH_UP_LIMIT);
     }
 
+    emit({ phase: "searching" });
     const [queryEmbedding] = await embedTexts([description], openAiKey, embeddingModel);
     const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const { data: candidateRows, error: matchError } = await supabaseAdmin.rpc(
@@ -182,12 +205,17 @@ Deno.serve(async (req: Request) => {
     if (matchError) throw new Error(`Match search failed: ${matchError.message}`);
 
     const candidates = (candidateRows ?? []) as FeedRow[];
+    emit({ phase: "found", found: candidates.length });
     if (candidates.length === 0) {
       await refund();
-      return json({ ok: true, results: [], refunded: true, post: await postPromise });
+      return { ok: true, results: [], refunded: true, credits_charged: 0, post: await postPromise };
     }
 
-    const { scores, usedModel, usage } = await scoreCandidates(supabaseAdmin, workerUrl, workerToken, target, description, candidates);
+    emit({ phase: "scoring", scored: 0, total: candidates.length });
+    const { scores, usedModel, usage } = await scoreCandidates(
+      supabaseAdmin, workerUrl, workerToken, target, description, candidates,
+      (scored) => emit({ phase: "scoring", scored, total: candidates.length }),
+    );
     logUsage(supabaseAdmin, userId, accountId, usedModel, usage);
 
     const results = candidates
@@ -198,9 +226,65 @@ Deno.serve(async (req: Request) => {
       .filter((row): row is FeedRow & { ai_score: number; ai_reason: string } => row !== null)
       // Score first; similarity breaks ties so equal scores keep the order the
       // retrieval step thought was closest.
-      .sort((a, b) => (b.ai_score - a.ai_score) || (b.similarity - a.similarity));
+      .sort((a, b) => (b.ai_score - a.ai_score) || (b.similarity - a.similarity))
+      .slice(0, RESULT_LIMIT);
 
-    return json({ ok: true, results, window_days: WINDOW_DAYS, post: await postPromise });
+    if (results.length === 0) {
+      await refund();
+      return { ok: true, results: [], refunded: true, credits_charged: 0, post: await postPromise };
+    }
+
+    // A thin window can yield fewer than RESULT_LIMIT, and a rematch re-returns
+    // matches the caller already paid for; charge only for what is both
+    // delivered and new to them. The hold is still RESULT_LIMIT because how
+    // many are new isn't known until scoring ends — the rest goes back here.
+    const freshResults = results.filter((row) => !seenIds.has(String(row.lead_id)));
+    const creditsCharged = freshResults.length * CREDITS_PER_RESULT;
+    await refund(maxCharge - creditsCharged);
+
+    return {
+      ok: true,
+      results,
+      window_days: WINDOW_DAYS,
+      credits_charged: creditsCharged,
+      new_count: freshResults.length,
+      post: await postPromise,
+    };
+  };
+
+  // Streamed as newline-delimited JSON: one object per progress event, the
+  // last carrying the results. Plain JSON stays available for any caller that
+  // doesn't ask to stream.
+  if (body?.stream === true) {
+    const encoder = new TextEncoder();
+    return new Response(
+      new ReadableStream({
+        async start(controller) {
+          const emit: Emit = (event) => {
+            try {
+              controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+            } catch {
+              // Client hung up mid-run; the work still finishes and settles
+              // the credits.
+            }
+          };
+          try {
+            emit({ phase: "done", ...(await executeRun(emit)) });
+          } catch (error) {
+            await refund();
+            await postPromise;
+            emit({ phase: "error", error: (error as Error).message });
+          } finally {
+            controller.close();
+          }
+        },
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/x-ndjson", "Cache-Control": "no-cache" } },
+    );
+  }
+
+  try {
+    return json(await executeRun(() => {}));
   } catch (error) {
     await refund();
     // Let the post settle rather than abandoning it mid-write.
@@ -351,6 +435,18 @@ async function embedMissingHotlists(
 // ---------------------------------------------------------------------------
 // Auto-post
 
+// Auto-posting is deliberately non-fatal, which also means a failure leaves no
+// trace unless it is logged: the outcome rides back in the response, and the
+// app has no reason to show it. Anything other than a new post is logged with
+// its reason.
+async function logPostOutcome(promise: Promise<PostOutcome>): Promise<PostOutcome> {
+  const outcome = await promise;
+  if (outcome.status !== "created") {
+    console.error("ai-match auto-post:", JSON.stringify(outcome));
+  }
+  return outcome;
+}
+
 type PostOutcome =
   | { status: "created"; count: number }
   | { status: "duplicate" }
@@ -400,6 +496,17 @@ async function autoPostDescription(input: {
     return { status: "skipped", reason: String(extracted.error ?? `extraction HTTP ${extractRes.status}`).slice(0, 200) };
   }
 
+  // First meaningful line of what was pasted, used when the extractor finds no
+  // role/job title. Without it a run silently posts nothing, which is worse
+  // than a post titled with the user's own first line.
+  const fallbackTitle = () => {
+    const line = description
+      .split("\n")
+      .map((l) => l.replace(/^[\s*•\-#>]+/, "").trim())
+      .find((l) => l.length >= 3 && l.length <= 120);
+    return line ?? (kind === "job" ? "Job Opportunity" : "Available Consultant");
+  };
+
   const num = (value: unknown) => {
     const n = Number(value);
     return Number.isFinite(n) && n > 0 ? n : null;
@@ -412,17 +519,16 @@ async function autoPostDescription(input: {
 
   if (kind === "job") {
     const f = (extracted.fields ?? {}) as Record<string, unknown>;
-    if (!text(f.job_title)) return { status: "skipped", reason: "no job title found" };
     const years = num(f.experience_years);
     const { error } = await userClient.rpc("create_user_job_post", {
-      p_job_title: text(f.job_title),
+      p_job_title: text(f.job_title) || fallbackTitle(),
       p_company_name: text(f.company_name),
       p_location: text(f.location),
       p_employment_type: text(f.employment_type),
       p_seniority_level: text(f.seniority_level),
       p_salary_range: text(f.salary_range),
       p_job_description: text(f.job_description),
-      p_post_content: description,
+      p_post_content: description.slice(0, 7900),
       p_skills: list(f.skills),
       p_experience_years: years == null ? null : Math.round(years),
       p_visa_types: list(f.visa_types),
@@ -436,12 +542,14 @@ async function autoPostDescription(input: {
     if (!error) created = 1;
   } else {
     const candidates = (Array.isArray(extracted.candidates) ? extracted.candidates : [extracted.fields ?? {}]) as Record<string, unknown>[];
-    const usable = candidates.filter((c) => text(c.role_title));
-    if (usable.length === 0) return { status: "skipped", reason: "no role title found" };
+    // Keep every candidate that carries anything at all; a missing role title
+    // is filled in below rather than dropping the post.
+    const usable = candidates.filter((c) => text(c.role_title) || text(c.candidate_name) || text(c.candidate_summary));
+    if (usable.length === 0) usable.push({});
     const contactEmail = text(extracted.contact_email ?? (extracted.fields as Record<string, unknown> | undefined)?.contact_email);
     const contactPhone = text(extracted.contact_phone ?? (extracted.fields as Record<string, unknown> | undefined)?.contact_phone);
     const toCandidate = (c: Record<string, unknown>) => ({
-      role_title: text(c.role_title),
+      role_title: text(c.role_title) || fallbackTitle(),
       candidate_name: text(c.candidate_name),
       core_skills: list(c.core_skills),
       years_experience: num(c.years_experience),
@@ -459,12 +567,35 @@ async function autoPostDescription(input: {
       // A hotlist table: one post per consultant, as the Post form does.
       const { error } = await userClient.rpc("create_user_hotlist_posts_batch", {
         p_candidates: usable.map(toCandidate),
-        p_post_content: description,
+        p_post_content: description.slice(0, 7900),
         p_contact_email: contactEmail,
         p_contact_phone: contactPhone,
       });
       rpcError = error;
       if (!error) created = usable.length;
+      if (error) {
+        console.error("ai-match batch post failed, falling back to single:", JSON.stringify(error));
+        const c = toCandidate(usable[0]);
+        const single = await userClient.rpc("create_user_hotlist_post", {
+          p_role_title: c.role_title,
+          p_candidate_name: c.candidate_name,
+          p_core_skills: c.core_skills,
+          p_years_experience: c.years_experience,
+          p_visa_type: c.visa_type,
+          p_employment_type: c.employment_type,
+          p_work_type: c.work_type,
+          p_locations: c.locations,
+          p_hourly_rate_min: c.hourly_rate_min,
+          p_hourly_rate_max: c.hourly_rate_max,
+          p_availability: c.availability,
+          p_candidate_summary: c.candidate_summary,
+          p_post_content: description.slice(0, 7900),
+          p_contact_email: contactEmail,
+          p_contact_phone: contactPhone,
+        });
+        rpcError = single.error;
+        if (!single.error) created = 1;
+      }
     } else {
       const c = toCandidate(usable[0]);
       const { error } = await userClient.rpc("create_user_hotlist_post", {
@@ -480,7 +611,7 @@ async function autoPostDescription(input: {
         p_hourly_rate_max: c.hourly_rate_max,
         p_availability: c.availability,
         p_candidate_summary: c.candidate_summary,
-        p_post_content: description,
+        p_post_content: description.slice(0, 7900),
         p_contact_email: contactEmail,
         p_contact_phone: contactPhone,
       });
@@ -490,6 +621,7 @@ async function autoPostDescription(input: {
   }
 
   if (rpcError) {
+    console.error("ai-match create post RPC failed:", kind, JSON.stringify(rpcError));
     return /daily post limit/i.test(rpcError.message)
       ? { status: "skipped", reason: "daily post limit reached" }
       : { status: "failed", reason: rpcError.message.slice(0, 200) };
@@ -551,6 +683,7 @@ async function scoreCandidates(
   target: Target,
   description: string,
   candidates: FeedRow[],
+  onProgress?: (scored: number) => void,
 ): Promise<ChunkScores> {
   const override = await getPromptOverride(admin, "ai-match-rank");
   const instructions = override?.userPrompt?.trim() || DEFAULT_RANK_INSTRUCTIONS;
@@ -563,6 +696,9 @@ async function scoreCandidates(
   }
 
   const deadline = Date.now() + SCORING_BUDGET_MS;
+  // Chunks finish independently, so progress is reported as each lands rather
+  // than jumping from 0 to done.
+  let scoredSoFar = 0;
   // Indices stay global across chunks, so results merge without remapping.
   const settled = await Promise.allSettled(chunks.map(({ offset, rows }) => scoreChunk(
     workerUrl,
@@ -579,7 +715,11 @@ ${rows.map((row, i) => summarizeCandidate(row, offset + i)).join("\n")}
 Return ONLY JSON: {"scores":[{"index":<number>,"score":<1-10>,"reason":"<short reason>"}]} with one entry per candidate listed above.`,
     offset,
     rows.length,
-  )));
+  ).then((chunk) => {
+    scoredSoFar += chunk.scores.size;
+    onProgress?.(scoredSoFar);
+    return chunk;
+  })));
 
   const scores = new Map<number, { score: number; reason: string }>();
   const usage = { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 };

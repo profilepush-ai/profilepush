@@ -520,12 +520,44 @@ export default {
   },
 
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
-    try {
-      const result = await runDailyDigest(env);
-      console.log(`Daily digest: emailed ${result.emailedRecipients}/${result.recipients} recipients (${result.jobsCount} jobs, ${result.hotlistCount} hotlist profiles)`);
-    } catch (error) {
-      console.error("Daily digest cron run failed", error);
-      throw error;
+    // Two independent daily jobs share this cron. The match nudge runs even if
+    // the digest throws, and vice versa, so one failing never silences the
+    // other.
+    const results = await Promise.allSettled([
+      runDailyDigest(env).then((result) => {
+        console.log(`Daily digest: emailed ${result.emailedRecipients}/${result.recipients} recipients (${result.jobsCount} jobs, ${result.hotlistCount} hotlist profiles)`);
+      }),
+      runJobMatchNotifications(env),
+    ]);
+
+    const failures = results.filter((result) => result.status === "rejected");
+    for (const failure of failures) {
+      console.error("Daily cron job failed", (failure as PromiseRejectedResult).reason);
     }
+    // Surface a failure to Cloudflare's retry/alerting, but only after both
+    // have had their turn.
+    if (failures.length > 0) throw (failures[0] as PromiseRejectedResult).reason;
   },
 };
+
+// Asks Supabase to send the "N new jobs match your consultants" notification
+// (in-app + push). All of the work — counting matches, checking preferences,
+// sending — happens in the notify-job-matches edge function; this only
+// triggers it on the daily schedule, the same way the digest is triggered.
+async function runJobMatchNotifications(env: Env): Promise<void> {
+  const response = await fetch(`${env.SUPABASE_URL}/functions/v1/notify-job-matches`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+    },
+    body: JSON.stringify({ token: env.DIGEST_NOTIFY_TOKEN }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`notify-job-matches HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 300)}`);
+  }
+  console.log(`Job match notifications: ${JSON.stringify(payload)}`);
+}
