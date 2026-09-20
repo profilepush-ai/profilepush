@@ -30,8 +30,9 @@ const CREDIT_TIERS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
 // What actually deducts credits today — credits are charged only for
 // genuine AI-generation calls, not for previews, exports, or post creation.
 // Sourced directly from the remaining consume_feature_credit call sites:
-// ask-ai-vendor-email/index.ts (pulse_ask_ai_preview_generate) and
-// generate-chat-message/index.ts (inbox_ai_chat_draft). Predict Match % has
+// ai-match/index.ts (ai_match_run), ask-ai-vendor-email/index.ts
+// (pulse_ask_ai_preview_generate) and generate-chat-message/index.ts
+// (inbox_ai_chat_draft). Predict Match % has
 // a real per-use cost in code too (PulsePage.tsx's consumeCredits()), but
 // currently charges nothing — gated behind BILLING_GATES_ENABLED
 // (feature-gates.ts), which is off site-wide.
@@ -41,6 +42,14 @@ const CREDIT_TIERS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
 // job-application-screening Worker) — not the account taking an action
 // here, so it's listed as a note rather than a per-action row.
 const CREDIT_COST_ITEMS: { label: string; cost: string; note?: string }[] = [
+  // ai-match/index.ts holds RESULT_LIMIT credits up front and refunds
+  // everything it does not deliver, so a thin window or a rematch that finds
+  // nothing new costs nothing — but the hold still needs the headroom.
+  {
+    label: 'AI Match — per match returned',
+    cost: '1 credit',
+    note: 'Up to 10 per run, and only for matches you have not already been charged for: a rematch on the same text re-shows the previous results free and bills only the new ones. A run that finds nothing is refunded in full, though it needs 10 credits free to start.',
+  },
   { label: 'AI Submit / AI Request — generate draft', cost: '1 credit', note: 'Only the first generation per post; reopening an already-generated draft is free' },
   { label: 'Inbox AI chat draft', cost: '1 credit' },
   { label: 'Video screening completed', cost: '50 credits', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
@@ -69,6 +78,7 @@ const TIMEFRAMES = [
 ];
 
 const FN_LABELS: Record<string, string> = {
+  'ai-match':              'AI Match',
   'parse-resume':          'Resume Parse',
   'score-job-match':       'Job Match Score',
   'radar-match':           'Job Watch AI',
@@ -98,7 +108,9 @@ const CAT_COLORS: Record<CategoryKey, string> = {
 
 function fnCategory(fn: string): CategoryKey {
   if (fn.includes('rewrite'))  return 'AI Rewrite';
-  if (fn.includes('score') || fn.includes('radar'))    return 'AI Match';
+  // 'ai-match' has to be named: without it the fall-through files the app's
+  // most-used AI feature under Search.
+  if (fn.includes('match') || fn.includes('score') || fn.includes('radar'))    return 'AI Match';
   if (fn.includes('parse'))    return 'AI Extract';
   if (fn.includes('ideas'))    return 'AI Ideas';
   if (fn.includes('summary') || fn.includes('insights'))  return 'AI Insights';
@@ -107,7 +119,7 @@ function fnCategory(fn: string): CategoryKey {
 }
 function fnIcon(fn: string) {
   if (fn.includes('rewrite'))  return FileText;
-  if (fn.includes('score'))    return Target;
+  if (fn.includes('match') || fn.includes('score'))    return Target;
   if (fn.includes('parse'))    return Layers;
   if (fn.includes('ideas'))    return Sparkles;
   if (fn.includes('summary') || fn.includes('insights'))  return Brain;
