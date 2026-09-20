@@ -93,7 +93,9 @@ function detectCountryCode(): string {
 }
 
 const DEFAULT_COUNTRY = COUNTRIES[0];
-const DEFAULT_SIGNUP_REDIRECT = '/feed';
+// A new account lands on AI Match: paste a consultant or a job and the first
+// thing that happens is matches, which is also what posts their first post.
+const DEFAULT_SIGNUP_REDIRECT = '/match';
 const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
 
 type GoogleCredentialResponse = {
@@ -367,7 +369,7 @@ export default function SignUp() {
     );
   }
 
-  if (user) return <Navigate to="/feed" replace />;
+  if (user) return <Navigate to={DEFAULT_SIGNUP_REDIRECT} replace />;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
