@@ -18,36 +18,36 @@ const ThemeContext = createContext<ThemeContextValue>({
   toggleTheme: () => {},
 });
 
-function getInitialTheme(): ThemeMode {
-  if (typeof window === 'undefined') return 'light';
-
-  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-  if (storedTheme === 'dark' || storedTheme === 'light') return storedTheme;
-
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
+// The app is light-only. Dark mode was never finished — whole screens were
+// unreadable in it — and with no stored preference it followed the operating
+// system, so an incognito window on a dark-themed machine opened straight into
+// the broken version.
+//
+// The context is kept rather than deleted: `isDark` is read in hundreds of
+// places to choose a class, and it now always answers false. The `dark:`
+// variants throughout the app are inert on their own, because Tailwind is
+// configured with darkMode: 'class' and nothing ever adds that class.
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeMode>(getInitialTheme);
+  const [theme] = useState<ThemeMode>('light');
 
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.toggle('dark', theme === 'dark');
-    root.style.colorScheme = theme;
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme]);
-
-  const setTheme = useCallback((nextTheme: ThemeMode) => {
-    setThemeState(nextTheme);
+    // Clears the class and the stored 'dark' for anyone who set it before.
+    root.classList.remove('dark');
+    root.style.colorScheme = 'light';
+    try {
+      window.localStorage.removeItem(THEME_STORAGE_KEY);
+    } catch {
+      // Private windows can refuse storage; nothing here depends on it.
+    }
   }, []);
 
-  const toggleTheme = useCallback(() => {
-    setThemeState(currentTheme => (currentTheme === 'dark' ? 'light' : 'dark'));
-  }, []);
+  const setTheme = useCallback(() => {}, []);
+  const toggleTheme = useCallback(() => {}, []);
 
   const value = useMemo(() => ({
     theme,
-    isDark: theme === 'dark',
+    isDark: false,
     setTheme,
     toggleTheme,
   }), [theme, setTheme, toggleTheme]);

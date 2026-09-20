@@ -6191,6 +6191,44 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     });
   }, [account, aiMatch, aiMatchSeed, aiMatchTarget, loadFeed, routeLeadId]);
 
+  // Arriving at /match starts on the composer, every time.
+  //
+  // The restore below is gated on a lead id, but results were still showing up
+  // on arrival: tapping the nav icon while already on /match is a navigation
+  // that does not remount this page, so the previous run's results simply
+  // stayed on screen — as they do when the Android shell resumes a page it
+  // never unloaded. Keying this on the location means every arrival clears
+  // them, however the page got here.
+  //
+  // The pasted text is deliberately kept: it is what a rematch needs, and it
+  // sits in the box where it can be edited or cleared.
+  const aiMatchEntryKeyRef = useRef<string | null>(null);
+  const aiMatchPreviousPathRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!aiMatch || aiMatchRunning) return;
+    const previousPath = aiMatchPreviousPathRef.current;
+    aiMatchPreviousPathRef.current = routerLocation.pathname;
+    // A lead permalink is asking for that run, and a seed is a fresh paste
+    // from My Posts; neither is a plain arrival.
+    if (routeLeadId || aiMatchSeed) return;
+    if (aiMatchEntryKeyRef.current === routerLocation.key) return;
+    aiMatchEntryKeyRef.current = routerLocation.key;
+    // Closing a result's detail pane navigates from /match/:kind/:id back to
+    // /match. That is the same visit, not a new one, so the results it came
+    // from stay.
+    if (previousPath && previousPath !== routerLocation.pathname && previousPath.startsWith(`${feedBasePath}/`)) return;
+    setFeed([]);
+    setAiMatchSummary(null);
+    setAiMatchHasRun(false);
+    setAiMatchComposerOpen(true);
+    setAiMatchMobileTab('match');
+    try {
+      window.sessionStorage.removeItem(AI_MATCH_SESSION_KEY);
+    } catch {
+      // Nothing to clean up if storage is unavailable.
+    }
+  }, [aiMatch, aiMatchRunning, aiMatchSeed, feedBasePath, routeLeadId, routerLocation.key, routerLocation.pathname]);
+
   // The sidebar runs off the user's own posts, so load them once on /match.
   // Same rows My Hotlist / My Jobs shows (own account, user_post, not hidden),
   // trimmed to the columns a list row and a match run need.
@@ -7877,7 +7915,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               </div>
 
-              <div className="flex min-h-0 flex-1 gap-3">
+              <div className={`flex min-h-0 flex-1 gap-3 ${aiMatchRecentTabActive ? 'hidden' : ''}`}>
               {!isMobileViewport && !aiMatch && (
                 <aside className="flex h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
                   <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-3 pb-2.5 dark:border-white/10">
@@ -7999,7 +8037,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                   </div>
                 </aside>
               )}
-              <div className={`min-h-0 flex-1 overflow-hidden rounded-lg bg-transparent ${aiMatchRecentTabActive ? 'hidden' : ''}`}>
+              <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-transparent">
 
               <div
                 className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-transparent slim-scrollbar' : 'overflow-hidden'}`}

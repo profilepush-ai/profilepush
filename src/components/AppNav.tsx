@@ -4,7 +4,7 @@ import {
   ChevronDown, HelpCircle, LogOut, Settings, Sparkles,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, Briefcase, MoonStar, SunMedium, Mail, Database, UserRound, Send,
+  Activity, Briefcase, Mail, Database, UserRound, Send,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -320,7 +320,6 @@ function NotificationBell({ userId }: { userId: string }) {
 export default function AppNav() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isDark, toggleTheme } = useTheme();
   const { user, account, signOut } = useAuth();
   const navItems = getNavItems(account?.active_persona);
   // Mobile bottom nav below reuses these same computed items (path, label,
@@ -416,15 +415,6 @@ export default function AppNav() {
       {user && (
         <span className="sm:hidden ml-auto flex items-center gap-1.5">
           {shouldShowCreditsUi() && account != null && <CreditsChip balance={account.credits_balance} />}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-50"
-          >
-            {isDark ? <SunMedium size={14} /> : <MoonStar size={14} />}
-          </button>
           <NotificationBell userId={user.id} />
           <Link to="/account" className="shrink-0" title="Account">
             <UserAvatar pictureUrl={pictureUrl} initials={initials} sizeClass="h-8 w-8 text-[13px]" />
@@ -485,16 +475,6 @@ export default function AppNav() {
       {/* Credits + Bell + Profile */}
       {user && (
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="hidden sm:inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-50"
-          >
-            {isDark ? <SunMedium size={13} /> : <MoonStar size={13} />}
-          </button>
-
           <span className="hidden sm:block">
             <PersonaSwitcher />
           </span>
