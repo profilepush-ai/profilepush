@@ -74,7 +74,10 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
 
 function CreditsChip({ balance }: { balance: number }) {
   const { isDark } = useTheme();
-  const isLow = balance < 1;
+  // An AI Match run holds 10 credits up front, so "low" has to mean "cannot
+  // start a full run", not "under one credit" — otherwise the chip stays
+  // green at 8 and the run is refused anyway.
+  const isLow = balance < 10;
   const isZero = balance <= 0;
 
   const creditsLabel = Math.floor(Math.max(0, balance)).toLocaleString('en-IN');
@@ -97,7 +100,7 @@ function CreditsChip({ balance }: { balance: number }) {
       <Link
         to="/billing"
         className={`flex items-center gap-1 px-2 py-0.5 rounded-full border border-current text-amber-700 text-[11px] font-bold transition-colors ${isDark ? 'bg-transparent hover:bg-transparent' : 'bg-[rgb(255,251,235)] hover:bg-[rgb(254,243,199)]'}`}
-        title="Low credits"
+        title="Low credits — not enough for a full AI Match run"
       >
         <AlertTriangle size={9} />
         {creditsLabel}
