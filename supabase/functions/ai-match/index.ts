@@ -980,7 +980,11 @@ const DEFAULT_RANK_INSTRUCTIONS = `You are an expert US IT staffing recruiter. S
 - 5-6: partial — related role or several missing skills
 - 3-4: weak — adjacent role, major gaps
 - 1-2: poor — different role or disqualifying mismatch (visa, location, seniority)
-Judge on substance, not keyword overlap. Treat a missing field as unknown, not as a mismatch. Score every candidate. For each, write the reason as one complete sentence of 8 to 15 words that names the specific facts behind the score — the matching or missing skills, the experience, the visa or location constraint — for example "Strong Java, Spring Boot and React match, but the role is USC-only." Never answer with a single word or a bare label.`;
+Judge on substance, not keyword overlap. Treat a missing field as unknown, not as a mismatch. Score every candidate.
+
+For each, write the reason as one sentence of 8 to 15 words telling the reader WHAT TO DO NEXT and why. Start with an imperative verb and name the specific fact behind it — the matching or missing skills, the experience, the visa or location constraint. A reason that only describes the fit is wrong; every reason must end in an action the reader can take today.
+Use the verb the score deserves: 8-10 act now, 5-7 act after checking the gap, 1-4 skip or park with the reason it fails.
+Never answer with a single word, a bare label, or a sentence with no instruction in it.`;
 
 function summarizeCandidate(row: FeedRow, index: number): string {
   const list = (value: unknown) => Array.isArray(value) ? (value as string[]).filter(Boolean).join(", ") : "";
@@ -1023,6 +1027,9 @@ async function scoreCandidates(
   const instructions = override?.userPrompt?.trim() || DEFAULT_RANK_INSTRUCTIONS;
   const briefLabel = target === "jobs" ? "CONSULTANT (from a bench-sales hotlist)" : "JOB OPENING";
   const candidateLabel = target === "jobs" ? "JOB OPENINGS" : "AVAILABLE CONSULTANTS";
+  const audience = target === "jobs"
+    ? `The reader is a bench sales recruiter deciding whether to submit this consultant to each job. Write reasons addressed to them, for example "Submit today — Java, Spring Boot and AWS all match the stack." or "Confirm work authorization first; this role is USC-only and your consultant is on OPT." or "Skip unless he relocates — this is five days onsite in Newark."`
+    : `The reader is a vendor deciding whether to pitch each consultant for their own job. Write reasons addressed to them, for example "Reach out today — 9 years on the exact .NET and Azure stack." or "Ask about the rate before calling; she asks $85 and the role pays to $70." or "Park this one — QA background, not the backend role you posted."`;
 
   const chunks: Array<{ offset: number; rows: FeedRow[] }> = [];
   for (let offset = 0; offset < candidates.length; offset += SCORING_CHUNK_SIZE) {
@@ -1039,6 +1046,8 @@ async function scoreCandidates(
     workerToken,
     deadline,
     `${instructions}
+
+${audience}
 
 ${briefLabel}:
 ${description}

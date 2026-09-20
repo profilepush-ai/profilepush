@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   Activity,
@@ -272,14 +272,33 @@ function aiMatchScoreToneClass(score: number, isDark: boolean): string {
   return isDark ? 'border-white/15 bg-white/5 text-slate-400' : 'border-gray-200 bg-gray-50 text-gray-500';
 }
 
-function compareByAiMatchScore(a: SocialLead, b: SocialLead): number {
-  return (b.aiMatchScore ?? 0) - (a.aiMatchScore ?? 0);
-}
-
 function compareByRecency(a: SocialLead, b: SocialLead, feedTimeBasis: FeedTimeBasis): number {
   const aTs = new Date(feedTimeBasis === 'created' ? a.createdAt : a.postedAt).getTime();
   const bTs = new Date(feedTimeBasis === 'created' ? b.createdAt : b.postedAt).getTime();
   return bTs - aTs;
+}
+
+// The same three bands the scoring prompt defines and the score badge colours.
+// Ordering by raw score buries a job posted an hour ago under one from three
+// weeks back that scored a point higher, and in staffing the older one is
+// often already filled — so recency decides within a band, never across one.
+function aiMatchScoreBand(score: number | null | undefined): number {
+  const value = Number(score ?? 0);
+  if (value >= 8) return 2;
+  if (value >= 5) return 1;
+  return 0;
+}
+
+const AI_MATCH_BAND_LABELS: Record<number, string> = {
+  2: 'Strong fit',
+  1: 'Workable',
+  0: 'Weak fit',
+};
+
+function compareByAiMatchScore(a: SocialLead, b: SocialLead, feedTimeBasis: FeedTimeBasis = 'posted'): number {
+  const byBand = aiMatchScoreBand(b.aiMatchScore) - aiMatchScoreBand(a.aiMatchScore);
+  if (byBand !== 0) return byBand;
+  return compareByRecency(a, b, feedTimeBasis);
 }
 
 type HotlistRoleRow = {
@@ -1438,6 +1457,17 @@ const LeadCard = memo(function LeadCard({
                   {lead.aiMatchScore}/10
                 </span>
               )}
+              {lead.aiMatchReason && (
+                // Beside the score and in the product's gradient, so the
+                // sentence reads as the AI's verdict on this card rather than
+                // as more of the post's own text.
+                <span className="inline-flex min-w-0 items-center gap-1 text-[11px] leading-snug">
+                  <Sparkles size={10} strokeWidth={2.5} className="shrink-0 text-indigo-500 dark:text-indigo-300" />
+                  <span className="min-w-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text font-medium text-transparent dark:from-blue-300 dark:via-indigo-300 dark:to-violet-300">
+                    {lead.aiMatchReason}
+                  </span>
+                </span>
+              )}
               {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
               {predictResult && (
                 <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${predictToneClass(predictResult.score, isDark)}`}>
@@ -1462,9 +1492,6 @@ const LeadCard = memo(function LeadCard({
                 </span>
               )}
             </div>
-          {lead.aiMatchReason && (
-            <p className="mt-1 text-[11px] leading-snug text-gray-600 dark:text-slate-400">{lead.aiMatchReason}</p>
-          )}
           {lead.aiMatchRuleNote && (
             // The score was capped by a stated fact, not by the model's read of
             // the text, so it is called out rather than folded into the reason.
@@ -3221,7 +3248,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     // action button disabled.
     const recent = dedupedScopedFeed.filter((lead) => !revealedLeadIds.has(lead.id) && !globalAskedJobStateByLeadId[lead.id]);
     // AI Match: best score first. That's the whole point of the view.
-    if (aiMatch) return [...recent].sort(compareByAiMatchScore);
+    if (aiMatch) return [...recent].sort((a, b) => compareByAiMatchScore(a, b, feedTimeBasis));
     // While searching, the server returns rows ranked by FTS relevance and
     // pages by offset within that ranking. Re-sorting here would scramble the
     // order the cursor is walking, so page 2 would interleave with page 1.
@@ -3336,7 +3363,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     } else {
       selectedFeed = dedupedScopedFeed;
     }
-    if (aiMatch) return [...selectedFeed].sort(compareByAiMatchScore);
+    if (aiMatch) return [...selectedFeed].sort((a, b) => compareByAiMatchScore(a, b, feedTimeBasis));
     // Same reasoning as recentVisibleFeed: preserve the server's ranking while
     // a search is active.
     if (feedSearchQuery.trim()) return selectedFeed;
@@ -3988,7 +4015,24 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     const col = idx % safeColumns;
     // Spread palette by row/column so adjacent cards do not share a tone.
     const paletteIndex = (row + (col * 2)) % CARD_PALETTE.length;
-    return <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex)} />;
+    const card = <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex)} />;
+    if (!aiMatch || lead.aiMatchScore == null) return card;
+    // Results run newest-first inside each band, so without a heading the
+    // score appearing to drop mid-list looks like a sorting bug.
+    const band = aiMatchScoreBand(lead.aiMatchScore);
+    const previous = idx > 0 ? leads[idx - 1] : null;
+    if (previous && previous.aiMatchScore != null && aiMatchScoreBand(previous.aiMatchScore) === band) return card;
+    // A fragment, not a wrapper: in the multi-column grid the heading has to
+    // be a grid item itself to span the row, and a wrapper would make the card
+    // share its cell.
+    return (
+      <Fragment key={`band-${lead.id}`}>
+        <p className={`col-span-full px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500 ${idx > 0 ? 'pt-3' : ''}`}>
+          {AI_MATCH_BAND_LABELS[band]}
+        </p>
+        {card}
+      </Fragment>
+    );
   });
 
   const parseLeadingNumber = (value: string): number => {
