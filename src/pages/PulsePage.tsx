@@ -6651,7 +6651,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                           />
                           <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <span className={`text-center text-[12px] sm:pl-1 sm:text-left ${aiMatchError ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
-                              {aiMatchError ?? '1 credit · last 30 days'}
+                              {aiMatchError ?? (
+                                aiMatchDescription.trim().length > 0 && aiMatchDescription.trim().length < AI_MATCH_MIN_DESCRIPTION_CHARS
+                                  ? `${AI_MATCH_MIN_DESCRIPTION_CHARS - aiMatchDescription.trim().length} more characters`
+                                  : '1 credit · last 30 days'
+                              )}
                             </span>
                             <div className="flex gap-2">
                               {aiMatchHasRun && (
@@ -6666,7 +6670,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                               <button
                                 type="button"
                                 onClick={() => void runAiMatch()}
-                                disabled={aiMatchRunning || aiMatchDescription.trim().length < AI_MATCH_MIN_DESCRIPTION_CHARS}
+                                // Enabled as soon as anything is typed. Gating on the
+                                // minimum length left the button greyed out with
+                                // nothing on screen saying why; runAiMatch reports
+                                // it inline instead.
+                                disabled={aiMatchRunning || aiMatchDescription.trim().length === 0}
                                 className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-7 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
                               >
                                 <Sparkles size={18} />
