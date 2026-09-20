@@ -13,7 +13,10 @@ import AuthSidePanel from '../components/AuthSidePanel';
 
 const isNativeApp = Capacitor.isNativePlatform();
 
-const DEFAULT_REDIRECT = '/feed';
+// AI Match, not the feed: signing in with nothing to act on is how a session
+// ends at a scroll. A deep link still wins — getSafeRedirect only falls back
+// to this when there is no `from` to honour.
+const DEFAULT_REDIRECT = '/match';
 const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
 
 type GoogleCredentialResponse = {

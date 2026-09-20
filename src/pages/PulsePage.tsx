@@ -2661,15 +2661,24 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
   const [feedTimeBasis] = useState<FeedTimeBasis>('posted');
   const [layoutMode, setLayoutMode] = useState<PulseLayoutMode>(getInitialPulseLayoutMode);
-  const isTableLayout = layoutMode === 'table' && !isMobileViewport;
   // Hotlist posts from social are bulk: one scraped post carries ten
   // consultants, and every sibling row stores the same raw text. The parsed
   // fields on the card are per-consultant and correct; the original post is
   // not worth showing, so hotlist feeds are cards only and no hotlist lead
   // opens a post preview anywhere.
   const hotlistOnlyFeed = feedKind === 'hotlist';
-  const isDetailLayout = layoutMode === 'detail' && !isMobileViewport && !hotlistOnlyFeed;
-  const isSwipeLayout = SWIPE_LAYOUT_ENABLED && layoutMode === 'swipe';
+  // The mobile Recent tab replaces the composer and the results, so both have
+  // to leave the flex column entirely — hiding only the results *inside* their
+  // wrapper left the wrapper claiming flex-1, which halved the list's height
+  // and cut the last card in two.
+  const aiMatchRecentTabActive = aiMatch && isMobileViewport && aiMatchMobileTab === 'recent';
+  // Cards whatever is saved: a table row or a detail pane of a consultant is
+  // mostly the fields the card already shows, minus the layout that makes them
+  // readable. The stored preference is left alone, so other feeds keep it.
+  const effectiveLayoutMode: PulseLayoutMode = hotlistOnlyFeed ? 'card' : layoutMode;
+  const isTableLayout = effectiveLayoutMode === 'table' && !isMobileViewport;
+  const isDetailLayout = effectiveLayoutMode === 'detail' && !isMobileViewport;
+  const isSwipeLayout = SWIPE_LAYOUT_ENABLED && effectiveLayoutMode === 'swipe';
   // Selected post for the detail-panel layout — a real path param (not just
   // component state) so a post has a genuine, shareable, back/forward-able
   // URL while browsing. Ignored entirely outside detail mode and on mobile
@@ -6019,6 +6028,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     if (!item || rows.length === 0) return;
     void loadFeed(null, [], rows).then(() => {
       setAiMatchHasRun(true);
+      // On a phone the restored matches are the point; the box that produced
+      // them collapses to the compact card above them.
+      if (isMobileViewport) setAiMatchComposerOpen(false);
       setAiMatchSummary({
         returned: rows.length,
         fresh: null,
@@ -6030,7 +6042,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         saved: true,
       });
     });
-  }, [loadFeed]);
+  }, [isMobileViewport, loadFeed]);
 
   const selectAiMatchRecent = useCallback((item: AiMatchRecent) => {
     selectAiMatchText(item.description, item.title ?? '');
@@ -7386,13 +7398,13 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
-              {aiMatch && isMobileViewport && aiMatchMobileTab === 'recent' && (
-                <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-1.5 pb-4 pt-2">
+              {aiMatchRecentTabActive && (
+                <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-1.5 pb-6 pt-2">
                   {renderAiMatchRailItems()}
                 </div>
               )}
 
-              {aiMatch && !(isMobileViewport && aiMatchMobileTab === 'recent') && (
+              {aiMatch && !aiMatchRecentTabActive && (
                 <div className={isMobileViewport ? 'shrink-0 px-1 pt-1.5 pb-1' : 'shrink-0 px-2 py-2'}>
                   {aiMatchComposerOpen ? (
                     // Two shapes. On a phone, before the first run, this is the
@@ -7524,14 +7536,26 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAiMatchComposerOpen(true); } }}
                         className="min-w-0 flex-1 cursor-pointer"
                       >
-                        {aiMatchFromTitle && (
-                          <span className="block truncate text-[12px] font-semibold text-gray-900 dark:text-slate-100">{aiMatchFromTitle}</span>
+                        {(aiMatchFromTitle || isMobileViewport) && (
+                          <span className="block truncate text-[12px] font-semibold text-gray-900 dark:text-slate-100">
+                            {aiMatchFromTitle || aiMatchDescription.trim().split('\n').map((line) => line.trim()).find((line) => line.length >= 3)?.slice(0, 60) || 'Your paste'}
+                          </span>
                         )}
-                        {/* Two lines of the description, whitespace collapsed so a
-                            pasted hotlist's line breaks don't waste them. */}
-                        <span className="line-clamp-2 block text-[12px] leading-snug text-gray-700 dark:text-slate-300">
-                          {aiMatchDescription.trim().replace(/\s+/g, ' ')}
-                        </span>
+                        {isMobileViewport ? (
+                          // One line of counts instead of two of pasted text:
+                          // the results below are what the screen is for.
+                          <span className="block text-[11px] leading-snug text-gray-500 dark:text-slate-400">
+                            {aiMatchSummary
+                              ? `${aiMatchSummary.returned} ${aiMatchSummary.returned === 1 ? 'match' : 'matches'}${aiMatchSummary.best != null ? ` · best ${aiMatchSummary.best}/10` : ''}`
+                              : 'Tap to edit'}
+                          </span>
+                        ) : (
+                          /* Two lines of the description, whitespace collapsed so a
+                             pasted hotlist's line breaks don't waste them. */
+                          <span className="line-clamp-2 block text-[12px] leading-snug text-gray-700 dark:text-slate-300">
+                            {aiMatchDescription.trim().replace(/\s+/g, ' ')}
+                          </span>
+                        )}
                       </span>
                       <button
                         type="button"
@@ -7542,6 +7566,17 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                       >
                         <Pencil size={12} />
                       </button>
+                      {isMobileViewport && (
+                        <button
+                          type="button"
+                          onClick={clearAiMatchResults}
+                          title="Clear results"
+                          aria-label="Clear results"
+                          className="mt-0.5 shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/5"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => void runAiMatch()}
@@ -7553,7 +7588,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                     </div>
                   )}
 
-                  {(aiMatchSummary || aiMatchHasRun) && !aiMatchRunning && (
+                  {(aiMatchSummary || aiMatchHasRun) && !aiMatchRunning && !(isMobileViewport && !aiMatchComposerOpen) && (
                     // Results with no explanation read as a random list. This
                     // says what was searched, how much of it, and what it cost.
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 px-1 text-[11px] text-gray-500 dark:text-slate-400">
@@ -7733,12 +7768,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                     </div>
                   )}
 
-                  {!isMobileViewport && (
+                  {!isMobileViewport && !hotlistOnlyFeed && (
                     <div className="flex shrink-0 items-center rounded-md border border-gray-200 bg-gray-50 p-0.5" aria-label="Layout view">
                       {([
                         { id: 'card' as PulseLayoutMode, label: 'Cards', icon: LayoutGrid },
                         { id: 'table' as PulseLayoutMode, label: 'Table', icon: Table2 },
-                        ...(hotlistOnlyFeed ? [] : [{ id: 'detail' as PulseLayoutMode, label: 'Detail', icon: PanelRight }]),
+                        { id: 'detail' as PulseLayoutMode, label: 'Detail', icon: PanelRight },
                         ...(SWIPE_LAYOUT_ENABLED ? [{ id: 'swipe' as PulseLayoutMode, label: 'Swipe', icon: Layers }] : []),
                       ]).map((view) => (
                         <button
@@ -7920,7 +7955,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                   </div>
                 </aside>
               )}
-              <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-transparent">
+              <div className={`min-h-0 flex-1 overflow-hidden rounded-lg bg-transparent ${aiMatchRecentTabActive ? 'hidden' : ''}`}>
 
               <div
                 className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-transparent slim-scrollbar' : 'overflow-hidden'}`}
@@ -8244,7 +8279,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
-              {!(aiMatch && isMobileViewport && aiMatchMobileTab === 'recent') && (
               <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
                 <div className={`min-h-0 ${isMobileViewport ? '' : 'flex-1 overflow-hidden'}`}>
                   {aiMatchRunning ? (
@@ -8362,7 +8396,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                   )}
                 </div>
               </section>
-              )}
 
               </div>
               </div>

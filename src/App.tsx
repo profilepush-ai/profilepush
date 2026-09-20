@@ -137,7 +137,8 @@ function AppEntry() {
     );
   }
 
-  return <Navigate to={user ? '/feed' : '/signup'} replace />;
+  // Opening the app signed in lands where signing in lands.
+  return <Navigate to={user ? '/match' : '/signup'} replace />;
 }
 
 // /feed, /feed/jobs, /feed/hotlist, and /feed/:kind/:id (a specific lead's
