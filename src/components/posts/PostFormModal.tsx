@@ -381,6 +381,18 @@ export default function PostFormModal({
           : await supabase.rpc('create_user_hotlist_post' as never, args as never);
         if (error) throw new Error(error.message);
       }
+      // The first-post bonus is claimed here rather than by a database
+      // trigger on the post itself. A trigger fires for every user post
+      // however it was made, including the one AI Match publishes from a
+      // pasted description — which refunded the run that had just been
+      // charged for. Claiming it from the form ties the bonus to the
+      // deliberate act it is meant to reward. Idempotent server-side, and
+      // never claimed on an edit.
+      if (!isEditing) {
+        const { data: bonusGranted } = await supabase.rpc('claim_first_post_bonus' as never);
+        if (bonusGranted === true) showToast('First post published — 10 bonus credits added', 'success');
+      }
+
       showToast(isEditing ? 'Post updated' : isMultiCandidateMode ? `${parsedCandidates.length} posts created — they will appear in the feed shortly` : 'Post created — it will appear in the feed shortly', 'success');
       onSaved();
     } catch (error) {
