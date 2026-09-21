@@ -442,7 +442,13 @@ export default function ActiveListPage() {
           <p className="shrink-0 text-[11px] text-gray-400">Select rows to unlock and download their emails — up to 50 per day.</p>
 
           <div className="flex min-h-0 flex-1 gap-3">
-            <aside className="flex h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
+            {/* The filters rail is a fixed 224px column. Beside the list on a
+                390px screen that leaves the contacts barely 45% of the width,
+                which is unreadable however the rows themselves are rendered.
+                Hidden on phones — the search field above already covers the
+                common case, and the full filter set stays available from sm
+                up where there is room for both. */}
+            <aside className="hidden h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white sm:flex dark:border-white/10 dark:bg-[#171A1F]">
               <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-3 pb-2.5 dark:border-white/10">
                 <span className="text-[12px] font-bold text-gray-900 dark:text-slate-100">Filters</span>
                 {hasActiveFilters && (
