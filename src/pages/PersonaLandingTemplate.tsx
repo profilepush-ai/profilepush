@@ -320,6 +320,15 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
     ],
   };
 
+  // Screenshots that ship with the build take priority over the storage
+  // bucket. Writing to that bucket now requires the site owner's login (the
+  // policies used to let any signed-in user overwrite it), so a repo-hosted
+  // asset is the one path that needs no credentials, no upload step and no
+  // round trip — it deploys with the code.
+  const BUNDLED_SHOTS: Record<string, { desktop: string; mobile: string }> = {
+    hotlist: { desktop: '/screens/features/hotlist.jpg', mobile: '/screens/features/hotlist-mobile.jpg' },
+  };
+
   const storageBaseUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/landing-assets/features`;
   const allKeys = Array.from(new Set([content.heroFeatureKey, ...content.features.map(f => f.key)]));
   // Only desktop keys get a .webm fallback. A `-mobile` key with no row in
@@ -413,8 +422,8 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
           <div className="relative z-10 mt-8 max-w-6xl mx-auto text-left">
             <GifSlot
               featureKey={heroFeature.key}
-              imageUrl={screenshots[heroFeature.key] ?? null}
-              mobileImageUrl={screenshots[`${heroFeature.key}-mobile`] ?? null}
+              imageUrl={BUNDLED_SHOTS[heroFeature.key]?.desktop ?? screenshots[heroFeature.key] ?? null}
+              mobileImageUrl={BUNDLED_SHOTS[heroFeature.key]?.mobile ?? screenshots[`${heroFeature.key}-mobile`] ?? null}
               canEdit={canEdit}
               onUploaded={handleUploaded}
               accent={heroFeature.accent}
@@ -464,8 +473,8 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
 
                 <GifSlot
                   featureKey={f.key}
-                  imageUrl={screenshots[f.key] ?? null}
-                  mobileImageUrl={screenshots[`${f.key}-mobile`] ?? null}
+                  imageUrl={BUNDLED_SHOTS[f.key]?.desktop ?? screenshots[f.key] ?? null}
+                  mobileImageUrl={BUNDLED_SHOTS[f.key]?.mobile ?? screenshots[`${f.key}-mobile`] ?? null}
                   canEdit={canEdit}
                   onUploaded={handleUploaded}
                   accent={f.accent}
