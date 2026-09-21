@@ -13,6 +13,8 @@ export interface AdminAccountStatsRow {
   hotlist_previews_count: number;
   ai_pitches_count: number;
   ai_requests_count: number;
+  ai_match_runs_count: number;
+  ai_match_matches_count: number;
   chats_count: number;
   vendor_downloads_count: number;
   recruiter_downloads_count: number;
