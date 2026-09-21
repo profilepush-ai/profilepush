@@ -121,7 +121,7 @@ async function rpc<T>(env: Env, name: string, body: Record<string, unknown>): Pr
   }
 }
 
-export const onRequestGet: PagesFunction<Env> = async ({ params, env }) => {
+const renderPage: PagesFunction<Env> = async ({ params, env }) => {
   const role = String(params.role ?? "").toLowerCase();
   const stateParam = Array.isArray(params.state) ? params.state[0] : params.state;
   const state = String(stateParam ?? "").toUpperCase();
@@ -179,6 +179,57 @@ export const onRequestGet: PagesFunction<Env> = async ({ params, env }) => {
 
   const otherStates = ["TX", "CA", "NY", "NJ", "NC", "GA", "IL", "OH", "REMOTE"].filter((s) => s !== state);
 
+  const updatedLabel = new Date().toISOString().slice(0, 10);
+  const rateSentence = stats.median_rate_max
+    ? `The median advertised maximum rate is $${Math.round(Number(stats.median_rate_max))} per hour.`
+    : "Rates vary and are not stated on every requirement.";
+
+  // Phrased the way someone types into an assistant, not the way a marketer
+  // writes a heading.
+  const faqs = [
+    {
+      q: `Where can I find ${roleLabel} C2C requirements in ${placeLabel}?`,
+      a: `ProfilePush collects ${roleLabel} corp-to-corp requirements from public postings across LinkedIn, WhatsApp, Telegram and job boards, de-duplicates them by recruiter, and refreshes them daily. ${total} were posted in ${placeLabel} in the last 30 days and ${stats.added_7d ?? 0} in the last 7. The five freshest and most complete are listed above; a free account shows all of them with the recruiter's contact.`,
+    },
+    {
+      q: `What do ${roleLabel} C2C roles pay in ${placeLabel}?`,
+      a: `${rateSentence} ${stats.with_rate ?? 0} of the ${total} requirements posted in the last 30 days stated a rate; the rest are negotiable or disclosed on contact.`,
+    },
+    {
+      q: `How current are these ${roleLabel} requirements?`,
+      a: `They are refreshed every day, and listings are scored partly on how recently they were posted, so a requirement from this week ranks above one from three weeks ago. This page was generated on ${updatedLabel}.`,
+    },
+    {
+      q: `How do I submit a consultant to these requirements?`,
+      a: `Create a free account, paste the consultant's details, and AI Match ranks the open requirements 1-10 against them with a reason for each score. Submitting is done from the match itself. New accounts get 100 free credits and no card is required.`,
+    },
+  ];
+
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((item) => ({
+      "@type": "Question",
+      name: item.q,
+      acceptedAnswer: { "@type": "Answer", text: item.a },
+    })),
+  };
+
+  // Says out loud what the page is a sample of, which is what an assistant
+  // needs in order to describe the source it is citing.
+  const datasetSchema = {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    name: `${roleLabel} C2C requirements in ${placeLabel}`,
+    description: `Corp-to-corp contract requirements for ${roleLabel} roles in ${placeLabel}, collected from public staffing postings and refreshed daily. ${total} requirements in the trailing 30 days.`,
+    url: canonical,
+    isAccessibleForFree: true,
+    dateModified: updatedLabel,
+    creator: { "@type": "Organization", name: "ProfilePush", url: "https://profilepush.ai" },
+    temporalCoverage: `${new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)}/${updatedLabel}`,
+    variableMeasured: ["job title", "company", "location", "hourly rate", "skills", "employment type", "date posted"],
+  };
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -193,6 +244,9 @@ export const onRequestGet: PagesFunction<Env> = async ({ params, env }) => {
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary_large_image" />
 <script type="application/ld+json">${JSON.stringify(jobSchema)}</script>
+<script type="application/ld+json">${JSON.stringify(faqSchema)}</script>
+<script type="application/ld+json">${JSON.stringify(datasetSchema)}</script>
+<link rel="alternate" type="application/json" href="${esc(canonical.replace("/c2c-requirements/", "/api/requirements/"))}" />
 <style>
 :root{color-scheme:light}
 *{box-sizing:border-box}
@@ -200,7 +254,8 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,san
 .wrap{max-width:860px;margin:0 auto;padding:24px 16px 64px}
 a{color:#2563eb}
 h1{font-size:28px;line-height:1.25;margin:0 0 8px}
-.sub{color:#6b7280;font-size:15px;margin:0 0 20px}
+.sub{color:#6b7280;font-size:15px;margin:0 0 16px}
+.answer{background:#fff;border-left:4px solid #2563eb;border-radius:8px;padding:14px 16px;margin:0 0 24px;font-size:15px}
 .stats{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 24px}
 .stat{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;min-width:120px}
 .stat b{display:block;font-size:20px}
@@ -223,7 +278,13 @@ footer{margin-top:40px;color:#9ca3af;font-size:12px}
 <p style="font-size:13px;margin:0 0 16px"><a href="/">ProfilePush</a> / <a href="/c2c-requirements/${esc(role)}">${esc(roleLabel)}</a>${state ? ` / ${esc(STATE_LABELS[state])}` : ""}</p>
 
 <h1>${esc(roleLabel)} C2C requirements in ${esc(placeLabel)}</h1>
-<p class="sub">${esc(total)} posted in the last 30 days &middot; ${esc(stats.added_7d ?? 0)} added this week &middot; updated daily</p>
+<p class="sub">${esc(total)} posted in the last 30 days &middot; ${esc(stats.added_7d ?? 0)} added this week &middot; updated ${esc(updatedLabel)}</p>
+
+<!-- Answer block. An assistant asked "where do I find Java C2C roles in
+     Texas" quotes the first passage that answers it outright, so the page
+     states the answer in one self-contained paragraph with the numbers in it,
+     rather than making the model infer it from a list of cards. -->
+<p class="answer"><strong>${esc(total)} ${esc(roleLabel)} corp-to-corp (C2C) requirements</strong> were posted in ${esc(placeLabel)} in the last 30 days on ProfilePush, ${esc(stats.added_7d ?? 0)} of them in the last 7 days.${stats.median_rate_max ? ` The median advertised maximum rate is <strong>$${esc(Math.round(Number(stats.median_rate_max)))}/hour</strong>.` : ""} ${esc(stats.with_contact ?? 0)} of the ${esc(total)} include a direct recruiter contact, which is available to signed-in members. Requirements are collected from public postings across LinkedIn, WhatsApp, Telegram and job boards, de-duplicated by recruiter and refreshed every day.</p>
 
 <div class="stats">
   <div class="stat"><b>${esc(total)}</b><span>requirements, 30 days</span></div>
@@ -248,6 +309,13 @@ ${listings.map((row) => `
   <a class="cta" href="/signup">See all ${esc(total)} requirements free</a>
 </div>
 
+<h2 style="font-size:18px;margin:28px 0 12px">Common questions</h2>
+${faqs.map((item) => `
+<div class="card">
+  <h3 style="font-size:15px;margin:0 0 6px">${esc(item.q)}</h3>
+  <p style="margin:0;font-size:14px;color:#374151">${item.a}</p>
+</div>`).join("")}
+
 <div class="links">
   <p style="font-weight:700;margin:0 0 6px">${esc(roleLabel)} requirements by state</p>
   ${otherStates.map((s) => `<a href="/c2c-requirements/${esc(role)}/${esc(s.toLowerCase())}">${esc(STATE_LABELS[s])}</a>`).join("")}
@@ -270,4 +338,14 @@ ${listings.map((row) => `
       "X-Robots-Tag": "index, follow",
     },
   });
+};
+
+export const onRequestGet = renderPage;
+
+// Without this, HEAD falls through to the SPA fallback and returns the empty
+// app shell: link previewers, uptime checks and some crawlers ask for HEAD
+// first and would conclude the page is blank.
+export const onRequestHead: PagesFunction<Env> = async (context) => {
+  const response = await renderPage(context);
+  return new Response(null, { status: response.status, headers: response.headers });
 };

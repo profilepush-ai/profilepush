@@ -19,7 +19,8 @@
     "mobile:android:open": "npx cap open android",
     "mobile:ios:open": "npx cap open ios",
     "docs:sync": "./scripts/update-platform-doc.sh",
-    "docs:sync:install": "./scripts/install-doc-sync-cron.sh"
+    "docs:sync:install": "./scripts/install-doc-sync-cron.sh",
+    "dev:edge": "npm run build && wrangler pages dev dist --port 5173 --compatibility-date=2026-09-01"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",

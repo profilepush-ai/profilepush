@@ -16,7 +16,7 @@ type IndexRow = { role: string; state: string; listings: number };
 // this a page looks thin, and thin pages drag the whole domain.
 const MIN_LISTINGS = 20;
 
-export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
+const renderSitemap: PagesFunction<Env> = async ({ env }) => {
   let rows: IndexRow[] = [];
   try {
     const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_public_page_index`, {
@@ -65,4 +65,11 @@ ${urls.join("\n")}
       "Cache-Control": "public, max-age=3600, s-maxage=7200",
     },
   });
+};
+
+export const onRequestGet = renderSitemap;
+
+export const onRequestHead: PagesFunction<Env> = async (context) => {
+  const response = await renderSitemap(context);
+  return new Response(null, { status: response.status, headers: response.headers });
 };

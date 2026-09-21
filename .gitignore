@@ -37,3 +37,6 @@ ios/**/xcuserdata/
 # Claude Code local settings can accumulate approved command strings that
 # embed real credentials (e.g. curl commands with API keys) — never commit.
 .claude/
+
+# Local Pages Functions env (wrangler)
+.dev.vars
