@@ -60,6 +60,7 @@ Deno.serve(async (req: Request) => {
       aiPitchesRes,
       aiRequestsRes,
       aiMatchRes,
+      gmailRes,
       chatsRes,
       vendorDownloadsRes,
       recruiterDownloadsRes,
@@ -139,6 +140,13 @@ Deno.serve(async (req: Request) => {
           .eq("type", "usage")
           .like("description", "%ai_match_run%")
       ),
+      // Gmail: which accounts have connected a mailbox, and which address.
+      // Not date-ranged — a connection is current state, not an event in the
+      // window, so a range filter would make it vanish from older ranges.
+      supabase
+        .from("gmail_integrations")
+        .select("account_id, gmail_address, status, last_synced_at")
+        .in("account_id", accountIds),
       // Chats: messages sent on an in-app user_post conversation.
       withDateRange(
         supabase
@@ -189,6 +197,14 @@ Deno.serve(async (req: Request) => {
       const id = (row as { account_id?: string }).account_id;
       if (!id) continue;
       aiMatchMatchCounts[id] = (aiMatchMatchCounts[id] || 0) + Math.abs(Number((row as { amount?: number }).amount ?? 0));
+    }
+    // Only a live connection counts: a revoked or errored row means the
+    // mailbox is not actually sending any more.
+    const gmailByAccount: Record<string, { address: string; status: string }> = {};
+    for (const row of gmailRes.data ?? []) {
+      const r = row as { account_id?: string; gmail_address?: string; status?: string };
+      if (!r.account_id) continue;
+      gmailByAccount[r.account_id] = { address: r.gmail_address ?? "", status: r.status ?? "" };
     }
     const chatsCounts = countBy(chatsRes.data, "sender_account_id");
     const vendorDownloadsCounts = countBy(vendorDownloadsRes.data);
@@ -303,6 +319,16 @@ Deno.serve(async (req: Request) => {
         ai_requests_count: aiRequestsCounts[a.id] || 0,
         ai_match_runs_count: aiMatchRunCounts[a.id] || 0,
         ai_match_matches_count: aiMatchMatchCounts[a.id] || 0,
+        gmail_connected: gmailByAccount[a.id]?.status === "connected",
+        // One readable cell: the mailbox, with the status appended when it is
+        // anything other than live. A revoked connection still matters — the
+        // user connected once and it stopped working — so it is shown rather
+        // than blanked.
+        gmail_address: gmailByAccount[a.id]
+          ? (gmailByAccount[a.id].status === "connected"
+            ? gmailByAccount[a.id].address
+            : `${gmailByAccount[a.id].address} (${gmailByAccount[a.id].status})`)
+          : null,
         chats_count: chatsCounts[a.id] || 0,
         vendor_downloads_count: vendorDownloadsCounts[a.id] || 0,
         recruiter_downloads_count: recruiterDownloadsCounts[a.id] || 0,
