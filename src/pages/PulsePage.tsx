@@ -40,7 +40,6 @@ import {
   Mail,
   Table2,
   Gauge,
-  TrendingUp,
   GraduationCap,
   Flame,
   Workflow,
@@ -1317,7 +1316,6 @@ interface LeadCardProps {
   hideActions?: boolean;
   isSelected?: boolean;
   onSelect?: (lead: SocialLead) => void;
-  marketInsight?: MarketPulseInsight;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -1331,7 +1329,7 @@ const LeadCard = memo(function LeadCard({
   isExpFieldExpanded, isWorkTypeFieldExpanded, isEmpTypeFieldExpanded, isRateFieldExpanded, isVisaFieldExpanded, isLocationFieldExpanded,
   isLoadingPreview, isProcessingAskAI,
   onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
-  hideActions, isSelected, onSelect, marketInsight,
+  hideActions, isSelected, onSelect,
 }: LeadCardProps) {
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
@@ -1568,18 +1566,6 @@ const LeadCard = memo(function LeadCard({
         <span className="whitespace-nowrap">•</span>
         <span className="whitespace-nowrap">{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
       </div>
-      {marketInsight && (
-        <div
-          className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-md border border-yellow-200/70 px-2 py-1 text-[10px] font-medium text-gray-700 dark:border-yellow-300/20 dark:text-gray-200"
-          style={{ background: 'linear-gradient(135deg, #fffef5, #fff9c4)' }}
-        >
-        <TrendingUp size={11} strokeWidth={2.25} className="shrink-0 text-gray-500 dark:text-gray-300" />
-        <span>{marketInsight.domainLabel} demand: {marketInsight.domainUniqueJobs} jobs · {marketInsight.domainUniqueVendors} vendors · {marketInsight.domainUniqueHotlists} hotlists (30d)</span>
-        {marketInsight.roleAvgRate != null && (
-          <span className="ml-auto whitespace-nowrap font-semibold">Avg ${Math.round(marketInsight.roleAvgRate)}/hr</span>
-        )}
-        </div>
-      )}
       </div>
       {!hideActions && actionButtonsBar}
     </div>
@@ -2251,35 +2237,8 @@ function getPersonaSkillList(role: string, personaSkills?: string | null) {
 // social_jobs row's (job_title/extracted_role_normalized/post_content) —
 // lets a feed lead be matched against a market_pulse persona/snapshot row
 // with the exact same cheap comparison function.
-function buildLeadMatchProfile(lead: SocialLead): RowMatchProfile {
-  const roleSource = `${lead.roleTitle ?? ''} ${lead.title ?? ''}`;
-  const titleText = normalize(roleSource);
-  return {
-    titleText,
-    fullText: normalize(`${titleText} ${lead.snippet ?? ''} ${(lead.skills ?? []).join(' ')}`),
-    rowBucketKey: getPersonaBucket(roleSource).key,
-  };
-}
 
-type MarketPulseSnapshotRow = {
-  role_key: string;
-  target_role: string;
-  avg_rate: number | null;
-  unique_hotlists: number | null;
-  unique_jobs: number | null;
-  unique_vendors: number | null;
-  priority_skills: string | null;
-};
 
-type MarketPulseDomainStat = { label: string; uniqueJobs: number; uniqueVendors: number; uniqueHotlists: number };
-
-type MarketPulseInsight = {
-  domainLabel: string;
-  domainUniqueJobs: number;
-  domainUniqueVendors: number;
-  domainUniqueHotlists: number;
-  roleAvgRate: number | null;
-};
 
 function buildSeedLeaderboard(): PulsePersona[] {
   return HOTLIST_AI_SUGGESTIONS
@@ -2672,7 +2631,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // fetched once, unrelated to the heavier live persona-stats pipeline
   // above, so feed cards get a market-pulse insight even when that
   // leaderboard panel is never opened.
-  const [marketPulseSnapshot, setMarketPulseSnapshot] = useState<MarketPulseSnapshotRow[]>([]);
   const [expandedMobileProfileCardIds, setExpandedMobileProfileCardIds] = useState<Set<string>>(new Set());
   const [selectedLead, setSelectedLead] = useState<SocialLead | null>(null);
   const [processingAskAILeadId, setProcessingAskAILeadId] = useState<string | null>(null);
@@ -2785,17 +2743,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     () => PROFILE_RANGE_OPTIONS.find((item) => item.id === profileRangeId) ?? PROFILE_RANGE_OPTIONS[0],
     [profileRangeId],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const { data } = await supabase
-        .from('pulse_directory_30d_snapshot')
-        .select('role_key, target_role, avg_rate, unique_hotlists, unique_jobs, unique_vendors, priority_skills');
-      if (!cancelled && data) setMarketPulseSnapshot(data as unknown as MarketPulseSnapshotRow[]);
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     if (!isRangeMenuOpen) return;
@@ -3186,60 +3133,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
 
     return Array.from(byKey.values()).filter((lead) => !ignoredLeadIds.has(lead.id));
   }, [feedTimeBasis, ignoredLeadIds, leadIsHotlist, scopedFeed]);
-
-  const marketPulseDomainStats = useMemo(() => {
-    const stats: Record<string, MarketPulseDomainStat> = {};
-    for (const category of PROFILE_CATEGORY_TABS) {
-      if (category.id === 'all') continue;
-      stats[category.id] = { label: category.label, uniqueJobs: 0, uniqueVendors: 0, uniqueHotlists: 0 };
-    }
-    for (const row of marketPulseSnapshot) {
-      const categoryId = inferRoleCategoryId(row.target_role);
-      const bucket = stats[categoryId];
-      if (!bucket) continue;
-      bucket.uniqueJobs += row.unique_jobs ?? 0;
-      bucket.uniqueVendors += row.unique_vendors ?? 0;
-      bucket.uniqueHotlists += row.unique_hotlists ?? 0;
-    }
-    return stats;
-  }, [marketPulseSnapshot]);
-
-  // Built once per snapshot fetch (not per card/render) so every card can do
-  // a cheap array scan instead of re-normalizing role/skill text repeatedly —
-  // same hoist-the-heavy-part-out-of-the-loop pattern as buildPersonaMatchProfile
-  // above, which fixed a real multi-second blocking-task regression earlier.
-  const marketPulseMatchProfiles = useMemo(() => (
-    marketPulseSnapshot.map((row) => ({
-      row,
-      profile: buildPersonaMatchProfile(row.target_role, getPersonaSkillList(row.target_role, row.priority_skills)),
-    }))
-  ), [marketPulseSnapshot]);
-
-  const marketPulseInsightByLeadId = useMemo(() => {
-    const map = new Map<string, MarketPulseInsight>();
-    if (marketPulseMatchProfiles.length === 0) return map;
-
-    for (const lead of dedupedScopedFeed) {
-      const categoryId = inferRoleCategoryId(lead.roleTitle || lead.title, lead.snippet);
-      const domainStats = categoryId !== 'all' ? marketPulseDomainStats[categoryId] : undefined;
-      // A hollow "0 jobs · 0 vendors · 0 hotlists" box reads as broken rather
-      // than as a real market signal — skip it rather than show it.
-      if (!domainStats || (domainStats.uniqueJobs === 0 && domainStats.uniqueVendors === 0 && domainStats.uniqueHotlists === 0)) continue;
-
-      const leadProfile = buildLeadMatchProfile(lead);
-      const matched = marketPulseMatchProfiles.find(({ profile }) => matchesPersonaProfile(leadProfile, profile));
-
-      map.set(lead.id, {
-        domainLabel: domainStats.label,
-        domainUniqueJobs: domainStats.uniqueJobs,
-        domainUniqueVendors: domainStats.uniqueVendors,
-        domainUniqueHotlists: domainStats.uniqueHotlists,
-        roleAvgRate: matched?.row.avg_rate ?? null,
-      });
-    }
-
-    return map;
-  }, [dedupedScopedFeed, marketPulseDomainStats, marketPulseMatchProfiles]);
 
   const recentVisibleFeed = useMemo(() => {
     // Recent should only hold leads you haven't already acted on — once a
@@ -4003,9 +3896,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       onExpandSkills: expandCardSkills,
       onCollapseSkills: collapseCardSkills,
       onToggleField: toggleCardField,
-      // AI Match results answer "does this fit my consultant"; market-wide
-      // demand counts belong to browsing the feed, not to a shortlist.
-      marketInsight: aiMatch ? undefined : marketPulseInsightByLeadId.get(lead.id),
     };
   };
 
