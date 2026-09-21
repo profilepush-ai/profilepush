@@ -177,7 +177,48 @@ export default function ActiveListTable({
           className={`${fitContent ? '' : 'min-h-0 flex-1 overflow-auto'} ${lockedBody ? 'pointer-events-none select-none blur-sm' : ''}`}
           onScroll={fitContent ? undefined : handleScroll}
         >
-          <table className="w-full table-fixed text-left text-xs">
+          {/* Phones get a card list. The table below is table-fixed with five
+              percentage-width columns, which at 390px leaves Role Titles a few
+              pixels wide and renders it as a column of single characters —
+              unusable, and the reason this screen could not be screenshotted
+              for the marketing pages. */}
+          <ul className="divide-y divide-gray-100 sm:hidden dark:divide-white/5">
+            {rows.map((row, index) => (
+              <li key={`m-${row.email}-${index}`} className="flex items-start gap-2.5 px-3 py-3">
+                {selectable && (
+                  <input
+                    type="checkbox"
+                    className="mt-1 shrink-0"
+                    checked={selectedEmails?.has(row.email) ?? false}
+                    onChange={() => onToggleRow?.(row.email)}
+                    aria-label={`Select ${maskPii ? maskEmail(row.email) : (row.name || row.email)}`}
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="select-none truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100" onCopy={(event) => event.preventDefault()}>
+                    {row.name ? (maskPii ? maskName(row.name) : row.name) : '—'}
+                  </p>
+                  <p className="select-none truncate text-[12px] text-gray-600 dark:text-[#94A3B8]" onCopy={(event) => event.preventDefault()}>
+                    {maskPii ? maskEmail(row.email) : row.email}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-gray-400 dark:text-[#64748B]">
+                    {formatLastActive(row.last_active_at)}
+                    {row.post_count ? ` · ${row.post_count} records` : ''}
+                  </p>
+                  {row.role_titles && (
+                    <p className="mt-1 line-clamp-2 break-words text-[11px] leading-snug text-gray-600 dark:text-[#94A3B8]">
+                      {row.role_titles}
+                    </p>
+                  )}
+                </div>
+              </li>
+            ))}
+            {rows.length === 0 && (
+              <li className="px-4 py-10 text-center text-xs text-gray-500 dark:text-[#64748B]">{emptyMessage}</li>
+            )}
+          </ul>
+
+          <table className="hidden w-full table-fixed text-left text-xs sm:table">
             <thead className="sticky top-0 z-10 bg-gray-50 text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:bg-[#1E2126] dark:text-[#64748B]">
               <tr>
                 {selectable && (
