@@ -607,7 +607,7 @@ export default function BillingPage() {
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 flex flex-col">
                   <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-yellow-100 text-yellow-700 w-fit">Free</span>
                   <p className="text-2xl font-extrabold text-gray-900">₹0<span className="text-[15px] font-semibold text-gray-500">/mo</span></p>
-                  <p className="text-[13px] text-gray-500 mt-0.5 mb-4">500 credits, one time · never expire · no card required</p>
+                  <p className="text-[13px] text-gray-500 mt-0.5 mb-4">100 credits, one time · never expire · no card required</p>
                   <ul className="space-y-2 text-[13px] text-gray-600 flex-1 mb-4">
                     {['Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', 'Active List downloads: 50 contacts/download, 500 lifetime', 'Credit costs vary by feature — see breakdown below'].map(item => (
                       <li key={item} className="flex items-start gap-2">
