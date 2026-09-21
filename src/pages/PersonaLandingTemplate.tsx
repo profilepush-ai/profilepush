@@ -322,6 +322,9 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
 
   const storageBaseUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/landing-assets/features`;
   const allKeys = Array.from(new Set([content.heroFeatureKey, ...content.features.map(f => f.key)]));
+  // Only desktop keys get a .webm fallback. A `-mobile` key with no row in
+  // landing_screenshots must stay undefined so GifSlot falls back to the
+  // desktop asset, rather than pointing at a file that was never uploaded.
   const fallbackScreenshots = allKeys.reduce<Record<string, string>>((acc, key) => {
     acc[key] = `${storageBaseUrl}/${key}.webm`;
     return acc;
@@ -411,6 +414,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
             <GifSlot
               featureKey={heroFeature.key}
               imageUrl={screenshots[heroFeature.key] ?? null}
+              mobileImageUrl={screenshots[`${heroFeature.key}-mobile`] ?? null}
               canEdit={canEdit}
               onUploaded={handleUploaded}
               accent={heroFeature.accent}
@@ -461,6 +465,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                 <GifSlot
                   featureKey={f.key}
                   imageUrl={screenshots[f.key] ?? null}
+                  mobileImageUrl={screenshots[`${f.key}-mobile`] ?? null}
                   canEdit={canEdit}
                   onUploaded={handleUploaded}
                   accent={f.accent}

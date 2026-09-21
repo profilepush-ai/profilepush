@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase';
 export default function GifSlot({
   featureKey,
   imageUrl,
+  mobileImageUrl,
   canEdit,
   onUploaded,
   accent,
@@ -18,6 +19,7 @@ export default function GifSlot({
 }: {
   featureKey: string;
   imageUrl: string | null;
+  mobileImageUrl?: string | null;
   canEdit: boolean;
   onUploaded: (key: string, url: string) => void;
   accent: string;
@@ -26,9 +28,18 @@ export default function GifSlot({
   const [uploading, setUploading] = useState(false);
   const [hovered, setHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mobileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const isVideo = !!imageUrl && /\.(webm|mp4|mov)(\?|$)/i.test(imageUrl);
+
+  // A second asset per feature, stored as `{key}-mobile.*`, shown only on
+  // phones. Desktop capture is a wide browser window; on a 390px screen it
+  // scales down to an unreadable strip, which is what a landscape video does
+  // here today. When no mobile variant has been uploaded the desktop one is
+  // used, so nothing breaks on a feature that only has the one asset.
+  const mobileUrl = mobileImageUrl ?? null;
+  const isMobileVideo = !!mobileUrl && /\.(webm|mp4|mov)(\?|$)/i.test(mobileUrl);
 
   useEffect(() => {
     const vid = videoRef.current;
@@ -38,12 +49,22 @@ export default function GifSlot({
     }
   }, [imageUrl]);
 
-  async function handleFile(file: File) {
-    if (!['video/webm', 'video/mp4'].includes(file.type)) return;
+  // Images were rejected outright before, so a screenshot could not be put on
+  // these pages at all — only a video.
+  const EXT_BY_TYPE: Record<string, string> = {
+    'video/webm': 'webm',
+    'video/mp4': 'mp4',
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+  };
+
+  async function handleFile(file: File, variant: 'desktop' | 'mobile' = 'desktop') {
+    const ext = EXT_BY_TYPE[file.type];
+    if (!ext) return;
     setUploading(true);
     try {
-      const ext = file.type === 'video/mp4' ? 'mp4' : 'webm';
-      const path = `features/${featureKey}.${ext}`;
+      const path = `features/${featureKey}${variant === 'mobile' ? '-mobile' : ''}.${ext}`;
       const { error: uploadErr } = await supabase.storage
         .from('landing-assets')
         .upload(path, file, { upsert: true, contentType: file.type });
@@ -59,9 +80,14 @@ export default function GifSlot({
 
       await supabase
         .from('landing_screenshots')
-        .upsert({ feature_key: featureKey, image_url: publicUrl, updated_at: new Date().toISOString() }, { onConflict: 'feature_key' });
+        .upsert(
+          variant === 'mobile'
+            ? { feature_key: `${featureKey}-mobile`, image_url: publicUrl, updated_at: new Date().toISOString() }
+            : { feature_key: featureKey, image_url: publicUrl, updated_at: new Date().toISOString() },
+          { onConflict: 'feature_key' },
+        );
 
-      onUploaded(featureKey, publicUrl);
+      onUploaded(variant === 'mobile' ? `${featureKey}-mobile` : featureKey, publicUrl);
     } catch (err) {
       console.error('Upload failed:', err);
     }
@@ -70,7 +96,11 @@ export default function GifSlot({
 
   return (
     <div className="relative w-full">
-      <div className="relative w-full aspect-[1866/968] p-px overflow-hidden shadow-2xl shadow-gray-300/40 gradient-border-frame">
+      {/* The frame itself changes shape: a phone-shaped box on mobile so a
+          portrait screenshot fills it, and the wide browser shape from sm up.
+          A 1866x968 frame on a 390px screen is 200px tall, which is where the
+          app UI in these assets became unreadable. */}
+      <div className={`relative w-full p-px overflow-hidden shadow-2xl shadow-gray-300/40 gradient-border-frame ${mobileUrl ? 'aspect-[9/16] sm:aspect-[1866/968]' : 'aspect-[1866/968]'}`}>
       <div
         className="relative w-full h-full overflow-hidden bg-white group"
         onMouseEnter={() => setHovered(true)}
@@ -78,6 +108,17 @@ export default function GifSlot({
       >
         {/* Content area */}
       <div className={`absolute inset-0 bg-gradient-to-br ${accent}`}>
+        {mobileUrl && (
+          // Phones get their own asset and never download the desktop one.
+          <div className="sm:hidden w-full h-full">
+            {isMobileVideo ? (
+              <video src={mobileUrl} autoPlay loop muted playsInline preload="metadata" disablePictureInPicture disableRemotePlayback className="w-full h-full object-contain" />
+            ) : (
+              <img src={mobileUrl} alt="Feature preview on mobile" loading="lazy" decoding="async" className="w-full h-full object-contain" />
+            )}
+          </div>
+        )}
+        <div className={mobileUrl ? 'hidden sm:block w-full h-full' : 'w-full h-full'}>
         {imageUrl ? (
           isVideo ? (
           <video
@@ -97,6 +138,7 @@ export default function GifSlot({
               src={imageUrl}
               alt="Feature preview"
               loading="lazy"
+              decoding="async"
               className="w-full h-full object-contain"
             />
           )
@@ -105,9 +147,10 @@ export default function GifSlot({
             <div className="w-16 h-16 rounded-2xl bg-gray-100 border border-gray-200 flex items-center justify-center">
               <ImagePlus size={24} className="text-gray-300" />
             </div>
-            <p className="text-gray-300 text-xs font-medium">Video will appear here</p>
+            <p className="text-gray-300 text-xs font-medium">Screenshot or video will appear here</p>
           </div>
         )}
+        </div>
       </div>
 
       {/* Upload overlay */}
@@ -116,24 +159,43 @@ export default function GifSlot({
           <input
             ref={inputRef}
             type="file"
-            accept=".webm,.mp4,video/webm,video/mp4"
+            accept=".webm,.mp4,.png,.jpg,.jpeg,.webp,video/webm,video/mp4,image/png,image/jpeg,image/webp"
             className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f, 'desktop'); e.target.value = ''; }}
           />
-          <button
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className={`absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-white/75 backdrop-blur-sm transition-opacity duration-200 cursor-pointer ${hovered ? 'opacity-100' : 'opacity-0'}`}
+          <input
+            ref={mobileInputRef}
+            type="file"
+            accept=".webm,.mp4,.png,.jpg,.jpeg,.webp,video/webm,video/mp4,image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f, 'mobile'); e.target.value = ''; }}
+          />
+          <div
+            className={`absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white/75 backdrop-blur-sm transition-opacity duration-200 ${hovered ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           >
             {uploading ? (
               <LogoSpinner size={32} />
             ) : (
-              <Upload size={22} className="text-blue-600" />
+              <>
+                <Upload size={22} className="text-blue-600" />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => inputRef.current?.click()}
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
+                  >
+                    {imageUrl ? 'Replace desktop' : 'Upload desktop'}
+                  </button>
+                  <button
+                    onClick={() => mobileInputRef.current?.click()}
+                    className="rounded-lg border border-blue-600 px-3 py-1.5 text-xs font-semibold text-blue-700"
+                  >
+                    {mobileUrl ? 'Replace mobile' : 'Upload mobile'}
+                  </button>
+                </div>
+                <span className="text-[11px] text-gray-500">PNG, JPG, WebP, MP4 or WebM</span>
+              </>
             )}
-            <span className="text-blue-700 text-xs font-semibold">
-              {uploading ? 'Uploading…' : imageUrl ? 'Replace Video' : 'Upload Video'}
-            </span>
-          </button>
+          </div>
         </>
       )}
       </div>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, Briefcase, Check, ChevronRight, Plus, Minus, ShieldCheck, UserRound,
+  Radar, Sparkles, Send, Video, Clock3, MapPin,
 } from 'lucide-react';
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
@@ -225,6 +226,127 @@ export default function LandingPage() {
                   </Link>
                   </div>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── MARKET ── live counts, and the entry point to the public
+           requirement pages. Numbers a visitor can check beat adjectives, and
+           these links are what make those pages part of the site rather than
+           a sitemap-only appendix. */}
+      <section className="py-16 md:py-20 px-6 bg-white border-y border-gray-100">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-10">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">The market, today</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">Around 900 new requirements land every weekday.</h2>
+            <p className="text-gray-500 max-w-2xl mx-auto">Collected from LinkedIn, WhatsApp, Telegram and job boards, de-duplicated by recruiter, and refreshed daily. Browse a slice of it without an account.</p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+            {[
+              { icon: Radar, stat: '~900', label: 'new requirements a weekday' },
+              { icon: Clock3, stat: '30 days', label: 'rolling live window' },
+              { icon: MapPin, stat: '50 states', label: 'plus remote' },
+              { icon: Send, stat: 'Free', label: 'unlimited submissions' },
+            ].map(item => (
+              <div key={item.label} className="rounded-2xl border border-gray-200 p-5 text-center">
+                <item.icon size={18} className="mx-auto mb-2 text-blue-600" />
+                <p className="text-2xl font-extrabold text-gray-900">{item.stat}</p>
+                <p className="text-xs text-gray-500 mt-1">{item.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-2">
+            {[
+              ['java-developer', 'Java'],
+              ['data-engineer', 'Data Engineer'],
+              ['cloud-engineer', 'Cloud'],
+              ['sap', 'SAP'],
+              ['salesforce', 'Salesforce'],
+              ['business-analyst', 'Business Analyst'],
+              ['qa-automation', 'QA'],
+              ['devops', 'DevOps'],
+            ].map(([slug, label]) => (
+              /* Plain anchors: these routes are served by a Pages Function, not
+                 the SPA router, so a client-side navigation would 404. */
+              <a
+                key={slug}
+                href={`/c2c-requirements/${slug}`}
+                className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-700"
+              >
+                {label} C2C requirements
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── HOW IT WORKS ── */}
+      <section id="how-it-works" className="py-16 md:py-24 px-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-12">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">How it works</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Paste. Match. Submit.</h2>
+          </div>
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              {
+                icon: Sparkles,
+                step: '01',
+                title: 'Paste a consultant or a job',
+                body: 'Paste the text you already have, or upload a resume. No forms, no field-by-field entry. It becomes your post at the same time.',
+              },
+              {
+                icon: Radar,
+                step: '02',
+                title: 'Get matches ranked 1 to 10',
+                body: 'Every open requirement from the last 30 days is scored against it, with a one-line reason and a flag when the visa, rate or location does not line up.',
+              },
+              {
+                icon: Send,
+                step: '03',
+                title: 'Submit in one tap',
+                body: 'The email writes itself from the match. Submissions are always free, and replies land back in your inbox inside the platform.',
+              },
+            ].map(item => (
+              <div key={item.step} className="rounded-2xl border border-gray-200 bg-white p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                    <item.icon size={18} />
+                  </span>
+                  <span className="text-xs font-bold text-gray-400">{item.step}</span>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-1.5">{item.title}</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SCREENING ── the one capability the competing bench-sales tools
+           do not have, so it gets its own section rather than a bullet. */}
+      <section className="py-16 md:py-20 px-6 bg-gray-50 border-y border-gray-100">
+        <div className="max-w-4xl mx-auto text-center">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white border border-gray-200 text-blue-600 mb-4">
+            <Video size={22} />
+          </span>
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Every consultant arrives screened.</h2>
+          <p className="text-gray-600 max-w-2xl mx-auto mb-8">
+            An adaptive video interview runs before a submission reaches the vendor, so fake resumes and proxy interviews surface early — while it is still your decision, not your client's discovery.
+          </p>
+          <div className="grid sm:grid-cols-3 gap-4 text-left">
+            {[
+              ['Adaptive questions', 'Generated from the actual requirement, not a generic template.'],
+              ['Recorded and scored', 'The vendor sees how the consultant really answers, not a claim on a resume.'],
+              ['Before submission', 'Problems show up at your end, not in front of the client.'],
+            ].map(([title, body]) => (
+              <div key={title} className="rounded-xl bg-white border border-gray-200 p-4">
+                <p className="text-sm font-bold text-gray-900 mb-1">{title}</p>
+                <p className="text-xs text-gray-600 leading-relaxed">{body}</p>
               </div>
             ))}
           </div>
