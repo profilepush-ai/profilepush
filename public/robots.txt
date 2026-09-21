@@ -67,5 +67,6 @@ Allow: /
 User-agent: Applebot-Extended
 Allow: /
 
+# A sitemap index: it points at the marketing pages and the generated
+# requirement pages, so this one URL covers everything.
 Sitemap: https://profilepush.ai/sitemap.xml
-Sitemap: https://profilepush.ai/sitemap-requirements.xml
