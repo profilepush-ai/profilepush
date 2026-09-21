@@ -60,12 +60,17 @@ const SCRUB = () => {
   }
 };
 
+// Waits are generous because these pages fetch on mount and a short wait
+// captures a spinner — the Active List looked empty on the first run purely
+// because 7s was not long enough for it to finish loading.
+//
+// Only pages backed by global inventory are listed. posts, inbox, tracker and
+// the screening flow are account-scoped, so they render empty states unless
+// the capture runs against an account with real activity.
 const PAGES = [
-  ['hotlist', '/feed', 10000],
-  ['posts', '/posts/hotlist', 7000],
-  ['inbox', '/inbox', 7000],
-  ['tracker', '/tracker', 7000],
-  ['activelist', '/active-list', 7000],
+  ['hotlist', '/feed', 11000],
+  ['activelist', '/active-list', 16000],
+  ['pulse', '/pulse', 14000],
 ];
 
 const browser = await chromium.launch();
