@@ -553,7 +553,7 @@ async function autoPostDescription(input: {
   // COALESCE(NULLIF(TRIM(p_post_content), ''), …), while the check compared
   // the untrimmed description. A paste ending in a newline therefore never
   // matched the post it had just created, and the guard passed every time.
-  const postedContent = postedContent.trim();
+  const postedContent = description.slice(0, 7900).trim();
 
   // Re-running a match on the same text shouldn't post it again.
   const since = new Date(Date.now() - DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
