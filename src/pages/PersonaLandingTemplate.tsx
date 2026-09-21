@@ -325,8 +325,13 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
   // policies used to let any signed-in user overwrite it), so a repo-hosted
   // asset is the one path that needs no credentials, no upload step and no
   // round trip — it deploys with the code.
-  const BUNDLED_SHOTS: Record<string, { desktop: string; mobile: string }> = {
+  const BUNDLED_SHOTS: Record<string, { desktop: string; mobile?: string }> = {
     hotlist: { desktop: '/screens/features/hotlist.jpg', mobile: '/screens/features/hotlist-mobile.jpg' },
+    // Desktop only on purpose: the Active List table does not respond below
+    // ~640px — it collapses into a column of vertical characters — so a phone
+    // capture would advertise a layout bug. Without a mobile variant the slot
+    // keeps its wide frame and shows this on every size.
+    activelist: { desktop: '/screens/features/activelist.jpg' },
   };
 
   const storageBaseUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/landing-assets/features`;
