@@ -66,7 +66,12 @@ ${urls.join("\n")}
   return new Response(xml, {
     headers: {
       "Content-Type": "application/xml; charset=utf-8",
-      "Cache-Control": "public, max-age=3600, s-maxage=7200",
+      // Short browser cache, long edge cache. An hour of browser caching meant
+      // that after changing which pages are listed, the file still looked
+      // unchanged when opened directly — while crawlers, which do not reuse a
+      // browser cache, were already getting the new list. The CDN still
+      // absorbs crawl bursts.
+      "Cache-Control": "public, max-age=120, s-maxage=7200",
     },
   });
 };
