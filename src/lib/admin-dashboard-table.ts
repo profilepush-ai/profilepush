@@ -15,6 +15,8 @@ export interface AdminAccountStatsRow {
   ai_requests_count: number;
   ai_match_runs_count: number;
   ai_match_matches_count: number;
+  gmail_connected: boolean;
+  gmail_address: string | null;
   chats_count: number;
   vendor_downloads_count: number;
   recruiter_downloads_count: number;

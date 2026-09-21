@@ -28,6 +28,8 @@ interface AccountStats {
   ai_requests_count: number;
   ai_match_runs_count: number;
   ai_match_matches_count: number;
+  gmail_connected: boolean;
+  gmail_address: string | null;
   chats_count: number;
   vendor_downloads_count: number;
   recruiter_downloads_count: number;
@@ -106,6 +108,7 @@ const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.React
   // Matches delivered, not runs: that is what was charged and what the user
   // actually received. Runs ride along in the cell's tooltip.
   { key: 'ai_match_matches_count', label: 'AI Matches', icon: <Sparkles size={12} />, kind: 'number', widthClass: 'w-[115px]' },
+  { key: 'gmail_address', label: 'Gmail', icon: <Mail size={12} />, kind: 'text', widthClass: 'w-[200px]' },
   { key: 'chats_count', label: 'Chats', icon: <MessageSquare size={12} />, kind: 'number', widthClass: 'w-[90px]' },
   { key: 'vendor_downloads_count', label: 'Vendor Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[140px]' },
   { key: 'recruiter_downloads_count', label: 'Recruiter Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[150px]' },
@@ -490,6 +493,7 @@ export default function AdminDashboard() {
   const totalPreviews = (totals.job_previews_count ?? 0) + (totals.hotlist_previews_count ?? 0);
   const totalAiAsks = (totals.ai_pitches_count ?? 0) + (totals.ai_requests_count ?? 0);
   const totalDownloads = (totals.vendor_downloads_count ?? 0) + (totals.recruiter_downloads_count ?? 0);
+  const gmailConnectedCount = filteredStats.filter((row) => row.gmail_connected).length;
   // Averaged over *active* accounts, not all of them — dividing by dormant
   // accounts drags the number toward zero and hides how long real users stay.
   const avgActiveSeconds = activeAccounts > 0 ? Math.round((totals.active_seconds ?? 0) / activeAccounts) : 0;
@@ -780,6 +784,7 @@ export default function AdminDashboard() {
                   { label: 'Previews', value: totalPreviews.toLocaleString(), hint: `${(totals.job_previews_count ?? 0).toLocaleString()} job · ${(totals.hotlist_previews_count ?? 0).toLocaleString()} hotlist` },
                   { label: 'AI Asks', value: totalAiAsks.toLocaleString(), hint: `${(totals.ai_pitches_count ?? 0).toLocaleString()} pitch · ${(totals.ai_requests_count ?? 0).toLocaleString()} request` },
                   { label: 'AI Matches', value: (totals.ai_match_matches_count ?? 0).toLocaleString(), hint: `${(totals.ai_match_runs_count ?? 0).toLocaleString()} runs` },
+                  { label: 'Gmail Connected', value: gmailConnectedCount.toLocaleString(), hint: shareOfAccounts(gmailConnectedCount) },
                   { label: 'Chats', value: (totals.chats_count ?? 0).toLocaleString(), hint: 'messages sent' },
                   { label: 'Downloads', value: totalDownloads.toLocaleString(), hint: `${(totals.vendor_downloads_count ?? 0).toLocaleString()} vendor · ${(totals.recruiter_downloads_count ?? 0).toLocaleString()} recruiter` },
                 ].map((metric) => (
