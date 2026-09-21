@@ -70,7 +70,10 @@ const SCRUB = () => {
 const PAGES = [
   ['hotlist', '/feed', 11000],
   ['activelist', '/active-list', 16000],
-  ['pulse', '/pulse', 14000],
+  ['posts', '/posts', 9000],
+  ['inbox', '/inbox', 9000],
+  ['tracker', '/tracker', 9000],
+  ['pulse', '/pulse', 22000],
 ];
 
 const browser = await chromium.launch();
