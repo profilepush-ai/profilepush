@@ -1,1 +1,9 @@
+# The sitemap was briefly split into /sitemap-marketing.xml and
+# /sitemap-requirements.xml. Both are now folded into /sitemap.xml. These keep
+# the old URLs — already submitted to Search Console and cited in llms.txt —
+# resolving instead of falling through to the SPA catch-all below, which would
+# answer 200 with HTML and get reported as a broken sitemap.
+/sitemap-marketing.xml /sitemap.xml 301
+/sitemap-requirements.xml /sitemap.xml 301
+
 /* /index.html 200
