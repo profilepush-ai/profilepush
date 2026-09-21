@@ -545,6 +545,16 @@ async function autoPostDescription(input: {
 }): Promise<PostOutcome> {
   const { supabaseAdmin, userClient, kind, description, accountId } = input;
 
+  // Exactly what will be stored, computed once and used both for the
+  // duplicate check and for the insert.
+  //
+  // These two drifted apart and that is why re-running a match produced a
+  // second identical post: the create RPCs store
+  // COALESCE(NULLIF(TRIM(p_post_content), ''), …), while the check compared
+  // the untrimmed description. A paste ending in a newline therefore never
+  // matched the post it had just created, and the guard passed every time.
+  const postedContent = postedContent.trim();
+
   // Re-running a match on the same text shouldn't post it again.
   const since = new Date(Date.now() - DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { count: existing } = await supabaseAdmin
@@ -552,7 +562,7 @@ async function autoPostDescription(input: {
     .select("id", { count: "exact", head: true })
     .eq("created_by_account_id", accountId)
     .eq("post_source", "user_post")
-    .eq(kind === "job" ? "post_content" : "raw_post_content", description)
+    .eq(kind === "job" ? "post_content" : "raw_post_content", postedContent)
     .gte("created_at", since);
   if ((existing ?? 0) > 0) return { status: "duplicate" };
 
@@ -593,7 +603,7 @@ async function autoPostDescription(input: {
       p_seniority_level: text(f.seniority_level),
       p_salary_range: text(f.salary_range),
       p_job_description: text(f.job_description),
-      p_post_content: description.slice(0, 7900),
+      p_post_content: postedContent,
       p_skills: list(f.skills),
       p_experience_years: years == null ? null : Math.round(years),
       p_visa_types: list(f.visa_types),
@@ -650,7 +660,7 @@ async function autoPostDescription(input: {
       // A hotlist table: one post per consultant, as the Post form does.
       const { error } = await userClient.rpc("create_user_hotlist_posts_batch", {
         p_candidates: usable.map(toCandidate),
-        p_post_content: description.slice(0, 7900),
+        p_post_content: postedContent,
         p_contact_email: contactEmail,
         p_contact_phone: contactPhone,
       });
@@ -672,7 +682,7 @@ async function autoPostDescription(input: {
           p_hourly_rate_max: c.hourly_rate_max,
           p_availability: c.availability,
           p_candidate_summary: c.candidate_summary,
-          p_post_content: description.slice(0, 7900),
+          p_post_content: postedContent,
           p_contact_email: contactEmail,
           p_contact_phone: contactPhone,
         });
@@ -695,7 +705,7 @@ async function autoPostDescription(input: {
         p_hourly_rate_max: c.hourly_rate_max,
         p_availability: c.availability,
         p_candidate_summary: c.candidate_summary,
-        p_post_content: description.slice(0, 7900),
+        p_post_content: postedContent,
         p_contact_email: contactEmail,
         p_contact_phone: contactPhone,
       });
