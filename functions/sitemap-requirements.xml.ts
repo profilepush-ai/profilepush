@@ -12,9 +12,13 @@ interface Env {
 
 type IndexRow = { role: string; state: string; listings: number };
 
-// Matches the threshold used when deciding which templates are viable: below
-// this a page looks thin, and thin pages drag the whole domain.
-const MIN_LISTINGS = 20;
+// A page renders whenever it has at least one contactable, de-duplicated
+// listing, so 20 was advertising only 163 of the 384 pages that actually
+// work. Ten keeps every advertised page substantive — ten requirements in a
+// rolling 30 days, five of them shown — while adding 113 that were live and
+// simply undiscoverable. The page itself still 404s when it has nothing,
+// which is what keeps the sitemap free of dead URLs.
+const MIN_LISTINGS = 10;
 
 const renderSitemap: PagesFunction<Env> = async ({ env }) => {
   let rows: IndexRow[] = [];
