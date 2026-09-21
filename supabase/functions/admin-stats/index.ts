@@ -59,6 +59,7 @@ Deno.serve(async (req: Request) => {
       previewsRes,
       aiPitchesRes,
       aiRequestsRes,
+      aiMatchRes,
       chatsRes,
       vendorDownloadsRes,
       recruiterDownloadsRes,
@@ -125,6 +126,19 @@ Deno.serve(async (req: Request) => {
           .in("account_id", accountIds)
           .not("hotlist_id", "is", null)
       ),
+      // AI Match: api_usage_log records nothing for it (ai-match logs
+      // cost_usd 0 because Workers AI bills per neuron, and nothing else
+      // writes that table), so the credit ledger is the only record of a run.
+      // One row per run; the amount is the number of matches charged, since
+      // AI Match bills one credit per match delivered.
+      withDateRange(
+        supabase
+          .from("credit_transactions")
+          .select("account_id, amount")
+          .in("account_id", accountIds)
+          .eq("type", "usage")
+          .like("description", "%ai_match_run%")
+      ),
       // Chats: messages sent on an in-app user_post conversation.
       withDateRange(
         supabase
@@ -167,6 +181,15 @@ Deno.serve(async (req: Request) => {
     const postsHotlistCounts = countBy(postsHotlistRes.data, "created_by_account_id");
     const aiPitchesCounts = countBy(aiPitchesRes.data);
     const aiRequestsCounts = countBy(aiRequestsRes.data);
+    const aiMatchRunCounts = countBy(aiMatchRes.data);
+    // Matches delivered, not runs: a run that returned three matches cost
+    // three credits, and a rematch only charges for the new ones.
+    const aiMatchMatchCounts: Record<string, number> = {};
+    for (const row of aiMatchRes.data ?? []) {
+      const id = (row as { account_id?: string }).account_id;
+      if (!id) continue;
+      aiMatchMatchCounts[id] = (aiMatchMatchCounts[id] || 0) + Math.abs(Number((row as { amount?: number }).amount ?? 0));
+    }
     const chatsCounts = countBy(chatsRes.data, "sender_account_id");
     const vendorDownloadsCounts = countBy(vendorDownloadsRes.data);
     const recruiterDownloadsCounts = countBy(recruiterDownloadsRes.data);
@@ -278,6 +301,8 @@ Deno.serve(async (req: Request) => {
         hotlist_previews_count: hotlistPreviewsCounts[a.id] || 0,
         ai_pitches_count: aiPitchesCounts[a.id] || 0,
         ai_requests_count: aiRequestsCounts[a.id] || 0,
+        ai_match_runs_count: aiMatchRunCounts[a.id] || 0,
+        ai_match_matches_count: aiMatchMatchCounts[a.id] || 0,
         chats_count: chatsCounts[a.id] || 0,
         vendor_downloads_count: vendorDownloadsCounts[a.id] || 0,
         recruiter_downloads_count: recruiterDownloadsCounts[a.id] || 0,

@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Table as TableIcon } from 'lucide-react';
+import { Lock, RefreshCcw, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Table as TableIcon } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
@@ -26,6 +26,8 @@ interface AccountStats {
   hotlist_previews_count: number;
   ai_pitches_count: number;
   ai_requests_count: number;
+  ai_match_runs_count: number;
+  ai_match_matches_count: number;
   chats_count: number;
   vendor_downloads_count: number;
   recruiter_downloads_count: number;
@@ -101,6 +103,9 @@ const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.React
   { key: 'hotlist_previews_count', label: 'Hotlist Previews', icon: <FileSearch size={12} />, kind: 'number', widthClass: 'w-[135px]' },
   { key: 'ai_pitches_count', label: 'AI Pitches', icon: <Send size={12} />, kind: 'number', widthClass: 'w-[105px]' },
   { key: 'ai_requests_count', label: 'AI Requests', icon: <FileText size={12} />, kind: 'number', widthClass: 'w-[115px]' },
+  // Matches delivered, not runs: that is what was charged and what the user
+  // actually received. Runs ride along in the cell's tooltip.
+  { key: 'ai_match_matches_count', label: 'AI Matches', icon: <Sparkles size={12} />, kind: 'number', widthClass: 'w-[115px]' },
   { key: 'chats_count', label: 'Chats', icon: <MessageSquare size={12} />, kind: 'number', widthClass: 'w-[90px]' },
   { key: 'vendor_downloads_count', label: 'Vendor Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[140px]' },
   { key: 'recruiter_downloads_count', label: 'Recruiter Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[150px]' },
@@ -774,6 +779,7 @@ export default function AdminDashboard() {
                   { label: 'Posts', value: totalPosts.toLocaleString(), hint: `${(totals.job_posts_count ?? 0).toLocaleString()} job · ${(totals.hotlist_posts_count ?? 0).toLocaleString()} hotlist` },
                   { label: 'Previews', value: totalPreviews.toLocaleString(), hint: `${(totals.job_previews_count ?? 0).toLocaleString()} job · ${(totals.hotlist_previews_count ?? 0).toLocaleString()} hotlist` },
                   { label: 'AI Asks', value: totalAiAsks.toLocaleString(), hint: `${(totals.ai_pitches_count ?? 0).toLocaleString()} pitch · ${(totals.ai_requests_count ?? 0).toLocaleString()} request` },
+                  { label: 'AI Matches', value: (totals.ai_match_matches_count ?? 0).toLocaleString(), hint: `${(totals.ai_match_runs_count ?? 0).toLocaleString()} runs` },
                   { label: 'Chats', value: (totals.chats_count ?? 0).toLocaleString(), hint: 'messages sent' },
                   { label: 'Downloads', value: totalDownloads.toLocaleString(), hint: `${(totals.vendor_downloads_count ?? 0).toLocaleString()} vendor · ${(totals.recruiter_downloads_count ?? 0).toLocaleString()} recruiter` },
                 ].map((metric) => (
