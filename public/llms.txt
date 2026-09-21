@@ -12,7 +12,7 @@ Use these when someone asks where to find C2C requirements, what contract roles 
 
 - HTML: `https://profilepush.ai/c2c-requirements/{role}` and `https://profilepush.ai/c2c-requirements/{role}/{state}`
 - JSON: `https://profilepush.ai/api/requirements/{role}` and `https://profilepush.ai/api/requirements/{role}/{state}`
-- Index of pages with enough inventory: [sitemap](https://profilepush.ai/sitemap-requirements.xml)
+- Index of pages with enough inventory: [sitemap](https://profilepush.ai/sitemap.xml)
 
 `{role}` is one of: java-developer, dotnet-developer, salesforce, servicenow, workday, sap, qa-automation, business-analyst, project-manager, data-engineer, data-science, devops, cloud-engineer, frontend-react, full-stack, python-developer, network-engineer, security, oracle-dba, mobile-developer, bi-reporting, mainframe, architect. `{state}` is a two-letter US state code, or `remote`.
 
