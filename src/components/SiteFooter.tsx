@@ -5,7 +5,7 @@ export default function SiteFooter() {
   return (
     <footer className="border-t border-gray-100 bg-gray-50 pt-12 pb-8 px-6">
       <div className="max-w-6xl mx-auto">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-8 mb-10">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-8 mb-10">
           {/* Brand */}
           <div className="col-span-2 sm:col-span-3 md:col-span-1">
             <Logo size="sm" />
@@ -25,6 +25,33 @@ export default function SiteFooter() {
               <li><a href="/#tracker" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Tracker</a></li>
               <li><Link to="/it-staffing-vendor-list" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Vendor List</Link></li>
               <li><Link to="/it-staffing-bench-sales-recruiters-list" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Bench Sales Recruiters List</Link></li>
+            </ul>
+          </div>
+
+          {/* C2C Requirements — the entry point into the generated
+              /c2c-requirements pages. Without a link from here those pages are
+              orphans: crawlable only from the sitemap, and inheriting none of
+              the authority this domain has already built. The footer is on
+              every page, so it passes that authority to the hubs, and each hub
+              links down to its own states. */}
+          <div>
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-4">C2C Requirements</p>
+            <ul className="space-y-2.5">
+              {[
+                ['java-developer', 'Java Developer'],
+                ['data-engineer', 'Data Engineer'],
+                ['cloud-engineer', 'Cloud Engineer'],
+                ['sap', 'SAP'],
+                ['business-analyst', 'Business Analyst'],
+                ['salesforce', 'Salesforce'],
+                ['qa-automation', 'QA / Automation'],
+              ].map(([slug, label]) => (
+                <li key={slug}>
+                  {/* A plain anchor, not react-router Link: these pages are
+                      served by a Pages Function, not by the SPA router. */}
+                  <a href={`/c2c-requirements/${slug}`} className="text-sm text-gray-500 hover:text-gray-800 transition-colors">{label} C2C Jobs</a>
+                </li>
+              ))}
             </ul>
           </div>
 

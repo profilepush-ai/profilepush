@@ -133,7 +133,7 @@ export default function PricingPage() {
                   <span className="text-5xl font-extrabold text-white">$0</span>
                   <span className="text-gray-500 pb-1">/ forever</span>
                 </div>
-                <p className="text-sm text-gray-500">$5 in free credits to explore every feature</p>
+                <p className="text-sm text-gray-500">100 free credits to explore every feature</p>
               </div>
 
               <ul className="space-y-3 text-sm flex-1 mb-8">
@@ -356,7 +356,7 @@ export default function PricingPage() {
         <section className="py-20 px-6 text-center">
           <div className="max-w-lg mx-auto">
             <h2 className="text-3xl font-extrabold text-white mb-4">Start in seconds.</h2>
-            <p className="text-gray-400 mb-8">$5 free credits. No credit card. Full access from day one.</p>
+            <p className="text-gray-400 mb-8">100 free credits. No credit card. Full access from day one.</p>
             <Link
               to="/signup"
               className="inline-flex items-center gap-2 bg-white hover:bg-gray-100 text-gray-900 font-bold px-8 py-4 rounded-2xl transition-colors shadow-2xl text-base"

@@ -19,6 +19,10 @@ interface WorkflowCard {
   buttonClass: string;
   path: string;
   cta: string;
+  // Play Store screenshot for this persona. Full-bleed at the top of the card,
+  // so the first thing a visitor sees is the product rather than a bullet list.
+  image: string;
+  imageAlt: string;
 }
 
 const WORKFLOW_CARDS: WorkflowCard[] = [
@@ -39,6 +43,8 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     buttonClass: 'border-2 border-blue-600 text-blue-600 hover:bg-blue-50',
     path: '/vendors',
     cta: 'Explore',
+    image: '/screens/vendors.jpg',
+    imageAlt: 'ProfilePush for vendors: hotlist feed with consultant cards, rates, visa status and resume request',
   },
   {
     persona: 'bench_sales',
@@ -57,6 +63,8 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     buttonClass: 'border-2 border-orange-500 text-orange-500 hover:bg-orange-50',
     path: '/bench-sales',
     cta: 'Explore',
+    image: '/screens/bench-sales.jpg',
+    imageAlt: 'ProfilePush for bench sales: live job feed with rates, locations and one-tap AI Submit',
   },
 ];
 
@@ -75,7 +83,7 @@ const FAQS = [
   },
   {
     q: 'What does it cost?',
-    a: 'Free. 500 credits that never expire. A post costs 1 credit. An AI email costs 1 credit, refunded if it fails. Submitting is always free.',
+    a: 'Free. 100 credits that never expire, plus 10 more when you publish your first post and 10 when you send your first submission. A post costs 1 credit. An AI email costs 1 credit, refunded if it fails. Submitting is always free.',
   },
   {
     q: 'Is the data safe?',
@@ -154,7 +162,7 @@ export default function LandingPage() {
                 Forever Free
               </span>
               <span className="text-gray-400">·</span>
-              <span>500 Free AI Credits</span>
+              <span>100 Free AI Credits</span>
               <span className="text-gray-400">·</span>
               <span>No Credit Card Required</span>
             </p>
@@ -174,8 +182,25 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 gap-3 sm:gap-6 md:gap-8">
             {WORKFLOW_CARDS.map((card) => (
               <div key={card.persona} className="rounded-xl sm:rounded-2xl p-px gradient-border-frame shadow-xl shadow-gray-200/60">
-                <div className="relative flex h-full flex-col rounded-xl sm:rounded-2xl bg-white p-3.5 sm:p-6 md:p-8 overflow-hidden text-left">
-                  <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${card.accent}`} />
+                <div className="relative flex h-full flex-col rounded-xl sm:rounded-2xl bg-white overflow-hidden text-left">
+                  <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${card.accent} z-10`} />
+                  {/* Edge to edge: the card's padding starts below this, so the
+                      screenshot spans the full width of the section column.
+                      On a phone the whole 1080x1920 screenshot is shown, since
+                      there is width to spare and the detail is legible. From
+                      sm up it crops to the top half (9:8 of the full frame),
+                      which keeps the header and first listings without making
+                      a desktop card two screens tall. */}
+                  <img
+                    src={card.image}
+                    alt={card.imageAlt}
+                    width={820}
+                    height={1458}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full border-b border-gray-100 object-cover object-top aspect-auto sm:aspect-[9/8]"
+                  />
+                  <div className="flex flex-1 flex-col p-3.5 sm:p-6 md:p-8">
                   <span className={`inline-flex h-8 w-8 sm:h-11 sm:w-11 md:h-12 md:w-12 items-center justify-center rounded-lg sm:rounded-xl ${card.iconBg} ${card.iconColor} mb-2.5 sm:mb-4 md:mb-5`}>
                     <card.icon size={16} className="sm:hidden" />
                     <card.icon size={20} className="hidden sm:block" />
@@ -198,6 +223,7 @@ export default function LandingPage() {
                   >
                     {card.cta} <ArrowRight size={12} className="hidden sm:inline" />
                   </Link>
+                  </div>
                 </div>
               </div>
             ))}
@@ -215,7 +241,7 @@ export default function LandingPage() {
               Free. Then cheap.
             </h2>
             <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">
-              500 credits that never expire. Browsing, submitting and editing are always free.
+              100 credits that never expire, plus 20 more as you get started. Browsing, submitting and editing are always free.
             </p>
           </div>
 
@@ -231,7 +257,7 @@ export default function LandingPage() {
                 <span className="text-5xl font-extrabold text-gray-900">₹0</span>
                 <span className="text-gray-500 text-sm">/ month</span>
               </div>
-              <p className="text-xs text-gray-500 mb-8">500 credits, one time · no card required</p>
+              <p className="text-xs text-gray-500 mb-8">100 credits, one time · no card required</p>
 
               <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
                 {[

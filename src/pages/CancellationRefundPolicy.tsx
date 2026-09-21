@@ -48,7 +48,7 @@ export default function CancellationRefundPolicy() {
           <Section title="2. Free Plan">
             <p>
               Every new account is free forever, with no payment or credit card required. New accounts receive
-              500 AI credits at signup, granted once, which never expire — there is no trial period and no point
+              100 AI credits at signup, granted once, which never expire — there is no trial period and no point
               at which the Free plan stops working or requires a subscription. Every feature of the Platform is
               available on the Free plan; a paid Pro subscription only adds more AI credits, delivered
               automatically each billing cycle.

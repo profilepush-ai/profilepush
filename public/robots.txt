@@ -39,4 +39,33 @@ Disallow: /onboard/
 Disallow: /confirm-applied/
 Disallow: /screen/
 
+# Answer engines are a distribution channel now, not a threat: these pages are
+# meant to be quoted, and a citation in an AI answer is a referral we do not
+# pay for. Listed explicitly so a future blanket rule does not catch them by
+# accident.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
 Sitemap: https://profilepush.ai/sitemap.xml
+Sitemap: https://profilepush.ai/sitemap-requirements.xml

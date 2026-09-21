@@ -236,7 +236,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     ],
     workflowClosing: 'The recruiter: picks the vendors and closes the deal.',
     pricingHeading: 'Free forever. Pro when needed.',
-    pricingBody: '500 credits that never expire. Browsing, submitting and editing are always free.',
+    pricingBody: '100 credits that never expire, plus 20 more as you get started. Browsing, submitting and editing are always free.',
     freeBullets: [
       'All features included',
       'Unlimited team members',
@@ -392,7 +392,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                   Forever Free
                 </span>
                 <span className="text-gray-400">·</span>
-                <span>500 Free AI Credits</span>
+                <span>100 Free AI Credits</span>
                 <span className="text-gray-400">·</span>
                 <span>No Credit Card Required</span>
               </p>
@@ -529,7 +529,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                   <span className="text-5xl font-extrabold text-gray-900">₹0</span>
                   <span className="text-gray-500 text-sm">/ month</span>
                 </div>
-                <p className="text-xs text-gray-500 mb-8">500 credits, one time · no card required</p>
+                <p className="text-xs text-gray-500 mb-8">100 credits, one time · no card required</p>
                 <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
                   {(content.freeBullets ?? [
                     'Pulse, Jobs, Hotlist, Posts, Active List, Inbox & Tracker included',
