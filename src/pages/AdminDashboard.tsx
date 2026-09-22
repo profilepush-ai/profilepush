@@ -767,7 +767,7 @@ export default function AdminDashboard() {
             </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col gap-3">
-              <div className="flex shrink-0 items-center gap-1 lg:hidden">
+              <div className="flex shrink-0 items-center gap-1">
                 {STATS_PANES.map((pane) => (
                   <button
                     key={pane.key}
