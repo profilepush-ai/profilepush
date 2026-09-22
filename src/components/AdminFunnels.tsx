@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { AlertCircle, ArrowDown } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
+import { Funnel, FunnelChart, LabelList, ResponsiveContainer, Tooltip } from 'recharts';
 import {
   buildFunnel,
   formatRate,
@@ -28,9 +29,26 @@ const PERSONA_ACCENT: Record<Persona, string> = {
   bench_sales: 'bg-emerald-500',
 };
 
+// Recharts takes a colour value, not a class.
+const PERSONA_HEX: Record<Persona, string> = {
+  vendor: '#3b82f6',
+  bench_sales: '#10b981',
+};
+
 function FunnelColumn({ persona, stages, rangeLabel }: { persona: Persona; stages: FunnelStage[]; rangeLabel: string }) {
   const top = stages[0]?.count ?? 0;
   const worst = worstStep(stages);
+
+  // Recharts sizes each band by `value`, so a stage that lost nearly everyone
+  // would render as an invisible line. The plotted value is floored at 6% of
+  // the top stage while the label keeps the real number — the shape stays
+  // readable without the text ever lying.
+  const floor = Math.max(1, top * 0.06);
+  const data = stages.map((stage) => ({
+    ...stage,
+    value: Math.max(stage.count, floor),
+    fill: PERSONA_HEX[persona],
+  }));
 
   return (
     <div className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white">
@@ -45,40 +63,51 @@ function FunnelColumn({ persona, stages, rangeLabel }: { persona: Persona; stage
       {top === 0 ? (
         <p className="px-4 py-10 text-center text-sm text-gray-400">No {PERSONA_LABEL[persona].toLowerCase()} signed up in this range.</p>
       ) : (
-        <div className="p-3">
-          {stages.map((stage, index) => {
-            // Bar width is share of the top stage, so the shape of the funnel
-            // is visible at a glance rather than having to read five numbers.
-            const width = Math.max(4, Math.round(stage.overallRate * 100));
-            const isWorst = worst?.key === stage.key;
-            return (
-              <div key={stage.key}>
-                {index > 0 && (
-                  <div className={`flex items-center gap-1 py-1 pl-1 text-[10px] ${isWorst ? 'text-red-600' : 'text-gray-400'}`}>
-                    <ArrowDown size={10} />
-                    <span>
-                      {formatRate(stage.stepRate)} continue
-                      {stage.dropped > 0 && ` · ${stage.dropped} lost`}
-                      {isWorst && ' · biggest drop'}
-                    </span>
-                  </div>
-                )}
-                <div className="rounded-md bg-gray-50 p-2">
-                  <div className="mb-1 flex items-baseline justify-between gap-2">
-                    <span className="truncate text-xs font-medium text-gray-700">{stage.label}</span>
-                    <span className="shrink-0 text-xs tabular-nums text-gray-500">
-                      <span className="font-semibold text-gray-900">{stage.count}</span>
-                      {index > 0 && <span className="ml-1 text-[10px]">({formatRate(stage.overallRate)})</span>}
-                    </span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
-                    <div className={`h-full rounded-full ${PERSONA_ACCENT[persona]}`} style={{ width: `${width}%` }} />
-                  </div>
+        <>
+          <div className="px-2 pt-3" style={{ height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <FunnelChart margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
+                <Tooltip
+                  cursor={false}
+                  formatter={(_value, _name, item) => {
+                    const stage = item?.payload as FunnelStage | undefined;
+                    return [`${stage?.count ?? 0} · ${formatRate(stage?.overallRate ?? 0)} of top`, stage?.label ?? ''];
+                  }}
+                  contentStyle={{ fontSize: 11, borderRadius: 6, border: '1px solid #e5e7eb' }}
+                />
+                <Funnel dataKey="value" data={data} isAnimationActive={false} lastShapeType="rectangle">
+                  <LabelList
+                    position="inside"
+                    fill="#ffffff"
+                    stroke="none"
+                    style={{ fontSize: 10, fontWeight: 600 }}
+                    dataKey={(entry: FunnelStage) => `${entry.label} — ${entry.count}`}
+                  />
+                </Funnel>
+              </FunnelChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* The step rates sit under the shape rather than inside it: at eight
+              stages there is no room for two lines of text in a band. */}
+          <div className="border-t border-gray-100 px-4 py-2">
+            {stages.slice(1).map((stage) => {
+              const isWorst = worst?.key === stage.key;
+              return (
+                <div key={stage.key} className="flex items-baseline justify-between gap-2 py-0.5 text-[11px]">
+                  <span className={`truncate ${isWorst ? 'font-semibold text-red-600' : 'text-gray-500'}`}>
+                    {stage.label}
+                    {isWorst && ' · biggest drop'}
+                  </span>
+                  <span className={`shrink-0 tabular-nums ${isWorst ? 'text-red-600' : 'text-gray-500'}`}>
+                    {formatRate(stage.stepRate)} continue
+                    {stage.dropped > 0 && ` · ${stage.dropped} lost`}
+                  </span>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

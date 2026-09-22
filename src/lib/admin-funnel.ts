@@ -16,9 +16,15 @@ export type FunnelAccount = {
   session_count: number;
   job_posts_count: number;
   hotlist_posts_count: number;
+  job_previews_count: number;
+  hotlist_previews_count: number;
+  ai_pitches_count: number;
+  ai_requests_count: number;
   ai_match_runs_count: number;
   gmail_connected: boolean;
   active_days: number;
+  /** false once an account is on a paid plan — the end of the funnel. */
+  is_trial: boolean;
 };
 
 export type FunnelStage = {
@@ -35,12 +41,20 @@ export type FunnelStage = {
 
 export type Persona = 'vendor' | 'bench_sales';
 
+// Ordered as the journey is meant to run: look, engage, contribute, come
+// back, pay. Sharing a job or hotlist would sit between previewing and
+// submitting, but nothing records it — the public permalinks are not
+// instrumented — so it is named in the UI as unmeasured rather than guessed
+// at here.
 const STAGES: Array<{ key: string; label: string; test: (a: FunnelAccount) => boolean }> = [
   { key: 'persona', label: 'Chose a persona', test: () => true },
   { key: 'signed_in', label: 'Signed in', test: (a) => (a.session_count ?? 0) > 0 },
+  { key: 'previewed', label: 'Previewed a post', test: (a) => (a.job_previews_count ?? 0) + (a.hotlist_previews_count ?? 0) > 0 },
+  { key: 'submitted', label: 'AI submit sent', test: (a) => (a.ai_pitches_count ?? 0) + (a.ai_requests_count ?? 0) > 0 },
   { key: 'posted', label: 'Posted inventory', test: (a) => (a.job_posts_count ?? 0) + (a.hotlist_posts_count ?? 0) > 0 },
   { key: 'matched', label: 'Ran AI Match', test: (a) => (a.ai_match_runs_count ?? 0) > 0 },
   { key: 'returned', label: 'Came back (2+ days)', test: (a) => (a.active_days ?? 0) >= 2 },
+  { key: 'paid', label: 'Upgraded to paid', test: (a) => a.is_trial === false },
 ];
 
 function inRange(account: FunnelAccount, startDate: string | null, endDate: string | null): boolean {
