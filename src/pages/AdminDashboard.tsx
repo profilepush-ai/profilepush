@@ -815,7 +815,7 @@ export default function AdminDashboard() {
                   </button>
                 ))}
               </div>
-              <div className={`shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-4 lg:grid lg:grid-cols-6 ${statsPane === 'cards' ? 'grid' : 'hidden'}`}>
+              <div className={`shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-4 lg:grid-cols-6 ${statsPane === 'cards' ? 'grid' : 'hidden'}`}>
                 {[
                   { label: 'Accounts', value: accountCount.toLocaleString(), hint: currentPresetLabel },
                   { label: 'Vendors', value: vendorCount.toLocaleString(), hint: shareOfAccounts(vendorCount) },
