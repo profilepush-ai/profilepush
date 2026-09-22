@@ -93,7 +93,7 @@ export default function AdminTrendCharts({ daily, accounts, startDate, endDate, 
           No activity in this range.
         </div>
       ) : (
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <AdminLineChart title="Daily signups" points={signupPoints} rangeLabel={rangeLabel} emptyLabel="No signups in this range." dense />
           {series.map((metric) => (
             <AdminLineChart key={metric.key} title={metric.title} points={metric.points} rangeLabel={rangeLabel} dense />
