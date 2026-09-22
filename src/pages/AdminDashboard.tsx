@@ -730,7 +730,7 @@ export default function AdminDashboard() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-gray-200 bg-white/95 px-4 py-2.5 backdrop-blur-sm sm:px-6">
+        <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-gray-200 bg-white/95 px-4 py-2 backdrop-blur-sm sm:gap-3 sm:px-6">
           <button
             onClick={() => setSidebarOpen(true)}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 lg:hidden"
@@ -738,16 +738,37 @@ export default function AdminDashboard() {
           >
             <Menu size={16} />
           </button>
-          <div className="min-w-0">
+          <div className="min-w-0 shrink-0">
             <h2 className="truncate text-sm font-semibold text-gray-900">{currentNavLabel}</h2>
             <p className="truncate text-[10px] text-gray-500">{viewSubtitle}</p>
           </div>
-        </div>
 
-      {/* Filter Bar */}
-      {adminView === 'stats' && (
-      <div className="w-full px-4 py-2 sm:px-6">
-        <div className="mx-auto grid w-full max-w-[1600px] gap-2 sm:grid-cols-[minmax(280px,1fr)_180px] sm:items-center">
+          {adminView === 'stats' && (
+            <>
+              {/* Pane tabs scroll sideways rather than wrapping, so the row
+                  height never changes as the window narrows and the search
+                  field keeps its place. */}
+              <div className="flex min-w-0 shrink items-center gap-1 overflow-x-auto">
+              <div className="flex shrink-0 items-center gap-1">
+                {STATS_PANES.map((pane) => (
+                  <button
+                    key={pane.key}
+                    type="button"
+                    onClick={() => setStatsPane(pane.key)}
+                    aria-pressed={statsPane === pane.key}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                      statsPane === pane.key
+                        ? 'border border-blue-600 bg-blue-600 text-white'
+                        : 'border border-gray-300 bg-white text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <pane.icon size={12} />
+                    {pane.label}
+                  </button>
+                ))}
+              </div>
+              </div>
+              <div className="ml-auto flex min-w-0 flex-1 items-center gap-2 sm:max-w-[500px]">
           <div className="relative min-w-0">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
@@ -838,9 +859,11 @@ export default function AdminDashboard() {
               )}
             </div>
 
+              </div>
+            </>
+          )}
         </div>
-      </div>
-      )}
+
 
       {/* Stats Table */}
       <div className="mx-auto flex-1 min-h-0 min-w-0 w-full max-w-[1600px] overflow-x-hidden px-4 pb-4 sm:px-6 sm:pb-6">
@@ -852,24 +875,6 @@ export default function AdminDashboard() {
             </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col gap-3">
-              <div className="flex shrink-0 items-center gap-1">
-                {STATS_PANES.map((pane) => (
-                  <button
-                    key={pane.key}
-                    type="button"
-                    onClick={() => setStatsPane(pane.key)}
-                    aria-pressed={statsPane === pane.key}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                      statsPane === pane.key
-                        ? 'border border-blue-600 bg-blue-600 text-white'
-                        : 'border border-gray-300 bg-white text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <pane.icon size={12} />
-                    {pane.label}
-                  </button>
-                ))}
-              </div>
               <div className={`shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-4 lg:grid-cols-6 ${statsPane === 'cards' ? 'grid' : 'hidden'}`}>
                 {[
                   { label: 'Accounts', value: accountCount.toLocaleString(), hint: currentPresetLabel },
