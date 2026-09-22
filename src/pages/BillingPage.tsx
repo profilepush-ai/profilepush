@@ -59,7 +59,7 @@ const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: st
     short: '1 credit per AI Match result, up to 10 a run',
     note: 'Up to 10 per run, and only for matches you have not already been charged for: a rematch on the same text re-shows the previous results free and bills only the new ones. A run that finds nothing is refunded in full, though it needs 10 credits free to start.',
   },
-  { label: 'AI Submit / AI Request — generate draft', cost: '1 credit', short: '1 credit to generate an AI Submit or Request draft', note: 'Only the first generation per post; reopening an already-generated draft is free' },
+  { label: 'AI Submit / AI Invite — generate draft', cost: '1 credit', short: '1 credit to generate an AI Submit or Invite draft', note: 'Only the first generation per post; reopening an already-generated draft is free' },
   { label: 'Inbox AI chat draft', cost: '1 credit', short: '1 credit per Inbox AI chat draft' },
   { label: 'Video screening completed', cost: '50 credits', short: '50 credits when a candidate completes a video screening', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
 ];

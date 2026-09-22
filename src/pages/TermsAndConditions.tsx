@@ -39,7 +39,7 @@ export default function TermsAndConditions() {
               <li><strong>Video Screening:</strong> an automated, adaptive AI video interview run on candidates who apply to a job posted on ProfilePush — see Section 5.</li>
               <li><strong>Posts:</strong> a feature letting you list your own job requirement or consultant directly on the Platform, joining the same feeds other users browse.</li>
               <li><strong>Active List:</strong> a filterable, exportable list of contacts actively posting jobs or consultants.</li>
-              <li><strong>AI Submit / AI Request:</strong> AI-drafted outreach email generation, sendable via your own connected Gmail account or ProfilePush's own delivery infrastructure.</li>
+              <li><strong>AI Submit / AI Invite:</strong> AI-drafted outreach email generation — a submission to a recruiter, or an invitation to a video screening — sendable via your own connected Gmail account or ProfilePush's own delivery infrastructure.</li>
               <li><strong>Inbox:</strong> a unified conversation thread for outreach replies and in-app chats.</li>
               <li><strong>Tracker:</strong> a CRM for logging submissions against vendors and clients.</li>
             </ul>
