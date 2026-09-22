@@ -198,7 +198,7 @@ function buildChatDraftPrompt(
     ? recentMessages.map((m) => `${m.direction === "outbound" ? "Me" : "Them"}: ${m.text.slice(0, 500)}`).join("\n")
     : "(No messages yet — this will be the opening message.)";
   const goal = isHotlist
-    ? `"Me" has a client requirement and wants to REQUEST this consultant: ask whether they're still available, and ask the recipient (the bench recruiter who posted them) to share their updated resume and current rate.`
+    ? `"Me" has a client requirement and wants to INVITE this consultant to a short AI video screening for it: say there is a live requirement that fits, ask whether the consultant is still available, and ask the recipient (the bench recruiter who posted them) to have them complete a five-minute video screening. A link follows the message, so do not invent one, do not write a placeholder link, and do not ask for a resume — the screening replaces it.`
     : `"Me" is a recruiter who wants to SUBMIT a candidate for this job: state that they have a strong-fit consultant ready, and ask what's needed to submit — e.g. resume format, rate expectations, or visa requirement.`;
 
   return `${isHotlist ? "CONSULTANT" : "JOB"}: ${title || "this opportunity"}
