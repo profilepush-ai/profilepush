@@ -16,6 +16,7 @@ import {
   DollarSign,
   Eye,
   FileText,
+  Video,
   Handshake,
   Hash,
   Laptop,
@@ -50,6 +51,7 @@ import {
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
+import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
 import GmailIcon from '../components/GmailIcon';
 import GmailConnectPrompt from '../components/GmailConnectPrompt';
 import { useAuth } from '../contexts/AuthContext';
@@ -1383,7 +1385,7 @@ const LeadCard = memo(function LeadCard({
           type="button"
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
-          title={!lead.posterEmail ? 'No email' : (lead.postSource === 'user_post' ? 'Request' : isHotlistFeed ? 'AI Request' : 'AI Submit')}
+          title={!lead.posterEmail ? 'No email' : (lead.postSource === 'user_post' ? 'Request' : isHotlistFeed ? 'AI Invite for Video Screening' : 'AI Submit')}
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
         >
           {isProcessingAskAI ? <LogoSpinner size={14} /> : lead.postSource === 'user_post' ? (
@@ -1393,11 +1395,12 @@ const LeadCard = memo(function LeadCard({
             </>
           ) : (
             <>
-              {/* A hotlist request asks for the consultant's resume, so it carries
-                  the document icon the plain Request button already uses; a job
-                  gets the email icon, since AI Submit sends the recruiter an email. */}
-              {isHotlistFeed ? <FileText size={15} strokeWidth={1.75} /> : <Mail size={15} strokeWidth={1.75} />}
-              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Submit'}</span>
+              {/* A hotlist action now invites the consultant to a video
+                  screening rather than asking for a resume, so it carries the
+                  video icon; a job gets the email icon, since AI Submit sends
+                  the recruiter an email. */}
+              {isHotlistFeed ? <Video size={15} strokeWidth={1.75} /> : <Mail size={15} strokeWidth={1.75} />}
+              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Invite' : 'AI Submit'}</span>
             </>
           )}
         </button>
@@ -4335,7 +4338,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                     {selectedIsProcessingAskAI ? <LogoSpinner size={14} /> : selectedLead.postSource === 'user_post' ? (
                       <><FileText size={14} />Request</>
                     ) : (
-                      <>{selectedIsHotlist ? <FileText size={14} /> : <Mail size={14} />}{selectedIsHotlist ? 'AI Request' : 'AI Submit'}</>
+                      <>{selectedIsHotlist ? <Video size={14} /> : <Mail size={14} />}{selectedIsHotlist ? 'AI Invite' : 'AI Submit'}</>
                     )}
                   </button>
                 )}
@@ -6709,6 +6712,23 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // signed OAuth state and back; the restore effect below uses it to
   // reopen the modal with the draft pulled back from pulse_ask_ai_previews
   // (or regenerated if that row is somehow gone) once we're back here.
+  // The bulk bar can offer Gmail before any draft exists, so it cannot reuse
+  // handleConnectGmail, which returns the user to a specific lead's modal.
+  async function handleConnectGmailStandalone() {
+    if (!account?.id || connectingGmail) return;
+    setConnectingGmail(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('gmail-oauth-start', {
+        body: { account_id: account.id, return_to: window.location.pathname },
+      });
+      if (error || !data?.url) throw new Error(data?.error || 'Could not start Gmail connection');
+      window.location.href = data.url;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not start Gmail connection', 'error');
+      setConnectingGmail(false);
+    }
+  }
+
   async function handleConnectGmail() {
     if (!account?.id || connectingGmail || !askAIPreview) return;
     setConnectingGmail(true);
@@ -8286,6 +8306,22 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                           )
                         ) : (
                           <div className="space-y-2 bg-[#f3f2ee] px-1.5 pt-1 pb-4 dark:bg-[#1B1D21]">
+                            {aiMatch && account?.id && (
+                              <BulkAiSubmitBar
+                                targets={visibleFeed
+                                  .filter((lead) => lead.aiMatchScore != null)
+                                  .map((lead) => ({
+                                    id: lead.id,
+                                    title: lead.title || lead.roleTitle || 'Untitled',
+                                    company: lead.company || '',
+                                    hasEmail: Boolean(extractPrimaryEmail(lead.posterEmail)),
+                                  }))}
+                                leadType={isHotlistFeed ? 'hotlist' : 'job'}
+                                accountId={account.id}
+                                onConnectGmail={() => { void handleConnectGmailStandalone(); }}
+                                onDone={() => { void refreshFeed(); }}
+                              />
+                            )}
                             {renderLeadCards(visibleFeed)}
                             {renderFeedPagingFooter()}
                           </div>

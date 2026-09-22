@@ -265,6 +265,39 @@ Deno.serve(async (req: Request) => {
       ? `${emailContent}\n\nI've attached my resume as well.`
       : emailContent;
 
+    // Daily send cap, enforced here rather than only in the UI: bulk sending
+    // is the whole point of this feature and also the fastest way to get a
+    // user's own mailbox throttled by Google. Trial 10 a day, paid 100.
+    //
+    // Counted from the same table the send writes to, so the limit cannot
+    // drift away from what actually went out. UTC day, matching every other
+    // daily figure here — a local-day window would let someone reset their
+    // quota by changing timezone.
+    {
+      const { data: accountRow } = await supabaseAdmin
+        .from("accounts")
+        .select("is_trial")
+        .eq("id", accountId)
+        .maybeSingle();
+      const dailyLimit = accountRow?.is_trial === false ? 100 : 10;
+
+      const startOfDay = new Date();
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const { count } = await supabaseAdmin
+        .from("pulse_ask_ai_requests")
+        .select("request_id", { count: "exact", head: true })
+        .eq("account_id", accountId)
+        .gte("created_at", startOfDay.toISOString());
+
+      if ((count ?? 0) >= dailyLimit) {
+        return respond({
+          error: "daily_limit_reached",
+          daily_limit: dailyLimit,
+          used_today: count ?? 0,
+        }, 429);
+      }
+    }
+
     let gmailAccessToken: string | null = null;
     let gmailFromAddress: string | null = null;
     if (channel === "gmail") {
