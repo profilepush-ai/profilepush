@@ -6,6 +6,7 @@ import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
 import AdminAiPromptsPanel from '../components/AdminAiPromptsPanel';
 import AdminChannelsPanel from '../components/AdminChannelsPanel';
 import AdminMarketPanel from '../components/AdminMarketPanel';
+import AdminSocialPosterPanel from '../components/AdminSocialPosterPanel';
 import AdminTrendsPanel from '../components/AdminTrendsPanel';
 import AdminPostOutreachPanel from '../components/AdminPostOutreachPanel';
 import { supabase } from '../lib/supabase';
@@ -65,7 +66,7 @@ interface LinkedinScraperConfig {
   updated_at: string;
 }
 
-type AdminView = 'stats' | 'scraper' | 'scraper-logs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach';
+type AdminView = 'stats' | 'scraper' | 'scraper-logs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social';
 type ScraperConfigTab = 'group' | 'keyword';
 type LinkedinStatsRange = '24h' | '7d' | '30d' | 'all' | 'custom';
 
@@ -571,7 +572,9 @@ export default function AdminDashboard() {
                               ? 'Platform-wide daily trends'
                               : adminView === 'post-outreach'
                                 ? 'Scraped posts — AI comment outreach'
-                                : 'AI prompt configuration'}
+                                : adminView === 'social'
+                                  ? 'Publish one post to Facebook and LinkedIn'
+                                  : 'AI prompt configuration'}
                 </p>
               </div>
             </div>
@@ -623,6 +626,12 @@ export default function AdminDashboard() {
                 className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'post-outreach' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
               >
                 Post Outreach
+              </button>
+              <button
+                onClick={() => setAdminView('social')}
+                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'social' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
+              >
+                Social Poster
               </button>
             </nav>
             <div className="ml-auto flex shrink-0 items-center gap-1 lg:ml-2">
@@ -1126,6 +1135,7 @@ export default function AdminDashboard() {
         {adminView === 'market' && <AdminMarketPanel />}
         {adminView === 'trends' && <AdminTrendsPanel />}
         {adminView === 'post-outreach' && <AdminPostOutreachPanel />}
+        {adminView === 'social' && <AdminSocialPosterPanel />}
       </div>
 
     </div>
