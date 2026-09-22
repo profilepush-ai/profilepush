@@ -492,6 +492,8 @@ type AskAIPreview = {
   missingDetails: string[];
   emailSubject: string;
   emailContent: string;
+  /** Why a screening link is missing, when one is. Shown in the modal. */
+  screeningNotice?: string | null;
   isGenerating: boolean;
 };
 type FeedSearchFilters = {
@@ -6642,15 +6644,26 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       // goes out — invisible until send reads as a broken invite. The RPC is
       // idempotent per job and consultant, so regenerating or resending never
       // creates a second screening.
-      if (leadType === 'hotlist' && aiMatchSourcePostId) {
-        const { data: invite } = await supabase.rpc('invite_consultant_to_screening' as never, {
-          p_social_job_id: aiMatchSourcePostId,
-          p_hotlist_id: lead.id,
-        } as never);
-        const row = Array.isArray(invite) ? invite[0] : invite;
-        const token = (row as { screening_token?: string } | null)?.screening_token;
-        if (token) {
-          generatedContent += `\n\nStart the screening here — no account needed, about five minutes:\n${window.location.origin}/screen/${token}`;
+      let screeningNotice: string | null = null;
+      if (leadType === 'hotlist') {
+        if (!aiMatchSourcePostId) {
+          screeningNotice = 'No job attached to this match, so there is no screening link. Run the match from one of your own jobs to include one.';
+        } else {
+          const { data: invite, error: inviteError } = await supabase.rpc('invite_consultant_to_screening' as never, {
+            p_social_job_id: aiMatchSourcePostId,
+            p_hotlist_id: lead.id,
+          } as never);
+          const row = Array.isArray(invite) ? invite[0] : invite;
+          const token = (row as { screening_token?: string } | null)?.screening_token;
+          if (token) {
+            generatedContent += `\n\nStart the screening here — no account needed, about five minutes:\n${window.location.origin}/screen/${token}`;
+          } else {
+            // Every previous version swallowed this. A missing link then looked
+            // identical whether the job was absent, the RPC was undeployed or
+            // the consultant had no address — which is why it took four
+            // attempts to find. Say what happened, in the modal.
+            screeningNotice = `Could not create the screening link: ${inviteError?.message ?? 'no link returned'}`;
+          }
         }
       }
       setAskAIPreview((current) => ({
@@ -6664,6 +6677,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         missingDetails,
         emailSubject: generatedSubject,
         emailContent: generatedContent,
+        screeningNotice,
         isGenerating: false,
       }));
 
@@ -8598,6 +8612,14 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </button>
               </div>
             </div>
+            {askAIPreview.screeningNotice && (
+              // Every earlier version failed silently here: a missing link
+              // looked the same whether the job was absent, the function was
+              // undeployed, or the consultant had no address.
+              <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-800">
+                {askAIPreview.screeningNotice}
+              </p>
+            )}
             {gmailIntegrationStatus === 'connected' ? (
               <button
                 type="button"
