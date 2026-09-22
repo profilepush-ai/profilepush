@@ -7,7 +7,8 @@ import AdminAiPromptsPanel from '../components/AdminAiPromptsPanel';
 import AdminChannelsPanel from '../components/AdminChannelsPanel';
 import AdminMarketPanel from '../components/AdminMarketPanel';
 import AdminSocialPosterPanel from '../components/AdminSocialPosterPanel';
-import AdminSignupsChart from '../components/AdminSignupsChart';
+import AdminTrendCharts from '../components/AdminTrendCharts';
+import type { DailyRow } from '../lib/admin-signups-series';
 import AdminTrendsPanel from '../components/AdminTrendsPanel';
 import AdminPostOutreachPanel from '../components/AdminPostOutreachPanel';
 import { supabase } from '../lib/supabase';
@@ -140,6 +141,7 @@ const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.React
 
 const STATS_PANES = [
   { key: 'cards', label: 'Summary', icon: LayoutGrid },
+  { key: 'charts', label: 'Charts', icon: Activity },
   { key: 'table', label: 'Accounts', icon: TableIcon },
 ] as const;
 
@@ -170,6 +172,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<AccountStats[]>([]);
   const [adminView, setAdminView] = useState<AdminView>('stats');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [daily, setDaily] = useState<DailyRow[]>([]);
   const [scraperConfigTab, setScraperConfigTab] = useState<ScraperConfigTab>('group');
   const [linkedinGroups, setLinkedinGroups] = useState<LinkedinGroupRow[]>([]);
   const [linkedinScraperConfig, setLinkedinScraperConfig] = useState<LinkedinScraperConfig>({
@@ -206,7 +209,7 @@ export default function AdminDashboard() {
   // horizontal scroll swallows the page. So on small screens only one pane
   // renders at a time; from lg up both show together as before and this is
   // ignored.
-  const [statsPane, setStatsPane] = useState<'cards' | 'table'>('cards');
+  const [statsPane, setStatsPane] = useState<'cards' | 'charts' | 'table'>('cards');
   const [sortKey, setSortKey] = useState<AdminStatsSortKey>('created_at');
   const [sortDirection, setSortDirection] = useState<AdminStatsSortDirection>('desc');
   const dateDropdownRef = useRef<HTMLDivElement>(null);
@@ -242,6 +245,7 @@ export default function AdminDashboard() {
       }
       const data = await res.json();
       setStats(data.stats ?? []);
+      setDaily(data.daily ?? []);
       setLoading(false);
       return true;
     } catch {
@@ -631,7 +635,7 @@ export default function AdminDashboard() {
             Refresh
           </button>
           <button
-            onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); setStats([]); }}
+            onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); setStats([]); setDaily([]); }}
             className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium text-gray-500 transition hover:bg-red-50 hover:text-red-600"
           >
             <Lock size={14} className="shrink-0" />
@@ -805,15 +809,16 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
-              <div className={`shrink-0 ${statsPane === 'cards' ? 'block' : 'hidden'}`}>
-                <AdminSignupsChart
+              <div className={`min-h-0 flex-1 overflow-y-auto ${statsPane === 'charts' ? 'block' : 'hidden'}`}>
+                <AdminTrendCharts
+                  daily={daily}
                   accounts={stats}
                   startDate={signupRange.start_date}
                   endDate={signupRange.end_date}
                   rangeLabel={currentPresetLabel}
                 />
               </div>
-              <div className={`min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white lg:flex ${statsPane === 'table' ? 'flex' : 'hidden'}`}>
+              <div className={`min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white ${statsPane === 'table' ? 'flex' : 'hidden'} ${statsPane === 'cards' ? 'lg:flex' : ''}`}>
               <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full min-w-[2360px] table-fixed text-left">
                 <thead className="sticky top-0 z-[4]">

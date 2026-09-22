@@ -42,6 +42,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const accountIds = accounts.map((a: any) => a.id);
+    // Persona per account, so the daily buckets below can be split without a
+    // second pass over the accounts array for every row.
+    const accountPersona: Record<string, string | null> = {};
+    for (const a of accounts) accountPersona[a.id] = a.active_persona ?? null;
 
     // Helper to apply date filter on a query builder
     function withDateRange(query: any, dateCol = "created_at") {
@@ -82,21 +86,21 @@ Deno.serve(async (req: Request) => {
       withDateRange(
         supabase
           .from("job_search_history")
-          .select("account_id")
+          .select("account_id, created_at")
           .in("account_id", accountIds)
       ),
       // Posts, tracked separately for Jobs vs Hotlist.
       withDateRange(
         supabase
           .from("social_jobs")
-          .select("created_by_account_id")
+          .select("created_by_account_id, created_at")
           .in("created_by_account_id", accountIds)
           .eq("post_source", "user_post")
       ),
       withDateRange(
         supabase
           .from("social_hotlist")
-          .select("created_by_account_id")
+          .select("created_by_account_id, created_at")
           .in("created_by_account_id", accountIds)
           .eq("post_source", "user_post")
       ),
@@ -107,7 +111,7 @@ Deno.serve(async (req: Request) => {
       withDateRange(
         supabase
           .from("pulse_lead_actions")
-          .select("account_id, lead_id")
+          .select("account_id, lead_id, created_at")
           .in("account_id", accountIds)
           .eq("action_type", "post_content_viewed")
       ),
@@ -116,14 +120,14 @@ Deno.serve(async (req: Request) => {
       withDateRange(
         supabase
           .from("pulse_ask_ai_requests")
-          .select("account_id")
+          .select("account_id, created_at")
           .in("account_id", accountIds)
           .not("job_id", "is", null)
       ),
       withDateRange(
         supabase
           .from("pulse_ask_ai_requests")
-          .select("account_id")
+          .select("account_id, created_at")
           .in("account_id", accountIds)
           .not("hotlist_id", "is", null)
       ),
@@ -135,7 +139,7 @@ Deno.serve(async (req: Request) => {
       withDateRange(
         supabase
           .from("credit_transactions")
-          .select("account_id, amount")
+          .select("account_id, amount, created_at")
           .in("account_id", accountIds)
           .eq("type", "usage")
           .like("description", "%ai_match_run%")
@@ -151,7 +155,7 @@ Deno.serve(async (req: Request) => {
       withDateRange(
         supabase
           .from("post_chat_messages")
-          .select("sender_account_id")
+          .select("sender_account_id, created_at")
           .in("sender_account_id", accountIds)
       ),
       // Active List downloads: one row per download action (see
@@ -161,14 +165,14 @@ Deno.serve(async (req: Request) => {
       withDateRange(
         supabase
           .from("active_list_downloads")
-          .select("account_id")
+          .select("account_id, created_at")
           .in("account_id", accountIds)
           .eq("download_type", "vendors")
       ),
       withDateRange(
         supabase
           .from("active_list_downloads")
-          .select("account_id")
+          .select("account_id, created_at")
           .in("account_id", accountIds)
           .eq("download_type", "recruiters")
       ),
@@ -342,8 +346,63 @@ Deno.serve(async (req: Request) => {
       };
     });
 
+    // ── Daily series, for the charts tab ─────────────────────────────────
+    //
+    // The per-account rows above answer "how much in this range"; a trend
+    // needs "how much on each day", which no amount of summing can recover
+    // once the timestamps are dropped. So the same rows are bucketed a second
+    // time by UTC day and by the account's persona.
+    //
+    // UTC because created_at is stored in UTC and every range filter above
+    // compares against it in UTC — bucketing locally would put a 23:30 event
+    // on the wrong day and make the chart disagree with the table.
+    type PersonaKey = "vendor" | "bench_sales" | "none";
+    const personaOf = (accountId: string): PersonaKey => {
+      const persona = accountPersona[accountId];
+      return persona === "vendor" || persona === "bench_sales" ? persona : "none";
+    };
+
+    const daily: Record<string, Record<PersonaKey, Record<string, number>>> = {};
+    const bucket = (dateValue: unknown, accountId: unknown, metric: string, amount = 1) => {
+      if (!dateValue || !accountId) return;
+      const date = String(dateValue).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      const persona = personaOf(String(accountId));
+      daily[date] ??= { vendor: {}, bench_sales: {}, none: {} };
+      daily[date][persona][metric] = (daily[date][persona][metric] ?? 0) + amount;
+    };
+
+    for (const a of accounts) bucket(a.created_at, a.id, "signups");
+    for (const r of searchesRes.data ?? []) bucket(r.created_at, r.account_id, "searches");
+    for (const r of postsJobsRes.data ?? []) bucket(r.created_at, r.created_by_account_id, "job_posts");
+    for (const r of postsHotlistRes.data ?? []) bucket(r.created_at, r.created_by_account_id, "hotlist_posts");
+    for (const r of previewsRes.data ?? []) bucket(r.created_at, r.account_id, "previews");
+    for (const r of aiPitchesRes.data ?? []) bucket(r.created_at, r.account_id, "ai_pitches");
+    for (const r of aiRequestsRes.data ?? []) bucket(r.created_at, r.account_id, "ai_requests");
+    for (const r of chatsRes.data ?? []) bucket(r.created_at, r.sender_account_id, "chats");
+    for (const r of vendorDownloadsRes.data ?? []) bucket(r.created_at, r.account_id, "downloads");
+    for (const r of recruiterDownloadsRes.data ?? []) bucket(r.created_at, r.account_id, "downloads");
+    // Matches delivered, not runs: the charge amount is the number of matches.
+    for (const r of aiMatchRes.data ?? []) {
+      bucket(r.created_at, r.account_id, "ai_matches", Math.abs(Number(r.amount ?? 0)));
+      bucket(r.created_at, r.account_id, "ai_match_runs");
+    }
+    // Daily active users: one row per account per day is exactly what this
+    // table holds, so the row count for a day IS the active-account count.
+    for (const r of activityRes.data ?? []) {
+      bucket(r.activity_date, r.account_id, "active_users");
+      bucket(r.activity_date, r.account_id, "sessions", Number(r.session_count ?? 0));
+    }
+
+    const dailySeries = Object.keys(daily).sort().map((date) => ({
+      date,
+      vendor: daily[date].vendor,
+      bench_sales: daily[date].bench_sales,
+      none: daily[date].none,
+    }));
+
     return new Response(
-      JSON.stringify({ stats }),
+      JSON.stringify({ stats, daily: dailySeries }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

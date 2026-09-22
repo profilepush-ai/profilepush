@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSignupSeries } from './admin-signups-series';
+import { buildMetricSeries, buildSignupSeries } from './admin-signups-series';
 
 const NOW = new Date('2026-09-22T12:00:00.000Z');
 const account = (created_at: string) => ({ created_at });
@@ -86,5 +86,41 @@ describe('buildSignupSeries', () => {
       NOW,
     );
     expect(series).toEqual([{ key: '2026-09-22', count: 1 }]);
+  });
+});
+
+describe('buildMetricSeries', () => {
+  const rows = [
+    { date: '2026-09-20', vendor: { ai_pitches: 3 }, bench_sales: { ai_pitches: 2 }, none: { ai_pitches: 1 } },
+    { date: '2026-09-22', vendor: { ai_pitches: 5 }, bench_sales: {}, none: {} },
+  ];
+
+  it('sums every persona for "all" and gap-fills the missing day', () => {
+    const series = buildMetricSeries(rows, 'ai_pitches', 'all', '2026-09-20T00:00:00.000Z', null, NOW);
+    expect(series).toEqual([
+      { key: '2026-09-20', count: 6 },
+      { key: '2026-09-21', count: 0 },
+      { key: '2026-09-22', count: 5 },
+    ]);
+  });
+
+  it('splits by persona, leaving persona-less accounts out of both splits', () => {
+    const vendor = buildMetricSeries(rows, 'ai_pitches', 'vendor', '2026-09-20T00:00:00.000Z', null, NOW);
+    const bench = buildMetricSeries(rows, 'ai_pitches', 'bench_sales', '2026-09-20T00:00:00.000Z', null, NOW);
+    expect(vendor[0].count).toBe(3);
+    expect(bench[0].count).toBe(2);
+    // 3 + 2 < 6: the persona-less account is real and counted only in "all".
+    expect(vendor[0].count + bench[0].count).toBeLessThan(6);
+  });
+
+  it('returns zeros rather than nothing for a metric no one used', () => {
+    const series = buildMetricSeries(rows, 'chats', 'all', '2026-09-20T00:00:00.000Z', null, NOW);
+    expect(series).toHaveLength(3);
+    expect(series.every((p) => p.count === 0)).toBe(true);
+  });
+
+  it('honours the end of a custom range', () => {
+    const series = buildMetricSeries(rows, 'ai_pitches', 'all', '2026-09-20T00:00:00.000Z', '2026-09-21T23:59:59.999Z', NOW);
+    expect(series.map((p) => p.key)).toEqual(['2026-09-20', '2026-09-21']);
   });
 });

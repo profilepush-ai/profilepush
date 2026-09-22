@@ -60,3 +60,60 @@ export function buildSignupSeries(
   }
   return points;
 }
+
+// ── Daily metric series, from the admin-stats `daily` payload ─────────────
+
+export type PersonaFilter = 'all' | 'vendor' | 'bench_sales';
+
+export type DailyRow = {
+  date: string;
+  vendor: Record<string, number>;
+  bench_sales: Record<string, number>;
+  none: Record<string, number>;
+};
+
+/**
+ * One point per day for a single metric, gap-filled across the window.
+ *
+ * Accounts with no persona set are counted under 'all' but belong to neither
+ * split, so vendor + bench_sales can legitimately total less than all. Folding
+ * them into one of the two would invent a persona the account never chose.
+ */
+export function buildMetricSeries(
+  rows: DailyRow[],
+  metric: string,
+  persona: PersonaFilter,
+  startDate: string | null,
+  endDate: string | null,
+  now: Date = new Date(),
+): SignupPoint[] {
+  const counts = new Map<string, number>();
+  let earliest: string | null = null;
+
+  const fromKey = startDate ? dayKey(new Date(startDate)) : null;
+  const toKey = endDate ? dayKey(new Date(endDate)) : null;
+
+  for (const row of rows) {
+    if (!row?.date) continue;
+    if (fromKey && row.date < fromKey) continue;
+    if (toKey && row.date > toKey) continue;
+    const value = persona === 'all'
+      ? (row.vendor?.[metric] ?? 0) + (row.bench_sales?.[metric] ?? 0) + (row.none?.[metric] ?? 0)
+      : (row[persona]?.[metric] ?? 0);
+    counts.set(row.date, (counts.get(row.date) ?? 0) + value);
+    if (!earliest || row.date < earliest) earliest = row.date;
+  }
+
+  const firstKey = fromKey ?? earliest;
+  if (!firstKey) return [];
+  const lastKey = toKey ?? dayKey(now);
+  if (lastKey < firstKey) return [];
+
+  const points: SignupPoint[] = [];
+  for (let cursor = new Date(`${firstKey}T00:00:00.000Z`); dayKey(cursor) <= lastKey; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const key = dayKey(cursor);
+    points.push({ key, count: counts.get(key) ?? 0 });
+    if (points.length >= MAX_POINTS) break;
+  }
+  return points;
+}
