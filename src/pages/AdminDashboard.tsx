@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Lock, Menu, RefreshCcw, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Table as TableIcon } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
@@ -140,10 +141,12 @@ const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.React
 ];
 
 const STATS_PANES = [
-  { key: 'cards', label: 'Summary', icon: LayoutGrid },
   { key: 'charts', label: 'Charts', icon: Activity },
+  { key: 'cards', label: 'Summary', icon: LayoutGrid },
   { key: 'table', label: 'Accounts', icon: TableIcon },
 ] as const;
+
+type StatsPane = (typeof STATS_PANES)[number]['key'];
 
 function formatCompactDateTime(value: string | null) {
   if (!value) return '-';
@@ -170,7 +173,14 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<AccountStats[]>([]);
-  const [adminView, setAdminView] = useState<AdminView>('stats');
+  // Section and pane live in the URL so a refresh returns to what you were
+  // looking at instead of resetting to the default view — and so a particular
+  // chart or section can be linked to.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [adminView, setAdminView] = useState<AdminView>(() => {
+    const requested = searchParams.get('view');
+    return ADMIN_NAV.some((item) => item.id === requested) ? (requested as AdminView) : 'stats';
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [daily, setDaily] = useState<DailyRow[]>([]);
   const [scraperConfigTab, setScraperConfigTab] = useState<ScraperConfigTab>('group');
@@ -209,7 +219,10 @@ export default function AdminDashboard() {
   // horizontal scroll swallows the page. So on small screens only one pane
   // renders at a time; from lg up both show together as before and this is
   // ignored.
-  const [statsPane, setStatsPane] = useState<'cards' | 'charts' | 'table'>('cards');
+  const [statsPane, setStatsPane] = useState<StatsPane>(() => {
+    const requested = searchParams.get('pane');
+    return STATS_PANES.some((pane) => pane.key === requested) ? (requested as StatsPane) : 'charts';
+  });
   const [sortKey, setSortKey] = useState<AdminStatsSortKey>('created_at');
   const [sortDirection, setSortDirection] = useState<AdminStatsSortDirection>('desc');
   const dateDropdownRef = useRef<HTMLDivElement>(null);
@@ -494,6 +507,23 @@ export default function AdminDashboard() {
       ? filteredStats.reduce((sum, s) => sum + ((s[col.key] as number) || 0), 0)
       : 0;
   }
+
+  useEffect(() => {
+    // Functional form: it reads the current params without this effect
+    // depending on them, which would otherwise loop on its own write, and it
+    // leaves any other parameter on the URL alone.
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set('view', adminView);
+      // The pane only means anything inside Account Stats; carrying it into
+      // the other sections would put a stale parameter in every shared link.
+      if (adminView === 'stats') next.set('pane', statsPane);
+      else next.delete('pane');
+      return next;
+      // replace, not push: flipping between panes should not fill the back
+      // button with admin states to click through.
+    }, { replace: true });
+  }, [adminView, statsPane, setSearchParams]);
 
   const currentPresetLabel = DATE_PRESETS.find(p => p.key === datePreset)?.label ?? 'Last 7 days';
   // The same window the stats fetch uses, so the chart cannot disagree with
