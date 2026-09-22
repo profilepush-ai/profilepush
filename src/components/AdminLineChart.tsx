@@ -1,14 +1,14 @@
-import { useMemo } from 'react';
 import { TrendingUp } from 'lucide-react';
-import { buildSignupSeries } from '../lib/admin-signups-series';
+import type { SignupPoint } from '../lib/admin-signups-series';
 
 type Props = {
-  /** Every account in the dashboard, unfiltered. Bucketing happens here. */
-  accounts: Array<{ created_at: string }>;
-  /** ISO timestamps from the dashboard's date picker. Null means open-ended. */
-  startDate: string | null;
-  endDate: string | null;
-  rangeLabel: string;
+  title: string;
+  points: SignupPoint[];
+  rangeLabel?: string;
+  /** Shown instead of a chart when there is nothing to plot. */
+  emptyLabel?: string;
+  /** Compact enough to sit several-across in a grid. */
+  dense?: boolean;
 };
 
 const CHART_W = 900;
@@ -18,11 +18,8 @@ const PAD_R = 8;
 const PAD_T = 10;
 const PAD_B = 22;
 
-export default function AdminSignupsChart({ accounts, startDate, endDate, rangeLabel }: Props) {
-  const series = useMemo(
-    () => buildSignupSeries(accounts, startDate, endDate),
-    [accounts, startDate, endDate],
-  );
+export default function AdminLineChart({ title, points, rangeLabel, emptyLabel, dense }: Props) {
+  const series = points;
 
   const total = series.reduce((sum, p) => sum + p.count, 0);
   const peak = series.reduce((best, p) => (p.count > best.count ? p : best), { key: '', count: 0 });
@@ -53,7 +50,7 @@ export default function AdminSignupsChart({ accounts, startDate, endDate, rangeL
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-gray-200 px-4 py-3">
         <div className="flex items-center gap-2">
           <TrendingUp size={14} className="text-gray-500" />
-          <h2 className="text-sm font-semibold text-gray-900">Daily signups</h2>
+          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
           <span className="text-[10px] text-gray-400">{rangeLabel}</span>
         </div>
         <div className="flex items-center gap-4 text-[11px] text-gray-500">
@@ -65,10 +62,10 @@ export default function AdminSignupsChart({ accounts, startDate, endDate, rangeL
       </div>
 
       {series.length === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-gray-400">No signups in this range.</p>
+        <p className="px-4 py-10 text-center text-sm text-gray-400">{emptyLabel ?? 'Nothing in this range.'}</p>
       ) : (
         <div className="px-2 py-3">
-          <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} className="h-44 w-full" role="img" aria-label={`Daily signups, ${total} total`}>
+          <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} className={dense ? 'h-32 w-full' : 'h-44 w-full'} role="img" aria-label={`${title}, ${total} total`}>
             {[0, 0.5, 1].map((fraction) => {
               const value = Math.round(yMax * (1 - fraction));
               const gy = PAD_T + fraction * (CHART_H - PAD_T - PAD_B);
@@ -102,7 +99,7 @@ export default function AdminSignupsChart({ accounts, startDate, endDate, rangeL
                   height={CHART_H - PAD_T - PAD_B}
                   fill="transparent"
                 >
-                  <title>{`${formatDay(point.key)} — ${point.count} signup${point.count === 1 ? '' : 's'}`}</title>
+                  <title>{`${formatDay(point.key)} — ${point.count.toLocaleString()}`}</title>
                 </rect>
                 {(point.count > 0 && (series.length <= 60 || point.count === peak.count)) && (
                   <circle cx={x(i)} cy={y(point.count)} r={2.5} fill="#2563eb" />
