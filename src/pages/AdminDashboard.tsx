@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Filter, Lock, Menu, RefreshCcw, Target, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Table as TableIcon } from 'lucide-react';
+import { Bell, Filter, Lock, Menu, RefreshCcw, Target, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Table as TableIcon } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
@@ -8,6 +8,7 @@ import AdminAiPromptsPanel from '../components/AdminAiPromptsPanel';
 import AdminChannelsPanel from '../components/AdminChannelsPanel';
 import AdminMarketPanel from '../components/AdminMarketPanel';
 import AdminSocialPosterPanel from '../components/AdminSocialPosterPanel';
+import AdminNotificationsPanel from '../components/AdminNotificationsPanel';
 import AdminTrendCharts from '../components/AdminTrendCharts';
 import AdminFunnels from '../components/AdminFunnels';
 import AdminProgress from '../components/AdminProgress';
@@ -73,7 +74,7 @@ interface LinkedinScraperConfig {
   updated_at: string;
 }
 
-type AdminView = 'stats' | 'scraper' | 'scraper-logs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social';
+type AdminView = 'stats' | 'scraper' | 'scraper-logs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social' | 'notifications';
 
 // The sidebar renders from this rather than from nine hand-written buttons,
 // which is what the top nav had become — adding a section meant editing the
@@ -88,6 +89,7 @@ const ADMIN_NAV: Array<{ id: AdminView; label: string; Icon: typeof TrendingUp }
   { id: 'trends', label: 'Trends', Icon: Activity },
   { id: 'post-outreach', label: 'Post Outreach', Icon: Megaphone },
   { id: 'social', label: 'Social Poster', Icon: Send },
+  { id: 'notifications', label: 'Notifications', Icon: Bell },
 ];
 type ScraperConfigTab = 'group' | 'keyword';
 type LinkedinStatsRange = '24h' | '7d' | '30d' | 'all' | 'custom';
@@ -1281,6 +1283,7 @@ export default function AdminDashboard() {
         {adminView === 'trends' && <AdminTrendsPanel />}
         {adminView === 'post-outreach' && <AdminPostOutreachPanel />}
         {adminView === 'social' && <AdminSocialPosterPanel />}
+        {adminView === 'notifications' && <AdminNotificationsPanel />}
       </div>
       </div>
 

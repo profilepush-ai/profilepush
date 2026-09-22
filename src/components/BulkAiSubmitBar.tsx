@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Loader2, Mail, Video, X } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, Mail, Video, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 // Bulk sending is the reason people adopt this feature — nobody switches tools
@@ -65,6 +65,21 @@ export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailCon
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<Progress>(null);
   const [error, setError] = useState('');
+  const [outlookRequested, setOutlookRequested] = useState(false);
+
+  // Sending goes through the user's own Gmail, so everyone on Microsoft is
+  // locked out entirely. Building Graph sending is a separate OAuth app and a
+  // different send API — a real project — so this records who wants it and
+  // lets the size of that queue decide, rather than guessing.
+  async function requestOutlook() {
+    setOutlookRequested(true);
+    const { data: userData } = await supabase.auth.getUser();
+    await supabase.from('platform_requests' as never).insert({
+      account_id: accountId,
+      user_id: userData?.user?.id ?? null,
+      request_type: 'outlook_send',
+    } as never);
+  }
 
   const sendable = targets.filter((t) => t.hasEmail);
   const label = leadType === 'hotlist' ? 'AI Invite' : 'AI Submit';
@@ -153,12 +168,26 @@ export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailCon
         <div className="min-w-0 flex-1">
           <p className="font-semibold">Connect Gmail to send to all {sendable.length} matches at once.</p>
           <p className="mt-0.5">Messages go from your own address, so replies come straight back to you.</p>
-          <button
-            onClick={onConnectGmail}
-            className="mt-2 rounded-md bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700"
-          >
-            Connect Gmail
-          </button>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              onClick={onConnectGmail}
+              className="rounded-md bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700"
+            >
+              Connect Gmail
+            </button>
+            {outlookRequested ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800">
+                <Check size={12} /> Noted — we will let you know when Outlook is ready
+              </span>
+            ) : (
+              <button
+                onClick={() => void requestOutlook()}
+                className="rounded-md border border-amber-300 px-3 py-1.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100"
+              >
+                I use Outlook
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
