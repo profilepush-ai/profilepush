@@ -9,7 +9,9 @@ import AdminChannelsPanel from '../components/AdminChannelsPanel';
 import AdminMarketPanel from '../components/AdminMarketPanel';
 import AdminSocialPosterPanel from '../components/AdminSocialPosterPanel';
 import AdminTrendCharts from '../components/AdminTrendCharts';
-import type { DailyRow } from '../lib/admin-signups-series';
+import { buildMetricSeries, type DailyRow } from '../lib/admin-signups-series';
+import { formatChange, trendOf, type Trend } from '../lib/admin-targets';
+import type { BriefLine } from '../lib/admin-briefing';
 import AdminTrendsPanel from '../components/AdminTrendsPanel';
 import AdminPostOutreachPanel from '../components/AdminPostOutreachPanel';
 import { supabase } from '../lib/supabase';
@@ -147,6 +149,16 @@ const STATS_PANES = [
 ] as const;
 
 type StatsPane = (typeof STATS_PANES)[number]['key'];
+
+// Green while an account is still showing up, red once it has gone quiet for
+// a week. Per-account daily history is not in the payload, so recency is the
+// honest signal here — not a growth rate dressed up as one.
+function accountPulse(lastActivityAt: string | null): string {
+  if (!lastActivityAt) return 'bg-gray-300';
+  const age = Date.now() - Date.parse(lastActivityAt);
+  if (Number.isNaN(age)) return 'bg-gray-300';
+  return age <= 7 * 86_400_000 ? 'bg-green-500' : 'bg-red-500';
+}
 
 function formatCompactDateTime(value: string | null) {
   if (!value) return '-';
@@ -530,6 +542,45 @@ export default function AdminDashboard() {
   // the numbers beside it.
   const signupRange = getDateRange(datePreset, customStart, customEnd);
 
+  // Direction of travel per card, from the same daily buckets the charts use.
+  // Cards measuring a level rather than a flow — credits balance, average
+  // active time — are left out: "up" means nothing for those.
+  const cardTrends = useMemo(() => {
+    const backing: Record<string, string[]> = {
+      Accounts: ['signups'],
+      Active: ['active_users'],
+      Sessions: ['sessions'],
+      Searches: ['searches'],
+      Posts: ['job_posts', 'hotlist_posts'],
+      Previews: ['previews'],
+      'AI Asks': ['ai_pitches', 'ai_requests'],
+      'AI Matches': ['ai_matches'],
+      Chats: ['chats'],
+      Downloads: ['downloads'],
+    };
+    const out: Record<string, Trend> = {};
+    for (const [label, keys] of Object.entries(backing)) {
+      const merged = keys
+        .map((key) => buildMetricSeries(daily, key, 'all', signupRange.start_date, signupRange.end_date))
+        .reduce<{ key: string; count: number }[]>((total, series) => (
+          total.length
+            ? total.map((point, i) => ({ key: point.key, count: point.count + (series[i]?.count ?? 0) }))
+            : series
+        ), []);
+      if (merged.length) out[label] = trendOf(merged);
+    }
+    return out;
+  }, [daily, signupRange.start_date, signupRange.end_date]);
+
+  // Breakages the data cannot report on, because they are why it is missing.
+  const blockers = useMemo<BriefLine[]>(() => {
+    const lines: BriefLine[] = [];
+    if (!daily.length) {
+      lines.push({ key: 'no-daily', text: 'No daily data: redeploy admin-stats, or every chart here stays empty.', tone: 'bad' });
+    }
+    return lines;
+  }, [daily.length]);
+
   // Summary cards. A raw sum only means something for activity counters —
   // adding up credits_balance across accounts totals everyone's *remaining*
   // balance, which says nothing about the cohort, so it's deliberately not a
@@ -833,7 +884,18 @@ export default function AdminDashboard() {
                   { label: 'Downloads', value: totalDownloads.toLocaleString(), hint: `${(totals.vendor_downloads_count ?? 0).toLocaleString()} vendor · ${(totals.recruiter_downloads_count ?? 0).toLocaleString()} recruiter` },
                 ].map((metric) => (
                   <div key={metric.label} className="border-b border-r border-gray-200 px-4 py-3 [&:nth-child(2n)]:border-r-0 [&:nth-child(n+11)]:border-b-0 sm:[&:nth-child(4n)]:border-r-0 sm:[&:nth-child(n+9)]:border-b-0 lg:[&:nth-child(6n)]:border-r-0 lg:[&:nth-child(n+7)]:border-b-0">
-                    <p className="text-[10px] font-semibold uppercase text-gray-500">{metric.label}</p>
+                    <div className="flex items-center gap-1.5">
+                      {cardTrends[metric.label] && (
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                            cardTrends[metric.label].direction === 'up' ? 'bg-green-500'
+                              : cardTrends[metric.label].direction === 'down' ? 'bg-red-500' : 'bg-gray-300'
+                          }`}
+                          title={`${formatChange(cardTrends[metric.label].change)} — recent half of the range vs the half before`}
+                        />
+                      )}
+                      <p className="text-[10px] font-semibold uppercase text-gray-500">{metric.label}</p>
+                    </div>
                     <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{metric.value}</p>
                     <p className="mt-0.5 truncate text-[10px] text-gray-400" title={metric.hint}>{metric.hint}</p>
                   </div>
@@ -846,6 +908,7 @@ export default function AdminDashboard() {
                   startDate={signupRange.start_date}
                   endDate={signupRange.end_date}
                   rangeLabel={currentPresetLabel}
+                  blockers={blockers}
                 />
               </div>
               <div className={`min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white ${statsPane === 'table' ? 'flex' : 'hidden'} ${statsPane === 'cards' ? 'lg:flex' : ''}`}>
@@ -917,6 +980,18 @@ export default function AdminDashboard() {
                             ) : col.kind === 'date' ? (
                               <span className="block truncate text-xs font-normal text-gray-600 whitespace-nowrap">
                                 {typeof value === 'string' ? formatCompactDateTime(value) : '-'}
+                              </span>
+                            ) : col.key === 'user_name' ? (
+                              <span className="flex items-center gap-1.5">
+                                <span
+                                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${accountPulse(account.last_activity_at)}`}
+                                  title={account.last_activity_at
+                                    ? `Last active ${formatCompactDateTime(account.last_activity_at)}`
+                                    : 'Never active'}
+                                />
+                                <span className="block truncate text-xs font-normal text-gray-800">
+                                  {typeof value === 'string' && value ? value : '-'}
+                                </span>
                               </span>
                             ) : (
                               <span className="block truncate text-xs font-normal text-gray-800">
