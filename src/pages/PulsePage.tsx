@@ -8271,6 +8271,29 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
+              {/* One mount above the results section: the mobile list and the
+                  desktop tabbed columns are different branches below, and
+                  putting it inside either one hid it on the other layout. */}
+              {aiMatch && account?.id && filteredFeed.length > 0 && (
+                <div className="shrink-0 pt-1">
+                  <BulkAiSubmitBar
+                    targets={filteredFeed
+                      .filter((lead) => lead.aiMatchScore != null)
+                      .map((lead) => ({
+                        id: lead.id,
+                        title: lead.title || lead.roleTitle || 'Untitled',
+                        company: lead.company || '',
+                        hasEmail: Boolean(extractPrimaryEmail(lead.posterEmail)),
+                      }))}
+                    leadType={isHotlistFeed ? 'hotlist' : 'job'}
+                    accountId={account.id}
+                    gmailConnected={gmailIntegrationStatus === 'connected'}
+                    onConnectGmail={() => { void handleConnectGmailStandalone(); }}
+                    onDone={() => { void refreshFeed(); }}
+                  />
+                </div>
+              )}
+
               <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
                 <div className={`min-h-0 ${isMobileViewport ? '' : 'flex-1 overflow-hidden'}`}>
                   {aiMatchRunning ? (
@@ -8306,22 +8329,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                           )
                         ) : (
                           <div className="space-y-2 bg-[#f3f2ee] px-1.5 pt-1 pb-4 dark:bg-[#1B1D21]">
-                            {aiMatch && account?.id && (
-                              <BulkAiSubmitBar
-                                targets={visibleFeed
-                                  .filter((lead) => lead.aiMatchScore != null)
-                                  .map((lead) => ({
-                                    id: lead.id,
-                                    title: lead.title || lead.roleTitle || 'Untitled',
-                                    company: lead.company || '',
-                                    hasEmail: Boolean(extractPrimaryEmail(lead.posterEmail)),
-                                  }))}
-                                leadType={isHotlistFeed ? 'hotlist' : 'job'}
-                                accountId={account.id}
-                                onConnectGmail={() => { void handleConnectGmailStandalone(); }}
-                                onDone={() => { void refreshFeed(); }}
-                              />
-                            )}
                             {renderLeadCards(visibleFeed)}
                             {renderFeedPagingFooter()}
                           </div>

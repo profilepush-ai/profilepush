@@ -37,14 +37,28 @@ type Props = {
   targets: BulkTarget[];
   leadType: 'job' | 'hotlist';
   accountId: string;
+  /** Tracked by the page already; the quota RPC is not the source of truth for it. */
+  gmailConnected: boolean;
   onConnectGmail: () => void;
   onDone: () => void;
 };
 
+// Used until the quota RPC answers — and permanently if it is not deployed.
+// Hiding the whole feature because a count is unavailable is worse than
+// showing it with the conservative limit: the server enforces the real one on
+// every send regardless of what this says.
+const FALLBACK_QUOTA: Quota = {
+  used_today: 0,
+  daily_limit: 10,
+  remaining: 10,
+  is_trial: true,
+  gmail_connected: false,
+};
+
 type Progress = { sent: number; failed: number; current: string } | null;
 
-export default function BulkAiSubmitBar({ targets, leadType, accountId, onConnectGmail, onDone }: Props) {
-  const [quota, setQuota] = useState<Quota | null>(null);
+export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailConnected, onConnectGmail, onDone }: Props) {
+  const [quota, setQuota] = useState<Quota>({ ...FALLBACK_QUOTA, gmail_connected: gmailConnected });
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<Progress>(null);
   const [error, setError] = useState('');
@@ -55,14 +69,19 @@ export default function BulkAiSubmitBar({ targets, leadType, accountId, onConnec
 
   const loadQuota = useCallback(async () => {
     const { data, error: rpcError } = await supabase.rpc('get_ai_submit_quota' as never);
-    if (rpcError) return;
+    if (rpcError) {
+      // Not deployed, or unreachable. Keep the conservative fallback rather
+      // than vanishing, and trust the page for the Gmail state.
+      setQuota((current) => ({ ...current, gmail_connected: gmailConnected }));
+      return;
+    }
     const row = Array.isArray(data) ? data[0] : data;
-    if (row) setQuota(row as Quota);
-  }, []);
+    if (row) setQuota({ ...(row as Quota), gmail_connected: (row as Quota).gmail_connected || gmailConnected });
+  }, [gmailConnected]);
 
   useEffect(() => { void loadQuota(); }, [loadQuota]);
 
-  if (!sendable.length || !quota) return null;
+  if (!sendable.length) return null;
 
   const batch = sendable.slice(0, Math.min(PER_RUN_CAP, quota.remaining));
 
