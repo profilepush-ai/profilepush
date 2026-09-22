@@ -6625,7 +6625,24 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       const vendorName = data.vendor_name || lead.posterName || 'the vendor';
       const vendorEmail = primaryEmail;
       const generatedSubject = removeNameFromEmail(data.email_subject || '', vendorName);
-      const generatedContent = removeNameFromEmail(data.email_content || '', vendorName);
+      let generatedContent = removeNameFromEmail(data.email_content || '', vendorName);
+
+      // The draft says "link below", so the link has to be in the draft. It is
+      // minted here rather than at send time so the preview shows exactly what
+      // goes out — invisible until send reads as a broken invite. The RPC is
+      // idempotent per job and consultant, so regenerating or resending never
+      // creates a second screening.
+      if (leadType === 'hotlist' && aiMatchSourcePostId) {
+        const { data: invite } = await supabase.rpc('invite_consultant_to_screening' as never, {
+          p_social_job_id: aiMatchSourcePostId,
+          p_hotlist_id: lead.id,
+        } as never);
+        const row = Array.isArray(invite) ? invite[0] : invite;
+        const token = (row as { screening_token?: string } | null)?.screening_token;
+        if (token) {
+          generatedContent += `\n\nStart the screening here — no account needed, about five minutes:\n${window.location.origin}/screen/${token}`;
+        }
+      }
       setAskAIPreview((current) => ({
         leadId: lead.id,
         leadType,
@@ -6796,7 +6813,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       // rather than when the draft is generated, so a draft the user abandons
       // does not leave a screening record behind.
       let emailContent = askAIPreview.emailContent;
-      if (askAIPreview.leadType === 'hotlist' && aiMatchSourcePostId) {
+      if (askAIPreview.leadType === 'hotlist' && aiMatchSourcePostId && !emailContent.includes('/screen/')) {
         const { data: invite } = await supabase.rpc('invite_consultant_to_screening' as never, {
           p_social_job_id: aiMatchSourcePostId,
           p_hotlist_id: askAIPreview.leadId,

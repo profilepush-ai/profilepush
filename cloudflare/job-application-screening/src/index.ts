@@ -273,6 +273,46 @@ async function chargeScreeningCompletionCredit(env: Env, accountId: string | nul
 }
 
 // ── Route handlers ──────────────────────────────────────────────────────────
+// Takes the candidate's resume on the screening page itself, so the questions
+// can be about their actual experience. Parsing runs through the existing
+// parse-resume function rather than a second implementation: it already
+// handles pdf, docx, rtf and txt, and a screening-only copy would drift.
+async function handleUploadResume(env: Env, token: string, req: Request): Promise<Response> {
+  const application = await getApplicationByToken(env, token);
+  if (!application) return jsonResponse({ error: "Invalid or expired screening link" }, 404);
+  if (application.status === "screening_completed") return jsonResponse({ error: "Screening already completed" }, 400);
+
+  const form = await req.formData().catch(() => null);
+  const file = form?.get("resume");
+  if (!(file instanceof File)) return jsonResponse({ error: "No resume file received" }, 400);
+  // Big enough for any real resume, small enough that a mis-picked video does
+  // not tie up the worker.
+  if (file.size > 10 * 1024 * 1024) return jsonResponse({ error: "Resume must be under 10MB" }, 400);
+
+  const forward = new FormData();
+  forward.append("file", file, file.name);
+  const parseRes = await fetch(`${env.SUPABASE_URL}/functions/v1/parse-resume`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+    body: forward,
+  });
+  if (!parseRes.ok) {
+    const detail = await parseRes.text().catch(() => "");
+    return jsonResponse({ error: `Could not read that file: ${detail.slice(0, 200)}` }, 400);
+  }
+  const parsed = await parseRes.json().catch(() => null) as Record<string, unknown> | null;
+  const profile = (parsed?.profile ?? parsed?.parsed ?? parsed) as Record<string, unknown> | null;
+  if (!profile) return jsonResponse({ error: "Could not read that file" }, 400);
+
+  await supabaseRest(env, `job_applications?id=eq.${encodeURIComponent(application.id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ resume_parsed_json: profile }),
+  });
+
+  return jsonResponse({ ok: true });
+}
+
 async function handleGetSession(env: Env, token: string): Promise<Response> {
   const application = await getApplicationByToken(env, token);
   if (!application) return jsonResponse({ error: "Invalid or expired screening link" }, 404);
@@ -293,6 +333,10 @@ async function handleGetSession(env: Env, token: string): Promise<Response> {
     candidateName: application.candidate_name,
     jobTitle,
     companyName,
+    // Consultants invited straight off an AI Match have no resume on file —
+    // nobody submitted them, a vendor invited them. Without one every
+    // question is generic, which is the opposite of what a screening is for.
+    needsResume: !application.resume_parsed_json,
     status: application.status,
     turnsAnswered: turns.filter((t) => t.answered_at).length,
     currentTurnIndex: currentTurn?.turn_index ?? null,
@@ -447,6 +491,9 @@ export default {
 
     const sessionMatch = path.match(/^\/screen\/([^/]+)\/?$/);
     if (sessionMatch && req.method === "GET") return handleGetSession(env, sessionMatch[1]);
+
+    const resumeMatch = path.match(/^\/screen\/([^/]+)\/resume\/?$/);
+    if (resumeMatch && req.method === "POST") return handleUploadResume(env, resumeMatch[1], req);
 
     const segmentMatch = path.match(/^\/screen\/([^/]+)\/segment\/(\d+)\/?$/);
     if (segmentMatch && req.method === "POST") return handleSegmentAnswer(env, segmentMatch[1], segmentMatch[2], req);
