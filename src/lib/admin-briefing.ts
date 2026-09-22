@@ -133,24 +133,34 @@ export function buildIssues(metrics: MetricSeries[], blockers: BriefLine[] = [])
     .map(({ weight: _weight, ...line }) => line);
 }
 
-export type Experiment = { key: string; text: string };
+export type Experiment = {
+  key: string;
+  text: string;
+  /**
+   * Who can actually run it. 'claude' means it can be handed straight to the
+   * assistant in chat; 'you' means it needs a person, usually because it
+   * involves messaging real people under your name. Ticking the box records
+   * that it was tried — it does not trigger anything.
+   */
+  owner: 'you' | 'claude';
+};
 
 // Five-minute experiments. Each is something one person can do today without
 // a deploy, a budget or a meeting — the constraint is deliberate: a list of
 // week-long projects never gets ticked.
 export const EXPERIMENT_CATALOGUE: Experiment[] = [
-  { key: 'reply-groups', text: 'Answer three "looking for C2C requirements" posts in a LinkedIn group with a link to the matching requirement page.' },
-  { key: 'share-permalink', text: 'Share one hotlist permalink into a WhatsApp group and watch whether it brings a signup.' },
-  { key: 'dm-lapsed', text: 'Message five accounts that signed up but never posted, and ask what stopped them.' },
-  { key: 'store-listing', text: 'Change one line of the Play Store short description to lead with "C2C requirements" and note the install rate.' },
-  { key: 'first-post-nudge', text: 'Email everyone who signed up this week but has not posted, with one requirement that matches their persona.' },
-  { key: 'rate-post', text: 'Post one rate benchmark from the requirement data — a median rate for a hot role — and see what it does for reach.' },
-  { key: 'ask-referral', text: 'Ask the three most active accounts directly who else on their team should have an account.' },
-  { key: 'thin-page', text: 'Open the three requirement pages with the fewest listings and decide whether they should exist at all.' },
-  { key: 'signup-friction', text: 'Sign up as a new user on a phone and time it. Note every step that takes more than five seconds.' },
-  { key: 'competitor-gap', text: 'Search the top three C2C keywords and note which competitor ranks above us and why.' },
-  { key: 'ai-match-retry', text: 'Run AI Match yourself with a real consultant and judge whether the top three matches are genuinely good.' },
-  { key: 'reactivate-gmail', text: 'Contact the accounts whose Gmail connection is revoked and ask them to reconnect.' },
+  { key: 'reply-groups', owner: 'you', text: 'Answer three "looking for C2C requirements" posts in a LinkedIn group with a link to the matching requirement page.' },
+  { key: 'share-permalink', owner: 'you', text: 'Share one hotlist permalink into a WhatsApp group and watch whether it brings a signup.' },
+  { key: 'dm-lapsed', owner: 'you', text: 'Message five accounts that signed up but never posted, and ask what stopped them.' },
+  { key: 'store-listing', owner: 'claude', text: 'Rewrite the Play Store short description to lead with "C2C requirements", then note the install rate.' },
+  { key: 'first-post-nudge', owner: 'you', text: 'Email everyone who signed up this week but has not posted, with one requirement that matches their persona.' },
+  { key: 'rate-post', owner: 'claude', text: 'Pull one rate benchmark from the requirement data — a median rate for a hot role — ready to post.' },
+  { key: 'ask-referral', owner: 'you', text: 'Ask the three most active accounts directly who else on their team should have an account.' },
+  { key: 'thin-page', owner: 'claude', text: 'Audit the three requirement pages with the fewest listings and say whether they should exist at all.' },
+  { key: 'signup-friction', owner: 'claude', text: 'Walk the signup flow at phone width and list every step that takes more than five seconds.' },
+  { key: 'competitor-gap', owner: 'claude', text: 'Search the top three C2C keywords and report which competitor ranks above us and why.' },
+  { key: 'ai-match-retry', owner: 'you', text: 'Run AI Match with a real consultant and judge whether the top three matches are genuinely good.' },
+  { key: 'reactivate-gmail', owner: 'you', text: 'Contact the accounts whose Gmail connection is revoked and ask them to reconnect.' },
 ];
 
 /**

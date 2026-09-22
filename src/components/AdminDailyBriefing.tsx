@@ -129,6 +129,16 @@ export default function AdminDailyBriefing({ metrics, blockers = [] }: Props) {
                     className="mt-0.5 h-3 w-3 shrink-0 cursor-pointer rounded border-gray-300 text-blue-600"
                   />
                   <span className={`min-w-0 ${tried[experiment.key] ? 'text-gray-400 line-through' : ''}`}>
+                    <span
+                      className={`mr-1.5 rounded px-1 py-px text-[9px] font-semibold uppercase ${
+                        experiment.owner === 'claude' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'
+                      }`}
+                      title={experiment.owner === 'claude'
+                        ? 'Can be handed to Claude in chat — ticking records it as tried, it does not trigger anything'
+                        : 'Needs a person: this one involves contacting real people'}
+                    >
+                      {experiment.owner === 'claude' ? 'Claude' : 'You'}
+                    </span>
                     {experiment.text}
                   </span>
                 </label>
