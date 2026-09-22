@@ -189,7 +189,7 @@ const renderPage: PagesFunction<Env> = async ({ params, env }) => {
   const faqs = [
     {
       q: `Where can I find ${roleLabel} C2C requirements in ${placeLabel}?`,
-      a: `ProfilePush collects ${roleLabel} corp-to-corp requirements from public postings across LinkedIn, WhatsApp, Telegram and job boards, de-duplicates them by recruiter, and refreshes them daily. ${total} were posted in ${placeLabel} in the last 30 days and ${stats.added_7d ?? 0} in the last 7. The five freshest and most complete are listed above; a free account shows all of them with the recruiter's contact.`,
+      a: `ProfilePush aggregates ${roleLabel} corp-to-corp requirements from across the US IT staffing market, de-duplicates them by recruiter, and refreshes them daily. ${total} were posted in ${placeLabel} in the last 30 days and ${stats.added_7d ?? 0} in the last 7. The five freshest and most complete are listed above; a free account shows all of them with the recruiter's contact.`,
     },
     {
       q: `What do ${roleLabel} C2C roles pay in ${placeLabel}?`,
@@ -284,7 +284,7 @@ footer{margin-top:40px;color:#9ca3af;font-size:12px}
      Texas" quotes the first passage that answers it outright, so the page
      states the answer in one self-contained paragraph with the numbers in it,
      rather than making the model infer it from a list of cards. -->
-<p class="answer"><strong>${esc(total)} ${esc(roleLabel)} corp-to-corp (C2C) requirements</strong> were posted in ${esc(placeLabel)} in the last 30 days on ProfilePush, ${esc(stats.added_7d ?? 0)} of them in the last 7 days.${stats.median_rate_max ? ` The median advertised maximum rate is <strong>$${esc(Math.round(Number(stats.median_rate_max)))}/hour</strong>.` : ""} ${esc(stats.with_contact ?? 0)} of the ${esc(total)} include a direct recruiter contact, which is available to signed-in members. Requirements are collected from public postings across LinkedIn, WhatsApp, Telegram and job boards, de-duplicated by recruiter and refreshed every day.</p>
+<p class="answer"><strong>${esc(total)} ${esc(roleLabel)} corp-to-corp (C2C) requirements</strong> were posted in ${esc(placeLabel)} in the last 30 days on ProfilePush, ${esc(stats.added_7d ?? 0)} of them in the last 7 days.${stats.median_rate_max ? ` The median advertised maximum rate is <strong>$${esc(Math.round(Number(stats.median_rate_max)))}/hour</strong>.` : ""} ${esc(stats.with_contact ?? 0)} of the ${esc(total)} include a direct recruiter contact, which is available to signed-in members. Requirements are de-duplicated by recruiter and refreshed every day.</p>
 
 <div class="stats">
   <div class="stat"><b>${esc(total)}</b><span>requirements, 30 days</span></div>
@@ -324,7 +324,7 @@ ${faqs.map((item) => `
     .map(([key, label]) => `<a href="/c2c-requirements/${esc(key)}${state ? `/${esc(state.toLowerCase())}` : ""}">${esc(label)}</a>`).join("")}
 </div>
 
-<footer>Requirements are collected from public postings across LinkedIn, WhatsApp, Telegram and job boards, de-duplicated and refreshed daily. Contact details are available to signed-in members. <a href="/">ProfilePush</a></footer>
+<footer>Requirements are de-duplicated by recruiter and refreshed daily. Contact details are available to signed-in members. <a href="/">ProfilePush</a></footer>
 </div>
 </body>
 </html>`;
