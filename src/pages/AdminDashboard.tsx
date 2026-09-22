@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Lock, Menu, RefreshCcw, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Table as TableIcon } from 'lucide-react';
+import { Filter, Lock, Menu, RefreshCcw, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Table as TableIcon } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
@@ -9,6 +9,7 @@ import AdminChannelsPanel from '../components/AdminChannelsPanel';
 import AdminMarketPanel from '../components/AdminMarketPanel';
 import AdminSocialPosterPanel from '../components/AdminSocialPosterPanel';
 import AdminTrendCharts from '../components/AdminTrendCharts';
+import AdminFunnels from '../components/AdminFunnels';
 import { buildMetricSeries, type DailyRow } from '../lib/admin-signups-series';
 import { formatChange, trendOf, type Trend } from '../lib/admin-targets';
 import type { BriefLine } from '../lib/admin-briefing';
@@ -144,6 +145,7 @@ const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.React
 
 const STATS_PANES = [
   { key: 'charts', label: 'Charts', icon: Activity },
+  { key: 'funnel', label: 'Funnel', icon: Filter },
   { key: 'cards', label: 'Summary', icon: LayoutGrid },
   { key: 'table', label: 'Accounts', icon: TableIcon },
 ] as const;
@@ -909,6 +911,14 @@ export default function AdminDashboard() {
                   endDate={signupRange.end_date}
                   rangeLabel={currentPresetLabel}
                   blockers={blockers}
+                />
+              </div>
+              <div className={`min-h-0 flex-1 overflow-y-auto ${statsPane === 'funnel' ? 'block' : 'hidden'}`}>
+                <AdminFunnels
+                  accounts={stats}
+                  startDate={signupRange.start_date}
+                  endDate={signupRange.end_date}
+                  rangeLabel={currentPresetLabel}
                 />
               </div>
               <div className={`min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white ${statsPane === 'table' ? 'flex' : 'hidden'} ${statsPane === 'cards' ? 'lg:flex' : ''}`}>
