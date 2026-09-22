@@ -23,6 +23,11 @@ export type BulkTarget = {
   title: string;
   company: string;
   hasEmail: boolean;
+  // Per target, not per feed. AI Match returns consultants to a vendor and
+  // jobs to a bench sales user, and the combined feed can return both, so a
+  // single feed-level flag mislabelled the action — a vendor matching
+  // consultants was offered "AI Submit" when the action is an invite.
+  kind: 'job' | 'hotlist';
 };
 
 type Quota = {
@@ -35,7 +40,6 @@ type Quota = {
 
 type Props = {
   targets: BulkTarget[];
-  leadType: 'job' | 'hotlist';
   accountId: string;
   /** Tracked by the page already; the quota RPC is not the source of truth for it. */
   gmailConnected: boolean;
@@ -60,7 +64,7 @@ const FALLBACK_QUOTA: Quota = {
 
 type Progress = { sent: number; failed: number; current: string } | null;
 
-export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailConnected, isNarrowed, onClearSelection, onConnectGmail, onDone }: Props) {
+export default function BulkAiSubmitBar({ targets, accountId, gmailConnected, isNarrowed, onClearSelection, onConnectGmail, onDone }: Props) {
   const [quota, setQuota] = useState<Quota>({ ...FALLBACK_QUOTA, gmail_connected: gmailConnected });
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<Progress>(null);
@@ -82,8 +86,14 @@ export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailCon
   }
 
   const sendable = targets.filter((t) => t.hasEmail);
-  const label = leadType === 'hotlist' ? 'AI Invite' : 'AI Submit';
-  const Icon = leadType === 'hotlist' ? Video : Mail;
+  // Label from what is actually in the batch. All consultants reads as an
+  // invite, all jobs as a submit, and a mixed batch says neither rather than
+  // picking one and being wrong half the time.
+  const hotlistCount = sendable.filter((t) => t.kind === 'hotlist').length;
+  const allHotlist = hotlistCount === sendable.length && sendable.length > 0;
+  const allJobs = hotlistCount === 0 && sendable.length > 0;
+  const label = allHotlist ? 'AI Invite' : allJobs ? 'AI Submit' : 'Send';
+  const Icon = allHotlist ? Video : Mail;
 
   const loadQuota = useCallback(async () => {
     const { data, error: rpcError } = await supabase.rpc('get_ai_submit_quota' as never);
@@ -119,8 +129,8 @@ export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailCon
             request_id: requestId,
             account_id: accountId,
             job_id: target.id,
-            lead_type: leadType,
-            missing_details: leadType === 'hotlist' ? ['video screening'] : ['Rate'],
+            lead_type: target.kind,
+            missing_details: target.kind === 'hotlist' ? ['video screening'] : ['Rate'],
           },
         });
         if (preview.error || !preview.data?.ok) throw new Error(preview.data?.error || 'draft failed');
@@ -131,8 +141,8 @@ export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailCon
             request_id: requestId,
             account_id: accountId,
             job_id: target.id,
-            lead_type: leadType,
-            missing_details: leadType === 'hotlist' ? ['video screening'] : ['Rate'],
+            lead_type: target.kind,
+            missing_details: target.kind === 'hotlist' ? ['video screening'] : ['Rate'],
             email_subject: preview.data.email_subject,
             email_content: preview.data.email_content,
             channel: 'gmail',
@@ -166,7 +176,7 @@ export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailCon
       <div className="mx-1.5 mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
         <AlertTriangle size={14} className="mt-0.5 shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">Connect Gmail to send to all {sendable.length} matches at once.</p>
+          <p className="font-semibold">Connect Gmail to reach all {sendable.length} matches at once.</p>
           <p className="mt-0.5">Messages go from your own address, so replies come straight back to you.</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button

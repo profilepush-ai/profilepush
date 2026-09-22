@@ -8325,8 +8325,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                         title: lead.title || lead.roleTitle || 'Untitled',
                         company: lead.company || '',
                         hasEmail: Boolean(extractPrimaryEmail(lead.posterEmail)),
+                        kind: leadIsHotlist(lead) ? 'hotlist' as const : 'job' as const,
                       }))}
-                    leadType={isHotlistFeed ? 'hotlist' : 'job'}
                     accountId={account.id}
                     gmailConnected={gmailIntegrationStatus === 'connected'}
                     isNarrowed={bulkSelectedIds.size > 0}
