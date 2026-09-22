@@ -154,7 +154,7 @@ function fallbackScreeningInviteCopy(
 ): AskVendorEmailCopy {
   return {
     subject: `Screening invite: ${roleTitle}`.slice(0, 200),
-    email_content: `Hey ${vendorName.split(/\s+/)[0]}, I have a live client requirement your ${roleTitle} fits. Are they still available? If so, they can complete a five-minute video screening for it — link below. — ${recruiterFirstName}`,
+    email_content: `Hey ${vendorName.split(/\s+/)[0]}, I have a live client requirement your ${roleTitle} fits. Have them complete a five-minute video screening for it — link below, no account needed. — ${recruiterFirstName}`,
   };
 }
 
@@ -190,7 +190,7 @@ You have a live client requirement this consultant fits, and you want them to co
 
 Rules:
 1. Open with the requirement, not with pleasantries. No "I hope this finds you well".
-2. One tight ask: confirm the consultant is still available and ask them to complete the screening.
+2. One tight ask: ask them to have the consultant complete the screening. Do NOT ask whether the consultant is still available — that invites a one-word reply instead of an action, and the screening itself answers it.
 3. Do NOT ask for a resume, a CV, or a rate card. The screening replaces those.
 4. Do NOT write a link, a URL, or any placeholder such as [link] or <link>. A link is appended to your message automatically — inventing one produces a dead link.
 5. Under 60 words. No markdown, no subject line inside the body, no signature block.`;
