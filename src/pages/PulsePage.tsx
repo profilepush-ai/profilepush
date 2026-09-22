@@ -6577,7 +6577,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     const leadType: 'job' | 'hotlist' = leadIsHotlist(lead) ? 'hotlist' : 'job';
     // A job with every field already detected still has a valid "ask" — re-confirming
     // rate is always a safe, relevant question, so we never block sending outreach.
-    const detectedMissingDetails = leadType === 'hotlist' ? ['resume'] : getMissingJobDetails(lead);
+    const detectedMissingDetails = leadType === 'hotlist' ? ['video screening'] : getMissingJobDetails(lead);
     const missingDetails = detectedMissingDetails.length > 0 ? detectedMissingDetails : ['Rate'];
     const primaryEmail = extractPrimaryEmail(lead.posterEmail);
     if (!primaryEmail) {
@@ -6733,7 +6733,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         return;
       }
 
-      const detectedMissingDetails = leadType === 'hotlist' ? ['resume'] : getMissingJobDetails(lead);
+      const detectedMissingDetails = leadType === 'hotlist' ? ['video screening'] : getMissingJobDetails(lead);
       const missingDetails = detectedMissingDetails.length > 0 ? detectedMissingDetails : ['Rate'];
       setAskAIPreview({
         leadId,
@@ -6792,6 +6792,22 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     if (!askAIPreview || !account?.id || sendingViaGmail) return;
     setSendingViaGmail(true);
     try {
+      // An invite without the link is just an email. Minted at send time
+      // rather than when the draft is generated, so a draft the user abandons
+      // does not leave a screening record behind.
+      let emailContent = askAIPreview.emailContent;
+      if (askAIPreview.leadType === 'hotlist' && aiMatchSourcePostId) {
+        const { data: invite } = await supabase.rpc('invite_consultant_to_screening' as never, {
+          p_social_job_id: aiMatchSourcePostId,
+          p_hotlist_id: askAIPreview.leadId,
+        } as never);
+        const row = Array.isArray(invite) ? invite[0] : invite;
+        const token = (row as { screening_token?: string } | null)?.screening_token;
+        if (token) {
+          emailContent += `\n\nBook the screening here — no account needed, it takes about five minutes:\n${window.location.origin}/screen/${token}`;
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke('ask-ai-vendor-email', {
         body: {
           action: 'send',
@@ -6801,7 +6817,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
           lead_type: askAIPreview.leadType,
           missing_details: askAIPreview.missingDetails,
           email_subject: askAIPreview.emailSubject,
-          email_content: askAIPreview.emailContent,
+          email_content: emailContent,
           channel: 'gmail',
         },
       });
@@ -8481,7 +8497,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
           >
             <div className="flex items-start gap-2.5">
               <div className="min-w-0 flex-1">
-                <h2 id="ask-ai-preview-title" className="text-[15px] font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating email draft for request' : 'Generating email draft for submission') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review submission')}</h2>
+                <h2 id="ask-ai-preview-title" className="text-[15px] font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating screening invite' : 'Generating email draft for submission') : (askAIPreview.leadType === 'hotlist' ? 'Review screening invite' : 'Review submission')}</h2>
                 {!askAIPreview.isGenerating && (askAIPreview.jobTitle || askAIPreview.company) && (
                   <p className="mt-0.5 truncate text-[13px] text-gray-500">
                     {askAIPreview.jobTitle}{askAIPreview.jobTitle && askAIPreview.company ? ' · ' : ''}{askAIPreview.company}
