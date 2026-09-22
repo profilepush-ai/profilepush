@@ -1411,24 +1411,6 @@ const LeadCard = memo(function LeadCard({
           )}
         </button>
       )}
-      {bulkSelectable && (
-        // Sits apart from the action buttons, with its own border and a wider
-        // hit area, because the whole point is that a mis-tap here would
-        // otherwise fire AI Submit and spend a credit.
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onToggleBulkSelect?.(lead); }}
-          aria-pressed={Boolean(isBulkSelected)}
-          title={isBulkSelected ? 'Selected for bulk send' : 'Select for bulk send'}
-          className={`ml-2 inline-flex h-9 w-11 shrink-0 items-center justify-center rounded-md border transition-colors ${
-            isBulkSelected
-              ? 'border-blue-500 bg-blue-500 text-white'
-              : 'border-gray-300 bg-white text-gray-400 hover:border-blue-400 hover:text-blue-500 dark:border-white/15 dark:bg-white/[0.03] dark:text-gray-400'
-          }`}
-        >
-          <Check size={16} strokeWidth={2.5} />
-        </button>
-      )}
     </div>
   );
 
@@ -1442,8 +1424,27 @@ const LeadCard = memo(function LeadCard({
     >
       <LeadKindPill kind={lead.kind} variant="banner" />
       <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
-      <div>
-        <div className="min-w-0 pr-14">
+      <div className={bulkSelectable ? 'flex items-stretch gap-2' : undefined}>
+        {bulkSelectable && (
+          // Top left, ahead of the title, and stretched so it stands against
+          // both the title row and the score/summary row beneath it. Away from
+          // the action bar on purpose: a mis-tap down there fires AI Submit
+          // and spends a credit.
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onToggleBulkSelect?.(lead); }}
+            aria-pressed={Boolean(isBulkSelected)}
+            title={isBulkSelected ? 'Selected for bulk send' : 'Select for bulk send'}
+            className={`flex w-8 shrink-0 items-center justify-center self-stretch rounded-md border transition-colors ${
+              isBulkSelected
+                ? 'border-blue-500 bg-blue-500 text-white'
+                : 'border-gray-300 bg-white/60 text-gray-300 hover:border-blue-400 hover:text-blue-500 dark:border-white/15 dark:bg-white/[0.03] dark:text-gray-500'
+            }`}
+          >
+            <Check size={15} strokeWidth={2.5} />
+          </button>
+        )}
+        <div className="min-w-0 flex-1 pr-14">
           {hideActions ? (
             // Detail layout: the whole card selects the lead and the post opens
             // in the pane beside it, so the title stays plain text there.
