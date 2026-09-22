@@ -41,6 +41,13 @@ type Quota = {
 type Props = {
   targets: BulkTarget[];
   accountId: string;
+  /**
+   * The vendor's own job this match run came from, when there is one.
+   * A screening link hangs off a job_applications row, which needs a job — a
+   * run started from pasted text has none, so those invites go out as a plain
+   * ask with no link rather than silently dropping the screening.
+   */
+  sourceJobId?: string | null;
   /** Tracked by the page already; the quota RPC is not the source of truth for it. */
   gmailConnected: boolean;
   /** True when the user has ticked specific cards rather than taking all of them. */
@@ -64,7 +71,7 @@ const FALLBACK_QUOTA: Quota = {
 
 type Progress = { sent: number; failed: number; current: string } | null;
 
-export default function BulkAiSubmitBar({ targets, accountId, gmailConnected, isNarrowed, onClearSelection, onConnectGmail, onDone }: Props) {
+export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmailConnected, isNarrowed, onClearSelection, onConnectGmail, onDone }: Props) {
   const [quota, setQuota] = useState<Quota>({ ...FALLBACK_QUOTA, gmail_connected: gmailConnected });
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<Progress>(null);
@@ -135,6 +142,22 @@ export default function BulkAiSubmitBar({ targets, accountId, gmailConnected, is
         });
         if (preview.error || !preview.data?.ok) throw new Error(preview.data?.error || 'draft failed');
 
+        // An invite is only an invite if it carries the link. The draft is
+        // appended to rather than replaced, so the AI's own wording for this
+        // specific consultant survives.
+        let emailContent = preview.data.email_content as string;
+        if (target.kind === 'hotlist' && sourceJobId) {
+          const { data: invite } = await supabase.rpc('invite_consultant_to_screening' as never, {
+            p_social_job_id: sourceJobId,
+            p_hotlist_id: target.id,
+          } as never);
+          const row = Array.isArray(invite) ? invite[0] : invite;
+          const token = (row as { screening_token?: string } | null)?.screening_token;
+          if (token) {
+            emailContent += `\n\nBook the screening here — no account needed, it takes about five minutes:\n${window.location.origin}/screen/${token}`;
+          }
+        }
+
         const send = await supabase.functions.invoke('ask-ai-vendor-email', {
           body: {
             action: 'send',
@@ -144,7 +167,7 @@ export default function BulkAiSubmitBar({ targets, accountId, gmailConnected, is
             lead_type: target.kind,
             missing_details: target.kind === 'hotlist' ? ['video screening'] : ['Rate'],
             email_subject: preview.data.email_subject,
-            email_content: preview.data.email_content,
+            email_content: emailContent,
             channel: 'gmail',
           },
         });

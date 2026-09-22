@@ -2506,6 +2506,10 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // What the last run did, shown above the results: without it people see a
   // list of cards with no idea what was searched or how many came back.
   const [aiMatchSummary, setAiMatchSummary] = useState<{ returned: number; fresh: number | null; scanned: number; best: number | null; credits: number; posted: number; matchedFor: string | null; saved?: boolean } | null>(null);
+  // Which of the account's own posts this run was started from, when it was
+  // started from one at all. A screening invitation needs a job to attach to,
+  // and a run from pasted text has none.
+  const [aiMatchSourcePostId, setAiMatchSourcePostId] = useState<string | null>(null);
   const [aiMatchFromTitle, setAiMatchFromTitle] = useState('');
   const [aiMatchRecents, setAiMatchRecents] = useState<AiMatchRecent[]>(() => readAiMatchRecents());
   const [aiMatchOwnPosts, setAiMatchOwnPosts] = useState<AiMatchOwnPost[]>([]);
@@ -5717,6 +5721,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // through state — setState is async, so reading the box back would run the
   // previous post's text.
   const runAiMatch = useCallback(async (overrideDescription?: string, overrideTitle?: string, overridePostId?: string) => {
+    setAiMatchSourcePostId(overridePostId ?? null);
     const description = (overrideDescription ?? aiMatchDescription).trim();
     const runTitle = overrideTitle ?? (overrideDescription !== undefined ? '' : aiMatchFromTitle);
     if (description.length < AI_MATCH_MIN_DESCRIPTION_CHARS) {
@@ -8328,6 +8333,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                         kind: leadIsHotlist(lead) ? 'hotlist' as const : 'job' as const,
                       }))}
                     accountId={account.id}
+                    sourceJobId={aiMatchSourcePostId}
                     gmailConnected={gmailIntegrationStatus === 'connected'}
                     isNarrowed={bulkSelectedIds.size > 0}
                     onClearSelection={() => setBulkSelectedIds(new Set())}
