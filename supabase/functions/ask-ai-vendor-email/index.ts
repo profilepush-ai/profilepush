@@ -212,7 +212,7 @@ Deno.serve(async (req: Request) => {
             vendor_name: vendorName || "there",
             missing_data_type: missingDetails.join(", "),
             bench_recruiter_first_name: requesterFirstName,
-            request_type: leadType === "hotlist" ? "resume" : "missing_details",
+            request_type: leadType === "hotlist" ? "screening_invite" : "missing_details",
           }),
         });
         const aiPayload = await aiResponse.json().catch(() => null) as Record<string, unknown> | null;

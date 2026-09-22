@@ -37,7 +37,7 @@ type AskVendorEmailRequest = {
   vendor_name?: string;
   missing_data_type?: string;
   bench_recruiter_first_name?: string;
-  request_type?: "missing_details" | "resume";
+  request_type?: "missing_details" | "resume" | "screening_invite";
 };
 
 type AskVendorEmailCopy = {
@@ -147,6 +147,17 @@ function fallbackAskResumeEmailCopy(
   };
 }
 
+function fallbackScreeningInviteCopy(
+  roleTitle: string,
+  vendorName: string,
+  recruiterFirstName: string,
+): AskVendorEmailCopy {
+  return {
+    subject: `Screening invite: ${roleTitle}`.slice(0, 200),
+    email_content: `Hey ${vendorName.split(/\s+/)[0]}, I have a live client requirement your ${roleTitle} fits. Are they still available? If so, they can complete a five-minute video screening for it — link below. — ${recruiterFirstName}`,
+  };
+}
+
 function getBearerToken(req: Request): string {
   const header = req.headers.get("Authorization") ?? "";
   const [scheme, token] = header.split(" ");
@@ -159,7 +170,11 @@ async function handleAskVendorEmailCopy(req: Request, env: Env): Promise<Respons
   if (getBearerToken(req) !== expectedToken) return jsonResponse({ error: "Unauthorized" }, 401);
 
   const body = await req.json() as AskVendorEmailRequest;
-  const requestType = body.request_type === "resume" ? "resume" : "missing_details";
+  const requestType = body.request_type === "screening_invite"
+    ? "screening_invite"
+    : body.request_type === "resume"
+      ? "resume"
+      : "missing_details";
   const jobTitle = String(body.job_title ?? "").trim().slice(0, 500);
   const jobLocation = String(body.job_location ?? "").trim().slice(0, 500) || "Not specified";
   const vendorName = String(body.vendor_name ?? "").trim().slice(0, 200) || "there";
@@ -169,7 +184,20 @@ async function handleAskVendorEmailCopy(req: Request, env: Env): Promise<Respons
     return jsonResponse({ error: "Role title, recruiter first name, and (for missing-detail requests) missing data type are required" }, 400);
   }
 
-  const defaultSystemPrompt = requestType === "resume"
+  const SCREENING_INVITE_SYSTEM_PROMPT = `You are a fast-paced IT recruiter writing a strictly text-based, plain-text email to a fellow bench-sales recruiter about a consultant they posted on social media.
+
+You have a live client requirement this consultant fits, and you want them to complete a short AI video screening for it — about five minutes, no account needed.
+
+Rules:
+1. Open with the requirement, not with pleasantries. No "I hope this finds you well".
+2. One tight ask: confirm the consultant is still available and ask them to complete the screening.
+3. Do NOT ask for a resume, a CV, or a rate card. The screening replaces those.
+4. Do NOT write a link, a URL, or any placeholder such as [link] or <link>. A link is appended to your message automatically — inventing one produces a dead link.
+5. Under 60 words. No markdown, no subject line inside the body, no signature block.`;
+
+  const defaultSystemPrompt = requestType === "screening_invite"
+    ? SCREENING_INVITE_SYSTEM_PROMPT
+    : requestType === "resume"
     ? `You are a fast-paced, highly transactional IT bench sales recruiter. Your goal is to write a strictly text-based, plain-text email to a fellow bench-sales recruiter asking them to share the resume/CV of a specific consultant they posted about on social media — and nothing else.
 
 Rules for the Email:
@@ -190,10 +218,18 @@ Rules for the Email:
 5. Tone: Casual, direct, urgent. Use natural phrasing like "Hey," or "Hi [Name]," and sign off with just the sender's first name.
 
 Generate only the email body and subject line. The subject should reference the missing detail, not repeat the full job posting. Do not include any explanations. Return strict JSON with exactly these keys: "subject" and "email_content".`;
-  const defaultUserTemplate = requestType === "resume"
+  const defaultUserTemplate = requestType === "screening_invite"
+    ? "Consultant Role: {jobTitle}\nRecruiter Name: {vendorName}\nSender Name: {recruiterFirstName}"
+    : requestType === "resume"
     ? "Consultant Role: {jobTitle}\nRecruiter Name: {vendorName}\nSender Name: {recruiterFirstName}"
     : "Job Title: {jobTitle}\nJob Location: {jobLocation}\nVendor Name: {vendorName}\nMissing Detail to Ask For: {missingDataType}\nSender Name: {recruiterFirstName}";
-  const promptKey = requestType === "resume" ? "cf-ask-resume-email" : "cf-ask-vendor-email";
+  // A distinct key on purpose: an override someone wrote for the old resume
+  // ask must not silently keep asking for resumes now the action is an invite.
+  const promptKey = requestType === "screening_invite"
+    ? "cf-ask-screening-invite"
+    : requestType === "resume"
+      ? "cf-ask-resume-email"
+      : "cf-ask-vendor-email";
   const override = await getPromptOverride(env, promptKey);
   const systemPrompt = override?.systemPrompt?.trim() || defaultSystemPrompt;
   const userTemplate = override?.userPrompt?.trim() || defaultUserTemplate;
@@ -214,7 +250,9 @@ Generate only the email body and subject line. The subject should reference the 
     copy = normalizeAskVendorEmailCopy((aiResult as Record<string, unknown>)?.response ?? aiResult);
   } catch (error) {
     console.error("Ask Vendor AI output was invalid; using fallback", error);
-    copy = requestType === "resume"
+    copy = requestType === "screening_invite"
+      ? fallbackScreeningInviteCopy(jobTitle, vendorName, recruiterFirstName)
+      : requestType === "resume"
       ? fallbackAskResumeEmailCopy(jobTitle, vendorName, recruiterFirstName)
       : fallbackAskVendorEmailCopy(jobTitle, vendorName, missingDataType, recruiterFirstName);
   }
