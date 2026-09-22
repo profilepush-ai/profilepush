@@ -191,6 +191,11 @@ type AiMatchSession = {
   description: string;
   target: 'jobs' | 'hotlist';
   rows: PulseSocialFeedRpcRow[];
+  // The post the run was started from. Without this a reload loses which job
+  // the matches belong to, and a screening invitation has nothing to attach
+  // to even though the run plainly came from one of the user's own jobs.
+  postId?: string;
+  title?: string;
 };
 
 // One of the user's own posts, reduced to what the sidebar needs: a label, a
@@ -5726,13 +5731,30 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // from the rail. The run-time value wins while a run is in flight, before
   // the recent has been written.
   const aiMatchSourcePostId = useMemo(() => {
+    // In order: the run happening now, a job the user picked in the modal, the
+    // session restored on reload, the saved recent, and finally the title
+    // shown above the results matched against their own posts. A match is
+    // always run for a requirement, so the job is almost never truly unknown —
+    // it was just held somewhere that a reload or a restore threw away.
     if (aiMatchRunPostId) return aiMatchRunPostId;
     if (aiMatchChosenJobId) return aiMatchChosenJobId;
+
+    const session = readAiMatchSession();
+    if (session?.postId && session.target === aiMatchTarget) return session.postId;
+
     const description = aiMatchDescription.trim();
-    if (!description) return null;
-    const run = aiMatchRecents.find((item) => item.target === aiMatchTarget && item.description === description);
-    return run?.postId ?? null;
-  }, [aiMatchRunPostId, aiMatchChosenJobId, aiMatchDescription, aiMatchRecents, aiMatchTarget]);
+    if (description) {
+      const run = aiMatchRecents.find((item) => item.target === aiMatchTarget && item.description === description);
+      if (run?.postId) return run.postId;
+    }
+
+    const title = (aiMatchFromTitle || session?.title || '').trim().toLowerCase();
+    if (title) {
+      const byTitle = aiMatchOwnPosts.find((post) => post.title.trim().toLowerCase() === title);
+      if (byTitle) return byTitle.id;
+    }
+    return null;
+  }, [aiMatchRunPostId, aiMatchChosenJobId, aiMatchDescription, aiMatchFromTitle, aiMatchOwnPosts, aiMatchRecents, aiMatchTarget]);
 
   // The overrides let the sidebar run one of their own posts without a detour
   // through state — setState is async, so reading the box back would run the
@@ -5868,7 +5890,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       await loadFeed(null, [], rows);
       setAiMatchHasRun(true);
       setAiMatchComposerOpen(rows.length === 0);
-      writeAiMatchSession({ description, target: aiMatchTarget, rows });
+      writeAiMatchSession({ description, target: aiMatchTarget, rows, postId: overridePostId, title: runTitle });
       setAiMatchRecents((previous) => {
         // Same text moves to the front rather than piling up.
         const rest = previous.filter((item) => item.description !== description);
