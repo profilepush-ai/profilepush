@@ -1,14 +1,23 @@
-import { TrendingUp } from 'lucide-react';
+
 import type { SignupPoint } from '../lib/admin-signups-series';
+import { againstTarget, formatChange, trendOf } from '../lib/admin-targets';
 
 type Props = {
   title: string;
   points: SignupPoint[];
+  /** The 5%-a-day plan line for this metric. Omitted when there is no base. */
+  targetPoints?: SignupPoint[];
   rangeLabel?: string;
   /** Shown instead of a chart when there is nothing to plot. */
   emptyLabel?: string;
   /** Compact enough to sit several-across in a grid. */
   dense?: boolean;
+};
+
+const DOT_STYLES: Record<'up' | 'down' | 'flat', string> = {
+  up: 'bg-green-500',
+  down: 'bg-red-500',
+  flat: 'bg-gray-300',
 };
 
 const CHART_W = 900;
@@ -18,14 +27,21 @@ const PAD_R = 8;
 const PAD_T = 10;
 const PAD_B = 22;
 
-export default function AdminLineChart({ title, points, rangeLabel, emptyLabel, dense }: Props) {
+export default function AdminLineChart({ title, points, targetPoints, rangeLabel, emptyLabel, dense }: Props) {
   const series = points;
+  const targets = targetPoints ?? [];
+  const trend = trendOf(series);
+  const vsTarget = againstTarget(series, targets);
 
   const total = series.reduce((sum, p) => sum + p.count, 0);
   const peak = series.reduce((best, p) => (p.count > best.count ? p : best), { key: '', count: 0 });
   // A flat line of zeros still needs a sane axis, and the top gridline should
   // not sit exactly on the tallest point.
-  const yMax = Math.max(1, peak.count);
+  const targetPeak = targets.reduce((best, p) => Math.max(best, p.count), 0);
+  // The axis has to cover the target as well, or a plan line above the actual
+  // numbers is drawn off the top of the chart and silently disappears — which
+  // would read as being on target.
+  const yMax = Math.max(1, peak.count, targetPeak);
 
   const x = (index: number) =>
     series.length <= 1
@@ -49,14 +65,25 @@ export default function AdminLineChart({ title, points, rangeLabel, emptyLabel, 
     <div className="rounded-lg border border-gray-200 bg-white">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-gray-200 px-4 py-3">
         <div className="flex items-center gap-2">
-          <TrendingUp size={14} className="text-gray-500" />
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT_STYLES[trend.direction]}`}
+            title={`${trend.direction === 'up' ? 'Rising' : trend.direction === 'down' ? 'Falling' : 'Flat'} — recent half of the range vs the half before (${formatChange(trend.change)})`}
+          />
           <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
           <span className="text-[10px] text-gray-400">{rangeLabel}</span>
         </div>
-        <div className="flex items-center gap-4 text-[11px] text-gray-500">
+        <div className="flex items-center gap-3 text-[11px] text-gray-500">
+          <span className={trend.direction === 'up' ? 'text-green-600' : trend.direction === 'down' ? 'text-red-600' : ''}>
+            {formatChange(trend.change)}
+          </span>
           <span><span className="font-semibold tabular-nums text-gray-900">{total.toLocaleString()}</span> total</span>
-          {peak.count > 0 && (
-            <span>peak <span className="font-semibold tabular-nums text-gray-900">{peak.count}</span> on {formatDay(peak.key)}</span>
+          {vsTarget !== null && (
+            <span
+              className={vsTarget >= 0 ? 'text-green-600' : 'text-red-600'}
+              title="Latest day against the 5%-a-day plan"
+            >
+              {formatChange(vsTarget)} vs plan
+            </span>
           )}
         </div>
       </div>
@@ -86,6 +113,15 @@ export default function AdminLineChart({ title, points, rangeLabel, emptyLabel, 
                 <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
               </linearGradient>
             </defs>
+            {targets.length > 0 && (
+              <path
+                d={targets.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.count).toFixed(1)}`).join(' ')}
+                fill="none"
+                stroke="#9ca3af"
+                strokeWidth={1.2}
+                strokeDasharray="4 3"
+              />
+            )}
             <path d={linePath} fill="none" stroke="#2563eb" strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />
 
             {series.map((point, i) => (

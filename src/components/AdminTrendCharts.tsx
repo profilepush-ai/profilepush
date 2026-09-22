@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
 import AdminLineChart from './AdminLineChart';
+import AdminDailyBriefing from './AdminDailyBriefing';
+import { buildTargetSeries, SIGNUPS_BASE_TARGET } from '../lib/admin-targets';
+import type { BriefLine, MetricSeries } from '../lib/admin-briefing';
 import {
   buildMetricSeries,
   buildSignupSeries,
@@ -15,6 +18,8 @@ type Props = {
   startDate: string | null;
   endDate: string | null;
   rangeLabel: string;
+  /** Known breakages, shown above anything the data can infer. */
+  blockers?: BriefLine[];
 };
 
 const PERSONAS: Array<{ key: PersonaFilter; label: string }> = [
@@ -39,7 +44,7 @@ const METRICS: Array<{ key: string; title: string }> = [
   { key: 'downloads', title: 'List downloads' },
 ];
 
-export default function AdminTrendCharts({ daily, accounts, startDate, endDate, rangeLabel }: Props) {
+export default function AdminTrendCharts({ daily, accounts, startDate, endDate, rangeLabel, blockers = [] }: Props) {
   const [persona, setPersona] = useState<PersonaFilter>('all');
 
   // Signups come from the accounts array rather than the daily payload, so
@@ -53,11 +58,20 @@ export default function AdminTrendCharts({ daily, accounts, startDate, endDate, 
   }, [accounts, persona, startDate, endDate]);
 
   const series = useMemo(
-    () => METRICS.map((metric) => ({
-      ...metric,
-      points: buildMetricSeries(daily, metric.key, persona, startDate, endDate),
-    })),
+    () => METRICS.map((metric) => {
+      const points = buildMetricSeries(daily, metric.key, persona, startDate, endDate);
+      return { ...metric, points, targets: buildTargetSeries(points) };
+    }),
     [daily, persona, startDate, endDate],
+  );
+
+  // Signups carry the stated plan — 10 a day, compounding 5% — rather than
+  // anchoring on their own opening level like the others.
+  const signupTargets = useMemo(() => buildTargetSeries(signupPoints, SIGNUPS_BASE_TARGET), [signupPoints]);
+
+  const briefingMetrics: MetricSeries[] = useMemo(
+    () => [{ key: 'signups', title: 'Signups', points: signupPoints, targets: signupTargets }, ...series],
+    [signupPoints, signupTargets, series],
   );
 
   const hasAnything = signupPoints.some((p) => p.count > 0) || series.some((m) => m.points.some((p) => p.count > 0));
@@ -88,15 +102,17 @@ export default function AdminTrendCharts({ daily, accounts, startDate, endDate, 
         )}
       </div>
 
+      <AdminDailyBriefing metrics={briefingMetrics} blockers={blockers} />
+
       {!hasAnything ? (
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-400">
           No activity in this range.
         </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <AdminLineChart title="Daily signups" points={signupPoints} rangeLabel={rangeLabel} emptyLabel="No signups in this range." dense />
+          <AdminLineChart title="Daily signups" points={signupPoints} targetPoints={signupTargets} rangeLabel={rangeLabel} emptyLabel="No signups in this range." dense />
           {series.map((metric) => (
-            <AdminLineChart key={metric.key} title={metric.title} points={metric.points} rangeLabel={rangeLabel} dense />
+            <AdminLineChart key={metric.key} title={metric.title} points={metric.points} targetPoints={metric.targets} rangeLabel={rangeLabel} dense />
           ))}
         </div>
       )}
