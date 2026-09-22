@@ -39,6 +39,9 @@ type Props = {
   accountId: string;
   /** Tracked by the page already; the quota RPC is not the source of truth for it. */
   gmailConnected: boolean;
+  /** True when the user has ticked specific cards rather than taking all of them. */
+  isNarrowed?: boolean;
+  onClearSelection?: () => void;
   onConnectGmail: () => void;
   onDone: () => void;
 };
@@ -57,7 +60,7 @@ const FALLBACK_QUOTA: Quota = {
 
 type Progress = { sent: number; failed: number; current: string } | null;
 
-export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailConnected, onConnectGmail, onDone }: Props) {
+export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailConnected, isNarrowed, onClearSelection, onConnectGmail, onDone }: Props) {
   const [quota, setQuota] = useState<Quota>({ ...FALLBACK_QUOTA, gmail_connected: gmailConnected });
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<Progress>(null);
@@ -175,7 +178,12 @@ export default function BulkAiSubmitBar({ targets, leadType, accountId, gmailCon
           <Icon size={15} className="shrink-0 text-blue-600 dark:text-blue-400" />
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold text-blue-900 dark:text-blue-200">
-              {label} to all {batch.length} match{batch.length === 1 ? '' : 'es'}
+              {label} to {isNarrowed ? '' : 'all '}{batch.length} {isNarrowed ? 'selected' : ''} match{batch.length === 1 ? '' : 'es'}
+              {isNarrowed && onClearSelection && (
+                <button onClick={onClearSelection} className="ml-2 font-normal underline opacity-70 hover:opacity-100">
+                  clear
+                </button>
+              )}
             </p>
             <p className="text-[11px] text-blue-700/80 dark:text-blue-300/80">
               {quota.remaining} of {quota.daily_limit} left today

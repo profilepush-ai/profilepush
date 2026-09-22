@@ -4,7 +4,7 @@ import {
   ChevronDown, HelpCircle, LogOut, Settings, Sparkles,
   Building2, Map, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, Briefcase, Mail, Database, UserRound, Send,
+  Activity, Briefcase, Mail, Database, UserRound, Video,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -55,12 +55,13 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   const postsLabel = isBenchSales ? 'My Hotlist' : 'My Jobs';
   const postsPath = isBenchSales ? '/posts/hotlist' : '/posts/jobs';
   const postsIcon = isBenchSales ? UserRound : Briefcase;
-  // Requests (Vendor's outbound Hotlist asks) gets an outbound-style icon;
-  // Submissions (Bench Sales' outbound job applications) keeps the
-  // document icon it already had.
-  const trackerLabel = isBenchSales ? 'Submissions' : 'Requests';
+  // Invites (a Vendor's outbound video-screening invitations) carries the
+  // video icon the AI Invite action uses, so the same thing has the same mark
+  // wherever it appears; Submissions (Bench Sales' outbound job applications)
+  // keeps the document icon it already had.
+  const trackerLabel = isBenchSales ? 'Submissions' : 'Invites';
   const trackerPath = isBenchSales ? '/tracker/submissions' : '/tracker/requests';
-  const trackerIcon = isBenchSales ? FileText : Send;
+  const trackerIcon = isBenchSales ? FileText : Video;
   return [
     { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },
     { path: '/match',       label: 'AI Match',    mobileLabel: 'AI Match',    icon: Sparkles,    hideOnMobile: false },

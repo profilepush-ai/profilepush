@@ -1318,6 +1318,11 @@ interface LeadCardProps {
   hideActions?: boolean;
   isSelected?: boolean;
   onSelect?: (lead: SocialLead) => void;
+  // Bulk selection for AI Match results. Separate from isSelected, which is
+  // the detail panel's "which lead is open" state.
+  bulkSelectable?: boolean;
+  isBulkSelected?: boolean;
+  onToggleBulkSelect?: (lead: SocialLead) => void;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -1332,6 +1337,7 @@ const LeadCard = memo(function LeadCard({
   isLoadingPreview, isProcessingAskAI,
   onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
   hideActions, isSelected, onSelect,
+  bulkSelectable, isBulkSelected, onToggleBulkSelect,
 }: LeadCardProps) {
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
@@ -1403,6 +1409,24 @@ const LeadCard = memo(function LeadCard({
               <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Invite' : 'AI Submit'}</span>
             </>
           )}
+        </button>
+      )}
+      {bulkSelectable && (
+        // Sits apart from the action buttons, with its own border and a wider
+        // hit area, because the whole point is that a mis-tap here would
+        // otherwise fire AI Submit and spend a credit.
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleBulkSelect?.(lead); }}
+          aria-pressed={Boolean(isBulkSelected)}
+          title={isBulkSelected ? 'Selected for bulk send' : 'Select for bulk send'}
+          className={`ml-2 inline-flex h-9 w-11 shrink-0 items-center justify-center rounded-md border transition-colors ${
+            isBulkSelected
+              ? 'border-blue-500 bg-blue-500 text-white'
+              : 'border-gray-300 bg-white text-gray-400 hover:border-blue-400 hover:text-blue-500 dark:border-white/15 dark:bg-white/[0.03] dark:text-gray-400'
+          }`}
+        >
+          <Check size={16} strokeWidth={2.5} />
         </button>
       )}
     </div>
@@ -2640,6 +2664,18 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const [processingChatLeadId, setProcessingChatLeadId] = useState<string | null>(null);
   const [askAIPreview, setAskAIPreview] = useState<AskAIPreview | null>(null);
   const [gmailIntegrationStatus, setGmailIntegrationStatus] = useState<'connected' | 'not_connected' | null>(null);
+  // Bulk selection for AI Match results. Empty means "all of them", so the
+  // bar works without anyone having to tick sixteen boxes first — ticking is
+  // for narrowing it down, not for opting in.
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+  const toggleBulkSelect = useCallback((lead: SocialLead) => {
+    setBulkSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(lead.id)) next.delete(lead.id);
+      else next.add(lead.id);
+      return next;
+    });
+  }, []);
   const [sendingViaGmail, setSendingViaGmail] = useState(false);
   const [showGmailConnectPrompt, setShowGmailConnectPrompt] = useState(false);
   const [connectingGmail, setConnectingGmail] = useState(false);
@@ -3899,6 +3935,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       onExpandSkills: expandCardSkills,
       onCollapseSkills: collapseCardSkills,
       onToggleField: toggleCardField,
+      bulkSelectable: aiMatch && lead.aiMatchScore != null,
+      isBulkSelected: bulkSelectedIds.has(lead.id),
+      onToggleBulkSelect: toggleBulkSelect,
     };
   };
 
@@ -8278,7 +8317,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 <div className="shrink-0 pt-1">
                   <BulkAiSubmitBar
                     targets={filteredFeed
-                      .filter((lead) => lead.aiMatchScore != null)
+                      .filter((lead) => lead.aiMatchScore != null
+                        && (bulkSelectedIds.size === 0 || bulkSelectedIds.has(lead.id)))
                       .map((lead) => ({
                         id: lead.id,
                         title: lead.title || lead.roleTitle || 'Untitled',
@@ -8288,6 +8328,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                     leadType={isHotlistFeed ? 'hotlist' : 'job'}
                     accountId={account.id}
                     gmailConnected={gmailIntegrationStatus === 'connected'}
+                    isNarrowed={bulkSelectedIds.size > 0}
+                    onClearSelection={() => setBulkSelectedIds(new Set())}
                     onConnectGmail={() => { void handleConnectGmailStandalone(); }}
                     onDone={() => { void refreshFeed(); }}
                   />
