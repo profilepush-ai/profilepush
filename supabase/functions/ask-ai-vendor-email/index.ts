@@ -70,9 +70,20 @@ Deno.serve(async (req: Request) => {
     const missingDetails = Array.isArray(body.missing_details)
       ? body.missing_details.map((item) => asString(item, 100)).filter(Boolean).slice(0, 20)
       : [];
-    const missingDetailsKey = JSON.stringify(
-      [...new Set(missingDetails.map((detail) => detail.toLowerCase()))].sort(),
-    );
+    // The kind of ask is part of the key, not just the details asked about.
+    // A resume request and a screening invitation are different emails, and
+    // keying only on the detail list let a draft generated under one prompt be
+    // served under the other — which is how invites came back reading
+    // "what's the video screening process?", the generic missing-detail ask
+    // wearing the new detail name.
+    //
+    // Including it also invalidates every draft cached under the old scheme,
+    // so nobody keeps receiving the wrong copy after a deploy.
+    const askKind = leadType === "hotlist" ? "screening_invite" : "missing_details";
+    const missingDetailsKey = JSON.stringify([
+      askKind,
+      ...[...new Set(missingDetails.map((detail) => detail.toLowerCase()))].sort(),
+    ]);
 
     if (!['preview', 'send'].includes(action) || !accountId || !jobId || missingDetails.length === 0) {
       return respond({ error: leadType === "hotlist" ? "Consultant is required" : "Job and missing details are required" }, 400);
