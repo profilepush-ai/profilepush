@@ -2512,6 +2512,10 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // started from one at all. A screening invitation needs a job to attach to,
   // and a run from pasted text has none.
   const [aiMatchRunPostId, setAiMatchRunPostId] = useState<string | null>(null);
+  // Set when a run had no job of its own and the user picked one in the invite
+  // modal. Kept on the page so every later invite from the same results uses
+  // the same job rather than asking again.
+  const [aiMatchChosenJobId, setAiMatchChosenJobId] = useState<string | null>(null);
   const [aiMatchFromTitle, setAiMatchFromTitle] = useState('');
   const [aiMatchRecents, setAiMatchRecents] = useState<AiMatchRecent[]>(() => readAiMatchRecents());
   const [aiMatchOwnPosts, setAiMatchOwnPosts] = useState<AiMatchOwnPost[]>([]);
@@ -5723,11 +5727,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // the recent has been written.
   const aiMatchSourcePostId = useMemo(() => {
     if (aiMatchRunPostId) return aiMatchRunPostId;
+    if (aiMatchChosenJobId) return aiMatchChosenJobId;
     const description = aiMatchDescription.trim();
     if (!description) return null;
     const run = aiMatchRecents.find((item) => item.target === aiMatchTarget && item.description === description);
     return run?.postId ?? null;
-  }, [aiMatchRunPostId, aiMatchDescription, aiMatchRecents, aiMatchTarget]);
+  }, [aiMatchRunPostId, aiMatchChosenJobId, aiMatchDescription, aiMatchRecents, aiMatchTarget]);
 
   // The overrides let the sidebar run one of their own posts without a detour
   // through state — setState is async, so reading the box back would run the
@@ -6647,7 +6652,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       let screeningNotice: string | null = null;
       if (leadType === 'hotlist') {
         if (!aiMatchSourcePostId) {
-          screeningNotice = 'No job attached to this match, so there is no screening link. Run the match from one of your own jobs to include one.';
+          screeningNotice = 'This match was run from pasted text, so there is no job to attach the screening to. Pick one of your jobs and the link is added.';
         } else {
           const { data: invite, error: inviteError } = await supabase.rpc('invite_consultant_to_screening' as never, {
             p_social_job_id: aiMatchSourcePostId,
@@ -8616,9 +8621,30 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
               // Every earlier version failed silently here: a missing link
               // looked the same whether the job was absent, the function was
               // undeployed, or the consultant had no address.
-              <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-800">
-                {askAIPreview.screeningNotice}
-              </p>
+              <div className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-800">
+                <p>{askAIPreview.screeningNotice}</p>
+                {!aiMatchSourcePostId && aiMatchOwnPosts.length > 0 && (
+                  // A dead end is no use. The matches were run for a
+                  // requirement even when it was never saved as a post, so the
+                  // job is picked here and remembered for the rest of the run.
+                  <select
+                    value=""
+                    onChange={(event) => {
+                      const jobId = event.target.value;
+                      if (!jobId || !askAIPreview) return;
+                      setAiMatchChosenJobId(jobId);
+                      const lead = feed.find((item) => item.id === askAIPreview.leadId);
+                      if (lead) void handleAskAI(lead);
+                    }}
+                    className="mt-2 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-[12px] text-gray-800"
+                  >
+                    <option value="">Attach this screening to one of my jobs…</option>
+                    {aiMatchOwnPosts.map((post) => (
+                      <option key={post.id} value={post.id}>{post.title}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             )}
             {gmailIntegrationStatus === 'connected' ? (
               <button
