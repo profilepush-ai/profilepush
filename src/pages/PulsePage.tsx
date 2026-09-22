@@ -2509,7 +2509,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // Which of the account's own posts this run was started from, when it was
   // started from one at all. A screening invitation needs a job to attach to,
   // and a run from pasted text has none.
-  const [aiMatchSourcePostId, setAiMatchSourcePostId] = useState<string | null>(null);
+  const [aiMatchRunPostId, setAiMatchRunPostId] = useState<string | null>(null);
   const [aiMatchFromTitle, setAiMatchFromTitle] = useState('');
   const [aiMatchRecents, setAiMatchRecents] = useState<AiMatchRecent[]>(() => readAiMatchRecents());
   const [aiMatchOwnPosts, setAiMatchOwnPosts] = useState<AiMatchOwnPost[]>([]);
@@ -5716,12 +5716,22 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // Bench sales match their consultant against jobs; vendors match their job
   // against hotlists — the same persona split the feed itself uses.
   const aiMatchTarget: 'jobs' | 'hotlist' = account?.active_persona === 'bench_sales' ? 'jobs' : 'hotlist';
+  // Recents are persisted, so this survives a refresh and restoring results
+  // from the rail. The run-time value wins while a run is in flight, before
+  // the recent has been written.
+  const aiMatchSourcePostId = useMemo(() => {
+    if (aiMatchRunPostId) return aiMatchRunPostId;
+    const description = aiMatchDescription.trim();
+    if (!description) return null;
+    const run = aiMatchRecents.find((item) => item.target === aiMatchTarget && item.description === description);
+    return run?.postId ?? null;
+  }, [aiMatchRunPostId, aiMatchDescription, aiMatchRecents, aiMatchTarget]);
 
   // The overrides let the sidebar run one of their own posts without a detour
   // through state — setState is async, so reading the box back would run the
   // previous post's text.
   const runAiMatch = useCallback(async (overrideDescription?: string, overrideTitle?: string, overridePostId?: string) => {
-    setAiMatchSourcePostId(overridePostId ?? null);
+    setAiMatchRunPostId(overridePostId ?? null);
     const description = (overrideDescription ?? aiMatchDescription).trim();
     const runTitle = overrideTitle ?? (overrideDescription !== undefined ? '' : aiMatchFromTitle);
     if (description.length < AI_MATCH_MIN_DESCRIPTION_CHARS) {
