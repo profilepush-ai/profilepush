@@ -7,6 +7,7 @@ import AdminAiPromptsPanel from '../components/AdminAiPromptsPanel';
 import AdminChannelsPanel from '../components/AdminChannelsPanel';
 import AdminMarketPanel from '../components/AdminMarketPanel';
 import AdminSocialPosterPanel from '../components/AdminSocialPosterPanel';
+import AdminSignupsChart from '../components/AdminSignupsChart';
 import AdminTrendsPanel from '../components/AdminTrendsPanel';
 import AdminPostOutreachPanel from '../components/AdminPostOutreachPanel';
 import { supabase } from '../lib/supabase';
@@ -128,6 +129,7 @@ const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.React
   { key: 'chats_count', label: 'Chats', icon: <MessageSquare size={12} />, kind: 'number', widthClass: 'w-[90px]' },
   { key: 'vendor_downloads_count', label: 'Vendor Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[140px]' },
   { key: 'recruiter_downloads_count', label: 'Recruiter Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[150px]' },
+  { key: 'created_at', label: 'Created', icon: <Calendar size={12} />, kind: 'date', widthClass: 'w-[155px]' },
   { key: 'account_age_days', label: 'Created Since', icon: <CalendarDays size={12} />, kind: 'age', widthClass: 'w-[120px]' },
   { key: 'session_count', label: 'Sessions', icon: <LogIn size={12} />, kind: 'number', widthClass: 'w-[95px]' },
   { key: 'active_seconds', label: 'Active Time', icon: <Clock size={12} />, kind: 'duration', widthClass: 'w-[110px]' },
@@ -490,6 +492,9 @@ export default function AdminDashboard() {
   }
 
   const currentPresetLabel = DATE_PRESETS.find(p => p.key === datePreset)?.label ?? 'Last 7 days';
+  // The same window the stats fetch uses, so the chart cannot disagree with
+  // the numbers beside it.
+  const signupRange = getDateRange(datePreset, customStart, customEnd);
 
   // Summary cards. A raw sum only means something for activity counters —
   // adding up credits_balance across accounts totals everyone's *remaining*
@@ -800,9 +805,17 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
+              <div className={`shrink-0 ${statsPane === 'cards' ? 'block' : 'hidden'}`}>
+                <AdminSignupsChart
+                  accounts={stats}
+                  startDate={signupRange.start_date}
+                  endDate={signupRange.end_date}
+                  rangeLabel={currentPresetLabel}
+                />
+              </div>
               <div className={`min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white lg:flex ${statsPane === 'table' ? 'flex' : 'hidden'}`}>
               <div className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full min-w-[2205px] table-fixed text-left">
+              <table className="w-full min-w-[2360px] table-fixed text-left">
                 <thead className="sticky top-0 z-[4]">
                   <tr className="border-b border-gray-200 bg-gray-50">
                     {COLUMNS.map(col => (
