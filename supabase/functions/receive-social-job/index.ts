@@ -108,6 +108,12 @@ function normalizeSocialJobItems(items: Array<Record<string, unknown>>) {
   return { rows, errors };
 }
 
+function asNumberOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map((item) => asString(item).trim()).filter(Boolean)
@@ -255,6 +261,17 @@ async function classifySocialJobs(
         company_name: asString(result.company_name).trim() || row.company_name,
         location: locations.join(", ") || row.location,
         employment_type: asString(result.employment_type).trim() || row.employment_type,
+        // The extractor already returns all of this — core_skills was being
+        // read one line above purely as a quality gate and then dropped, so
+        // every social job landed with empty skills, rate, visa and
+        // experience. That is why the public requirement pages render no
+        // chips and no median rate, and why AI Match has almost nothing to
+        // score on beyond the title.
+        extracted_skills: coreSkills,
+        extracted_experience_years: asNumberOrNull(result.years_experience),
+        extracted_visa_types: asStringArray(result.visa_types),
+        extracted_hourly_rate_min: asNumberOrNull(result.hourly_rate_min),
+        extracted_hourly_rate_max: asNumberOrNull(result.hourly_rate_max),
       });
     }
 
