@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Lock, RefreshCcw, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Table as TableIcon } from 'lucide-react';
+import { Lock, Menu, RefreshCcw, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Table as TableIcon } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
@@ -67,6 +67,21 @@ interface LinkedinScraperConfig {
 }
 
 type AdminView = 'stats' | 'scraper' | 'scraper-logs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social';
+
+// The sidebar renders from this rather than from nine hand-written buttons,
+// which is what the top nav had become — adding a section meant editing the
+// markup in three places and the subtitle chain in a fourth.
+const ADMIN_NAV: Array<{ id: AdminView; label: string; Icon: typeof TrendingUp }> = [
+  { id: 'stats', label: 'Account Stats', Icon: UserRound },
+  { id: 'scraper', label: 'Scraper Config', Icon: Database },
+  { id: 'scraper-logs', label: 'Scraper Logs', Icon: FileSearch },
+  { id: 'ai-prompts', label: 'AI Prompts', Icon: Sparkles },
+  { id: 'channels', label: 'Channels', Icon: MessageSquare },
+  { id: 'market', label: 'Market', Icon: TrendingUp },
+  { id: 'trends', label: 'Trends', Icon: Activity },
+  { id: 'post-outreach', label: 'Post Outreach', Icon: Megaphone },
+  { id: 'social', label: 'Social Poster', Icon: Send },
+];
 type ScraperConfigTab = 'group' | 'keyword';
 type LinkedinStatsRange = '24h' | '7d' | '30d' | 'all' | 'custom';
 
@@ -152,6 +167,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<AccountStats[]>([]);
   const [adminView, setAdminView] = useState<AdminView>('stats');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [scraperConfigTab, setScraperConfigTab] = useState<ScraperConfigTab>('group');
   const [linkedinGroups, setLinkedinGroups] = useState<LinkedinGroupRow[]>([]);
   const [linkedinScraperConfig, setLinkedinScraperConfig] = useState<LinkedinScraperConfig>({
@@ -543,116 +559,96 @@ export default function AdminDashboard() {
     );
   }
 
+  // The subtitle used to be a nine-deep nested ternary inline in the header.
+  // Stats is the only view whose subtitle depends on live data, so it is the
+  // only one that needs to be computed.
+  const viewSubtitle = adminView === 'stats'
+    ? `${filteredStats.length} of ${stats.length} accounts`
+    : adminView === 'scraper'
+      ? (scraperConfigTab === 'group'
+        ? `${linkedinGroups.filter((group) => group.is_active).length} active of ${linkedinGroups.length} LinkedIn groups`
+        : 'LinkedIn keyword search configuration')
+      : adminView === 'scraper-logs' ? 'Hourly group and keyword pipeline logs'
+      : adminView === 'channels' ? 'Team channels'
+      : adminView === 'market' ? 'Market Pulse leaderboard'
+      : adminView === 'trends' ? 'Platform-wide daily trends'
+      : adminView === 'post-outreach' ? 'Scraped posts — AI comment outreach'
+      : adminView === 'social' ? 'Publish one post to every connected network'
+      : 'AI prompt configuration';
+  const currentNavLabel = ADMIN_NAV.find((item) => item.id === adminView)?.label ?? 'Admin';
+
   return (
-    <div className="h-screen overflow-hidden bg-white text-gray-900 font-sans flex flex-col">
-      {/* Header */}
-      <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
-        <div className="mx-auto w-full max-w-[1600px] px-4 py-2.5 sm:px-6">
-          <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100">
-                <TrendingUp size={15} className="text-gray-700" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="whitespace-nowrap text-sm font-semibold text-gray-900">ProfilePush Admin</h1>
-                <p className="truncate text-[10px] text-gray-500">
-                  {adminView === 'stats'
-                    ? `${filteredStats.length} of ${stats.length} accounts`
-                    : adminView === 'scraper'
-                      ? (scraperConfigTab === 'group'
-                        ? `${linkedinGroups.filter((group) => group.is_active).length} active of ${linkedinGroups.length} LinkedIn groups`
-                        : 'LinkedIn keyword search configuration')
-                      : adminView === 'scraper-logs'
-                        ? 'Hourly group and keyword pipeline logs'
-                        : adminView === 'channels'
-                          ? 'Team channels'
-                          : adminView === 'market'
-                            ? 'Market Pulse leaderboard'
-                            : adminView === 'trends'
-                              ? 'Platform-wide daily trends'
-                              : adminView === 'post-outreach'
-                                ? 'Scraped posts — AI comment outreach'
-                                : adminView === 'social'
-                                  ? 'Publish one post to Facebook and LinkedIn'
-                                  : 'AI prompt configuration'}
-                </p>
-              </div>
-            </div>
-            <nav className="order-3 flex w-full min-w-0 items-center gap-1 overflow-x-auto lg:order-none lg:ml-auto lg:w-auto" aria-label="Admin sections">
-              <button
-                onClick={() => setAdminView('stats')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'stats' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Account Stats
-              </button>
-              <button
-                onClick={() => setAdminView('scraper')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'scraper' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Scraper Config
-              </button>
-              <button
-                onClick={() => setAdminView('scraper-logs')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'scraper-logs' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Scraper Logs
-              </button>
-              <button
-                onClick={() => setAdminView('ai-prompts')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'ai-prompts' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                AI Prompts
-              </button>
-              <button
-                onClick={() => setAdminView('channels')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'channels' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Channels
-              </button>
-              <button
-                onClick={() => setAdminView('market')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'market' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Market
-              </button>
-              <button
-                onClick={() => setAdminView('trends')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'trends' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Trends
-              </button>
-              <button
-                onClick={() => setAdminView('post-outreach')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'post-outreach' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Post Outreach
-              </button>
-              <button
-                onClick={() => setAdminView('social')}
-                className={`h-8 shrink-0 border-b-2 px-2.5 text-xs font-semibold transition ${adminView === 'social' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-              >
-                Social Poster
-              </button>
-            </nav>
-            <div className="ml-auto flex shrink-0 items-center gap-1 lg:ml-2">
-              <button
-                onClick={refresh}
-                disabled={loading || linkedinGroupsLoading}
-                title="Refresh dashboard"
-                className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
-              >
-                <RefreshCcw size={13} className={loading || linkedinGroupsLoading ? 'animate-spin' : ''} />
-              </button>
-              <button
-                onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); setStats([]); }}
-                className="h-8 rounded-md px-2 text-xs font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
-              >
-                Logout
-              </button>
-            </div>
+    <div className="flex h-screen overflow-hidden bg-white text-gray-900 font-sans">
+      {/* Backdrop, phone and tablet only: the sidebar is off-canvas below lg. */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-20 bg-black/30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-30 flex w-56 shrink-0 flex-col border-r border-gray-200 bg-white transition-transform duration-200 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <div className="flex items-center gap-2.5 border-b border-gray-200 px-4 py-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100">
+            <TrendingUp size={15} className="text-gray-700" />
+          </div>
+          <h1 className="truncate text-sm font-semibold text-gray-900">ProfilePush Admin</h1>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto p-2" aria-label="Admin sections">
+          {ADMIN_NAV.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => { setAdminView(id); setSidebarOpen(false); }}
+              aria-current={adminView === id ? 'page' : undefined}
+              className={`mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-xs font-semibold transition ${
+                adminView === id
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+            >
+              <Icon size={15} className="shrink-0" />
+              <span className="truncate">{label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="border-t border-gray-200 p-2">
+          <button
+            onClick={refresh}
+            disabled={loading || linkedinGroupsLoading}
+            className="mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
+          >
+            <RefreshCcw size={14} className={`shrink-0 ${loading || linkedinGroupsLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <button
+            onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); setStats([]); }}
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium text-gray-500 transition hover:bg-red-50 hover:text-red-600"
+          >
+            <Lock size={14} className="shrink-0" />
+            Logout
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-gray-200 bg-white/95 px-4 py-2.5 backdrop-blur-sm sm:px-6">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 lg:hidden"
+            aria-label="Open admin menu"
+          >
+            <Menu size={16} />
+          </button>
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold text-gray-900">{currentNavLabel}</h2>
+            <p className="truncate text-[10px] text-gray-500">{viewSubtitle}</p>
           </div>
         </div>
-      </div>
 
       {/* Filter Bar */}
       {adminView === 'stats' && (
@@ -1136,6 +1132,7 @@ export default function AdminDashboard() {
         {adminView === 'trends' && <AdminTrendsPanel />}
         {adminView === 'post-outreach' && <AdminPostOutreachPanel />}
         {adminView === 'social' && <AdminSocialPosterPanel />}
+      </div>
       </div>
 
     </div>
