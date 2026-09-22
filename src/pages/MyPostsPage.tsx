@@ -30,6 +30,8 @@ interface ApplicationRow {
   created_at: string;
   applied_by_account_name: string | null;
   applied_by_user_email: string | null;
+  /** True when this account invited the consultant, rather than someone applying. */
+  is_invite?: boolean;
 }
 
 const APPLICATION_STATUS_STYLES: Record<string, string> = {
@@ -1123,11 +1125,21 @@ export default function MyPostsPage() {
                         {applicationsLoading ? (
                           <div className="flex items-center justify-center py-10"><LogoSpinner size={18} /></div>
                         ) : applications.length === 0 ? (
-                          <p className="p-3 text-center text-[12px] text-gray-400">No applications yet</p>
+                          <p className="p-3 text-center text-[12px] text-gray-400">No applicants or invites yet</p>
                         ) : filteredApplications.length === 0 ? (
                           <p className="p-3 text-center text-[12px] text-gray-400">No matching applicants</p>
                         ) : (
-                          filteredApplications.map((app) => {
+                          <>
+                          {(() => {
+                            const invited = filteredApplications.filter((a) => a.is_invite).length;
+                            const applied = filteredApplications.length - invited;
+                            return (
+                              <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                                {applied} applicant{applied === 1 ? '' : 's'} · {invited} invited
+                              </p>
+                            );
+                          })()}
+                          {filteredApplications.map((app) => {
                             const isAppSelected = selectedApplicationId === app.id;
                             return (
                               <button
@@ -1137,7 +1149,12 @@ export default function MyPostsPage() {
                                 className={`block w-full rounded-md border px-2.5 py-2 text-left transition-colors ${isAppSelected ? 'border-blue-300 bg-blue-50' : 'border-transparent bg-gray-50 hover:bg-gray-100'}`}
                               >
                                 <div className="flex items-start justify-between gap-1.5">
-                                  <p className="min-w-0 truncate text-[12px] font-semibold text-gray-900">{app.candidate_name || 'Unnamed candidate'}</p>
+                                  <p className="min-w-0 truncate text-[12px] font-semibold text-gray-900">
+                                    {app.is_invite && (
+                                      <span className="mr-1 rounded bg-indigo-50 px-1 py-px text-[9px] font-bold uppercase text-indigo-600">Invited</span>
+                                    )}
+                                    {app.candidate_name || 'Unnamed candidate'}
+                                  </p>
                                   <span className={`shrink-0 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${APPLICATION_STATUS_STYLES[app.status] ?? APPLICATION_STATUS_STYLES.submitted}`}>
                                     {APPLICATION_STATUS_LABELS[app.status] ?? app.status}
                                   </span>
@@ -1151,7 +1168,8 @@ export default function MyPostsPage() {
                                 )}
                               </button>
                             );
-                          })
+                          })}
+                          </>
                         )}
                       </div>
                   )}
