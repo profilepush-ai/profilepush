@@ -2531,6 +2531,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // Live progress from the streaming ai-match run, so a ~13s wait shows real
   // counts instead of a bare spinner.
   const [aiMatchProgress, setAiMatchProgress] = useState<string | null>(null);
+  // Scoring is the long half of a run and the only phase that reports a
+  // denominator, so it is the only one that gets a bar. Null everywhere else:
+  // an invented percentage moving at a guessed rate is what makes a wait feel
+  // stuck when it stalls.
+  const [aiMatchProgressPct, setAiMatchProgressPct] = useState<number | null>(null);
+  const [aiMatchElapsed, setAiMatchElapsed] = useState(0);
   // What the last run did, shown above the results: without it people see a
   // list of cards with no idea what was searched or how many came back.
   const [aiMatchSummary, setAiMatchSummary] = useState<{ returned: number; fresh: number | null; scanned: number; best: number | null; credits: number; posted: number; matchedFor: string | null; saved?: boolean; belowFloor?: number; minScore?: number; topBlockers?: Array<{ reason: string; count: number }> } | null>(null);
@@ -4046,6 +4052,39 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     );
     return [...cards.slice(0, focusedIdx + 1), draft, ...cards.slice(focusedIdx + 1)];
   };
+
+  // What a run is doing, where the button was.
+  //
+  // The phases are already streamed from ai-match — reading, searching, found
+  // N, scoring X of Y — and were being rendered in a block below the composer
+  // that a phone never scrolled to. All anyone saw was a disabled button
+  // reading "Matching...", which after ten seconds is indistinguishable from
+  // a hang. Same events, put where the person is already looking.
+  const renderAiMatchProgress = (compact = false) => (
+    <div className={`w-full rounded-xl border border-indigo-200 bg-indigo-50/70 dark:border-indigo-400/25 dark:bg-indigo-500/10 ${compact ? 'px-3 py-2' : 'px-3.5 py-3'}`}>
+      <div className="flex items-center gap-2">
+        <LogoSpinner size={compact ? 13 : 15} />
+        <p className={`min-w-0 flex-1 truncate font-semibold text-indigo-900 dark:text-indigo-200 ${compact ? 'text-[11px]' : 'text-[12.5px]'}`}>
+          {aiMatchProgress ?? 'Starting'}
+        </p>
+        {/* Always true, even when no phase event has landed for a while. */}
+        <span className="shrink-0 tabular-nums text-[11px] text-indigo-500 dark:text-indigo-300/70">{aiMatchElapsed}s</span>
+      </div>
+      {aiMatchProgressPct != null && (
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-indigo-200/70 dark:bg-indigo-400/20">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 transition-[width] duration-500 ease-out"
+            style={{ width: `${aiMatchProgressPct}%` }}
+          />
+        </div>
+      )}
+      {!compact && (
+        <p className="mt-1.5 text-[10.5px] leading-snug text-indigo-500/90 dark:text-indigo-300/70">
+          Usually about 15 seconds.
+        </p>
+      )}
+    </div>
+  );
 
   const parseLeadingNumber = (value: string): number => {
     const match = value.match(/-?\d+(\.\d+)?/);
@@ -5854,6 +5893,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     setAiMatchRunning(true);
     setAiMatchError(null);
     setAiMatchProgress('Starting');
+    setAiMatchProgressPct(null);
+    setAiMatchElapsed(0);
     setAiMatchSummary(null);
     try {
       // A direct fetch, not functions.invoke: invoke buffers the whole
@@ -5909,7 +5950,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
             const posted = Number(event.posted ?? 0);
             setAiMatchProgress(`Saved ${posted} consultants · matching ${String(event.matched_for ?? 'the last one')}`);
           }
-          else if (event.phase === 'scoring') setAiMatchProgress(`Scoring ${Number(event.scored ?? 0)} of ${Number(event.total ?? 0)} ${noun}`);
+          else if (event.phase === 'scoring') {
+            const scored = Number(event.scored ?? 0);
+            const total = Number(event.total ?? 0);
+            setAiMatchProgress(`Scoring ${scored} of ${total} ${noun}`);
+            setAiMatchProgressPct(total > 0 ? Math.min(100, Math.round((scored / total) * 100)) : null);
+          }
           else if (event.phase === 'error') streamError = String(event.error ?? 'AI Match failed');
           else if (event.phase === 'done') data = event as { results?: unknown; post?: unknown };
         }
@@ -5986,8 +6032,19 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     } finally {
       setAiMatchRunning(false);
       setAiMatchProgress(null);
+      setAiMatchProgressPct(null);
     }
   }, [aiMatchDescription, aiMatchFromTitle, aiMatchRecents, aiMatchTarget, loadFeed, refreshAccount, showToast]);
+
+  // A ticking count of seconds, which is the part of a wait that is always
+  // true even when no phase event has arrived for a while. Without it a slow
+  // scoring pass looks identical to a hung request.
+  useEffect(() => {
+    if (!aiMatchRunning) return;
+    const startedAt = Date.now();
+    const id = setInterval(() => setAiMatchElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [aiMatchRunning]);
 
   // Seed the box from the post that sent us here, once, then drop the router
   // state so a refresh doesn't put it back over anything typed since.
@@ -8330,16 +8387,35 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
               {aiMatchMobileResultsView && (
                 <div className="sticky top-0 z-30 shrink-0 bg-[#f3f2ee] px-1 dark:bg-[#1B1D21]">
                   <div className="flex h-11 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-1.5 dark:border-white/10 dark:bg-[#171A1F]">
+                    {/* Back goes to Recent — the list of runs and posts you
+                        pick from. Sending it to the composer made the two
+                        screens point at each other: back to the box, "back to
+                        N matches" to the list, and no way further out. */}
                     <button
                       type="button"
-                      onClick={() => setAiMatchComposerOpen(true)}
-                      title="Back to the match box"
-                      aria-label="Back to the match box"
+                      onClick={() => {
+                        // The Recent tab only mounts when it has rows, and its
+                        // switcher goes with it — sending someone there when it
+                        // is empty would strand them with no way back.
+                        if (aiMatchOwnPosts.length > 0 || aiMatchRecentsForTarget.length > 0) setAiMatchMobileTab('recent');
+                        else setAiMatchComposerOpen(true);
+                      }}
+                      title="Back to recent runs"
+                      aria-label="Back to recent runs"
                       className="shrink-0 rounded-lg p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-slate-400 dark:hover:bg-white/5"
                     >
                       <ChevronLeft size={18} />
                     </button>
-                    <span className="min-w-0 flex-1">
+                    {/* The text is the way into the composer, so editing what
+                        was matched stays one tap away without a fourth button
+                        in a row this narrow. */}
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setAiMatchComposerOpen(true)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAiMatchComposerOpen(true); } }}
+                      title="Edit what you matched"
+                      className="min-w-0 flex-1 cursor-pointer">
                       <span className="block truncate text-[12px] font-semibold leading-tight text-gray-900 dark:text-slate-100">
                         {aiMatchFromTitle || aiMatchDescription.trim().split('\n').map((line) => line.trim()).find((line) => line.length >= 3)?.slice(0, 60) || 'Your paste'}
                       </span>
@@ -8435,17 +8511,19 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                                   : 'max-h-56 min-h-[3.25rem] flex-1'
                               }`}
                             />
-                            {!isMobileViewport && (
+                            {!isMobileViewport && (aiMatchRunning ? (
+                              <div className="w-[19rem] shrink-0">{renderAiMatchProgress(true)}</div>
+                            ) : (
                               <button
                                 type="button"
                                 onClick={() => void runAiMatch()}
-                                disabled={aiMatchRunning || aiMatchDescription.trim().length === 0}
+                                disabled={aiMatchDescription.trim().length === 0}
                                 className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-6 text-[14px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
                               >
                                 <Sparkles size={17} />
-                                {aiMatchRunning ? 'Matching...' : 'Find matches'}
+                                Find matches
                               </button>
-                            )}
+                            ))}
                           </div>
                           <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex min-w-0 items-center justify-center gap-2 sm:justify-start">
@@ -8480,8 +8558,13 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                                 )}
                               </span>
                             </div>
+                            {/* Takes the button's place on a phone rather than
+                                sitting beside it: the row is already the full
+                                width and the progress is the only thing worth
+                                reading while a run is in flight. */}
+                            {isMobileViewport && aiMatchRunning && renderAiMatchProgress()}
                             <div className="flex gap-2">
-                              {aiMatchHasRun && (
+                              {aiMatchHasRun && !(isMobileViewport && aiMatchRunning) && (
                                 <button
                                   type="button"
                                   onClick={() => setAiMatchComposerOpen(false)}
@@ -8492,15 +8575,15 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                                   Collapse
                                 </button>
                               )}
-                              {isMobileViewport && (
+                              {isMobileViewport && !aiMatchRunning && (
                                 <button
                                   type="button"
                                   onClick={() => void runAiMatch()}
-                                  disabled={aiMatchRunning || aiMatchDescription.trim().length === 0}
+                                  disabled={aiMatchDescription.trim().length === 0}
                                   className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-7 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
                                 >
                                   <Sparkles size={18} />
-                                  {aiMatchRunning ? 'Matching...' : 'Find matches'}
+                                  Find matches
                                 </button>
                               )}
                             </div>
@@ -8660,10 +8743,15 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
               <section className={`min-w-0 flex min-h-0 flex-col ${aiMatchRecentTabActive || (isMobileViewport && aiMatch && aiMatchComposerOpen && aiMatchHasRun && filteredFeed.length > 0) ? 'hidden' : ''} ${isMobileViewport || aiMatch ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
                 <div className={`min-h-0 ${isMobileViewport || aiMatch ? '' : 'flex-1 overflow-hidden'}`}>
                   {aiMatchRunning ? (
-                    <div className="flex min-h-[40vh] w-full flex-col items-center justify-center gap-3">
-                      <LogoSpinner size={22} />
-                      <p className="px-6 text-center text-[12px] text-gray-500">{aiMatchProgress ?? 'Matching'}</p>
-                    </div>
+                    // Was a bare spinner and a line of text. An open composer
+                    // already carries the same phases inline, so this covers
+                    // the collapsed cases: a rematch from the results header,
+                    // and the desktop one-line bar.
+                    aiMatchComposerOpen ? null : (
+                      <div className="flex min-h-[40vh] w-full items-start justify-center px-3 pt-6">
+                        <div className="w-full max-w-sm">{renderAiMatchProgress()}</div>
+                      </div>
+                    )
                   ) : feedLoading ? (
                     <div className={`${isMobileViewport ? 'flex min-h-[50vh] w-full' : 'flex h-full min-h-0 w-full'} items-center justify-center`}>
                       <LogoSpinner size={20} />
