@@ -2517,7 +2517,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const [aiMatchProgress, setAiMatchProgress] = useState<string | null>(null);
   // What the last run did, shown above the results: without it people see a
   // list of cards with no idea what was searched or how many came back.
-  const [aiMatchSummary, setAiMatchSummary] = useState<{ returned: number; fresh: number | null; scanned: number; best: number | null; credits: number; posted: number; matchedFor: string | null; saved?: boolean } | null>(null);
+  const [aiMatchSummary, setAiMatchSummary] = useState<{ returned: number; fresh: number | null; scanned: number; best: number | null; credits: number; posted: number; matchedFor: string | null; saved?: boolean; belowFloor?: number; minScore?: number } | null>(null);
   // Which of the account's own posts this run was started from, when it was
   // started from one at all. A screening invitation needs a job to attach to,
   // and a run from pasted text has none.
@@ -5830,7 +5830,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let data: { results?: unknown; post?: unknown; credits_charged?: number; new_count?: number; matched_for?: string | null } | null = null;
+      let data: { results?: unknown; post?: unknown; credits_charged?: number; new_count?: number; matched_for?: string | null; below_floor?: number; min_score?: number } | null = null;
       let streamError: string | null = null;
       let scanned = 0;
 
@@ -5895,6 +5895,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         credits: Number(data?.credits_charged ?? 0),
         posted: post?.status === 'created' ? (post.count ?? 1) : 0,
         matchedFor: (data?.matched_for ?? null) || null,
+        belowFloor: Number(data?.below_floor ?? 0),
+        minScore: Number(data?.min_score ?? 0) || undefined,
       });
       if (post?.status === 'created') {
         const where = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
@@ -6178,7 +6180,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const aiMatchEmptyMessage = !aiMatch
     ? null
     : aiMatchHasRun
-      ? 'No close matches in 30 days'
+      ? (aiMatchSummary && (aiMatchSummary.belowFloor ?? 0) > 0
+        // Scored candidates and kept none. Saying "no matches" here would be a
+        // lie about supply: there is plenty, none of it fits, and the credits
+        // went back.
+        ? `Checked ${aiMatchSummary.belowFloor} and none were a real fit — nothing charged. Try widening the brief.`
+        : 'No close matches in 30 days')
       : '';
 
   // Landing on /match starts clean: the last run's results used to reappear and
@@ -8431,6 +8438,14 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                         <span>· for <span className="font-semibold text-gray-900 dark:text-slate-100">{aiMatchSummary.matchedFor}</span></span>
                       )}
                       {aiMatchSummary.best != null && <span>· best {aiMatchSummary.best}/10</span>}
+                      {(aiMatchSummary.belowFloor ?? 0) > 0 && aiMatchSummary.returned > 0 && (
+                        // Ten results padded with weak ones would teach people
+                        // the score means nothing. Say what was dropped instead
+                        // of quietly returning a shorter list.
+                        <span title={`Scored below ${aiMatchSummary.minScore ?? 5}/10`}>
+                          · {aiMatchSummary.belowFloor} too weak to send
+                        </span>
+                      )}
                       {aiMatchSummary.scanned > 0 && <span>· from {aiMatchSummary.scanned.toLocaleString()} scanned</span>}
                       {aiMatchSummary.credits > 0 && <span>· {aiMatchSummary.credits} credits</span>}
                       {aiMatchSummary.posted > 0 && (

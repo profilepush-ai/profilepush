@@ -39,6 +39,12 @@ const WINDOW_DAYS = 30;
 // RESULT_LIMIT are returned, and each returned match costs a credit.
 const CANDIDATE_LIMIT = 60;
 const RESULT_LIMIT = 10;
+// A match below this is not worth a credit or a click. Ten results padded out
+// with 3s and 4s teaches people the score means nothing, and the next run gets
+// ignored — the opposite of what a match list is for. Five is the bottom of
+// "workable" in the bands the cards already use, so nothing that reaches a card
+// is something the product itself calls a weak fit.
+const MIN_DELIVERABLE_SCORE = 5;
 const CREDITS_PER_RESULT = 1;
 const MIN_DESCRIPTION_CHARS = 40;
 const MAX_DESCRIPTION_CHARS = 8000;
@@ -273,7 +279,7 @@ Deno.serve(async (req: Request) => {
     // The brief's own fields, used to check the model's score against facts
     // both sides state. Already resolved by now — the post step awaited it.
     const briefSide = sideFromExtraction(await extractedPromise, briefKind);
-    const results = candidates
+    const ranked = candidates
       .map((row, index) => {
         const scored = scores.get(index);
         if (!scored) return null;
@@ -294,12 +300,29 @@ Deno.serve(async (req: Request) => {
       } => row !== null)
       // Score first, then how much of the checkable detail actually agreed, so
       // two 8s are separated by fact rather than by retrieval order.
-      .sort((a, b) => (b.ai_score - a.ai_score) || (b.rule_agreement - a.rule_agreement) || (b.similarity - a.similarity))
+      .sort((a, b) => (b.ai_score - a.ai_score) || (b.rule_agreement - a.rule_agreement) || (b.similarity - a.similarity));
+
+    const scoredCount = ranked.length;
+    const results = ranked
+      .filter((row) => row.ai_score >= MIN_DELIVERABLE_SCORE)
       .slice(0, resultLimit);
 
     if (results.length === 0) {
       await refund();
-      return { ok: true, results: [], refunded: true, credits_charged: 0, post, matched_for: matchedFor };
+      return {
+        ok: true,
+        results: [],
+        refunded: true,
+        credits_charged: 0,
+        post,
+        matched_for: matchedFor,
+        // Scored candidates but nothing cleared the floor. Different from an
+        // empty window, and the difference is the whole message: there is
+        // supply, it just does not fit.
+        scored_count: scoredCount,
+        below_floor: scoredCount,
+        min_score: MIN_DELIVERABLE_SCORE,
+      };
     }
 
     // A thin window can yield fewer than RESULT_LIMIT, and a rematch re-returns
@@ -318,6 +341,11 @@ Deno.serve(async (req: Request) => {
       // So the caller can say "10 matches" vs "3 matches — that is what your
       // remaining credits covered" rather than looking like a thin window.
       result_limit: resultLimit,
+      // How many were judged and how many were dropped for being too weak, so
+      // "3 matches" can be explained rather than looking like a thin window.
+      scored_count: scoredCount,
+      below_floor: scoredCount - results.length,
+      min_score: MIN_DELIVERABLE_SCORE,
       new_count: freshResults.length,
       matched_for: matchedFor,
       post,
