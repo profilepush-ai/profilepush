@@ -2517,7 +2517,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const [aiMatchProgress, setAiMatchProgress] = useState<string | null>(null);
   // What the last run did, shown above the results: without it people see a
   // list of cards with no idea what was searched or how many came back.
-  const [aiMatchSummary, setAiMatchSummary] = useState<{ returned: number; fresh: number | null; scanned: number; best: number | null; credits: number; posted: number; matchedFor: string | null; saved?: boolean; belowFloor?: number; minScore?: number } | null>(null);
+  const [aiMatchSummary, setAiMatchSummary] = useState<{ returned: number; fresh: number | null; scanned: number; best: number | null; credits: number; posted: number; matchedFor: string | null; saved?: boolean; belowFloor?: number; minScore?: number; topBlockers?: Array<{ reason: string; count: number }> } | null>(null);
   // Which of the account's own posts this run was started from, when it was
   // started from one at all. A screening invitation needs a job to attach to,
   // and a run from pasted text has none.
@@ -5830,7 +5830,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let data: { results?: unknown; post?: unknown; credits_charged?: number; new_count?: number; matched_for?: string | null; below_floor?: number; min_score?: number } | null = null;
+      let data: { results?: unknown; post?: unknown; credits_charged?: number; new_count?: number; matched_for?: string | null; below_floor?: number; min_score?: number; top_blockers?: Array<{ reason: string; count: number }> } | null = null;
       let streamError: string | null = null;
       let scanned = 0;
 
@@ -5897,6 +5897,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         matchedFor: (data?.matched_for ?? null) || null,
         belowFloor: Number(data?.below_floor ?? 0),
         minScore: Number(data?.min_score ?? 0) || undefined,
+        topBlockers: data?.top_blockers ?? [],
       });
       if (post?.status === 'created') {
         const where = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
@@ -6177,14 +6178,36 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     if (routeLeadId) navigate(feedBasePath, { replace: true });
   }, [feedBasePath, navigate, routeLeadId]);
 
+  // The commonest reason the rejected ones were rejected, turned into the one
+  // thing to change. Only stated when it blocked most of them — naming a
+  // requirement that stopped two of fourteen would send someone after the
+  // wrong thing.
+  const aiMatchBlockerAdvice = (() => {
+    const top = aiMatchSummary?.topBlockers?.[0];
+    const checked = aiMatchSummary?.belowFloor ?? 0;
+    if (!top || checked === 0 || top.count < Math.ceil(checked / 2)) return '';
+    const fix: Record<string, string> = {
+      visa: 'Most were blocked on visa — widen which statuses you accept.',
+      role: 'Most were a different role — try a broader job title.',
+      skills: 'Most shared no skills — name the two or three that actually matter.',
+      experience: 'Most fell short on years — lower the experience bar.',
+      'employment type': 'Most were a different engagement type — accept C2C as well as W2.',
+      location: 'Most were the wrong location — allow remote or nearby states.',
+      rate: 'Most were above your rate — raise the ceiling or say it is negotiable.',
+    };
+    const line = fix[top.reason];
+    return line ? ` ${line}` : '';
+  })();
+
   const aiMatchEmptyMessage = !aiMatch
     ? null
     : aiMatchHasRun
       ? (aiMatchSummary && (aiMatchSummary.belowFloor ?? 0) > 0
         // Scored candidates and kept none. Saying "no matches" here would be a
         // lie about supply: there is plenty, none of it fits, and the credits
-        // went back.
-        ? `Checked ${aiMatchSummary.belowFloor} and none were a real fit — nothing charged. Try widening the brief.`
+        // went back. Naming the requirement that did the blocking is the
+        // difference between a dead end and a next step.
+        ? `Checked ${aiMatchSummary.belowFloor}, none were a real fit — nothing charged.${aiMatchBlockerAdvice}`
         : 'No close matches in 30 days')
       : '';
 
