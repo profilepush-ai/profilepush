@@ -2,11 +2,10 @@
   "id": "/",
   "name": "ProfilePush",
   "short_name": "ProfilePush",
-  "description": "AI Copilot for US IT Staffing Teams — Bench Sales Recruiters & Vendor Teams",
+  "description": "AI Copilot for US IT Staffing Teams \u2014 Bench Sales Recruiters & Vendor Teams",
   "start_url": "/feed",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#f3f2ee",
   "theme_color": "#2563eb",
   "icons": [
@@ -27,6 +26,29 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "screenshots": [
+    {
+      "src": "/screens/vendors.jpg",
+      "sizes": "820x1457",
+      "type": "image/jpeg",
+      "form_factor": "narrow",
+      "label": "Vendor requirements and AI Match"
+    },
+    {
+      "src": "/screens/bench-sales.jpg",
+      "sizes": "820x1457",
+      "type": "image/jpeg",
+      "form_factor": "narrow",
+      "label": "Bench sales hotlist and submissions"
     }
   ]
 }
