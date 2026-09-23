@@ -498,6 +498,9 @@ type AskAIPreview = {
   /** Why a screening link is missing, when one is. Shown in the modal. */
   screeningNotice?: string | null;
   isGenerating: boolean;
+  /** Generated for the AI Match pane, which renders it itself. Keeps the
+   *  modal closed: the whole point of the pane is not opening one. */
+  inline?: boolean;
 };
 type FeedSearchFilters = {
   experienceRange: string[];
@@ -4063,6 +4066,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         lead={aiMatchPreviewLead}
         senderName={aiMatchSenderName}
         isGenerating={processingAskAILeadId === aiMatchPreviewLead.id}
+        isSending={sendingViaGmail}
+        draft={aiMatchInlineDraft && !aiMatchInlineDraft.isGenerating
+          ? { subject: aiMatchInlineDraft.emailSubject, body: aiMatchInlineDraft.emailContent }
+          : null}
+        onGenerateAndSend={() => { void handleGenerateAndSend(aiMatchPreviewLead); }}
         onSend={() => { void handleAskAI(aiMatchPreviewLead); }}
       />
     );
@@ -6338,6 +6346,13 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     || account?.name
     || undefined;
 
+  // The draft showing in the pane, when it is the real generated one for the
+  // card in focus rather than a leftover from another card.
+  const aiMatchInlineDraft = askAIPreview?.inline && askAIPreview.leadId === aiMatchPreviewLead?.id
+    ? askAIPreview
+    : null;
+
+
   const aiMatchEmptyMessage = !aiMatch
     ? null
     : aiMatchHasRun
@@ -6830,8 +6845,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     }
   }, [account?.id, leadIsHotlist, navigate, processingChatLeadId, showToast]);
 
-  const handleAskAI = useCallback(async (lead: SocialLead) => {
-    if (!account?.id || processingAskAILeadId) return;
+  const handleAskAI = useCallback(async (lead: SocialLead, options?: { inline?: boolean }): Promise<AskAIPreview | null> => {
+    if (!account?.id || processingAskAILeadId) return null;
+    const inline = options?.inline === true;
 
     const leadType: 'job' | 'hotlist' = leadIsHotlist(lead) ? 'hotlist' : 'job';
     // A job with every field already detected still has a valid "ask" — re-confirming
@@ -6841,7 +6857,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     const primaryEmail = extractPrimaryEmail(lead.posterEmail);
     if (!primaryEmail) {
       showToast(leadType === 'hotlist' ? 'This consultant does not have a valid recruiter email' : 'This job does not have a valid vendor email', 'error');
-      return;
+      return null;
     }
 
     const requestId = crypto.randomUUID();
@@ -6857,6 +6873,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       emailSubject: '',
       emailContent: '',
       isGenerating: true,
+      inline,
     });
     setProcessingAskAILeadId(lead.id);
     try {
@@ -6913,20 +6930,25 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
           }
         }
       }
-      setAskAIPreview((current) => ({
+      // Built as a value rather than a state updater so the caller can send
+      // it straight away: "generate and send" cannot wait for a re-render to
+      // read the draft back out of state.
+      const finalPreview: AskAIPreview = {
         leadId: lead.id,
         leadType,
         requestId,
         vendorName,
-        vendorEmail: current?.vendorEmail ?? vendorEmail,
-        jobTitle: current?.jobTitle ?? (lead.title || lead.roleTitle || ''),
-        company: current?.company ?? (lead.company || ''),
+        vendorEmail,
+        jobTitle: lead.title || lead.roleTitle || '',
+        company: lead.company || '',
         missingDetails,
         emailSubject: generatedSubject,
         emailContent: generatedContent,
         screeningNotice,
         isGenerating: false,
-      }));
+        inline,
+      };
+      setAskAIPreview(finalPreview);
 
       // Log every generated email to the Inbox — nothing currently gets sent
       // (Gmail Sync isn't wired up), so this is the only record of it. One
@@ -6949,6 +6971,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
           }
         });
       }
+      return finalPreview;
     } catch (error) {
       setAskAIPreview(null);
       if (error instanceof Error && error.name === 'InsufficientCreditsError') {
@@ -6956,10 +6979,51 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       } else {
         showToast(error instanceof Error ? error.message : 'Could not generate the vendor email request', 'error');
       }
+      return null;
     } finally {
       setProcessingAskAILeadId(null);
     }
   }, [account?.id, leadIsHotlist, processingAskAILeadId, showToast, user?.id]);
+
+  // The top match generates itself, once.
+  //
+  // A submission email is written per post by the model, so unlike the
+  // screening invite it cannot be rendered locally — the pane could only
+  // describe it. Generating the first one means the pane opens on a real
+  // email instead of a description of one, which is the only version of this
+  // that makes anyone try it.
+  //
+  // Safe to spend a credit on because the server caches a generated draft and
+  // returns cache hits before charging: reopening the same run, or reloading
+  // the page, costs nothing.
+  //
+  // Jobs only. Generating a screening invite also mints its screening link,
+  // which would leave a screening record against a consultant nobody has
+  // decided to contact yet — and an invite's wording is a fixed template the
+  // pane already renders exactly, for free, so there is nothing to gain.
+  //
+  // The ref is load-bearing beyond de-duplication: a failed generation clears
+  // askAIPreview, which would re-satisfy this effect and retry forever,
+  // spending a credit each time.
+  const aiMatchAutoDraftedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!aiMatch || !account?.id) return;
+    const first = filteredFeed.find((lead) => lead.aiMatchScore != null);
+    if (!first || leadIsHotlist(first)) return;
+    if (aiMatchPreviewLead?.id !== first.id) return;
+    if (askAIPreview || processingAskAILeadId) return;
+    if (aiMatchAutoDraftedRef.current.has(first.id)) return;
+    aiMatchAutoDraftedRef.current.add(first.id);
+    void handleAskAI(first, { inline: true });
+  }, [aiMatch, account?.id, filteredFeed, aiMatchPreviewLead?.id, askAIPreview, processingAskAILeadId, handleAskAI, leadIsHotlist]);
+
+  // What the banner on every other card does: generate the real email and
+  // send it, in one action, because that is the whole ask.
+  const handleGenerateAndSend = useCallback(async (lead: SocialLead) => {
+    const draft = await handleAskAI(lead, { inline: true });
+    if (draft) await handleSendViaGmail(draft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleAskAI]);
 
   useEffect(() => {
     supabase
@@ -7076,18 +7140,21 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     }
   }
 
-  async function handleSendViaGmail() {
-    if (!askAIPreview || !account?.id || sendingViaGmail) return;
+  // Takes an explicit draft so the AI Match pane can send the one it just
+  // generated, without waiting for a re-render to read it back from state.
+  async function handleSendViaGmail(draft?: AskAIPreview) {
+    const preview = draft ?? askAIPreview;
+    if (!preview || !account?.id || sendingViaGmail) return;
     setSendingViaGmail(true);
     try {
       // An invite without the link is just an email. Minted at send time
       // rather than when the draft is generated, so a draft the user abandons
       // does not leave a screening record behind.
-      let emailContent = askAIPreview.emailContent;
-      if (askAIPreview.leadType === 'hotlist' && aiMatchSourcePostId && !hasScreeningLink(emailContent)) {
+      let emailContent = preview.emailContent;
+      if (preview.leadType === 'hotlist' && aiMatchSourcePostId && !hasScreeningLink(emailContent)) {
         const { data: invite } = await supabase.rpc('invite_consultant_to_screening' as never, {
           p_social_job_id: aiMatchSourcePostId,
-          p_hotlist_id: askAIPreview.leadId,
+          p_hotlist_id: preview.leadId,
         } as never);
         const row = Array.isArray(invite) ? invite[0] : invite;
         const token = (row as { screening_token?: string } | null)?.screening_token;
@@ -7099,12 +7166,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       const { data, error } = await supabase.functions.invoke('ask-ai-vendor-email', {
         body: {
           action: 'send',
-          request_id: askAIPreview.requestId,
+          request_id: preview.requestId,
           account_id: account.id,
-          job_id: askAIPreview.leadId,
-          lead_type: askAIPreview.leadType,
-          missing_details: askAIPreview.missingDetails,
-          email_subject: askAIPreview.emailSubject,
+          job_id: preview.leadId,
+          lead_type: preview.leadType,
+          missing_details: preview.missingDetails,
+          email_subject: preview.emailSubject,
           email_content: emailContent,
           channel: 'gmail',
         },
@@ -7118,7 +7185,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       }
       setAskAIPreview(null);
       showToast('Sent via Gmail', 'success');
-      if (data.conversation_id) navigate(`/inbox/${data.conversation_id}`);
+      // An inline send happens beside the results the person is working
+      // through; jumping them to the Inbox would lose their place.
+      if (data.conversation_id && !preview.inline) navigate(`/inbox/${data.conversation_id}`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not send via Gmail', 'error');
     } finally {
@@ -8886,6 +8955,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                                       lead={aiMatchPreviewLead}
                                       senderName={aiMatchSenderName}
                                       isGenerating={Boolean(aiMatchPreviewLead && processingAskAILeadId === aiMatchPreviewLead.id)}
+                                      isSending={sendingViaGmail}
+                                      draft={aiMatchInlineDraft && !aiMatchInlineDraft.isGenerating
+                                        ? { subject: aiMatchInlineDraft.emailSubject, body: aiMatchInlineDraft.emailContent }
+                                        : null}
+                                      onGenerateAndSend={() => { if (aiMatchPreviewLead) void handleGenerateAndSend(aiMatchPreviewLead); }}
                                       onSend={() => { if (aiMatchPreviewLead) void handleAskAI(aiMatchPreviewLead); }}
                                     />
                                   </div>
@@ -8917,7 +8991,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         </div>
       </main>
 
-      {askAIPreview && (
+      {/* Inline drafts belong to the AI Match pane, which renders them
+          itself. Opening a modal over them would undo the point of it. */}
+      {askAIPreview && !askAIPreview.inline && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => !processingAskAILeadId && setAskAIPreview(null)}>
           <div
             role="dialog"
