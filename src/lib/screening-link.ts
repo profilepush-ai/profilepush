@@ -9,7 +9,7 @@
 // send use it, and because the signature detection is worth a test rather than
 // an assumption.
 
-const LINK_LABEL = 'Screening link:';
+const LINK_LABEL = 'Link:';
 
 /** A trailing line that is a name rather than a sentence. */
 function isSignatureLine(line: string): boolean {

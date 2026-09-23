@@ -8,7 +8,7 @@ describe('withScreeningLink', () => {
     const body = 'Hi Gopal — I have a live client requirement that fits your Sr. Salesforce Developer. Next step is a short video screening, about five minutes.\n\nPoorna';
     expect(withScreeningLink(body, URL)).toBe(
       'Hi Gopal — I have a live client requirement that fits your Sr. Salesforce Developer. Next step is a short video screening, about five minutes.'
-      + `\n\nScreening link:\n${URL}\n\nPoorna`,
+      + `\n\nLink:\n${URL}\n\nPoorna`,
     );
   });
 
@@ -22,7 +22,7 @@ describe('withScreeningLink', () => {
     // No signature to sit under, so the link goes last rather than being
     // wedged above the final sentence.
     const out = withScreeningLink('Hi Ravi, here is the requirement.', URL);
-    expect(out).toBe(`Hi Ravi, here is the requirement.\n\nScreening link:\n${URL}`);
+    expect(out).toBe(`Hi Ravi, here is the requirement.\n\nLink:\n${URL}`);
   });
 
   it('does not treat a long final line as a signature', () => {
@@ -32,17 +32,17 @@ describe('withScreeningLink', () => {
   });
 
   it('survives a single-line draft', () => {
-    expect(withScreeningLink('Poorna', URL)).toBe(`Poorna\n\nScreening link:\n${URL}`);
+    expect(withScreeningLink('Poorna', URL)).toBe(`Poorna\n\nLink:\n${URL}`);
   });
 
   it('returns just the link for an empty draft', () => {
-    expect(withScreeningLink('   ', URL)).toBe(`Screening link:\n${URL}`);
+    expect(withScreeningLink('   ', URL)).toBe(`Link:\n${URL}`);
   });
 });
 
 describe('hasScreeningLink', () => {
   it('detects an existing link so it is not added twice', () => {
-    expect(hasScreeningLink(`body\n\nScreening link:\n${URL}`)).toBe(true);
+    expect(hasScreeningLink(`body\n\nLink:\n${URL}`)).toBe(true);
     expect(hasScreeningLink('body with no link')).toBe(false);
   });
 });
