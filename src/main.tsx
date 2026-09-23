@@ -39,9 +39,17 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 // Registered in production only: in dev it would cache a build that Vite is
 // about to replace. Failure is swallowed because nothing here is required for
 // the app to work — the worker only adds installability and offline HTML.
+//
+// updateViaCache: 'none' makes the browser fetch sw.js past its own HTTP
+// cache on every update check. Pages serves it with max-age=14400, and a
+// browser only ignores that cache by itself when max-age is over 24 hours —
+// so without this, a fix to a worker that is already on someone's machine
+// could take four hours to reach them. Setting it here rather than with a
+// _headers rule because Pages does not honour Cache-Control overrides on
+// static files: the rule applied and the max-age survived it anyway.
 if (import.meta.env.PROD && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('/sw.js').catch(() => {});
+    void navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {});
   });
 }
 
