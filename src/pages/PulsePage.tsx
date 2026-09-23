@@ -52,6 +52,7 @@ import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
+import { hasScreeningLink, withScreeningLink } from '../lib/screening-link';
 import GmailIcon from '../components/GmailIcon';
 import GmailConnectPrompt from '../components/GmailConnectPrompt';
 import { useAuth } from '../contexts/AuthContext';
@@ -6694,7 +6695,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
           const row = Array.isArray(invite) ? invite[0] : invite;
           const token = (row as { screening_token?: string } | null)?.screening_token;
           if (token) {
-            generatedContent += `\n\nScreening link:\n${window.location.origin}/screen/${token}`;
+            generatedContent = withScreeningLink(generatedContent, `${window.location.origin}/screen/${token}`);
           } else {
             // Every previous version swallowed this. A missing link then looked
             // identical whether the job was absent, the RPC was undeployed or
@@ -6875,7 +6876,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       // rather than when the draft is generated, so a draft the user abandons
       // does not leave a screening record behind.
       let emailContent = askAIPreview.emailContent;
-      if (askAIPreview.leadType === 'hotlist' && aiMatchSourcePostId && !emailContent.includes('/screen/')) {
+      if (askAIPreview.leadType === 'hotlist' && aiMatchSourcePostId && !hasScreeningLink(emailContent)) {
         const { data: invite } = await supabase.rpc('invite_consultant_to_screening' as never, {
           p_social_job_id: aiMatchSourcePostId,
           p_hotlist_id: askAIPreview.leadId,
@@ -6883,7 +6884,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         const row = Array.isArray(invite) ? invite[0] : invite;
         const token = (row as { screening_token?: string } | null)?.screening_token;
         if (token) {
-          emailContent += `\n\nScreening link:\n${window.location.origin}/screen/${token}`;
+          emailContent = withScreeningLink(emailContent, `${window.location.origin}/screen/${token}`);
         }
       }
 
