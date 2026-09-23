@@ -36,6 +36,15 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   }
 }
 
+// Registered in production only: in dev it would cache a build that Vite is
+// about to replace. Failure is swallowed because nothing here is required for
+// the app to work — the worker only adds installability and offline HTML.
+if (import.meta.env.PROD && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
