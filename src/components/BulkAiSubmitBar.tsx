@@ -154,7 +154,7 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
           const row = Array.isArray(invite) ? invite[0] : invite;
           const token = (row as { screening_token?: string } | null)?.screening_token;
           if (token) {
-            emailContent += `\n\nBook the screening here — no account needed, it takes about five minutes:\n${window.location.origin}/screen/${token}`;
+            emailContent += `\n\nScreening link:\n${window.location.origin}/screen/${token}`;
           }
         }
 

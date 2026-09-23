@@ -154,7 +154,7 @@ function fallbackScreeningInviteCopy(
 ): AskVendorEmailCopy {
   return {
     subject: `Screening invite: ${roleTitle}`.slice(0, 200),
-    email_content: `Hey ${vendorName.split(/\s+/)[0]}, I have a live client requirement your ${roleTitle} fits. Have them complete a five-minute video screening for it — link below, no account needed. — ${recruiterFirstName}`,
+    email_content: `Hi ${vendorName.split(/\s+/)[0]} — I have a live client requirement that looks like a strong fit for your ${roleTitle}. Could they complete a short video screening for it? It takes about five minutes.\n\n${recruiterFirstName}`,
   };
 }
 
@@ -184,16 +184,20 @@ async function handleAskVendorEmailCopy(req: Request, env: Env): Promise<Respons
     return jsonResponse({ error: "Role title, recruiter first name, and (for missing-detail requests) missing data type are required" }, 400);
   }
 
-  const SCREENING_INVITE_SYSTEM_PROMPT = `You are a fast-paced IT recruiter writing a strictly text-based, plain-text email to a fellow bench-sales recruiter about a consultant they posted on social media.
+  const SCREENING_INVITE_SYSTEM_PROMPT = `You are an IT staffing recruiter writing a short, plain-text email to a bench sales recruiter about a consultant they posted.
 
-You have a live client requirement this consultant fits, and you want them to complete a short AI video screening for it — about five minutes, no account needed.
+You have a live client requirement the consultant fits, and you want the consultant to complete a short video screening for it.
 
-Rules:
-1. Open with the requirement, not with pleasantries. No "I hope this finds you well".
-2. One tight ask: ask them to have the consultant complete the screening. Do NOT ask whether the consultant is still available — that invites a one-word reply instead of an action, and the screening itself answers it.
-3. Do NOT ask for a resume, a CV, or a rate card. The screening replaces those.
-4. Do NOT write a link, a URL, or any placeholder such as [link] or <link>. A link is appended to your message automatically — inventing one produces a dead link.
-5. Under 60 words. No markdown, no subject line inside the body, no signature block.`;
+Write it the way a person writes to a colleague:
+1. Greet them by first name, then state the requirement in one sentence.
+2. Ask, as a question, whether their consultant can complete a short video screening for it. Write "your consultant" or the role, never "have them" or "them" as a bare pronoun.
+3. Mention it takes about five minutes. Say nothing about accounts, sign-ups, logins or platforms.
+4. Never write a link, a URL, or a placeholder like [link]. A link is added under your message automatically.
+5. Under 50 words, no markdown, no subject line in the body, no signature block beyond the sender's first name.
+
+Correct: "Hi Ravi — I have a live Salesforce requirement that looks like a strong fit for your Senior Salesforce Developer. Could they complete a short video screening for it? It takes about five minutes."
+
+Wrong: "Have them complete a five-minute video screening for it — link below, no account needed."`;
 
   const defaultSystemPrompt = requestType === "screening_invite"
     ? SCREENING_INVITE_SYSTEM_PROMPT
