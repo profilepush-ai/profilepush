@@ -5747,6 +5747,14 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
 
     const description = aiMatchDescription.trim();
     if (description) {
+      // The composer holds the post's own description verbatim when a run is
+      // started from the rail, and that same text is what aiMatchOwnPosts
+      // carries alongside the id. Matching on it is exact and survives
+      // everything — reload, restore, an empty title — which the recents
+      // lookup below does not.
+      const ownPost = aiMatchOwnPosts.find((post) => post.description.trim() === description);
+      if (ownPost) return ownPost.id;
+
       const run = aiMatchRecents.find((item) => item.target === aiMatchTarget && item.description === description);
       if (run?.postId) return run.postId;
     }
@@ -6686,7 +6694,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
           const row = Array.isArray(invite) ? invite[0] : invite;
           const token = (row as { screening_token?: string } | null)?.screening_token;
           if (token) {
-            generatedContent += `\n\nStart the screening here — no account needed, about five minutes:\n${window.location.origin}/screen/${token}`;
+            generatedContent += `\n\nScreening link:\n${window.location.origin}/screen/${token}`;
           } else {
             // Every previous version swallowed this. A missing link then looked
             // identical whether the job was absent, the RPC was undeployed or
@@ -6875,7 +6883,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         const row = Array.isArray(invite) ? invite[0] : invite;
         const token = (row as { screening_token?: string } | null)?.screening_token;
         if (token) {
-          emailContent += `\n\nBook the screening here — no account needed, it takes about five minutes:\n${window.location.origin}/screen/${token}`;
+          emailContent += `\n\nScreening link:\n${window.location.origin}/screen/${token}`;
         }
       }
 
