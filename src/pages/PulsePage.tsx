@@ -2525,6 +2525,10 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // modal. Kept on the page so every later invite from the same results uses
   // the same job rather than asking again.
   const [aiMatchChosenJobId, setAiMatchChosenJobId] = useState<string | null>(null);
+  // Which rail card is selected, by id. Two posts can carry the same title and
+  // the same description — the same job posted twice — so comparing text
+  // highlighted both and there was no way to tell which one you had picked.
+  const [aiMatchSelectedPostId, setAiMatchSelectedPostId] = useState<string | null>(null);
   const [aiMatchFromTitle, setAiMatchFromTitle] = useState('');
   const [aiMatchRecents, setAiMatchRecents] = useState<AiMatchRecent[]>(() => readAiMatchRecents());
   const [aiMatchOwnPosts, setAiMatchOwnPosts] = useState<AiMatchOwnPost[]>([]);
@@ -5741,6 +5745,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     // always run for a requirement, so the job is almost never truly unknown —
     // it was just held somewhere that a reload or a restore threw away.
     if (aiMatchRunPostId) return aiMatchRunPostId;
+    if (aiMatchSelectedPostId) return aiMatchSelectedPostId;
     if (aiMatchChosenJobId) return aiMatchChosenJobId;
 
     const session = readAiMatchSession();
@@ -5766,7 +5771,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       if (byTitle) return byTitle.id;
     }
     return null;
-  }, [aiMatchRunPostId, aiMatchChosenJobId, aiMatchDescription, aiMatchFromTitle, aiMatchOwnPosts, aiMatchRecents, aiMatchTarget]);
+  }, [aiMatchRunPostId, aiMatchSelectedPostId, aiMatchChosenJobId, aiMatchDescription, aiMatchFromTitle, aiMatchOwnPosts, aiMatchRecents, aiMatchTarget]);
 
   // The overrides let the sidebar run one of their own posts without a detour
   // through state — setState is async, so reading the box back would run the
@@ -6045,6 +6050,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   }, []);
 
   const selectAiMatchText = useCallback((description: string, title: string) => {
+    setAiMatchSelectedPostId(null);
     setAiMatchMobileTab('match');
     setAiMatchDescription(description);
     setAiMatchFromTitle(title);
@@ -6106,6 +6112,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     // leave the button disabled.
     const text = post.description.trim() || [post.title, post.subtitle].filter(Boolean).join('\n');
     selectAiMatchText(text, post.title);
+    // After selectAiMatchText, which clears the selection for a loose paste —
+    // setting it first would have been undone on the same render.
+    setAiMatchSelectedPostId(post.id);
     showSavedRun(lastRun);
   }, [selectAiMatchText, showSavedRun]);
 
@@ -6144,6 +6153,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // Back to a clean page: the results, the summary and the restored session all
   // go, so a reload doesn't bring the old run back. The recents stay.
   const clearAiMatchResults = useCallback(() => {
+    setAiMatchSelectedPostId(null);
     setFeed([]);
     setAiMatchSummary(null);
     setAiMatchHasRun(false);
@@ -7266,7 +7276,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 ) : (
                   aiMatchOwnPosts.map((post) => {
                     const lastRun = aiMatchLastRunForPost(post);
-                    const isActive = post.description === aiMatchDescription;
+                    const isActive = aiMatchSelectedPostId
+                      ? post.id === aiMatchSelectedPostId
+                      : post.description === aiMatchDescription;
                     return (
                       // The whole card is the target — a name is a small thing
                       // to hit — with Match as the one nested control.

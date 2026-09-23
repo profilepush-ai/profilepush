@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Check, Loader2, Mail, Video, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { withScreeningLink } from '../lib/screening-link';
-import GmailIcon from './GmailIcon';
 
 // Bulk sending is the reason people adopt this feature — nobody switches tools
 // to send one email at a time. It is also the fastest way to get a user's own
@@ -288,7 +287,7 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
             disabled={batch.length === 0}
             className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-[13px] font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:bg-white/40 disabled:text-white/70"
           >
-            <GmailIcon size={15} />
+            <Mail size={15} strokeWidth={2.25} />
             {batch.length === 0 ? 'Daily limit reached' : 'Send Now'}
           </button>
         </div>
