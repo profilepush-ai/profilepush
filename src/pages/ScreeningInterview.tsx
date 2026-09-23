@@ -478,12 +478,16 @@ export default function ScreeningInterview() {
   // middle band scrolls now; the button cannot move.
   return (
     <div className="flex h-screen flex-col items-center bg-gray-50 sm:py-8" style={{ height: '100dvh' }}>
-      <div className="flex h-full w-full flex-col overflow-hidden bg-white sm:max-w-lg sm:rounded-2xl sm:border sm:border-gray-200 sm:shadow-lg">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-white sm:max-w-lg sm:rounded-2xl sm:border sm:border-gray-200 sm:shadow-lg md:max-w-4xl md:flex-row">
 
-        {/* 30% of the viewport, edge to edge. dvh so the phone's collapsing
-            address bar does not resize the camera mid-answer; vh via the class
-            is the fallback where dvh is unsupported. */}
-        <div className="relative h-[30vh] min-h-[168px] shrink-0 overflow-hidden bg-gray-900 sm:rounded-t-2xl" style={{ height: '30dvh' }}>
+        {/* Phone: the top 30%, edge to edge. Desktop: the left 60%, full
+            height — there is width to spend there, and stacking bands down a
+            wide screen would leave the camera a letterbox strip.
+            Heights are split by breakpoint rather than set inline, so the
+            md rule is not fighting an inline style it cannot beat. dvh keeps
+            the phone's collapsing address bar from resizing the camera
+            mid-answer; the vh rule is the fallback where dvh is unsupported. */}
+        <div className="relative overflow-hidden bg-gray-900 max-md:h-[30vh] max-md:min-h-[168px] max-md:shrink-0 max-md:supports-[height:1dvh]:h-[30dvh] sm:rounded-t-2xl md:h-full md:w-3/5 md:shrink-0 md:rounded-l-2xl md:rounded-tr-none">
           <video
             ref={videoPreviewRef}
             autoPlay
@@ -528,22 +532,26 @@ export default function ScreeningInterview() {
           )}
         </div>
 
+        {/* Question and action travel together: stacked under the camera on a
+            phone, the right-hand 40% column beside it on desktop. */}
+        <div className="flex min-h-0 flex-1 flex-col md:border-l md:border-gray-100">
+
         {/* The only band that scrolls, so a long question never reaches the
             button. Centred vertically while it is short enough to fit. */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-5">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-5 md:px-6">
           {/* my-auto, not justify-center: a centred flex container clips the
               top of content taller than itself and leaves it unscrollable. */}
           <div className="my-auto">
             <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wide mb-1.5">
               Question {(session?.turnsAnswered ?? 0) + 1}
             </p>
-            <p className="text-[19px] font-bold text-gray-900 leading-snug">{session?.currentQuestion}</p>
+            <p className="text-[19px] font-bold text-gray-900 leading-snug md:text-[22px]">{session?.currentQuestion}</p>
             {errorMessage && <p className="text-xs text-red-500 mt-3">{errorMessage}</p>}
           </div>
         </div>
 
         {/* Pinned. pb clears the home indicator on iOS. */}
-        <div className="shrink-0 border-t border-gray-100 bg-white px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="shrink-0 border-t border-gray-100 bg-white px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-6 md:pb-5">
         <div className="flex gap-2">
           {recordPhase === 'camera_denied' && (
             <button
@@ -605,6 +613,7 @@ export default function ScreeningInterview() {
         </p>
         </div>
 
+        </div>
       </div>
     </div>
   );
