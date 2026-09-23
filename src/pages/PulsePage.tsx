@@ -33,6 +33,7 @@ import {
   Shield,
   CheckSquare,
   ChevronDown,
+  ChevronLeft,
   ChevronUp,
   Server,
   Sparkles,
@@ -2741,6 +2742,13 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // wrapper left the wrapper claiming flex-1, which halved the list's height
   // and cut the last card in two.
   const aiMatchRecentTabActive = aiMatch && isMobileViewport && aiMatchMobileTab === 'recent';
+  // On a phone the composer and the results are two screens, not one.
+  // Sharing the viewport gave the textarea and its summary line most of the
+  // screen and left the matches a sliver at the bottom — a run's whole point
+  // reduced to whatever fitted under the box that started it. Results own the
+  // screen once there are any; the back arrow returns to the composer.
+  const aiMatchMobileResultsView = aiMatch && isMobileViewport && !aiMatchRecentTabActive
+    && aiMatchHasRun && !aiMatchComposerOpen;
   // Cards whatever is saved: a table row or a detail pane of a consultant is
   // mostly the fields the card already shows, minus the layout that makes them
   // readable. The stored preference is left alone, so other feeds keep it.
@@ -5957,9 +5965,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       if (data?.matched_for) setAiMatchFromTitle(String(data.matched_for));
       await loadFeed(null, [], rows);
       setAiMatchHasRun(true);
+      // Nothing found means the box is the only thing left to act on, so it
+      // stays open. A second unconditional close used to sit below this and
+      // collapsed it anyway, hiding the composer behind an empty list.
       setAiMatchComposerOpen(rows.length === 0);
       writeAiMatchSession({ description, target: aiMatchTarget, rows, postId: overridePostId, title: runTitle });
-      setAiMatchComposerOpen(false);
       setAiMatchRecents((previous) => {
         // Same text moves to the front rather than piling up.
         const rest = previous.filter((item) => item.description !== description);
@@ -6286,9 +6296,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     void loadFeed(null, [], saved.rows).then(() => {
       setAiMatchHasRun(true);
       setAiMatchDescription(saved.description);
-      // Open, not collapsed: a one-line bar above the results hides the fact
-      // that this is where you start a match.
-      setAiMatchComposerOpen(true);
+      // Desktop opens the box, where it costs nothing to show beside the list.
+      // A phone restores straight into the results: the box used to reopen
+      // here so it stayed discoverable, which meant reloading a finished run
+      // put most of the screen back under the textarea. The results header's
+      // back arrow is what makes it discoverable now.
+      setAiMatchComposerOpen(!isMobileViewport);
     });
   }, [account, aiMatch, aiMatchSeed, aiMatchTarget, loadFeed, routeLeadId]);
 
@@ -8310,14 +8323,75 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
-              {aiMatch && !aiMatchRecentTabActive && (
+              {/* Results view header. One fixed-height row, pinned, so the way
+                  back is always reachable and the bulk bar below it has a known
+                  offset to sit under. Replaces the composer and its summary
+                  line rather than stacking above them. */}
+              {aiMatchMobileResultsView && (
+                <div className="sticky top-0 z-30 shrink-0 bg-[#f3f2ee] px-1 dark:bg-[#1B1D21]">
+                  <div className="flex h-11 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-1.5 dark:border-white/10 dark:bg-[#171A1F]">
+                    <button
+                      type="button"
+                      onClick={() => setAiMatchComposerOpen(true)}
+                      title="Back to the match box"
+                      aria-label="Back to the match box"
+                      className="shrink-0 rounded-lg p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-slate-400 dark:hover:bg-white/5"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] font-semibold leading-tight text-gray-900 dark:text-slate-100">
+                        {aiMatchFromTitle || aiMatchDescription.trim().split('\n').map((line) => line.trim()).find((line) => line.length >= 3)?.slice(0, 60) || 'Your paste'}
+                      </span>
+                      <span className="block truncate text-[10px] leading-tight text-gray-500 dark:text-slate-400">
+                        {aiMatchSummary
+                          ? `${aiMatchSummary.returned} ${aiMatchSummary.returned === 1 ? 'match' : 'matches'}${aiMatchSummary.best != null ? ` · best ${aiMatchSummary.best}/10` : ''}${aiMatchSummary.saved ? ' · saved' : ''}`
+                          : `${filteredFeed.length} ${filteredFeed.length === 1 ? 'match' : 'matches'}`}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void runAiMatch()}
+                      disabled={aiMatchRunning}
+                      className="shrink-0 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2.5 py-1 text-[11px] font-semibold text-white transition active:scale-95 disabled:opacity-40"
+                    >
+                      {aiMatchRunning ? 'Matching' : 'Rematch'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearAiMatchResults}
+                      title="Clear results"
+                      aria-label="Clear results"
+                      className="shrink-0 rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/5"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {aiMatch && !aiMatchRecentTabActive && !aiMatchMobileResultsView && (
                 <div className={isMobileViewport ? 'shrink-0 px-1 pt-1.5 pb-1' : 'shrink-0 px-2 py-2'}>
+                  {/* The other half of the back arrow: with results waiting,
+                      the composer is a detour, so it says how to leave. */}
+                  {isMobileViewport && aiMatchHasRun && filteredFeed.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAiMatchComposerOpen(false)}
+                      className="mb-1.5 inline-flex items-center gap-1 rounded-lg px-1 py-0.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400"
+                    >
+                      <ChevronLeft size={13} />
+                      Back to {filteredFeed.length} {filteredFeed.length === 1 ? 'match' : 'matches'}
+                    </button>
+                  )}
                   {aiMatchComposerOpen ? (
-                    // Two shapes. On a phone, before the first run, this is the
-                    // page: centred and about half the screen. On desktop it is
-                    // a full-width bar with the action on the right, where a
-                    // half-screen hero would just be a lot of empty space.
-                    <div className={!isMobileViewport || aiMatchHasRun ? '' : 'flex min-h-[55vh] flex-col justify-center py-4'}>
+                    // Two shapes. On a phone this is its own screen — centred
+                    // and about half the viewport — whether or not a run has
+                    // happened, because the results are hidden behind it
+                    // either way. On desktop it is a full-width bar with the
+                    // action on the right, where a half-screen hero would just
+                    // be a lot of empty space beside the list.
+                    <div className={!isMobileViewport ? '' : 'flex min-h-[55vh] flex-col justify-center py-4'}>
                       <div className={isMobileViewport ? 'mx-auto w-full max-w-3xl' : 'w-full'}>
                         {isMobileViewport && !aiMatchHasRun && (
                           <div className="mb-4 flex items-center justify-center gap-2.5">
@@ -8551,8 +8625,13 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
-              {aiMatch && !aiMatchRecentTabActive && account?.id && filteredFeed.length > 0 && (
-                <div className="sticky top-0 z-20 shrink-0 bg-[#f3f2ee] pt-1 dark:bg-[#1B1D21]">
+              {/* Hidden while the composer screen is up on a phone: the bulk
+                  bar acts on results that are not on screen there.
+                  Pins under the results header, whose row is a fixed h-11 so
+                  this offset is exact rather than guessed. */}
+              {aiMatch && !aiMatchRecentTabActive && account?.id && filteredFeed.length > 0
+                && !(isMobileViewport && aiMatchComposerOpen) && (
+                <div className={`sticky z-20 shrink-0 bg-[#f3f2ee] pt-1 dark:bg-[#1B1D21] ${aiMatchMobileResultsView ? 'top-11' : 'top-0'}`}>
                   <BulkAiSubmitBar
                     targets={filteredFeed
                       .filter((lead) => lead.aiMatchScore != null
@@ -8575,7 +8654,10 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
-              <section className={`min-w-0 flex min-h-0 flex-col ${aiMatchRecentTabActive ? 'hidden' : ''} ${isMobileViewport || aiMatch ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
+              {/* The composer screen hides the results the same way the Recent
+                  tab does — on the section itself. Hiding them inside the
+                  wrapper leaves it claiming flex-1 and halves the list. */}
+              <section className={`min-w-0 flex min-h-0 flex-col ${aiMatchRecentTabActive || (isMobileViewport && aiMatch && aiMatchComposerOpen && aiMatchHasRun && filteredFeed.length > 0) ? 'hidden' : ''} ${isMobileViewport || aiMatch ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
                 <div className={`min-h-0 ${isMobileViewport || aiMatch ? '' : 'flex-1 overflow-hidden'}`}>
                   {aiMatchRunning ? (
                     <div className="flex min-h-[40vh] w-full flex-col items-center justify-center gap-3">
