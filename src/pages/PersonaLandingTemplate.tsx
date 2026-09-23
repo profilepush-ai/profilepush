@@ -140,7 +140,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
       { q: 'How does this stop proxy interviews?', a: 'The interview is on video and recorded. Each question is based on the last answer. Nobody can prepare a script in advance. The person on the client call is the same person on the recording.' },
       { q: 'How does it find a fake resume?', a: 'The first question comes from the resume itself. Every next question asks for details. A real number. A real tool. A real project. False claims fail in ninety seconds.' },
       { q: 'Does every consultant get screened?', a: 'Yes. Every submission arrives with a video interview, a score from 0 to 100, and a short written summary. The summary lists both good points and problems.' },
-      { q: 'What costs credits?', a: 'A post costs 1 credit. An AI email costs 1 credit, refunded if it fails. A finished screening costs 50 credits, charged to the req owner. Editing is free.' },
+      { q: 'What costs credits?', a: 'A post costs 1 credit. An AI email costs 1 credit, refunded if it fails. A finished screening costs 10 credits, charged to the req owner. Editing is free.' },
       { q: 'Is the data safe?', a: 'Yes. All data is encrypted. It is never sold or shared. Emails send from a connected Gmail address.' },
     ],
     ctaHeadlineLine1: 'Protect the client relationship.',
