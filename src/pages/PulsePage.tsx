@@ -2755,6 +2755,22 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // screen once there are any; the back arrow returns to the composer.
   const aiMatchMobileResultsView = aiMatch && isMobileViewport && !aiMatchRecentTabActive
     && aiMatchHasRun && !aiMatchComposerOpen;
+  // The bulk bar pins directly under the results header, so it needs that
+  // header's height. Measured rather than written as a matching top-* class:
+  // the two were set by hand and any padding change to one silently left a
+  // gap or an overlap in the other.
+  const aiMatchHeaderRef = useRef<HTMLDivElement | null>(null);
+  const [aiMatchHeaderHeight, setAiMatchHeaderHeight] = useState(0);
+  useLayoutEffect(() => {
+    const node = aiMatchHeaderRef.current;
+    if (!node || !aiMatchMobileResultsView) { setAiMatchHeaderHeight(0); return; }
+    const measure = () => setAiMatchHeaderHeight(node.getBoundingClientRect().height);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [aiMatchMobileResultsView]);
   // Cards whatever is saved: a table row or a detail pane of a consultant is
   // mostly the fields the card already shows, minus the layout that makes them
   // readable. The stored preference is left alone, so other feeds keep it.
@@ -8380,12 +8396,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
-              {/* Results view header. One fixed-height row, pinned, so the way
-                  back is always reachable and the bulk bar below it has a known
-                  offset to sit under. Replaces the composer and its summary
-                  line rather than stacking above them. */}
+              {/* Results view header. Pinned, so the way back is always
+                  reachable. Replaces the composer and its summary line rather
+                  than stacking above them, and carries its own top padding so
+                  it does not sit flush against the app header. */}
               {aiMatchMobileResultsView && (
-                <div className="sticky top-0 z-30 shrink-0 bg-[#f3f2ee] px-1 dark:bg-[#1B1D21]">
+                <div ref={aiMatchHeaderRef} className="sticky top-0 z-30 shrink-0 bg-[#f3f2ee] px-1 pb-1 pt-1.5 dark:bg-[#1B1D21]">
                   <div className="flex h-11 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-1.5 dark:border-white/10 dark:bg-[#171A1F]">
                     {/* Back goes to Recent — the list of runs and posts you
                         pick from. Sending it to the composer made the two
@@ -8710,11 +8726,14 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
 
               {/* Hidden while the composer screen is up on a phone: the bulk
                   bar acts on results that are not on screen there.
-                  Pins under the results header, whose row is a fixed h-11 so
-                  this offset is exact rather than guessed. */}
+                  Pins under the results header, at that header's measured
+                  height. */}
               {aiMatch && !aiMatchRecentTabActive && account?.id && filteredFeed.length > 0
                 && !(isMobileViewport && aiMatchComposerOpen) && (
-                <div className={`sticky z-20 shrink-0 bg-[#f3f2ee] pt-1 dark:bg-[#1B1D21] ${aiMatchMobileResultsView ? 'top-11' : 'top-0'}`}>
+                <div
+                  className="sticky z-20 shrink-0 bg-[#f3f2ee] pt-1 dark:bg-[#1B1D21]"
+                  style={{ top: aiMatchMobileResultsView ? aiMatchHeaderHeight : 0 }}
+                >
                   <BulkAiSubmitBar
                     targets={filteredFeed
                       .filter((lead) => lead.aiMatchScore != null
