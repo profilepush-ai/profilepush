@@ -207,9 +207,14 @@ function buildResumeSummary(parsed: Record<string, unknown> | null): string {
   const lines: string[] = [];
   if (parsed.target_role) lines.push(`Target role: ${parsed.target_role}`);
   if (parsed.years_experience) lines.push(`Years of experience: ${parsed.years_experience}`);
-  if (Array.isArray(parsed.core_skills) && parsed.core_skills.length > 0) {
-    lines.push(`Core skills: ${(parsed.core_skills as string[]).join(", ")}`);
-  }
+  // parse-resume joins core_skills into a comma-separated string before
+  // returning it, while a profile stored from elsewhere still holds an array.
+  // Reading only the array silently dropped every skill from the questions,
+  // which is most of what makes a screening specific.
+  const skills = Array.isArray(parsed.core_skills)
+    ? (parsed.core_skills as string[]).join(", ")
+    : typeof parsed.core_skills === "string" ? parsed.core_skills : "";
+  if (skills.trim()) lines.push(`Core skills: ${skills}`);
   return lines.join("\n");
 }
 
@@ -315,7 +320,9 @@ async function handleUploadResume(env: Env, token: string, req: Request): Promis
   if (file.size > 10 * 1024 * 1024) return jsonResponse({ error: "Resume must be under 10MB" }, 400);
 
   const forward = new FormData();
-  forward.append("file", file, file.name);
+  // parse-resume reads the field named "resume"; anything else comes back as
+  // "Missing 'resume' field in form data".
+  forward.append("resume", file, file.name);
   const parseRes = await fetch(`${env.SUPABASE_URL}/functions/v1/parse-resume`, {
     method: "POST",
     headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
@@ -325,15 +332,47 @@ async function handleUploadResume(env: Env, token: string, req: Request): Promis
     const detail = await parseRes.text().catch(() => "");
     return jsonResponse({ error: `Could not read that file: ${detail.slice(0, 200)}` }, 400);
   }
-  const parsed = await parseRes.json().catch(() => null) as Record<string, unknown> | null;
-  const profile = (parsed?.profile ?? parsed?.parsed ?? parsed) as Record<string, unknown> | null;
+  // parse-resume returns the profile itself, not a wrapper.
+  const profile = await parseRes.json().catch(() => null) as Record<string, unknown> | null;
   if (!profile) return jsonResponse({ error: "Could not read that file" }, 400);
 
   await supabaseRest(env, `job_applications?id=eq.${encodeURIComponent(application.id)}`, {
     method: "PATCH",
     headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({ resume_parsed_json: profile }),
+    body: JSON.stringify({ resume_parsed_json: profile, resume_file_name: file.name }),
   });
+
+  // Submitted candidates get their first question from process-job-application
+  // at submit time. An invited one never goes through that, so without this the
+  // resume uploads, the page asks for consent, and then there is no question to
+  // answer — the interview simply cannot start.
+  //
+  // Generated here rather than earlier because it is built from the resume, and
+  // this is the first moment there is one.
+  const existingTurns = await getTurns(env, application.id);
+  if (existingTurns.length === 0) {
+    try {
+      const { jobTitle, jobDescription } = await fetchJobContext(env, application.social_job_id);
+      const first = await generateNextQuestion(
+        env,
+        buildResumeSummary(profile),
+        jobTitle,
+        jobDescription,
+        [],
+      );
+      if (!first.done && first.question) {
+        await supabaseRest(env, "job_application_screening_turns", {
+          method: "POST",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ application_id: application.id, turn_index: 0, question_text: first.question }),
+        });
+      }
+    } catch (error) {
+      // The resume is stored either way. A failure here is recoverable on the
+      // next load; losing the upload would not be.
+      console.error("Could not generate the first screening question", error);
+    }
+  }
 
   return jsonResponse({ ok: true });
 }
