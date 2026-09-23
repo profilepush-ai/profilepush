@@ -5912,6 +5912,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       setAiMatchHasRun(true);
       setAiMatchComposerOpen(rows.length === 0);
       writeAiMatchSession({ description, target: aiMatchTarget, rows, postId: overridePostId, title: runTitle });
+      setAiMatchComposerOpen(false);
       setAiMatchRecents((previous) => {
         // Same text moves to the front rather than piling up.
         const rest = previous.filter((item) => item.description !== description);
@@ -7564,236 +7565,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
-              {aiMatch && !aiMatchRecentTabActive && (
-                <div className={isMobileViewport ? 'shrink-0 px-1 pt-1.5 pb-1' : 'shrink-0 px-2 py-2'}>
-                  {aiMatchComposerOpen ? (
-                    // Two shapes. On a phone, before the first run, this is the
-                    // page: centred and about half the screen. On desktop it is
-                    // a full-width bar with the action on the right, where a
-                    // half-screen hero would just be a lot of empty space.
-                    <div className={!isMobileViewport || aiMatchHasRun ? '' : 'flex min-h-[55vh] flex-col justify-center py-4'}>
-                      <div className={isMobileViewport ? 'mx-auto w-full max-w-3xl' : 'w-full'}>
-                        {isMobileViewport && !aiMatchHasRun && (
-                          <div className="mb-4 flex items-center justify-center gap-2.5">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30">
-                              <Sparkles size={20} />
-                            </span>
-                            <h1 className="text-xl font-semibold text-gray-900 dark:text-slate-100">AI Match</h1>
-                          </div>
-                        )}
-                        <div
-                          onDragOver={(e) => { e.preventDefault(); }}
-                          onDrop={(e) => {
-                            const file = e.dataTransfer.files?.[0];
-                            if (!file) return;
-                            e.preventDefault();
-                            void handleAiMatchFile(file);
-                          }}
-                          className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:border-white/10 dark:bg-[#171A1F]"
-                        >
-                          <div className={isMobileViewport ? '' : 'flex items-start gap-3'}>
-                            <textarea
-                              value={aiMatchDescription}
-                              onChange={(e) => {
-                                setAiMatchDescription(e.target.value);
-                                if (aiMatchFileName) setAiMatchFileName('');
-                                if (aiMatchError) setAiMatchError(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                                  e.preventDefault();
-                                  void runAiMatch();
-                                }
-                              }}
-                              maxLength={8000}
-                              autoFocus={!isMobileViewport && !aiMatchHasRun}
-                              placeholder={animatedAiMatchPlaceholder || (aiMatchTarget === 'jobs' ? 'Paste consultant hotlist' : 'Paste job description')}
-                              aria-label={aiMatchTarget === 'jobs' ? 'Consultant hotlist' : 'Job description'}
-                              className={`w-full resize-none border-0 bg-transparent px-1 py-1 text-[15px] leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 dark:text-slate-100 ${
-                                isMobileViewport
-                                  ? (aiMatchHasRun ? 'min-h-[7.5rem]' : 'min-h-[30vh]')
-                                  : 'max-h-56 min-h-[3.25rem] flex-1'
-                              }`}
-                            />
-                            {!isMobileViewport && (
-                              <button
-                                type="button"
-                                onClick={() => void runAiMatch()}
-                                disabled={aiMatchRunning || aiMatchDescription.trim().length === 0}
-                                className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-6 text-[14px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-                              >
-                                <Sparkles size={17} />
-                                {aiMatchRunning ? 'Matching...' : 'Find matches'}
-                              </button>
-                            )}
-                          </div>
-                          <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex min-w-0 items-center justify-center gap-2 sm:justify-start">
-                              <input
-                                ref={aiMatchFileInputRef}
-                                type="file"
-                                accept={AI_MATCH_FILE_TYPES}
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  // Cleared so picking the same file twice still fires.
-                                  e.target.value = '';
-                                  if (file) void handleAiMatchFile(file);
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => aiMatchFileInputRef.current?.click()}
-                                disabled={aiMatchFileReading || aiMatchRunning}
-                                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-2 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-                              >
-                                <Paperclip size={12} />
-                                {aiMatchFileReading ? 'Reading\u2026' : aiMatchTarget === 'jobs' ? 'Upload resume' : 'Upload JD'}
-                              </button>
-                              <span className={`min-w-0 truncate text-[12px] ${aiMatchError ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
-                                {aiMatchError ?? (
-                                  aiMatchDescription.trim().length > 0 && aiMatchDescription.trim().length < AI_MATCH_MIN_DESCRIPTION_CHARS
-                                    ? `${AI_MATCH_MIN_DESCRIPTION_CHARS - aiMatchDescription.trim().length} more characters`
-                                    : aiMatchFileName
-                                      ? `From ${aiMatchFileName}`
-                                      : `Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits · 1 per match · last 30 days`
-                                )}
-                              </span>
-                            </div>
-                            <div className="flex gap-2">
-                              {aiMatchHasRun && (
-                                <button
-                                  type="button"
-                                  onClick={() => setAiMatchComposerOpen(false)}
-                                  className={`rounded-xl px-5 text-[15px] font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5 ${isMobileViewport ? 'h-12' : 'h-9 text-[13px]'}`}
-                                >
-                                  Hide
-                                </button>
-                              )}
-                              {isMobileViewport && (
-                                <button
-                                  type="button"
-                                  onClick={() => void runAiMatch()}
-                                  disabled={aiMatchRunning || aiMatchDescription.trim().length === 0}
-                                  className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-7 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                  <Sparkles size={18} />
-                                  {aiMatchRunning ? 'Matching...' : 'Find matches'}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex w-full items-start gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left dark:border-white/10 dark:bg-[#171A1F]">
-                      <Sparkles size={13} className="mt-0.5 shrink-0 text-indigo-500" />
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setAiMatchComposerOpen(true)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAiMatchComposerOpen(true); } }}
-                        className="min-w-0 flex-1 cursor-pointer"
-                      >
-                        {(aiMatchFromTitle || isMobileViewport) && (
-                          <span className="block truncate text-[12px] font-semibold text-gray-900 dark:text-slate-100">
-                            {aiMatchFromTitle || aiMatchDescription.trim().split('\n').map((line) => line.trim()).find((line) => line.length >= 3)?.slice(0, 60) || 'Your paste'}
-                          </span>
-                        )}
-                        {isMobileViewport ? (
-                          // One line of counts instead of two of pasted text:
-                          // the results below are what the screen is for.
-                          <span className="block text-[11px] leading-snug text-gray-500 dark:text-slate-400">
-                            {aiMatchSummary
-                              ? `${aiMatchSummary.returned} ${aiMatchSummary.returned === 1 ? 'match' : 'matches'}${aiMatchSummary.best != null ? ` · best ${aiMatchSummary.best}/10` : ''}`
-                              : 'Tap to edit'}
-                          </span>
-                        ) : (
-                          /* Two lines of the description, whitespace collapsed so a
-                             pasted hotlist's line breaks don't waste them. */
-                          <span className="line-clamp-2 block text-[12px] leading-snug text-gray-700 dark:text-slate-300">
-                            {aiMatchDescription.trim().replace(/\s+/g, ' ')}
-                          </span>
-                        )}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setAiMatchComposerOpen(true)}
-                        title="Edit"
-                        aria-label="Edit"
-                        className="mt-0.5 shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/5"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                      {isMobileViewport && (
-                        <button
-                          type="button"
-                          onClick={clearAiMatchResults}
-                          title="Clear results"
-                          aria-label="Clear results"
-                          className="mt-0.5 shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/5"
-                        >
-                          <X size={12} />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => void runAiMatch()}
-                        disabled={aiMatchRunning}
-                        className="shrink-0 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2.5 py-1 text-[11px] font-semibold text-white transition active:scale-95 disabled:opacity-40"
-                      >
-                        {aiMatchRunning ? 'Matching' : 'Rematch'}
-                      </button>
-                    </div>
-                  )}
-
-                  {(aiMatchSummary || aiMatchHasRun) && !aiMatchRunning && !(isMobileViewport && !aiMatchComposerOpen) && (
-                    // Results with no explanation read as a random list. This
-                    // says what was searched, how much of it, and what it cost.
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 px-1 text-[11px] text-gray-500 dark:text-slate-400">
-                      {aiMatchSummary && (
-                        <>
-                      <span className="font-semibold text-gray-900 dark:text-slate-100">
-                        {aiMatchSummary.returned} {aiMatchSummary.returned === 1 ? 'match' : 'matches'}
-                      </span>
-                      {aiMatchSummary.fresh != null && (
-                        <span className={aiMatchSummary.fresh > 0 ? 'font-semibold text-emerald-600 dark:text-emerald-400' : ''}>
-                          · {aiMatchSummary.fresh} new
-                        </span>
-                      )}
-                      {aiMatchSummary.saved && <span>· saved</span>}
-                      {/* Only when the box is hidden: with it open, its first
-                          line already says who this is for. */}
-                      {aiMatchSummary.matchedFor && !aiMatchComposerOpen && (
-                        <span>· for <span className="font-semibold text-gray-900 dark:text-slate-100">{aiMatchSummary.matchedFor}</span></span>
-                      )}
-                      {aiMatchSummary.best != null && <span>· best {aiMatchSummary.best}/10</span>}
-                      {aiMatchSummary.scanned > 0 && <span>· from {aiMatchSummary.scanned.toLocaleString()} scanned</span>}
-                      {aiMatchSummary.credits > 0 && <span>· {aiMatchSummary.credits} credits</span>}
-                      {aiMatchSummary.posted > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => navigate(aiMatchTarget === 'jobs' ? '/posts/hotlist' : '/posts/jobs')}
-                          className="text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
-                        >
-                          · {aiMatchSummary.posted > 1 ? `${aiMatchSummary.posted} posted to ` : 'posted to '}
-                          {aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs'}
-                        </button>
-                      )}
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        onClick={clearAiMatchResults}
-                        className="text-gray-500 underline-offset-2 hover:underline dark:text-slate-400"
-                      >
-                        {aiMatchSummary ? '· Clear' : 'Clear results'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Mobile search/filter row — controls job feed search */}
               <div
@@ -8442,6 +8213,239 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
               {/* One mount above the results section: the mobile list and the
                   desktop tabbed columns are different branches below, and
                   putting it inside either one hid it on the other layout. */}
+              {aiMatch && !aiMatchRecentTabActive && (
+                <div className={isMobileViewport ? 'shrink-0 px-1 pt-1.5 pb-1' : 'shrink-0 px-2 py-2'}>
+                  {aiMatchComposerOpen ? (
+                    // Two shapes. On a phone, before the first run, this is the
+                    // page: centred and about half the screen. On desktop it is
+                    // a full-width bar with the action on the right, where a
+                    // half-screen hero would just be a lot of empty space.
+                    <div className={!isMobileViewport || aiMatchHasRun ? '' : 'flex min-h-[55vh] flex-col justify-center py-4'}>
+                      <div className={isMobileViewport ? 'mx-auto w-full max-w-3xl' : 'w-full'}>
+                        {isMobileViewport && !aiMatchHasRun && (
+                          <div className="mb-4 flex items-center justify-center gap-2.5">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30">
+                              <Sparkles size={20} />
+                            </span>
+                            <h1 className="text-xl font-semibold text-gray-900 dark:text-slate-100">AI Match</h1>
+                          </div>
+                        )}
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); }}
+                          onDrop={(e) => {
+                            const file = e.dataTransfer.files?.[0];
+                            if (!file) return;
+                            e.preventDefault();
+                            void handleAiMatchFile(file);
+                          }}
+                          className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:border-white/10 dark:bg-[#171A1F]"
+                        >
+                          <div className={isMobileViewport ? '' : 'flex items-start gap-3'}>
+                            <textarea
+                              value={aiMatchDescription}
+                              onChange={(e) => {
+                                setAiMatchDescription(e.target.value);
+                                if (aiMatchFileName) setAiMatchFileName('');
+                                if (aiMatchError) setAiMatchError(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                  e.preventDefault();
+                                  void runAiMatch();
+                                }
+                              }}
+                              maxLength={8000}
+                              autoFocus={!isMobileViewport && !aiMatchHasRun}
+                              placeholder={animatedAiMatchPlaceholder || (aiMatchTarget === 'jobs' ? 'Paste consultant hotlist' : 'Paste job description')}
+                              aria-label={aiMatchTarget === 'jobs' ? 'Consultant hotlist' : 'Job description'}
+                              className={`w-full resize-none border-0 bg-transparent px-1 py-1 text-[15px] leading-relaxed text-gray-800 outline-none placeholder:text-gray-400 dark:text-slate-100 ${
+                                isMobileViewport
+                                  ? (aiMatchHasRun ? 'min-h-[7.5rem]' : 'min-h-[30vh]')
+                                  : 'max-h-56 min-h-[3.25rem] flex-1'
+                              }`}
+                            />
+                            {!isMobileViewport && (
+                              <button
+                                type="button"
+                                onClick={() => void runAiMatch()}
+                                disabled={aiMatchRunning || aiMatchDescription.trim().length === 0}
+                                className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-6 text-[14px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Sparkles size={17} />
+                                {aiMatchRunning ? 'Matching...' : 'Find matches'}
+                              </button>
+                            )}
+                          </div>
+                          <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex min-w-0 items-center justify-center gap-2 sm:justify-start">
+                              <input
+                                ref={aiMatchFileInputRef}
+                                type="file"
+                                accept={AI_MATCH_FILE_TYPES}
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  // Cleared so picking the same file twice still fires.
+                                  e.target.value = '';
+                                  if (file) void handleAiMatchFile(file);
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => aiMatchFileInputRef.current?.click()}
+                                disabled={aiMatchFileReading || aiMatchRunning}
+                                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-gray-200 px-2 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                              >
+                                <Paperclip size={12} />
+                                {aiMatchFileReading ? 'Reading\u2026' : aiMatchTarget === 'jobs' ? 'Upload resume' : 'Upload JD'}
+                              </button>
+                              <span className={`min-w-0 truncate text-[12px] ${aiMatchError ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
+                                {aiMatchError ?? (
+                                  aiMatchDescription.trim().length > 0 && aiMatchDescription.trim().length < AI_MATCH_MIN_DESCRIPTION_CHARS
+                                    ? `${AI_MATCH_MIN_DESCRIPTION_CHARS - aiMatchDescription.trim().length} more characters`
+                                    : aiMatchFileName
+                                      ? `From ${aiMatchFileName}`
+                                      : `Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits · 1 per match · last 30 days`
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex gap-2">
+                              {aiMatchHasRun && (
+                                <button
+                                  type="button"
+                                  onClick={() => setAiMatchComposerOpen(false)}
+                                  title="Collapse to one line — the text stays and can be reopened"
+                                  className={`inline-flex items-center gap-1.5 rounded-xl px-4 text-[15px] font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5 ${isMobileViewport ? 'h-12' : 'h-9 text-[13px]'}`}
+                                >
+                                  <ChevronUp size={15} />
+                                  Collapse
+                                </button>
+                              )}
+                              {isMobileViewport && (
+                                <button
+                                  type="button"
+                                  onClick={() => void runAiMatch()}
+                                  disabled={aiMatchRunning || aiMatchDescription.trim().length === 0}
+                                  className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-7 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <Sparkles size={18} />
+                                  {aiMatchRunning ? 'Matching...' : 'Find matches'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex w-full items-start gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left dark:border-white/10 dark:bg-[#171A1F]">
+                      <Sparkles size={13} className="mt-0.5 shrink-0 text-indigo-500" />
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setAiMatchComposerOpen(true)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAiMatchComposerOpen(true); } }}
+                        className="min-w-0 flex-1 cursor-pointer"
+                      >
+                        {(aiMatchFromTitle || isMobileViewport) && (
+                          <span className="block truncate text-[12px] font-semibold text-gray-900 dark:text-slate-100">
+                            {aiMatchFromTitle || aiMatchDescription.trim().split('\n').map((line) => line.trim()).find((line) => line.length >= 3)?.slice(0, 60) || 'Your paste'}
+                          </span>
+                        )}
+                        {isMobileViewport ? (
+                          // One line of counts instead of two of pasted text:
+                          // the results below are what the screen is for.
+                          <span className="block text-[11px] leading-snug text-gray-500 dark:text-slate-400">
+                            {aiMatchSummary
+                              ? `${aiMatchSummary.returned} ${aiMatchSummary.returned === 1 ? 'match' : 'matches'}${aiMatchSummary.best != null ? ` · best ${aiMatchSummary.best}/10` : ''}`
+                              : 'Tap to edit'}
+                          </span>
+                        ) : (
+                          /* Two lines of the description, whitespace collapsed so a
+                             pasted hotlist's line breaks don't waste them. */
+                          <span className="line-clamp-2 block text-[12px] leading-snug text-gray-700 dark:text-slate-300">
+                            {aiMatchDescription.trim().replace(/\s+/g, ' ')}
+                          </span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAiMatchComposerOpen(true)}
+                        title="Edit"
+                        aria-label="Edit"
+                        className="mt-0.5 shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/5"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      {isMobileViewport && (
+                        <button
+                          type="button"
+                          onClick={clearAiMatchResults}
+                          title="Clear results"
+                          aria-label="Clear results"
+                          className="mt-0.5 shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/5"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void runAiMatch()}
+                        disabled={aiMatchRunning}
+                        className="shrink-0 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2.5 py-1 text-[11px] font-semibold text-white transition active:scale-95 disabled:opacity-40"
+                      >
+                        {aiMatchRunning ? 'Matching' : 'Rematch'}
+                      </button>
+                    </div>
+                  )}
+
+                  {(aiMatchSummary || aiMatchHasRun) && !aiMatchRunning && !(isMobileViewport && !aiMatchComposerOpen) && (
+                    // Results with no explanation read as a random list. This
+                    // says what was searched, how much of it, and what it cost.
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 px-1 text-[11px] text-gray-500 dark:text-slate-400">
+                      {aiMatchSummary && (
+                        <>
+                      <span className="font-semibold text-gray-900 dark:text-slate-100">
+                        {aiMatchSummary.returned} {aiMatchSummary.returned === 1 ? 'match' : 'matches'}
+                      </span>
+                      {aiMatchSummary.fresh != null && (
+                        <span className={aiMatchSummary.fresh > 0 ? 'font-semibold text-emerald-600 dark:text-emerald-400' : ''}>
+                          · {aiMatchSummary.fresh} new
+                        </span>
+                      )}
+                      {aiMatchSummary.saved && <span>· saved</span>}
+                      {/* Only when the box is hidden: with it open, its first
+                          line already says who this is for. */}
+                      {aiMatchSummary.matchedFor && !aiMatchComposerOpen && (
+                        <span>· for <span className="font-semibold text-gray-900 dark:text-slate-100">{aiMatchSummary.matchedFor}</span></span>
+                      )}
+                      {aiMatchSummary.best != null && <span>· best {aiMatchSummary.best}/10</span>}
+                      {aiMatchSummary.scanned > 0 && <span>· from {aiMatchSummary.scanned.toLocaleString()} scanned</span>}
+                      {aiMatchSummary.credits > 0 && <span>· {aiMatchSummary.credits} credits</span>}
+                      {aiMatchSummary.posted > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(aiMatchTarget === 'jobs' ? '/posts/hotlist' : '/posts/jobs')}
+                          className="text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                        >
+                          · {aiMatchSummary.posted > 1 ? `${aiMatchSummary.posted} posted to ` : 'posted to '}
+                          {aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs'}
+                        </button>
+                      )}
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={clearAiMatchResults}
+                        className="text-gray-500 underline-offset-2 hover:underline dark:text-slate-400"
+                      >
+                        {aiMatchSummary ? '· Clear' : 'Clear results'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {aiMatch && account?.id && filteredFeed.length > 0 && (
                 <div className="sticky top-0 z-20 shrink-0 bg-[#f3f2ee] pt-1 dark:bg-[#1B1D21]">
                   <BulkAiSubmitBar
