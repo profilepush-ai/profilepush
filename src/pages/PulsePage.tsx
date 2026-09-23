@@ -6116,16 +6116,27 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   ), [aiMatchRunIndex]);
 
   // Ad-hoc pastes only: anything that came from a post is already a row above.
+  //
+  // Tested against the posts rather than against the run index, because that
+  // index keeps only the newest run per post. Matching a job twice put the
+  // newer run in the index and left the older one looking like a loose paste,
+  // so the same job appeared again lower down the rail. Every run belonging to
+  // a post is excluded now, not just the most recent.
   const aiMatchLooseRecents = useMemo(() => {
-    const shownAbove = new Set<AiMatchRecent>();
-    for (const post of aiMatchOwnPosts) {
-      const item = aiMatchRunIndex.byPost.get(post.id)
-        ?? aiMatchRunIndex.byText.get(post.description)
-        ?? aiMatchRunIndex.byTitle.get(post.title.trim().toLowerCase());
-      if (item) shownAbove.add(item);
-    }
-    return aiMatchRecents.filter((item) => item.target === aiMatchTarget && !shownAbove.has(item));
-  }, [aiMatchOwnPosts, aiMatchRecents, aiMatchRunIndex, aiMatchTarget]);
+    const postIds = new Set(aiMatchOwnPosts.map((post) => post.id));
+    const postTexts = new Set(aiMatchOwnPosts.map((post) => post.description.trim()));
+    const postTitles = new Set(
+      aiMatchOwnPosts.map((post) => post.title.trim().toLowerCase()).filter(Boolean),
+    );
+    return aiMatchRecents.filter((item) => {
+      if (item.target !== aiMatchTarget) return false;
+      if (item.postId && postIds.has(item.postId)) return false;
+      if (postTexts.has(item.description.trim())) return false;
+      const title = item.title.trim().toLowerCase();
+      if (title && postTitles.has(title)) return false;
+      return true;
+    });
+  }, [aiMatchOwnPosts, aiMatchRecents, aiMatchTarget]);
 
   const aiMatchOwnPostsLabel = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
   const aiMatchOwnPostsPath = aiMatchTarget === 'jobs' ? '/posts/hotlist' : '/posts/jobs';
