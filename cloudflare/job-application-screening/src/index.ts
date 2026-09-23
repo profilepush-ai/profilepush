@@ -62,6 +62,7 @@ type ApplicationRow = {
   candidate_name: string;
   status: string;
   resume_parsed_json: Record<string, unknown> | null;
+  resume_file_name: string | null;
   ai_summary: string | null;
   ai_score: number | null;
   chat_thread_id: string | null;
@@ -81,7 +82,7 @@ type TurnRow = {
 async function getApplicationByToken(env: Env, token: string): Promise<ApplicationRow | null> {
   const res = await supabaseRest(
     env,
-    `job_applications?screening_token=eq.${encodeURIComponent(token)}&select=id,social_job_id,candidate_name,status,resume_parsed_json,ai_summary,ai_score,chat_thread_id,created_by_account_id,created_by_user_id&limit=1`,
+    `job_applications?screening_token=eq.${encodeURIComponent(token)}&select=id,social_job_id,candidate_name,status,resume_parsed_json,resume_file_name,ai_summary,ai_score,chat_thread_id,created_by_account_id,created_by_user_id&limit=1`,
   );
   if (!res.ok) return null;
   const rows = (await res.json()) as ApplicationRow[];
@@ -357,10 +358,13 @@ async function handleGetSession(env: Env, token: string): Promise<Response> {
     candidateName: application.candidate_name,
     jobTitle,
     companyName,
-    // Consultants invited straight off an AI Match have no resume on file —
-    // nobody submitted them, a vendor invited them. Without one every
-    // question is generic, which is the opposite of what a screening is for.
+    // The screening is a resume and a video interview together, whichever way
+    // the candidate arrived. A submitted candidate already has a resume on
+    // file and confirms it; an invited one uploads it here. Same two steps in
+    // both cases, so the questions are always built from a real resume.
     needsResume: !application.resume_parsed_json,
+    hasResume: Boolean(application.resume_parsed_json),
+    resumeFileName: application.resume_file_name || null,
     status: application.status,
     turnsAnswered: turns.filter((t) => t.answered_at).length,
     currentTurnIndex: currentTurn?.turn_index ?? null,
