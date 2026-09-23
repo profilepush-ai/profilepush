@@ -273,11 +273,6 @@ function writeAiMatchSession(session: AiMatchSession) {
 
 // Green for a strong fit, blue for a workable one, grey below that — the same
 // three bands the scoring prompt defines.
-function aiMatchScoreToneClass(score: number, isDark: boolean): string {
-  if (score >= 8) return isDark ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (score >= 5) return isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700';
-  return isDark ? 'border-white/15 bg-white/5 text-slate-400' : 'border-gray-200 bg-gray-50 text-gray-500';
-}
 
 function compareByRecency(a: SocialLead, b: SocialLead, feedTimeBasis: FeedTimeBasis): number {
   const aTs = new Date(feedTimeBasis === 'created' ? a.createdAt : a.postedAt).getTime();
@@ -1331,6 +1326,9 @@ interface LeadCardProps {
   bulkSelectable?: boolean;
   isBulkSelected?: boolean;
   onToggleBulkSelect?: (lead: SocialLead) => void;
+  /** 1-based position in the AI Match results. A rank says what a score cannot:
+   *  where this one sits against the others in front of you. */
+  matchRank?: number;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -1345,7 +1343,7 @@ const LeadCard = memo(function LeadCard({
   isLoadingPreview, isProcessingAskAI,
   onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
   hideActions, isSelected, onSelect,
-  bulkSelectable, isBulkSelected, onToggleBulkSelect,
+  bulkSelectable, isBulkSelected, onToggleBulkSelect, matchRank,
 }: LeadCardProps) {
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
@@ -1435,25 +1433,32 @@ const LeadCard = memo(function LeadCard({
     >
       <LeadKindPill kind={lead.kind} variant="banner" />
       <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
-      <div className={bulkSelectable ? 'flex items-stretch gap-2' : undefined}>
+      <div className={bulkSelectable || matchRank ? 'flex items-start gap-2' : undefined}>
         {bulkSelectable && (
-          // Top left, ahead of the title, and stretched so it stands against
-          // both the title row and the score/summary row beneath it. Away from
-          // the action bar on purpose: a mis-tap down there fires AI Submit
-          // and spends a credit.
+          // Fixed 20px square, aligned to the title line. It used to stretch to
+          // the height of the text beside it, so no two cards agreed on its
+          // size and on a short card it was a thin sliver.
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onToggleBulkSelect?.(lead); }}
             aria-pressed={Boolean(isBulkSelected)}
             title={isBulkSelected ? 'Selected for bulk send' : 'Select for bulk send'}
-            className={`flex w-8 shrink-0 items-center justify-center self-stretch rounded-md border transition-colors ${
+            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
               isBulkSelected
-                ? 'border-blue-500 bg-blue-500 text-white'
-                : 'border-gray-300 bg-white/60 text-gray-300 hover:border-blue-400 hover:text-blue-500 dark:border-white/15 dark:bg-white/[0.03] dark:text-gray-500'
+                ? 'border-blue-600 bg-blue-600 text-white'
+                : 'border-gray-400 bg-white text-transparent hover:border-blue-500 dark:border-white/30 dark:bg-white/5'
             }`}
           >
-            <Check size={15} strokeWidth={2.5} />
+            <Check size={13} strokeWidth={3} />
           </button>
+        )}
+        {matchRank != null && (
+          <span
+            className="mt-0.5 inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded bg-gray-900 px-1 text-[11px] font-bold tabular-nums text-white dark:bg-white dark:text-gray-900"
+            title={`Rank ${matchRank} of this run`}
+          >
+            {matchRank}
+          </span>
         )}
         <div className="min-w-0 flex-1 pr-14">
           {hideActions ? (
@@ -1484,27 +1489,20 @@ const LeadCard = memo(function LeadCard({
             </button>
             )
           )}
+          {/* Row 2: the AI's verdict, on its own line. It shared a wrapping
+              flex row with the score and the badges, so on a narrow card the
+              sentence broke around them and read as fragments. The score
+              itself is gone — the rank beside the title already says where
+              this one stands, and two numbers for one idea is one too many. */}
+          {lead.aiMatchReason && (
+            <p className="mt-1 flex min-w-0 items-start gap-1 text-[11px] leading-snug">
+              <Sparkles size={10} strokeWidth={2.5} className="mt-0.5 shrink-0 text-indigo-500 dark:text-indigo-300" />
+              <span className="min-w-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text font-medium text-transparent dark:from-blue-300 dark:via-indigo-300 dark:to-violet-300">
+                {lead.aiMatchReason}
+              </span>
+            </p>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-1">
-              {lead.aiMatchScore != null && (
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${aiMatchScoreToneClass(lead.aiMatchScore, isDark)}`}
-                  title="AI fit score"
-                >
-                  <Sparkles size={9} strokeWidth={2.5} />
-                  {lead.aiMatchScore}/10
-                </span>
-              )}
-              {lead.aiMatchReason && (
-                // Beside the score and in the product's gradient, so the
-                // sentence reads as the AI's verdict on this card rather than
-                // as more of the post's own text.
-                <span className="inline-flex min-w-0 items-center gap-1 text-[11px] leading-snug">
-                  <Sparkles size={10} strokeWidth={2.5} className="shrink-0 text-indigo-500 dark:text-indigo-300" />
-                  <span className="min-w-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text font-medium text-transparent dark:from-blue-300 dark:via-indigo-300 dark:to-violet-300">
-                    {lead.aiMatchReason}
-                  </span>
-                </span>
-              )}
               {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
               {predictResult && (
                 <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${predictToneClass(predictResult.score, isDark)}`}>
@@ -3926,7 +3924,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // declared further down in this component. Its own referential identity
   // doesn't need to be stable anyway — callers spread the returned object
   // into individual JSX props, so LeadCard's memo compares those directly.
-  const buildLeadCardProps = (lead: SocialLead, paletteIndex: number): LeadCardProps => {
+  const buildLeadCardProps = (lead: SocialLead, paletteIndex: number, matchRank?: number): LeadCardProps => {
     const askedState = askedJobStateByLeadId[lead.id];
     return {
       lead,
@@ -3959,6 +3957,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       onExpandSkills: expandCardSkills,
       onCollapseSkills: collapseCardSkills,
       onToggleField: toggleCardField,
+      matchRank,
       bulkSelectable: aiMatch && lead.aiMatchScore != null,
       isBulkSelected: bulkSelectedIds.has(lead.id),
       onToggleBulkSelect: toggleBulkSelect,
@@ -3971,7 +3970,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     const col = idx % safeColumns;
     // Spread palette by row/column so adjacent cards do not share a tone.
     const paletteIndex = (row + (col * 2)) % CARD_PALETTE.length;
-    const card = <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex)} />;
+    // Rank is position in the run, so it counts across the whole result
+    // set rather than restarting inside each score band.
+    const card = <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex, aiMatch && lead.aiMatchScore != null ? idx + 1 : undefined)} />;
     if (!aiMatch || lead.aiMatchScore == null) return card;
     // Results run newest-first inside each band, so without a heading the
     // score appearing to drop mid-list looks like a sorting bug.
