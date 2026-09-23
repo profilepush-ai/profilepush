@@ -468,24 +468,22 @@ export default function ScreeningInterview() {
     );
   }
 
+  // Three bands, fixed to the viewport: camera across the top, the question in
+  // the middle, the action at the bottom.
+  //
+  // It was one scrolling card — logo, question, a boxed aspect-video, button.
+  // On a phone that made the person's own face smaller than the text above it,
+  // and a long question pushed Start Recording toward the fold, so the one
+  // control that matters was the least reliable thing on the screen. Only the
+  // middle band scrolls now; the button cannot move.
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-8 flex items-center justify-center">
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 sm:p-8 max-w-lg w-full">
-        <div className="flex items-center justify-between gap-2 mb-4">
-          <div className="flex items-center gap-1.5 font-bold text-blue-600 text-sm">
-            <Logo size="sm" />
-          </div>
-          <p className="min-w-0 truncate text-[10px] text-gray-400" title={`${session?.jobTitle ?? ''}${session?.companyName ? ` · ${session.companyName}` : ''}`}>
-            {session?.jobTitle}{session?.companyName ? ` · ${session.companyName}` : ''}
-          </p>
-        </div>
+    <div className="flex h-screen flex-col items-center bg-gray-50 sm:py-8" style={{ height: '100dvh' }}>
+      <div className="flex h-full w-full flex-col overflow-hidden bg-white sm:max-w-lg sm:rounded-2xl sm:border sm:border-gray-200 sm:shadow-lg">
 
-        <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wide mb-1.5">
-          Question {(session?.turnsAnswered ?? 0) + 1}
-        </p>
-        <p className="text-lg font-bold text-gray-900 mb-5 leading-snug">{session?.currentQuestion}</p>
-
-        <div className="relative bg-gray-900 rounded-xl overflow-hidden aspect-video mb-4">
+        {/* 30% of the viewport, edge to edge. dvh so the phone's collapsing
+            address bar does not resize the camera mid-answer; vh via the class
+            is the fallback where dvh is unsupported. */}
+        <div className="relative h-[30vh] min-h-[168px] shrink-0 overflow-hidden bg-gray-900 sm:rounded-t-2xl" style={{ height: '30dvh' }}>
           <video
             ref={videoPreviewRef}
             autoPlay
@@ -493,14 +491,24 @@ export default function ScreeningInterview() {
             playsInline
             className="w-full h-full object-cover"
           />
+
+          {/* Branding and role ride over the video under a scrim rather than
+              taking a row of their own — they are reassurance, not content. */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between gap-2 bg-gradient-to-b from-black/60 to-transparent px-4 pb-6 pt-3">
+            <Logo size="sm" white />
+            <p className="min-w-0 truncate text-[10px] text-white/70" title={`${session?.jobTitle ?? ''}${session?.companyName ? ` · ${session.companyName}` : ''}`}>
+              {session?.jobTitle}{session?.companyName ? ` · ${session.companyName}` : ''}
+            </p>
+          </div>
+
           {recordPhase === 'recording' && (
-            <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-red-600 text-white text-[11px] font-bold px-2 py-1 rounded-full">
+            <div className="absolute bottom-3 left-4 flex items-center gap-1.5 bg-red-600 text-white text-[11px] font-bold px-2 py-1 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
               REC
             </div>
           )}
           {recordPhase === 'recorded' && (
-            <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-emerald-600 text-white text-[11px] font-bold px-2 py-1 rounded-full">
+            <div className="absolute bottom-3 left-4 flex items-center gap-1.5 bg-emerald-600 text-white text-[11px] font-bold px-2 py-1 rounded-full">
               <CheckCircle2 size={12} />
               Recorded
             </div>
@@ -520,8 +528,22 @@ export default function ScreeningInterview() {
           )}
         </div>
 
-        {errorMessage && <p className="text-xs text-red-500 mb-3">{errorMessage}</p>}
+        {/* The only band that scrolls, so a long question never reaches the
+            button. Centred vertically while it is short enough to fit. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-5">
+          {/* my-auto, not justify-center: a centred flex container clips the
+              top of content taller than itself and leaves it unscrollable. */}
+          <div className="my-auto">
+            <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wide mb-1.5">
+              Question {(session?.turnsAnswered ?? 0) + 1}
+            </p>
+            <p className="text-[19px] font-bold text-gray-900 leading-snug">{session?.currentQuestion}</p>
+            {errorMessage && <p className="text-xs text-red-500 mt-3">{errorMessage}</p>}
+          </div>
+        </div>
 
+        {/* Pinned. pb clears the home indicator on iOS. */}
+        <div className="shrink-0 border-t border-gray-100 bg-white px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="flex gap-2">
           {recordPhase === 'camera_denied' && (
             <button
@@ -578,9 +600,11 @@ export default function ScreeningInterview() {
           )}
         </div>
 
-        <p className="text-center text-[11px] text-gray-400 mt-4">
+        <p className="mt-2.5 text-center text-[11px] text-gray-400">
           No account needed. Your answers help your recruiter present you to this role.
         </p>
+        </div>
+
       </div>
     </div>
   );
