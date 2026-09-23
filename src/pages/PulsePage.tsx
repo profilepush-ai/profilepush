@@ -2764,6 +2764,26 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // gap or an overlap in the other.
   const aiMatchHeaderRef = useRef<HTMLDivElement | null>(null);
   const [aiMatchHeaderHeight, setAiMatchHeaderHeight] = useState(0);
+  // The bulk bar pins at the top of the same scroll container the invite pane
+  // sticks inside, at a higher z-index. Without this offset the pane pins to
+  // the same line and spends the rest of the scroll hidden behind it.
+  const [aiMatchBulkBarHeight, setAiMatchBulkBarHeight] = useState(0);
+  // A callback ref rather than an effect: the bar's presence depends on state
+  // declared further down this component, so an effect would need those in its
+  // deps and read them before they exist. Mount and unmount is exactly the
+  // signal needed, and the observer keeps it current in between.
+  const aiMatchBulkBarObserverRef = useRef<ResizeObserver | null>(null);
+  const aiMatchBulkBarRef = useCallback((node: HTMLDivElement | null) => {
+    aiMatchBulkBarObserverRef.current?.disconnect();
+    aiMatchBulkBarObserverRef.current = null;
+    if (!node) { setAiMatchBulkBarHeight(0); return; }
+    const measure = () => setAiMatchBulkBarHeight(node.getBoundingClientRect().height);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    aiMatchBulkBarObserverRef.current = observer;
+  }, []);
   useLayoutEffect(() => {
     const node = aiMatchHeaderRef.current;
     if (!node || !aiMatchMobileResultsView) { setAiMatchHeaderHeight(0); return; }
@@ -2774,6 +2794,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     observer.observe(node);
     return () => observer.disconnect();
   }, [aiMatchMobileResultsView]);
+
   // Cards whatever is saved: a table row or a detail pane of a consultant is
   // mostly the fields the card already shows, minus the layout that makes them
   // readable. The stored preference is left alone, so other feeds keep it.
@@ -8800,6 +8821,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
               {aiMatch && !aiMatchRecentTabActive && account?.id && filteredFeed.length > 0
                 && !(isMobileViewport && aiMatchComposerOpen) && (
                 <div
+                  ref={aiMatchBulkBarRef}
                   className="sticky z-20 shrink-0 bg-[#f3f2ee] pt-1 dark:bg-[#1B1D21]"
                   style={{ top: aiMatchMobileResultsView ? aiMatchHeaderHeight : 0 }}
                 >
@@ -8950,7 +8972,10 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                                   {/* From md, not lg: below lg the desktop
                                       branch would otherwise leave one very
                                       wide column of cards and no draft. */}
-                                  <div className="sticky top-0 hidden h-[30rem] w-[17rem] shrink-0 md:block lg:w-[21rem]">
+                                  <div
+                                    className="sticky hidden h-[30rem] max-h-[calc(100dvh-16rem)] w-[17rem] shrink-0 self-start md:block lg:w-[21rem]"
+                                    style={{ top: aiMatchBulkBarHeight }}
+                                  >
                                     <AiMatchInvitePane
                                       lead={aiMatchPreviewLead}
                                       senderName={aiMatchSenderName}
