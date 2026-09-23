@@ -79,7 +79,12 @@ Deno.serve(async (req: Request) => {
     //
     // Including it also invalidates every draft cached under the old scheme,
     // so nobody keeps receiving the wrong copy after a deploy.
-    const askKind = leadType === "hotlist" ? "screening_invite" : "missing_details";
+    // Bumped whenever the invite wording changes. Drafts are cached per post
+    // and reused for free, so without a version in the key a prompt change
+    // never reaches anyone who already has one — the copy is fixed everywhere
+    // except for the people it was written for.
+    const INVITE_COPY_VERSION = "v2";
+    const askKind = leadType === "hotlist" ? `screening_invite:${INVITE_COPY_VERSION}` : "missing_details";
     const missingDetailsKey = JSON.stringify([
       askKind,
       ...[...new Set(missingDetails.map((detail) => detail.toLowerCase()))].sort(),
@@ -267,9 +272,31 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const emailWordCount = emailContent.split(/\s+/).filter(Boolean).length;
-    if (!emailSubject || !emailContent || emailWordCount >= 40 || /profilepush/i.test(`${emailSubject}\n${emailContent}`)) {
-      return respond({ error: "Approved email must be under 40 words and cannot mention ProfilePush" }, 400);
+    // Both rules were written for a message that is only prose. A screening
+    // invitation now carries a link the product itself minted, and that link
+    // broke both of them: profilepush.ai matched the brand check, and the URL
+    // plus its label pushed a 38-word message over the 40-word cap. Every
+    // invite failed at send with "cannot mention ProfilePush".
+    //
+    // The rules still apply to what a model wrote. They are measured on the
+    // body with our own screening link removed, so the guard keeps doing its
+    // job — no marketing, no rambling — without rejecting the one link the
+    // email exists to deliver.
+    const SCREENING_LINK = /(^|\n)\s*Link:\s*\n?https?:\/\/[^\s]*\/screen\/[A-Za-z0-9_-]+\s*/g;
+    const proseOnly = emailContent.replace(SCREENING_LINK, "\n");
+    // Forty words was set for the old one-line ask — "got a client ready, can
+    // you send their resume?". A screening invitation has to say who shares the
+    // link and who attaches the resume and records, which is three sentences
+    // before the role title is substituted in. "Data Architecture and Data
+    // Engineering" alone is five words, and the message landed on exactly 40.
+    //
+    // The cap exists to stop a model rambling. An invitation is a fixed
+    // template with two substitutions, so it gets room for the instruction it
+    // has to carry; a job submission is still model-written and keeps 40.
+    const wordCap = leadType === "hotlist" ? 70 : 40;
+    const emailWordCount = proseOnly.split(/\s+/).filter(Boolean).length;
+    if (!emailSubject || !emailContent || emailWordCount >= wordCap || /profilepush/i.test(`${emailSubject}\n${proseOnly}`)) {
+      return respond({ error: `Approved email must be under ${wordCap} words and cannot mention ProfilePush` }, 400);
     }
 
     const finalEmailContent = resumeUrl
