@@ -18,6 +18,8 @@ interface SessionState {
   awaitingFinalVideo: boolean;
   /** No resume on file — the consultant was invited, not submitted. */
   needsResume?: boolean;
+  hasResume?: boolean;
+  resumeFileName?: string | null;
 }
 
 type PageStatus = 'loading' | 'invalid' | 'active' | 'completed' | 'worker_not_configured' | 'recording_lost';
@@ -47,6 +49,10 @@ export default function ScreeningInterview() {
   const [session, setSession] = useState<SessionState | null>(null);
   const [uploadingResume, setUploadingResume] = useState(false);
   const [resumeError, setResumeError] = useState('');
+  // The resume step runs for everyone: an invited candidate uploads one, a
+  // submitted candidate confirms the one already on file. Same two steps in
+  // both cases rather than two different-feeling flows.
+  const [resumeStepDone, setResumeStepDone] = useState(false);
   const [recordPhase, setRecordPhase] = useState<RecordPhase>('requesting_camera');
   const [errorMessage, setErrorMessage] = useState('');
   const [retakesUsed, setRetakesUsed] = useState(0);
@@ -349,7 +355,7 @@ export default function ScreeningInterview() {
   // Asked before consent, not after: the questions are generated from the
   // resume, so without it the interview is generic and the candidate has
   // recorded themselves answering nothing specific.
-  if (pageStatus === 'active' && session?.needsResume) {
+  if (pageStatus === 'active' && !resumeStepDone && !consentGiven) {
     async function handleResumeUpload(file: File) {
       setUploadingResume(true);
       setResumeError('');
@@ -362,7 +368,8 @@ export default function ScreeningInterview() {
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok || !body?.ok) throw new Error(body?.error || 'Could not read that file');
-        setSession((prev) => prev && ({ ...prev, needsResume: false }));
+        setSession((prev) => prev && ({ ...prev, needsResume: false, hasResume: true, resumeFileName: file.name }));
+        setResumeStepDone(true);
       } catch (err) {
         setResumeError(err instanceof Error ? err.message : 'Could not read that file');
       } finally {
@@ -379,12 +386,20 @@ export default function ScreeningInterview() {
           <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mb-4">
             <Video size={20} className="text-blue-600" />
           </div>
-          <h1 className="text-lg font-bold text-gray-900 mb-2">First, add your resume</h1>
+          <h1 className="text-lg font-bold text-gray-900 mb-2">
+            {session?.hasResume ? 'Check your resume' : 'First, add your resume'}
+          </h1>
           <p className="text-sm text-gray-600 mb-4">
-            You've been invited to a short video screening for <strong>{session?.jobTitle}</strong>
-            {session?.companyName ? ` at ${session.companyName}` : ''}. The questions are built from your
-            resume, so the interview is about your actual experience rather than generic questions.
+            This is a short screening for <strong>{session?.jobTitle}</strong>
+            {session?.companyName ? ` at ${session.companyName}` : ''}: your resume, then a five-minute
+            video interview. The questions are built from the resume, so the interview is about your
+            actual experience rather than generic questions.
           </p>
+          {session?.hasResume && (
+            <p className="mb-3 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              On file: <strong>{session.resumeFileName || 'your resume'}</strong>
+            </p>
+          )}
           <label className="block">
             <input
               type="file"
@@ -394,7 +409,18 @@ export default function ScreeningInterview() {
               className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-700 disabled:opacity-50"
             />
           </label>
-          <p className="mt-2 text-xs text-gray-400">PDF, DOCX, RTF or TXT, up to 10MB. No account needed.</p>
+          <p className="mt-2 text-xs text-gray-400">
+            PDF, DOCX, RTF or TXT, up to 10MB. No account needed.
+          </p>
+          {session?.hasResume && (
+            <button
+              type="button"
+              onClick={() => setResumeStepDone(true)}
+              className="mt-4 w-full rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Continue to the interview
+            </button>
+          )}
           {uploadingResume && <p className="mt-3 text-sm text-blue-600">Reading your resume…</p>}
           {resumeError && <p className="mt-3 text-sm text-red-600">{resumeError}</p>}
         </div>
