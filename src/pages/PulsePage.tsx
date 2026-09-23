@@ -7744,7 +7744,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               </div>
 
-              <div className={`flex min-h-0 flex-1 gap-3 ${aiMatchRecentTabActive ? 'hidden' : ''}`}>
+              <div className="flex min-h-0 flex-1 gap-3">
               {!isMobileViewport && !aiMatch && (
                 <aside className="flex h-full w-56 shrink-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#171A1F]">
                   <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-3 pb-2.5 dark:border-white/10">
@@ -8481,7 +8481,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
-              <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport || aiMatch ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
+              <section className={`min-w-0 flex min-h-0 flex-col ${aiMatchRecentTabActive ? 'hidden' : ''} ${isMobileViewport || aiMatch ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
                 <div className={`min-h-0 ${isMobileViewport || aiMatch ? '' : 'flex-1 overflow-hidden'}`}>
                   {aiMatchRunning ? (
                     <div className="flex min-h-[40vh] w-full flex-col items-center justify-center gap-3">
