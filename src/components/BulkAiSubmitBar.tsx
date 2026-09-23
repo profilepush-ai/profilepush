@@ -197,74 +197,99 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
 
   if (!quota.gmail_connected) {
     return (
-      <div className="mx-1.5 mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold">Connect Gmail to reach all {sendable.length} matches at once.</p>
-          <p className="mt-0.5">Messages go from your own address, so replies come straight back to you.</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button
-              onClick={onConnectGmail}
-              className="rounded-md bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700"
-            >
-              Connect Gmail
-            </button>
-            {outlookRequested ? (
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800">
-                <Check size={12} /> Noted — we will let you know when Outlook is ready
-              </span>
-            ) : (
-              <button
-                onClick={() => void requestOutlook()}
-                className="rounded-md border border-amber-300 px-3 py-1.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100"
-              >
-                I use Outlook
-              </button>
-            )}
+      <div className="mx-1.5 mb-2 overflow-hidden rounded-xl border border-amber-300 bg-amber-50">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100">
+            <AlertTriangle size={17} className="text-amber-700" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold leading-tight text-amber-900">
+              Connect Gmail to reach all {sendable.length} at once
+            </p>
+            <p className="mt-0.5 text-[12px] leading-tight text-amber-800/80">
+              Sent from your own address, so replies come straight back to you.
+            </p>
           </div>
+          {outlookRequested ? (
+            <span className="inline-flex items-center gap-1 text-[12px] font-medium text-amber-800">
+              <Check size={13} /> Noted
+            </span>
+          ) : (
+            <button
+              onClick={() => void requestOutlook()}
+              className="text-[12px] font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900"
+            >
+              I use Outlook
+            </button>
+          )}
+          <button
+            onClick={onConnectGmail}
+            className="shrink-0 rounded-lg bg-amber-600 px-5 py-2.5 text-[13px] font-bold text-white shadow-sm transition hover:bg-amber-700"
+          >
+            Connect Gmail
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-1.5 mb-2 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-500/30 dark:bg-blue-500/10">
+    <div className="mx-1.5 mb-2 overflow-hidden rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 shadow-sm">
       {progress ? (
-        <div className="flex items-center gap-2 text-xs text-blue-900 dark:text-blue-200">
-          <Loader2 size={14} className="animate-spin" />
-          <span className="min-w-0 flex-1 truncate">
-            Sending {progress.sent + progress.failed + 1} of {batch.length} — {progress.current}
-          </span>
+        <div className="px-4 py-3.5">
+          <div className="flex items-center gap-2.5 text-white">
+            <Loader2 size={16} className="animate-spin" />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+              Sending {progress.sent + progress.failed + 1} of {batch.length} — {progress.current}
+            </span>
+          </div>
+          {/* A bar rather than a count: twenty-five sequential sends is long
+              enough that a static number reads as frozen. */}
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/25">
+            <div
+              className="h-full rounded-full bg-white transition-all duration-300"
+              style={{ width: `${Math.round(((progress.sent + progress.failed) / Math.max(batch.length, 1)) * 100)}%` }}
+            />
+          </div>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <Icon size={15} className="shrink-0 text-blue-600 dark:text-blue-400" />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15">
+            <Icon size={17} className="text-white" />
+          </span>
+
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-blue-900 dark:text-blue-200">
-              {label} to {isNarrowed ? '' : 'all '}{batch.length} {isNarrowed ? 'selected' : ''} match{batch.length === 1 ? '' : 'es'}
-              {isNarrowed && onClearSelection && (
-                <button onClick={onClearSelection} className="ml-2 font-normal underline opacity-70 hover:opacity-100">
-                  clear
-                </button>
-              )}
+            <p className="text-[15px] font-semibold leading-tight text-white">
+              {label} all {batch.length} {isNarrowed ? 'selected ' : ''}match{batch.length === 1 ? '' : 'es'}
             </p>
-            <p className="text-[11px] text-blue-700/80 dark:text-blue-300/80">
-              {quota.remaining} of {quota.daily_limit} left today
-              {quota.is_trial && ' on the trial plan'}
-              {sendable.length > batch.length && ` · ${sendable.length - batch.length} will not fit today`}
+            <p className="mt-0.5 text-[12px] leading-tight text-white/75">
+              {batch.length} credit{batch.length === 1 ? '' : 's'} · {quota.remaining} of {quota.daily_limit} left today
+              {sendable.length > batch.length && ` · ${sendable.length - batch.length} not today`}
             </p>
           </div>
+
+          {isNarrowed && onClearSelection && (
+            <button
+              onClick={onClearSelection}
+              className="text-[12px] font-medium text-white/70 underline underline-offset-2 hover:text-white"
+            >
+              Clear
+            </button>
+          )}
+
           <button
             onClick={() => setConfirming(true)}
             disabled={batch.length === 0}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+            className="shrink-0 rounded-lg bg-white px-5 py-2.5 text-[13px] font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:bg-white/40 disabled:text-white/70"
           >
             {batch.length === 0 ? 'Daily limit reached' : `Send ${batch.length}`}
           </button>
         </div>
       )}
 
-      {error && <p className="mt-2 text-[11px] font-medium text-red-600">{error}</p>}
+      {error && (
+        <p className="border-t border-white/20 bg-white/10 px-4 py-2 text-[12px] font-medium text-white">{error}</p>
+      )}
 
       {confirming && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
