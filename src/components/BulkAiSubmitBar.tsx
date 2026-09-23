@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Check, Loader2, Mail, Video, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { withScreeningLink } from '../lib/screening-link';
+import GmailIcon from './GmailIcon';
 
 // Bulk sending is the reason people adopt this feature — nobody switches tools
 // to send one email at a time. It is also the fastest way to get a user's own
@@ -259,12 +260,17 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
           </span>
 
           <div className="min-w-0 flex-1">
+            {/* No counts here. Credits, the daily limit and what will not fit
+                today all belong on the confirm step, where someone is deciding
+                whether to spend them — in the bar they were noise between the
+                reader and the button. */}
             <p className="text-[15px] font-semibold leading-tight text-white">
-              {label} all {batch.length} {isNarrowed ? 'selected ' : ''}match{batch.length === 1 ? '' : 'es'}
+              {isNarrowed
+                ? `Send bulk invite to the ${batch.length} selected`
+                : 'Send bulk invite to all matches'}
             </p>
             <p className="mt-0.5 text-[12px] leading-tight text-white/75">
-              {batch.length} credit{batch.length === 1 ? '' : 's'} · {quota.remaining} of {quota.daily_limit} left today
-              {sendable.length > batch.length && ` · ${sendable.length - batch.length} not today`}
+              {isNarrowed ? 'Or clear the selection to send to everyone' : 'Or select below to choose who'}
             </p>
           </div>
 
@@ -280,9 +286,10 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
           <button
             onClick={() => setConfirming(true)}
             disabled={batch.length === 0}
-            className="shrink-0 rounded-lg bg-white px-5 py-2.5 text-[13px] font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:bg-white/40 disabled:text-white/70"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-[13px] font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:bg-white/40 disabled:text-white/70"
           >
-            {batch.length === 0 ? 'Daily limit reached' : `Send ${batch.length}`}
+            <GmailIcon size={15} />
+            {batch.length === 0 ? 'Daily limit reached' : 'Send Now'}
           </button>
         </div>
       )}
@@ -304,6 +311,9 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
             </div>
             <ul className="mb-3 space-y-1 text-[11px] text-gray-600 dark:text-slate-300">
               <li>· Each one costs 1 credit — <b>{batch.length} credits</b> in total.</li>
+              {sendable.length > batch.length && (
+                <li>· <b>{sendable.length - batch.length}</b> will not fit today and can go tomorrow.</li>
+              )}
               <li>· Sent from your connected Gmail, one at a time.</li>
               <li>· Every message is written for that specific post, not a template.</li>
               <li>· You will have <b>{Math.max(0, quota.remaining - batch.length)}</b> sends left today.</li>
