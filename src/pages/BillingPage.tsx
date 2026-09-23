@@ -37,7 +37,7 @@ const CREDIT_TIERS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
 // currently charges nothing — gated behind BILLING_GATES_ENABLED
 // (feature-gates.ts), which is off site-wide.
 //
-// Video screening completion charges the JOB OWNER's account 50 credits
+// Video screening completion charges the JOB OWNER's account 10 credits
 // (charge_screening_completion_credit RPC, called from the
 // job-application-screening Worker) — not the account taking an action
 // here, so it's listed as a note rather than a per-action row.
@@ -61,7 +61,7 @@ const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: st
   },
   { label: 'AI Submit / AI Invite — generate draft', cost: '1 credit', short: '1 credit to generate an AI Submit or Invite draft', note: 'Only the first generation per post; reopening an already-generated draft is free' },
   { label: 'Inbox AI chat draft', cost: '1 credit', short: '1 credit per Inbox AI chat draft' },
-  { label: 'Video screening completed', cost: '50 credits', short: '50 credits when a candidate completes a video screening', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
+  { label: 'Video screening completed', cost: '10 credits', short: '10 credits when a candidate completes a video screening', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
 ];
 
 interface UsageRow {
