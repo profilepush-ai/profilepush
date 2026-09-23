@@ -1432,8 +1432,19 @@ const LeadCard = memo(function LeadCard({
       className={`relative flex ${hideActions ? 'h-auto' : 'h-full'} min-w-0 flex-col overflow-hidden rounded-lg border ${isSelected ? 'border-blue-400 ring-1 ring-blue-200' : 'border-[#dfdad2] dark:border-white/10'} ${cardFillClass} ${hideActions ? 'cursor-pointer' : ''}`}
     >
       <LeadKindPill kind={lead.kind} variant="banner" />
+      {matchRank != null && (
+        // Top right, beside the kind icon rather than under it: below, it
+        // would land on the second line of a wrapping title. The header
+        // already reserves this strip with pr-14.
+        <span
+          className="absolute right-7 top-1 z-10 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-sm"
+          title={`Rank ${matchRank} in this run`}
+        >
+          {matchRank}
+        </span>
+      )}
       <div className="min-w-0 flex-1 px-3 pt-2.5 pb-2">
-      <div className={bulkSelectable || matchRank ? 'flex items-start gap-2' : undefined}>
+      <div className={bulkSelectable ? 'flex items-start gap-2' : undefined}>
         {bulkSelectable && (
           // Fixed 20px square, aligned to the title line. It used to stretch to
           // the height of the text beside it, so no two cards agreed on its
@@ -1451,14 +1462,6 @@ const LeadCard = memo(function LeadCard({
           >
             <Check size={13} strokeWidth={3} />
           </button>
-        )}
-        {matchRank != null && (
-          <span
-            className="mt-0.5 inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded bg-gray-900 px-1 text-[11px] font-bold tabular-nums text-white dark:bg-white dark:text-gray-900"
-            title={`Rank ${matchRank} of this run`}
-          >
-            {matchRank}
-          </span>
         )}
         <div className="min-w-0 flex-1 pr-14">
           {hideActions ? (
