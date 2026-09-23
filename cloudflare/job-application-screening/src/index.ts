@@ -94,7 +94,31 @@ async function getApplicationByToken(env: Env, token: string): Promise<Applicati
 // response (they already finished; the poster just won't get the in-app
 // nudge, though the data is still visible in Applications either way).
 async function sendScreeningCompletedMessage(env: Env, application: ApplicationRow, jobTitle: string): Promise<void> {
-  if (!application.chat_thread_id) return;
+  // An invitation sent from AI Match has no chat thread — nobody submitted the
+  // candidate, so no conversation was ever created. Without this the recording
+  // lands in the database and the vendor is never told, which makes the whole
+  // feature invisible after the email goes out.
+  if (!application.chat_thread_id) {
+    try {
+      await supabaseRest(env, "notifications", {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          account_id: application.created_by_account_id,
+          user_id: application.created_by_user_id,
+          type: "screening_completed",
+          title: `${application.candidate_name || "A consultant"} finished their screening`,
+          body: "The recording, transcript and AI summary are ready to review.",
+          link: "/posts/jobs",
+        }),
+      });
+    } catch (error) {
+      // Never fail the candidate's submission over a notification.
+      console.error("Could not notify the vendor of a completed screening", error);
+    }
+    return;
+  }
+
   try {
     const threadRes = await supabaseRest(
       env,
