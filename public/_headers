@@ -1,9 +1,0 @@
-# The service worker script must not sit in the HTTP cache.
-#
-# Pages serves it with max-age=14400 by default. Browsers only bypass their
-# HTTP cache for a worker script when its max-age is over 24 hours, so at 4
-# hours an updated sw.js can go unnoticed for that long. A worker is sticky
-# and hard to take back, so being able to ship a fix to it promptly is worth
-# more than caching a 3KB file.
-/sw.js
-  Cache-Control: no-cache
