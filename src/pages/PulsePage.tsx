@@ -1398,13 +1398,16 @@ const LeadCard = memo(function LeadCard({
           type="button"
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
-          title={!lead.posterEmail ? 'No email' : (lead.postSource === 'user_post' ? 'Request' : isHotlistFeed ? 'AI Invite for Video Screening' : 'AI Submit')}
+          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Invite for Video Screening' : lead.postSource === 'user_post' ? 'Request' : 'AI Submit')}
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
         >
           {isProcessingAskAI ? <LogoSpinner size={14} /> : lead.postSource === 'user_post' ? (
             <>
-              <FileText size={15} strokeWidth={1.75} />
-              <span className="text-[12px] font-normal">Request</span>
+              {/* Same action either way — a consultant is invited to a video
+                  screening whether the post came from the platform or a
+                  scrape, so it carries the same label and icon. */}
+              {isHotlistFeed ? <Video size={15} strokeWidth={1.75} /> : <FileText size={15} strokeWidth={1.75} />}
+              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Invite' : 'Request'}</span>
             </>
           ) : (
             <>
@@ -4391,7 +4394,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                     className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {selectedIsProcessingAskAI ? <LogoSpinner size={14} /> : selectedLead.postSource === 'user_post' ? (
-                      <><FileText size={14} />Request</>
+                      <>{selectedIsHotlist ? <Video size={14} /> : <FileText size={14} />}{selectedIsHotlist ? 'AI Invite' : 'Request'}</>
                     ) : (
                       <>{selectedIsHotlist ? <Video size={14} /> : <Mail size={14} />}{selectedIsHotlist ? 'AI Invite' : 'AI Submit'}</>
                     )}
