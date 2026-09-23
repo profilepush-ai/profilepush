@@ -7544,36 +7544,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                   </button>
                 </div>
 
-              {aiMatch && isMobileViewport && (aiMatchOwnPosts.length > 0 || aiMatchRecentsForTarget.length > 0) && (
-                <div className="shrink-0 px-1 pt-1.5">
-                  <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-white/5">
-                    {([
-                      { id: 'match' as const, label: 'Match' },
-                      { id: 'recent' as const, label: 'Recent', count: aiMatchOwnPosts.length + aiMatchLooseRecents.length },
-                    ]).map((tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setAiMatchMobileTab(tab.id)}
-                        className={`flex-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                          aiMatchMobileTab === tab.id
-                            ? 'bg-white text-gray-900 shadow-sm dark:bg-[#22262c] dark:text-slate-100'
-                            : 'text-gray-500 dark:text-slate-400'
-                        }`}
-                      >
-                        {tab.label}
-                        {tab.count ? <span className="ml-1 text-gray-400 dark:text-slate-500">{tab.count}</span> : null}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {aiMatchRecentTabActive && (
-                <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-1.5 pb-6 pt-2">
-                  {renderAiMatchRailItems()}
-                </div>
-              )}
 
 
               {/* Mobile search/filter row — controls job feed search */}
@@ -8223,6 +8193,37 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
               {/* One mount above the results section: the mobile list and the
                   desktop tabbed columns are different branches below, and
                   putting it inside either one hid it on the other layout. */}
+              {aiMatch && isMobileViewport && (aiMatchOwnPosts.length > 0 || aiMatchRecentsForTarget.length > 0) && (
+                <div className="shrink-0 px-1 pt-1.5">
+                  <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-white/5">
+                    {([
+                      { id: 'match' as const, label: 'Match' },
+                      { id: 'recent' as const, label: 'Recent', count: aiMatchOwnPosts.length + aiMatchLooseRecents.length },
+                    ]).map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setAiMatchMobileTab(tab.id)}
+                        className={`flex-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                          aiMatchMobileTab === tab.id
+                            ? 'bg-white text-gray-900 shadow-sm dark:bg-[#22262c] dark:text-slate-100'
+                            : 'text-gray-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {tab.label}
+                        {tab.count ? <span className="ml-1 text-gray-400 dark:text-slate-500">{tab.count}</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {aiMatchRecentTabActive && (
+                <div className="space-y-1.5 px-1.5 pb-6 pt-2">
+                  {renderAiMatchRailItems()}
+                </div>
+              )}
+
               {aiMatch && !aiMatchRecentTabActive && (
                 <div className={isMobileViewport ? 'shrink-0 px-1 pt-1.5 pb-1' : 'shrink-0 px-2 py-2'}>
                   {aiMatchComposerOpen ? (
@@ -8456,7 +8457,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
-              {aiMatch && account?.id && filteredFeed.length > 0 && (
+              {aiMatch && !aiMatchRecentTabActive && account?.id && filteredFeed.length > 0 && (
                 <div className="sticky top-0 z-20 shrink-0 bg-[#f3f2ee] pt-1 dark:bg-[#1B1D21]">
                   <BulkAiSubmitBar
                     targets={filteredFeed
