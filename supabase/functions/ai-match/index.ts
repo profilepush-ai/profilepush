@@ -292,17 +292,33 @@ Deno.serve(async (req: Request) => {
           ai_model_score: scored.score,
           ai_reason: scored.reason,
           ai_rule_note: verdict?.note || null,
+          ai_blockers: verdict?.blockers ?? [],
           rule_agreement: verdict?.agreement ?? 0.5,
         };
       })
       .filter((row): row is FeedRow & {
-        ai_score: number; ai_model_score: number; ai_reason: string; ai_rule_note: string | null; rule_agreement: number;
+        ai_score: number; ai_model_score: number; ai_reason: string; ai_rule_note: string | null; ai_blockers: string[]; rule_agreement: number;
       } => row !== null)
       // Score first, then how much of the checkable detail actually agreed, so
       // two 8s are separated by fact rather than by retrieval order.
       .sort((a, b) => (b.ai_score - a.ai_score) || (b.rule_agreement - a.rule_agreement) || (b.similarity - a.similarity));
 
     const scoredCount = ranked.length;
+
+    // Why the rejected ones were rejected. A run that returns nothing should
+    // name the requirement doing the blocking — "9 of 14 were capped on visa"
+    // is something you can act on; "try widening the brief" is not.
+    const blockerCounts = new Map<string, number>();
+    for (const row of ranked) {
+      if (row.ai_score >= MIN_DELIVERABLE_SCORE) continue;
+      for (const blocker of new Set(row.ai_blockers)) {
+        blockerCounts.set(blocker, (blockerCounts.get(blocker) ?? 0) + 1);
+      }
+    }
+    const topBlockers = [...blockerCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([reason, count]) => ({ reason, count }));
     const results = ranked
       .filter((row) => row.ai_score >= MIN_DELIVERABLE_SCORE)
       .slice(0, resultLimit);
@@ -322,6 +338,7 @@ Deno.serve(async (req: Request) => {
         scored_count: scoredCount,
         below_floor: scoredCount,
         min_score: MIN_DELIVERABLE_SCORE,
+        top_blockers: topBlockers,
       };
     }
 
@@ -346,6 +363,7 @@ Deno.serve(async (req: Request) => {
       scored_count: scoredCount,
       below_floor: scoredCount - results.length,
       min_score: MIN_DELIVERABLE_SCORE,
+      top_blockers: topBlockers,
       new_count: freshResults.length,
       matched_for: matchedFor,
       post,
@@ -947,11 +965,13 @@ function applyRules(brief: Sided, row: FeedRow, target: Target): RuleVerdict {
 
   let cap = 10;
   const notes: string[] = [];
+  const blockers: string[] = [];
   let checks = 0;
   let agreed = 0;
-  const fail = (limit: number, note: string) => {
+  const fail = (limit: number, note: string, blocker: string) => {
     cap = Math.min(cap, limit);
     notes.push(note);
+    blockers.push(blocker);
   };
 
   // Work authorization: the disqualifier that similarity is blindest to.
@@ -967,7 +987,7 @@ function applyRules(brief: Sided, row: FeedRow, target: Target): RuleVerdict {
     const accepted = unrestricted
       || [...personVisas].some((code) => (VISA_IMPLIES[code] ?? [code]).some((implied) => jobVisas.has(implied)));
     if (accepted) agreed += 1;
-    else fail(3, `Job takes ${[...jobVisas].join("/").toUpperCase()} only`);
+    else fail(3, `Job takes ${[...jobVisas].join("/").toUpperCase()} only`, "visa");
   }
 
   // Role: a Java job and a ServiceNow consultant can read as similar because
@@ -978,7 +998,7 @@ function applyRules(brief: Sided, row: FeedRow, target: Target): RuleVerdict {
     checks += 1;
     const shared = [...briefTitleTokens].filter((token) => candTitleTokens.has(token));
     if (shared.length > 0) agreed += 1;
-    else fail(6, `Different role: ${cand.title.trim().slice(0, 40)}`);
+    else fail(6, `Different role: ${cand.title.trim().slice(0, 40)}`, "role");
   }
 
   const briefSkills = new Set(brief.skills.map(skillKey).filter(Boolean));
@@ -987,7 +1007,7 @@ function applyRules(brief: Sided, row: FeedRow, target: Target): RuleVerdict {
     checks += 1;
     const overlap = [...briefSkills].filter((skill) => candSkillKeys.has(skill)).length;
     if (overlap > 0) agreed += 1;
-    else fail(5, "No overlapping skills");
+    else fail(5, "No overlapping skills", "skills");
   }
 
   // Experience: the job's number is the requirement, the person's is what they
@@ -995,7 +1015,7 @@ function applyRules(brief: Sided, row: FeedRow, target: Target): RuleVerdict {
   if (job.years != null && person.years != null) {
     checks += 1;
     if (person.years >= job.years - 2) agreed += 1;
-    else fail(6, `Needs ${job.years} yrs, has ${person.years}`);
+    else fail(6, `Needs ${job.years} yrs, has ${person.years}`, "experience");
   }
 
   const jobEmployment = employmentGroup(job.employmentType);
@@ -1008,7 +1028,7 @@ function applyRules(brief: Sided, row: FeedRow, target: Target): RuleVerdict {
     const compatible = jobEmployment === personEmployment
       || (contractish.has(jobEmployment) && contractish.has(personEmployment));
     if (compatible) agreed += 1;
-    else fail(7, `${job.employmentType.trim()} vs ${person.employmentType.trim()}`);
+    else fail(7, `${job.employmentType.trim()} vs ${person.employmentType.trim()}`, "employment type");
   }
 
   // Location only matters when neither side is remote.
@@ -1020,7 +1040,7 @@ function applyRules(brief: Sided, row: FeedRow, target: Target): RuleVerdict {
       const shared = [...jobPlaces].some((token) => personPlaces.has(token));
       if (shared) agreed += 1;
       else if (row.relocation_required === true) agreed += 1;
-      else fail(6, `Onsite ${job.locations[0]?.trim().slice(0, 28)}`);
+      else fail(6, `Onsite ${job.locations[0]?.trim().slice(0, 28)}`, "location");
     }
   }
 
@@ -1028,12 +1048,13 @@ function applyRules(brief: Sided, row: FeedRow, target: Target): RuleVerdict {
   if (job.rateMax != null && person.rateMin != null) {
     checks += 1;
     if (job.rateMax >= person.rateMin * 0.9) agreed += 1;
-    else fail(6, `Pays to $${job.rateMax}, asking $${person.rateMin}`);
+    else fail(6, `Pays to $${job.rateMax}, asking $${person.rateMin}`, "rate");
   }
 
   return {
     cap,
     note: notes.slice(0, 2).join(" · "),
+    blockers,
     // Only used to break ties between equal scores; with nothing checkable it
     // stays neutral rather than pretending to agreement.
     agreement: checks === 0 ? 0.5 : agreed / checks,
