@@ -19,6 +19,17 @@ import { withScreeningLink } from '../lib/screening-link';
 // losing the ones that had already worked.
 const PER_RUN_CAP = 25;
 
+// Gap between sends. The API would take them back to back, but twenty-five
+// near-identical messages leaving one mailbox inside a minute is what spam
+// heuristics are built to catch — and the mailbox is the user's own, so the
+// cost of tripping them is their deliverability, not ours.
+//
+// Four seconds with jitter puts a run of twenty-five at roughly two minutes,
+// which is slow enough to look human and short enough to watch.
+const PACE_MS = 4000;
+const PACE_JITTER_MS = 1500;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export type BulkTarget = {
   id: string;
   title: string;
@@ -71,11 +82,13 @@ const FALLBACK_QUOTA: Quota = {
 };
 
 type Progress = { sent: number; failed: number; current: string } | null;
+type Result = { sent: number; failed: number } | null;
 
 export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmailConnected, isNarrowed, onClearSelection, onConnectGmail, onDone }: Props) {
   const [quota, setQuota] = useState<Quota>({ ...FALLBACK_QUOTA, gmail_connected: gmailConnected });
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<Progress>(null);
+  const [result, setResult] = useState<Result>(null);
   const [error, setError] = useState('');
   const [outlookRequested, setOutlookRequested] = useState(false);
 
@@ -124,10 +137,15 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
   async function run() {
     setConfirming(false);
     setError('');
+    setResult(null);
     let sent = 0;
     let failed = 0;
+    let stopped = false;
 
-    for (const target of batch) {
+    for (const [index, target] of batch.entries()) {
+      // Paced, not between the first and itself: nobody should wait four
+      // seconds to watch the first one go.
+      if (index > 0) await sleep(PACE_MS + Math.random() * PACE_JITTER_MS);
       setProgress({ sent, failed, current: target.title });
       const requestId = crypto.randomUUID();
       try {
@@ -176,7 +194,8 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
           // The server caps independently of this component. If it says stop,
           // stop — carrying on would burn credits on sends that cannot land.
           if (send.data?.error === 'daily_limit_reached') {
-            setError(`Daily limit of ${send.data.daily_limit} reached. ${sent} sent.`);
+            setError(`Daily limit of ${send.data.daily_limit} reached — ${sent} sent, the rest can go tomorrow.`);
+            stopped = true;
             break;
           }
           throw new Error(send.data?.error || 'send failed');
@@ -190,9 +209,10 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
     setProgress(null);
     await loadQuota();
     onDone();
-    if (!error) {
-      setError(failed > 0 ? `${sent} sent, ${failed} could not be sent.` : '');
-    }
+    // Shown on success as well as failure. It used to set an empty string when
+    // everything worked, so a run of ten finished by silently returning the
+    // bar to its resting state with no word that anything had been sent.
+    if (!stopped) setResult({ sent, failed });
   }
 
   if (!quota.gmail_connected) {
@@ -241,6 +261,11 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
             <Loader2 size={16} className="animate-spin" />
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium sm:text-sm">
               Sending {progress.sent + progress.failed + 1} of {batch.length} — {progress.current}
+            </span>
+            <span className="shrink-0 text-[11px] text-white/70">
+              {/* Paced sends make a run take minutes; without a time left it
+                  looks stalled rather than deliberate. */}
+              ~{Math.max(1, Math.ceil(((batch.length - (progress.sent + progress.failed)) * (PACE_MS + PACE_JITTER_MS / 2)) / 60000))} min left
             </span>
           </div>
           {/* A bar rather than a count: twenty-five sequential sends is long
@@ -295,6 +320,19 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
           >
             <Mail size={14} strokeWidth={2.25} />
             {batch.length === 0 ? 'Limit reached' : 'Send Now'}
+          </button>
+        </div>
+      )}
+
+      {result && !progress && (
+        <div className="flex items-center justify-between gap-2 border-t border-white/20 bg-white/10 px-4 py-2 text-[12px] font-medium text-white">
+          <span>
+            {result.sent} invite{result.sent === 1 ? '' : 's'} sent
+            {result.failed > 0 && ` · ${result.failed} could not be sent`}
+            {result.sent > 0 && ' — replies come to your inbox'}
+          </span>
+          <button onClick={() => setResult(null)} className="shrink-0 text-white/70 hover:text-white" aria-label="Dismiss">
+            <X size={13} />
           </button>
         </div>
       )}
