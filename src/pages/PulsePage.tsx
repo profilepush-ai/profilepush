@@ -6525,6 +6525,16 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       return;
     }
 
+    // The composer now sits at the top of this scroller, so a drag that starts
+    // inside the text box would arm pull-to-refresh and throw away what was
+    // being written. Text fields keep their own gestures.
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('textarea, input, select, [contenteditable="true"]')) {
+      mobilePullStartYRef.current = null;
+      mobilePullArmedRef.current = false;
+      return;
+    }
+
     const startX = event.touches[0]?.clientX ?? null;
     const startY = event.touches[0]?.clientY ?? null;
     mobileTouchStartXRef.current = startX;
