@@ -1437,7 +1437,7 @@ const LeadCard = memo(function LeadCard({
         // would land on the second line of a wrapping title. The header
         // already reserves this strip with pr-14.
         <span
-          className="absolute right-7 top-1 z-10 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-sm"
+          className="absolute right-7 top-0 z-10 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-bl-lg bg-gradient-to-br from-indigo-500 to-violet-600 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-sm"
           title={`Rank ${matchRank} in this run`}
         >
           {matchRank}
@@ -8118,7 +8118,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
               <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-transparent">
 
               <div
-                className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-transparent slim-scrollbar' : 'overflow-hidden'}`}
+                className={`min-w-0 h-full flex min-h-0 flex-col ${isMobileViewport ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain bg-transparent slim-scrollbar' : (aiMatch ? 'relative isolate overflow-x-hidden overflow-y-auto overscroll-contain slim-scrollbar' : 'overflow-hidden')}`}
                 onScroll={isMobileViewport ? handleMobileRightPaneScroll : undefined}
                 onTouchStart={isMobileViewport && !isSwipeLayout ? handleMobilePullStart : undefined}
                 onTouchMove={isMobileViewport && !isSwipeLayout ? handleMobilePullMove : undefined}
@@ -8443,7 +8443,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                   desktop tabbed columns are different branches below, and
                   putting it inside either one hid it on the other layout. */}
               {aiMatch && account?.id && filteredFeed.length > 0 && (
-                <div className="shrink-0 pt-1">
+                <div className="sticky top-0 z-20 shrink-0 bg-[#f3f2ee] pt-1 dark:bg-[#1B1D21]">
                   <BulkAiSubmitBar
                     targets={filteredFeed
                       .filter((lead) => lead.aiMatchScore != null
@@ -8466,8 +8466,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                 </div>
               )}
 
-              <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
-                <div className={`min-h-0 ${isMobileViewport ? '' : 'flex-1 overflow-hidden'}`}>
+              <section className={`min-w-0 flex min-h-0 flex-col ${isMobileViewport || aiMatch ? 'flex-none' : 'flex-1 overflow-hidden'}`}>
+                <div className={`min-h-0 ${isMobileViewport || aiMatch ? '' : 'flex-1 overflow-hidden'}`}>
                   {aiMatchRunning ? (
                     <div className="flex min-h-[40vh] w-full flex-col items-center justify-center gap-3">
                       <LogoSpinner size={22} />
