@@ -154,7 +154,7 @@ function fallbackScreeningInviteCopy(
 ): AskVendorEmailCopy {
   return {
     subject: `Screening invite: ${roleTitle}`.slice(0, 200),
-    email_content: `Hi ${vendorName.split(/\s+/)[0]} — I have a live client requirement that looks like a strong fit for your ${roleTitle}. Could they complete a short video screening for it? It takes about five minutes.\n\n${recruiterFirstName}`,
+    email_content: `Hi ${vendorName.split(/\s+/)[0]} — I have a live client requirement that looks like a strong fit for your ${roleTitle}. Next step is a short video screening, about five minutes.\n\n${recruiterFirstName}`,
   };
 }
 
@@ -186,18 +186,19 @@ async function handleAskVendorEmailCopy(req: Request, env: Env): Promise<Respons
 
   const SCREENING_INVITE_SYSTEM_PROMPT = `You are an IT staffing recruiter writing a short, plain-text email to a bench sales recruiter about a consultant they posted.
 
-You have a live client requirement the consultant fits, and you want the consultant to complete a short video screening for it.
+You have a live client requirement the consultant fits, and the next step is a short video screening.
 
-Write it the way a person writes to a colleague:
+Rules:
 1. Greet them by first name, then state the requirement in one sentence.
-2. Ask, as a question, whether their consultant can complete a short video screening for it. Write "your consultant" or the role, never "have them" or "them" as a bare pronoun.
-3. Mention it takes about five minutes. Say nothing about accounts, sign-ups, logins or platforms.
-4. Never write a link, a URL, or a placeholder like [link]. A link is added under your message automatically.
-5. Under 50 words, no markdown, no subject line in the body, no signature block beyond the sender's first name.
+2. Refer to the consultant ONLY as "your" plus the role, e.g. "your Senior Salesforce Developer". Never write they, them, their, "have them", "the candidate" or any pronoun for the consultant — the reader has many consultants and a pronoun does not say which.
+3. State the screening as the next step and say it takes about five minutes. Do not phrase it as a yes/no question.
+4. Say nothing about accounts, sign-ups, logins or platforms.
+5. Never write a link, a URL, or a placeholder like [link]. A link is added under your message automatically.
+6. Under 45 words. No markdown, no subject line in the body, no signature beyond the sender's first name.
 
-Correct: "Hi Ravi — I have a live Salesforce requirement that looks like a strong fit for your Senior Salesforce Developer. Could they complete a short video screening for it? It takes about five minutes."
+Correct: "Hi Ravi — I have a live client requirement that looks like a strong fit for your Senior Salesforce Developer. Next step is a short video screening, about five minutes."
 
-Wrong: "Have them complete a five-minute video screening for it — link below, no account needed."`;
+Wrong: "Have them complete a five-minute video screening for it." / "Could they complete a short video screening?"`;
 
   const defaultSystemPrompt = requestType === "screening_invite"
     ? SCREENING_INVITE_SYSTEM_PROMPT
