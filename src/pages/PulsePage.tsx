@@ -52,6 +52,7 @@ import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
+import AiMatchInvitePane from '../components/AiMatchInvitePane';
 import { hasScreeningLink, withScreeningLink } from '../lib/screening-link';
 import GmailIcon from '../components/GmailIcon';
 import GmailConnectPrompt from '../components/GmailConnectPrompt';
@@ -1329,6 +1330,10 @@ interface LeadCardProps {
   /** 1-based position in the AI Match results. A rank says what a score cannot:
    *  where this one sits against the others in front of you. */
   matchRank?: number;
+  /** The card the invite pane is showing. Distinct from bulk selection, and
+   *  from onPreview above, which opens the original post. */
+  isFocused?: boolean;
+  onFocus?: (lead: SocialLead) => void;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -1343,7 +1348,7 @@ const LeadCard = memo(function LeadCard({
   isLoadingPreview, isProcessingAskAI,
   onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
   hideActions, isSelected, onSelect,
-  bulkSelectable, isBulkSelected, onToggleBulkSelect, matchRank,
+  bulkSelectable, isBulkSelected, onToggleBulkSelect, matchRank, isFocused, onFocus,
 }: LeadCardProps) {
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
@@ -1429,7 +1434,17 @@ const LeadCard = memo(function LeadCard({
       tabIndex={hideActions ? 0 : undefined}
       onClick={hideActions ? () => onSelect?.(lead) : undefined}
       onKeyDown={hideActions ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect?.(lead); } } : undefined}
-      className={`relative flex ${hideActions ? 'h-auto' : 'h-full'} min-w-0 flex-col overflow-hidden rounded-lg border ${isSelected ? 'border-blue-400 ring-1 ring-blue-200' : 'border-[#dfdad2] dark:border-white/10'} ${cardFillClass} ${hideActions ? 'cursor-pointer' : ''}`}
+      onClickCapture={!hideActions && onFocus ? (event) => {
+        // Ignore clicks on anything that already acts: buttons, links, the
+        // tick. Focusing the card is the fallback, not an override.
+        if ((event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        onFocus(lead);
+      } : undefined}
+      className={`relative flex ${hideActions ? 'h-auto' : 'h-full'} min-w-0 flex-col overflow-hidden rounded-lg border ${
+        isSelected ? 'border-blue-400 ring-1 ring-blue-200'
+          : isFocused ? 'border-indigo-400 ring-1 ring-indigo-200'
+          : 'border-[#dfdad2] dark:border-white/10'
+      } ${cardFillClass} ${hideActions || onFocus ? 'cursor-pointer' : ''}`}
     >
       <LeadKindPill kind={lead.kind} variant="banner" />
       {matchRank != null && (
@@ -2530,6 +2545,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // the same description — the same job posted twice — so comparing text
   // highlighted both and there was no way to tell which one you had picked.
   const [aiMatchSelectedPostId, setAiMatchSelectedPostId] = useState<string | null>(null);
+  const [aiMatchPreviewLeadId, setAiMatchPreviewLeadId] = useState<string | null>(null);
   const [aiMatchFromTitle, setAiMatchFromTitle] = useState('');
   const [aiMatchRecents, setAiMatchRecents] = useState<AiMatchRecent[]>(() => readAiMatchRecents());
   const [aiMatchOwnPosts, setAiMatchOwnPosts] = useState<AiMatchOwnPost[]>([]);
@@ -2700,6 +2716,10 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       else next.add(lead.id);
       return next;
     });
+  }, []);
+  // Stable, so passing it to every card does not defeat LeadCard's memo().
+  const handleFocusMatchCard = useCallback((lead: SocialLead) => {
+    setAiMatchPreviewLeadId(lead.id);
   }, []);
   const [sendingViaGmail, setSendingViaGmail] = useState(false);
   const [showGmailConnectPrompt, setShowGmailConnectPrompt] = useState(false);
@@ -3961,6 +3981,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       onCollapseSkills: collapseCardSkills,
       onToggleField: toggleCardField,
       matchRank,
+      isFocused: aiMatch && aiMatchPreviewLead?.id === lead.id,
+      onFocus: aiMatch ? handleFocusMatchCard : undefined,
       bulkSelectable: aiMatch && lead.aiMatchScore != null,
       isBulkSelected: bulkSelectedIds.has(lead.id),
       onToggleBulkSelect: toggleBulkSelect,
@@ -3994,6 +4016,28 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       </Fragment>
     );
   });
+
+  // Mobile matches, with the draft opened under whichever card is tapped —
+  // the first one by default, so the page arrives already showing what an AI
+  // Invite actually says. There is no room for a column beside the list, and
+  // burying the same thing behind a modal is what stopped people trying it.
+  const renderMobileMatchCards = (leads: SocialLead[]) => {
+    const cards = renderLeadCards(leads);
+    if (!aiMatch || !aiMatchPreviewLead) return cards;
+    const focusedIdx = leads.findIndex((lead) => lead.id === aiMatchPreviewLead.id);
+    if (focusedIdx < 0) return cards;
+    const draft = (
+      <AiMatchInvitePane
+        key={`draft-${aiMatchPreviewLead.id}`}
+        inline
+        lead={aiMatchPreviewLead}
+        senderName={aiMatchSenderName}
+        isGenerating={processingAskAILeadId === aiMatchPreviewLead.id}
+        onSend={() => { void handleAskAI(aiMatchPreviewLead); }}
+      />
+    );
+    return [...cards.slice(0, focusedIdx + 1), draft, ...cards.slice(focusedIdx + 1)];
+  };
 
   const parseLeadingNumber = (value: string): number => {
     const match = value.match(/-?\d+(\.\d+)?/);
@@ -6198,6 +6242,18 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     const line = fix[top.reason];
     return line ? ` ${line}` : '';
   })();
+
+  // The pane follows the selected card, and falls back to the first result so
+  // the draft is visible the moment a run finishes.
+  const aiMatchPreviewLead = useMemo(() => {
+    const scored = filteredFeed.filter((lead) => lead.aiMatchScore != null);
+    return scored.find((lead) => lead.id === aiMatchPreviewLeadId) ?? scored[0] ?? null;
+  }, [filteredFeed, aiMatchPreviewLeadId]);
+
+  const aiMatchSenderName = (user?.user_metadata?.full_name as string | undefined)
+    || (user?.user_metadata?.name as string | undefined)
+    || account?.name
+    || undefined;
 
   const aiMatchEmptyMessage = !aiMatch
     ? null
@@ -8553,9 +8609,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                           </div>
                           )
                         ) : (
-                          <div className="space-y-2 bg-[#f3f2ee] px-1.5 pt-1 pb-4 dark:bg-[#1B1D21]">
-                            {renderLeadCards(visibleFeed)}
-                            {renderFeedPagingFooter()}
+                          <div className="bg-[#f3f2ee] px-1.5 pt-1 pb-4 dark:bg-[#1B1D21]">
+                            <div className="space-y-2">
+                              {renderMobileMatchCards(visibleFeed)}
+                              {renderFeedPagingFooter()}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -8621,6 +8679,30 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                               </>
                             ) : isDetailLayout ? (
                               renderDetailSplitView(visibleDesktopRecentFeed, true)
+                            ) : aiMatch ? (
+                              // One column of matches with the draft beside
+                              // them. Two columns fitted more matches on screen
+                              // and explained none of them; the pane is what
+                              // makes the action legible before it is paid for.
+                              <div className="bg-[#f3f2ee] dark:bg-[#1B1D21]">
+                                <div className="flex items-start gap-2 p-1.5">
+                                  <div className="min-w-0 flex-1 space-y-1.5">
+                                    {renderLeadCards(visibleDesktopRecentFeed)}
+                                  </div>
+                                  {/* From md, not lg: below lg the desktop
+                                      branch would otherwise leave one very
+                                      wide column of cards and no draft. */}
+                                  <div className="sticky top-0 hidden h-[30rem] w-[17rem] shrink-0 md:block lg:w-[21rem]">
+                                    <AiMatchInvitePane
+                                      lead={aiMatchPreviewLead}
+                                      senderName={aiMatchSenderName}
+                                      isGenerating={Boolean(aiMatchPreviewLead && processingAskAILeadId === aiMatchPreviewLead.id)}
+                                      onSend={() => { if (aiMatchPreviewLead) void handleAskAI(aiMatchPreviewLead); }}
+                                    />
+                                  </div>
+                                </div>
+                                {renderFeedPagingFooter()}
+                              </div>
                             ) : (
                               <div className="bg-[#f3f2ee] dark:bg-[#1B1D21]">
                                 <div className="grid grid-cols-2 items-stretch gap-1.5 p-1.5">
