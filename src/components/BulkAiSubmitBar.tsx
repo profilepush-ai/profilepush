@@ -198,15 +198,15 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
   if (!quota.gmail_connected) {
     return (
       <div className="mx-1.5 mb-2 overflow-hidden rounded-xl border border-amber-300 bg-amber-50">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100">
+        <div className="flex items-center gap-2.5 px-3 py-2.5 sm:gap-4 sm:px-4 sm:py-3.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 sm:h-9 sm:w-9">
             <AlertTriangle size={17} className="text-amber-700" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-semibold leading-tight text-amber-900">
+            <p className="truncate text-[13px] font-semibold leading-tight text-amber-900 sm:text-[15px]">
               Connect Gmail to reach all {sendable.length} at once
             </p>
-            <p className="mt-0.5 text-[12px] leading-tight text-amber-800/80">
+            <p className="mt-0.5 hidden truncate text-[12px] leading-tight text-amber-800/80 sm:block">
               Sent from your own address, so replies come straight back to you.
             </p>
           </div>
@@ -217,14 +217,14 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
           ) : (
             <button
               onClick={() => void requestOutlook()}
-              className="text-[12px] font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900"
+              className="hidden shrink-0 text-[12px] font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 sm:inline"
             >
               I use Outlook
             </button>
           )}
           <button
             onClick={onConnectGmail}
-            className="shrink-0 rounded-lg bg-amber-600 px-5 py-2.5 text-[13px] font-bold text-white shadow-sm transition hover:bg-amber-700"
+            className="shrink-0 rounded-lg bg-amber-600 px-3.5 py-2 text-[12px] font-bold text-white shadow-sm transition hover:bg-amber-700 sm:px-5 sm:py-2.5 sm:text-[13px]"
           >
             Connect Gmail
           </button>
@@ -236,10 +236,10 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
   return (
     <div className="mx-1.5 mb-2 overflow-hidden rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 shadow-sm">
       {progress ? (
-        <div className="px-4 py-3.5">
+        <div className="px-3 py-2.5 sm:px-4 sm:py-3.5">
           <div className="flex items-center gap-2.5 text-white">
             <Loader2 size={16} className="animate-spin" />
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium sm:text-sm">
               Sending {progress.sent + progress.failed + 1} of {batch.length} — {progress.current}
             </span>
           </div>
@@ -253,9 +253,13 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
           </div>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15">
-            <Icon size={17} className="text-white" />
+        // No wrapping on a phone: the heading, the hint and the button each
+        // became their own line and the bar took a third of the screen. It
+        // stays one row and the text truncates instead.
+        <div className="flex items-center gap-2.5 px-3 py-2.5 sm:gap-4 sm:px-4 sm:py-3.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15 sm:h-9 sm:w-9">
+            <Icon size={14} className="text-white sm:hidden" />
+            <Icon size={17} className="hidden text-white sm:block" />
           </span>
 
           <div className="min-w-0 flex-1">
@@ -263,12 +267,14 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
                 today all belong on the confirm step, where someone is deciding
                 whether to spend them — in the bar they were noise between the
                 reader and the button. */}
-            <p className="text-[15px] font-semibold leading-tight text-white">
+            <p className="truncate text-[13px] font-semibold leading-tight text-white sm:text-[15px]">
               {isNarrowed
                 ? `Send bulk invite to the ${batch.length} selected`
                 : 'Send bulk invite to all matches'}
             </p>
-            <p className="mt-0.5 text-[12px] leading-tight text-white/75">
+            {/* Secondary on a phone: the tick boxes on the cards below say the
+                same thing, and this line is what pushed the row to two. */}
+            <p className="mt-0.5 hidden truncate text-[12px] leading-tight text-white/75 sm:block">
               {isNarrowed ? 'Or clear the selection to send to everyone' : 'Or select below to choose who'}
             </p>
           </div>
@@ -276,7 +282,7 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
           {isNarrowed && onClearSelection && (
             <button
               onClick={onClearSelection}
-              className="text-[12px] font-medium text-white/70 underline underline-offset-2 hover:text-white"
+              className="hidden shrink-0 text-[12px] font-medium text-white/70 underline underline-offset-2 hover:text-white sm:inline"
             >
               Clear
             </button>
@@ -285,10 +291,10 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
           <button
             onClick={() => setConfirming(true)}
             disabled={batch.length === 0}
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-[13px] font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:bg-white/40 disabled:text-white/70"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-[12px] font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:bg-white/40 disabled:text-white/70 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-[13px]"
           >
-            <Mail size={15} strokeWidth={2.25} />
-            {batch.length === 0 ? 'Daily limit reached' : 'Send Now'}
+            <Mail size={14} strokeWidth={2.25} />
+            {batch.length === 0 ? 'Limit reached' : 'Send Now'}
           </button>
         </div>
       )}
