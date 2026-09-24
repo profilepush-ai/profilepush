@@ -180,6 +180,7 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
         const send = await supabase.functions.invoke('ask-ai-vendor-email', {
           body: {
             action: 'send',
+            send_source: 'bulk',
             request_id: requestId,
             account_id: accountId,
             job_id: target.id,

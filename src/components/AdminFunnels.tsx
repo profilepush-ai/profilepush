@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import FunnelSankey from './FunnelSankey';
 import {
   buildFunnel,
+  buildFunnelGraph,
   formatRate,
   personaLess,
   signupsInRange,
@@ -175,6 +177,8 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
   ), [ga4.daily]);
   const vendor = useMemo(() => buildFunnel(accounts, 'vendor', startDate, endDate), [accounts, startDate, endDate]);
   const bench = useMemo(() => buildFunnel(accounts, 'bench_sales', startDate, endDate), [accounts, startDate, endDate]);
+  const vendorGraph = useMemo(() => buildFunnelGraph(accounts, 'vendor', startDate, endDate), [accounts, startDate, endDate]);
+  const benchGraph = useMemo(() => buildFunnelGraph(accounts, 'bench_sales', startDate, endDate), [accounts, startDate, endDate]);
   const signups = useMemo(() => signupsInRange(accounts, startDate, endDate), [accounts, startDate, endDate]);
   const undecided = useMemo(() => personaLess(accounts, startDate, endDate), [accounts, startDate, endDate]);
 
@@ -240,6 +244,15 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
           </p>
           <p className="mt-0.5 text-[10px] text-gray-400">in neither funnel below</p>
         </div>
+      </div>
+
+      {/* The graph first: it is the one that separates generating a draft
+          from connecting a mailbox from sending, which is where the drop
+          actually is. The single-line funnel stays underneath for the
+          top-to-bottom conversion rate. */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <FunnelSankey graph={vendorGraph} hex={PERSONA_HEX.vendor} personaLabel={PERSONA_LABEL.vendor} accent={PERSONA_ACCENT.vendor} rangeLabel={rangeLabel} />
+        <FunnelSankey graph={benchGraph} hex={PERSONA_HEX.bench_sales} personaLabel={PERSONA_LABEL.bench_sales} accent={PERSONA_ACCENT.bench_sales} rangeLabel={rangeLabel} />
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">

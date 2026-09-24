@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFunnel, personaLess, signupsInRange, worstStep, type FunnelAccount } from './admin-funnel';
+import { buildFunnel, buildFunnelGraph, personaLess, signupsInRange, worstStep, type FunnelAccount } from './admin-funnel';
 
 const account = (overrides: Partial<FunnelAccount> = {}): FunnelAccount => ({
   created_at: '2026-09-22T10:00:00.000Z',
@@ -9,6 +9,8 @@ const account = (overrides: Partial<FunnelAccount> = {}): FunnelAccount => ({
   hotlist_posts_count: 0,
   job_previews_count: 0,
   hotlist_previews_count: 0,
+  ai_drafts_count: 0,
+  ai_bulk_sends_count: 0,
   ai_pitches_count: 0,
   ai_requests_count: 0,
   ai_match_runs_count: 0,
@@ -136,5 +138,54 @@ describe('routes', () => {
     ]);
     // Routes are counted within the stage, so they can never exceed it.
     expect(acted?.routes?.reduce((sum, r) => sum + r.count, 0)).toBe(acted?.count);
+  });
+});
+
+describe('buildFunnelGraph', () => {
+  const journeyed = (over: Partial<FunnelAccount> = {}) => account({
+    session_count: 1, ai_match_runs_count: 1, ai_drafts_count: 1,
+    gmail_connected: true, ai_pitches_count: 1, ...over,
+  });
+
+  it('never lets a link carry more than either node it touches', () => {
+    const accounts = [
+      journeyed(),
+      journeyed({ gmail_connected: false, ai_pitches_count: 0 }),
+      account({ session_count: 1 }),
+      account(),
+    ];
+    const { nodes, links } = buildFunnelGraph(accounts, 'vendor', null, null);
+    const countOf = (key: string) => nodes.find((n) => n.key === key)!.count;
+    for (const link of links) {
+      expect(link.count).toBeLessThanOrEqual(countOf(link.from));
+      expect(link.count).toBeLessThanOrEqual(countOf(link.to));
+    }
+  });
+
+  it('shows the drop from generating a draft to connecting Gmail', () => {
+    const accounts = [
+      journeyed(),
+      journeyed({ gmail_connected: false, ai_pitches_count: 0 }),
+      journeyed({ gmail_connected: false, ai_pitches_count: 0 }),
+    ];
+    const { nodes } = buildFunnelGraph(accounts, 'vendor', null, null);
+    expect(nodes.find((n) => n.key === 'generated')!.count).toBe(3);
+    expect(nodes.find((n) => n.key === 'connected')!.count).toBe(1);
+  });
+
+  it('keeps previewing off the main line', () => {
+    // Previewed but never generated: it must not gate anything downstream.
+    const accounts = [journeyed({ job_previews_count: 2 }), journeyed({ ai_drafts_count: 0, job_previews_count: 5 })];
+    const { nodes } = buildFunnelGraph(accounts, 'vendor', null, null);
+    expect(nodes.find((n) => n.key === 'previewed')!.count).toBe(2);
+    expect(nodes.find((n) => n.key === 'previewed')!.aside).toBe(true);
+    expect(nodes.find((n) => n.key === 'generated')!.count).toBe(1);
+  });
+
+  it('counts bulk sends separately from sends', () => {
+    const accounts = [journeyed({ ai_bulk_sends_count: 4 }), journeyed()];
+    const { nodes } = buildFunnelGraph(accounts, 'vendor', null, null);
+    expect(nodes.find((n) => n.key === 'sent')!.count).toBe(2);
+    expect(nodes.find((n) => n.key === 'bulk')!.count).toBe(1);
   });
 });
