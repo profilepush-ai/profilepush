@@ -62,6 +62,7 @@ Deno.serve(async (req: Request) => {
       postsHotlistRes,
       previewsRes,
       aiDraftsRes,
+      creditsGrantedRes,
       creditsSpentRes,
       aiBulkSendsRes,
       aiPitchesRes,
@@ -132,6 +133,16 @@ Deno.serve(async (req: Request) => {
           .in("account_id", accountIds)
           .eq("description", "Usage: pulse_ask_ai_preview_generate")
       ),
+      // What each account was actually granted. Not a constant: the signup
+      // grant was cut from 500 to 100 on 2026-09-21, so a fixed divisor would
+      // report the same spend as a very different share depending on when
+      // someone joined. Deliberately not date-filtered — the grant is a
+      // property of the account, not activity inside the window.
+      supabase
+        .from("credit_transactions")
+        .select("account_id, amount")
+        .in("account_id", accountIds)
+        .eq("description", "Free signup credits"),
       // Credits actually spent, from the ledger rather than inferred from the
       // balance: a balance is also moved by top-ups and refunds, so it cannot
       // say how much of the free grant someone has used.
@@ -228,6 +239,12 @@ Deno.serve(async (req: Request) => {
     const postsJobsCounts = countBy(postsJobsRes.data, "created_by_account_id");
     const postsHotlistCounts = countBy(postsHotlistRes.data, "created_by_account_id");
     const aiDraftsCounts = countBy(aiDraftsRes.data);
+    const creditsGranted: Record<string, number> = {};
+    for (const row of creditsGrantedRes.data ?? []) {
+      const id = (row as { account_id?: string }).account_id;
+      if (!id) continue;
+      creditsGranted[id] = (creditsGranted[id] || 0) + Number((row as { amount?: number }).amount ?? 0);
+    }
     // Summed, not counted: how much was spent, not how many times.
     const creditsSpent: Record<string, number> = {};
     for (const row of creditsSpentRes.data ?? []) {
@@ -364,6 +381,7 @@ Deno.serve(async (req: Request) => {
         hotlist_posts_count: postsHotlistCounts[a.id] || 0,
         job_previews_count: jobPreviewsCounts[a.id] || 0,
         hotlist_previews_count: hotlistPreviewsCounts[a.id] || 0,
+        credits_granted: creditsGranted[a.id] || 0,
         credits_spent: creditsSpent[a.id] || 0,
         ai_drafts_count: aiDraftsCounts[a.id] || 0,
         ai_bulk_sends_count: aiBulkSendCounts[a.id] || 0,

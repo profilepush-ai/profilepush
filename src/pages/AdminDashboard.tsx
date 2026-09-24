@@ -37,6 +37,9 @@ interface AccountStats {
    *  sending: a draft can be generated and never sent. */
   /** Credits used, summed from the ledger. Not derived from the balance,
    *  which top-ups and refunds also move. */
+  /** What this account was granted at signup. Read per account because the
+   *  grant changed from 500 to 100 on 2026-09-21. */
+  credits_granted: number;
   credits_spent: number;
   ai_drafts_count: number;
   /** Sends triggered from the bulk bar. Zero for sends made before
