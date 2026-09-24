@@ -33,6 +33,12 @@ interface AccountStats {
   hotlist_posts_count: number;
   job_previews_count: number;
   hotlist_previews_count: number;
+  /** Drafts generated — the act the credit is charged for. Distinct from
+   *  sending: a draft can be generated and never sent. */
+  ai_drafts_count: number;
+  /** Sends triggered from the bulk bar. Zero for sends made before
+   *  send_source existed, which is not the same as none. */
+  ai_bulk_sends_count: number;
   ai_pitches_count: number;
   ai_requests_count: number;
   ai_match_runs_count: number;

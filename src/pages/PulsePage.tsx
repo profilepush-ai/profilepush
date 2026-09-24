@@ -7187,6 +7187,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       const { data, error } = await supabase.functions.invoke('ask-ai-vendor-email', {
         body: {
           action: 'send',
+          send_source: 'single',
           request_id: preview.requestId,
           account_id: account.id,
           job_id: preview.leadId,

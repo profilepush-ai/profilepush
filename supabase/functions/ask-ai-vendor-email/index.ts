@@ -65,6 +65,11 @@ Deno.serve(async (req: Request) => {
     const jobId = asString(body.job_id, 100);
     const leadType = asString(body.lead_type, 20) === "hotlist" ? "hotlist" : "job";
     const channel = asString(body.channel, 20) === "gmail" ? "gmail" : "mailgun";
+    // Only the two known values are stored. An unrecognised string becomes
+    // null rather than being written through, so the column keeps meaning
+    // exactly what its check constraint says.
+    const sendSourceRaw = asString(body.send_source, 10);
+    const sendSource = sendSourceRaw === "bulk" || sendSourceRaw === "single" ? sendSourceRaw : null;
     const resumeUrl = asString(body.resume_url, 2000);
     const resumeFileName = asString(body.resume_file_name, 255);
     const missingDetails = Array.isArray(body.missing_details)
@@ -358,6 +363,7 @@ Deno.serve(async (req: Request) => {
         hotlist_id: leadType === "hotlist" ? jobId : null,
         status: "processing",
         missing_details: missingDetails,
+        send_source: sendSource,
       });
 
     if (requestInsertError) {

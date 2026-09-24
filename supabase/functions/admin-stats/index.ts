@@ -61,6 +61,8 @@ Deno.serve(async (req: Request) => {
       postsJobsRes,
       postsHotlistRes,
       previewsRes,
+      aiDraftsRes,
+      aiBulkSendsRes,
       aiPitchesRes,
       aiRequestsRes,
       aiMatchRes,
@@ -114,6 +116,25 @@ Deno.serve(async (req: Request) => {
           .select("account_id, lead_id, created_at")
           .in("account_id", accountIds)
           .eq("action_type", "post_content_viewed")
+      ),
+      // Drafts generated. This is the row the credit is charged against, and
+      // it is a different act from sending: pulse_ask_ai_requests only gets a
+      // row once someone actually sends, so without this the funnel could not
+      // see anyone who paid to generate and then stopped.
+      withDateRange(
+        supabase
+          .from("pulse_ask_ai_previews")
+          .select("account_id, created_at")
+          .in("account_id", accountIds)
+      ),
+      // Sends from the bulk bar, as opposed to one at a time. Null for
+      // everything sent before send_source existed.
+      withDateRange(
+        supabase
+          .from("pulse_ask_ai_requests")
+          .select("account_id, created_at")
+          .in("account_id", accountIds)
+          .eq("send_source", "bulk")
       ),
       // AI Pitch (jobs) / AI Request (hotlist) are the same underlying
       // table, split by which foreign key is set.
@@ -191,6 +212,8 @@ Deno.serve(async (req: Request) => {
     const searchesCounts = countBy(searchesRes.data);
     const postsJobsCounts = countBy(postsJobsRes.data, "created_by_account_id");
     const postsHotlistCounts = countBy(postsHotlistRes.data, "created_by_account_id");
+    const aiDraftsCounts = countBy(aiDraftsRes.data);
+    const aiBulkSendCounts = countBy(aiBulkSendsRes.data);
     const aiPitchesCounts = countBy(aiPitchesRes.data);
     const aiRequestsCounts = countBy(aiRequestsRes.data);
     const aiMatchRunCounts = countBy(aiMatchRes.data);
@@ -319,6 +342,8 @@ Deno.serve(async (req: Request) => {
         hotlist_posts_count: postsHotlistCounts[a.id] || 0,
         job_previews_count: jobPreviewsCounts[a.id] || 0,
         hotlist_previews_count: hotlistPreviewsCounts[a.id] || 0,
+        ai_drafts_count: aiDraftsCounts[a.id] || 0,
+        ai_bulk_sends_count: aiBulkSendCounts[a.id] || 0,
         ai_pitches_count: aiPitchesCounts[a.id] || 0,
         ai_requests_count: aiRequestsCounts[a.id] || 0,
         ai_match_runs_count: aiMatchRunCounts[a.id] || 0,

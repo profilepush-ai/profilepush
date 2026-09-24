@@ -18,6 +18,12 @@ export type FunnelAccount = {
   hotlist_posts_count: number;
   job_previews_count: number;
   hotlist_previews_count: number;
+  /** Drafts generated — the act the credit is charged for. Distinct from
+   *  sending: a draft can be generated and never sent. */
+  ai_drafts_count: number;
+  /** Sends triggered from the bulk bar. Zero for sends made before
+   *  send_source existed, which is not the same as none. */
+  ai_bulk_sends_count: number;
   ai_pitches_count: number;
   ai_requests_count: number;
   ai_match_runs_count: number;
@@ -158,4 +164,120 @@ export function worstStep(stages: FunnelStage[]): FunnelStage | null {
 export function formatRate(rate: number | null): string {
   if (rate === null) return '—';
   return `${Math.round(rate * 100)}%`;
+}
+
+// ── The journey as a graph ───────────────────────────────────────────────────
+//
+// The list above answers "how far down do people get". It cannot answer "which
+// way did they go", and after AI Match there is more than one way: previewing
+// a post is a look, generating a draft spends a credit, and sending needs a
+// mailbox connected first. Flattening those into one line hid the biggest
+// drop in the product — of the accounts that paid to generate a draft, most
+// never connected Gmail, so the credit bought them nothing.
+//
+// Nodes carry a count; links carry the accounts that did both ends. A link is
+// therefore never wider than either node it touches, which is the one property
+// that keeps a diagram like this honest.
+
+export type FunnelNode = {
+  key: string;
+  label: string;
+  /** Column index, left to right. Siblings in a column are alternatives. */
+  depth: number;
+  count: number;
+  /** Of the whole persona cohort, for the label under each node. */
+  overallRate: number;
+  /** Set when the node is a side path rather than the main line. */
+  aside?: boolean;
+  /** Said plainly on the node when its number is not what it looks like. */
+  note?: string;
+};
+
+export type FunnelLink = { from: string; to: string; count: number };
+
+export type FunnelGraph = { nodes: FunnelNode[]; links: FunnelLink[]; cohort: number };
+
+type NodeSpec = {
+  key: string;
+  label: string;
+  depth: number;
+  test: (a: FunnelAccount) => boolean;
+  aside?: boolean;
+  note?: string;
+};
+
+const GRAPH_NODES: NodeSpec[] = [
+  { key: 'persona', label: 'Chose a persona', depth: 0, test: () => true },
+  { key: 'signed_in', label: 'Signed in', depth: 1, test: (a) => (a.session_count ?? 0) > 0 },
+  { key: 'matched', label: 'Ran AI Match', depth: 2, test: (a) => (a.ai_match_runs_count ?? 0) > 0 },
+  // The side path: looking at a post costs nothing and leads nowhere on its
+  // own, so it hangs off the match rather than gating anything below it.
+  { key: 'previewed', label: 'Previewed a post', depth: 3, aside: true, test: previewed },
+  { key: 'generated', label: 'Generated a draft', depth: 3, test: (a) => (a.ai_drafts_count ?? 0) > 0 },
+  {
+    key: 'connected',
+    label: 'Connected Gmail',
+    depth: 4,
+    test: (a) => a.gmail_connected === true,
+    note: 'connected now, not ever',
+  },
+  { key: 'sent', label: 'Sent a submission', depth: 5, test: submitted },
+  {
+    key: 'bulk',
+    label: 'Sent in bulk',
+    depth: 6,
+    aside: true,
+    test: (a) => (a.ai_bulk_sends_count ?? 0) > 0,
+    note: 'recorded from Sep 2026',
+  },
+  { key: 'returned', label: 'Came back (2+ days)', depth: 6, test: (a) => (a.active_days ?? 0) >= 2 },
+  { key: 'paid', label: 'Upgraded to paid', depth: 7, test: (a) => a.is_trial === false },
+];
+
+// Which node feeds which. Kept explicit rather than derived from depth,
+// because "previewed" and "bulk" hang off the line instead of continuing it.
+const GRAPH_LINKS: Array<[string, string]> = [
+  ['persona', 'signed_in'],
+  ['signed_in', 'matched'],
+  ['matched', 'previewed'],
+  ['matched', 'generated'],
+  ['generated', 'connected'],
+  ['connected', 'sent'],
+  ['sent', 'bulk'],
+  ['sent', 'returned'],
+  ['returned', 'paid'],
+];
+
+export function buildFunnelGraph(
+  accounts: FunnelAccount[],
+  persona: Persona,
+  startDate: string | null,
+  endDate: string | null,
+): FunnelGraph {
+  const cohort = accounts.filter((a) => inRange(a, startDate, endDate) && a.active_persona === persona);
+  const bySpec = new Map(GRAPH_NODES.map((spec) => [spec.key, spec]));
+
+  const nodes: FunnelNode[] = GRAPH_NODES.map((spec) => {
+    const count = cohort.filter(spec.test).length;
+    return {
+      key: spec.key,
+      label: spec.label,
+      depth: spec.depth,
+      count,
+      overallRate: cohort.length === 0 ? 0 : count / cohort.length,
+      aside: spec.aside,
+      note: spec.note,
+    };
+  });
+
+  // An account counts on a link only if it satisfies both ends. That is what
+  // stops a link claiming more traffic than the node it flows into, which is
+  // the usual way a diagram like this quietly lies.
+  const links: FunnelLink[] = GRAPH_LINKS.map(([from, to]) => {
+    const fromSpec = bySpec.get(from)!;
+    const toSpec = bySpec.get(to)!;
+    return { from, to, count: cohort.filter((a) => fromSpec.test(a) && toSpec.test(a)).length };
+  });
+
+  return { nodes, links, cohort: cohort.length };
 }
