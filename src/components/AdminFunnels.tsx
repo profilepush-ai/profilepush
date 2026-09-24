@@ -36,6 +36,95 @@ const PERSONA_HEX: Record<Persona, string> = {
   bench_sales: '#10b981',
 };
 
+// The shared top of the funnel: visits, then the signup page, then an account.
+//
+// Drawn once rather than inside each persona column, because Google Analytics
+// reports a property, not a persona — nobody has chosen vendor or bench sales
+// until after they sign up. Splitting these numbers two ways would be
+// inventing a division the data does not contain. So this is the trunk, and
+// the persona funnels below are what it splits into.
+//
+// Same geometry as FunnelColumn on purpose: two funnels on one screen that
+// taper differently read as two different kinds of thing.
+function TopFunnel({ visitors, signupPage, signups, rangeLabel }: {
+  visitors: number; signupPage: number; signups: number; rangeLabel: string;
+}) {
+  const stages = [
+    { key: 'visited', label: 'Visited the site', count: visitors },
+    { key: 'signup_page', label: 'Reached signup', count: signupPage },
+    { key: 'signed_up', label: 'Created an account', count: signups },
+  ];
+  const ROW_H = 44;
+  const W = 100;
+  const top = stages[0].count;
+  // A stage nobody reached still needs a visible neck, or the funnel appears
+  // to stop and the rows below read as a rendering fault.
+  const widthAt = (i: number) => (top === 0 ? 0 : Math.max(4, (stages[i].count / top) * W));
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white">
+      <div className="flex items-baseline justify-between gap-2 border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-slate-400" />
+          <h2 className="text-sm font-semibold text-gray-900">Before signup · everyone</h2>
+        </div>
+        <span className="text-[10px] text-gray-400">Google Analytics · {rangeLabel}</span>
+      </div>
+
+      <div className="px-3 py-2">
+        {stages.map((stage, index) => {
+          const wTop = widthAt(index);
+          const wBottom = index === stages.length - 1 ? wTop * 0.75 : widthAt(index + 1);
+          const stepRate = index === 0 || stages[index - 1].count === 0
+            ? null : stage.count / stages[index - 1].count;
+          return (
+            <div key={stage.key}>
+              <div className="flex items-stretch" style={{ height: ROW_H }}>
+                <div className="flex w-[104px] shrink-0 items-center justify-end pr-2 sm:w-[128px]">
+                  <span className="truncate text-right text-[11px] leading-tight text-gray-600">{stage.label}</span>
+                </div>
+                <div className="relative min-w-0 flex-1">
+                  <svg viewBox={`0 0 ${W} ${ROW_H}`} preserveAspectRatio="none" className="h-full w-full" aria-hidden="true">
+                    <polygon
+                      points={`${(W - wTop) / 2},0 ${(W + wTop) / 2},0 ${(W + wBottom) / 2},${ROW_H} ${(W - wBottom) / 2},${ROW_H}`}
+                      fill={stage.count === 0 ? '#e5e7eb' : '#64748b'}
+                      opacity={stage.count === 0 ? 1 : 1 - index * 0.12}
+                    />
+                  </svg>
+                </div>
+                <div className="flex w-[84px] shrink-0 flex-col items-end justify-center pl-2">
+                  <span className="text-sm font-semibold leading-none tabular-nums text-gray-900">
+                    {stage.count.toLocaleString()}
+                  </span>
+                  {index > 0 && top > 0 && (
+                    <span className="mt-0.5 text-[10px] leading-none text-gray-400">
+                      {formatRate(stage.count / top)} of top
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {index < stages.length - 1 && (
+                <div className="flex items-center" style={{ height: 18 }}>
+                  <div className="w-[104px] shrink-0 sm:w-[128px]" />
+                  <div className="min-w-0 flex-1 text-center">
+                    <span className="text-[10px] text-gray-400">
+                      {stepRate == null ? '—' : formatRate(stages[index + 1].count / stage.count)} continue
+                      {stage.count - stages[index + 1].count > 0
+                        ? ` · ${(stage.count - stages[index + 1].count).toLocaleString()} lost` : ''}
+                    </span>
+                  </div>
+                  <div className="w-[84px] shrink-0" />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function FunnelColumn({ persona, stages, rangeLabel }: { persona: Persona; stages: FunnelStage[]; rangeLabel: string }) {
   const top = stages[0]?.count ?? 0;
   const worst = worstStep(stages);
@@ -166,27 +255,12 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
   return (
     <div className="space-y-3">
       {ga4.connected ? (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase text-gray-500">Website visitors</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{ga4Totals.visitors.toLocaleString()}</p>
-            <p className="mt-0.5 text-[10px] text-gray-400">Google Analytics · {rangeLabel}</p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase text-gray-500">Reached signup page</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{ga4Totals.signupPage.toLocaleString()}</p>
-            <p className="mt-0.5 text-[10px] text-gray-400">
-              {ga4Totals.visitors > 0 ? formatRate(ga4Totals.signupPage / ga4Totals.visitors) : '—'} of visitors
-            </p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase text-gray-500">Visitor to signup</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">
-              {ga4Totals.visitors > 0 ? formatRate(signups / ga4Totals.visitors) : '—'}
-            </p>
-            <p className="mt-0.5 text-[10px] text-gray-400">the rate the growth plan rests on</p>
-          </div>
-        </div>
+        <TopFunnel
+          visitors={ga4Totals.visitors}
+          signupPage={ga4Totals.signupPage}
+          signups={signups}
+          rangeLabel={rangeLabel}
+        />
       ) : (
         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
           <div className="flex items-start gap-2">
@@ -248,6 +322,11 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
         </div>
       </div>
 
+      {/* Says out loud that the trunk above splits here, so the two columns
+          are not read as separate funnels that happen to sit together. */}
+      <p className="text-[10px] font-semibold uppercase text-gray-500">
+        After signup · splits by persona
+      </p>
       <div className="grid gap-3 lg:grid-cols-2">
         <FunnelColumn persona="vendor" stages={vendor} rangeLabel={rangeLabel} />
         <FunnelColumn persona="bench_sales" stages={bench} rangeLabel={rangeLabel} />
