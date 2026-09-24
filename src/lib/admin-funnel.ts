@@ -43,15 +43,8 @@ export type FunnelStage = {
   overallRate: number;
   /** How many were lost between the stage above and this one. */
   dropped: number;
-  /**
-   * The ways people cleared this stage, when there is more than one. A stage
-   * reachable by either of two actions is still one step down the funnel, but
-   * which route they took is the useful part — so it is reported inside the
-   * stage rather than by splitting the funnel into branches that no longer
-   * share a denominator.
-   */
-  routes?: Array<{ label: string; count: number }>;
 };
+
 
 export type Persona = 'vendor' | 'bench_sales';
 
@@ -74,28 +67,25 @@ export type Persona = 'vendor' | 'bench_sales';
 // Sharing a job or hotlist would sit alongside previewing, but nothing
 // records it — the public permalinks are not instrumented — so it is named in
 // the UI as unmeasured rather than guessed at here.
-const previewed = (a: FunnelAccount) => (a.job_previews_count ?? 0) + (a.hotlist_previews_count ?? 0) > 0;
 const submitted = (a: FunnelAccount) => (a.ai_pitches_count ?? 0) + (a.ai_requests_count ?? 0) > 0;
 
 const STAGES: Array<{
   key: string;
   label: string;
   test: (a: FunnelAccount) => boolean;
-  routes?: Array<{ label: string; test: (a: FunnelAccount) => boolean }>;
 }> = [
   { key: 'persona', label: 'Chose a persona', test: () => true },
   { key: 'signed_in', label: 'Signed in', test: (a) => (a.session_count ?? 0) > 0 },
   { key: 'matched', label: 'Ran AI Match', test: (a) => (a.ai_match_runs_count ?? 0) > 0 },
-  {
-    key: 'acted',
-    label: 'Previewed or AI submit sent',
-    test: (a) => previewed(a) || submitted(a),
-    routes: [
-      { label: 'Previewed only', test: (a) => previewed(a) && !submitted(a) },
-      { label: 'AI submit only', test: (a) => submitted(a) && !previewed(a) },
-      { label: 'Both', test: (a) => previewed(a) && submitted(a) },
-    ],
-  },
+  // Generating, connecting a mailbox and sending are three separate
+  // decisions, and the drop between them is the real one: a draft is charged
+  // for, and without a mailbox connected it can never be sent. Generation is
+  // read from the credit ledger, because the client-side previews table is
+  // not written by the bulk path and reported zero for accounts that had
+  // plainly generated.
+  { key: 'generated', label: 'Generated a draft', test: (a) => (a.ai_drafts_count ?? 0) > 0 },
+  { key: 'connected', label: 'Connected Gmail', test: (a) => a.gmail_connected === true },
+  { key: 'sent', label: 'Sent a submission', test: submitted },
   { key: 'returned', label: 'Came back (2+ days)', test: (a) => (a.active_days ?? 0) >= 2 },
   { key: 'paid', label: 'Upgraded to paid', test: (a) => a.is_trial === false },
 ];
@@ -132,9 +122,6 @@ export function buildFunnel(
       key: stage.key,
       label: stage.label,
       count: reached.length,
-      // Counted against those who reached this stage, so the routes always
-      // add up to it exactly and never imply a bigger cohort than the funnel.
-      routes: stage.routes?.map((route) => ({ label: route.label, count: reached.filter(route.test).length })),
       stepRate: index === 0 ? null : above === 0 ? 0 : reached.length / above,
       overallRate: cohort.length === 0 ? 0 : reached.length / cohort.length,
       dropped: above - reached.length,
@@ -166,254 +153,3 @@ export function formatRate(rate: number | null): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-// ── The journey as a graph ───────────────────────────────────────────────────
-//
-// The list above answers "how far down do people get". It cannot answer "which
-// way did they go", and after AI Match there is more than one way: previewing
-// a post is a look, generating a draft spends a credit, and sending needs a
-// mailbox connected first. Flattening those into one line hid the biggest
-// drop in the product — of the accounts that paid to generate a draft, most
-// never connected Gmail, so the credit bought them nothing.
-//
-// Nodes carry a count; links carry the accounts that did both ends. A link is
-// therefore never wider than either node it touches, which is the one property
-// that keeps a diagram like this honest.
-
-export type FunnelNode = {
-  key: string;
-  label: string;
-  /** Column index, left to right. Siblings in a column are alternatives. */
-  depth: number;
-  count: number;
-  /** Of the whole persona cohort, for the label under each node. */
-  overallRate: number;
-  /** Set when the node is a side path rather than the main line. */
-  aside?: boolean;
-  /** Said plainly on the node when its number is not what it looks like. */
-  note?: string;
-};
-
-export type FunnelLink = { from: string; to: string; count: number };
-
-export type FunnelGraph = { nodes: FunnelNode[]; links: FunnelLink[]; cohort: number };
-
-type NodeSpec = {
-  key: string;
-  label: string;
-  depth: number;
-  test: (a: FunnelAccount) => boolean;
-  aside?: boolean;
-  note?: string;
-};
-
-const GRAPH_NODES: NodeSpec[] = [
-  { key: 'persona', label: 'Chose a persona', depth: 0, test: () => true },
-  { key: 'signed_in', label: 'Signed in', depth: 1, test: (a) => (a.session_count ?? 0) > 0 },
-  { key: 'matched', label: 'Ran AI Match', depth: 2, test: (a) => (a.ai_match_runs_count ?? 0) > 0 },
-  // The side path: looking at a post costs nothing and leads nowhere on its
-  // own, so it hangs off the match rather than gating anything below it.
-  { key: 'previewed', label: 'Previewed a post', depth: 3, aside: true, test: previewed },
-  { key: 'generated', label: 'Generated a draft', depth: 3, test: (a) => (a.ai_drafts_count ?? 0) > 0 },
-  {
-    key: 'connected',
-    label: 'Connected Gmail',
-    depth: 4,
-    test: (a) => a.gmail_connected === true,
-    note: 'connected now, not ever',
-  },
-  { key: 'sent', label: 'Sent a submission', depth: 5, test: submitted },
-  {
-    key: 'bulk',
-    label: 'Sent in bulk',
-    depth: 6,
-    aside: true,
-    test: (a) => (a.ai_bulk_sends_count ?? 0) > 0,
-    note: 'recorded from Sep 2026',
-  },
-  { key: 'returned', label: 'Came back (2+ days)', depth: 6, test: (a) => (a.active_days ?? 0) >= 2 },
-  { key: 'paid', label: 'Upgraded to paid', depth: 7, test: (a) => a.is_trial === false },
-];
-
-// Which node feeds which. Kept explicit rather than derived from depth,
-// because "previewed" and "bulk" hang off the line instead of continuing it.
-const GRAPH_LINKS: Array<[string, string]> = [
-  ['persona', 'signed_in'],
-  ['signed_in', 'matched'],
-  ['matched', 'previewed'],
-  ['matched', 'generated'],
-  ['generated', 'connected'],
-  ['connected', 'sent'],
-  ['sent', 'bulk'],
-  ['sent', 'returned'],
-  ['returned', 'paid'],
-];
-
-export function buildFunnelGraph(
-  accounts: FunnelAccount[],
-  persona: Persona,
-  startDate: string | null,
-  endDate: string | null,
-): FunnelGraph {
-  const cohort = accounts.filter((a) => inRange(a, startDate, endDate) && a.active_persona === persona);
-  const bySpec = new Map(GRAPH_NODES.map((spec) => [spec.key, spec]));
-
-  const nodes: FunnelNode[] = GRAPH_NODES.map((spec) => {
-    const count = cohort.filter(spec.test).length;
-    return {
-      key: spec.key,
-      label: spec.label,
-      depth: spec.depth,
-      count,
-      overallRate: cohort.length === 0 ? 0 : count / cohort.length,
-      aside: spec.aside,
-      note: spec.note,
-    };
-  });
-
-  // An account counts on a link only if it satisfies both ends. That is what
-  // stops a link claiming more traffic than the node it flows into, which is
-  // the usual way a diagram like this quietly lies.
-  const links: FunnelLink[] = GRAPH_LINKS.map(([from, to]) => {
-    const fromSpec = bySpec.get(from)!;
-    const toSpec = bySpec.get(to)!;
-    return { from, to, count: cohort.filter((a) => fromSpec.test(a) && toSpec.test(a)).length };
-  });
-
-  return { nodes, links, cohort: cohort.length };
-}
-
-// ── The journey as conserved flow ───────────────────────────────────────────
-//
-// A funnel chart assumes one path: everyone enters at the top, and each stage
-// is a subset of the one above. After AI Match that stops being true — there
-// is more than one thing to do next, and the first attempt at drawing it as a
-// funnel produced a shape that pinched to zero and then widened again, which
-// is not a funnel, it is a contradiction on screen.
-//
-// A flow diagram is the right form for branching paths, but only if the flows
-// conserve: every account leaving a node must arrive at exactly one child.
-// That is what this builds. At each split the children are tested in order
-// and an account takes the first one that matches, so the children partition
-// the parent exactly — including a "stopped here" child that catches whoever
-// went no further. A link can then never be wider than its parent, and the
-// picture cannot claim more traffic than exists.
-
-export type FlowNode = {
-  key: string;
-  label: string;
-  depth: number;
-  count: number;
-  /** Of the whole persona cohort. */
-  overallRate: number;
-  /** A terminal node: people who went no further. Drawn muted. */
-  stopped?: boolean;
-  /** Said on the node when its number means something narrower than its label. */
-  note?: string;
-};
-
-export type FlowLink = { from: string; to: string; count: number };
-
-export type FunnelFlow = { nodes: FlowNode[]; links: FlowLink[]; cohort: number; maxDepth: number };
-
-type Split = {
-  from: string;
-  children: Array<{
-    key: string;
-    label: string;
-    test?: (a: FunnelAccount) => boolean;
-    stopped?: boolean;
-    note?: string;
-  }>;
-};
-
-// Each split partitions its parent. The last child of every split has no test
-// and absorbs the remainder, so nobody is silently dropped from the picture.
-const SPLITS: Split[] = [
-  {
-    from: 'cohort',
-    children: [
-      { key: 'signed_in', label: 'Signed in', test: (a) => (a.session_count ?? 0) > 0 },
-      { key: 'never_signed_in', label: 'Never signed in', stopped: true },
-    ],
-  },
-  {
-    from: 'signed_in',
-    children: [
-      { key: 'matched', label: 'Ran AI Match', test: (a) => (a.ai_match_runs_count ?? 0) > 0 },
-      { key: 'no_match', label: 'Never ran a match', stopped: true },
-    ],
-  },
-  {
-    from: 'matched',
-    children: [
-      // Generating is tested first because it is the stronger signal: someone
-      // who generated and also previewed belongs on the paying path.
-      { key: 'generated', label: 'Generated a draft', test: (a) => (a.ai_drafts_count ?? 0) > 0 },
-      { key: 'previewed_only', label: 'Only previewed', test: previewed, stopped: true },
-      { key: 'matched_stopped', label: 'Stopped at matches', stopped: true },
-    ],
-  },
-  {
-    from: 'generated',
-    children: [
-      { key: 'connected', label: 'Connected Gmail', test: (a) => a.gmail_connected === true, note: 'connected now, not ever' },
-      { key: 'no_mailbox', label: 'No mailbox connected', stopped: true },
-    ],
-  },
-  {
-    from: 'connected',
-    children: [
-      { key: 'sent', label: 'Sent a submission', test: submitted },
-      { key: 'never_sent', label: 'Connected but never sent', stopped: true },
-    ],
-  },
-  {
-    from: 'sent',
-    children: [
-      { key: 'bulk', label: 'Sent in bulk', test: (a) => (a.ai_bulk_sends_count ?? 0) > 0, note: 'recorded from Sep 2026' },
-      { key: 'single', label: 'Sent one at a time' },
-    ],
-  },
-];
-
-export function buildFunnelFlow(
-  accounts: FunnelAccount[],
-  persona: Persona,
-  startDate: string | null,
-  endDate: string | null,
-): FunnelFlow {
-  const cohort = accounts.filter((a) => inRange(a, startDate, endDate) && a.active_persona === persona);
-
-  const members = new Map<string, FunnelAccount[]>([['cohort', cohort]]);
-  const nodes: FlowNode[] = [
-    { key: 'cohort', label: 'Chose a persona', depth: 0, count: cohort.length, overallRate: cohort.length ? 1 : 0 },
-  ];
-  const links: FlowLink[] = [];
-  const depthOf = new Map<string, number>([['cohort', 0]]);
-
-  for (const split of SPLITS) {
-    const parent = members.get(split.from) ?? [];
-    const depth = (depthOf.get(split.from) ?? 0) + 1;
-    let remaining = parent;
-
-    for (const child of split.children) {
-      const taken = child.test ? remaining.filter(child.test) : remaining;
-      remaining = child.test ? remaining.filter((a) => !child.test!(a)) : [];
-
-      members.set(child.key, taken);
-      depthOf.set(child.key, depth);
-      nodes.push({
-        key: child.key,
-        label: child.label,
-        depth,
-        count: taken.length,
-        overallRate: cohort.length === 0 ? 0 : taken.length / cohort.length,
-        stopped: child.stopped,
-        note: child.note,
-      });
-      links.push({ from: split.from, to: child.key, count: taken.length });
-    }
-  }
-
-  return { nodes, links, cohort: cohort.length, maxDepth: Math.max(...nodes.map((n) => n.depth)) };
-}
