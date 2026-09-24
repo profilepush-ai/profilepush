@@ -8899,9 +8899,15 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                       </div>
                     ) : (
                       <div className="min-h-0 h-full rounded-md bg-transparent p-1">
+                        {/* overflow-visible under aiMatch on purpose: the section
+                            is flex-none there, so h-full here resolves to auto and
+                            this never scrolls — yet overflow-y-auto still makes it
+                            the scrollport the invite pane sticks to, which is why
+                            the pane rode down with the cards. Leaving it visible
+                            hands the pane the real scroller wrapping this column. */}
                         <div
                           ref={desktopMatchesScrollRef}
-                          className={`min-h-0 h-full overflow-y-auto slim-scrollbar ${isTableLayout ? 'px-1.5 pb-1.5' : 'p-1.5'}`}
+                          className={`min-h-0 h-full slim-scrollbar ${aiMatch && !isMobileViewport ? 'overflow-visible' : 'overflow-y-auto'} ${isTableLayout ? 'px-1.5 pb-1.5' : 'p-1.5'}`}
                           onScroll={selectedMatchesTab === 'previewed' ? handleDesktopPreviewedScroll : selectedMatchesTab === 'asked' ? handleDesktopAskedScroll : selectedMatchesTab === 'verified' ? handleDesktopVerifiedScroll : handleDesktopRecentScroll}
                         >
                           {isSwipeLayout ? (
@@ -8972,8 +8978,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                                   {/* From md, not lg: below lg the desktop
                                       branch would otherwise leave one very
                                       wide column of cards and no draft. */}
+                                  <div className="hidden w-[17rem] shrink-0 self-start md:block lg:w-[21rem]">
                                   <div
-                                    className="sticky hidden h-[30rem] max-h-[calc(100dvh-16rem)] w-[17rem] shrink-0 self-start md:block lg:w-[21rem]"
+                                    className="sticky h-[30rem] max-h-[calc(100dvh-16rem)]"
                                     style={{ top: aiMatchBulkBarHeight }}
                                   >
                                     <AiMatchInvitePane
@@ -8987,6 +8994,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                                       onGenerateAndSend={() => { if (aiMatchPreviewLead) void handleGenerateAndSend(aiMatchPreviewLead); }}
                                       onSend={() => { if (aiMatchPreviewLead) void handleAskAI(aiMatchPreviewLead); }}
                                     />
+                                  </div>
                                   </div>
                                 </div>
                                 {renderFeedPagingFooter()}
