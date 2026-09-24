@@ -3,14 +3,11 @@ import { AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import FunnelSankey from './FunnelSankey';
 import {
-  buildFunnel,
   buildFunnelGraph,
   formatRate,
   personaLess,
   signupsInRange,
-  worstStep,
   type FunnelAccount,
-  type FunnelStage,
   type Persona,
 } from '../lib/admin-funnel';
 
@@ -36,111 +33,6 @@ const PERSONA_HEX: Record<Persona, string> = {
   vendor: '#3b82f6',
   bench_sales: '#10b981',
 };
-
-function FunnelColumn({ persona, stages, rangeLabel }: { persona: Persona; stages: FunnelStage[]; rangeLabel: string }) {
-  const top = stages[0]?.count ?? 0;
-  const worst = worstStep(stages);
-
-  // Labels sit outside the shape, not inside it. Inside only works when a
-  // funnel tapers gently; this one can go to zero in a single step, and then
-  // every band is a sliver with text stacked on top of itself.
-  //
-  // Each row draws its own trapezoid, from this stage's share to the next
-  // stage's, so consecutive rows join into one continuous taper.
-  const ROW_H = 44;
-  const W = 100;
-  const widthAt = (index: number) => {
-    const stage = stages[index];
-    if (!stage) return 0;
-    // A stage nobody reached still needs a visible neck, or the funnel just
-    // stops and the rows below look like a rendering bug.
-    return Math.max(4, stage.overallRate * W);
-  };
-
-  return (
-    <div className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white">
-      <div className="flex items-baseline justify-between gap-2 border-b border-gray-200 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${PERSONA_ACCENT[persona]}`} />
-          <h2 className="text-sm font-semibold text-gray-900">{PERSONA_LABEL[persona]}</h2>
-        </div>
-        <span className="text-[10px] text-gray-400">{rangeLabel}</span>
-      </div>
-
-      {top === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-gray-400">No {PERSONA_LABEL[persona].toLowerCase()} signed up in this range.</p>
-      ) : (
-        <div className="px-3 py-2">
-          {stages.map((stage, index) => {
-            const wTop = widthAt(index);
-            const wBottom = index === stages.length - 1 ? wTop * 0.75 : widthAt(index + 1);
-            const isWorst = worst?.key === stage.key;
-            const empty = stage.count === 0;
-            return (
-              <div key={stage.key}>
-                <div className="flex items-stretch" style={{ height: ROW_H }}>
-                  <div className="flex w-[104px] shrink-0 items-center justify-end pr-2 sm:w-[128px]">
-                    <span className={`truncate text-right text-[11px] leading-tight ${isWorst ? 'font-semibold text-red-600' : 'text-gray-600'}`}>
-                      {stage.label}
-                    </span>
-                  </div>
-
-                  <div className="relative min-w-0 flex-1">
-                    <svg viewBox={`0 0 ${W} ${ROW_H}`} preserveAspectRatio="none" className="h-full w-full" aria-hidden="true">
-                      <polygon
-                        points={`${(W - wTop) / 2},0 ${(W + wTop) / 2},0 ${(W + wBottom) / 2},${ROW_H} ${(W - wBottom) / 2},${ROW_H}`}
-                        fill={empty ? '#e5e7eb' : PERSONA_HEX[persona]}
-                        opacity={empty ? 1 : 1 - index * 0.1}
-                      />
-                    </svg>
-                  </div>
-
-                  <div className="flex w-[84px] shrink-0 flex-col items-end justify-center pl-2">
-                    <span className="text-sm font-semibold leading-none tabular-nums text-gray-900">{stage.count}</span>
-                    {index > 0 && (
-                      <span className="mt-0.5 text-[10px] leading-none text-gray-400">{formatRate(stage.overallRate)} of top</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* The routes into this stage, inside it rather than as
-                    branches: a branch splits the cohort and its rates stop
-                    being comparable with the spine above it. */}
-                {stage.routes && stage.count > 0 && (
-                  <div className="flex items-center pb-1" style={{ minHeight: 18 }}>
-                    <div className="w-[104px] shrink-0 sm:w-[128px]" />
-                    <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-3 gap-y-0.5">
-                      {stage.routes.filter((route) => route.count > 0).map((route) => (
-                        <span key={route.label} className="text-[10px] text-gray-400">
-                          {route.label} <span className="font-semibold tabular-nums text-gray-600">{route.count}</span>
-                        </span>
-                      ))}
-                    </div>
-                    <div className="w-[84px] shrink-0" />
-                  </div>
-                )}
-
-                {index < stages.length - 1 && (
-                  <div className="flex items-center" style={{ height: 18 }}>
-                    <div className="w-[104px] shrink-0 sm:w-[128px]" />
-                    <div className="min-w-0 flex-1 text-center">
-                      <span className={`text-[10px] ${worst?.key === stages[index + 1].key ? 'font-semibold text-red-600' : 'text-gray-400'}`}>
-                        {formatRate(stages[index + 1].stepRate)} continue
-                        {stages[index + 1].dropped > 0 ? ` · ${stages[index + 1].dropped} lost` : ''}
-                        {worst?.key === stages[index + 1].key ? ' · biggest drop' : ''}
-                      </span>
-                    </div>
-                    <div className="w-[84px] shrink-0" />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
 
 type Ga4Day = { date: string; sessions: number; visitors: number; signup_page_views: number; signup_page_visitors: number };
 type Ga4State = { connected: boolean; reason?: string; daily: Ga4Day[] };
@@ -175,8 +67,6 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
     }),
     { visitors: 0, signupPage: 0 },
   ), [ga4.daily]);
-  const vendor = useMemo(() => buildFunnel(accounts, 'vendor', startDate, endDate), [accounts, startDate, endDate]);
-  const bench = useMemo(() => buildFunnel(accounts, 'bench_sales', startDate, endDate), [accounts, startDate, endDate]);
   const vendorGraph = useMemo(() => buildFunnelGraph(accounts, 'vendor', startDate, endDate), [accounts, startDate, endDate]);
   const benchGraph = useMemo(() => buildFunnelGraph(accounts, 'bench_sales', startDate, endDate), [accounts, startDate, endDate]);
   const signups = useMemo(() => signupsInRange(accounts, startDate, endDate), [accounts, startDate, endDate]);
@@ -231,10 +121,10 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
           <p className="text-[10px] font-semibold uppercase text-gray-500">Chose a persona</p>
           <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">
-            {(vendor[0]?.count ?? 0) + (bench[0]?.count ?? 0)}
+            {vendorGraph.cohort + benchGraph.cohort}
           </p>
           <p className="mt-0.5 text-[10px] text-gray-400">
-            {signups > 0 ? formatRate(((vendor[0]?.count ?? 0) + (bench[0]?.count ?? 0)) / signups) : '—'} of signups
+            {signups > 0 ? formatRate((vendorGraph.cohort + benchGraph.cohort) / signups) : '—'} of signups
           </p>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
@@ -246,18 +136,12 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
         </div>
       </div>
 
-      {/* The graph first: it is the one that separates generating a draft
-          from connecting a mailbox from sending, which is where the drop
-          actually is. The single-line funnel stays underneath for the
-          top-to-bottom conversion rate. */}
+      {/* One funnel, branching. A second non-branching copy underneath is
+          just the flat version again, and two funnels of the same data on one
+          screen invite reading the wrong one. */}
       <div className="grid gap-3 lg:grid-cols-2">
         <FunnelSankey graph={vendorGraph} hex={PERSONA_HEX.vendor} personaLabel={PERSONA_LABEL.vendor} accent={PERSONA_ACCENT.vendor} rangeLabel={rangeLabel} />
         <FunnelSankey graph={benchGraph} hex={PERSONA_HEX.bench_sales} personaLabel={PERSONA_LABEL.bench_sales} accent={PERSONA_ACCENT.bench_sales} rangeLabel={rangeLabel} />
-      </div>
-
-      <div className="grid gap-3 lg:grid-cols-2">
-        <FunnelColumn persona="vendor" stages={vendor} rangeLabel={rangeLabel} />
-        <FunnelColumn persona="bench_sales" stages={bench} rangeLabel={rangeLabel} />
       </div>
     </div>
   );
