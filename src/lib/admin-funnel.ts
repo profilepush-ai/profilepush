@@ -20,6 +20,9 @@ export type FunnelAccount = {
   hotlist_previews_count: number;
   /** Drafts generated — the act the credit is charged for. Distinct from
    *  sending: a draft can be generated and never sent. */
+  /** Credits used, summed from the ledger. Not derived from the balance,
+   *  which top-ups and refunds also move. */
+  credits_spent: number;
   ai_drafts_count: number;
   /** Sends triggered from the bulk bar. Zero for sends made before
    *  send_source existed, which is not the same as none. */
@@ -67,6 +70,9 @@ export type Persona = 'vendor' | 'bench_sales';
 // Sharing a job or hotlist would sit alongside previewing, but nothing
 // records it — the public permalinks are not instrumented — so it is named in
 // the UI as unmeasured rather than guessed at here.
+/** The one-time free grant every account starts with. */
+const FREE_CREDIT_GRANT = 500;
+
 const submitted = (a: FunnelAccount) => (a.ai_pitches_count ?? 0) + (a.ai_requests_count ?? 0) > 0;
 
 const STAGES: Array<{
@@ -87,6 +93,17 @@ const STAGES: Array<{
   { key: 'connected', label: 'Connected Gmail', test: (a) => a.gmail_connected === true },
   { key: 'sent', label: 'Sent a submission', test: submitted },
   { key: 'returned', label: 'Came back (2+ days)', test: (a) => (a.active_days ?? 0) >= 2 },
+  // How far into the free grant they got. Every account starts with 500
+  // credits, so these are shares of that, and they nest by construction:
+  // anyone past half is also past a quarter. Running out is the moment paying
+  // becomes a question, which is why they sit directly above the paid step.
+  ...([10, 25, 50, 100] as const).map((pct) => ({
+    key: `credits_${pct}`,
+    // "10%+", not "10%": each band is everyone at or past that point, which
+    // is what makes them nest — anyone past half is also past a quarter.
+    label: `Used ${pct}%+ of credits`,
+    test: (a: FunnelAccount) => (a.credits_spent ?? 0) >= (FREE_CREDIT_GRANT * pct) / 100,
+  })),
   { key: 'paid', label: 'Upgraded to paid', test: (a) => a.is_trial === false },
 ];
 

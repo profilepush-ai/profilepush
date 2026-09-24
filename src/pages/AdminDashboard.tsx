@@ -35,6 +35,9 @@ interface AccountStats {
   hotlist_previews_count: number;
   /** Drafts generated — the act the credit is charged for. Distinct from
    *  sending: a draft can be generated and never sent. */
+  /** Credits used, summed from the ledger. Not derived from the balance,
+   *  which top-ups and refunds also move. */
+  credits_spent: number;
   ai_drafts_count: number;
   /** Sends triggered from the bulk bar. Zero for sends made before
    *  send_source existed, which is not the same as none. */

@@ -11,6 +11,9 @@ export interface AdminAccountStatsRow {
   hotlist_posts_count: number;
   job_previews_count: number;
   hotlist_previews_count: number;
+  /** Credits used, summed from the ledger. Not derived from the balance,
+   *  which top-ups and refunds also move. */
+  credits_spent: number;
   ai_drafts_count: number;
   ai_bulk_sends_count: number;
   ai_pitches_count: number;

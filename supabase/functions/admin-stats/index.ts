@@ -62,6 +62,7 @@ Deno.serve(async (req: Request) => {
       postsHotlistRes,
       previewsRes,
       aiDraftsRes,
+      creditsSpentRes,
       aiBulkSendsRes,
       aiPitchesRes,
       aiRequestsRes,
@@ -130,6 +131,16 @@ Deno.serve(async (req: Request) => {
           .select("account_id, created_at")
           .in("account_id", accountIds)
           .eq("description", "Usage: pulse_ask_ai_preview_generate")
+      ),
+      // Credits actually spent, from the ledger rather than inferred from the
+      // balance: a balance is also moved by top-ups and refunds, so it cannot
+      // say how much of the free grant someone has used.
+      withDateRange(
+        supabase
+          .from("credit_transactions")
+          .select("account_id, amount, created_at")
+          .in("account_id", accountIds)
+          .eq("type", "usage")
       ),
       // Sends from the bulk bar, as opposed to one at a time. Null for
       // everything sent before send_source existed.
@@ -217,6 +228,13 @@ Deno.serve(async (req: Request) => {
     const postsJobsCounts = countBy(postsJobsRes.data, "created_by_account_id");
     const postsHotlistCounts = countBy(postsHotlistRes.data, "created_by_account_id");
     const aiDraftsCounts = countBy(aiDraftsRes.data);
+    // Summed, not counted: how much was spent, not how many times.
+    const creditsSpent: Record<string, number> = {};
+    for (const row of creditsSpentRes.data ?? []) {
+      const id = (row as { account_id?: string }).account_id;
+      if (!id) continue;
+      creditsSpent[id] = (creditsSpent[id] || 0) + Math.abs(Number((row as { amount?: number }).amount ?? 0));
+    }
     const aiBulkSendCounts = countBy(aiBulkSendsRes.data);
     const aiPitchesCounts = countBy(aiPitchesRes.data);
     const aiRequestsCounts = countBy(aiRequestsRes.data);
@@ -346,6 +364,7 @@ Deno.serve(async (req: Request) => {
         hotlist_posts_count: postsHotlistCounts[a.id] || 0,
         job_previews_count: jobPreviewsCounts[a.id] || 0,
         hotlist_previews_count: hotlistPreviewsCounts[a.id] || 0,
+        credits_spent: creditsSpent[a.id] || 0,
         ai_drafts_count: aiDraftsCounts[a.id] || 0,
         ai_bulk_sends_count: aiBulkSendCounts[a.id] || 0,
         ai_pitches_count: aiPitchesCounts[a.id] || 0,
