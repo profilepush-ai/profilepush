@@ -3,7 +3,7 @@ import { AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import FunnelSankey from './FunnelSankey';
 import {
-  buildFunnelGraph,
+  buildFunnelFlow,
   formatRate,
   personaLess,
   signupsInRange,
@@ -67,8 +67,8 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
     }),
     { visitors: 0, signupPage: 0 },
   ), [ga4.daily]);
-  const vendorGraph = useMemo(() => buildFunnelGraph(accounts, 'vendor', startDate, endDate), [accounts, startDate, endDate]);
-  const benchGraph = useMemo(() => buildFunnelGraph(accounts, 'bench_sales', startDate, endDate), [accounts, startDate, endDate]);
+  const vendorFlow = useMemo(() => buildFunnelFlow(accounts, 'vendor', startDate, endDate), [accounts, startDate, endDate]);
+  const benchFlow = useMemo(() => buildFunnelFlow(accounts, 'bench_sales', startDate, endDate), [accounts, startDate, endDate]);
   const signups = useMemo(() => signupsInRange(accounts, startDate, endDate), [accounts, startDate, endDate]);
   const undecided = useMemo(() => personaLess(accounts, startDate, endDate), [accounts, startDate, endDate]);
 
@@ -121,10 +121,10 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
           <p className="text-[10px] font-semibold uppercase text-gray-500">Chose a persona</p>
           <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">
-            {vendorGraph.cohort + benchGraph.cohort}
+            {vendorFlow.cohort + benchFlow.cohort}
           </p>
           <p className="mt-0.5 text-[10px] text-gray-400">
-            {signups > 0 ? formatRate((vendorGraph.cohort + benchGraph.cohort) / signups) : '—'} of signups
+            {signups > 0 ? formatRate((vendorFlow.cohort + benchFlow.cohort) / signups) : '—'} of signups
           </p>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
@@ -139,9 +139,11 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
       {/* One funnel, branching. A second non-branching copy underneath is
           just the flat version again, and two funnels of the same data on one
           screen invite reading the wrong one. */}
-      <div className="grid gap-3 lg:grid-cols-2">
-        <FunnelSankey graph={vendorGraph} hex={PERSONA_HEX.vendor} personaLabel={PERSONA_LABEL.vendor} accent={PERSONA_ACCENT.vendor} rangeLabel={rangeLabel} />
-        <FunnelSankey graph={benchGraph} hex={PERSONA_HEX.bench_sales} personaLabel={PERSONA_LABEL.bench_sales} accent={PERSONA_ACCENT.bench_sales} rangeLabel={rangeLabel} />
+      {/* Stacked, not side by side: a left-to-right flow with six columns
+          needs the full width to stay readable. */}
+      <div className="grid gap-3">
+        <FunnelSankey flow={vendorFlow} hex={PERSONA_HEX.vendor} personaLabel={PERSONA_LABEL.vendor} accent={PERSONA_ACCENT.vendor} rangeLabel={rangeLabel} />
+        <FunnelSankey flow={benchFlow} hex={PERSONA_HEX.bench_sales} personaLabel={PERSONA_LABEL.bench_sales} accent={PERSONA_ACCENT.bench_sales} rangeLabel={rangeLabel} />
       </div>
     </div>
   );

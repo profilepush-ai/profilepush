@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFunnel, buildFunnelGraph, personaLess, signupsInRange, worstStep, type FunnelAccount } from './admin-funnel';
+import { buildFunnel, buildFunnelFlow, buildFunnelGraph, personaLess, signupsInRange, worstStep, type FunnelAccount } from './admin-funnel';
 
 const account = (overrides: Partial<FunnelAccount> = {}): FunnelAccount => ({
   created_at: '2026-09-22T10:00:00.000Z',
@@ -187,5 +187,43 @@ describe('buildFunnelGraph', () => {
     const { nodes } = buildFunnelGraph(accounts, 'vendor', null, null);
     expect(nodes.find((n) => n.key === 'sent')!.count).toBe(2);
     expect(nodes.find((n) => n.key === 'bulk')!.count).toBe(1);
+  });
+});
+
+describe('buildFunnelFlow', () => {
+  const journeyed = (over: Partial<FunnelAccount> = {}) => account({
+    session_count: 1, ai_match_runs_count: 1, ai_drafts_count: 1,
+    gmail_connected: true, ai_pitches_count: 1, ...over,
+  });
+
+  it('conserves flow: every split sums to its parent', () => {
+    const accounts = [
+      journeyed(),
+      journeyed({ gmail_connected: false, ai_pitches_count: 0 }),
+      journeyed({ ai_drafts_count: 0, job_previews_count: 3, gmail_connected: false, ai_pitches_count: 0 }),
+      account({ session_count: 1 }),
+      account(),
+    ];
+    const { nodes, links } = buildFunnelFlow(accounts, 'vendor', null, null);
+    const countOf = (key: string) => nodes.find((n) => n.key === key)!.count;
+    const parents = [...new Set(links.map((l) => l.from))];
+    for (const parent of parents) {
+      const out = links.filter((l) => l.from === parent).reduce((sum, l) => sum + l.count, 0);
+      expect(out).toBe(countOf(parent));
+    }
+  });
+
+  it('puts an account that generated and previewed on the paying path, not the aside', () => {
+    const both = journeyed({ job_previews_count: 4 });
+    const { nodes } = buildFunnelFlow([both], 'vendor', null, null);
+    expect(nodes.find((n) => n.key === 'generated')!.count).toBe(1);
+    expect(nodes.find((n) => n.key === 'previewed_only')!.count).toBe(0);
+  });
+
+  it('never lets a node exceed its parent', () => {
+    const accounts = [journeyed(), journeyed({ ai_bulk_sends_count: 2 }), account({ session_count: 1 })];
+    const { nodes, links } = buildFunnelFlow(accounts, 'vendor', null, null);
+    const countOf = (key: string) => nodes.find((n) => n.key === key)!.count;
+    for (const link of links) expect(countOf(link.to)).toBeLessThanOrEqual(countOf(link.from));
   });
 });

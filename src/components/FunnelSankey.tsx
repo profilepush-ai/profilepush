@@ -1,53 +1,68 @@
-import type { FunnelGraph, FunnelNode } from '../lib/admin-funnel';
+import type { FunnelFlow } from '../lib/admin-funnel';
 import { formatRate } from '../lib/admin-funnel';
 
-// A funnel that branches.
+// A Sankey, because the journey branches.
 //
-// The shape is the tapering funnel, not a row of bars — bars were tried here
-// before and rejected, because a bar chart with steps down it is a bar chart,
-// and the thing worth seeing is the narrowing.
+// Two earlier attempts here were wrong in instructive ways. Horizontal bars
+// were not a funnel at all. The funnel that replaced them pinched to zero at
+// "Generated a draft" and then widened again below it, because the nodes were
+// counted independently and drawn as if they were nested — a funnel chart
+// assumes every stage is a subset of the one above, and after AI Match that
+// stops being true.
 //
-// What is new is that the narrowing forks. After AI Match there is more than
-// one thing to do, and they are not the same decision: previewing costs
-// nothing, generating a draft costs a credit, and sending needs a mailbox
-// connected first. The spine is the paying line — generate, connect, send —
-// and the side paths peel off it.
+// A flow diagram is the form for branching paths, and buildFunnelFlow makes
+// the flows conserve: every account leaving a node arrives at exactly one
+// child, including a "stopped" child for those who went no further. So a
+// ribbon can never be wider than its source, and the picture cannot claim
+// more traffic than exists.
 //
-// Mass is deliberately not conserved at a fork, and it would be wrong to draw
-// it as if it were. Previewing and generating are not exclusive: the same
-// account can do both, so a true Sankey ribbon splitting one into two would
-// claim a division that does not exist. A side path is drawn as an arm off
-// the spine, and the spine keeps its full width.
-//
-// Hand-drawn SVG. The last charting library here was recharts and it came
-// out: 300kB for a shape that collapsed whenever a band hit zero, which this
-// data does routinely.
+// Drawn by hand. A charting library was tried here before — recharts, 300kB —
+// and came out because the shape collapsed whenever a band hit zero, which
+// this data does routinely.
 
-const ROW_H = 46;
-const W = 100;
-const ASIDE_CX = 74;
+const NODE_W = 11;
+const GAP_Y = 9;
+const PAD_Y = 10;
+const MIN_H = 3;
 
-type Props = { graph: FunnelGraph; hex: string; rangeLabel: string; personaLabel: string; accent: string };
+type Props = { flow: FunnelFlow; hex: string; rangeLabel: string; personaLabel: string; accent: string };
 
-export default function FunnelSankey({ graph, hex, rangeLabel, personaLabel, accent }: Props) {
-  const { nodes, links, cohort } = graph;
-  const spine = nodes.filter((n) => !n.aside);
-  const asideOf = (key: string) => nodes.find((n) => n.aside && links.some((l) => l.from === key && l.to === n.key));
+type Placed = { key: string; x: number; y: number; h: number };
 
-  // A node nobody reached still needs a visible neck, or the funnel appears to
-  // stop and every row under it reads as a rendering fault.
-  const widthOf = (node: FunnelNode | undefined) =>
-    !node || cohort === 0 ? 0 : Math.max(4, (node.count / cohort) * W);
+export default function FunnelSankey({ flow, hex, rangeLabel, personaLabel, accent }: Props) {
+  const { nodes, links, cohort, maxDepth } = flow;
 
-  const linkRate = (from: string, to: string) => {
-    const link = links.find((l) => l.from === from && l.to === to);
-    const source = nodes.find((n) => n.key === from);
-    if (!link || !source || source.count === 0) return 0;
-    return link.count / source.count;
+  // Height is driven by the busiest column, so nothing overlaps at any range.
+  const perDepth = new Map<number, typeof nodes>();
+  for (const node of nodes) perDepth.set(node.depth, [...(perDepth.get(node.depth) ?? []), node]);
+  const tallest = Math.max(...[...perDepth.values()].map((column) => column.length));
+  const H = Math.max(210, tallest * 34 + PAD_Y * 2);
+  const W = 100;
+  const colX = (depth: number) => (maxDepth === 0 ? 0 : (depth / maxDepth) * (W - NODE_W));
+
+  // A count of zero still gets a hairline: a gap where a node should be reads
+  // as a broken render rather than as nobody getting there.
+  const heightFor = (count: number) => {
+    if (cohort === 0) return MIN_H;
+    const usable = H - PAD_Y * 2 - (tallest - 1) * GAP_Y;
+    return count === 0 ? MIN_H : Math.max(MIN_H, (count / cohort) * usable);
   };
 
+  const placed = new Map<string, Placed>();
+  for (const [depth, column] of perDepth) {
+    const total = column.reduce((sum, n) => sum + heightFor(n.count), 0) + (column.length - 1) * GAP_Y;
+    let y = Math.max(PAD_Y, (H - total) / 2);
+    for (const node of column) {
+      const h = heightFor(node.count);
+      placed.set(node.key, { key: node.key, x: colX(depth), y, h });
+      y += h + GAP_Y;
+    }
+  }
+
+  const byKey = new Map(nodes.map((n) => [n.key, n]));
+
   return (
-    <div className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white">
+    <div className="min-w-0 rounded-lg border border-gray-200 bg-white">
       <div className="flex items-baseline justify-between gap-2 border-b border-gray-200 px-4 py-3">
         <div className="flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${accent}`} />
@@ -61,83 +76,68 @@ export default function FunnelSankey({ graph, hex, rangeLabel, personaLabel, acc
           No {personaLabel.toLowerCase()} signed up in this range.
         </p>
       ) : (
-        <div className="px-3 py-2">
-          {spine.map((node, index) => {
-            const next = spine[index + 1];
-            const wTop = widthOf(node);
-            // The last row tapers gently rather than to a point, so the funnel
-            // ends looking finished instead of truncated.
-            const wBottom = next ? widthOf(next) : wTop * 0.75;
-            const aside = asideOf(node.key);
-            const wAside = widthOf(aside);
-            const empty = node.count === 0;
+        <div className="overflow-x-auto px-3 py-3">
+          <div className="min-w-[680px]">
+            <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }} role="img"
+              aria-label={`${personaLabel} journey: ${nodes.map((n) => `${n.label} ${n.count}`).join(', ')}`}>
+              {/* Ribbons first, so node blocks sit on top of where they join. */}
+              {links.map((link) => {
+                const from = placed.get(link.from);
+                const to = placed.get(link.to);
+                const target = byKey.get(link.to);
+                if (!from || !to || !target) return null;
+                const thickness = Math.max(0.8, heightFor(link.count));
+                const x1 = from.x + NODE_W;
+                const x2 = to.x;
+                const mid = (x1 + x2) / 2;
+                const y1 = from.y + from.h / 2;
+                const y2 = to.y + to.h / 2;
+                return (
+                  <path
+                    key={`${link.from}-${link.to}`}
+                    d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`}
+                    stroke={hex}
+                    strokeWidth={thickness}
+                    strokeOpacity={target.stopped ? 0.14 : 0.32}
+                    fill="none"
+                  />
+                );
+              })}
 
-            return (
-              <div key={node.key}>
-                <div className="flex items-stretch" style={{ height: ROW_H }}>
-                  <div className="flex w-[104px] shrink-0 items-center justify-end pr-2 sm:w-[124px]">
-                    <span className="truncate text-right text-[11px] leading-tight text-gray-600">{node.label}</span>
-                  </div>
+              {nodes.map((node) => {
+                const box = placed.get(node.key);
+                if (!box) return null;
+                return (
+                  <rect
+                    key={node.key}
+                    x={box.x} y={box.y} width={NODE_W} height={box.h} rx={1.5}
+                    fill={node.count === 0 ? '#e5e7eb' : hex}
+                    opacity={node.stopped ? 0.4 : 1}
+                  />
+                );
+              })}
+            </svg>
 
-                  <div className="relative min-w-0 flex-1">
-                    <svg viewBox={`0 0 ${W} ${ROW_H}`} preserveAspectRatio="none" className="h-full w-full" aria-hidden="true">
-                      {/* The arm, drawn under the spine so the spine keeps its
-                          edge where the two meet. */}
-                      {aside && (
-                        <polygon
-                          points={`${(W + wTop) / 2 - 2},${ROW_H * 0.28} ${ASIDE_CX - wAside / 2},${ROW_H} ${ASIDE_CX + wAside / 2},${ROW_H} ${(W + wTop) / 2 - 2},${ROW_H * 0.52}`}
-                          fill={hex}
-                          opacity={0.3}
-                        />
-                      )}
-                      <polygon
-                        points={`${(W - wTop) / 2},0 ${(W + wTop) / 2},0 ${(W + wBottom) / 2},${ROW_H} ${(W - wBottom) / 2},${ROW_H}`}
-                        fill={empty ? '#e5e7eb' : hex}
-                        opacity={empty ? 1 : 1 - index * 0.08}
-                      />
-                    </svg>
-                  </div>
-
-                  <div className="flex w-[80px] shrink-0 flex-col items-end justify-center pl-2">
-                    <span className="text-sm font-semibold leading-none tabular-nums text-gray-900">{node.count}</span>
-                    <span className="mt-0.5 text-[10px] leading-none text-gray-400">{formatRate(node.overallRate)} of top</span>
-                  </div>
+            {/* Labels as HTML under the diagram rather than as SVG text: the
+                viewBox scales horizontally, which would stretch any text
+                drawn inside it. */}
+            <div className="mt-2 grid gap-x-3 gap-y-1" style={{ gridTemplateColumns: `repeat(${maxDepth + 1}, minmax(0, 1fr))` }}>
+              {[...perDepth.entries()].sort((a, b) => a[0] - b[0]).map(([depth, column]) => (
+                <div key={depth} className="min-w-0">
+                  {column.map((node) => (
+                    <p key={node.key} className={`truncate text-[10px] leading-snug ${node.stopped ? 'text-gray-400' : 'text-gray-700'}`}>
+                      <span className="font-semibold tabular-nums">{node.count}</span>{' '}
+                      {node.label}
+                      <span className="text-gray-400">
+                        {' · '}{formatRate(node.overallRate)}
+                        {node.note ? ` · ${node.note}` : ''}
+                      </span>
+                    </p>
+                  ))}
                 </div>
-
-                {/* The arm's own label and count, indented so it reads as
-                    hanging off the row above rather than continuing it. */}
-                {aside && (
-                  <div className="flex items-center" style={{ height: 26 }}>
-                    <div className="w-[104px] shrink-0 sm:w-[124px]" />
-                    <div className="min-w-0 flex-1 pl-[50%]">
-                      <span className="truncate text-[10px] text-gray-500">
-                        ↳ {aside.label} <span className="font-semibold tabular-nums text-gray-700">{aside.count}</span>
-                        <span className="text-gray-400">
-                          {' · '}{formatRate(linkRate(node.key, aside.key))} of {node.label.toLowerCase()}
-                          {aside.note ? ` · ${aside.note}` : ''}
-                        </span>
-                      </span>
-                    </div>
-                    <div className="w-[80px] shrink-0" />
-                  </div>
-                )}
-
-                {next && (
-                  <div className="flex items-center" style={{ height: 16 }}>
-                    <div className="w-[104px] shrink-0 sm:w-[124px]" />
-                    <div className="min-w-0 flex-1 text-center">
-                      <span className="text-[10px] text-gray-400">
-                        {formatRate(linkRate(node.key, next.key))} continue
-                        {node.count - next.count > 0 ? ` · ${node.count - next.count} lost` : ''}
-                        {next.note ? ` · ${next.note}` : ''}
-                      </span>
-                    </div>
-                    <div className="w-[80px] shrink-0" />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

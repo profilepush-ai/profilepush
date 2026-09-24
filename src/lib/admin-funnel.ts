@@ -281,3 +281,139 @@ export function buildFunnelGraph(
 
   return { nodes, links, cohort: cohort.length };
 }
+
+// ── The journey as conserved flow ───────────────────────────────────────────
+//
+// A funnel chart assumes one path: everyone enters at the top, and each stage
+// is a subset of the one above. After AI Match that stops being true — there
+// is more than one thing to do next, and the first attempt at drawing it as a
+// funnel produced a shape that pinched to zero and then widened again, which
+// is not a funnel, it is a contradiction on screen.
+//
+// A flow diagram is the right form for branching paths, but only if the flows
+// conserve: every account leaving a node must arrive at exactly one child.
+// That is what this builds. At each split the children are tested in order
+// and an account takes the first one that matches, so the children partition
+// the parent exactly — including a "stopped here" child that catches whoever
+// went no further. A link can then never be wider than its parent, and the
+// picture cannot claim more traffic than exists.
+
+export type FlowNode = {
+  key: string;
+  label: string;
+  depth: number;
+  count: number;
+  /** Of the whole persona cohort. */
+  overallRate: number;
+  /** A terminal node: people who went no further. Drawn muted. */
+  stopped?: boolean;
+  /** Said on the node when its number means something narrower than its label. */
+  note?: string;
+};
+
+export type FlowLink = { from: string; to: string; count: number };
+
+export type FunnelFlow = { nodes: FlowNode[]; links: FlowLink[]; cohort: number; maxDepth: number };
+
+type Split = {
+  from: string;
+  children: Array<{
+    key: string;
+    label: string;
+    test?: (a: FunnelAccount) => boolean;
+    stopped?: boolean;
+    note?: string;
+  }>;
+};
+
+// Each split partitions its parent. The last child of every split has no test
+// and absorbs the remainder, so nobody is silently dropped from the picture.
+const SPLITS: Split[] = [
+  {
+    from: 'cohort',
+    children: [
+      { key: 'signed_in', label: 'Signed in', test: (a) => (a.session_count ?? 0) > 0 },
+      { key: 'never_signed_in', label: 'Never signed in', stopped: true },
+    ],
+  },
+  {
+    from: 'signed_in',
+    children: [
+      { key: 'matched', label: 'Ran AI Match', test: (a) => (a.ai_match_runs_count ?? 0) > 0 },
+      { key: 'no_match', label: 'Never ran a match', stopped: true },
+    ],
+  },
+  {
+    from: 'matched',
+    children: [
+      // Generating is tested first because it is the stronger signal: someone
+      // who generated and also previewed belongs on the paying path.
+      { key: 'generated', label: 'Generated a draft', test: (a) => (a.ai_drafts_count ?? 0) > 0 },
+      { key: 'previewed_only', label: 'Only previewed', test: previewed, stopped: true },
+      { key: 'matched_stopped', label: 'Stopped at matches', stopped: true },
+    ],
+  },
+  {
+    from: 'generated',
+    children: [
+      { key: 'connected', label: 'Connected Gmail', test: (a) => a.gmail_connected === true, note: 'connected now, not ever' },
+      { key: 'no_mailbox', label: 'No mailbox connected', stopped: true },
+    ],
+  },
+  {
+    from: 'connected',
+    children: [
+      { key: 'sent', label: 'Sent a submission', test: submitted },
+      { key: 'never_sent', label: 'Connected but never sent', stopped: true },
+    ],
+  },
+  {
+    from: 'sent',
+    children: [
+      { key: 'bulk', label: 'Sent in bulk', test: (a) => (a.ai_bulk_sends_count ?? 0) > 0, note: 'recorded from Sep 2026' },
+      { key: 'single', label: 'Sent one at a time' },
+    ],
+  },
+];
+
+export function buildFunnelFlow(
+  accounts: FunnelAccount[],
+  persona: Persona,
+  startDate: string | null,
+  endDate: string | null,
+): FunnelFlow {
+  const cohort = accounts.filter((a) => inRange(a, startDate, endDate) && a.active_persona === persona);
+
+  const members = new Map<string, FunnelAccount[]>([['cohort', cohort]]);
+  const nodes: FlowNode[] = [
+    { key: 'cohort', label: 'Chose a persona', depth: 0, count: cohort.length, overallRate: cohort.length ? 1 : 0 },
+  ];
+  const links: FlowLink[] = [];
+  const depthOf = new Map<string, number>([['cohort', 0]]);
+
+  for (const split of SPLITS) {
+    const parent = members.get(split.from) ?? [];
+    const depth = (depthOf.get(split.from) ?? 0) + 1;
+    let remaining = parent;
+
+    for (const child of split.children) {
+      const taken = child.test ? remaining.filter(child.test) : remaining;
+      remaining = child.test ? remaining.filter((a) => !child.test!(a)) : [];
+
+      members.set(child.key, taken);
+      depthOf.set(child.key, depth);
+      nodes.push({
+        key: child.key,
+        label: child.label,
+        depth,
+        count: taken.length,
+        overallRate: cohort.length === 0 ? 0 : taken.length / cohort.length,
+        stopped: child.stopped,
+        note: child.note,
+      });
+      links.push({ from: split.from, to: child.key, count: taken.length });
+    }
+  }
+
+  return { nodes, links, cohort: cohort.length, maxDepth: Math.max(...nodes.map((n) => n.depth)) };
+}

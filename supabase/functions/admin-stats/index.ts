@@ -117,15 +117,19 @@ Deno.serve(async (req: Request) => {
           .in("account_id", accountIds)
           .eq("action_type", "post_content_viewed")
       ),
-      // Drafts generated. This is the row the credit is charged against, and
-      // it is a different act from sending: pulse_ask_ai_requests only gets a
-      // row once someone actually sends, so without this the funnel could not
-      // see anyone who paid to generate and then stopped.
+      // Drafts generated, read from the credit ledger rather than
+      // pulse_ask_ai_previews. That table is written by the client after a
+      // single generation and the bulk bar never writes it, so counting it
+      // reported zero generations for accounts that had plainly generated —
+      // and the funnel then widened below a node it had pinched to nothing.
+      // The charge is taken server-side on every path, so the ledger is the
+      // only complete record.
       withDateRange(
         supabase
-          .from("pulse_ask_ai_previews")
+          .from("credit_transactions")
           .select("account_id, created_at")
           .in("account_id", accountIds)
+          .eq("description", "Usage: pulse_ask_ai_preview_generate")
       ),
       // Sends from the bulk bar, as opposed to one at a time. Null for
       // everything sent before send_source existed.
