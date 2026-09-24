@@ -8978,7 +8978,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                                   {/* From md, not lg: below lg the desktop
                                       branch would otherwise leave one very
                                       wide column of cards and no draft. */}
-                                  <div className="hidden w-[17rem] shrink-0 self-start md:block lg:w-[21rem]">
+                                  {/* self-stretch, not self-start: a sticky box can
+                                      only travel inside its parent's box, and the row's
+                                      items-start would shrink this wrapper to the pane's
+                                      own height — giving it nowhere to stick to. It has
+                                      to be as tall as the cards beside it. */}
+                                  <div className="hidden w-[17rem] shrink-0 self-stretch md:block lg:w-[21rem]">
                                   <div
                                     className="sticky h-[30rem] max-h-[calc(100dvh-16rem)]"
                                     style={{ top: aiMatchBulkBarHeight }}
