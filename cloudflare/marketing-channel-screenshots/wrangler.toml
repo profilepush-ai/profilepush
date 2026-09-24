@@ -4,9 +4,17 @@ compatibility_date = "2026-09-05"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
+# Daily run switched off. Commented rather than deleted so the schedule that
+# was in use is on record and can be restored in one line.
+#
 # 09:30 UTC = 3:00 PM IST (Asia/Kolkata, UTC+5:30).
+# [triggers]
+# crons = ["30 9 * * *"]
+#
+# An empty crons list is what actually clears an existing schedule: dropping
+# the block entirely leaves whatever is already deployed in place.
 [triggers]
-crons = ["30 9 * * *"]
+crons = []
 
 # @cloudflare/puppeteer needs a direct browser binding, not the standalone
 # REST "Quick Actions" screenshot endpoint — the REST endpoint only supports
