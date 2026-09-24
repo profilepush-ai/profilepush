@@ -1,38 +1,50 @@
 import type { FunnelGraph, FunnelNode } from '../lib/admin-funnel';
 import { formatRate } from '../lib/admin-funnel';
 
-// The journey drawn as flows rather than a taper.
+// A funnel that branches.
 //
-// A funnel can only say how far people got. It cannot say which way they went,
-// and after AI Match there is more than one way: previewing costs nothing,
-// generating a draft costs a credit, and sending needs a mailbox connected
-// first. Those are different decisions and they deserve different arms.
+// The shape is the tapering funnel, not a row of bars — bars were tried here
+// before and rejected, because a bar chart with steps down it is a bar chart,
+// and the thing worth seeing is the narrowing.
 //
-// Laid out by hand rather than with a charting library. The last chart here
-// was recharts and it had to come out — 300kB for a shape that collapsed as
-// soon as a band went to zero, which this data does routinely.
+// What is new is that the narrowing forks. After AI Match there is more than
+// one thing to do, and they are not the same decision: previewing costs
+// nothing, generating a draft costs a credit, and sending needs a mailbox
+// connected first. The spine is the paying line — generate, connect, send —
+// and the side paths peel off it.
 //
-// Rows, not columns: there are eight or nine steps with long labels, and on a
-// dashboard that is already two personas wide, a left-to-right Sankey gives
-// each step about forty pixels and nowhere to put its name.
+// Mass is deliberately not conserved at a fork, and it would be wrong to draw
+// it as if it were. Previewing and generating are not exclusive: the same
+// account can do both, so a true Sankey ribbon splitting one into two would
+// claim a division that does not exist. A side path is drawn as an arm off
+// the spine, and the spine keeps its full width.
+//
+// Hand-drawn SVG. The last charting library here was recharts and it came
+// out: 300kB for a shape that collapsed whenever a band hit zero, which this
+// data does routinely.
 
-const ROW_H = 52;
-const LINK_H = 26;
-const BAR_MAX = 190;
+const ROW_H = 46;
+const W = 100;
+const ASIDE_CX = 74;
 
 type Props = { graph: FunnelGraph; hex: string; rangeLabel: string; personaLabel: string; accent: string };
 
-function barWidth(node: FunnelNode, cohort: number): number {
-  if (cohort === 0) return 0;
-  // A node nobody reached still gets a sliver, otherwise the diagram just
-  // stops and everything below it reads as a rendering fault rather than a
-  // result. Anything above zero is at least visible.
-  return node.count === 0 ? 3 : Math.max(6, (node.count / cohort) * BAR_MAX);
-}
-
 export default function FunnelSankey({ graph, hex, rangeLabel, personaLabel, accent }: Props) {
   const { nodes, links, cohort } = graph;
-  const byKey = new Map(nodes.map((n) => [n.key, n]));
+  const spine = nodes.filter((n) => !n.aside);
+  const asideOf = (key: string) => nodes.find((n) => n.aside && links.some((l) => l.from === key && l.to === n.key));
+
+  // A node nobody reached still needs a visible neck, or the funnel appears to
+  // stop and every row under it reads as a rendering fault.
+  const widthOf = (node: FunnelNode | undefined) =>
+    !node || cohort === 0 ? 0 : Math.max(4, (node.count / cohort) * W);
+
+  const linkRate = (from: string, to: string) => {
+    const link = links.find((l) => l.from === from && l.to === to);
+    const source = nodes.find((n) => n.key === from);
+    if (!link || !source || source.count === 0) return 0;
+    return link.count / source.count;
+  };
 
   return (
     <div className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white">
@@ -49,70 +61,80 @@ export default function FunnelSankey({ graph, hex, rangeLabel, personaLabel, acc
           No {personaLabel.toLowerCase()} signed up in this range.
         </p>
       ) : (
-        <div className="px-3 py-3">
-          {nodes.map((node) => {
-            // Every link into this node, so a node fed by more than one arm
-            // shows each of them rather than an unexplained total.
-            const incoming = links.filter((l) => l.to === node.key);
-            const width = barWidth(node, cohort);
+        <div className="px-3 py-2">
+          {spine.map((node, index) => {
+            const next = spine[index + 1];
+            const wTop = widthOf(node);
+            // The last row tapers gently rather than to a point, so the funnel
+            // ends looking finished instead of truncated.
+            const wBottom = next ? widthOf(next) : wTop * 0.75;
+            const aside = asideOf(node.key);
+            const wAside = widthOf(aside);
+            const empty = node.count === 0;
 
             return (
               <div key={node.key}>
-                {incoming.map((link) => {
-                  const source = byKey.get(link.from);
-                  if (!source) return null;
-                  const lost = source.count - link.count;
-                  const rate = source.count === 0 ? 0 : link.count / source.count;
-                  return (
-                    <div
-                      key={`${link.from}-${link.to}`}
-                      className="flex items-center gap-2"
-                      style={{ height: LINK_H, paddingLeft: node.aside ? 26 : 0 }}
-                    >
-                      {/* The flow itself: as wide as the accounts that did
-                          both ends, so it can never claim more than either. */}
-                      <span
-                        className="block shrink-0 rounded-full"
-                        style={{
-                          width: Math.max(2, barWidth({ ...source, count: link.count }, cohort)),
-                          height: 6,
-                          backgroundColor: hex,
-                          opacity: 0.28,
-                        }}
-                      />
-                      <span className="truncate text-[10px] text-gray-400">
-                        {node.aside ? '↳ ' : ''}
-                        {formatRate(rate)} of {source.label.toLowerCase()}
-                        {lost > 0 && !node.aside ? ` · ${lost} lost` : ''}
-                      </span>
-                    </div>
-                  );
-                })}
+                <div className="flex items-stretch" style={{ height: ROW_H }}>
+                  <div className="flex w-[104px] shrink-0 items-center justify-end pr-2 sm:w-[124px]">
+                    <span className="truncate text-right text-[11px] leading-tight text-gray-600">{node.label}</span>
+                  </div>
 
-                <div className="flex items-center gap-2" style={{ height: ROW_H, paddingLeft: node.aside ? 26 : 0 }}>
-                  <span
-                    className="block shrink-0 rounded"
-                    style={{
-                      width,
-                      height: node.aside ? 14 : 22,
-                      backgroundColor: node.count === 0 ? '#e5e7eb' : hex,
-                      opacity: node.aside ? 0.55 : 1,
-                    }}
-                  />
-                  <div className="min-w-0">
-                    <p className={`truncate leading-tight ${node.aside ? 'text-[11px] text-gray-500' : 'text-[12px] font-medium text-gray-900'}`}>
-                      {node.label}
-                    </p>
-                    <p className="text-[10px] leading-tight text-gray-400">
-                      <span className="font-semibold tabular-nums text-gray-700">{node.count}</span>
-                      {' · '}{formatRate(node.overallRate)} of top
-                      {/* Said on the node, because a number that means
-                          something narrower than its label is worse than no
-                          number at all. */}
-                      {node.note ? ` · ${node.note}` : ''}
-                    </p>
+                  <div className="relative min-w-0 flex-1">
+                    <svg viewBox={`0 0 ${W} ${ROW_H}`} preserveAspectRatio="none" className="h-full w-full" aria-hidden="true">
+                      {/* The arm, drawn under the spine so the spine keeps its
+                          edge where the two meet. */}
+                      {aside && (
+                        <polygon
+                          points={`${(W + wTop) / 2 - 2},${ROW_H * 0.28} ${ASIDE_CX - wAside / 2},${ROW_H} ${ASIDE_CX + wAside / 2},${ROW_H} ${(W + wTop) / 2 - 2},${ROW_H * 0.52}`}
+                          fill={hex}
+                          opacity={0.3}
+                        />
+                      )}
+                      <polygon
+                        points={`${(W - wTop) / 2},0 ${(W + wTop) / 2},0 ${(W + wBottom) / 2},${ROW_H} ${(W - wBottom) / 2},${ROW_H}`}
+                        fill={empty ? '#e5e7eb' : hex}
+                        opacity={empty ? 1 : 1 - index * 0.08}
+                      />
+                    </svg>
+                  </div>
+
+                  <div className="flex w-[80px] shrink-0 flex-col items-end justify-center pl-2">
+                    <span className="text-sm font-semibold leading-none tabular-nums text-gray-900">{node.count}</span>
+                    <span className="mt-0.5 text-[10px] leading-none text-gray-400">{formatRate(node.overallRate)} of top</span>
                   </div>
                 </div>
+
+                {/* The arm's own label and count, indented so it reads as
+                    hanging off the row above rather than continuing it. */}
+                {aside && (
+                  <div className="flex items-center" style={{ height: 26 }}>
+                    <div className="w-[104px] shrink-0 sm:w-[124px]" />
+                    <div className="min-w-0 flex-1 pl-[50%]">
+                      <span className="truncate text-[10px] text-gray-500">
+                        ↳ {aside.label} <span className="font-semibold tabular-nums text-gray-700">{aside.count}</span>
+                        <span className="text-gray-400">
+                          {' · '}{formatRate(linkRate(node.key, aside.key))} of {node.label.toLowerCase()}
+                          {aside.note ? ` · ${aside.note}` : ''}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="w-[80px] shrink-0" />
+                  </div>
+                )}
+
+                {next && (
+                  <div className="flex items-center" style={{ height: 16 }}>
+                    <div className="w-[104px] shrink-0 sm:w-[124px]" />
+                    <div className="min-w-0 flex-1 text-center">
+                      <span className="text-[10px] text-gray-400">
+                        {formatRate(linkRate(node.key, next.key))} continue
+                        {node.count - next.count > 0 ? ` · ${node.count - next.count} lost` : ''}
+                        {next.note ? ` · ${next.note}` : ''}
+                      </span>
+                    </div>
+                    <div className="w-[80px] shrink-0" />
+                  </div>
+                )}
               </div>
             );
           })}
