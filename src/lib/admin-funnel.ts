@@ -37,22 +37,59 @@ export type FunnelStage = {
   overallRate: number;
   /** How many were lost between the stage above and this one. */
   dropped: number;
+  /**
+   * The ways people cleared this stage, when there is more than one. A stage
+   * reachable by either of two actions is still one step down the funnel, but
+   * which route they took is the useful part — so it is reported inside the
+   * stage rather than by splitting the funnel into branches that no longer
+   * share a denominator.
+   */
+  routes?: Array<{ label: string; count: number }>;
 };
 
 export type Persona = 'vendor' | 'bench_sales';
 
-// Ordered as the journey is meant to run: look, engage, contribute, come
-// back, pay. Sharing a job or hotlist would sit between previewing and
-// submitting, but nothing records it — the public permalinks are not
-// instrumented — so it is named in the UI as unmeasured rather than guessed
-// at here.
-const STAGES: Array<{ key: string; label: string; test: (a: FunnelAccount) => boolean }> = [
+// Ordered as the product actually runs, which is not how this was first
+// written. Sign-in lands on AI Match, so running a match is the next thing
+// anyone does — it used to sit sixth, below previewing and submitting, and
+// because the stages filter each other cumulatively, every account that
+// signed in and ran a match without first previewing a post was dropped
+// before it reached "Ran AI Match" and counted as zero there. The most
+// important step in the funnel was being undercounted by its own position.
+//
+// Previewing and submitting are alternatives rather than a sequence — either
+// one is the same signal, that the results were worth acting on — so they are
+// one stage, not two ranked against each other.
+//
+// "Posted inventory" is gone. A match run auto-posts the pasted text (see the
+// auto-post block in the ai-match function), so as a stage below AI Match it
+// was close to a tautology and measured no decision the user made.
+//
+// Sharing a job or hotlist would sit alongside previewing, but nothing
+// records it — the public permalinks are not instrumented — so it is named in
+// the UI as unmeasured rather than guessed at here.
+const previewed = (a: FunnelAccount) => (a.job_previews_count ?? 0) + (a.hotlist_previews_count ?? 0) > 0;
+const submitted = (a: FunnelAccount) => (a.ai_pitches_count ?? 0) + (a.ai_requests_count ?? 0) > 0;
+
+const STAGES: Array<{
+  key: string;
+  label: string;
+  test: (a: FunnelAccount) => boolean;
+  routes?: Array<{ label: string; test: (a: FunnelAccount) => boolean }>;
+}> = [
   { key: 'persona', label: 'Chose a persona', test: () => true },
   { key: 'signed_in', label: 'Signed in', test: (a) => (a.session_count ?? 0) > 0 },
-  { key: 'previewed', label: 'Previewed a post', test: (a) => (a.job_previews_count ?? 0) + (a.hotlist_previews_count ?? 0) > 0 },
-  { key: 'submitted', label: 'AI submit sent', test: (a) => (a.ai_pitches_count ?? 0) + (a.ai_requests_count ?? 0) > 0 },
-  { key: 'posted', label: 'Posted inventory', test: (a) => (a.job_posts_count ?? 0) + (a.hotlist_posts_count ?? 0) > 0 },
   { key: 'matched', label: 'Ran AI Match', test: (a) => (a.ai_match_runs_count ?? 0) > 0 },
+  {
+    key: 'acted',
+    label: 'Previewed or AI submit sent',
+    test: (a) => previewed(a) || submitted(a),
+    routes: [
+      { label: 'Previewed only', test: (a) => previewed(a) && !submitted(a) },
+      { label: 'AI submit only', test: (a) => submitted(a) && !previewed(a) },
+      { label: 'Both', test: (a) => previewed(a) && submitted(a) },
+    ],
+  },
   { key: 'returned', label: 'Came back (2+ days)', test: (a) => (a.active_days ?? 0) >= 2 },
   { key: 'paid', label: 'Upgraded to paid', test: (a) => a.is_trial === false },
 ];
@@ -89,6 +126,9 @@ export function buildFunnel(
       key: stage.key,
       label: stage.label,
       count: reached.length,
+      // Counted against those who reached this stage, so the routes always
+      // add up to it exactly and never imply a bigger cohort than the funnel.
+      routes: stage.routes?.map((route) => ({ label: route.label, count: reached.filter(route.test).length })),
       stepRate: index === 0 ? null : above === 0 ? 0 : reached.length / above,
       overallRate: cohort.length === 0 ? 0 : reached.length / cohort.length,
       dropped: above - reached.length,

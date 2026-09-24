@@ -101,6 +101,23 @@ function FunnelColumn({ persona, stages, rangeLabel }: { persona: Persona; stage
                   </div>
                 </div>
 
+                {/* The routes into this stage, inside it rather than as
+                    branches: a branch splits the cohort and its rates stop
+                    being comparable with the spine above it. */}
+                {stage.routes && stage.count > 0 && (
+                  <div className="flex items-center pb-1" style={{ minHeight: 18 }}>
+                    <div className="w-[104px] shrink-0 sm:w-[128px]" />
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-3 gap-y-0.5">
+                      {stage.routes.filter((route) => route.count > 0).map((route) => (
+                        <span key={route.label} className="text-[10px] text-gray-400">
+                          {route.label} <span className="font-semibold tabular-nums text-gray-600">{route.count}</span>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="w-[84px] shrink-0" />
+                  </div>
+                )}
+
                 {index < stages.length - 1 && (
                   <div className="flex items-center" style={{ height: 18 }}>
                     <div className="w-[104px] shrink-0 sm:w-[128px]" />
