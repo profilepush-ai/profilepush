@@ -22,6 +22,9 @@ export type FunnelAccount = {
    *  sending: a draft can be generated and never sent. */
   /** Credits used, summed from the ledger. Not derived from the balance,
    *  which top-ups and refunds also move. */
+  /** What this account was granted at signup. Read per account because the
+   *  grant changed from 500 to 100 on 2026-09-21. */
+  credits_granted: number;
   credits_spent: number;
   ai_drafts_count: number;
   /** Sends triggered from the bulk bar. Zero for sends made before
@@ -70,8 +73,45 @@ export type Persona = 'vendor' | 'bench_sales';
 // Sharing a job or hotlist would sit alongside previewing, but nothing
 // records it — the public permalinks are not instrumented — so it is named in
 // the UI as unmeasured rather than guessed at here.
-/** The one-time free grant every account starts with. */
-const FREE_CREDIT_GRANT = 500;
+/**
+ * Fallback only, for an account with no grant row. The signup grant is 100 as
+ * of 2026-09-21, down from 500 — which is exactly why the real figure is read
+ * per account from the ledger rather than assumed here.
+ */
+const DEFAULT_CREDIT_GRANT = 100;
+
+const grantFor = (a: FunnelAccount) => (a.credits_granted ?? 0) > 0 ? a.credits_granted : DEFAULT_CREDIT_GRANT;
+
+export const CREDIT_BANDS = [10, 25, 50, 100] as const;
+
+/**
+ * How far into the free grant each account got — reported beside the funnel,
+ * not inside it.
+ *
+ * It was a set of funnel stages first, and read zero everywhere. Spending and
+ * converting turn out to be close to disjoint: of the accounts past 10% of
+ * the grant in a recent week, one had run AI Match, none had connected Gmail
+ * and none had sent anything. A cumulative funnel makes every stage a subset
+ * of the one above, so credit bands placed under "Sent" could only ever be
+ * zero — not because nobody spends, but because spenders are not the people
+ * who send.
+ *
+ * Each band is everyone at or past that share, so they nest: anyone past half
+ * is also past a quarter. The share is of that account's own grant, because
+ * the signup amount changed from 500 to 100 partway through — spending 60
+ * credits is most of a new account's grant and a tenth of an old one's.
+ */
+export function creditBands(
+  accounts: FunnelAccount[],
+  startDate: string | null,
+  endDate: string | null,
+): Array<{ pct: number; label: string; count: number; share: number }> {
+  const cohort = accounts.filter((a) => inRange(a, startDate, endDate));
+  return CREDIT_BANDS.map((pct) => {
+    const count = cohort.filter((a) => (a.credits_spent ?? 0) >= (grantFor(a) * pct) / 100).length;
+    return { pct, label: `${pct}%+ of credits`, count, share: cohort.length === 0 ? 0 : count / cohort.length };
+  });
+}
 
 const submitted = (a: FunnelAccount) => (a.ai_pitches_count ?? 0) + (a.ai_requests_count ?? 0) > 0;
 
@@ -93,17 +133,6 @@ const STAGES: Array<{
   { key: 'connected', label: 'Connected Gmail', test: (a) => a.gmail_connected === true },
   { key: 'sent', label: 'Sent a submission', test: submitted },
   { key: 'returned', label: 'Came back (2+ days)', test: (a) => (a.active_days ?? 0) >= 2 },
-  // How far into the free grant they got. Every account starts with 500
-  // credits, so these are shares of that, and they nest by construction:
-  // anyone past half is also past a quarter. Running out is the moment paying
-  // becomes a question, which is why they sit directly above the paid step.
-  ...([10, 25, 50, 100] as const).map((pct) => ({
-    key: `credits_${pct}`,
-    // "10%+", not "10%": each band is everyone at or past that point, which
-    // is what makes them nest — anyone past half is also past a quarter.
-    label: `Used ${pct}%+ of credits`,
-    test: (a: FunnelAccount) => (a.credits_spent ?? 0) >= (FREE_CREDIT_GRANT * pct) / 100,
-  })),
   { key: 'paid', label: 'Upgraded to paid', test: (a) => a.is_trial === false },
 ];
 

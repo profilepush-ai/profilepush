@@ -3,6 +3,7 @@ import { AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import {
   buildFunnel,
+  creditBands,
   formatRate,
   personaLess,
   signupsInRange,
@@ -156,6 +157,7 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
     }),
     { visitors: 0, signupPage: 0 },
   ), [ga4.daily]);
+  const credits = useMemo(() => creditBands(accounts, startDate, endDate), [accounts, startDate, endDate]);
   const vendor = useMemo(() => buildFunnel(accounts, 'vendor', startDate, endDate), [accounts, startDate, endDate]);
   const bench = useMemo(() => buildFunnel(accounts, 'bench_sales', startDate, endDate), [accounts, startDate, endDate]);
   const signups = useMemo(() => signupsInRange(accounts, startDate, endDate), [accounts, startDate, endDate]);
@@ -222,6 +224,27 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
             {undecided.toLocaleString()}
           </p>
           <p className="mt-0.5 text-[10px] text-gray-400">in neither funnel below</p>
+        </div>
+      </div>
+
+      {/* Credit usage sits beside the funnel, not in it. As stages these read
+          zero everywhere, because a cumulative funnel makes each step a subset
+          of the one above and the people burning credits are not, yet, the
+          people sending — of the accounts past a tenth of the grant in a
+          recent week, none had sent anything. That is worth seeing, and a
+          stage that can only ever be zero hides it. */}
+      <div>
+        <p className="mb-1.5 text-[10px] font-semibold uppercase text-gray-500">
+          Credit usage · share of each account's signup grant
+        </p>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {credits.map((band) => (
+            <div key={band.pct} className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase text-gray-500">{band.label}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{band.count.toLocaleString()}</p>
+              <p className="mt-0.5 text-[10px] text-gray-400">{formatRate(band.share)} of signups</p>
+            </div>
+          ))}
         </div>
       </div>
 

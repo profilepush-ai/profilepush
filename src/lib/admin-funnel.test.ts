@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFunnel, personaLess, signupsInRange, worstStep, type FunnelAccount } from './admin-funnel';
+import { buildFunnel, creditBands, personaLess, signupsInRange, worstStep, type FunnelAccount } from './admin-funnel';
 
 const account = (overrides: Partial<FunnelAccount> = {}): FunnelAccount => ({
   created_at: '2026-09-22T10:00:00.000Z',
@@ -9,6 +9,7 @@ const account = (overrides: Partial<FunnelAccount> = {}): FunnelAccount => ({
   hotlist_posts_count: 0,
   job_previews_count: 0,
   hotlist_previews_count: 0,
+  credits_granted: 100,
   credits_spent: 0,
   ai_drafts_count: 0,
   ai_bulk_sends_count: 0,
@@ -29,11 +30,9 @@ describe('buildFunnel', () => {
     });
     const accounts = [full, account({ session_count: 1, job_previews_count: 1 }), account({ session_count: 1 }), account()];
     const stages = buildFunnel(accounts, 'vendor', null, null);
-    expect(stages.map((s) => s.key)).toEqual([
-      'persona', 'signed_in', 'matched', 'generated', 'connected', 'sent', 'returned',
-      'credits_10', 'credits_25', 'credits_50', 'credits_100', 'paid',
-    ]);
-    expect(stages.map((s) => s.count)).toEqual([4, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    expect(stages.map((s) => s.key)).toEqual(
+      ['persona', 'signed_in', 'matched', 'generated', 'connected', 'sent', 'returned', 'paid']);
+    expect(stages.map((s) => s.count)).toEqual([4, 3, 1, 1, 1, 1, 1, 1]);
     expect(stages[1].stepRate).toBeCloseTo(0.75, 5);
     expect(stages[1].dropped).toBe(1);
   });
@@ -131,18 +130,30 @@ describe('worstStep', () => {
   });
 });
 
-describe('credit stages', () => {
+describe('creditBands', () => {
   it('counts "10%" as 10% or more, so the bands nest', () => {
-    const spender = (credits_spent: number) => account({
-      session_count: 1, ai_match_runs_count: 1, ai_drafts_count: 1,
-      gmail_connected: true, ai_pitches_count: 1, active_days: 2, credits_spent,
-    });
-    // 500 is the free grant: 40 credits is under a tenth, 60 is over it.
-    const stages = buildFunnel([spender(60), spender(130), spender(500), spender(40)], 'vendor', null, null);
-    const countOf = (key: string) => stages.find((s) => s.key === key)!.count;
-    expect(countOf('credits_10')).toBe(3);   // 60, 130, 500
-    expect(countOf('credits_25')).toBe(2);   // 130, 500
-    expect(countOf('credits_50')).toBe(1);   // 500
-    expect(countOf('credits_100')).toBe(1);  // 500
+    // Grant of 100: 8 is under a tenth, 12 is over it.
+    const accounts = [8, 12, 30, 100].map((credits_spent) => account({ credits_spent }));
+    const bands = creditBands(accounts, null, null);
+    expect(bands.map((b) => b.count)).toEqual([3, 2, 1, 1]);
+    expect(bands.map((b) => b.label)).toEqual(['10%+ of credits', '25%+ of credits', '50%+ of credits', '100%+ of credits']);
+  });
+
+  it('measures each account against its own grant', () => {
+    // The grant was cut from 500 to 100, so the same spend is a different
+    // share depending on when the account was created.
+    const newAccount = account({ credits_granted: 100, credits_spent: 60 });
+    const oldAccount = account({ credits_granted: 500, credits_spent: 60 });
+    expect(creditBands([newAccount], null, null).map((b) => b.count)).toEqual([1, 1, 1, 0]);
+    expect(creditBands([oldAccount], null, null).map((b) => b.count)).toEqual([1, 0, 0, 0]);
+  });
+
+  it('counts spenders the funnel cannot reach', () => {
+    // The reason these moved out of the funnel: someone can burn half the
+    // grant without ever connecting a mailbox or sending anything, and as a
+    // funnel stage under "Sent" they would read zero.
+    const spenderWhoNeverSent = account({ session_count: 1, credits_spent: 60 });
+    expect(creditBands([spenderWhoNeverSent], null, null)[2].count).toBe(1);
+    expect(buildFunnel([spenderWhoNeverSent], 'vendor', null, null).find((s) => s.key === 'sent')!.count).toBe(0);
   });
 });
