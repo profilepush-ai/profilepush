@@ -26,17 +26,17 @@ describe('buildFunnel', () => {
     });
     const accounts = [full, account({ session_count: 1, job_previews_count: 1 }), account({ session_count: 1 }), account()];
     const stages = buildFunnel(accounts, 'vendor', null, null);
-    // persona, signed in, previewed, submitted, posted, matched, returned, paid
-    expect(stages.map((s) => s.count)).toEqual([4, 3, 2, 1, 1, 1, 1, 1]);
+    // persona, signed in, matched, acted, returned, paid
+    expect(stages.map((s) => s.key)).toEqual(['persona', 'signed_in', 'matched', 'acted', 'returned', 'paid']);
+    expect(stages.map((s) => s.count)).toEqual([4, 3, 1, 1, 1, 1]);
     expect(stages[1].stepRate).toBeCloseTo(0.75, 5);
-    expect(stages[2].overallRate).toBeCloseTo(0.5, 5);
     expect(stages[1].dropped).toBe(1);
   });
 
   it('ends on the paid conversion', () => {
     const accounts = [
-      account({ session_count: 1, job_previews_count: 1, ai_pitches_count: 1, job_posts_count: 1, ai_match_runs_count: 1, active_days: 2, is_trial: false }),
-      account({ session_count: 1, job_previews_count: 1, ai_pitches_count: 1, job_posts_count: 1, ai_match_runs_count: 1, active_days: 2, is_trial: true }),
+      account({ session_count: 1, ai_match_runs_count: 1, job_previews_count: 1, active_days: 2, is_trial: false }),
+      account({ session_count: 1, ai_match_runs_count: 1, job_previews_count: 1, active_days: 2, is_trial: true }),
     ];
     const stages = buildFunnel(accounts, 'vendor', null, null);
     const paid = stages[stages.length - 1];
@@ -46,15 +46,25 @@ describe('buildFunnel', () => {
   });
 
   it('never lets a stage rise above the one before it', () => {
-    // An account that ran AI Match without posting must not reappear lower
-    // down — a funnel whose steps can grow is not a funnel.
     const accounts = [account({ session_count: 1, ai_match_runs_count: 5, active_days: 9 })];
     const stages = buildFunnel(accounts, 'vendor', null, null);
     const counts = stages.map((s) => s.count);
     expect(counts).toEqual([...counts].sort((a, b) => b - a));
-    // Never previewed, so nothing below previewing can count it.
-    expect(stages[2].count).toBe(0);
-    expect(stages[5].count).toBe(0);
+    // Ran a match, so it counts there — under the old order this account was
+    // dropped at "previewed" and reported zero matches, which was the bug.
+    expect(stages[2].count).toBe(1);
+    // Never previewed and never submitted, so it stops at the next step.
+    expect(stages[3].count).toBe(0);
+    expect(stages[4].count).toBe(0);
+  });
+
+  it('passes an account that only previewed, and one that only submitted', () => {
+    const previewedOnly = account({ session_count: 1, ai_match_runs_count: 1, hotlist_previews_count: 2 });
+    const submittedOnly = account({ session_count: 1, ai_match_runs_count: 1, ai_requests_count: 1 });
+    const stages = buildFunnel([previewedOnly, submittedOnly], 'vendor', null, null);
+    // Either one is the same signal, so both clear the combined stage.
+    expect(stages[3].key).toBe('acted');
+    expect(stages[3].count).toBe(2);
   });
 
   it('keeps the two personas apart', () => {
@@ -96,16 +106,35 @@ describe('worstStep', () => {
       account({ session_count: 1 }),
       account({ session_count: 1 }),
     ];
-    // Everyone signs in, nobody previews: previewing is the wall.
+    // Everyone signs in, nobody runs a match: matching is the wall.
     const stages = buildFunnel(accounts, 'vendor', null, null);
-    expect(worstStep(stages)?.key).toBe('previewed');
+    expect(worstStep(stages)?.key).toBe('matched');
   });
 
   it('returns nothing when no one drops out', () => {
     const accounts = [account({
-      session_count: 1, job_previews_count: 1, ai_pitches_count: 1,
-      job_posts_count: 1, ai_match_runs_count: 1, active_days: 2, is_trial: false,
+      session_count: 1, ai_match_runs_count: 1, job_previews_count: 1,
+      active_days: 2, is_trial: false,
     })];
     expect(worstStep(buildFunnel(accounts, 'vendor', null, null))).toBeNull();
+  });
+});
+
+describe('routes', () => {
+  it('splits the combined stage by how it was cleared, adding up to its count', () => {
+    const accounts = [
+      account({ session_count: 1, ai_match_runs_count: 1, job_previews_count: 1 }),
+      account({ session_count: 1, ai_match_runs_count: 1, ai_pitches_count: 1 }),
+      account({ session_count: 1, ai_match_runs_count: 1, hotlist_previews_count: 1, ai_requests_count: 1 }),
+    ];
+    const acted = buildFunnel(accounts, 'vendor', null, null).find((s) => s.key === 'acted');
+    expect(acted?.count).toBe(3);
+    expect(acted?.routes).toEqual([
+      { label: 'Previewed only', count: 1 },
+      { label: 'AI submit only', count: 1 },
+      { label: 'Both', count: 1 },
+    ]);
+    // Routes are counted within the stage, so they can never exceed it.
+    expect(acted?.routes?.reduce((sum, r) => sum + r.count, 0)).toBe(acted?.count);
   });
 });
