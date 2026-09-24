@@ -254,73 +254,84 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
 
   return (
     <div className="space-y-3">
-      {ga4.connected ? (
-        <TopFunnel
-          visitors={ga4Totals.visitors}
-          signupPage={ga4Totals.signupPage}
-          signups={signups}
-          rangeLabel={rangeLabel}
-        />
-      ) : (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
-          <div className="flex items-start gap-2">
-            <AlertCircle size={14} className="mt-0.5 shrink-0 text-gray-400" />
-            <div className="min-w-0 text-xs text-gray-600">
-              <p className="font-semibold text-gray-700">Website and signup-page visits are not connected.</p>
-              <p className="mt-0.5">
-                {ga4.reason ?? 'Google Analytics is not reachable from this dashboard.'} Set{' '}
-                <code>GA4_PROPERTY_ID</code>, <code>GA4_CLIENT_EMAIL</code> and <code>GA4_PRIVATE_KEY</code> on the{' '}
-                <code>admin-ga4</code> function, and give that service account Viewer access on the GA4 property.
-              </p>
+      {/* Two columns: the before-signup funnel on the left, the counts it
+          produces on the right. They describe the same period, so reading
+          them side by side is the point — the funnel says how people
+          arrive, the cards say what that turned into. */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div>
+        {ga4.connected ? (
+          <TopFunnel
+            visitors={ga4Totals.visitors}
+            signupPage={ga4Totals.signupPage}
+            signups={signups}
+            rangeLabel={rangeLabel}
+          />
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle size={14} className="mt-0.5 shrink-0 text-gray-400" />
+              <div className="min-w-0 text-xs text-gray-600">
+                <p className="font-semibold text-gray-700">Website and signup-page visits are not connected.</p>
+                <p className="mt-0.5">
+                  {ga4.reason ?? 'Google Analytics is not reachable from this dashboard.'} Set{' '}
+                  <code>GA4_PROPERTY_ID</code>, <code>GA4_CLIENT_EMAIL</code> and <code>GA4_PRIVATE_KEY</code> on the{' '}
+                  <code>admin-ga4</code> function, and give that service account Viewer access on the GA4 property.
+                </p>
+              </div>
             </div>
           </div>
+        )}
         </div>
-      )}
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase text-gray-500">Signed up</p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{signups.toLocaleString()}</p>
-          <p className="mt-0.5 text-[10px] text-gray-400">{rangeLabel}</p>
+        <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase text-gray-500">Signed up</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{signups.toLocaleString()}</p>
+            <p className="mt-0.5 text-[10px] text-gray-400">{rangeLabel}</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase text-gray-500">Chose a persona</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">
+              {(vendor[0]?.count ?? 0) + (bench[0]?.count ?? 0)}
+            </p>
+            <p className="mt-0.5 text-[10px] text-gray-400">
+              {signups > 0 ? formatRate(((vendor[0]?.count ?? 0) + (bench[0]?.count ?? 0)) / signups) : '—'} of signups
+            </p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase text-gray-500">Never chose one</p>
+            <p className={`mt-1 text-lg font-semibold tabular-nums ${undecided > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+              {undecided.toLocaleString()}
+            </p>
+            <p className="mt-0.5 text-[10px] text-gray-400">in neither funnel below</p>
+          </div>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase text-gray-500">Chose a persona</p>
-          <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">
-            {(vendor[0]?.count ?? 0) + (bench[0]?.count ?? 0)}
+
+        {/* Credit usage sits beside the funnel, not in it. As stages these read
+            zero everywhere, because a cumulative funnel makes each step a subset
+            of the one above and the people burning credits are not, yet, the
+            people sending — of the accounts past a tenth of the grant in a
+            recent week, none had sent anything. That is worth seeing, and a
+            stage that can only ever be zero hides it. */}
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase text-gray-500">
+            Credit usage · share of each account's signup grant
           </p>
-          <p className="mt-0.5 text-[10px] text-gray-400">
-            {signups > 0 ? formatRate(((vendor[0]?.count ?? 0) + (bench[0]?.count ?? 0)) / signups) : '—'} of signups
-          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {credits.map((band) => (
+              <div key={band.pct} className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase text-gray-500">{band.label}</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{band.count.toLocaleString()}</p>
+                <p className="mt-0.5 text-[10px] text-gray-400">{formatRate(band.share)} of signups</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase text-gray-500">Never chose one</p>
-          <p className={`mt-1 text-lg font-semibold tabular-nums ${undecided > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-            {undecided.toLocaleString()}
-          </p>
-          <p className="mt-0.5 text-[10px] text-gray-400">in neither funnel below</p>
         </div>
       </div>
 
-      {/* Credit usage sits beside the funnel, not in it. As stages these read
-          zero everywhere, because a cumulative funnel makes each step a subset
-          of the one above and the people burning credits are not, yet, the
-          people sending — of the accounts past a tenth of the grant in a
-          recent week, none had sent anything. That is worth seeing, and a
-          stage that can only ever be zero hides it. */}
-      <div>
-        <p className="mb-1.5 text-[10px] font-semibold uppercase text-gray-500">
-          Credit usage · share of each account's signup grant
-        </p>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {credits.map((band) => (
-            <div key={band.pct} className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase text-gray-500">{band.label}</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{band.count.toLocaleString()}</p>
-              <p className="mt-0.5 text-[10px] text-gray-400">{formatRate(band.share)} of signups</p>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* Says out loud that the trunk above splits here, so the two columns
           are not read as separate funnels that happen to sit together. */}
