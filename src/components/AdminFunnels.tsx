@@ -5,7 +5,6 @@ import {
   buildFunnel,
   creditBands,
   formatRate,
-  personaLess,
   signupsInRange,
   worstStep,
   type FunnelAccount,
@@ -250,7 +249,6 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
   const vendor = useMemo(() => buildFunnel(accounts, 'vendor', startDate, endDate), [accounts, startDate, endDate]);
   const bench = useMemo(() => buildFunnel(accounts, 'bench_sales', startDate, endDate), [accounts, startDate, endDate]);
   const signups = useMemo(() => signupsInRange(accounts, startDate, endDate), [accounts, startDate, endDate]);
-  const undecided = useMemo(() => personaLess(accounts, startDate, endDate), [accounts, startDate, endDate]);
 
   return (
     <div className="space-y-3">
@@ -285,30 +283,6 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
         </div>
 
         <div className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase text-gray-500">Signed up</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{signups.toLocaleString()}</p>
-            <p className="mt-0.5 text-[10px] text-gray-400">{rangeLabel}</p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase text-gray-500">Chose a persona</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">
-              {(vendor[0]?.count ?? 0) + (bench[0]?.count ?? 0)}
-            </p>
-            <p className="mt-0.5 text-[10px] text-gray-400">
-              {signups > 0 ? formatRate(((vendor[0]?.count ?? 0) + (bench[0]?.count ?? 0)) / signups) : '—'} of signups
-            </p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase text-gray-500">Never chose one</p>
-            <p className={`mt-1 text-lg font-semibold tabular-nums ${undecided > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-              {undecided.toLocaleString()}
-            </p>
-            <p className="mt-0.5 text-[10px] text-gray-400">in neither funnel below</p>
-          </div>
-        </div>
-
         {/* Credit usage sits beside the funnel, not in it. As stages these read
             zero everywhere, because a cumulative funnel makes each step a subset
             of the one above and the people burning credits are not, yet, the
