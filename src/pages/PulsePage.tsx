@@ -8660,7 +8660,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                                     ? `${AI_MATCH_MIN_DESCRIPTION_CHARS - aiMatchDescription.trim().length} more characters`
                                     : aiMatchFileName
                                       ? `From ${aiMatchFileName}`
-                                      : `Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits · 1 per match · last 30 days`
+                                      // Nothing when idle. The pricing line sat
+                                      // under the box on every visit, so the
+                                      // first thing the page said about a match
+                                      // was what it would cost.
+                                      : ''
                                 )}
                               </span>
                             </div>
