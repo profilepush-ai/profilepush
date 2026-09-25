@@ -393,7 +393,7 @@ export default function AppNav() {
 
   return (
     <>
-    <header className="min-h-12 bg-white flex items-center px-3 sm:px-4 gap-3 sm:gap-6 shrink-0 z-50 pt-[env(safe-area-inset-top)]">
+    <header className="app-header min-h-12 bg-white flex items-center px-3 sm:px-4 gap-3 sm:gap-6 shrink-0 z-50 pt-[env(safe-area-inset-top)]">
       {user ? (
         <span className="flex items-center shrink-0">
           <Logo size="sm" hideTextOnMobile />
@@ -557,7 +557,7 @@ export default function AppNav() {
 
       {/* Mobile Bottom Navigation */}
       {user && (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
+        <nav className="app-bottom-nav fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
           <Link
             to={feedItem.path}
             className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/feed') ? 'text-blue-600' : 'text-gray-500'}`}
