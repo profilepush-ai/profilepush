@@ -5,6 +5,17 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider } from './contexts/ThemeContext';
 import './index.css';
 
+// Marks the Android app shell so the system-bar insets in index.css apply.
+//
+// Android's WebView resolves env(safe-area-inset-*) to 0, and targetSdk 36
+// forces edge-to-edge, so without this the header sits under the status bar
+// and the bottom nav under the gesture pill. "; wv)" is in the WebView's user
+// agent and not in Chrome's, so it is true from the first paint — unlike the
+// Capacitor bridge, which may not be injected yet.
+if (typeof navigator !== 'undefined' && /;\s*wv\)/.test(navigator.userAgent)) {
+  document.documentElement.classList.add('android-shell');
+}
+
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   const isIOS = /iPad|iPhone|iPod/.test(window.navigator.userAgent)
     || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);

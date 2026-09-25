@@ -298,3 +298,29 @@
 .job-desc table  { font-size: 0.875rem; border-collapse: collapse; }
 .job-desc td,
 .job-desc th     { padding: 0.25rem 0.5rem; border: 1px solid #e5e7eb; }
+
+/* System-bar insets inside the Android app.
+ *
+ * index.html already sets viewport-fit=cover and the header and bottom nav
+ * already pad by env(safe-area-inset-*) — but Android's WebView resolves
+ * those to 0. They are a WKWebView feature; Chrome/Android WebView has never
+ * implemented them. So on a device where the app draws behind the system
+ * bars, the padding is there and worth nothing.
+ *
+ * targetSdk is 36, where edge-to-edge is enforced and the old
+ * windowOptOutEdgeToEdgeEnforcement flag is ignored, so the WebView will
+ * always start at y=0 under the status bar. Until the native side sets
+ * StatusBar.setOverlaysWebView(false) — which needs a Play release — these
+ * supply the inset from the web side, which reaches the shipped app
+ * immediately because it loads the live site.
+ *
+ * max() with env() on purpose: if the inset ever does resolve, the real
+ * value wins and these stop applying. The class is set in main.tsx and only
+ * inside the Android WebView, so browsers are untouched. */
+.android-shell .app-header {
+  padding-top: max(env(safe-area-inset-top), var(--android-status-bar, 28px));
+}
+
+.android-shell .app-bottom-nav {
+  padding-bottom: max(env(safe-area-inset-bottom), var(--android-nav-bar, 14px));
+}
