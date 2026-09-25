@@ -21,11 +21,32 @@ import { useTheme } from '../contexts/ThemeContext';
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.profilepush.app';
 const DISMISS_KEY = 'pp_hide_play_banner_v1';
 
+/**
+ * True when this is running inside the Android app, which must never be shown
+ * an ad for itself.
+ *
+ * Capacitor.isNativePlatform() alone is not enough. capacitor.config.ts points
+ * server.url at the live site, so the app loads the same remote page a browser
+ * does and the native bridge is injected into it — but not necessarily before
+ * React first renders, and a check that runs too early reports "web" inside
+ * the app. The WebView user agent is the part that is true immediately:
+ * Android stamps "; wv)" into it, and Chrome does not.
+ */
+function inAndroidApp(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  if (Capacitor.isNativePlatform()) return true;
+  const bridged = (window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  if (bridged?.isNativePlatform?.()) return true;
+  return /;\s*wv\)/.test(navigator.userAgent);
+}
+
 export default function GooglePlayBanner() {
   const { isDark } = useTheme();
   const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
+    // Read after mount, by which point the bridge has had a chance to land.
+    if (inAndroidApp()) { setDismissed(true); return; }
     try {
       setDismissed(localStorage.getItem(DISMISS_KEY) === '1');
     } catch {
@@ -41,9 +62,10 @@ export default function GooglePlayBanner() {
   };
 
   const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/i.test(navigator.userAgent);
-  // Not inside the app it is advertising, and not on iOS, where there is
-  // nothing on the other end of this link yet.
-  if (dismissed || isIOS || Capacitor.isNativePlatform()) return null;
+  // Not on iOS, where there is nothing on the other end of this link yet.
+  // The app case is handled in the effect above, not here, so it is decided
+  // once the bridge exists rather than on the first render.
+  if (dismissed || isIOS) return null;
 
   return (
     <div
