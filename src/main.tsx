@@ -4,13 +4,24 @@ import App from './App.tsx';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider } from './contexts/ThemeContext';
 import './index.css';
-import { isAndroidWebView } from './lib/android-shell';
+import { inAndroidApp } from './lib/android-shell';
 
 // Marks the Android app shell so the system-bar insets in index.css apply.
 // Detection lives in lib/android-shell because the Play banner needs the same
 // answer and the two must not disagree.
-if (isAndroidWebView()) {
-  document.documentElement.classList.add('android-shell');
+//
+// Re-checked on resize because the viewport can be short at the moment this
+// runs — the keyboard, or a layout that has not settled — and a page that
+// starts life misjudged would keep the wrong padding for the whole session.
+// The class is only ever added: once the viewport has been seen filling the
+// screen, that is a fact about the shell, not about this instant.
+if (typeof window !== 'undefined') {
+  const markShell = () => {
+    if (inAndroidApp()) document.documentElement.classList.add('android-shell');
+  };
+  markShell();
+  window.addEventListener('resize', markShell, { passive: true });
+  window.addEventListener('orientationchange', markShell, { passive: true });
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
