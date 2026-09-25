@@ -9,23 +9,17 @@ import { useTheme } from '../contexts/ThemeContext';
 // Chrome's menu or Safari's share sheet to fake one. There is a real app now,
 // so the instructions are gone and this points at it.
 //
+// The button is Google's own badge, served from /public rather than hotlinked
+// or redrawn. Their brand guidelines require the supplied artwork, unmodified,
+// and a hand-drawn lookalike is both a trademark problem and a worse button —
+// people recognise this image without reading it. Self-hosted so the banner
+// costs no third-party request and cannot break when Google moves a URL.
+//
 // A fresh dismiss key on purpose: anyone who dismissed the old prompt did so
 // about a different thing, and should be told once that the app exists.
 
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.profilepush.app';
 const DISMISS_KEY = 'pp_hide_play_banner_v1';
-
-/** Google's play triangle, in its four brand colours. */
-function PlayMark({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true" focusable="false">
-      <path fill="#00D2FF" d="M47 24 322 256 47 488c-9-6-15-17-15-31V55c0-14 6-25 15-31z" />
-      <path fill="#00F076" d="M47 24c8-5 18-5 28 1l271 154-24 77z" />
-      <path fill="#FFCE00" d="M346 179l70 40c24 14 24 60 0 74l-70 40-24-77z" />
-      <path fill="#FF3A44" d="M75 487c-10 6-20 6-28 1l275-232 24 77z" />
-    </svg>
-  );
-}
 
 export default function GooglePlayBanner() {
   const { isDark } = useTheme();
@@ -63,18 +57,21 @@ export default function GooglePlayBanner() {
           offset carries the safe-area inset the nav itself pads by, or it
           rides up over the tab bar on a phone with a home indicator. */}
       <div className="flex items-center gap-2.5">
-        <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-          isDark ? 'bg-white/5' : 'bg-gray-50'
-        }`}>
-          <PlayMark size={18} />
-        </span>
+        <img
+          src="/android-chrome-192x192.png"
+          alt=""
+          width={36}
+          height={36}
+          className="h-9 w-9 shrink-0 rounded-lg"
+        />
 
         <div className="min-w-0 flex-1">
           <p className={`truncate text-[13px] font-semibold leading-tight ${isDark ? 'text-slate-100' : 'text-gray-900'}`}>
-            ProfilePush for Android
+            ProfilePush
           </p>
+          {/* Not "on Google Play" — the badge beside it already says that. */}
           <p className={`truncate text-[11px] leading-tight ${isDark ? 'text-[#94A3B8]' : 'text-gray-500'}`}>
-            Now on Google Play
+            The Android app is here
           </p>
         </div>
 
@@ -83,10 +80,19 @@ export default function GooglePlayBanner() {
           target="_blank"
           rel="noopener noreferrer"
           onClick={dismiss}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#01875f] px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-[#017050] active:scale-[0.98]"
+          aria-label="Get ProfilePush on Google Play"
+          className="shrink-0 transition active:scale-[0.98]"
         >
-          <PlayMark size={14} />
-          Install
+          {/* Google's artwork, unaltered and uncropped. 40px tall is their
+              stated minimum for the web badge; the width follows the source
+              aspect so it is never stretched. */}
+          <img
+            src="/google-play-badge.png"
+            alt="Get it on Google Play"
+            width={103}
+            height={40}
+            className="h-10 w-auto"
+          />
         </a>
 
         <button
