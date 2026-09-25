@@ -4,15 +4,12 @@ import App from './App.tsx';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider } from './contexts/ThemeContext';
 import './index.css';
+import { isAndroidWebView } from './lib/android-shell';
 
 // Marks the Android app shell so the system-bar insets in index.css apply.
-//
-// Android's WebView resolves env(safe-area-inset-*) to 0, and targetSdk 36
-// forces edge-to-edge, so without this the header sits under the status bar
-// and the bottom nav under the gesture pill. "; wv)" is in the WebView's user
-// agent and not in Chrome's, so it is true from the first paint — unlike the
-// Capacitor bridge, which may not be injected yet.
-if (typeof navigator !== 'undefined' && /;\s*wv\)/.test(navigator.userAgent)) {
+// Detection lives in lib/android-shell because the Play banner needs the same
+// answer and the two must not disagree.
+if (isAndroidWebView()) {
   document.documentElement.classList.add('android-shell');
 }
 
