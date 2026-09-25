@@ -316,11 +316,23 @@
  *
  * max() with env() on purpose: if the inset ever does resolve, the real
  * value wins and these stop applying. The class is set in main.tsx and only
- * inside the Android WebView, so browsers are untouched. */
+ * inside the Android WebView, so browsers are untouched.
+ *
+ * 48px is measured, not chosen. On a 1080x2340 screenshot of the app at
+ * dpr 2.625 the status-bar clock occupies rows 55-74, which centres a bar
+ * about 129 device px — 49 CSS px — tall. The first guess here was 28px and
+ * left the avatar and the notification bell sitting inside the clock.
+ *
+ * It errs high deliberately. A phone with no cutout has a 24dp bar and gets
+ * about 24px of extra white above the header, which looks like padding. Too
+ * little looks like a bug, because the controls end up under the clock. */
 .android-shell .app-header {
-  padding-top: max(env(safe-area-inset-top), var(--android-status-bar, 28px));
+  padding-top: max(env(safe-area-inset-top), var(--android-status-bar, 48px));
 }
 
+/* The bottom needs almost nothing: the same screenshot puts the nav labels
+ * 48 CSS px clear of the bottom edge with the gesture pill inside that gap,
+ * so this is a small cushion rather than a fix. */
 .android-shell .app-bottom-nav {
-  padding-bottom: max(env(safe-area-inset-bottom), var(--android-nav-bar, 14px));
+  padding-bottom: max(env(safe-area-inset-bottom), var(--android-nav-bar, 8px));
 }
