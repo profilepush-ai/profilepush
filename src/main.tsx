@@ -17,9 +17,30 @@ import { inAndroidApp } from './lib/android-shell';
 // screen, that is a fact about the shell, not about this instant.
 if (typeof window !== 'undefined') {
   const markShell = () => {
-    if (inAndroidApp()) document.documentElement.classList.add('android-shell');
+    if (!inAndroidApp()) return false;
+    document.documentElement.classList.add('android-shell');
+    return true;
   };
-  markShell();
+
+  // Retried, because this file runs before React mounts and the answer can
+  // arrive late. capacitor.config.ts points server.url at the live site, so
+  // Capacitor injects its bridge into a page that is already running — and on
+  // the device that reported this, the bridge was the only check that worked:
+  // the Play banner, which asks from inside an effect, was correctly hidden
+  // while this, asking at startup, saw nothing and never added the class.
+  //
+  // Stops as soon as it succeeds, and gives up after three seconds rather
+  // than polling a browser forever.
+  if (!markShell()) {
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      if (markShell() || Date.now() - started > 3000) window.clearInterval(timer);
+    }, 150);
+    window.addEventListener('load', markShell, { once: true, passive: true });
+  }
+
+  // The viewport can also be short at startup — a keyboard, a layout that has
+  // not settled — so a later measurement still counts.
   window.addEventListener('resize', markShell, { passive: true });
   window.addEventListener('orientationchange', markShell, { passive: true });
 }
