@@ -1,30 +1,44 @@
-// Is this page running inside the Android app?
+// Is this page drawing behind the Android system bars?
 //
-// Shared because two things depend on it and they must agree: the system-bar
-// insets in index.css, and the Play banner, which must not advertise the app
-// to itself.
+// Two attempts at answering this from the user agent were wrong. The first
+// looked for "; wv)", which Android WebView stopped sending when it adopted
+// the reduced user agent. The second added "Version/4.0", which is correct in
+// the strings I could find but evidently still did not match the device in
+// question — and a third guess at a string is not worth making.
 //
-// capacitor.config.ts points server.url at the live site, so the app loads the
-// same page a browser does. Capacitor.isNativePlatform() is the obvious check
-// and is not enough on its own — the bridge is injected into the remote page,
-// but not reliably before the first render, so an early call reports "web"
-// from inside the app.
+// So this measures instead. A browser reserves screen space for its own
+// chrome: an address bar, a status bar it does not let the page under. An app
+// shell does not — capacitor.config.ts points server.url at the live site and
+// targetSdk 36 forces edge-to-edge, so the WebView fills the display and the
+// viewport is as tall as the screen. An installed PWA behaves the same way,
+// and wants the same padding, so it is correctly caught too.
 //
-// The user agent is true immediately, and this is where the first attempt went
-// wrong: it tested only for the "; wv)" token. Android WebView adopted the
-// reduced user agent and stopped sending it. What survives in both the legacy
-// and the reduced form is "Version/4.0", which Chrome for Android never sends
-// — that is the marker to key on.
+// The user agent stays as a second opinion: if either says app shell, it is.
+
+const CHROME_SLACK_PX = 40;
 
 export function isAndroidWebView(userAgent?: string): boolean {
   const ua = userAgent ?? (typeof navigator === 'undefined' ? '' : navigator.userAgent);
   if (!/Android/.test(ua)) return false;
+  // Safari sends its own Version/ token, hence the Android requirement above.
   return /;\s*wv\)/.test(ua) || /\bVersion\/4\.0\b/.test(ua);
+}
+
+/** True when the viewport fills the screen, as it does in an app or a PWA. */
+export function isFullscreenViewport(
+  screenHeight?: number,
+  viewportHeight?: number,
+): boolean {
+  const screenPx = screenHeight ?? (typeof screen === 'undefined' ? 0 : screen.height);
+  const viewportPx = viewportHeight ?? (typeof window === 'undefined' ? 0 : window.innerHeight);
+  if (!screenPx || !viewportPx) return false;
+  return screenPx - viewportPx <= CHROME_SLACK_PX;
 }
 
 export function inAndroidApp(): boolean {
   if (typeof navigator === 'undefined') return false;
   const bridged = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
   if (bridged?.isNativePlatform?.()) return true;
-  return isAndroidWebView();
+  if (isAndroidWebView()) return true;
+  return /Android/.test(navigator.userAgent) && isFullscreenViewport();
 }

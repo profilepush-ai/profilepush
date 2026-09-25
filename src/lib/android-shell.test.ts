@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAndroidWebView } from './android-shell';
+import { isAndroidWebView, isFullscreenViewport } from './android-shell';
 
 const UA = {
   webViewLegacy: 'Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.0.0 Mobile Safari/537.36',
@@ -23,5 +23,23 @@ describe('isAndroidWebView', () => {
     expect(isAndroidWebView(UA.chromeDesktop)).toBe(false);
     expect(isAndroidWebView(UA.safariIphone)).toBe(false);
     expect(isAndroidWebView(UA.safariMac)).toBe(false);
+  });
+});
+
+describe('isFullscreenViewport', () => {
+  // The reported device: 1080x2340 at dpr 2.625, so 891 CSS px tall.
+  it('is true when the viewport is as tall as the screen', () => {
+    expect(isFullscreenViewport(891, 891)).toBe(true);
+    expect(isFullscreenViewport(891, 860)).toBe(true);
+  });
+
+  it('is false when a browser is holding back space for its own chrome', () => {
+    // Chrome for Android keeps an address bar and a status bar.
+    expect(isFullscreenViewport(891, 780)).toBe(false);
+  });
+
+  it('is false rather than guessing when either number is missing', () => {
+    expect(isFullscreenViewport(0, 891)).toBe(false);
+    expect(isFullscreenViewport(891, 0)).toBe(false);
   });
 });
