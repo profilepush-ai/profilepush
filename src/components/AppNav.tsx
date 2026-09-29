@@ -4,7 +4,7 @@ import {
   ChevronDown, LogOut, Settings, Sparkles,
   Building2, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Briefcase, Mail, UserRound, Video,
+  Briefcase, Mail, UserRound, Video, Rss,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -13,6 +13,7 @@ import GooglePlayBanner from './GooglePlayBanner';
 import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
+import { followingLabelForPersona } from '../lib/publishers';
 
 // Shows the account's real Google profile photo (from user_metadata, set by
 // Supabase's Google OAuth flow) when available, falling back to the same
@@ -38,9 +39,10 @@ function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | 
   );
 }
 
-// Posts and Tracker are the only two nav items whose label depends on
-// persona (Feed/Inbox keep their names — only their content filters).
-// Pulse and List are hidden from the nav; their routes still work. Vendor posts Jobs and sends outbound Hotlist Requests; Bench
+// Feed, Following and Tracker take their labels from the persona (Inbox keeps
+// its name). Following is Vendors for Bench Sales and Bench Sales for Vendors.
+// My Hotlist / My Jobs moved into AI Match's own tab; Pulse and List are
+// hidden from the nav. Their routes all still work. Vendor posts Jobs and sends outbound Hotlist Requests; Bench
 // Sales posts Hotlist and sends outbound job Applications.
 function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   const isBenchSales = persona === 'bench_sales';
@@ -52,9 +54,7 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   const feedLabel = isBenchSales ? 'Jobs' : 'Hotlist';
   const feedPath = isBenchSales ? '/feed/jobs' : '/feed/hotlist';
   const feedIcon = isBenchSales ? Briefcase : UserRound;
-  const postsLabel = isBenchSales ? 'My Hotlist' : 'My Jobs';
-  const postsPath = isBenchSales ? '/posts/hotlist' : '/posts/jobs';
-  const postsIcon = isBenchSales ? UserRound : Briefcase;
+  const followingLabel = followingLabelForPersona(persona);
   // Invites (a Vendor's outbound video-screening invitations) carries the
   // video icon the AI Invite action uses, so the same thing has the same mark
   // wherever it appears; Submissions (Bench Sales' outbound job applications)
@@ -65,7 +65,7 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   return [
     { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },
     { path: '/match',       label: 'AI Match',    mobileLabel: 'AI Match',    icon: Sparkles,    hideOnMobile: false },
-    { path: postsPath,      label: postsLabel,    mobileLabel: postsLabel,    icon: postsIcon,   hideOnMobile: false },
+    { path: '/following',   label: followingLabel, mobileLabel: followingLabel, icon: Rss,       hideOnMobile: false },
     { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
     { path: trackerPath,    label: trackerLabel,  mobileLabel: trackerLabel,  icon: trackerIcon, hideOnMobile: false },
   ];
@@ -328,10 +328,10 @@ export default function AppNav() {
   // index, so adding AI Match to the desktop list shifted every slot after it
   // and the mobile bar rendered "AI Match" and "Inbox" twice each.
   const feedItem = navItems.find((item) => item.path.startsWith('/feed'))!;
-  const postsItem = navItems.find((item) => item.path.startsWith('/posts'))!;
+  const followingItem = navItems.find((item) => item.path === '/following')!;
   const trackerItem = navItems.find((item) => item.path.startsWith('/tracker'))!;
   const FeedIcon = feedItem.icon;
-  const PostsIcon = postsItem.icon;
+  const FollowingIcon = followingItem.icon;
   const TrackerIcon = trackerItem.icon;
   const [menuOpen, setMenuOpen] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
@@ -402,7 +402,8 @@ export default function AppNav() {
 
       <nav className="hidden sm:flex items-center gap-1 flex-1">
         {navItems.map(({ path, label, mobileLabel, icon: Icon, hideOnMobile }) => {
-          const active = location.pathname === path || location.pathname.startsWith(path + '/');
+          const active = location.pathname === path || location.pathname.startsWith(path + '/')
+            || (path === '/following' && location.pathname.startsWith('/p/'));
           return (
             <Link
               key={path}
@@ -515,11 +516,11 @@ export default function AppNav() {
             <span>{feedItem.label}</span>
           </Link>
           <Link
-            to={postsItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/posts') ? 'text-blue-600' : 'text-gray-500'}`}
+            to={followingItem.path}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/following') || location.pathname.startsWith('/p/') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <PostsIcon size={24} />
-            <span>{postsItem.label}</span>
+            <FollowingIcon size={24} />
+            <span>{followingItem.label}</span>
           </Link>
           {/* AI Match is the centre action, raised above the bar so it reads as
               the primary thing to do. It uses the same py-2 / gap-1 / 24px icon

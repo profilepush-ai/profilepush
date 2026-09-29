@@ -368,6 +368,153 @@ async function runDailyDigest(
   return { jobsCount, hotlistCount, recipients: allRecipients.length, emailedRecipients: emailRecipients.length };
 }
 
+// ── "X subscribed to you" for unclaimed publishers ──────────────────────────
+// A publisher who isn't on ProfilePush yet can't get an in-app notification,
+// so each new subscriber is emailed to them straight away, by name, with a
+// link to claim the profile by signing up with that address. A trigger on
+// publisher_follows calls /publisher-subscribed; claim_subscriber_email
+// decides whether to send (unclaimed, not unsubscribed, not already told
+// about this subscriber) and records it. Claimed publishers are notified
+// in-app by follow_publisher instead.
+type SubscriberEmail = {
+  email: string;
+  slug: string;
+  post_noun: "requirements" | "hotlists";
+  subscriber_name: string;
+  subscriber_company: string | null;
+  subscriber_count: number;
+};
+
+async function buildPublisherUnsubscribeUrl(env: Env, email: string): Promise<string> {
+  const sig = await hmacHex(env.UNSUBSCRIBE_SECRET, `publisher:${email}`);
+  const url = new URL("/unsubscribe-publisher", env.WORKER_BASE_URL);
+  url.searchParams.set("e", email);
+  url.searchParams.set("sig", sig);
+  return url.toString();
+}
+
+function renderSubscriberEmail(row: SubscriberEmail, claimUrl: string, unsubscribeUrl: string, appBaseUrl: string): EmailJob {
+  const base = appBaseUrl.replace(/\/$/, "");
+  const logoUrl = `${base}/favicon.svg`;
+  const who = row.subscriber_company ? `${row.subscriber_name} from ${row.subscriber_company}` : row.subscriber_name;
+  const subject = `${row.subscriber_name} subscribed to you on ProfilePush`;
+  const detail = `${who} will see your new ${row.post_noun} the moment you post them.`;
+  const countLine = row.subscriber_count > 1 ? `You have ${row.subscriber_count} subscribers on ProfilePush.` : "";
+
+  const text = `${subject}
+
+${detail}${countLine ? `\n${countLine}` : ""}
+
+Claim your profile and never miss an update: ${claimUrl}
+Sign up with ${row.email} and the profile is yours straight away.
+
+---
+Don't want these emails? Unsubscribe: ${unsubscribeUrl}`;
+
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">${escapeHtml(detail)}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff;">
+    <tr>
+      <td align="center" style="padding: 32px 20px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 480px;">
+          <tr>
+            <td style="padding-bottom: 28px;">
+              <img src="${logoUrl}" width="24" height="24" alt="" style="vertical-align: middle; border-radius: 6px;" />
+              <span style="font-size: 16px; font-weight: 800; color: #0f172a; vertical-align: middle; margin-left: 8px;">ProfilePush</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom: 8px;">
+              <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #0f172a; line-height: 1.3;">${escapeHtml(subject)}</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom: 28px;">
+              <p style="margin: 0; font-size: 14px; color: #64748b;">${escapeHtml(detail)}${countLine ? `<br>${escapeHtml(countLine)}` : ""}</p>
+            </td>
+          </tr>
+          <tr>
+            <td align="left" style="padding-bottom: 12px;">
+              <a href="${claimUrl}" style="display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">Claim your profile</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom: 32px;">
+              <p style="margin: 0; font-size: 13px; color: #64748b;">Never miss an update. Sign up with ${escapeHtml(row.email)} and the profile is yours straight away.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top: 1px solid #f1f5f9; padding-top: 16px; text-align: center;">
+              <p style="margin: 0; font-size: 12px; color: #94a3b8;">
+                <a href="${unsubscribeUrl}" style="color: #94a3b8; text-decoration: underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  return { to: row.email, subject, text, html };
+}
+
+// Called by the email_unclaimed_publisher_after_follow trigger (pg_net), which
+// authenticates with the service role key — the same key this worker holds.
+async function handlePublisherSubscribed(request: Request, env: Env): Promise<Response> {
+  if (!timingSafeEqual(getBearerToken(request), env.SUPABASE_SERVICE_ROLE_KEY)) {
+    return jsonResponse({ error: "Unauthorized" }, 401);
+  }
+  const body = await request.json<{ publisher_id?: unknown; follower_account_id?: unknown }>();
+  const publisherId = typeof body.publisher_id === "string" ? body.publisher_id : "";
+  const followerAccountId = typeof body.follower_account_id === "string" ? body.follower_account_id : "";
+  if (!publisherId || !followerAccountId) return jsonResponse({ error: "publisher_id and follower_account_id are required" }, 400);
+
+  const response = await supabaseRequest(env, "rpc/claim_subscriber_email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_publisher_id: publisherId, p_follower_account_id: followerAccountId }),
+  });
+  if (!response.ok) {
+    throw new Error(`claim_subscriber_email HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  }
+  const row = (await response.json<SubscriberEmail[]>())[0];
+  if (!row) return jsonResponse({ sent: false });
+
+  const base = env.APP_BASE_URL.replace(/\/$/, "");
+  const claimUrl = `${base}/signup?email=${encodeURIComponent(row.email)}`;
+  const job = renderSubscriberEmail(row, claimUrl, await buildPublisherUnsubscribeUrl(env, row.email), env.APP_BASE_URL);
+  await env.EMAIL_QUEUE.send(job);
+  return jsonResponse({ sent: true }, 202);
+}
+
+async function handleUnsubscribePublisher(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const email = (url.searchParams.get("e") ?? "").trim().toLowerCase();
+  const sig = url.searchParams.get("sig") ?? "";
+  const expected = await hmacHex(env.UNSUBSCRIBE_SECRET, `publisher:${email}`);
+  if (!email || !timingSafeEqual(sig, expected)) {
+    return new Response("Invalid or expired unsubscribe link.", { status: 400, headers: { "Content-Type": "text/plain" } });
+  }
+  const response = await supabaseRequest(env, "rpc/publisher_email_opt_out", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_email: email }),
+  });
+  if (!response.ok) {
+    return new Response("Something went wrong. Please try again later.", { status: 500, headers: { "Content-Type": "text/plain" } });
+  }
+  return new Response("You've been unsubscribed from ProfilePush subscriber emails.", { status: 200, headers: { "Content-Type": "text/plain" } });
+}
+
 function sendingPaused(env: Env): boolean {
   return env.EMAIL_SENDING_PAUSED === "true";
 }
@@ -488,11 +635,13 @@ export default {
     const pathname = new URL(request.url).pathname;
     try {
       if (request.method === "GET" && pathname === "/unsubscribe") return await handleUnsubscribe(request, env);
+      if (request.method === "GET" && pathname === "/unsubscribe-publisher") return await handleUnsubscribePublisher(request, env);
       if (request.method === "GET") return jsonResponse({ status: "ok" });
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
       if (pathname === "/send") return await handleSendRequest(request, env);
       if (pathname === "/run-digest") return await handleRunDigest(request, env);
       if (pathname === "/test-digest") return await handleTestDigest(request, env);
+      if (pathname === "/publisher-subscribed") return await handlePublisherSubscribed(request, env);
       return jsonResponse({ error: "Not found" }, 404);
     } catch (error) {
       console.error("Email notification request failed", error);

@@ -228,7 +228,9 @@ export default function SignUp() {
 
   const [fullName, setFullName]         = useState('');
   const [businessName, setBusinessName] = useState('');
-  const [email, setEmail]               = useState('');
+  // /signup?email=… comes from the "claim your profile" email: signing up with
+  // that address is what claims it, so the field starts filled in.
+  const [email, setEmail]               = useState(() => new URLSearchParams(window.location.search).get('email')?.trim() ?? '');
   const [phoneCountry, setPhoneCountry] = useState<Country>(DEFAULT_COUNTRY);
   const [phone, setPhone]               = useState('');
   const [password, setPassword]         = useState('');

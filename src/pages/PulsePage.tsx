@@ -49,6 +49,9 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
+import { PosterProfileLink, PublisherFollowInline, SubscribeTextLink } from '../components/publishers/PublisherBits';
+import { PublisherProfilePanel } from './PublisherProfilePage';
+import { registerProfilePanelOpener } from '../lib/publishers';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
@@ -64,7 +67,6 @@ import { HOTLIST_AI_SUGGESTIONS } from '../lib/hotlist-ai-suggestions';
 import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
 import { shouldChargeCredits } from '../lib/feature-gates';
 import { normalizePostSource, type PostSource } from '../lib/post-source';
-import PostSourceBadge from '../components/PostSourceBadge';
 import LeadKindPill from '../components/LeadKindPill';
 import LeadAvatar from '../components/LeadAvatar';
 import LocationChipInput from '../components/LocationChipInput';
@@ -1450,13 +1452,13 @@ const LeadCard = memo(function LeadCard({
           : 'border-[#dfdad2] dark:border-white/10'
       } ${cardFillClass} ${hideActions || onFocus ? 'cursor-pointer' : ''}`}
     >
-      <LeadKindPill kind={lead.kind} variant="banner" />
+      <LeadKindPill kind={lead.kind} variant="banner" onProfilePush={lead.postSource === 'user_post'} />
       {matchRank != null && (
         // Top right, beside the kind icon rather than under it: below, it
         // would land on the second line of a wrapping title. The header
         // already reserves this strip with pr-14.
         <span
-          className="absolute right-7 top-0 z-10 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-bl-lg bg-gradient-to-br from-indigo-500 to-violet-600 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-sm"
+          className={`absolute ${lead.postSource === 'user_post' ? 'right-11' : 'right-7'} top-0 z-10 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-bl-lg bg-gradient-to-br from-indigo-500 to-violet-600 px-1.5 text-[11px] font-bold tabular-nums text-white shadow-sm`}
           title={`Rank ${matchRank} in this run`}
         >
           {matchRank}
@@ -1525,7 +1527,6 @@ const LeadCard = memo(function LeadCard({
             </p>
           )}
           <div className="mt-1 flex flex-wrap items-center gap-1">
-              {lead.postSource === 'user_post' && <PostSourceBadge source={lead.postSource} />}
               {predictResult && (
                 <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${predictToneClass(predictResult.score, isDark)}`}>
                   <Gauge size={9} strokeWidth={2.5} />
@@ -1611,16 +1612,19 @@ const LeadCard = memo(function LeadCard({
         );
       })()}
       <div className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
-        <span className="inline-flex items-center gap-1">
+        <PosterProfileLink kind={lead.kind === 'hotlist' ? 'hotlist' : 'job'} leadId={lead.id}>
           <LeadAvatar avatarUrl={lead.avatarUrl} name={lead.posterName} size={14} />
           {lead.posterName}
-        </span>
-        {lead.company && (
-          <span className="inline-flex items-center gap-1 whitespace-nowrap">
-            <span>•</span>
-            <Building2 size={10} className="shrink-0 text-gray-400" />
-            <span className="text-[#94A3B8]">{lead.company}</span>
-          </span>
+        </PosterProfileLink>
+        {lead.posterEmail && (
+          <>
+            <span className="whitespace-nowrap">•</span>
+            <SubscribeTextLink
+              kind={lead.kind === 'hotlist' ? 'hotlist' : 'job'}
+              leadId={lead.id}
+              posterEmail={lead.posterEmail}
+            />
+          </>
         )}
         <span className="whitespace-nowrap">•</span>
         <span className="whitespace-nowrap">{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
@@ -2586,6 +2590,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     ? ((routerLocation.state as { aiMatchFrom: string }).aiMatchFrom).trim()
     : '';
   const navigate = useNavigate();
+  // A poster's profile opens as a panel over the feed rather than a new page,
+  // so closing it returns to the same scroll position and loaded posts.
+  const [publisherPanelSlug, setPublisherPanelSlug] = useState<string | null>(null);
+  const closePublisherPanel = useCallback(() => setPublisherPanelSlug(null), []);
+  useEffect(() => registerProfilePanelOpener(setPublisherPanelSlug), []);
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
   const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>(() => {
@@ -4493,6 +4502,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                     Posted by {selectedLead.posterName || 'Unknown'}{selectedLead.posterEmail ? ` · ${selectedLead.posterEmail}` : ''}
                   </p>
                 )}
+                <PublisherFollowInline kind={selectedIsHotlist ? 'hotlist' : 'job'} leadId={selectedLead.id} />
                 {!selectedIsHotlist && (
                 <div className="mt-3 border-t border-gray-100 pt-3">
                   {selectedContentLoading ? (
@@ -7656,6 +7666,16 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
       <AppNav />
+      {publisherPanelSlug && (
+        <PublisherProfilePanel
+          slug={publisherPanelSlug}
+          onClose={closePublisherPanel}
+          onOpenPost={(leadId) => {
+            setPublisherPanelSlug(null);
+            navigate(`/feed/${account?.active_persona === 'bench_sales' ? 'job' : 'hotlist'}/${leadId}`);
+          }}
+        />
+      )}
 
       <main className="flex-1 min-h-0 overflow-hidden">
         <div className={`h-full w-full flex flex-col overflow-hidden ${isMobileViewport ? 'px-2 pt-0 pb-2' : 'px-2 py-2'}`}>
@@ -8455,13 +8475,15 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
 
               {/* One mount above the results section: the mobile list and the
                   desktop tabbed columns are different branches below, and
-                  putting it inside either one hid it on the other layout. */}
-              {aiMatch && isMobileViewport && (aiMatchOwnPosts.length > 0 || aiMatchRecentsForTarget.length > 0) && (
+                  putting it inside either one hid it on the other layout.
+                  Always shown on a phone: the nav no longer carries My Hotlist /
+                  My Jobs, so this tab is the way to your own posts. */}
+              {aiMatch && isMobileViewport && (
                 <div className="shrink-0 px-1 pt-1.5">
                   <div className="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-white/5">
                     {([
                       { id: 'match' as const, label: 'Match' },
-                      { id: 'recent' as const, label: 'Recent', count: aiMatchOwnPosts.length + aiMatchLooseRecents.length },
+                      { id: 'recent' as const, label: aiMatchOwnPostsLabel, count: aiMatchOwnPosts.length + aiMatchLooseRecents.length },
                     ]).map((tab) => (
                       <button
                         key={tab.id}
@@ -8483,6 +8505,17 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
 
               {aiMatchRecentTabActive && (
                 <div className="space-y-1.5 px-1.5 pb-6 pt-2">
+                  {aiMatchOwnPosts.length > 0 && (
+                    <div className="flex justify-end px-1">
+                      <button
+                        type="button"
+                        onClick={() => navigate(aiMatchOwnPostsPath)}
+                        className="text-[11px] text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                      >
+                        Manage
+                      </button>
+                    </div>
+                  )}
                   {renderAiMatchRailItems()}
                 </div>
               )}
