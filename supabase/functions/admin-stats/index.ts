@@ -76,6 +76,7 @@ Deno.serve(async (req: Request) => {
       followsRes,
       followLogRes,
       claimedProfilesRes,
+      playClicksRes,
     ] = await Promise.all([
       supabase
         .from("account_members")
@@ -259,6 +260,12 @@ Deno.serve(async (req: Request) => {
         .from("publisher_profiles")
         .select("id, claimed_account_id")
         .not("claimed_account_id", "is", null),
+      // Google Play link clicks; account is null when the clicker wasn't signed in.
+      withDateRange(
+        supabase
+          .from("play_store_clicks")
+          .select("account_id, created_at")
+      ),
     ]);
 
     function countBy(rows: any[] | null, key = "account_id"): Record<string, number> {
@@ -350,6 +357,7 @@ Deno.serve(async (req: Request) => {
       target[r.account_id] = (target[r.account_id] || 0) + 1;
     }
     const subscribeTaps = countBy(followLogRes.data);
+    const playClicks = countBy(playClicksRes.data);
     const claimedBy: Record<string, string> = {};
     for (const row of claimedProfilesRes.data ?? []) {
       const r = row as { id?: string; claimed_account_id?: string };
@@ -492,6 +500,7 @@ Deno.serve(async (req: Request) => {
         auto_subscriptions_count: subscriptionsAuto[a.id] || 0,
         subscribe_taps_count: subscribeTaps[a.id] || 0,
         subscribers_count: subscribers[a.id] || 0,
+        play_clicks_count: playClicks[a.id] || 0,
         account_age_days: Math.max(0, Math.floor((Date.now() - Date.parse(a.created_at)) / 86_400_000)),
         session_count: activity?.session_count ?? 0,
         active_seconds: activity?.active_seconds ?? 0,
@@ -539,6 +548,18 @@ Deno.serve(async (req: Request) => {
     for (const r of vendorDownloadsRes.data ?? []) bucket(r.created_at, r.account_id, "downloads");
     for (const r of recruiterDownloadsRes.data ?? []) bucket(r.created_at, r.account_id, "downloads");
     for (const r of followLogRes.data ?? []) bucket(r.created_at, r.account_id, "subscribes");
+    for (const r of playClicksRes.data ?? []) {
+      if (r.account_id) {
+        bucket(r.created_at, r.account_id, "play_clicks");
+      } else {
+        // Signed-out clicks have no persona; they count under "none".
+        const date = String(r.created_at ?? "").slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          daily[date] ??= { vendor: {}, bench_sales: {}, none: {} };
+          daily[date].none.play_clicks = (daily[date].none.play_clicks ?? 0) + 1;
+        }
+      }
+    }
     // Matches delivered, net of refunds, on the day the run started.
     for (const run of deliveredMatchRuns) {
       bucket(run.created_at, run.account_id, "ai_matches", run.delivered);
