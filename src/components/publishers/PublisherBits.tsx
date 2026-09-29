@@ -7,7 +7,6 @@ import {
   fetchPublisherForLead,
   followPublisher,
   getFollowedEmailsSnapshot,
-  getProfilePanelOpener,
   publisherEmailKey,
   setEmailFollowed,
   subscribeFollowedEmails,
@@ -76,11 +75,13 @@ export function FollowButton({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsUpgrade, setNeedsUpgrade] = useState(false);
 
   async function toggle() {
     if (busy) return;
     setBusy(true);
     setError(null);
+    setNeedsUpgrade(false);
     try {
       if (following) {
         await unfollowPublisher(publisherId);
@@ -91,6 +92,7 @@ export function FollowButton({
       }
     } catch (err) {
       setError(err instanceof FollowLimitError ? err.message : 'Could not update the subscription. Try again.');
+      setNeedsUpgrade(err instanceof FollowLimitError && err.kind === 'total');
     } finally {
       setBusy(false);
     }
@@ -113,7 +115,14 @@ export function FollowButton({
         {following ? <Check size={12} /> : <Plus size={12} />}
         {following ? 'Subscribed' : 'Subscribe'}
       </button>
-      {error && <p className="max-w-[220px] text-right text-[11px] text-red-600 dark:text-red-400">{error}</p>}
+      {error && (
+        <p className="max-w-[220px] text-right text-[11px] text-red-600 dark:text-red-400">
+          {error}
+          {needsUpgrade && (
+            <> <Link to="/billing" className="font-semibold text-blue-600 underline dark:text-blue-400">Upgrade</Link></>
+          )}
+        </p>
+      )}
     </div>
   );
 }
@@ -151,10 +160,7 @@ export function PosterProfileLink({
     setBusy(true);
     try {
       const publisher = await fetchPublisherForLead(kind, leadId);
-      if (!publisher) return;
-      const openPanel = getProfilePanelOpener();
-      if (openPanel) openPanel(publisher.slug);
-      else navigate(`/p/${publisher.slug}`);
+      if (publisher) navigate(`/p/${publisher.slug}`);
     } finally {
       setBusy(false);
     }
@@ -187,10 +193,6 @@ export function PublisherFollowInline({ kind, leadId }: { kind: 'job' | 'hotlist
     <div className="mt-2 flex flex-wrap items-center gap-2">
       <Link
         to={`/p/${publisher.slug}`}
-        onClick={(e) => {
-          const openPanel = getProfilePanelOpener();
-          if (openPanel) { e.preventDefault(); openPanel(publisher.slug); }
-        }}
         className="text-[12px] font-semibold text-blue-600 hover:underline dark:text-blue-400"
       >
         View profile
@@ -239,7 +241,9 @@ export function SubscribeTextLink({
       await followPublisher(publisher.publisher_id);
       setEmailFollowed(key, true);
     } catch (err) {
-      setError(err instanceof FollowLimitError ? 'Daily limit reached' : 'Try again');
+      setError(err instanceof FollowLimitError
+        ? (err.kind === 'total' ? `Free limit of ${err.limit} reached` : 'Daily limit reached')
+        : 'Try again');
     } finally {
       setBusy(false);
     }

@@ -80,8 +80,11 @@ export type PublisherPost = {
 export type FollowQuota = {
   used_today: number;
   daily_limit: number;
+  // Left today, already capped by the free plan's total limit.
   remaining: number;
   is_trial: boolean;
+  following_total?: number;
+  total_limit?: number | null;
 };
 
 // The generated Database types don't know these functions yet.
@@ -94,10 +97,17 @@ export async function fetchFollowingFeed(kind: PublisherPostKind): Promise<Follo
   return (data as FollowingCard[] | null) ?? [];
 }
 
-export async function fetchSuggestedPublishers(kind: PublisherPostKind, limit = 12): Promise<SuggestedPublisher[]> {
-  const { data, error } = await rpc('get_suggested_publishers', { p_kind: kind, p_limit: limit });
+// One page of the Active tab, most posts this week first. total is how many
+// publishers are active in all, for the tab's count.
+export async function fetchSuggestedPublishers(
+  kind: PublisherPostKind,
+  limit = 20,
+  offset = 0,
+): Promise<{ rows: SuggestedPublisher[]; total: number }> {
+  const { data, error } = await rpc('get_suggested_publishers', { p_kind: kind, p_limit: limit, p_offset: offset });
   if (error) throw new Error(error.message);
-  return (data as SuggestedPublisher[] | null) ?? [];
+  const rows = (data as Array<SuggestedPublisher & { total_count: number }> | null) ?? [];
+  return { rows, total: rows[0]?.total_count ?? (offset === 0 ? 0 : offset) };
 }
 
 export async function fetchPublisherProfile(slug: string): Promise<PublisherProfile | null> {
@@ -118,17 +128,22 @@ export async function fetchFollowQuota(): Promise<FollowQuota | null> {
   return ((data as FollowQuota[] | null) ?? [])[0] ?? null;
 }
 
+// Free accounts: 5 new a day and 10 in total. Paid: 10 new a day.
 export class FollowLimitError extends Error {
-  constructor(public dailyLimit: number) {
-    super(`You can subscribe to ${dailyLimit} new publishers a day. Try again tomorrow.`);
+  constructor(public limit: number, public kind: 'daily' | 'total' = 'daily') {
+    super(kind === 'total'
+      ? `Free accounts can subscribe to ${limit} publishers. Upgrade to subscribe to more.`
+      : `You can subscribe to ${limit} new publishers a day. Try again tomorrow.`);
   }
 }
 
 export async function followPublisher(publisherId: string): Promise<FollowQuota> {
   const { data, error } = await rpc('follow_publisher', { p_publisher_id: publisherId });
   if (error) {
+    const total = error.message.match(/FOLLOW_TOTAL_LIMIT_REACHED:(\d+)/);
+    if (total) throw new FollowLimitError(Number(total[1]), 'total');
     const limit = error.message.match(/FOLLOW_LIMIT_REACHED:(\d+)/);
-    if (limit) throw new FollowLimitError(Number(limit[1]));
+    if (limit) throw new FollowLimitError(Number(limit[1]), 'daily');
     throw new Error(error.message);
   }
   const row = ((data as Array<FollowQuota & { following: boolean }> | null) ?? [])[0];
@@ -265,19 +280,4 @@ export function setEmailFollowed(email: string, following: boolean) {
   if (following) next.add(key); else next.delete(key);
   followedEmails = next;
   emitFollowed();
-}
-
-// ── Profile panel over the feed ─────────────────────────────────────────────
-// The feed registers an opener while it's mounted, so a poster's name opens
-// their profile as a panel on top of it and the feed keeps its place. Without
-// one (any other page), links fall back to navigating to /p/:slug.
-let profilePanelOpener: ((slug: string) => void) | null = null;
-
-export function registerProfilePanelOpener(opener: ((slug: string) => void) | null): () => void {
-  profilePanelOpener = opener;
-  return () => { if (profilePanelOpener === opener) profilePanelOpener = null; };
-}
-
-export function getProfilePanelOpener(): ((slug: string) => void) | null {
-  return profilePanelOpener;
 }

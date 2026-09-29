@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, X } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Activity, Rss, Search, X, type LucideIcon } from 'lucide-react';
+import { useTheme } from '../contexts/ThemeContext';
+import { useNavigate } from 'react-router-dom';
 import AppNav from '../components/AppNav';
 import { useTypewriterPlaceholder } from '../lib/useTypewriterPlaceholder';
 import LogoSpinner from '../components/LogoSpinner';
@@ -9,7 +10,6 @@ import {
   FollowButton,
   MutedIcon,
   PublisherAvatar,
-  PublisherName,
   Tag,
 } from '../components/publishers/PublisherBits';
 import {
@@ -23,6 +23,7 @@ import {
   followingKindForPersona,
   searchPublishers,
   followingLabelForPersona,
+  publisherDisplayName,
   timeAgo,
   type FollowQuota,
   type FollowingCard,
@@ -33,23 +34,58 @@ import {
 // Vendors (for bench sales) / Bench Sales (for vendors): one card per publisher
 // the account subscribes to, never individual posts. Publishers with new posts
 // come first; opening a card goes to their profile page.
+type ListTab = 'subscribed' | 'active';
+const LIST_TABS: Array<{ id: ListTab; label: string; icon: LucideIcon }> = [
+  { id: 'active', label: 'Active', icon: Activity },
+  { id: 'subscribed', label: 'Subscribed', icon: Rss },
+];
+
+// What the page looked like when you left it, so opening a profile and coming
+// back returns to the same tab, the same loaded list and the same scroll
+// position instead of reloading from the top. Kept for ten minutes.
+type FollowingSnapshot = {
+  accountId: string;
+  kind: 'job' | 'hotlist';
+  tab: ListTab;
+  searchQuery: string;
+  cards: FollowingCard[] | null;
+  suggested: SuggestedPublisher[];
+  activeTotal: number | null;
+  counts: { total: number; following: number } | null;
+  quota: FollowQuota | null;
+  scrollTop: number;
+  at: number;
+};
+let followingSnapshot: FollowingSnapshot | null = null;
+const SNAPSHOT_TTL_MS = 10 * 60 * 1000;
+
 export default function FollowingPage() {
   const { account } = useAuth();
+  const { isDark } = useTheme();
   const navigate = useNavigate();
   const persona = account?.active_persona;
   const kind = followingKindForPersona(persona);
   const label = followingLabelForPersona(persona);
   const postNoun = kind === 'job' ? 'requirement' : 'hotlist';
 
-  const [cards, setCards] = useState<FollowingCard[] | null>(null);
-  const [suggested, setSuggested] = useState<SuggestedPublisher[]>([]);
-  const [quota, setQuota] = useState<FollowQuota | null>(null);
-  const [counts, setCounts] = useState<{ total: number; following: number } | null>(null);
+  const [snapshot] = useState<FollowingSnapshot | null>(() => (
+    followingSnapshot
+      && followingSnapshot.accountId === account?.id
+      && followingSnapshot.kind === followingKindForPersona(account?.active_persona)
+      && Date.now() - followingSnapshot.at < SNAPSHOT_TTL_MS
+      ? followingSnapshot
+      : null
+  ));
+  const [cards, setCards] = useState<FollowingCard[] | null>(snapshot?.cards ?? null);
+  const [suggested, setSuggested] = useState<SuggestedPublisher[]>(snapshot?.suggested ?? []);
+  const [quota, setQuota] = useState<FollowQuota | null>(snapshot?.quota ?? null);
+  const [counts, setCounts] = useState<{ total: number; following: number } | null>(snapshot?.counts ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(snapshot?.searchQuery ?? '');
   const [results, setResults] = useState<PublisherSearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [suggestedShown, setSuggestedShown] = useState(20);
+  const [activeTotal, setActiveTotal] = useState<number | null>(snapshot?.activeTotal ?? null);
+  const loadingMoreRef = useRef(false);
   const activeQuery = searchQuery.trim();
 
   // Examples mix what people search for: skills and roles, and real names and
@@ -94,18 +130,18 @@ export default function FollowingPage() {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [activeQuery, kind]);
 
-  const load = useCallback(async () => {
+  // Subscriptions, limits and totals. Kept apart from the Active list so a
+  // subscribe doesn't throw away the pages already scrolled through there.
+  const loadCards = useCallback(async () => {
     setError(null);
     try {
-      const [feed, suggestions, q, c] = await Promise.all([
+      const [feed, q, c] = await Promise.all([
         fetchFollowingFeed(kind),
-        fetchSuggestedPublishers(kind, 300),
         fetchFollowQuota(),
         fetchPublisherCounts(kind),
       ]);
       setCounts(c);
       setCards(feed);
-      setSuggested(suggestions);
       setQuota(q);
     } catch {
       setError(`Could not load your ${label.toLowerCase()}. Pull to refresh or try again.`);
@@ -113,24 +149,121 @@ export default function FollowingPage() {
     }
   }, [kind, label]);
 
+  // The Active tab, 20 at a time from the server; reset starts again at the top.
+  const loadActive = useCallback(async (reset: boolean) => {
+    if (loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    try {
+      const offset = reset ? 0 : suggested.length;
+      const page = await fetchSuggestedPublishers(kind, 20, offset);
+      setSuggested((prev) => {
+        const base = reset ? [] : prev;
+        const seen = new Set(base.map((p) => p.publisher_id));
+        return [...base, ...page.rows.filter((p) => !seen.has(p.publisher_id))];
+      });
+      setActiveTotal(page.total);
+    } catch {
+      if (reset) { setSuggested([]); setActiveTotal(0); }
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, [kind, suggested.length]);
+
+  const load = useCallback(async () => {
+    await Promise.all([loadCards(), loadActive(true)]);
+    // loadActive changes identity as pages arrive; the first page is all a
+    // full reload needs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadCards, kind]);
+
+  // Subscribing from the Active list: drop that row where it is and refresh
+  // the cards, instead of reloading the list from the top.
+  const onActiveFollowed = useCallback((publisherId: string) => {
+    setSuggested((prev) => prev.filter((p) => p.publisher_id !== publisherId));
+    setActiveTotal((t) => (t == null ? t : Math.max(0, t - 1)));
+    void loadCards();
+  }, [loadCards]);
+
   useEffect(() => {
     void claimMyPublisherProfile();
   }, []);
 
+  // Coming back from a profile: keep the list as it was and only refresh the
+  // subscription cards, which may have changed there.
+  const restoringRef = useRef(Boolean(snapshot));
   useEffect(() => {
-    if (account?.id) void load();
-  }, [account?.id, load]);
+    if (!account?.id) return;
+    if (restoringRef.current) {
+      restoringRef.current = false;
+      void loadCards();
+      return;
+    }
+    void load();
+  }, [account?.id, load, loadCards]);
+
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  // Recorded while scrolling; the list is already gone when the page unmounts.
+  const scrollTopRef = useRef(snapshot?.scrollTop ?? 0);
+  useEffect(() => {
+    if (snapshot && listScrollRef.current) listScrollRef.current.scrollTop = snapshot.scrollTop;
+  }, [snapshot]);
+
+  // Save on the way out. Refs, because the cleanup must see the latest values.
+  const latestRef = useRef<Omit<FollowingSnapshot, 'scrollTop' | 'at'> | null>(null);
+  latestRef.current = account?.id
+    ? { accountId: account.id, kind, tab: 'active', searchQuery, cards, suggested, activeTotal, counts, quota }
+    : null;
+  const tabRef = useRef<ListTab>('active');
+  useEffect(() => () => {
+    const latest = latestRef.current;
+    if (!latest) return;
+    followingSnapshot = {
+      ...latest,
+      tab: tabRef.current,
+      scrollTop: scrollTopRef.current,
+      at: Date.now(),
+    };
+  }, []);
 
   const unread = (cards ?? []).filter((c) => c.unread_count > 0);
   const read = (cards ?? []).filter((c) => c.unread_count === 0);
 
-  return (
-    <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
-      <AppNav />
-      <main className="flex-1 min-h-0 overflow-hidden">
-       <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2">
-        {/* Same search box as the posts page and the feed. */}
-        <div className="flex shrink-0 items-center gap-2 pb-2">
+  // Opens on Active: everyone posting this week, to pick from. Subscribed
+  // holds the cards, or the one-tap "Subscribe to top 5" card while empty.
+  const [tab, setTabChoice] = useState<ListTab>(snapshot?.tab ?? 'active');
+  tabRef.current = tab;
+  // Same breakpoint and switch as the posts page (MyPostsPage).
+  const [isMobileViewport, setIsMobileViewport] = useState(() => window.matchMedia('(max-width: 639px)').matches);
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 639px)');
+    const update = () => setIsMobileViewport(mediaQuery.matches);
+    mediaQuery.addEventListener('change', update);
+    return () => mediaQuery.removeEventListener('change', update);
+  }, []);
+  const tabCounts: Record<ListTab, number | null> = {
+    subscribed: cards ? cards.length : null,
+    active: activeTotal,
+  };
+
+  const listRowTabs = LIST_TABS.map((option) => {
+    const isSelected = tab === option.id;
+    const Icon = option.icon;
+    return (
+      <button
+        key={option.id}
+        type="button"
+        onClick={() => setTabChoice(option.id)}
+        aria-pressed={isSelected}
+        className={`inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${isSelected ? (isDark ? 'border border-white/25 bg-[#2A2E35] text-slate-100' : 'border border-blue-600 bg-blue-600 text-white') : (isDark ? 'border border-transparent bg-[#171a1f] text-[#94A3B8] hover:bg-white/5' : 'border border-transparent bg-white text-gray-500 hover:text-gray-700')}`}
+      >
+        <Icon size={11} />
+        <span>{option.label}</span>
+        {tabCounts[option.id] != null && <span className="tabular-nums">{tabCounts[option.id]!.toLocaleString('en-US')}</span>}
+      </button>
+    );
+  });
+
+  const searchBoxEl = (
           <div className="relative flex min-w-[160px] flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
             <Search size={11} className="text-gray-400" />
             <input
@@ -153,21 +286,43 @@ export default function FollowingPage() {
               </button>
             )}
           </div>
-          {counts && (
-            <div className="flex shrink-0 items-center gap-1.5 text-[12px] text-gray-600 dark:text-slate-300">
-              <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-semibold tabular-nums dark:border-white/10 dark:bg-[#20242a]">
-                {counts.total.toLocaleString('en-US')} {label.toLowerCase()}
-              </span>
-              {counts.following > 0 && (
-                <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold tabular-nums text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
-                  {counts.following.toLocaleString('en-US')} subscribed
-                </span>
-              )}
+  );
+
+  const totalChipEl = counts ? (
+    <span className="ml-auto inline-flex shrink-0 items-center rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold tabular-nums text-gray-600 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-300 sm:ml-0">
+      {counts.total.toLocaleString('en-US')}
+    </span>
+  ) : null;
+
+  return (
+    <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
+      <AppNav />
+      <main className="flex-1 min-h-0 overflow-hidden">
+       <div className="h-full w-full flex flex-col overflow-hidden px-2 py-2">
+        {/* Same structure as the posts page: on a phone the search box has
+            the first row to itself and the tabs sit under it; on desktop they
+            share one row. */}
+        {isMobileViewport ? (
+          <div className="flex shrink-0 flex-col gap-1.5 pb-2">
+            <div className="flex items-center gap-2">
+              {searchBoxEl}
             </div>
-          )}
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-1 pt-2 pb-10 sm:px-2 sm:pb-4">
+            <div className="flex items-center gap-1">
+              {listRowTabs}
+              {totalChipEl}
+            </div>
+          </div>
+        ) : (
+          <div className="flex shrink-0 items-center gap-2 pb-2">
+            {searchBoxEl}
+            <div className="flex shrink-0 items-center gap-1">
+              {listRowTabs}
+            </div>
+            {totalChipEl}
+          </div>
+        )}
+        <div ref={listScrollRef} onScroll={(e) => { scrollTopRef.current = e.currentTarget.scrollTop; }} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex w-full flex-col gap-2 pb-10 sm:pb-2">
           {error && <p className="text-[12px] text-red-600 dark:text-red-400">{error}</p>}
 
           {activeQuery.length >= 2 ? (
@@ -179,55 +334,66 @@ export default function FollowingPage() {
               onOpen={(slug) => navigate(`/p/${slug}?q=${encodeURIComponent(activeQuery)}`)}
               onFollowChange={() => void load()}
             />
-          ) : cards === null ? (
-            <div className="flex justify-center py-10"><LogoSpinner size={22} /></div>
-          ) : cards.length === 0 ? (
-            <SubscribeCta
-              kind={kind}
-              suggested={suggested}
-              remainingToday={quota?.remaining ?? 5}
-              onDone={() => void load()}
-            />
+          ) : tab === 'subscribed' ? (
+            cards === null ? (
+              <div className="flex justify-center py-10"><LogoSpinner size={22} /></div>
+            ) : cards.length === 0 ? (
+              <SubscribeCta
+                kind={kind}
+                suggested={suggested}
+                remainingToday={quota?.remaining ?? 5}
+                onDone={() => void load()}
+              />
+            ) : (
+              <section className="grid grid-cols-1 gap-2 lg:grid-cols-2 2xl:grid-cols-3">
+                {unread.map((card) => (
+                  <FollowingCardRow key={card.publisher_id} card={card} postNoun={postNoun} onOpen={() => navigate(`/p/${card.slug}`)} />
+                ))}
+                {read.length > 0 && unread.length > 0 && (
+                  <p className="col-span-full px-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Up to date</p>
+                )}
+                {read.map((card) => (
+                  <FollowingCardRow key={card.publisher_id} card={card} postNoun={postNoun} onOpen={() => navigate(`/p/${card.slug}`)} />
+                ))}
+              </section>
+            )
+          ) : suggested.length === 0 ? (
+            <p className="py-8 text-center text-[13px] text-gray-500 dark:text-slate-400">
+              No {kind === 'job' ? 'vendors' : 'bench sales recruiters'} posted this week yet.
+            </p>
           ) : (
-            <section className="flex flex-col gap-2">
-              {unread.map((card) => (
-                <FollowingCardRow key={card.publisher_id} card={card} postNoun={postNoun} onOpen={() => navigate(`/p/${card.slug}`)} />
-              ))}
-              {read.length > 0 && unread.length > 0 && (
-                <p className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Up to date</p>
-              )}
-              {read.map((card) => (
-                <FollowingCardRow key={card.publisher_id} card={card} postNoun={postNoun} onOpen={() => navigate(`/p/${card.slug}`)} />
-              ))}
-            </section>
-          )}
-
-          {activeQuery.length < 2 && suggested.length > 0 && (
-            <section className="flex flex-col gap-2">
-              <h2 className="px-1 text-[13px] font-semibold">
-                {cards && cards.length === 0 ? 'Or pick them yourself' : `Active ${kind === 'job' ? 'vendors' : 'bench sales recruiters'} this week`}
-              </h2>
-              {suggested.slice(0, suggestedShown).map((s) => (
-                <div key={s.publisher_id} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-[#171A1F]">
-                  <Link to={`/p/${s.slug}`} className="shrink-0"><PublisherAvatar publisher={s} size={36} /></Link>
+            <section className="grid grid-cols-1 gap-2 lg:grid-cols-2 2xl:grid-cols-3">
+              {suggested.map((s) => (
+                // The whole row opens the profile; only Subscribe does not.
+                <div
+                  key={s.publisher_id}
+                  role="link"
+                  tabIndex={0}
+                  onClick={() => navigate(`/p/${s.slug}`)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/p/${s.slug}`); }}
+                  className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 transition hover:border-blue-300 dark:border-white/10 dark:bg-[#171A1F]"
+                >
+                  <PublisherAvatar publisher={s} size={36} />
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-1.5">
-                      <PublisherName publisher={s} slug={s.slug} className="text-[13px]" />
+                      <span className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100">{publisherDisplayName(s)}</span>
                     </div>
                     <p className="truncate text-[11px] text-gray-500 dark:text-slate-400">
                       {s.post_count} {postNoun}{s.post_count === 1 ? '' : 's'} this week
                     </p>
                   </div>
-                  <FollowButton
-                    publisherId={s.publisher_id}
-                    following={false}
-                    size="sm"
-                    onChange={() => void load()}
-                  />
+                  <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                    <FollowButton
+                      publisherId={s.publisher_id}
+                      following={false}
+                      size="sm"
+                      onChange={(following) => { if (following) onActiveFollowed(s.publisher_id); }}
+                    />
+                  </div>
                 </div>
               ))}
-              {suggested.length > suggestedShown && (
-                <LoadMoreSentinel onVisible={() => setSuggestedShown((n) => n + 20)} />
+              {activeTotal != null && suggested.length < activeTotal && (
+                <div className="col-span-full"><LoadMoreSentinel onVisible={() => void loadActive(false)} /></div>
               )}
             </section>
           )}
