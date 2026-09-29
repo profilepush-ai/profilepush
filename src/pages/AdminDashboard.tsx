@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bell, Filter, Lock, Menu, RefreshCcw, Target, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Table as TableIcon } from 'lucide-react';
+import { Bell, Filter, Lock, Menu, RefreshCcw, Target, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Rss, Users, Table as TableIcon } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
@@ -54,6 +54,12 @@ interface AccountStats {
   chats_count: number;
   vendor_downloads_count: number;
   recruiter_downloads_count: number;
+  // Network: subscriptions the account chose, ones its AI Submits/Invites
+  // created, Subscribe taps in the range, and who subscribes to its profile.
+  subscriptions_count: number;
+  auto_subscriptions_count: number;
+  subscribe_taps_count: number;
+  subscribers_count: number;
   account_age_days: number;
   session_count: number;
   active_seconds: number;
@@ -147,6 +153,10 @@ const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.React
   { key: 'ai_match_matches_count', label: 'AI Matches', icon: <Sparkles size={12} />, kind: 'number', widthClass: 'w-[115px]' },
   { key: 'gmail_address', label: 'Gmail', icon: <Mail size={12} />, kind: 'text', widthClass: 'w-[200px]' },
   { key: 'chats_count', label: 'Chats', icon: <MessageSquare size={12} />, kind: 'number', widthClass: 'w-[90px]' },
+  { key: 'subscriptions_count', label: 'Subscriptions', icon: <Rss size={12} />, kind: 'number', widthClass: 'w-[120px]' },
+  { key: 'auto_subscriptions_count', label: 'Auto Subscriptions', icon: <Rss size={12} />, kind: 'number', widthClass: 'w-[150px]' },
+  { key: 'subscribe_taps_count', label: 'Subscribe Taps', icon: <Rss size={12} />, kind: 'number', widthClass: 'w-[125px]' },
+  { key: 'subscribers_count', label: 'Subscribers', icon: <Users size={12} />, kind: 'number', widthClass: 'w-[110px]' },
   { key: 'vendor_downloads_count', label: 'Vendor Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[140px]' },
   { key: 'recruiter_downloads_count', label: 'Recruiter Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[150px]' },
   { key: 'created_at', label: 'Created', icon: <Calendar size={12} />, kind: 'date', widthClass: 'w-[155px]' },
@@ -575,6 +585,7 @@ export default function AdminDashboard() {
       'AI Matches': ['ai_matches'],
       Chats: ['chats'],
       Downloads: ['downloads'],
+      Subscribes: ['subscribes'],
     };
     const out: Record<string, Trend> = {};
     for (const [label, keys] of Object.entries(backing)) {
@@ -905,6 +916,7 @@ export default function AdminDashboard() {
                   { label: 'Gmail Connected', value: gmailConnectedCount.toLocaleString(), hint: shareOfAccounts(gmailConnectedCount) },
                   { label: 'Chats', value: (totals.chats_count ?? 0).toLocaleString(), hint: 'messages sent' },
                   { label: 'Downloads', value: totalDownloads.toLocaleString(), hint: `${(totals.vendor_downloads_count ?? 0).toLocaleString()} vendor · ${(totals.recruiter_downloads_count ?? 0).toLocaleString()} recruiter` },
+                  { label: 'Subscriptions', value: ((totals.subscriptions_count ?? 0) + (totals.auto_subscriptions_count ?? 0)).toLocaleString(), hint: `${(totals.subscriptions_count ?? 0).toLocaleString()} chosen · ${(totals.auto_subscriptions_count ?? 0).toLocaleString()} from AI Submit/Invite · ${(totals.subscribe_taps_count ?? 0).toLocaleString()} taps in range` },
                 ].map((metric) => (
                   <div key={metric.label} className="border-b border-r border-gray-200 px-4 py-3 [&:nth-child(2n)]:border-r-0 [&:nth-child(n+11)]:border-b-0 sm:[&:nth-child(4n)]:border-r-0 sm:[&:nth-child(n+9)]:border-b-0 lg:[&:nth-child(6n)]:border-r-0 lg:[&:nth-child(n+7)]:border-b-0">
                     <div className="flex items-center gap-1.5">

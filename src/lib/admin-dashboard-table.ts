@@ -28,6 +28,10 @@ export interface AdminAccountStatsRow {
   chats_count: number;
   vendor_downloads_count: number;
   recruiter_downloads_count: number;
+  subscriptions_count?: number;
+  auto_subscriptions_count?: number;
+  subscribe_taps_count?: number;
+  subscribers_count?: number;
   account_age_days: number;
   session_count: number;
   active_seconds: number;
@@ -37,7 +41,7 @@ export interface AdminAccountStatsRow {
   is_trial: boolean;
 }
 
-export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'active_persona' | 'credits_balance' | 'searches_count' | 'job_posts_count' | 'hotlist_posts_count' | 'job_previews_count' | 'hotlist_previews_count' | 'ai_pitches_count' | 'ai_requests_count' | 'chats_count' | 'vendor_downloads_count' | 'recruiter_downloads_count' | 'account_age_days' | 'session_count' | 'active_seconds' | 'active_days' | 'last_activity_at' | 'last_logged_in' | 'created_at';
+export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'active_persona' | 'credits_balance' | 'searches_count' | 'job_posts_count' | 'hotlist_posts_count' | 'job_previews_count' | 'hotlist_previews_count' | 'ai_pitches_count' | 'ai_requests_count' | 'chats_count' | 'vendor_downloads_count' | 'recruiter_downloads_count' | 'subscriptions_count' | 'auto_subscriptions_count' | 'subscribe_taps_count' | 'subscribers_count' | 'account_age_days' | 'session_count' | 'active_seconds' | 'active_days' | 'last_activity_at' | 'last_logged_in' | 'created_at';
 export type AdminStatsSortDirection = 'asc' | 'desc';
 
 export interface AdminStatsFilterState {
