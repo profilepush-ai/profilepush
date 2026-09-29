@@ -1,5 +1,6 @@
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { claimMyPublisherProfile } from './publishers';
 
 // There is no DB trigger that provisions an accounts/account_members row on
 // auth.users insert — every client-side flow that can produce a brand-new
@@ -17,7 +18,11 @@ export async function ensureAccountForUser(user: User): Promise<void> {
     .eq('status', 'active')
     .maybeSingle();
 
-  if (existingMember) return;
+  if (existingMember) {
+    // Covers people who confirmed their email after their account existed.
+    void claimMyPublisherProfile();
+    return;
+  }
 
   const accountId = crypto.randomUUID();
   const displayName = (user.user_metadata?.full_name ?? user.user_metadata?.name ?? '').trim();
@@ -36,4 +41,7 @@ export async function ensureAccountForUser(user: User): Promise<void> {
     role: 'owner',
     status: 'active',
   });
+
+  // A known poster signing up gets their public profile straight away.
+  void claimMyPublisherProfile();
 }

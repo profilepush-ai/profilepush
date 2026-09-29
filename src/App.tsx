@@ -55,6 +55,8 @@ const InboxPage = lazy(() => import('./pages/InboxPage'));
 const WatchlistProfilesPage = lazy(() => import('./pages/WatchlistProfilesPage'));
 const OnboardingVideo = lazy(() => import('./pages/OnboardingVideo'));
 const ActiveListPage = lazy(() => import('./pages/ActiveListPage'));
+const FollowingPage = lazy(() => import('./pages/FollowingPage'));
+const PublisherProfilePage = lazy(() => import('./pages/PublisherProfilePage'));
 const ItStaffingVendorListPage = lazy(() => import('./pages/ItStaffingVendorListPage'));
 const ItStaffingBenchSalesRecruitersListPage = lazy(() => import('./pages/ItStaffingBenchSalesRecruitersListPage'));
 const VendorsLandingPage = lazy(() => import('./pages/VendorsLandingPage'));
@@ -319,6 +321,8 @@ export default function App() {
             <Route path="/posts/applications/:jobId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/applications/:jobId/:applicationId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/requests/:hotlistId" element={<ProtectedRoute><ErrorBoundary><HotlistRequestsPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/following" element={<ProtectedRoute><ErrorBoundary><FollowingPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/p/:slug" element={<ProtectedRoute><ErrorBoundary><PublisherProfilePage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><DashboardPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             </Routes>
