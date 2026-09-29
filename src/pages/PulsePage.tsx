@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams, useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   Activity,
@@ -13,6 +13,7 @@ import {
   BadgeCheck,
   Check,
   Clock3,
+  Rss,
   DollarSign,
   Eye,
   FileText,
@@ -50,8 +51,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { PosterProfileLink, PublisherFollowInline, SubscribeTextLink } from '../components/publishers/PublisherBits';
-import { PublisherProfilePanel } from './PublisherProfilePage';
-import { registerProfilePanelOpener } from '../lib/publishers';
+import { PublisherProfileView } from '../components/publishers/PublisherProfileView';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
@@ -476,7 +476,7 @@ type ProfileCategoryTab = {
   icon: LucideIcon;
 };
 
-type MatchesTabId = 'all' | 'breakdown' | 'previewed' | 'asked' | 'verified' | 'queued';
+type MatchesTabId = 'all' | 'breakdown' | 'previewed' | 'asked' | 'verified' | 'queued' | 'subscribed';
 type FeedTimeBasis = 'posted' | 'created';
 type LeadActionType = 'revealed' | 'breakdown' | 'post_content_viewed' | 'ignored';
 
@@ -1347,6 +1347,46 @@ interface LeadCardProps {
 // the visible list recomputed its full breakdown/palette/badges on every
 // PulsePage render, including ones triggered by unrelated interactions
 // elsewhere on the page (typing in search, hovering, etc).
+// A publisher's posts inside the profile panel, drawn with the feed's own
+// cards (renderCards is the feed's renderLeadCards) so every action works the
+// same as in the feed. Loads once per publisher; the query filters locally,
+// every word matching somewhere in the post.
+function PublisherLeadList({
+  publisherId,
+  query,
+  loadLeads,
+  renderCards,
+}: {
+  publisherId: string;
+  query: string;
+  loadLeads: (publisherId: string) => Promise<SocialLead[]>;
+  renderCards: (leads: SocialLead[]) => ReactNode;
+}) {
+  const [leads, setLeads] = useState<SocialLead[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setLeads(null);
+    loadLeads(publisherId).then((rows) => { if (!cancelled) setLeads(rows); }, () => { if (!cancelled) setLeads([]); });
+    return () => { cancelled = true; };
+  }, [publisherId, loadLeads]);
+
+  const filtered = useMemo(() => {
+    if (!leads) return [];
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return leads;
+    return leads.filter((lead) => {
+      const haystack = [lead.title, lead.roleTitle ?? '', lead.location, lead.company, lead.employmentType, lead.workType,
+        lead.hourlyRate, lead.snippet, ...lead.skills, ...lead.visaTypes].join(' ').toLowerCase();
+      return words.every((w) => haystack.includes(w));
+    });
+  }, [leads, query]);
+
+  if (leads === null) return <div className="flex justify-center py-8"><LogoSpinner size={20} /></div>;
+  if (leads.length === 0) return <p className="py-6 text-center text-[13px] text-gray-500 dark:text-slate-400">No open posts in the last 30 days.</p>;
+  if (filtered.length === 0) return <p className="py-4 text-center text-[12px] text-gray-500">No posts match "{query}".</p>;
+  return <div className="grid grid-cols-1 gap-2">{renderCards(filtered)}</div>;
+}
+
 const LeadCard = memo(function LeadCard({
   lead, accountId, userId, paletteIndex, isDark, isHotlistFeed, feedTimeBasis, isLeadRevealed, globalAskedJobState,
   predictResult, askedRequestedAt, askedFulfilledAt, revealedAt, isSkillsExpanded,
@@ -2474,9 +2514,46 @@ type PulsePageProps = {
   // the ai-match function (a pasted description scored against the last 30
   // days) instead of the paged feed.
   aiMatch?: boolean;
+  // /p/:slug: the page shows that publisher's profile instead of the feed,
+  // with the feed's own cards, actions and pop-ups. No feed loading, and it
+  // never rewrites the URL.
+  publisherSlug?: string;
 };
 
-export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulsePageProps) {
+// What the feed looked like when you left it (the loaded page of rows, paging
+// position, tab and scroll), so opening a profile or a post and coming back
+// lands in the same place instead of reloading from the top. One snapshot,
+// keyed by the URL, kept for ten minutes.
+type FeedSnapshot = {
+  key: string;
+  rows: PulseSocialFeedRpcRow[];
+  cursor: FeedCursor | null;
+  cursorStack: Array<FeedCursor | null>;
+  pageIndex: number;
+  hasMore: boolean;
+  tab: MatchesTabId;
+  // Everything the page's rows depend on (search, filters, range, tab...).
+  // Restoring only happens once the page settles on these same inputs.
+  signature: string;
+  scroll: Array<{ index: number; top: number }>;
+  at: number;
+};
+let feedSnapshot: FeedSnapshot | null = null;
+const FEED_SNAPSHOT_TTL_MS = 10 * 60 * 1000;
+
+// Scroll positions of every scrolled element inside the feed, by document
+// order. The same rows render the same tree, so the order lines up on return.
+function collectScroll(root: HTMLElement | null): Array<{ index: number; top: number }> {
+  if (!root) return [];
+  const out: Array<{ index: number; top: number }> = [];
+  root.querySelectorAll<HTMLElement>('*').forEach((el, index) => {
+    if (el.scrollTop > 0) out.push({ index, top: el.scrollTop });
+  });
+  return out;
+}
+
+export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publisherSlug }: PulsePageProps) {
+  const profileMode = Boolean(publisherSlug);
   const { account, user, refreshAccount } = useAuth();
   const { isDark } = useTheme();
   const isHotlistFeed = feedKind === 'hotlist';
@@ -2590,11 +2667,6 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     ? ((routerLocation.state as { aiMatchFrom: string }).aiMatchFrom).trim()
     : '';
   const navigate = useNavigate();
-  // A poster's profile opens as a panel over the feed rather than a new page,
-  // so closing it returns to the same scroll position and loaded posts.
-  const [publisherPanelSlug, setPublisherPanelSlug] = useState<string | null>(null);
-  const closePublisherPanel = useCallback(() => setPublisherPanelSlug(null), []);
-  useEffect(() => registerProfilePanelOpener(setPublisherPanelSlug), []);
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
   const [profileRangeId, setProfileRangeId] = useState<ProfileRangeOption['id']>(() => {
@@ -2746,7 +2818,17 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   const [pendingGmailReopen, setPendingGmailReopen] = useState<{ leadId: string; leadType: 'job' | 'hotlist' } | null>(null);
   const [showOutOfCreditsModal, setShowOutOfCreditsModal] = useState(false);
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
-  const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>('queued');
+  const feedRestoredRef = useRef(false);
+  const [feedRestore] = useState<FeedSnapshot | null>(() => {
+    if (aiMatch || profileMode || !feedSnapshot) return null;
+    const key = `${window.location.pathname}${window.location.search}`;
+    return feedSnapshot.key === key && Date.now() - feedSnapshot.at < FEED_SNAPSHOT_TTL_MS ? feedSnapshot : null;
+  });
+  const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>(feedRestore?.tab ?? 'queued');
+  // The Subscribed tab reloads the paged feed from the subscriber-only RPCs;
+  // every other tab is a view over the normal feed.
+  const subscribedFeedOnly = !aiMatch && selectedMatchesTab === 'subscribed';
+
   const [feedTimeBasis] = useState<FeedTimeBasis>('posted');
   const [layoutMode, setLayoutMode] = useState<PulseLayoutMode>(getInitialPulseLayoutMode);
   // Hotlist posts from social are bulk: one scraped post carries ten
@@ -3357,7 +3439,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     asked: askedVisibleFeed.length,
     verified: verifiedVisibleFeed.length,
     queued: feedTotalCount ?? recentVisibleFeed.length,
-  }), [askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, feedTotalCount, previewedVisibleFeed.length, recentVisibleFeed.length, verifiedVisibleFeed.length]);
+    // Only known while the tab is open (it's its own server query).
+    subscribed: selectedMatchesTab === 'subscribed' ? recentVisibleFeed.length : null,
+  }) as Record<MatchesTabId, number | null>, [selectedMatchesTab, askedVisibleFeed.length, breakdownChargedLeadIds, dedupedScopedFeed, feedTotalCount, previewedVisibleFeed.length, recentVisibleFeed.length, verifiedVisibleFeed.length]);
 
   const matchesTabDefinitions = useMemo((): Array<{ id: MatchesTabId; label: string; icon: LucideIcon }> => {
     const tabs: Array<{ id: MatchesTabId; label: string; icon: LucideIcon }> = isCombinedFeed
@@ -3378,9 +3462,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         { id: 'asked', label: 'Submitted', icon: Send },
       ];
     // In AI Match the first tab holds the ranked shortlist, not recent posts.
-    return aiMatch
-      ? tabs.map((tab) => (tab.id === 'queued' ? { ...tab, label: 'Matches', icon: Sparkles } : tab))
-      : tabs;
+    if (aiMatch) return tabs.map((tab) => (tab.id === 'queued' ? { ...tab, label: 'Matches', icon: Sparkles } : tab));
+    // Subscribed: the same paged feed, limited to posters the account follows.
+    return [tabs[0], { id: 'subscribed', label: 'Subscribed', icon: Rss }, ...tabs.slice(1)];
   }, [aiMatch, isCombinedFeed, isHotlistFeed]);
 
   const profileViewCounts = useMemo(() => ({
@@ -3398,7 +3482,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       selectedFeed = askedVisibleFeed;
     } else if (selectedMatchesTab === 'verified') {
       selectedFeed = verifiedVisibleFeed;
-    } else if (selectedMatchesTab === 'queued') {
+    } else if (selectedMatchesTab === 'queued' || selectedMatchesTab === 'subscribed') {
       selectedFeed = recentVisibleFeed;
     } else {
       selectedFeed = dedupedScopedFeed;
@@ -3412,7 +3496,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     // index can serve a computed rank, and the client only holds the pages it
     // has fetched. The other tabs are driven by the account's own actions, are
     // small, and keep the completeness ordering.
-    if (isCombinedFeed || selectedMatchesTab === 'queued') {
+    if (isCombinedFeed || selectedMatchesTab === 'queued' || selectedMatchesTab === 'subscribed') {
       return [...selectedFeed].sort((a, b) => compareByRecency(a, b, feedTimeBasis));
     }
     return [...selectedFeed].sort(compareDetailsAndPostedDate);
@@ -3423,11 +3507,14 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // Pagination bar for the browse feed. The feed is paged on the server now,
   // so the end of a page is a real boundary the user has to be able to cross —
   // and to come back from, which is what the cursor stack is for.
+  const feedTotalCountAll = feedTotalCount;
   const renderFeedPagingFooter = useCallback(() => {
     // AI Match returns one scored shortlist; there is no next page to fetch.
     if (aiMatch) return null;
     const pageRowCount = feed.length;
     if (pageRowCount === 0 && feedPageIndex === 0) return null;
+    // The facets total counts the whole feed; the Subscribed tab has none.
+    const feedTotalCount = subscribedFeedOnly ? null : feedTotalCountAll;
 
     const firstOnPage = feedPageIndex * FEED_PAGE_SIZE + 1;
     const lastOnPage = feedPageIndex * FEED_PAGE_SIZE + pageRowCount;
@@ -3465,7 +3552,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
         </div>
       </div>
     );
-  }, [aiMatch, feed.length, feedHasMore, feedPageIndex, feedPageLoading, feedTotalCount]);
+  }, [aiMatch, feed.length, feedHasMore, feedPageIndex, feedPageLoading, feedTotalCountAll, subscribedFeedOnly]);
   const canLoadMoreMatches = visibleMatchesCount < filteredFeed.length;
 
   const visibleDesktopRecentFeed = useMemo(
@@ -3535,7 +3622,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   // complete) is preferable to constant flicker.
   const autoSelectedTabRef = useRef<MatchesTabId | null>(null);
   useEffect(() => {
-    if (!isDetailLayout || hasValidDetailSelection) return;
+    if (profileMode || !isDetailLayout || hasValidDetailSelection) return;
     if (autoSelectedTabRef.current === selectedMatchesTab) return;
     const first = currentDetailFeed[0];
     if (!first) return;
@@ -3642,7 +3729,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       return;
     }
 
-    if (selectedMatchesTab === 'queued' && canLoadMoreDesktopRecent) {
+    if ((selectedMatchesTab === 'queued' || selectedMatchesTab === 'subscribed') && canLoadMoreDesktopRecent) {
       setDesktopRecentVisibleCount((prev) => Math.min(recentVisibleFeed.length, prev + DESKTOP_MATCHES_PAGE_SIZE));
     }
   }, [
@@ -5396,7 +5483,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   useEffect(() => {
     // AI Match shows a scored shortlist, not the window; its count is simply
     // the number of results, which the tab falls back to when this is null.
-    if (aiMatch) return;
+    if (aiMatch || profileMode) return;
     let cancelled = false;
     const facetKind: 'jobs' | 'hotlist' = isCombinedFeed
       ? (feedKindFilter === 'hotlist' ? 'hotlist' : 'jobs')
@@ -5450,7 +5537,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     })();
 
     return () => { cancelled = true; };
-  }, [aiMatch, appliedFeedFilters, feedKindFilter, feedSearchQuery, isCombinedFeed, isHotlistFeed, selectedProfileRange.hours]);
+  }, [profileMode, aiMatch, appliedFeedFilters, feedKindFilter, feedSearchQuery, isCombinedFeed, isHotlistFeed, selectedProfileRange.hours]);
 
   // One page of the feed, straight from the _v2 RPCs. Browsing pages by keyset
   // on (effective_posted_at, lead_id); searching orders by FTS rank, so it
@@ -5462,13 +5549,16 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     query: string;
     filters: FeedSearchFilters;
     cursor: FeedCursor | null;
+    subscribedOnly?: boolean;
   }): Promise<{ rows: PulseSocialFeedRpcRow[]; nextCursor: FeedCursor | null }> => {
     const since = new Date(Date.now() - (options.rangeHours * 60 * 60 * 1000)).toISOString();
     const query = options.query.trim();
     const isSearching = query.length > 0;
 
     const { data, error } = await supabase.rpc(
-      options.kind === 'hotlist' ? 'get_social_hotlist_feed_page_v2' : 'get_pulse_social_feed_page_v2',
+      (options.subscribedOnly
+        ? (options.kind === 'hotlist' ? 'get_subscribed_hotlist_feed_page' : 'get_subscribed_jobs_feed_page')
+        : (options.kind === 'hotlist' ? 'get_social_hotlist_feed_page_v2' : 'get_pulse_social_feed_page_v2')) as 'get_pulse_social_feed_page_v2',
       {
         p_since: since,
         p_before_posted_at: options.cursor?.postedAt ?? null,
@@ -5585,51 +5675,13 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   }, [getGlobalPulseRows, selectedProfileRange.hours, showToast, sortedLeaderboard, zeroStats]);
 
   useEffect(() => {
+    if (profileMode) return;
     void loadProfileStats();
-  }, [loadProfileStats]);
+  }, [loadProfileStats, profileMode]);
 
-  const loadFeed = useCallback(async (
-    _persona: PulsePersona | null,
-    _personaFilters: PulsePersona[] = [],
-    rowsOverride?: PulseSocialFeedRpcRow[],
-    options?: { cursor?: FeedCursor | null },
-  ) => {
-    setFeedLoading(true);
-
-    const feedRowKind: 'jobs' | 'hotlist' = isCombinedFeed
-      ? (feedKindFilter === 'hotlist' ? 'hotlist' : 'jobs')
-      : (isHotlistFeed ? 'hotlist' : 'jobs');
-
-    let rpcRows: PulseSocialFeedRpcRow[] = [];
-    try {
-      if (rowsOverride) {
-        rpcRows = rowsOverride;
-      } else {
-        const page = await fetchFeedPage({
-          rangeHours: selectedProfileRange.hours,
-          kind: feedRowKind,
-          query: feedSearchQuery,
-          filters: appliedFeedFilters,
-          cursor: options?.cursor ?? null,
-        });
-        rpcRows = isCombinedFeed
-          ? page.rows.map((row) => ({ ...row, _kind: feedRowKind }))
-          : page.rows;
-        feedCursorRef.current = page.nextCursor;
-        setFeedHasMore(page.nextCursor != null);
-      }
-    } catch {
-      showToast('Failed to load social matches', 'error');
-      setFeedLoading(false);
-      return;
-    }
-
-    if (rpcRows.length === 0) {
-      setFeed([]);
-      setFeedLoading(false);
-      return;
-    }
-
+  // Feed rows -> cards. Shared by the paged feed and by profile panels, so a
+  // profile shows the very same cards, with the same actions.
+  const mapFeedRowsToLeads = useCallback((rpcRows: PulseSocialFeedRpcRow[], applyRangeCutoff: boolean): SocialLead[] => {
     const socialData: SocialJobRow[] = rpcRows.map((row) => ({
       id: row.lead_id,
       platform: row.platform,
@@ -5753,7 +5805,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     // AI Match results are already windowed to 30 days by the server, and the
     // range picker (which may hold e.g. ?range=3d from the feed) isn't shown
     // in that mode — applying it here would silently drop scored matches.
-    const rangeCutoffMs = aiMatch ? 0 : nowMs - (selectedProfileRange.hours * 60 * 60 * 1000);
+    const rangeCutoffMs = (aiMatch || !applyRangeCutoff) ? 0 : nowMs - (selectedProfileRange.hours * 60 * 60 * 1000);
     const finalFiltered = socialData
       .filter((row) => {
         const postedTs = getPostedTimestamp(row);
@@ -5833,6 +5885,67 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
           aiMatchRuleNote: ((row as SocialJobRow & Record<string, unknown>).ai_rule_note as string | null) ?? null,
         } as SocialLead;
       });
+    return finalFiltered;
+  }, [aiMatch, feedTimeBasis, isHotlistFeed, selectedProfileRange.hours]);
+
+  // One publisher's posts, as feed cards, for the profile panel.
+  const loadPublisherLeads = useCallback(async (publisherId: string): Promise<SocialLead[]> => {
+    const { data, error } = await supabase.rpc('get_publisher_feed_rows' as never, {
+      p_publisher_id: publisherId,
+      p_kind: isHotlistFeed ? 'hotlist' : 'job',
+    } as never);
+    if (error) throw error;
+    return mapFeedRowsToLeads(((data ?? []) as unknown) as PulseSocialFeedRpcRow[], false);
+  }, [isHotlistFeed, mapFeedRowsToLeads]);
+
+  const lastFeedRowsRef = useRef<PulseSocialFeedRpcRow[]>([]);
+  const feedMainRef = useRef<HTMLElement | null>(null);
+
+  const loadFeed = useCallback(async (
+    _persona: PulsePersona | null,
+    _personaFilters: PulsePersona[] = [],
+    rowsOverride?: PulseSocialFeedRpcRow[],
+    options?: { cursor?: FeedCursor | null },
+  ) => {
+    setFeedLoading(true);
+
+    const feedRowKind: 'jobs' | 'hotlist' = isCombinedFeed
+      ? (feedKindFilter === 'hotlist' ? 'hotlist' : 'jobs')
+      : (isHotlistFeed ? 'hotlist' : 'jobs');
+
+    let rpcRows: PulseSocialFeedRpcRow[] = [];
+    try {
+      if (rowsOverride) {
+        rpcRows = rowsOverride;
+      } else {
+        const page = await fetchFeedPage({
+          rangeHours: selectedProfileRange.hours,
+          kind: feedRowKind,
+          query: feedSearchQuery,
+          filters: appliedFeedFilters,
+          cursor: options?.cursor ?? null,
+          subscribedOnly: subscribedFeedOnly,
+        });
+        rpcRows = isCombinedFeed
+          ? page.rows.map((row) => ({ ...row, _kind: feedRowKind }))
+          : page.rows;
+        feedCursorRef.current = page.nextCursor;
+        setFeedHasMore(page.nextCursor != null);
+      }
+    } catch {
+      showToast('Failed to load social matches', 'error');
+      setFeedLoading(false);
+      return;
+    }
+
+    lastFeedRowsRef.current = rpcRows;
+    if (rpcRows.length === 0) {
+      setFeed([]);
+      setFeedLoading(false);
+      return;
+    }
+
+    const finalFiltered = mapFeedRowsToLeads(rpcRows, true);
 
     setFeed(finalFiltered);
 
@@ -5847,7 +5960,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
 
     setFeedLoading(false);
-  }, [aiMatch, appliedFeedFilters, feedKindFilter, feedSearchQuery, feedTimeBasis, fetchFeedPage, isCombinedFeed, isHotlistFeed, selectedProfileRange.hours, showToast]);
+  }, [aiMatch, appliedFeedFilters, feedKindFilter, feedSearchQuery, feedTimeBasis, fetchFeedPage, isCombinedFeed, isHotlistFeed, selectedProfileRange.hours, showToast, subscribedFeedOnly, mapFeedRowsToLeads]);
 
   const goToNextFeedPage = useCallback(async () => {
     const cursor = feedCursorRef.current;
@@ -6547,12 +6660,65 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     return () => { cancelled = true; };
   }, [account?.id, aiMatch, aiMatchOwnPostsReloadKey, aiMatchTarget]);
 
+  // Everything loadFeed's result depends on. The effect below reloads only
+  // when this actually changes — the URL-applied search and filters settle a
+  // moment after mount and used to trigger a reload from the top, which is
+  // what threw away a restored page.
+  const feedQuerySignature = JSON.stringify([
+    appliedFeedFilters, feedSearchQuery, selectedProfileRange.hours, subscribedFeedOnly,
+    feedTimeBasis, isHotlistFeed, isCombinedFeed, feedKindFilter,
+  ]);
+  const lastLoadedSignatureRef = useRef<string | null>(null);
+  const [feedRestoreExpired, setFeedRestoreExpired] = useState(false);
+  useEffect(() => {
+    if (!feedRestore) return undefined;
+    // If the inputs never settle back on the saved ones, load normally.
+    const timer = window.setTimeout(() => setFeedRestoreExpired(true), 2000);
+    return () => window.clearTimeout(timer);
+  }, [feedRestore]);
+
   // loadFeed's dependencies now include the range, the applied search query and
   // the applied filters, so this single effect re-runs (and resets the cursor,
   // because append defaults to false) whenever any of them change.
   useEffect(() => {
-    // AI Match fills the list from runAiMatch, not the paged feed.
-    if (aiMatch) return;
+    // AI Match fills the list from runAiMatch, not the paged feed; the profile
+    // page has no feed list at all.
+    if (aiMatch || profileMode) return;
+    // Back from a profile or a post: put the page back exactly as it was, once
+    // the inputs have settled on the ones it was saved with.
+    if (feedRestore && !feedRestoredRef.current && !feedRestoreExpired && feedQuerySignature !== feedRestore.signature) return;
+    if (feedRestore && !feedRestoredRef.current && feedQuerySignature === feedRestore.signature) {
+      feedRestoredRef.current = true;
+      lastLoadedSignatureRef.current = feedQuerySignature;
+      pendingRestorePageRef.current = null;
+      feedCursorRef.current = feedRestore.cursor;
+      feedCursorStackRef.current = feedRestore.cursorStack;
+      setFeedPageIndex(feedRestore.pageIndex);
+      setFeedHasMore(feedRestore.hasMore);
+      void loadFeed(null, [], feedRestore.rows).then(() => {
+        // The list renders after the rows land (and after the first-load
+        // spinner clears), so keep trying briefly until every position fits.
+        let attempts = 0;
+        const apply = () => {
+          const root = feedMainRef.current;
+          const elements = root ? Array.from(root.querySelectorAll<HTMLElement>('*')) : [];
+          let done = true;
+          for (const { index, top } of feedRestore.scroll) {
+            const el = elements[index];
+            if (!el) { done = false; continue; }
+            el.scrollTop = top;
+            if (Math.abs(el.scrollTop - top) > 2) done = false;
+          }
+          attempts += 1;
+          if (!done && attempts < 30) window.setTimeout(apply, 100);
+        };
+        window.setTimeout(apply, 0);
+      });
+      return;
+    }
+    if (feedRestore && !feedRestoredRef.current) feedRestoredRef.current = true; // gave up waiting
+    if (lastLoadedSignatureRef.current === feedQuerySignature) return;
+    lastLoadedSignatureRef.current = feedQuerySignature;
     const restoreToPage = pendingRestorePageRef.current;
     pendingRestorePageRef.current = null;
 
@@ -6573,11 +6739,62 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
     feedCursorStackRef.current = [null];
     setFeedPageIndex(0);
     void loadFeed(null);
-  }, [aiMatch, loadFeed]);
+  }, [aiMatch, feedQuerySignature, feedRestore, feedRestoreExpired, loadFeed, profileMode]);
+
+  // Save the feed on the way out, for the restore above.
+  const feedSnapshotSourceRef = useRef<Omit<FeedSnapshot, 'scroll' | 'at' | 'key'> | null>(null);
+  // The feed's own address, captured while it's on screen: by the time the
+  // cleanup runs, the browser already shows the page being opened.
+  const feedLocationKeyRef = useRef('');
+  feedLocationKeyRef.current = `${routerLocation.pathname}${routerLocation.search}`;
+  feedSnapshotSourceRef.current = {
+    rows: lastFeedRowsRef.current,
+    cursor: feedCursorRef.current,
+    cursorStack: feedCursorStackRef.current,
+    pageIndex: feedPageIndex,
+    hasMore: feedHasMore,
+    tab: selectedMatchesTab,
+    signature: lastLoadedSignatureRef.current ?? feedQuerySignature,
+  };
+  // Scroll positions are recorded as they change: by unmount the feed's DOM is
+  // already gone, so there is nothing left to measure then.
+  const feedScrollRef = useRef<Array<{ index: number; top: number }>>([]);
+  useEffect(() => {
+    if (aiMatch || profileMode) return undefined;
+    const root = feedMainRef.current;
+    if (!root) return undefined;
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        feedScrollRef.current = collectScroll(root);
+      });
+    };
+    root.addEventListener('scroll', onScroll, true);
+    return () => {
+      root.removeEventListener('scroll', onScroll, true);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [aiMatch, profileMode, loading]);
+  useEffect(() => {
+    if (aiMatch || profileMode) return undefined;
+    return () => {
+      const source = feedSnapshotSourceRef.current;
+      if (!source || source.rows.length === 0) return;
+      feedSnapshot = {
+        ...source,
+        key: feedLocationKeyRef.current,
+        scroll: feedScrollRef.current,
+        at: Date.now(),
+      };
+    };
+  }, [aiMatch, profileMode]);
 
   // Mirror the range and page into the URL so a refresh or a shared link comes
   // back to the same view. Defaults are omitted to keep ordinary URLs clean.
   useEffect(() => {
+    if (profileMode) return;
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       if (appliedRawSearchQuery) next.set('q', appliedRawSearchQuery);
@@ -6589,7 +6806,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
       writeFeedFiltersToUrl(next, appliedFeedFilters);
       return next;
     }, { replace: true });
-  }, [appliedFeedFilters, appliedRawSearchQuery, feedPageIndex, profileRangeId, setSearchParams]);
+  }, [appliedFeedFilters, appliedRawSearchQuery, feedPageIndex, profileMode, profileRangeId, setSearchParams]);
 
   useEffect(() => {
     setVisibleMatchesCount(MATCHES_PAGE_SIZE);
@@ -7666,18 +7883,28 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
   return (
     <div className="h-[100dvh] overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0 dark:bg-[#1B1D21] dark:text-slate-100">
       <AppNav />
-      {publisherPanelSlug && (
-        <PublisherProfilePanel
-          slug={publisherPanelSlug}
-          onClose={closePublisherPanel}
-          onOpenPost={(leadId) => {
-            setPublisherPanelSlug(null);
-            navigate(`/feed/${account?.active_persona === 'bench_sales' ? 'job' : 'hotlist'}/${leadId}`);
-          }}
-        />
+      {profileMode && publisherSlug && (
+        <main className="flex-1 min-h-0 overflow-y-auto">
+          <PublisherProfileView
+            slug={publisherSlug}
+            initialQuery={searchParams.get('q') ?? ''}
+            backLabel="Back"
+            onBack={() => { if (window.history.state?.idx > 0) navigate(-1); else navigate('/following'); }}
+            onOpenPost={(leadId) => navigate(`/feed/${isHotlistFeed ? 'hotlist' : 'job'}/${leadId}`)}
+            renderPosts={({ publisherId, query }) => (
+              <PublisherLeadList
+                publisherId={publisherId}
+                query={query}
+                loadLeads={loadPublisherLeads}
+                renderCards={(leads) => renderLeadCards(leads)}
+              />
+            )}
+          />
+        </main>
       )}
 
-      <main className="flex-1 min-h-0 overflow-hidden">
+      {!profileMode && (
+      <main ref={feedMainRef} className="flex-1 min-h-0 overflow-hidden">
         <div className={`h-full w-full flex flex-col overflow-hidden ${isMobileViewport ? 'px-2 pt-0 pb-2' : 'px-2 py-2'}`}>
 
 
@@ -7948,7 +8175,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
                               if (tab.id === 'previewed') setDesktopPreviewedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'asked') setDesktopAskedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                               if (tab.id === 'verified') setDesktopVerifiedVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
-                              if (tab.id === 'queued') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
+                              if (tab.id === 'queued' || tab.id === 'subscribed') setDesktopRecentVisibleCount(DESKTOP_MATCHES_PAGE_SIZE);
                             }}
                             title={tab.label}
                             aria-label={tab.label}
@@ -9066,6 +9293,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false }: PulseP
           )}
         </div>
       </main>
+      )}
 
       {/* Inline drafts belong to the AI Match pane, which renders them
           itself. Opening a modal over them would undo the point of it. */}
