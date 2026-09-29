@@ -64,6 +64,7 @@ Deno.serve(async (req: Request) => {
       aiDraftsRes,
       creditsGrantedRes,
       creditsSpentRes,
+      refundsRes,
       aiBulkSendsRes,
       aiPitchesRes,
       aiRequestsRes,
@@ -145,13 +146,25 @@ Deno.serve(async (req: Request) => {
         .eq("description", "Free signup credits"),
       // Credits actually spent, from the ledger rather than inferred from the
       // balance: a balance is also moved by top-ups and refunds, so it cannot
-      // say how much of the free grant someone has used.
+      // say how much of the free grant someone has used. The 2026-09-21
+      // rebalance wrote its deductions as usage rows too; they are excluded
+      // below, since nobody spent those credits on anything.
       withDateRange(
         supabase
           .from("credit_transactions")
-          .select("account_id, amount, created_at")
+          .select("account_id, amount, description, created_at")
           .in("account_id", accountIds)
           .eq("type", "usage")
+      ),
+      // Refunds, netted against spend. Features that hold credits up front
+      // (AI Match holds 10 per run) write the hold as usage and give back
+      // whatever went undelivered as a separate refund row.
+      withDateRange(
+        supabase
+          .from("credit_transactions")
+          .select("account_id, amount, description, created_at")
+          .in("account_id", accountIds)
+          .eq("type", "refund")
       ),
       // Sends from the bulk bar, as opposed to one at a time. Null for
       // everything sent before send_source existed.
@@ -181,8 +194,9 @@ Deno.serve(async (req: Request) => {
       // AI Match: api_usage_log records nothing for it (ai-match logs
       // cost_usd 0 because Workers AI bills per neuron, and nothing else
       // writes that table), so the credit ledger is the only record of a run.
-      // One row per run; the amount is the number of matches charged, since
-      // AI Match bills one credit per match delivered.
+      // One row per run, but the amount is the up-front hold (10, or whatever
+      // a short balance allowed), not the matches delivered — the undelivered
+      // part comes back as a refund row, paired with its run below.
       withDateRange(
         supabase
           .from("credit_transactions")
@@ -190,6 +204,7 @@ Deno.serve(async (req: Request) => {
           .in("account_id", accountIds)
           .eq("type", "usage")
           .like("description", "%ai_match_run%")
+          .order("created_at", { ascending: true })
       ),
       // Gmail: which accounts have connected a mailbox, and which address.
       // Not date-ranged — a connection is current state, not an event in the
@@ -245,24 +260,55 @@ Deno.serve(async (req: Request) => {
       if (!id) continue;
       creditsGranted[id] = (creditsGranted[id] || 0) + Number((row as { amount?: number }).amount ?? 0);
     }
-    // Summed, not counted: how much was spent, not how many times.
+    // Summed, not counted: how much was spent, not how many times. Net of
+    // refunds, so a hold that was given back is not counted as spend.
     const creditsSpent: Record<string, number> = {};
     for (const row of creditsSpentRes.data ?? []) {
-      const id = (row as { account_id?: string }).account_id;
-      if (!id) continue;
-      creditsSpent[id] = (creditsSpent[id] || 0) + Math.abs(Number((row as { amount?: number }).amount ?? 0));
+      const r = row as { account_id?: string; amount?: number; description?: string };
+      if (!r.account_id || r.description?.startsWith("Balance reset")) continue;
+      creditsSpent[r.account_id] = (creditsSpent[r.account_id] || 0) + Math.abs(Number(r.amount ?? 0));
+    }
+    for (const row of refundsRes.data ?? []) {
+      const r = row as { account_id?: string; amount?: number };
+      if (!r.account_id) continue;
+      creditsSpent[r.account_id] = Math.max(0, (creditsSpent[r.account_id] || 0) - Math.abs(Number(r.amount ?? 0)));
     }
     const aiBulkSendCounts = countBy(aiBulkSendsRes.data);
     const aiPitchesCounts = countBy(aiPitchesRes.data);
     const aiRequestsCounts = countBy(aiRequestsRes.data);
-    const aiMatchRunCounts = countBy(aiMatchRes.data);
-    // Matches delivered, not runs: a run that returned three matches cost
-    // three credits, and a rematch only charges for the new ones.
-    const aiMatchMatchCounts: Record<string, number> = {};
+
+    // AI Match runs, net of their refunds. A refund carries no run id, but
+    // ai-match writes it moments after the hold, so it belongs to the latest
+    // run on that account at or before it. What is left of each hold is the
+    // matches actually delivered (one credit each); a run left at zero found
+    // nothing new and is not counted as a run at all.
+    type MatchRun = { account_id: string; created_at: string; delivered: number };
+    const matchRunsByAccount: Record<string, MatchRun[]> = {};
     for (const row of aiMatchRes.data ?? []) {
-      const id = (row as { account_id?: string }).account_id;
-      if (!id) continue;
-      aiMatchMatchCounts[id] = (aiMatchMatchCounts[id] || 0) + Math.abs(Number((row as { amount?: number }).amount ?? 0));
+      const r = row as { account_id?: string; amount?: number; created_at?: string };
+      if (!r.account_id || !r.created_at) continue;
+      (matchRunsByAccount[r.account_id] ??= []).push({
+        account_id: r.account_id,
+        created_at: r.created_at,
+        delivered: Math.abs(Number(r.amount ?? 0)),
+      });
+    }
+    for (const row of refundsRes.data ?? []) {
+      const r = row as { account_id?: string; amount?: number; description?: string; created_at?: string };
+      if (!r.account_id || !r.created_at || !r.description?.includes("ai_match_run")) continue;
+      const runs = matchRunsByAccount[r.account_id] ?? [];
+      let run: MatchRun | undefined;
+      for (const candidate of runs) {
+        if (candidate.created_at > r.created_at) break;
+        if (candidate.delivered > 0) run = candidate;
+      }
+      if (run) run.delivered = Math.max(0, run.delivered - Math.abs(Number(r.amount ?? 0)));
+    }
+    const deliveredMatchRuns = Object.values(matchRunsByAccount).flat().filter((run) => run.delivered > 0);
+    const aiMatchRunCounts = countBy(deliveredMatchRuns);
+    const aiMatchMatchCounts: Record<string, number> = {};
+    for (const run of deliveredMatchRuns) {
+      aiMatchMatchCounts[run.account_id] = (aiMatchMatchCounts[run.account_id] || 0) + run.delivered;
     }
     // Only a live connection counts: a revoked or errored row means the
     // mailbox is not actually sending any more.
@@ -448,10 +494,10 @@ Deno.serve(async (req: Request) => {
     for (const r of chatsRes.data ?? []) bucket(r.created_at, r.sender_account_id, "chats");
     for (const r of vendorDownloadsRes.data ?? []) bucket(r.created_at, r.account_id, "downloads");
     for (const r of recruiterDownloadsRes.data ?? []) bucket(r.created_at, r.account_id, "downloads");
-    // Matches delivered, not runs: the charge amount is the number of matches.
-    for (const r of aiMatchRes.data ?? []) {
-      bucket(r.created_at, r.account_id, "ai_matches", Math.abs(Number(r.amount ?? 0)));
-      bucket(r.created_at, r.account_id, "ai_match_runs");
+    // Matches delivered, net of refunds, on the day the run started.
+    for (const run of deliveredMatchRuns) {
+      bucket(run.created_at, run.account_id, "ai_matches", run.delivered);
+      bucket(run.created_at, run.account_id, "ai_match_runs");
     }
     // Daily active users: one row per account per day is exactly what this
     // table holds, so the row count for a day IS the active-account count.
