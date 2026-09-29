@@ -385,7 +385,7 @@ export default function LandingPage() {
                 {[
                   'All features included',
                   'Unlimited team members',
-                  '50 Active List contacts per day',
+                  'Subscribe to 5 new people a day, up to 10',
                   '1 credit per post or AI email',
                 ].map(item => (
                   <li key={item} className="flex items-center gap-2.5">

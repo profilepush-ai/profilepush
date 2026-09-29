@@ -23,6 +23,7 @@ import {
   followingKindForPersona,
   searchPublishers,
   followingLabelForPersona,
+  profilePath,
   publisherDisplayName,
   timeAgo,
   type FollowQuota,
@@ -58,6 +59,27 @@ type FollowingSnapshot = {
 };
 let followingSnapshot: FollowingSnapshot | null = null;
 const SNAPSHOT_TTL_MS = 10 * 60 * 1000;
+// Also kept in sessionStorage: browsers discard background tabs to save
+// memory and reload them on return, which wipes the in-memory copy.
+const SNAPSHOT_STORAGE_KEY = 'pp.network.snapshot';
+
+function readStoredFollowingSnapshot(): FollowingSnapshot | null {
+  try {
+    const raw = window.sessionStorage.getItem(SNAPSHOT_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as FollowingSnapshot) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeFollowingSnapshot(snapshot: FollowingSnapshot) {
+  followingSnapshot = snapshot;
+  try {
+    window.sessionStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Storage full or blocked: the in-memory copy still covers in-app Back.
+  }
+}
 
 export default function FollowingPage() {
   const { account } = useAuth();
@@ -68,14 +90,15 @@ export default function FollowingPage() {
   const label = followingLabelForPersona(persona);
   const postNoun = kind === 'job' ? 'requirement' : 'hotlist';
 
-  const [snapshot] = useState<FollowingSnapshot | null>(() => (
-    followingSnapshot
-      && followingSnapshot.accountId === account?.id
-      && followingSnapshot.kind === followingKindForPersona(account?.active_persona)
-      && Date.now() - followingSnapshot.at < SNAPSHOT_TTL_MS
-      ? followingSnapshot
-      : null
-  ));
+  const [snapshot] = useState<FollowingSnapshot | null>(() => {
+    const candidate = followingSnapshot ?? readStoredFollowingSnapshot();
+    return candidate
+      && candidate.accountId === account?.id
+      && candidate.kind === followingKindForPersona(account?.active_persona)
+      && Date.now() - candidate.at < SNAPSHOT_TTL_MS
+      ? candidate
+      : null;
+  });
   const [cards, setCards] = useState<FollowingCard[] | null>(snapshot?.cards ?? null);
   const [suggested, setSuggested] = useState<SuggestedPublisher[]>(snapshot?.suggested ?? []);
   const [quota, setQuota] = useState<FollowQuota | null>(snapshot?.quota ?? null);
@@ -214,14 +237,20 @@ export default function FollowingPage() {
     ? { accountId: account.id, kind, tab: 'active', searchQuery, cards, suggested, activeTotal, counts, quota }
     : null;
   const tabRef = useRef<ListTab>('active');
-  useEffect(() => () => {
-    const latest = latestRef.current;
-    if (!latest) return;
-    followingSnapshot = {
-      ...latest,
-      tab: tabRef.current,
-      scrollTop: scrollTopRef.current,
-      at: Date.now(),
+  useEffect(() => {
+    const save = () => {
+      const latest = latestRef.current;
+      if (!latest) return;
+      storeFollowingSnapshot({ ...latest, tab: tabRef.current, scrollTop: scrollTopRef.current, at: Date.now() });
+    };
+    // Hidden is the last moment before a browser may discard the tab.
+    const onVisibility = () => { if (document.visibilityState === 'hidden') save(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', save);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', save);
+      save();
     };
   }, []);
 
@@ -331,7 +360,7 @@ export default function FollowingPage() {
               results={results}
               searching={searching}
               postNoun={postNoun}
-              onOpen={(slug) => navigate(`/p/${slug}?q=${encodeURIComponent(activeQuery)}`)}
+              onOpen={(slug) => navigate(profilePath(slug, persona, activeQuery))}
               onFollowChange={() => void load()}
             />
           ) : tab === 'subscribed' ? (
@@ -347,13 +376,13 @@ export default function FollowingPage() {
             ) : (
               <section className="grid grid-cols-1 gap-2 lg:grid-cols-2 2xl:grid-cols-3">
                 {unread.map((card) => (
-                  <FollowingCardRow key={card.publisher_id} card={card} postNoun={postNoun} onOpen={() => navigate(`/p/${card.slug}`)} />
+                  <FollowingCardRow key={card.publisher_id} card={card} postNoun={postNoun} onOpen={() => navigate(profilePath(card.slug, persona))} />
                 ))}
                 {read.length > 0 && unread.length > 0 && (
                   <p className="col-span-full px-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Up to date</p>
                 )}
                 {read.map((card) => (
-                  <FollowingCardRow key={card.publisher_id} card={card} postNoun={postNoun} onOpen={() => navigate(`/p/${card.slug}`)} />
+                  <FollowingCardRow key={card.publisher_id} card={card} postNoun={postNoun} onOpen={() => navigate(profilePath(card.slug, persona))} />
                 ))}
               </section>
             )
@@ -369,8 +398,8 @@ export default function FollowingPage() {
                   key={s.publisher_id}
                   role="link"
                   tabIndex={0}
-                  onClick={() => navigate(`/p/${s.slug}`)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/p/${s.slug}`); }}
+                  onClick={() => navigate(profilePath(s.slug, persona))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') navigate(profilePath(s.slug, persona)); }}
                   className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 transition hover:border-blue-300 dark:border-white/10 dark:bg-[#171A1F]"
                 >
                   <PublisherAvatar publisher={s} size={36} />

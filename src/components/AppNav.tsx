@@ -13,7 +13,7 @@ import GooglePlayBanner from './GooglePlayBanner';
 import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
-import { followingLabelForPersona } from '../lib/publishers';
+import { followingLabelForPersona, networkPath } from '../lib/publishers';
 
 // Shows the account's real Google profile photo (from user_metadata, set by
 // Supabase's Google OAuth flow) when available, falling back to the same
@@ -39,11 +39,10 @@ function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | 
   );
 }
 
-// Feed, Following and Tracker take their labels from the persona (Inbox keeps
-// its name). Following is Vendors for Bench Sales and Bench Sales for Vendors.
-// My Hotlist / My Jobs moved into AI Match's own tab; Pulse and List are
-// hidden from the nav. Their routes all still work. Vendor posts Jobs and sends outbound Hotlist Requests; Bench
-// Sales posts Hotlist and sends outbound job Applications.
+// Feed and Tracker take their labels from the persona; Network (the people
+// you subscribe to) and Inbox keep one name. My Hotlist / My Jobs moved into
+// AI Match's own tab; Pulse and List are hidden from the nav. Their routes
+// all still work.
 function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   const isBenchSales = persona === 'bench_sales';
   // Feed is named (and iconed) for what it shows — the content being
@@ -65,7 +64,7 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   return [
     { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },
     { path: '/match',       label: 'AI Match',    mobileLabel: 'AI Match',    icon: Sparkles,    hideOnMobile: false },
-    { path: '/following',   label: followingLabel, mobileLabel: followingLabel, icon: Rss,       hideOnMobile: false },
+    { path: networkPath(persona), label: followingLabel, mobileLabel: followingLabel, icon: Rss,       hideOnMobile: false },
     { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
     { path: trackerPath,    label: trackerLabel,  mobileLabel: trackerLabel,  icon: trackerIcon, hideOnMobile: false },
   ];
@@ -328,7 +327,7 @@ export default function AppNav() {
   // index, so adding AI Match to the desktop list shifted every slot after it
   // and the mobile bar rendered "AI Match" and "Inbox" twice each.
   const feedItem = navItems.find((item) => item.path.startsWith('/feed'))!;
-  const followingItem = navItems.find((item) => item.path === '/following')!;
+  const followingItem = navItems.find((item) => item.path.startsWith('/network'))!;
   const trackerItem = navItems.find((item) => item.path.startsWith('/tracker'))!;
   const FeedIcon = feedItem.icon;
   const FollowingIcon = followingItem.icon;
@@ -402,8 +401,7 @@ export default function AppNav() {
 
       <nav className="hidden sm:flex items-center gap-1 flex-1">
         {navItems.map(({ path, label, mobileLabel, icon: Icon, hideOnMobile }) => {
-          const active = location.pathname === path || location.pathname.startsWith(path + '/')
-            || (path === '/following' && location.pathname.startsWith('/p/'));
+          const active = location.pathname === path || location.pathname.startsWith(path + '/');
           return (
             <Link
               key={path}
@@ -517,7 +515,7 @@ export default function AppNav() {
           </Link>
           <Link
             to={followingItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/following') || location.pathname.startsWith('/p/') ? 'text-blue-600' : 'text-gray-500'}`}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/network') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <FollowingIcon size={24} />
             <span>{followingItem.label}</span>

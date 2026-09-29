@@ -51,8 +51,6 @@ const MARKETING: MarketingEntry[] = [
   { path: "/vs/jobright-ai", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.6" },
   { path: "/vs/drivetube-ai", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.6" },
   { path: "/vs/apply-nxt", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.6" },
-  { path: "/it-staffing-vendor-list", lastmod: "2026-08-24", changefreq: "daily", priority: "0.8" },
-  { path: "/it-staffing-bench-sales-recruiters-list", lastmod: "2026-08-24", changefreq: "daily", priority: "0.8" },
   { path: "/security", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.5" },
   { path: "/privacy", lastmod: "2026-08-04", changefreq: "yearly", priority: "0.4" },
   { path: "/terms", lastmod: "2026-08-04", changefreq: "yearly", priority: "0.4" },

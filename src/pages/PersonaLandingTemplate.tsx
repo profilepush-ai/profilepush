@@ -116,16 +116,6 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
         badgeLabel: 'Tracker',
         topGlow: 'rgba(110,231,183,0.5)',
       },
-      {
-        key: 'activelist',
-        slug: 'active-list',
-        headline: 'The copilot updates the list daily.',
-        subline: 'Every bench sales recruiter posting right now. Filter by skill, visa, experience, rate and location.',
-        accent: 'from-sky-50 to-white',
-        badge: 'bg-sky-100 text-sky-700',
-        badgeLabel: 'Active List',
-        topGlow: 'rgba(125,211,252,0.5)',
-      },
     ],
     workflowEyebrow: 'The Workflow',
     workflowHeading: 'What the copilot does in the background.',
@@ -153,16 +143,6 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     heroHeadline: 'The AI Copilot that connects the bench to prime vendors.',
     heroFeatureKey: 'posts',
     features: [
-      {
-        key: 'activelist',
-        slug: 'prime-vendors',
-        headline: 'The copilot finds the vendors who are actually posting.',
-        subline: 'A live list of every vendor posting reqs right now. Filter by skill, rate, visa, work type and location. Each filter shows a live count. No old lists. No dead contacts. Download up to 50 vendor contacts per day.',
-        accent: 'from-sky-50 to-white',
-        badge: 'bg-sky-100 text-sky-700',
-        badgeLabel: 'Prime Vendors',
-        topGlow: 'rgba(125,211,252,0.5)',
-      },
       {
         key: 'pulse',
         slug: 'reqs',
@@ -554,9 +534,9 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                 <p className="text-xs text-gray-500 mb-8">100 credits, one time · no card required</p>
                 <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
                   {(content.freeBullets ?? [
-                    'Pulse, Jobs, Hotlist, Posts, Active List, Inbox & Tracker included',
+                    'Pulse, Jobs, Hotlist, Posts, Network, Inbox & Tracker included',
                     'Unlimited team members',
-                    'Active List: 50 contacts/download, 500 lifetime',
+                    'Subscribe to 5 new people a day, up to 10',
                     '1 credit per email draft, AI chat draft, or new post',
                   ]).map(item => (
                     <li key={item} className="flex items-center gap-2.5">
@@ -586,7 +566,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                 <ul className="space-y-3 text-sm text-white flex-1 mb-8">
                   {(content.proBullets ?? [
                     'Everything in Free',
-                    'Unlimited Active List downloads',
+                    'Subscribe to 10 new people a day, no cap',
                     'Credits delivered automatically, never run out mid-month',
                     'Change your tier or cancel any time',
                   ]).map(item => (

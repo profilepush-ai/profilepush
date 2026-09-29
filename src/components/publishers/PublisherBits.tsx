@@ -7,6 +7,7 @@ import {
   fetchPublisherForLead,
   followPublisher,
   getFollowedEmailsSnapshot,
+  profilePath,
   publisherEmailKey,
   setEmailFollowed,
   subscribeFollowedEmails,
@@ -52,8 +53,9 @@ export function PublisherName({
   slug: string;
   className?: string;
 }) {
+  const { account } = useAuth();
   return (
-    <Link to={`/p/${slug}`} className={`truncate font-semibold text-gray-900 hover:underline dark:text-slate-100 ${className}`}>
+    <Link to={profilePath(slug, account?.active_persona)} className={`truncate font-semibold text-gray-900 hover:underline dark:text-slate-100 ${className}`}>
       {publisherDisplayName(publisher)}
     </Link>
   );
@@ -152,6 +154,7 @@ export function PosterProfileLink({
   children: React.ReactNode;
 }) {
   const navigate = useNavigate();
+  const { account } = useAuth();
   const [busy, setBusy] = useState(false);
   async function open(e: React.MouseEvent | React.KeyboardEvent) {
     e.stopPropagation();
@@ -160,7 +163,7 @@ export function PosterProfileLink({
     setBusy(true);
     try {
       const publisher = await fetchPublisherForLead(kind, leadId);
-      if (publisher) navigate(`/p/${publisher.slug}`);
+      if (publisher) navigate(profilePath(publisher.slug, account?.active_persona));
     } finally {
       setBusy(false);
     }
@@ -181,6 +184,7 @@ export function PosterProfileLink({
 
 // "View profile" and Subscribe for one post's publisher, used in the detail view.
 export function PublisherFollowInline({ kind, leadId }: { kind: 'job' | 'hotlist'; leadId: string }) {
+  const { account } = useAuth();
   const [publisher, setPublisher] = useState<Awaited<ReturnType<typeof fetchPublisherForLead>>>(null);
   useEffect(() => {
     let cancelled = false;
@@ -192,7 +196,7 @@ export function PublisherFollowInline({ kind, leadId }: { kind: 'job' | 'hotlist
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
       <Link
-        to={`/p/${publisher.slug}`}
+        to={profilePath(publisher.slug, account?.active_persona)}
         className="text-[12px] font-semibold text-blue-600 hover:underline dark:text-blue-400"
       >
         View profile

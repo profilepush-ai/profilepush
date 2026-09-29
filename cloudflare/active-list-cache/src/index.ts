@@ -136,6 +136,10 @@ export default {
       return jsonResponse({ error: "Method not allowed" }, 405);
     }
 
+    // The public vendor and bench sales contact lists are withdrawn
+    // (2026-09-30). Nothing is served, cached or not.
+    return jsonResponse({ error: "The contact lists are no longer available." }, 410);
+
     const expected = (env.WORKER_AUTH_TOKEN ?? "").trim();
     if (expected) {
       const actual = getBearerToken(req);
