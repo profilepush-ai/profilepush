@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  ChevronDown, HelpCircle, LogOut, Settings, Sparkles,
-  Building2, Map, CreditCard, AlertTriangle, FileText,
+  ChevronDown, LogOut, Settings, Sparkles,
+  Building2, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Activity, Briefcase, Mail, Database, UserRound, Video,
+  Briefcase, Mail, UserRound, Video,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -39,8 +39,8 @@ function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | 
 }
 
 // Posts and Tracker are the only two nav items whose label depends on
-// persona (Feed/Inbox/List/Pulse keep their names — only their content
-// filters). Vendor posts Jobs and sends outbound Hotlist Requests; Bench
+// persona (Feed/Inbox keep their names — only their content filters).
+// Pulse and List are hidden from the nav; their routes still work. Vendor posts Jobs and sends outbound Hotlist Requests; Bench
 // Sales posts Hotlist and sends outbound job Applications.
 function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   const isBenchSales = persona === 'bench_sales';
@@ -68,8 +68,6 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
     { path: postsPath,      label: postsLabel,    mobileLabel: postsLabel,    icon: postsIcon,   hideOnMobile: false },
     { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
     { path: trackerPath,    label: trackerLabel,  mobileLabel: trackerLabel,  icon: trackerIcon, hideOnMobile: false },
-    { path: '/pulse',       label: 'Pulse',       mobileLabel: 'Pulse',       icon: Activity,    hideOnMobile: false },
-    { path: '/active-list', label: 'List',        mobileLabel: 'List',       icon: Database,    hideOnMobile: false },
   ];
 }
 
@@ -121,58 +119,56 @@ function CreditsChip({ balance }: { balance: number }) {
   );
 }
 
-// Selected colour is per-persona, matching how each side's content reads
+// Icon colour is per-persona, matching how each side's content reads
 // everywhere else: Vendor works the Jobs side (blue), Bench Sales the
 // hotlist side (orange).
 const PERSONA_OPTIONS = [
-  { id: 'vendor', label: 'Vendor', icon: Briefcase, selectedClass: 'border-blue-600 bg-blue-600 text-white' },
-  { id: 'bench_sales', label: 'Bench Sales', icon: UserRound, selectedClass: 'border-orange-500 bg-orange-500 text-white' },
+  { id: 'vendor', label: 'Vendor', icon: Briefcase, iconClass: 'text-blue-600' },
+  { id: 'bench_sales', label: 'Bench Sales', icon: UserRound, iconClass: 'text-orange-500' },
 ] as const;
 
-// Global persona toggle — same branded pill style used across the app's
-// other segmented controls (ActiveListPage/TrackerPage/MyPostsPage): each
-// button independently rounded-full, no outer tray, selected = solid
-// brand blue. Flipping it writes straight to the account via
-// set_active_persona and refreshes context, so every page reading
-// account.active_persona re-renders immediately.
-function PersonaSwitcher() {
+// Persona choice, shown as a section of the avatar menu. Choosing writes
+// straight to the account via set_active_persona and refreshes context, so
+// every page reading account.active_persona re-renders immediately.
+function PersonaMenuSection({ onChosen }: { onChosen: () => void }) {
   const { account, refreshAccount } = useAuth();
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
 
   if (!account?.active_persona) return null;
 
   async function choose(persona: string) {
-    if (switchingTo || persona === account?.active_persona) return;
+    if (switchingTo) return;
+    if (persona === account?.active_persona) { onChosen(); return; }
     setSwitchingTo(persona);
     try {
       const { error } = await supabase.rpc('set_active_persona' as never, { p_persona: persona } as never);
       if (!error) await refreshAccount();
     } finally {
       setSwitchingTo(null);
+      onChosen();
     }
   }
 
   return (
-    <div role="group" aria-label="User type" className="flex shrink-0 items-center gap-1">
-      {PERSONA_OPTIONS.map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          onClick={() => void choose(option.id)}
-          disabled={switchingTo != null}
-          title={option.label}
-          aria-label={option.label}
-          aria-pressed={account.active_persona === option.id}
-          className={`inline-flex h-8 min-w-8 touch-manipulation items-center justify-center gap-1 rounded-full text-[11px] font-semibold transition disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-gray-400 sm:h-auto sm:min-w-0 sm:px-2.5 sm:py-1 ${
-            account.active_persona === option.id
-              ? `border ${option.selectedClass}`
-              : 'border border-gray-200 bg-white text-gray-500 hover:text-gray-700 sm:border-transparent'
-          }`}
-        >
-          <option.icon className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
-          <span className="hidden sm:inline">{option.label}</span>
-        </button>
-      ))}
+    <div role="group" aria-label="Working as" className="border-b border-gray-100 pb-1 mb-1">
+      <p className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Working as</p>
+      {PERSONA_OPTIONS.map((option) => {
+        const selected = account.active_persona === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => void choose(option.id)}
+            disabled={switchingTo != null}
+            aria-pressed={selected}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors hover:bg-gray-50 disabled:opacity-60 ${selected ? 'font-semibold text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            <option.icon size={13} className={option.iconClass} />
+            <span className="flex-1 text-left">{option.label}</span>
+            {selected && <Check size={13} className="text-blue-600" />}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -404,28 +400,6 @@ export default function AppNav() {
         </Link>
       )}
 
-      {/* Persona switcher sits beside the logo on mobile: the right-hand
-          cluster already carries credits, theme, bell and avatar, which
-          squeezed these two into ~24px targets — too small to hit reliably
-          for the one control that changes what the whole app shows. From sm
-          up it stays in the right-hand cluster as before. */}
-      {user && (
-        <span className="sm:hidden">
-          <PersonaSwitcher />
-        </span>
-      )}
-
-      {/* Mobile: credits chip + account avatar */}
-      {user && (
-        <span className="sm:hidden ml-auto flex items-center gap-1.5">
-          {shouldShowCreditsUi() && account != null && <CreditsChip balance={account.credits_balance} />}
-          <NotificationBell userId={user.id} />
-          <Link to="/account" className="shrink-0" title="Account">
-            <UserAvatar pictureUrl={pictureUrl} initials={initials} sizeClass="h-8 w-8 text-[13px]" />
-          </Link>
-        </span>
-      )}
-
       <nav className="hidden sm:flex items-center gap-1 flex-1">
         {navItems.map(({ path, label, mobileLabel, icon: Icon, hideOnMobile }) => {
           const active = location.pathname === path || location.pathname.startsWith(path + '/');
@@ -452,57 +426,30 @@ export default function AppNav() {
           </span>
         )}
 
-        <span className="hidden sm:block w-px h-4 bg-gray-200 mx-1" />
-
-        <Link
-          to="/support"
-          className={`hidden sm:inline-flex h-7 w-7 items-center justify-center rounded transition-colors ${
-            location.pathname === '/support' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-          }`}
-          aria-label="Help"
-          title="Help"
-        >
-          <HelpCircle size={14} />
-        </Link>
-
-        <Link
-          to="/roadmap"
-          className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded text-[13px] font-medium transition-colors ${
-            location.pathname === '/roadmap' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-          }`}
-          title="Roadmap"
-        >
-          <Map size={12} />
-        </Link>
       </nav>
 
-      {/* Credits + Bell + Profile */}
+      {/* Credits + Bell + Profile. On mobile the nav above is hidden, so
+          ml-auto pushes this cluster to the right edge; from sm up the nav's
+          flex-1 does that. The persona choice lives in the avatar menu. */}
       {user && (
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="hidden sm:block">
-            <PersonaSwitcher />
-          </span>
-
+        <div className="ml-auto sm:ml-0 flex items-center gap-1.5 sm:gap-2 shrink-0">
           {shouldShowCreditsUi() && account != null && (
-            <span className="hidden sm:block">
-              <CreditsChip balance={account.credits_balance} />
-            </span>
+            <CreditsChip balance={account.credits_balance} />
           )}
 
-          {/* Notification bell */}
-          <span className="hidden sm:block">
-            <NotificationBell userId={user.id} />
-          </span>
+          <NotificationBell userId={user.id} />
 
           {/* Profile avatar menu */}
-          <div className="hidden sm:block relative" ref={menuRef}>
+          <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(v => !v)}
               className="flex items-center gap-1 pl-1 pr-1 py-1 rounded-lg hover:bg-gray-100 transition-colors group"
               title={(user.user_metadata?.full_name as string | undefined) || user.email || 'Account'}
+              aria-label="Account menu"
+              aria-expanded={menuOpen}
             >
-              <UserAvatar pictureUrl={pictureUrl} initials={initials} sizeClass="w-6 h-6 text-[11px]" />
-              <ChevronDown size={11} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
+              <UserAvatar pictureUrl={pictureUrl} initials={initials} sizeClass="h-8 w-8 text-[13px] sm:w-6 sm:h-6 sm:text-[11px]" />
+              <ChevronDown size={11} className="hidden sm:block text-gray-400 group-hover:text-gray-600 transition-colors" />
             </button>
 
             {menuOpen && (
@@ -522,6 +469,8 @@ export default function AppNav() {
                     </div>
                   )}
                 </div>
+
+                <PersonaMenuSection onChosen={() => setMenuOpen(false)} />
 
                 <button
                   onClick={() => { setMenuOpen(false); navigate('/account'); }}
