@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { inAndroidApp } from '../lib/android-shell';
+import { supabase } from '../lib/supabase';
 
 // The Play listing, in place of the old add-to-home-screen prompt.
 //
@@ -38,6 +39,11 @@ export default function GooglePlayBanner() {
       setDismissed(false);
     }
   }, []);
+
+  // Counted in Account Stats. Fire and forget: the link must open regardless.
+  const recordClick = () => {
+    void supabase.rpc('log_play_store_click' as never, { p_source: 'banner' } as never).then(() => {}, () => {});
+  };
 
   const dismiss = () => {
     setDismissed(true);
@@ -87,6 +93,7 @@ export default function GooglePlayBanner() {
           rel="noopener noreferrer"
           onClick={dismiss}
           aria-label="Get ProfilePush on Google Play"
+          onClickCapture={recordClick}
           className="shrink-0 transition active:scale-[0.98]"
         >
           {/* Google's artwork, unaltered and uncropped. 40px tall is their
