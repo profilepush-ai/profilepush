@@ -13,6 +13,7 @@ import OnboardingChecklist from './components/OnboardingChecklist';
 import AndroidBackButtonHandler from './components/AndroidBackButtonHandler';
 import { useAuth } from './contexts/AuthContext';
 import { isSupabaseConfigured, supabaseConfigMissing } from './lib/supabase';
+import { networkSectionForPersona } from './lib/publishers';
 import { initializeOneSignal, setOneSignalExternalUserId } from './lib/onesignal';
 import { registerNativeAuthDeepLinkListener } from './lib/native-auth';
 
@@ -54,11 +55,8 @@ const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const InboxPage = lazy(() => import('./pages/InboxPage'));
 const WatchlistProfilesPage = lazy(() => import('./pages/WatchlistProfilesPage'));
 const OnboardingVideo = lazy(() => import('./pages/OnboardingVideo'));
-const ActiveListPage = lazy(() => import('./pages/ActiveListPage'));
 const FollowingPage = lazy(() => import('./pages/FollowingPage'));
 const PublisherProfilePage = lazy(() => import('./pages/PublisherProfilePage'));
-const ItStaffingVendorListPage = lazy(() => import('./pages/ItStaffingVendorListPage'));
-const ItStaffingBenchSalesRecruitersListPage = lazy(() => import('./pages/ItStaffingBenchSalesRecruitersListPage'));
 const VendorsLandingPage = lazy(() => import('./pages/VendorsLandingPage'));
 const BenchSalesLandingPage = lazy(() => import('./pages/BenchSalesLandingPage'));
 
@@ -151,6 +149,28 @@ function AppEntry() {
 // a stale bookmark or a persona switch never leaves the URL pointing at the
 // wrong kind. The redirects carry location.search through: the feed keeps its
 // search query, date range and page number there, and a bare `to={path}` would
+// /network/vendors is the Network page for bench sales, /network/bench-sales
+// for vendors, and /network/<section>/<slug> a profile. Anything else lands on
+// the right one for the account's persona: /network, a section for the other
+// persona, the earlier /network/<slug>, /following and /p/<slug>. Search
+// (?q=) is carried through.
+function NetworkRouteGuard({ legacySlug = false }: { legacySlug?: boolean }) {
+  const { account } = useAuth();
+  const location = useLocation();
+  const params = useParams<{ section?: string; slug?: string }>();
+  const section = networkSectionForPersona(account?.active_persona);
+  const isSection = params.section === 'vendors' || params.section === 'bench-sales';
+  const slug = legacySlug ? params.slug : isSection ? params.slug : params.section;
+
+  const expected = slug ? `/network/${section}/${slug}` : `/network/${section}`;
+  if (location.pathname !== expected) {
+    return <Navigate to={{ pathname: expected, search: location.search }} replace />;
+  }
+  return slug
+    ? <ErrorBoundary><PublisherProfilePage /></ErrorBoundary>
+    : <ErrorBoundary><FollowingPage /></ErrorBoundary>;
+}
+
 // silently drop them on any persona-driven redirect.
 function FeedRouteGuard() {
   const { account } = useAuth();
@@ -268,8 +288,9 @@ export default function App() {
             <Route path="/terms" element={<ErrorBoundary><TermsAndConditions /></ErrorBoundary>} />
             <Route path="/security" element={<ErrorBoundary><SecurityPage /></ErrorBoundary>} />
             <Route path="/about" element={<ErrorBoundary><AboutUs /></ErrorBoundary>} />
-            <Route path="/it-staffing-vendor-list" element={<ErrorBoundary><ItStaffingVendorListPage /></ErrorBoundary>} />
-            <Route path="/it-staffing-bench-sales-recruiters-list" element={<ErrorBoundary><ItStaffingBenchSalesRecruitersListPage /></ErrorBoundary>} />
+            {/* The public contact lists are withdrawn; their addresses land on the persona pages. */}
+            <Route path="/it-staffing-vendor-list" element={<Navigate to="/vendors" replace />} />
+            <Route path="/it-staffing-bench-sales-recruiters-list" element={<Navigate to="/bench-sales" replace />} />
             <Route path="/vendors" element={<ErrorBoundary><VendorsLandingPage /></ErrorBoundary>} />
             <Route path="/bench-sales" element={<ErrorBoundary><BenchSalesLandingPage /></ErrorBoundary>} />
             <Route path="/contact" element={<ErrorBoundary><ContactUs /></ErrorBoundary>} />
@@ -298,7 +319,8 @@ export default function App() {
             <Route path="/tracker/submissions" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker/applications" element={<ProtectedRoute><Navigate to="/tracker/submissions" replace /></ProtectedRoute>} />
             <Route path="/contacts" element={<ProtectedRoute><ErrorBoundary><ContactsPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/active-list" element={<ProtectedRoute><ErrorBoundary><ActiveListPage /></ErrorBoundary></ProtectedRoute>} />
+            {/* Active List downloads are withdrawn; Network replaces the list. */}
+            <Route path="/active-list" element={<ProtectedRoute><Navigate to="/network" replace /></ProtectedRoute>} />
             <Route path="/alerts" element={<ProtectedRoute><ErrorBoundary><AlertsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/inbox" element={<ProtectedRoute><ErrorBoundary><InboxPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/inbox/:conversationId" element={<ProtectedRoute><ErrorBoundary><InboxPage /></ErrorBoundary></ProtectedRoute>} />
@@ -321,8 +343,12 @@ export default function App() {
             <Route path="/posts/applications/:jobId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/applications/:jobId/:applicationId" element={<ProtectedRoute><ErrorBoundary><PostApplicationsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/posts/requests/:hotlistId" element={<ProtectedRoute><ErrorBoundary><HotlistRequestsPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/following" element={<ProtectedRoute><ErrorBoundary><FollowingPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/p/:slug" element={<ProtectedRoute><ErrorBoundary><PublisherProfilePage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/network" element={<ProtectedRoute><NetworkRouteGuard /></ProtectedRoute>} />
+            <Route path="/network/:section" element={<ProtectedRoute><NetworkRouteGuard /></ProtectedRoute>} />
+            <Route path="/network/:section/:slug" element={<ProtectedRoute><NetworkRouteGuard /></ProtectedRoute>} />
+            {/* Earlier addresses, kept for links already sent. */}
+            <Route path="/following" element={<ProtectedRoute><NetworkRouteGuard /></ProtectedRoute>} />
+            <Route path="/p/:slug" element={<ProtectedRoute><NetworkRouteGuard legacySlug /></ProtectedRoute>} />
             <Route path="/pulse" element={<ProtectedRoute><ErrorBoundary><DashboardPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/watchlist-profiles" element={<ProtectedRoute><ErrorBoundary><WatchlistProfilesPage /></ErrorBoundary></ProtectedRoute>} />
             </Routes>

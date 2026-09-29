@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeft, Bell, BellOff, Search, Users } from 'lucide-react';
+import { ArrowLeft, Bell, BellOff, Search } from 'lucide-react';
 import LogoSpinner from '../LogoSpinner';
 import { useAuth } from '../../contexts/AuthContext';
 import { FollowButton, PublisherAvatar, Tag } from './PublisherBits';
@@ -39,7 +39,8 @@ export function PublisherProfileView({
   onOpenPost: (leadId: string) => void;
   // Inside the feed, the feed renders the posts with its own cards and
   // actions; elsewhere the view lists them itself.
-  renderPosts?: (args: { publisherId: string; query: string }) => ReactNode;
+  // canChat: the publisher has joined and isn't you, so post chat can reach them.
+  renderPosts?: (args: { publisherId: string; query: string; canChat: boolean }) => ReactNode;
 }) {
   const usesFeedCards = Boolean(renderPosts);
   const { account } = useAuth();
@@ -108,35 +109,69 @@ export function PublisherProfileView({
   const postNoun = kind === 'job' ? 'requirement' : 'hotlist';
 
   return (
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-3 py-4 sm:px-4">
-          <button type="button" onClick={onBack} className="inline-flex items-center gap-1 self-start text-[12px] text-gray-500 hover:text-gray-800 dark:text-slate-400">
-            <ArrowLeft size={12} /> {backLabel}
-          </button>
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-3 pb-4 sm:px-4">
+          {/* Back, then search across this profile's posts, on one row above
+              both columns. */}
+          {/* Pinned: the page scrolls under it, so Back and search stay in reach. */}
+          <div className="sticky top-0 z-20 -mx-3 flex items-center gap-2 bg-[#f3f2ee] px-3 py-3 dark:bg-[#1B1D21] sm:-mx-4 sm:px-4">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-[13px] font-semibold text-gray-700 shadow-sm transition hover:border-gray-300 hover:bg-gray-50 dark:border-white/15 dark:bg-[#20242a] dark:text-slate-200 dark:hover:bg-white/5"
+            >
+              <ArrowLeft size={15} strokeWidth={2.25} /> {backLabel}
+            </button>
+            <div className="relative flex min-w-0 flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
+              <Search size={13} className="shrink-0 text-gray-400" />
+              <input
+                id="publisher-post-search"
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Search this profile's ${postNoun}s`}
+                className="w-full min-w-0 border-0 bg-transparent text-[13px] text-gray-700 outline-none placeholder:text-gray-400 dark:text-slate-200"
+              />
+            </div>
+          </div>
 
           {profile === undefined ? (
             <div className="flex justify-center py-10"><LogoSpinner size={22} /></div>
           ) : profile === null ? (
             <p className="py-10 text-center text-[13px] text-gray-500">This profile doesn't exist or is no longer available.</p>
           ) : (
-            <>
-              <header className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#171A1F] sm:flex-row sm:items-start">
-                <PublisherAvatar publisher={profile} size={56} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <h1 className="text-[18px] font-bold">{publisherDisplayName(profile)}</h1>
-                  </div>
+            // Two columns from lg up, like a LinkedIn profile: a narrow card with
+            // who they are, and their posts beside it. Stacked on a phone.
+            <div className="grid items-start gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <aside className="flex flex-col items-center gap-3 rounded-2xl border border-gray-200 bg-white p-5 text-center dark:border-white/10 dark:bg-[#171A1F] lg:sticky lg:top-[4.25rem]">
+                <PublisherAvatar publisher={profile} size={72} />
+                <div className="min-w-0">
+                  <h1 className="break-words text-[18px] font-bold leading-snug">{publisherDisplayName(profile)}</h1>
                   {profile.company_name && profile.display_name && (
-                    <p className="text-[13px] text-gray-600 dark:text-slate-300">{profile.company_name}</p>
+                    <p className="mt-0.5 text-[13px] text-gray-600 dark:text-slate-300">{profile.company_name}</p>
                   )}
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gray-500 dark:text-slate-400">
-                    <span className="inline-flex items-center gap-1"><Users size={12} /> {profile.follower_count} subscriber{profile.follower_count === 1 ? '' : 's'}</span>
-                    <span>
-                      {kind === 'job' ? profile.job_post_count : profile.hotlist_post_count} {postNoun}s in 30 days
-                    </span>
-                  </div>
                 </div>
+                <dl className="grid w-full grid-cols-2 gap-2 border-y border-gray-100 py-3 text-center dark:border-white/10">
+                  <div>
+                    <dt className="text-[11px] text-gray-500 dark:text-slate-400">Subscribers</dt>
+                    <dd className="text-[16px] font-bold tabular-nums">{profile.follower_count.toLocaleString('en-US')}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] text-gray-500 dark:text-slate-400">{postNoun === 'hotlist' ? 'Hotlists' : 'Requirements'}, 30d</dt>
+                    <dd className="text-[16px] font-bold tabular-nums">{(kind === 'job' ? profile.job_post_count : profile.hotlist_post_count).toLocaleString('en-US')}</dd>
+                  </div>
+                </dl>
                 {!profile.is_mine && (
-                  <div className="flex items-start gap-2">
+                  <div className="flex w-full items-center justify-center gap-2">
+                    <FollowButton
+                      publisherId={profile.publisher_id}
+                      following={profile.is_following}
+                      onChange={(following) => setProfile({
+                        ...profile,
+                        is_following: following,
+                        muted: following ? profile.muted : false,
+                        follower_count: profile.follower_count + (following ? 1 : -1),
+                      })}
+                    />
                     {profile.is_following && (
                       <button
                         type="button"
@@ -153,34 +188,14 @@ export function PublisherProfileView({
                         {profile.muted ? <BellOff size={14} /> : <Bell size={14} />}
                       </button>
                     )}
-                    <FollowButton
-                      publisherId={profile.publisher_id}
-                      following={profile.is_following}
-                      onChange={(following) => setProfile({
-                        ...profile,
-                        is_following: following,
-                        muted: following ? profile.muted : false,
-                        follower_count: profile.follower_count + (following ? 1 : -1),
-                      })}
-                    />
                   </div>
                 )}
-              </header>
+              </aside>
 
+              <div className="min-w-0">
               {renderPosts ? (
                 <section className="flex flex-col gap-3">
-                  <div className="relative flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
-                    <Search size={12} className="shrink-0 text-gray-400" />
-                    <input
-                      id="publisher-post-search"
-                      type="text"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder={`Search this profile's ${postNoun}s`}
-                      className="w-full min-w-0 border-0 bg-transparent text-[12px] outline-none placeholder:text-gray-400"
-                    />
-                  </div>
-                  {renderPosts({ publisherId: profile.publisher_id, query })}
+                  {renderPosts({ publisherId: profile.publisher_id, query, canChat: profile.is_claimed && !profile.is_mine })}
                 </section>
               ) : posts === null ? (
                 <div className="flex justify-center py-8"><LogoSpinner size={20} /></div>
@@ -191,17 +206,6 @@ export function PublisherProfileView({
                 </p>
               ) : (
                 <section className="flex flex-col gap-3">
-                  <div className="relative flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
-                    <Search size={12} className="shrink-0 text-gray-400" />
-                    <input
-                      id="publisher-post-search"
-                      type="text"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder={`Search this profile's ${postNoun}s`}
-                      className="w-full min-w-0 border-0 bg-transparent text-[12px] outline-none placeholder:text-gray-400"
-                    />
-                  </div>
 
                   {groups.length === 0 && (
                     <p className="py-4 text-center text-[12px] text-gray-500">No {postNoun}s match "{query}".</p>
@@ -226,7 +230,8 @@ export function PublisherProfileView({
                   ))}
                 </section>
               )}
-            </>
+              </div>
+            </div>
           )}
         </div>
   );

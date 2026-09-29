@@ -19,7 +19,9 @@ import { inAndroidApp } from '../lib/android-shell';
 // about a different thing, and should be told once that the app exists.
 
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.profilepush.app';
-const DISMISS_KEY = 'pp_hide_play_banner_v1';
+// v2 with the "Get new posts instantly" message, so people who dismissed the
+// earlier "app is here" version see the new reason once.
+const DISMISS_KEY = 'pp_hide_play_banner_v2';
 
 export default function GooglePlayBanner() {
   const { isDark } = useTheme();
@@ -51,7 +53,7 @@ export default function GooglePlayBanner() {
   return (
     <div
       className={`fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 animate-slide-up border-t px-3 py-2.5 shadow-lg
-        sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[360px] sm:rounded-xl sm:border sm:px-3.5 sm:py-3 ${
+        sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[380px] sm:rounded-xl sm:border sm:px-3.5 sm:py-3 ${
         isDark ? 'border-white/10 bg-[#20242a]' : 'border-gray-200 bg-white'
       }`}
     >
@@ -69,12 +71,13 @@ export default function GooglePlayBanner() {
         />
 
         <div className="min-w-0 flex-1">
+          {/* What the app gives you, not that it exists: instant alerts when
+              your network posts. Not "on Google Play" — the badge says that. */}
           <p className={`truncate text-[13px] font-semibold leading-tight ${isDark ? 'text-slate-100' : 'text-gray-900'}`}>
-            ProfilePush
+            Get posts instantly
           </p>
-          {/* Not "on Google Play" — the badge beside it already says that. */}
           <p className={`truncate text-[11px] leading-tight ${isDark ? 'text-[#94A3B8]' : 'text-gray-500'}`}>
-            The Android app is here
+            Free app · instant alerts
           </p>
         </div>
 

@@ -13,8 +13,10 @@ export function followingKindForPersona(persona: Persona): PublisherPostKind {
   return persona === 'bench_sales' ? 'job' : 'hotlist';
 }
 
-export function followingLabelForPersona(persona: Persona): string {
-  return persona === 'bench_sales' ? 'Vendors' : 'Bench Sales';
+// One name for both personas: the page holds the people you work with (vendors
+// for bench sales, bench sales recruiters for vendors).
+export function followingLabelForPersona(_persona: Persona): string {
+  return 'Network';
 }
 
 export type FollowingCard = {
@@ -280,4 +282,24 @@ export function setEmailFollowed(email: string, following: boolean) {
   if (following) next.add(key); else next.delete(key);
   followedEmails = next;
   emitFollowed();
+}
+
+// ── Page addresses ──────────────────────────────────────────────────────────
+// /network/vendors (for bench sales) and /network/bench-sales (for vendors)
+// list the people you work with; /network/<section>/<slug> is one profile.
+// /network, /network/<slug>, /following and /p/<slug> all redirect here.
+export const NETWORK_PATH = '/network';
+export type NetworkSection = 'vendors' | 'bench-sales';
+
+export function networkSectionForPersona(persona: Persona): NetworkSection {
+  return persona === 'bench_sales' ? 'vendors' : 'bench-sales';
+}
+
+export function networkPath(persona: Persona): string {
+  return `${NETWORK_PATH}/${networkSectionForPersona(persona)}`;
+}
+
+export function profilePath(slug: string, persona: Persona, query?: string): string {
+  const q = query?.trim();
+  return `${networkPath(persona)}/${encodeURIComponent(slug)}${q ? `?q=${encodeURIComponent(q)}` : ''}`;
 }

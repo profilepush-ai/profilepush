@@ -609,7 +609,7 @@ export default function BillingPage() {
                   <p className="text-2xl font-extrabold text-gray-900">₹0<span className="text-[15px] font-semibold text-gray-500">/mo</span></p>
                   <p className="text-[13px] text-gray-500 mt-0.5 mb-4">100 credits, one time · never expire · no card required</p>
                   <ul className="space-y-2 text-[13px] text-gray-600 flex-1 mb-4">
-                    {['Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', 'Active List downloads: 50 contacts/download, 500 lifetime', 'Credit costs vary by feature — see breakdown below'].map(item => (
+                    {['Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', 'Network: subscribe to 5 new people a day, up to 10', 'Credit costs vary by feature — see breakdown below'].map(item => (
                       <li key={item} className="flex items-start gap-2">
                         <Check size={12} className="mt-0.5 shrink-0 text-emerald-600" />
                         {item}
@@ -660,7 +660,7 @@ export default function BillingPage() {
                       <p className="text-2xl font-extrabold text-white">{fmtINR(TIERS[0])}<span className="text-[15px] font-semibold text-blue-200">/mo</span></p>
                       <p className="text-[13px] text-blue-200 mt-0.5 mb-4">{TIERS[0].toLocaleString('en-IN')}–{TIERS[TIERS.length - 1].toLocaleString('en-IN')} credits/mo, your choice</p>
                       <ul className="space-y-2 text-[13px] text-white flex-1 mb-4">
-                        {['Everything in Free', 'Unlimited Active List downloads — no 50/500 cap', 'Delivered automatically, never run out mid-month', 'Cancel any time, keeps access till period end'].map(item => (
+                        {['Everything in Free', 'Network: subscribe to 10 new people a day, no cap', 'Delivered automatically, never run out mid-month', 'Cancel any time, keeps access till period end'].map(item => (
                           <li key={item} className="flex items-start gap-2">
                             <Check size={12} className="mt-0.5 shrink-0 text-white" />
                             {item}

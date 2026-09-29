@@ -14,6 +14,7 @@ import {
   Check,
   Clock3,
   Rss,
+  MessageCircle,
   DollarSign,
   Eye,
   FileText,
@@ -52,6 +53,7 @@ import {
 } from 'lucide-react';
 import { PosterProfileLink, PublisherFollowInline, SubscribeTextLink } from '../components/publishers/PublisherBits';
 import { PublisherProfileView } from '../components/publishers/PublisherProfileView';
+import { networkPath } from '../lib/publishers';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
@@ -1340,6 +1342,9 @@ interface LeadCardProps {
    *  from onPreview above, which opens the original post. */
   isFocused?: boolean;
   onFocus?: (lead: SocialLead) => void;
+  /** Profile pages of publishers who have joined: start a chat on this post. */
+  onChat?: (lead: SocialLead) => void;
+  isProcessingChat?: boolean;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -1384,7 +1389,7 @@ function PublisherLeadList({
   if (leads === null) return <div className="flex justify-center py-8"><LogoSpinner size={20} /></div>;
   if (leads.length === 0) return <p className="py-6 text-center text-[13px] text-gray-500 dark:text-slate-400">No open posts in the last 30 days.</p>;
   if (filtered.length === 0) return <p className="py-4 text-center text-[12px] text-gray-500">No posts match "{query}".</p>;
-  return <div className="grid grid-cols-1 gap-2">{renderCards(filtered)}</div>;
+  return <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">{renderCards(filtered)}</div>;
 }
 
 const LeadCard = memo(function LeadCard({
@@ -1395,6 +1400,7 @@ const LeadCard = memo(function LeadCard({
   onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
   hideActions, isSelected, onSelect,
   bulkSelectable, isBulkSelected, onToggleBulkSelect, matchRank, isFocused, onFocus,
+  onChat, isProcessingChat,
 }: LeadCardProps) {
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
@@ -1426,6 +1432,18 @@ const LeadCard = memo(function LeadCard({
         {justCopiedShare ? <Check size={17} strokeWidth={1.75} /> : <Share2 size={17} strokeWidth={1.75} />}
         <span className="text-[12px] font-normal">{justCopiedShare ? 'Copied' : 'Share'}</span>
       </button>
+      {onChat && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onChat(lead); }}
+          disabled={isProcessingChat}
+          title="Chat about this post"
+          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
+        >
+          {isProcessingChat ? <LogoSpinner size={14} /> : <MessageCircle size={16} strokeWidth={1.75} />}
+          <span className="text-[12px] font-normal">Chat</span>
+        </button>
+      )}
       {lead.kind === 'job' && lead.postSource === 'user_post' ? (
         <button
           type="button"
@@ -2514,7 +2532,7 @@ type PulsePageProps = {
   // the ai-match function (a pasted description scored against the last 30
   // days) instead of the paged feed.
   aiMatch?: boolean;
-  // /p/:slug: the page shows that publisher's profile instead of the feed,
+  // /network/<section>/:slug: the page shows that publisher's profile instead of the feed,
   // with the feed's own cards, actions and pop-ups. No feed loading, and it
   // never rewrites the URL.
   publisherSlug?: string;
@@ -2540,6 +2558,27 @@ type FeedSnapshot = {
 };
 let feedSnapshot: FeedSnapshot | null = null;
 const FEED_SNAPSHOT_TTL_MS = 10 * 60 * 1000;
+// Also kept in sessionStorage: browsers discard background tabs to save
+// memory and reload them on return, which wipes the in-memory copy.
+const FEED_SNAPSHOT_STORAGE_KEY = 'pp.feed.snapshot';
+
+function readStoredFeedSnapshot(): FeedSnapshot | null {
+  try {
+    const raw = window.sessionStorage.getItem(FEED_SNAPSHOT_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as FeedSnapshot) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeFeedSnapshot(snapshot: FeedSnapshot) {
+  feedSnapshot = snapshot;
+  try {
+    window.sessionStorage.setItem(FEED_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Too large or blocked: the in-memory copy still covers in-app Back.
+  }
+}
 
 // Scroll positions of every scrolled element inside the feed, by document
 // order. The same rows render the same tree, so the order lines up on return.
@@ -2820,9 +2859,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const feedRestoredRef = useRef(false);
   const [feedRestore] = useState<FeedSnapshot | null>(() => {
-    if (aiMatch || profileMode || !feedSnapshot) return null;
+    if (aiMatch || profileMode) return null;
+    const candidate = feedSnapshot ?? readStoredFeedSnapshot();
+    if (!candidate) return null;
     const key = `${window.location.pathname}${window.location.search}`;
-    return feedSnapshot.key === key && Date.now() - feedSnapshot.at < FEED_SNAPSHOT_TTL_MS ? feedSnapshot : null;
+    return candidate.key === key && Date.now() - candidate.at < FEED_SNAPSHOT_TTL_MS ? candidate : null;
   });
   const [selectedMatchesTab, setSelectedMatchesTab] = useState<MatchesTabId>(feedRestore?.tab ?? 'queued');
   // The Subscribed tab reloads the paged feed from the subscriber-only RPCs;
@@ -4139,7 +4180,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     };
   };
 
-  const renderLeadCards = (leads: SocialLead[], columns = 1) => leads.map((lead, idx) => {
+  const renderLeadCards = (leads: SocialLead[], columns = 1, extraProps?: (lead: SocialLead) => Partial<LeadCardProps>) => leads.map((lead, idx) => {
     const safeColumns = Math.max(1, columns);
     const row = Math.floor(idx / safeColumns);
     const col = idx % safeColumns;
@@ -4147,7 +4188,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     const paletteIndex = (row + (col * 2)) % CARD_PALETTE.length;
     // Rank is position in the run, so it counts across the whole result
     // set rather than restarting inside each score band.
-    const card = <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex, aiMatch && lead.aiMatchScore != null ? idx + 1 : undefined)} />;
+    const card = <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex, aiMatch && lead.aiMatchScore != null ? idx + 1 : undefined)} {...extraProps?.(lead)} />;
     if (!aiMatch || lead.aiMatchScore == null) return card;
     // Results run newest-first inside each band, so without a heading the
     // score appearing to drop mid-list looks like a sorting bug.
@@ -5890,7 +5931,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
 
   // One publisher's posts, as feed cards, for the profile panel.
   const loadPublisherLeads = useCallback(async (publisherId: string): Promise<SocialLead[]> => {
-    // On /p/:slug the page runs as the combined feed, where isHotlistFeed is
+    // On a profile page the page runs as the combined feed, where isHotlistFeed is
     // always false; what a profile shows follows the persona instead (vendors
     // read hotlists, bench sales read requirements), as feedKindFilter does.
     const showsHotlists = isCombinedFeed ? feedKindFilter === 'hotlist' : isHotlistFeed;
@@ -6785,15 +6826,19 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   }, [aiMatch, profileMode, loading]);
   useEffect(() => {
     if (aiMatch || profileMode) return undefined;
-    return () => {
+    const save = () => {
       const source = feedSnapshotSourceRef.current;
       if (!source || source.rows.length === 0) return;
-      feedSnapshot = {
-        ...source,
-        key: feedLocationKeyRef.current,
-        scroll: feedScrollRef.current,
-        at: Date.now(),
-      };
+      storeFeedSnapshot({ ...source, key: feedLocationKeyRef.current, scroll: feedScrollRef.current, at: Date.now() });
+    };
+    // Hidden is the last moment before a browser may discard the tab.
+    const onVisibility = () => { if (document.visibilityState === 'hidden') save(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', save);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', save);
+      save();
     };
   }, [aiMatch, profileMode]);
 
@@ -7895,14 +7940,16 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
             slug={publisherSlug}
             initialQuery={searchParams.get('q') ?? ''}
             backLabel="Back"
-            onBack={() => { if (window.history.state?.idx > 0) navigate(-1); else navigate('/following'); }}
+            onBack={() => { if (window.history.state?.idx > 0) navigate(-1); else navigate(networkPath(account?.active_persona)); }}
             onOpenPost={(leadId) => navigate(`/feed/${feedKindFilter === 'hotlist' ? 'hotlist' : 'job'}/${leadId}`)}
-            renderPosts={({ publisherId, query }) => (
+            renderPosts={({ publisherId, query, canChat }) => (
               <PublisherLeadList
                 publisherId={publisherId}
                 query={query}
                 loadLeads={loadPublisherLeads}
-                renderCards={(leads) => renderLeadCards(leads)}
+                renderCards={(leads) => renderLeadCards(leads, 1, canChat
+                  ? (lead) => ({ onChat: handleOpenPostChat, isProcessingChat: processingChatLeadId === lead.id })
+                  : undefined)}
               />
             )}
           />

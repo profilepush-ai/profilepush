@@ -82,6 +82,10 @@ Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (request.method !== "POST" && request.method !== "GET") return respond({ error: "Method not allowed" }, 405);
 
+  // Contact list downloads are withdrawn (2026-09-30): nothing is listed or
+  // exported any more. People connect through Network subscriptions instead.
+  return respond({ error: "downloads_withdrawn", message: "Contact list downloads are no longer available." }, 410);
+
   const authorization = request.headers.get("Authorization") ?? "";
   if (!authorization.startsWith("Bearer ")) return respond({ error: "Unauthorized" }, 401);
 
