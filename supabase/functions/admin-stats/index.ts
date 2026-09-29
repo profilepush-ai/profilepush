@@ -73,6 +73,9 @@ Deno.serve(async (req: Request) => {
       chatsRes,
       vendorDownloadsRes,
       recruiterDownloadsRes,
+      followsRes,
+      followLogRes,
+      claimedProfilesRes,
     ] = await Promise.all([
       supabase
         .from("account_members")
@@ -238,6 +241,24 @@ Deno.serve(async (req: Request) => {
           .in("account_id", accountIds)
           .eq("download_type", "recruiters")
       ),
+      // Network subscriptions: current state, so not date-ranged. source is
+      // 'manual' (tapped Subscribe) or 'auto' (created by an AI Submit/Invite).
+      supabase
+        .from("publisher_follows")
+        .select("account_id, publisher_id, source, created_at")
+        .in("account_id", accountIds),
+      // Subscribe taps inside the window (one row per tap, kept on unsubscribe).
+      withDateRange(
+        supabase
+          .from("publisher_follow_log")
+          .select("account_id, created_at")
+          .in("account_id", accountIds)
+      ),
+      // Profiles an account has claimed, to count who subscribes to them.
+      supabase
+        .from("publisher_profiles")
+        .select("id, claimed_account_id")
+        .not("claimed_account_id", "is", null),
     ]);
 
     function countBy(rows: any[] | null, key = "account_id"): Record<string, number> {
@@ -320,6 +341,25 @@ Deno.serve(async (req: Request) => {
     }
     const chatsCounts = countBy(chatsRes.data, "sender_account_id");
     const vendorDownloadsCounts = countBy(vendorDownloadsRes.data);
+    const subscriptionsManual: Record<string, number> = {};
+    const subscriptionsAuto: Record<string, number> = {};
+    for (const row of followsRes.data ?? []) {
+      const r = row as { account_id?: string; source?: string };
+      if (!r.account_id) continue;
+      const target = r.source === "auto" ? subscriptionsAuto : subscriptionsManual;
+      target[r.account_id] = (target[r.account_id] || 0) + 1;
+    }
+    const subscribeTaps = countBy(followLogRes.data);
+    const claimedBy: Record<string, string> = {};
+    for (const row of claimedProfilesRes.data ?? []) {
+      const r = row as { id?: string; claimed_account_id?: string };
+      if (r.id && r.claimed_account_id) claimedBy[r.id] = r.claimed_account_id;
+    }
+    const subscribers: Record<string, number> = {};
+    for (const row of followsRes.data ?? []) {
+      const owner = claimedBy[(row as { publisher_id?: string }).publisher_id ?? ""];
+      if (owner) subscribers[owner] = (subscribers[owner] || 0) + 1;
+    }
     const recruiterDownloadsCounts = countBy(recruiterDownloadsRes.data);
 
     // Split previews by looking up which table each previewed lead_id
@@ -448,6 +488,10 @@ Deno.serve(async (req: Request) => {
         chats_count: chatsCounts[a.id] || 0,
         vendor_downloads_count: vendorDownloadsCounts[a.id] || 0,
         recruiter_downloads_count: recruiterDownloadsCounts[a.id] || 0,
+        subscriptions_count: subscriptionsManual[a.id] || 0,
+        auto_subscriptions_count: subscriptionsAuto[a.id] || 0,
+        subscribe_taps_count: subscribeTaps[a.id] || 0,
+        subscribers_count: subscribers[a.id] || 0,
         account_age_days: Math.max(0, Math.floor((Date.now() - Date.parse(a.created_at)) / 86_400_000)),
         session_count: activity?.session_count ?? 0,
         active_seconds: activity?.active_seconds ?? 0,
@@ -494,6 +538,7 @@ Deno.serve(async (req: Request) => {
     for (const r of chatsRes.data ?? []) bucket(r.created_at, r.sender_account_id, "chats");
     for (const r of vendorDownloadsRes.data ?? []) bucket(r.created_at, r.account_id, "downloads");
     for (const r of recruiterDownloadsRes.data ?? []) bucket(r.created_at, r.account_id, "downloads");
+    for (const r of followLogRes.data ?? []) bucket(r.created_at, r.account_id, "subscribes");
     // Matches delivered, net of refunds, on the day the run started.
     for (const run of deliveredMatchRuns) {
       bucket(run.created_at, run.account_id, "ai_matches", run.delivered);
