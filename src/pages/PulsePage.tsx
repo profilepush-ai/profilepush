@@ -5890,13 +5890,19 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
 
   // One publisher's posts, as feed cards, for the profile panel.
   const loadPublisherLeads = useCallback(async (publisherId: string): Promise<SocialLead[]> => {
+    // On /p/:slug the page runs as the combined feed, where isHotlistFeed is
+    // always false; what a profile shows follows the persona instead (vendors
+    // read hotlists, bench sales read requirements), as feedKindFilter does.
+    const showsHotlists = isCombinedFeed ? feedKindFilter === 'hotlist' : isHotlistFeed;
     const { data, error } = await supabase.rpc('get_publisher_feed_rows' as never, {
       p_publisher_id: publisherId,
-      p_kind: isHotlistFeed ? 'hotlist' : 'job',
+      p_kind: showsHotlists ? 'hotlist' : 'job',
     } as never);
     if (error) throw error;
-    return mapFeedRowsToLeads(((data ?? []) as unknown) as PulseSocialFeedRpcRow[], false);
-  }, [isHotlistFeed, mapFeedRowsToLeads]);
+    const rows = ((data ?? []) as unknown) as PulseSocialFeedRpcRow[];
+    // Tag the kind so the cards map as hotlists or jobs regardless of the page.
+    return mapFeedRowsToLeads(rows.map((row) => ({ ...row, _kind: showsHotlists ? 'hotlist' as const : 'jobs' as const })), false);
+  }, [feedKindFilter, isCombinedFeed, isHotlistFeed, mapFeedRowsToLeads]);
 
   const lastFeedRowsRef = useRef<PulseSocialFeedRpcRow[]>([]);
   const feedMainRef = useRef<HTMLElement | null>(null);
@@ -7890,7 +7896,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
             initialQuery={searchParams.get('q') ?? ''}
             backLabel="Back"
             onBack={() => { if (window.history.state?.idx > 0) navigate(-1); else navigate('/following'); }}
-            onOpenPost={(leadId) => navigate(`/feed/${isHotlistFeed ? 'hotlist' : 'job'}/${leadId}`)}
+            onOpenPost={(leadId) => navigate(`/feed/${feedKindFilter === 'hotlist' ? 'hotlist' : 'job'}/${leadId}`)}
             renderPosts={({ publisherId, query }) => (
               <PublisherLeadList
                 publisherId={publisherId}
