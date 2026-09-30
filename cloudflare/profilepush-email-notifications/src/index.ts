@@ -515,6 +515,158 @@ async function handleUnsubscribePublisher(request: Request, env: Env): Promise<R
   return new Response("You've been unsubscribed from ProfilePush subscriber emails.", { status: 200, headers: { "Content-Type": "text/plain" } });
 }
 
+// ── Low credits: daily nudge to the 500-credit pack ─────────────────────────
+// Owners of accounts under half their credits (50 on the free plan, half the
+// last pack on a paid one), active in the last 30 days, once a day at most.
+// get_low_credit_upgrade_recipients does the choosing, including skipping
+// anyone who unsubscribed from this email.
+type LowCreditRecipient = { account_id: string; user_id: string; email: string; name: string; balance: number | string; threshold: number | string };
+
+async function buildLowCreditUnsubscribeUrl(env: Env, userId: string, accountId: string): Promise<string> {
+  const sig = await hmacHex(env.UNSUBSCRIBE_SECRET, `low_credits:${userId}:${accountId}`);
+  const url = new URL("/unsubscribe-low-credits", env.WORKER_BASE_URL);
+  url.searchParams.set("uid", userId);
+  url.searchParams.set("aid", accountId);
+  url.searchParams.set("sig", sig);
+  return url.toString();
+}
+
+function renderLowCreditEmail(r: LowCreditRecipient, buyUrl: string, unsubscribeUrl: string, appBaseUrl: string): EmailJob {
+  const base = appBaseUrl.replace(/\/$/, "");
+  const logoUrl = `${base}/favicon.svg`;
+  const left = Math.max(0, Math.floor(Number(r.balance) || 0));
+  const first = (r.name || "").trim().split(/\s+/)[0] || "";
+  const greeting = first ? `Hi ${escapeHtml(first)},` : "Hi,";
+  const subject = left === 0
+    ? "You're out of credits. Your AI copilot has stopped."
+    : `Only ${left} credits left. Keep your AI copilot working.`;
+  const lead = left === 0
+    ? "Your AI copilot can't match, draft or send until you top up."
+    : `You have ${left} credits left. Every AI Match, AI Submit and email sent uses them.`;
+
+  const text = `${first ? `Hi ${first},` : "Hi,"}
+
+${lead}
+
+Top up 500 credits for ₹500 to keep matching, drafting and sending, and hit this week's submission goals.
+
+Get 500 credits: ${buyUrl}
+
+---
+Don't want these reminders? Unsubscribe: ${unsubscribeUrl}`;
+
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">${escapeHtml(lead)}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff;">
+    <tr>
+      <td align="center" style="padding: 32px 20px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 480px;">
+          <tr>
+            <td style="padding-bottom: 28px;">
+              <img src="${logoUrl}" width="24" height="24" alt="" style="vertical-align: middle; border-radius: 6px;" />
+              <span style="font-size: 16px; font-weight: 800; color: #0f172a; vertical-align: middle; margin-left: 8px;">ProfilePush</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom: 6px;">
+              <p style="margin: 0; font-size: 14px; color: #334155;">${greeting}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom: 6px;">
+              <div style="font-size: 44px; font-weight: 800; color: ${left === 0 ? "#dc2626" : "#d97706"}; line-height: 1;">${left}</div>
+              <div style="font-size: 12px; font-weight: 600; color: #64748b; margin-top: 4px;">credits left</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 0 24px;">
+              <p style="margin: 0; font-size: 14px; color: #334155; line-height: 1.5;">${escapeHtml(lead)} Top up 500 credits for ₹500 to keep matching, drafting and sending, and hit this week's submission goals.</p>
+            </td>
+          </tr>
+          <tr>
+            <td align="left" style="padding-bottom: 32px;">
+              <a href="${buyUrl}" style="display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">Get 500 credits · ₹500</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top: 1px solid #f1f5f9; padding-top: 16px; text-align: center;">
+              <p style="margin: 0; font-size: 12px; color: #94a3b8;">
+                <a href="${unsubscribeUrl}" style="color: #94a3b8; text-decoration: underline;">Unsubscribe from credit reminders</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  return { to: r.email, subject, text, html };
+}
+
+async function runLowCreditEmails(env: Env): Promise<{ emailed: number }> {
+  const response = await supabaseRequest(env, "rpc/get_low_credit_upgrade_recipients", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!response.ok) throw new Error(`get_low_credit_upgrade_recipients HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  const recipients = await response.json<LowCreditRecipient[]>();
+  if (recipients.length === 0) return { emailed: 0 };
+
+  const base = env.APP_BASE_URL.replace(/\/$/, "");
+  // Opens the Buy Credits dialog straight away (BillingPage handles openPlan=1).
+  const buyUrl = `${base}/billing?openPlan=1`;
+  const jobs: EmailJob[] = [];
+  for (const r of recipients) {
+    jobs.push(renderLowCreditEmail(r, buyUrl, await buildLowCreditUnsubscribeUrl(env, r.user_id, r.account_id), env.APP_BASE_URL));
+  }
+  for (const chunk of chunkEmailJobsForQueue(jobs)) {
+    await env.EMAIL_QUEUE.sendBatch(chunk.map((job) => ({ body: job })));
+  }
+  const marked = await supabaseRequest(env, "rpc/mark_low_credit_emails_sent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_rows: recipients.map((r) => ({ account_id: r.account_id, balance: r.balance })) }),
+  });
+  if (!marked.ok) console.error("mark_low_credit_emails_sent failed", marked.status, await marked.text().catch(() => ""));
+  return { emailed: jobs.length };
+}
+
+async function handleUnsubscribeLowCredits(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const userId = url.searchParams.get("uid") ?? "";
+  const accountId = url.searchParams.get("aid") ?? "";
+  const sig = url.searchParams.get("sig") ?? "";
+  const expected = await hmacHex(env.UNSUBSCRIBE_SECRET, `low_credits:${userId}:${accountId}`);
+  const uuidPattern = /^[0-9a-f-]{36}$/i;
+  if (!uuidPattern.test(userId) || !uuidPattern.test(accountId) || !timingSafeEqual(sig, expected)) {
+    return new Response("Invalid or expired unsubscribe link.", { status: 400, headers: { "Content-Type": "text/plain" } });
+  }
+  const response = await supabaseRequest(env, "notification_preferences?on_conflict=user_id,notif_type", {
+    method: "POST",
+    headers: { ...serviceHeaders(env, true), Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ user_id: userId, account_id: accountId, notif_type: "low_credits", email_enabled: false }),
+  });
+  if (!response.ok) {
+    return new Response("Something went wrong. Please try again later.", { status: 500, headers: { "Content-Type": "text/plain" } });
+  }
+  return new Response("You've been unsubscribed from ProfilePush credit reminders.", { status: 200, headers: { "Content-Type": "text/plain" } });
+}
+
+async function handleRunLowCreditEmails(request: Request, env: Env): Promise<Response> {
+  if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
+  return jsonResponse(await runLowCreditEmails(env));
+}
+
 function sendingPaused(env: Env): boolean {
   return env.EMAIL_SENDING_PAUSED === "true";
 }
@@ -636,12 +788,14 @@ export default {
     try {
       if (request.method === "GET" && pathname === "/unsubscribe") return await handleUnsubscribe(request, env);
       if (request.method === "GET" && pathname === "/unsubscribe-publisher") return await handleUnsubscribePublisher(request, env);
+      if (request.method === "GET" && pathname === "/unsubscribe-low-credits") return await handleUnsubscribeLowCredits(request, env);
       if (request.method === "GET") return jsonResponse({ status: "ok" });
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
       if (pathname === "/send") return await handleSendRequest(request, env);
       if (pathname === "/run-digest") return await handleRunDigest(request, env);
       if (pathname === "/test-digest") return await handleTestDigest(request, env);
       if (pathname === "/publisher-subscribed") return await handlePublisherSubscribed(request, env);
+      if (pathname === "/run-low-credit-emails") return await handleRunLowCreditEmails(request, env);
       return jsonResponse({ error: "Not found" }, 404);
     } catch (error) {
       console.error("Email notification request failed", error);
@@ -669,14 +823,17 @@ export default {
   },
 
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
-    // Two independent daily jobs share this cron. The match nudge runs even if
-    // the digest throws, and vice versa, so one failing never silences the
-    // other.
+    // Three independent daily jobs share this cron: the digest, the match
+    // nudge and the low-credit reminder. Each runs even if another throws, so
+    // one failing never silences the rest.
     const results = await Promise.allSettled([
       runDailyDigest(env).then((result) => {
         console.log(`Daily digest: emailed ${result.emailedRecipients}/${result.recipients} recipients (${result.jobsCount} jobs, ${result.hotlistCount} hotlist profiles)`);
       }),
       runJobMatchNotifications(env),
+      runLowCreditEmails(env).then((result) => {
+        console.log(`Low-credit emails: sent ${result.emailed}`);
+      }),
     ]);
 
     const failures = results.filter((result) => result.status === "rejected");

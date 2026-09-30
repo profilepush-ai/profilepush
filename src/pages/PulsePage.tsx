@@ -2856,6 +2856,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [pendingGmailReopen, setPendingGmailReopen] = useState<{ leadId: string; leadType: 'job' | 'hotlist' } | null>(null);
   const [showOutOfCreditsModal, setShowOutOfCreditsModal] = useState(false);
+  // What the out-of-credits prompt is about: generating a draft (default) or
+  // sending one, which now costs a credit when it goes through Gmail.
+  const [outOfCreditsAction, setOutOfCreditsAction] = useState<string | null>(null);
   const [expandedInlineBreakdownLeadIds, setExpandedInlineBreakdownLeadIds] = useState<Set<string>>(new Set());
   const feedRestoredRef = useRef(false);
   const [feedRestore] = useState<FeedSnapshot | null>(() => {
@@ -7274,6 +7277,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     } catch (error) {
       setAskAIPreview(null);
       if (error instanceof Error && error.name === 'InsufficientCreditsError') {
+        setOutOfCreditsAction(null);
         setShowOutOfCreditsModal(true);
       } else {
         showToast(error instanceof Error ? error.message : 'Could not generate the vendor email request', 'error');
@@ -7480,6 +7484,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         if (data?.error === 'gmail_not_connected') {
           setGmailIntegrationStatus('not_connected');
           throw new Error('Gmail is no longer connected — reconnect and try again');
+        }
+        if (await getFunctionErrorCode(error) === 'insufficient_credits') {
+          setOutOfCreditsAction('send this email');
+          setShowOutOfCreditsModal(true);
+          return;
         }
         throw new Error(data?.error || await getFunctionErrorMessage(error, 'Could not send via Gmail'));
       }
@@ -9501,7 +9510,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         open={showOutOfCreditsModal}
         onClose={() => setShowOutOfCreditsModal(false)}
         balance={account?.credits_balance ?? 0}
-        actionLabel={isCombinedFeed ? 'generate this outreach' : isHotlistFeed ? 'generate this request' : 'generate this submission email'}
+        actionLabel={outOfCreditsAction ?? (isCombinedFeed ? 'generate this outreach' : isHotlistFeed ? 'generate this request' : 'generate this submission email')}
       />
 
       {applyModalLead && (

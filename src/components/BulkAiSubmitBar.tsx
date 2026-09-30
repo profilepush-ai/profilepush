@@ -192,14 +192,26 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
           },
         });
         if (send.error || !send.data?.ok) {
+          // A non-2xx reply arrives as send.error, with the server's reason
+          // in its response body rather than in send.data.
+          const context = (send.error as { context?: unknown } | null)?.context;
+          const reason = (context instanceof Response
+            ? await context.clone().json().catch(() => null)
+            : send.data) as { error?: string; code?: string; daily_limit?: number } | null;
           // The server caps independently of this component. If it says stop,
           // stop — carrying on would burn credits on sends that cannot land.
-          if (send.data?.error === 'daily_limit_reached') {
-            setError(`Daily limit of ${send.data.daily_limit} reached — ${sent} sent, the rest can go tomorrow.`);
+          if (reason?.error === 'daily_limit_reached') {
+            setError(`Daily limit of ${reason.daily_limit} reached — ${sent} sent, the rest can go tomorrow.`);
             stopped = true;
             break;
           }
-          throw new Error(send.data?.error || 'send failed');
+          // Each Gmail send costs a credit; out of credits means stop too.
+          if (reason?.code === 'insufficient_credits') {
+            setError(`Out of credits — ${sent} sent. Buy credits in Billing to send the rest.`);
+            stopped = true;
+            break;
+          }
+          throw new Error(reason?.error || 'send failed');
         }
         sent += 1;
       } catch {

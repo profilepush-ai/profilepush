@@ -660,7 +660,13 @@ export default function InboxPage() {
         },
       });
       if (error || !data?.ok) {
-        throw new Error(data?.error || (error as Error)?.message || 'Could not send message');
+        // Replies sent through Gmail cost a credit.
+        const payload = await getFunctionErrorPayload(error);
+        if (payload.code === 'insufficient_credits') {
+          setShowOutOfCreditsModal(true);
+          return;
+        }
+        throw new Error(data?.error || payload.message || (error as Error)?.message || 'Could not send message');
       }
       setReplyText('');
     } catch (error) {

@@ -61,6 +61,7 @@ const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: st
   },
   { label: 'AI Submit / AI Invite — generate draft', cost: '1 credit', short: '1 credit to generate an AI Submit or Invite draft', note: 'Only the first generation per post; reopening an already-generated draft is free' },
   { label: 'Inbox AI chat draft', cost: '1 credit', short: '1 credit per Inbox AI chat draft' },
+  { label: 'Email sent through your Gmail', cost: '1 credit', short: '1 credit per email sent through your connected Gmail', note: 'AI Submit, AI Invite and Inbox replies sent from your Gmail. Refunded if Gmail rejects the send.' },
   { label: 'Video screening completed', cost: '10 credits', short: '10 credits when a candidate completes a video screening', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
 ];
 
@@ -243,6 +244,16 @@ export default function BillingPage() {
   const [showBuyCreditsModal, setShowBuyCreditsModal] = useState(false);
   const [selectedCreditTier, setSelectedCreditTier]   = useState<number>(CREDIT_TIERS[0]);
   const [buyingCredits, setBuyingCredits]             = useState(false);
+  // Shown after a top-up: confirmed (credits added) or still confirming.
+  const [purchaseResult, setPurchaseResult] = useState<{ credits: number; balance: number | null; paymentId: string; confirmed: boolean } | null>(null);
+  const [purchases, setPurchases] = useState<Array<{ razorpay_order_id: string; razorpay_payment_id: string | null; credits: number; amount_inr_paise: number; created_at: string; paid_at: string | null }>>([]);
+
+  const loadPurchases = useCallback(async () => {
+    const { data } = await supabase.rpc('get_my_credit_purchases' as never);
+    setPurchases(((data ?? []) as unknown) as typeof purchases);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => { void loadPurchases(); }, [loadPurchases]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const [showPlanModal, setShowPlanModal]     = useState(false);
@@ -543,9 +554,34 @@ export default function BillingPage() {
             razorpay_order_id: data.order_id,
             razorpay_payment_id: response.razorpay_payment_id ?? null,
           });
-          showToast('Payment received — credits will be added shortly.', 'success');
-          await refreshAccount();
           setShowBuyCreditsModal(false);
+          const paymentId = String(response.razorpay_payment_id ?? '');
+          // Confirm with us right away (signature-checked) so the credits land
+          // now; the webhook would credit it too, but only once either way.
+          let confirmed = false;
+          let balance: number | null = null;
+          try {
+            const verifyHeaders = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
+            const { data: verified, error: verifyError } = await supabase.functions.invoke('razorpay-verify-credit-payment', {
+              body: {
+                razorpay_order_id: response.razorpay_order_id ?? data.order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              },
+              headers: verifyHeaders as Record<string, string>,
+            });
+            if (!verifyError && verified && !verified.error) {
+              confirmed = true;
+              balance = typeof verified.balance === 'number' ? verified.balance : Number(verified.balance ?? NaN);
+              if (!Number.isFinite(balance)) balance = null;
+            }
+          } catch {
+            // Falls back to the webhook; the result screen says so.
+          }
+          setPurchaseResult({ credits: selectedCreditTier, balance, paymentId, confirmed });
+          setBuyingCredits(false);
+          await refreshAccount();
+          void loadPurchases();
         },
         prefill: { name: user?.user_metadata?.full_name ?? '', email: user?.email ?? '' },
         theme: { color: '#2563eb' },
@@ -679,6 +715,27 @@ export default function BillingPage() {
                 </div>
               </div>
 
+              {/* Purchase history: every paid top-up, newest first. */}
+              {purchases.length > 0 && (
+                <div className="rounded-2xl border border-gray-200 bg-white p-5">
+                  <p className="text-[13px] font-bold text-gray-800">Purchase history</p>
+                  <div className="mt-2 divide-y divide-gray-100">
+                    {purchases.map((p) => (
+                      <div key={p.razorpay_order_id} className="flex items-center justify-between gap-3 py-2.5 text-[13px]">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-800">{p.credits.toLocaleString('en-IN')} credits</p>
+                          <p className="truncate text-[11px] text-gray-400">
+                            {new Date(p.paid_at ?? p.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                            {p.razorpay_payment_id ? ` · ${p.razorpay_payment_id}` : ''}
+                          </p>
+                        </div>
+                        <span className="shrink-0 font-semibold tabular-nums text-gray-800">₹{(p.amount_inr_paise / 100).toLocaleString('en-IN')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Earn credits — only worth showing while something is unearned */}
               {CREDIT_MILESTONES.some(m => !earnedMilestones.has(m.key)) && (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5">
@@ -807,6 +864,39 @@ export default function BillingPage() {
         />
       )}
 
+      {purchaseResult && (
+        // After a top-up: a clear result instead of a toast that is easy to miss.
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <div className={`mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full ${purchaseResult.confirmed ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+              {purchaseResult.confirmed ? <Check size={24} strokeWidth={3} /> : <LogoSpinner size={20} />}
+            </div>
+            <h2 className="text-[17px] font-bold text-gray-900">
+              {purchaseResult.confirmed ? 'Payment successful' : 'Payment received'}
+            </h2>
+            <p className="mt-1 text-[13px] text-gray-600">
+              {purchaseResult.confirmed
+                ? `${purchaseResult.credits.toLocaleString('en-IN')} credits added to your account.`
+                : `We're confirming it with Razorpay. ${purchaseResult.credits.toLocaleString('en-IN')} credits will appear in a few minutes.`}
+            </p>
+            {purchaseResult.confirmed && purchaseResult.balance != null && (
+              <p className="mt-3 text-[13px] text-gray-500">
+                New balance <span className="font-bold tabular-nums text-gray-900">{Math.floor(purchaseResult.balance).toLocaleString('en-IN')}</span> credits
+              </p>
+            )}
+            {purchaseResult.paymentId && (
+              <p className="mt-2 text-[11px] text-gray-400">Payment ID {purchaseResult.paymentId}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setPurchaseResult(null)}
+              className="mt-5 w-full rounded-xl bg-blue-600 py-2.5 text-[14px] font-semibold text-white transition hover:bg-blue-700"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );

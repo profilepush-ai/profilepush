@@ -353,6 +353,28 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Sending through the user's own Gmail costs 1 credit, taken before
+    // anything is recorded and given back if the send doesn't happen.
+    let gmailSendCharged = false;
+    const refundGmailSend = async () => {
+      if (!gmailSendCharged) return;
+      gmailSendCharged = false;
+      await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: 1, p_feature: "gmail_send" });
+    };
+    if (channel === "gmail") {
+      const { data: sendChargeRows, error: sendChargeError } = await supabaseUser.rpc("consume_feature_credit", {
+        p_account_id: accountId,
+        p_amount: 1,
+        p_feature: "gmail_send",
+        p_metadata: { lead_type: leadType, job_id: leadType === "job" ? jobId : null, hotlist_id: leadType === "hotlist" ? jobId : null, source: "ai_submit" },
+      });
+      const sendCharge = Array.isArray(sendChargeRows) ? sendChargeRows[0] as { success: boolean; message: string } : null;
+      if (sendChargeError || !sendCharge?.success) {
+        return respond({ error: sendCharge?.message ?? sendChargeError?.message ?? "Insufficient credits", code: "insufficient_credits" }, 402);
+      }
+      gmailSendCharged = true;
+    }
+
     const { error: requestInsertError } = await supabaseAdmin
       .from("pulse_ask_ai_requests")
       .insert({
@@ -367,6 +389,8 @@ Deno.serve(async (req: Request) => {
       });
 
     if (requestInsertError) {
+      // Nothing new is sent on this path, so the send credit goes back.
+      await refundGmailSend();
       if (requestInsertError.code !== "23505") throw requestInsertError;
 
       const { data: existingRequest } = await supabaseAdmin
@@ -395,6 +419,7 @@ Deno.serve(async (req: Request) => {
 
     const failRequest = async (deliveryError: string) => {
       console.error("Ask AI request failed", deliveryError);
+      await refundGmailSend();
       await supabaseAdmin
         .from("pulse_ask_ai_requests")
         .update({
