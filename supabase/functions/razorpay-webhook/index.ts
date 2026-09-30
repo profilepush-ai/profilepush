@@ -168,37 +168,32 @@ Deno.serve(async (req: Request) => {
     else if (event === "payment.captured") {
       const payment = (entity.payment as Record<string, unknown>)?.entity as Record<string, unknown>;
       const notes = payment?.notes as Record<string, string> | null;
+      // The order id is on the payment itself. Order notes never carried it
+      // (Razorpay assigns the id after the notes are set), which is why
+      // top-ups and upgrades were never credited when this read notes.order_id.
+      const orderId = (payment?.order_id as string | undefined) ?? notes?.order_id;
 
-      if (notes?.type === "credit_topup" && notes?.order_id) {
-        const { data: topupOrder } = await supabase
-          .from("credit_topup_orders")
-          .select("*")
-          .eq("razorpay_order_id", notes.order_id)
-          .maybeSingle();
-
-        if (topupOrder && topupOrder.status === "created") {
-          await supabase.from("credit_topup_orders").update({ status: "paid" }).eq("id", topupOrder.id);
-
-          await addCredits(
-            supabase,
-            topupOrder.account_id as string,
-            topupOrder.credits as number,
-            `Credit top-up: ${topupOrder.credits} credits`,
-          );
-
-          fireCrmWebhook(supabaseUrl, serviceRoleKey, "credits.topup", topupOrder.account_id as string, {
+      if (notes?.type === "credit_topup" && orderId) {
+        // Credits at most once, whether this or the checkout's own
+        // verification (razorpay-verify-credit-payment) arrives first.
+        const { data } = await supabase.rpc("apply_credit_topup", {
+          p_razorpay_order_id: orderId,
+          p_razorpay_payment_id: (payment?.id as string | undefined) ?? null,
+        });
+        const row = (data ?? [])[0];
+        if (row?.credited) {
+          fireCrmWebhook(supabaseUrl, serviceRoleKey, "credits.topup", row.account_id as string, {
             razorpay_payload: payload,
-            credits: topupOrder.credits,
-            amount_inr_paise: topupOrder.amount_inr_paise,
-            razorpay_order_id: notes.order_id,
+            credits: row.credits,
+            razorpay_order_id: orderId,
             payment_id: payment?.id ?? null,
           });
         }
-      } else if (notes?.type === "plan_upgrade" && notes?.order_id) {
+      } else if (notes?.type === "plan_upgrade" && orderId) {
         const { data: upgradeOrder } = await supabase
           .from("razorpay_upgrade_orders")
           .select("*")
-          .eq("razorpay_order_id", notes.order_id)
+          .eq("razorpay_order_id", orderId)
           .maybeSingle();
 
         if (upgradeOrder && upgradeOrder.status === "created") {
@@ -223,7 +218,7 @@ Deno.serve(async (req: Request) => {
             new_plan_credits: upgradeOrder.new_plan_credits,
             credits_added: creditsDiff,
             proration_credits: upgradeOrder.proration_credits,
-            razorpay_order_id: notes.order_id,
+            razorpay_order_id: orderId,
             payment_id: payment?.id ?? null,
             amount_inr: payment?.amount ?? null,
           });
