@@ -408,6 +408,7 @@ export default function FollowingPage() {
                       <span className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100">{publisherDisplayName(s)}</span>
                     </div>
                     <p className="truncate text-[11px] text-gray-500 dark:text-slate-400">
+                      {(s.follower_count ?? 0) > 0 && `${s.follower_count} subscriber${s.follower_count === 1 ? '' : 's'} · `}
                       {s.post_count} {postNoun}{s.post_count === 1 ? '' : 's'} this week
                     </p>
                   </div>

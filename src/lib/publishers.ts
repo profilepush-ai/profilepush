@@ -46,6 +46,7 @@ export type SuggestedPublisher = {
   is_claimed: boolean;
   post_count: number;
   top_roles: string[];
+  follower_count?: number;
 };
 
 export type PublisherProfile = {
