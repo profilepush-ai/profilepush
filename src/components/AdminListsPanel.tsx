@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, RefreshCcw } from 'lucide-react';
+import { Download, RefreshCcw, Upload } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { downloadCsv } from '../lib/csv';
 
@@ -7,7 +7,7 @@ import { downloadCsv } from '../lib/csv';
 // is built server-side (admin-lists -> admin_publisher_list) and always leaves
 // out anyone who unsubscribed from our emails.
 
-type ListKind = 'vendors' | 'bench-sales';
+type ListKind = 'vendors' | 'bench-sales' | 'imported';
 type ListRow = {
   email: string;
   name: string;
@@ -16,7 +16,27 @@ type ListRow = {
   posts: number;
   last_posted: string;
   joined: boolean;
+  // Imported list only: the files the address came from.
+  sources?: string;
 };
+
+type ImportResult = { source: string; received: number; valid: number; new: number; already_there: number };
+
+// Pulls every email address out of a pasted or uploaded file, whatever its
+// layout, and drops the broken ones: double dots, all-digit fragments and
+// misspelled domains that would only bounce.
+const EMAIL_RE = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,6}(?![A-Za-z])/g;
+const BAD_DOMAINS = /(^|\.)(gamail\.com|gnail\.com)$|\.xcom$|\.nt$/;
+function extractEmails(text: string): string[] {
+  const out = new Set<string>();
+  for (const match of text.matchAll(EMAIL_RE)) {
+    const email = match[0].toLowerCase().replace(/^[^a-z0-9]+/, '');
+    const [local, domain] = email.split('@');
+    if (!local || !domain || /\.\./.test(email) || /^\d+$/.test(local) || BAD_DOMAINS.test(domain)) continue;
+    out.add(email);
+  }
+  return [...out];
+}
 
 const WINDOWS: Array<{ days: number | null; label: string }> = [
   { days: 7, label: 'Last 7 days' },
@@ -32,6 +52,19 @@ function firstName(name: string): string {
   return /^[A-Za-z][A-Za-z'-]{1,}$/.test(first) ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : '';
 }
 
+// supabase-js hides a function's error behind "Edge Function returned a non-2xx
+// status code"; the real reason is in the response body.
+async function functionErrorMessage(error: unknown): Promise<string> {
+  const context = (error as { context?: unknown })?.context;
+  if (context instanceof Response) {
+    const body = await context.clone().json().catch(() => null) as { error?: unknown } | null;
+    if (typeof body?.error === 'string' && body.error) {
+      return context.status === 401 ? 'The admin password in this tab is out of date. Sign out of admin and back in.' : body.error;
+    }
+  }
+  return error instanceof Error ? error.message : 'Something went wrong.';
+}
+
 export default function AdminListsPanel() {
   const [kind, setKind] = useState<ListKind>('vendors');
   const [days, setDays] = useState<number | null>(30);
@@ -40,8 +73,41 @@ export default function AdminListsPanel() {
   const [loadedFor, setLoadedFor] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResults, setImportResults] = useState<ImportResult[]>([]);
+  const isImported = kind === 'imported';
 
-  const selectionKey = `${kind}|${days ?? 'all'}|${unjoinedOnly}`;
+  // Each file becomes one source, named after the file.
+  async function importFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setImporting(true);
+    setError('');
+    const results: ImportResult[] = [];
+    try {
+      for (const file of Array.from(files)) {
+        const emails = extractEmails(await file.text());
+        const source = file.name.replace(/\.[^.]+$/, '').replace(/^Email Lists - /i, '').trim() || 'import';
+        if (emails.length === 0) {
+          results.push({ source, received: 0, valid: 0, new: 0, already_there: 0 });
+          continue;
+        }
+        const { data, error: fnError } = await supabase.functions.invoke('admin-lists', {
+          body: { password: sessionStorage.getItem('admin_authed') || '', action: 'import', source, emails },
+        });
+        if (fnError) throw new Error(await functionErrorMessage(fnError));
+        if (data?.error) throw new Error(data.error);
+        results.push(data.result as ImportResult);
+      }
+      setImportResults(results);
+      setRows(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not import the file.');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  const selectionKey = `${kind}|${isImported ? '' : days ?? 'all'}|${unjoinedOnly}`;
   const stale = rows !== null && loadedFor !== selectionKey;
 
   async function load() {
@@ -51,7 +117,7 @@ export default function AdminListsPanel() {
       const { data, error: fnError } = await supabase.functions.invoke('admin-lists', {
         body: { password: sessionStorage.getItem('admin_authed') || '', kind, days, unjoined_only: unjoinedOnly },
       });
-      if (fnError) throw fnError;
+      if (fnError) throw new Error(await functionErrorMessage(fnError));
       if (data?.error) throw new Error(data.error);
       setRows((data?.rows ?? []) as ListRow[]);
       setLoadedFor(selectionKey);
@@ -64,12 +130,16 @@ export default function AdminListsPanel() {
 
   function download() {
     if (!rows) return;
-    const windowLabel = days ? `${days}d` : 'all-time';
+    const windowLabel = isImported ? 'imported' : days ? `${days}d` : 'all-time';
     const who = unjoinedOnly ? 'not-joined' : 'all';
     downloadCsv(
       `profilepush-${kind}-${who}-${windowLabel}-${new Date().toISOString().slice(0, 10)}.csv`,
-      ['Email', 'FirstName', 'Name', 'Company', 'Phone', 'Posts', 'LastPosted', 'OnProfilePush'],
-      rows.map((r) => [r.email, firstName(r.name), r.name, r.company, r.phone, String(r.posts), r.last_posted, r.joined ? 'yes' : 'no']),
+      isImported
+        ? ['Email', 'FirstName', 'Name', 'Company', 'Source', 'OnProfilePush']
+        : ['Email', 'FirstName', 'Name', 'Company', 'Phone', 'Posts', 'LastPosted', 'OnProfilePush'],
+      rows.map((r) => (isImported
+        ? [r.email, firstName(r.name), r.name, r.company, r.sources ?? '', r.joined ? 'yes' : 'no']
+        : [r.email, firstName(r.name), r.name, r.company, r.phone, String(r.posts), r.last_posted, r.joined ? 'yes' : 'no'])),
     );
   }
 
@@ -84,13 +154,42 @@ export default function AdminListsPanel() {
           <span className="w-20 text-[12px] font-semibold text-gray-500">List</span>
           <button type="button" className={pill(kind === 'vendors')} onClick={() => setKind('vendors')}>Vendors</button>
           <button type="button" className={pill(kind === 'bench-sales')} onClick={() => setKind('bench-sales')}>Bench Sales</button>
+          <button type="button" className={pill(kind === 'imported')} onClick={() => setKind('imported')}>Imported</button>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="w-20 text-[12px] font-semibold text-gray-500">Posted in</span>
-          {WINDOWS.map((w) => (
-            <button key={w.label} type="button" className={pill(days === w.days)} onClick={() => setDays(w.days)}>{w.label}</button>
-          ))}
-        </div>
+        {isImported ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-20 text-[12px] font-semibold text-gray-500">Add file</span>
+            <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 ${importing ? 'pointer-events-none opacity-60' : ''}`}>
+              <Upload size={13} />
+              {importing ? 'Importing…' : 'Import CSV / text files'}
+              <input
+                id="admin-lists-import"
+                type="file"
+                accept=".csv,.txt,text/csv,text/plain"
+                multiple
+                className="hidden"
+                onChange={(e) => { void importFiles(e.target.files); e.target.value = ''; }}
+              />
+            </label>
+            <span className="text-[12px] text-gray-500">Every email address in the file is picked up; each file becomes a source.</span>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-20 text-[12px] font-semibold text-gray-500">Posted in</span>
+            {WINDOWS.map((w) => (
+              <button key={w.label} type="button" className={pill(days === w.days)} onClick={() => setDays(w.days)}>{w.label}</button>
+            ))}
+          </div>
+        )}
+        {isImported && importResults.length > 0 && (
+          <ul className="space-y-0.5 text-[12px] text-gray-600">
+            {importResults.map((r) => (
+              <li key={r.source}>
+                <span className="font-semibold">{r.source}</span>: {r.valid.toLocaleString('en-US')} addresses, {r.new.toLocaleString('en-US')} new, {r.already_there.toLocaleString('en-US')} already there
+              </li>
+            ))}
+          </ul>
+        )}
         <label className="flex items-center gap-2 text-[13px] text-gray-700">
           <input
             id="admin-lists-unjoined"
@@ -137,9 +236,15 @@ export default function AdminListsPanel() {
                 <th className="px-3 py-2">Name</th>
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">Company</th>
-                <th className="px-3 py-2">Phone</th>
-                <th className="px-3 py-2 text-right">Posts</th>
-                <th className="px-3 py-2">Last posted</th>
+                {isImported ? (
+                  <th className="px-3 py-2">Source</th>
+                ) : (
+                  <>
+                    <th className="px-3 py-2">Phone</th>
+                    <th className="px-3 py-2 text-right">Posts</th>
+                    <th className="px-3 py-2">Last posted</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -148,16 +253,22 @@ export default function AdminListsPanel() {
                   <td className="px-3 py-2">{r.name || '—'}</td>
                   <td className="px-3 py-2">{r.email}</td>
                   <td className="px-3 py-2">{r.company || '—'}</td>
-                  <td className="px-3 py-2">{r.phone || '—'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.posts}</td>
-                  <td className="px-3 py-2 tabular-nums">{r.last_posted}</td>
+                  {isImported ? (
+                    <td className="px-3 py-2">{r.sources || '—'}</td>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2">{r.phone || '—'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{r.posts}</td>
+                      <td className="px-3 py-2 tabular-nums">{r.last_posted}</td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
           {rows.length > 50 && (
             <p className="border-t border-gray-100 px-3 py-2 text-[12px] text-gray-500">
-              Showing the top 50 by posts. The download has all {rows.length.toLocaleString('en-US')}.
+              Showing the first 50{isImported ? '' : ' by posts'}. The download has all {rows.length.toLocaleString('en-US')}.
             </p>
           )}
         </div>
