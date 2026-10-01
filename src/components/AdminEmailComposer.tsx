@@ -61,6 +61,9 @@ type CampaignRow = {
   complained: number;
   failed: number;
   unsubscribed: number;
+  opened: number;
+  clicked: number;
+  engagement_tracked: boolean;
 };
 
 async function functionErrorMessage(error: unknown): Promise<string> {
@@ -329,7 +332,7 @@ export function AdminEmailCampaigns() {
         </button>
       </div>
       {error && <p className="px-3 py-2 text-[12px] text-red-600">{error}</p>}
-      <table className="w-full min-w-[820px] text-[12px]">
+      <table className="w-full min-w-[960px] text-[12px]">
         <thead className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
           <tr>
             <th className="px-3 py-2">Sent</th>
@@ -338,6 +341,8 @@ export function AdminEmailCampaigns() {
             <th className="px-3 py-2 text-right">People</th>
             <th className="px-3 py-2 text-right">Sent</th>
             <th className="px-3 py-2 text-right">Delivered</th>
+            <th className="px-3 py-2 text-right">Opened</th>
+            <th className="px-3 py-2 text-right">Clicked</th>
             <th className="px-3 py-2 text-right">Bounced</th>
             <th className="px-3 py-2 text-right">Complaints</th>
             <th className="px-3 py-2 text-right">Unsubscribed</th>
@@ -353,6 +358,8 @@ export function AdminEmailCampaigns() {
               <td className="px-3 py-2 text-right tabular-nums">{fmt(r.recipient_count)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{fmt(r.sent)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{pct(r.delivered, r.sent)}</td>
+              <td className="px-3 py-2 text-right tabular-nums" title={r.engagement_tracked ? `${fmt(r.opened)} people` : 'Sent before tracking started'}>{r.engagement_tracked ? pct(r.opened, r.sent) : '—'}</td>
+              <td className="px-3 py-2 text-right font-semibold tabular-nums" title={r.engagement_tracked ? `${fmt(r.clicked)} people` : 'Sent before tracking started'}>{r.engagement_tracked ? pct(r.clicked, r.sent) : '—'}</td>
               <td className={`px-3 py-2 text-right tabular-nums ${r.sent && r.bounced / r.sent >= 0.02 ? 'font-semibold text-amber-600' : ''}`}>{fmt(r.bounced)}</td>
               <td className={`px-3 py-2 text-right tabular-nums ${r.complained ? 'font-semibold text-red-600' : ''}`}>{fmt(r.complained)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{fmt(r.unsubscribed)}</td>
@@ -360,7 +367,7 @@ export function AdminEmailCampaigns() {
             </tr>
           ))}
           {rows && rows.length === 0 && (
-            <tr><td colSpan={10} className="px-3 py-6 text-center text-gray-500">No campaigns yet. Write one under Compose.</td></tr>
+            <tr><td colSpan={12} className="px-3 py-6 text-center text-gray-500">No campaigns yet. Write one under Compose.</td></tr>
           )}
         </tbody>
       </table>

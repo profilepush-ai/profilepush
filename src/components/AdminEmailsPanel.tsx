@@ -19,6 +19,10 @@ type CategoryRow = {
   bounced: number;
   complained: number;
   tracked: number;
+  // Sent with the open image and tracked links; open and click rates are out of these.
+  engagement_tracked: number;
+  opened: number;
+  clicked: number;
   unsubscribed: number;
   last_sent: string | null;
 };
@@ -46,6 +50,8 @@ type SendRow = {
   bounced_at: string | null;
   bounce_type: string | null;
   complained_at: string | null;
+  opened_at: string | null;
+  clicked_at: string | null;
 };
 
 const CATEGORIES: Record<string, { label: string; detail: string; color: string }> = {
@@ -119,6 +125,8 @@ function sendState(row: SendRow): { label: string; className: string } {
   if (row.bounced_at) return { label: row.bounce_type?.startsWith('Permanent') ? 'Bounced' : 'Soft bounce', className: 'bg-red-50 text-red-700' };
   if (row.status === 'rejected') return { label: 'Rejected', className: 'bg-red-50 text-red-700' };
   if (row.status === 'failed') return { label: 'Failed', className: 'bg-red-50 text-red-700' };
+  if (row.clicked_at) return { label: 'Clicked', className: 'bg-blue-50 text-blue-700' };
+  if (row.opened_at) return { label: 'Opened', className: 'bg-sky-50 text-sky-700' };
   if (row.delivered_at) return { label: 'Delivered', className: 'bg-emerald-50 text-emerald-700' };
   return { label: row.provider === 'ses' ? 'Sent' : 'Sent (GMass)', className: 'bg-gray-100 text-gray-600' };
 }
@@ -177,6 +185,9 @@ function EmailPerformance() {
       delivered: sum('delivered'),
       bounced: sum('bounced'),
       complained: sum('complained'),
+      engagementTracked: sum('engagement_tracked'),
+      opened: sum('opened'),
+      clicked: sum('clicked'),
       unsubscribed: Object.values(report?.unsubscribes ?? {}).reduce((a, b) => a + Number(b), 0),
       failed: sum('failed') + sum('rejected'),
     };
@@ -236,8 +247,10 @@ function EmailPerformance() {
 
       {report && (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
             {stat('Sent', fmt(totals.sent), totals.failed ? `${fmt(totals.failed)} failed or rejected` : 'by the email worker')}
+            {stat('Opened', pct(totals.opened, totals.engagementTracked), `${fmt(totals.opened)} of ${fmt(totals.engagementTracked)} tracked`)}
+            {stat('Clicked', pct(totals.clicked, totals.engagementTracked), `${fmt(totals.clicked)} people clicked`)}
             {stat('Delivered', pct(totals.delivered, totals.tracked), `of ${fmt(totals.tracked)} sent through SES`)}
             {stat('Bounced', pct(totals.bounced, totals.tracked), `${fmt(totals.bounced)} · keep under 2%`, rateTone(totals.bounced, totals.tracked, 0.02, 0.05).replace('text-gray-700', 'text-gray-900'))}
             {stat('Complaints', pct(totals.complained, totals.tracked), `${fmt(totals.complained)} · keep under 0.1%`, rateTone(totals.complained, totals.tracked, 0.001, 0.003).replace('text-gray-700', 'text-gray-900'))}
@@ -245,13 +258,15 @@ function EmailPerformance() {
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-            <table className="w-full min-w-[860px] text-[12px]">
+            <table className="w-full min-w-[980px] text-[12px]">
               <thead className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
                 <tr>
                   <th className="px-3 py-2">Email</th>
                   <th className="px-3 py-2">Sent via</th>
                   <th className="px-3 py-2 text-right">Sent</th>
                   <th className="px-3 py-2 text-right">Delivered</th>
+                  <th className="px-3 py-2 text-right">Opened</th>
+                  <th className="px-3 py-2 text-right">Clicked</th>
                   <th className="px-3 py-2 text-right">Bounced</th>
                   <th className="px-3 py-2 text-right">Complaints</th>
                   <th className="px-3 py-2 text-right">Unsubscribed</th>
@@ -285,6 +300,8 @@ function EmailPerformance() {
                       </td>
                       <td className="px-3 py-2 text-right font-semibold tabular-nums">{fmt(Number(c.sent))}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{c.tracked ? pct(Number(c.delivered), Number(c.tracked)) : '—'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{c.engagement_tracked ? pct(Number(c.opened), Number(c.engagement_tracked)) : '—'}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{c.engagement_tracked ? pct(Number(c.clicked), Number(c.engagement_tracked)) : '—'}</td>
                       <td className={`px-3 py-2 text-right tabular-nums ${rateTone(Number(c.bounced), Number(c.tracked), 0.02, 0.05)}`}>
                         {c.tracked ? `${fmt(Number(c.bounced))} · ${pct(Number(c.bounced), Number(c.tracked))}` : '—'}
                       </td>
@@ -309,16 +326,16 @@ function EmailPerformance() {
                   </td>
                   <td className="px-3 py-2"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-600">User&apos;s Gmail</span></td>
                   <td className="px-3 py-2 text-right font-semibold tabular-nums">{fmt(Number(report.gmail?.sent ?? 0))}</td>
-                  <td className="px-3 py-2 text-right text-gray-400" colSpan={5}>Not reported by Gmail</td>
+                  <td className="px-3 py-2 text-right text-gray-400" colSpan={7}>Not reported by Gmail</td>
                   <td className="px-3 py-2 text-gray-600">{timeAgo(report.gmail?.last_sent ?? null)}</td>
                 </tr>
                 {report.categories.length === 0 && (
-                  <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-500">No emails logged in this range yet.</td></tr>
+                  <tr><td colSpan={11} className="px-3 py-6 text-center text-gray-500">No emails logged in this range yet.</td></tr>
                 )}
               </tbody>
             </table>
             <p className="border-t border-gray-100 px-3 py-2 text-[11px] text-gray-500">
-              Delivery, bounce and complaint results come from Amazon SES only; GMass doesn&apos;t report them.
+              Opened and clicked count each person once, out of emails sent with tracking. Opens run high: Apple Mail and some company mail filters load images on their own, so treat clicks as the real signal. Delivery, bounce and complaint results come from Amazon SES only.
               {report.tracking_started && ` Logging started ${new Date(report.tracking_started).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`}
               {' '}Click a row to see its emails below.
             </p>

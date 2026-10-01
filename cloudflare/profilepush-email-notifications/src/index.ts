@@ -25,6 +25,8 @@ export interface Env {
   SES_REPLY_TO: string;
   // Secret in the SNS subscription URL that delivers SES events to /ses-events.
   SES_EVENTS_TOKEN: string;
+  // Where open images and tracked links point (this worker, on our domain).
+  TRACKING_BASE_URL: string;
 }
 
 // Two lanes that never share a sender. "user" is email to people who signed
@@ -1101,12 +1103,16 @@ async function logSend(
   status: "sent" | "rejected" | "failed",
   messageId: string | null,
   error?: unknown,
+  sendId: string = crypto.randomUUID(),
+  engagementTracked = false,
 ): Promise<void> {
   try {
     const response = await supabaseRequest(env, "email_sends", {
       method: "POST",
       headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
       body: JSON.stringify({
+        id: sendId,
+        engagement_tracked: engagementTracked,
         category: job.category ?? "other",
         lane: job.lane ?? "user",
         provider: providerFor(env, job),
@@ -1134,6 +1140,69 @@ async function logUnsubscribe(env: Env, category: string, userId: string | null,
   } catch (err) {
     console.error("email_unsubscribes insert threw", err);
   }
+}
+
+// ── Open and click tracking ─────────────────────────────────────────────────
+// Every email gets an id before it's sent. Its links go through
+// /c/<id> (signed, so the redirect can't be pointed anywhere else) and a 1x1
+// image loads /o/<id>.gif; both record on email_sends. Unsubscribe links are
+// left alone. Opens are approximate (Apple Mail and some scanners load images
+// on their own); clicks are the reliable signal.
+const TRANSPARENT_GIF = Uint8Array.from(atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"), (c) => c.charCodeAt(0));
+const SEND_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function clickSignature(env: Env, sendId: string, url: string): Promise<string> {
+  return (await hmacHex(env.UNSUBSCRIBE_SECRET, `click:${sendId}:${url}`)).slice(0, 32);
+}
+
+async function addTracking(env: Env, job: EmailJob, sendId: string): Promise<EmailJob | null> {
+  if (!job.html || !env.TRACKING_BASE_URL) return null;
+  const base = env.TRACKING_BASE_URL.replace(/\/$/, "");
+  let html = job.html;
+  const hrefs = [...new Set([...html.matchAll(/href="(https?:\/\/[^"]+)"/g)].map((m) => m[1]))];
+  for (const href of hrefs) {
+    const url = href.replace(/&amp;/g, "&");
+    if (url === job.unsubscribeUrl || /\/unsubscribe/.test(url)) continue;
+    const tracked = `${base}/c/${sendId}?u=${encodeURIComponent(url)}&s=${await clickSignature(env, sendId, url)}`;
+    html = html.split(`href="${href}"`).join(`href="${tracked.replace(/&/g, "&amp;")}"`);
+  }
+  const pixel = `<img src="${base}/o/${sendId}.gif" width="1" height="1" alt="" style="display: block; width: 1px; height: 1px; border: 0;" />`;
+  html = html.includes("</body>") ? html.replace("</body>", `${pixel}</body>`) : `${html}${pixel}`;
+  return { ...job, html };
+}
+
+// Sends one job with tracking and logs it under its id.
+async function sendTracked(env: Env, job: EmailJob): Promise<string | null> {
+  const sendId = crypto.randomUUID();
+  const tracked = await addTracking(env, job, sendId);
+  const messageId = await sendEmail(env, tracked ?? job);
+  await logSend(env, job, "sent", messageId, undefined, sendId, tracked !== null);
+  return messageId;
+}
+
+function recordEngagement(env: Env, fn: "record_email_open" | "record_email_click", sendId: string): Promise<unknown> {
+  return supabaseRequest(env, `rpc/${fn}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_id: sendId }),
+  }).catch((err) => console.error(fn, "failed", err));
+}
+
+function handleOpen(env: Env, ctx: ExecutionContext, sendId: string): Response {
+  ctx.waitUntil(recordEngagement(env, "record_email_open", sendId));
+  return new Response(TRANSPARENT_GIF, {
+    headers: { "Content-Type": "image/gif", "Cache-Control": "no-store, no-cache, must-revalidate, private" },
+  });
+}
+
+async function handleClick(request: Request, env: Env, ctx: ExecutionContext, sendId: string): Promise<Response> {
+  const url = new URL(request.url);
+  const target = url.searchParams.get("u") ?? "";
+  const sig = url.searchParams.get("s") ?? "";
+  const valid = /^https?:\/\//.test(target) && timingSafeEqual(sig, await clickSignature(env, sendId, target));
+  if (!valid) return Response.redirect(env.APP_BASE_URL, 302);
+  ctx.waitUntil(recordEngagement(env, "record_email_click", sendId));
+  return Response.redirect(target, 302);
 }
 
 // ── SES events (delivery, bounce, complaint) ────────────────────────────────
@@ -1316,7 +1385,7 @@ async function handleTestDigest(request: Request, env: Env): Promise<Response> {
   const recipient = recipients.find((r) => r.email.toLowerCase() === to);
   if (!recipient) return jsonResponse({ error: "That address isn't on the morning brief list" }, 404);
   const job = renderMorningBrief(recipient, market, await buildUnsubscribeUrl(env, recipient.user_id, recipient.account_id), env.APP_BASE_URL);
-  await logSend(env, job, "sent", await sendEmail(env, job));
+  await sendTracked(env, job);
   return jsonResponse({ sent: true, to: job.to, subject: job.subject });
 }
 
@@ -1349,9 +1418,15 @@ async function handleUnsubscribe(request: Request, env: Env): Promise<Response> 
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     try {
+      if (request.method === "GET") {
+        const open = pathname.match(/^\/o\/([0-9a-f-]{36})\.gif$/i);
+        if (open && SEND_ID_PATTERN.test(open[1])) return handleOpen(env, ctx, open[1]);
+        const click = pathname.match(/^\/c\/([0-9a-f-]{36})$/i);
+        if (click && SEND_ID_PATTERN.test(click[1])) return await handleClick(request, env, ctx, click[1]);
+      }
       // GET is the link in the email footer; POST is the mail app's one-click
       // unsubscribe (RFC 8058), which sends the same signed URL.
       const unsubscribe = request.method === "GET" || request.method === "POST";
@@ -1389,9 +1464,8 @@ export default {
         continue;
       }
       try {
-        const messageId = await sendEmail(env, message.body);
+        await sendTracked(env, message.body);
         message.ack();
-        await logSend(env, message.body, "sent", messageId);
       } catch (error) {
         console.error("Email queue job failed", message.body.to, error);
         if (error instanceof PermanentSendError) {
