@@ -7,6 +7,7 @@ import GifSlot from '../components/GifSlot';
 import MarketingNav from '../components/MarketingNav';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import PricingCards from '../components/landing/PricingCards';
 
 type Persona = 'vendor' | 'bench_sales';
 
@@ -130,7 +131,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
       { q: 'How does this stop proxy interviews?', a: 'The interview is on video and recorded. Each question is based on the last answer. Nobody can prepare a script in advance. The person on the client call is the same person on the recording.' },
       { q: 'How does it find a fake resume?', a: 'The first question comes from the resume itself. Every next question asks for details. A real number. A real tool. A real project. False claims fail in ninety seconds.' },
       { q: 'Does every consultant get screened?', a: 'Yes. Every submission arrives with a video interview, a score from 0 to 100, and a short written summary. The summary lists both good points and problems.' },
-      { q: 'What costs credits?', a: 'A post costs 1 credit. An AI email costs 1 credit, refunded if it fails. A finished screening costs 10 credits, charged to the req owner. Editing is free.' },
+      { q: 'What costs credits?', a: 'A post costs 1 credit. An AI draft costs 1 credit, and sending it from your Gmail costs 1 more, refunded if the send fails. A finished screening costs 10 credits, charged to the req owner. Editing is free. Credit packs start at ₹249.' },
       { q: 'Is the data safe?', a: 'Yes. All data is encrypted. It is never sold or shared. Emails send from a connected Gmail address.' },
     ],
     ctaHeadlineLine1: 'Protect the client relationship.',
@@ -220,8 +221,8 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     freeBullets: [
       'All features included',
       'Unlimited team members',
-      '50 vendor contacts per day',
-      '1 credit per post or AI email',
+      'Subscribe to 5 new people a day, up to 10',
+      '1 credit per AI Match result, AI draft or Gmail send',
     ],
     proBullets: [
       'Everything in Free',
@@ -510,79 +511,18 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
 
         {/* ── PRICING ── */}
         <section id="pricing" className="py-24 px-6 bg-white border-y border-gray-100">
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-5xl mx-auto">
             <div className="text-center mb-14">
               <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Pricing</p>
               <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
                 {content.pricingHeading ?? 'Simple, transparent pricing.'}
               </h2>
               <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">
-                {content.pricingBody ?? 'Start free with credits that never expire. Upgrade to Pro when you want them delivered automatically.'}
+                {content.pricingBody ?? 'Start free with credits that never expire. Top up from ₹249 when you need more, or go Pro to get them every month.'}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-              {/* Free Plan */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-8 flex flex-col">
-                <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-yellow-100 text-yellow-700 w-fit">
-                  Free
-                </span>
-                <div className="flex items-baseline gap-1.5 mb-0.5">
-                  <span className="text-5xl font-extrabold text-gray-900">₹0</span>
-                  <span className="text-gray-500 text-sm">/ month</span>
-                </div>
-                <p className="text-xs text-gray-500 mb-8">100 credits, one time · no card required</p>
-                <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
-                  {(content.freeBullets ?? [
-                    'Pulse, Jobs, Hotlist, Posts, Network, Inbox & Tracker included',
-                    'Unlimited team members',
-                    'Subscribe to 5 new people a day, up to 10',
-                    '1 credit per email draft, AI chat draft, or new post',
-                  ]).map(item => (
-                    <li key={item} className="flex items-center gap-2.5">
-                      <span className="w-4 h-4 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
-                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.5 6L6.5 2" stroke="#ca8a04" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      </span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/signup" className="w-full text-center border border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 text-gray-800 text-sm font-semibold py-3 rounded-xl transition-colors">
-                  Get Started Free
-                </Link>
-              </div>
-
-              {/* Pro Plan */}
-              <div className="rounded-2xl p-8 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
-                <span className="absolute -top-3 left-8 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm text-blue-900" style={{ backgroundColor: '#facc15' }}>Auto-renews</span>
-                <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-white/15 text-white w-fit">
-                  Pro
-                </span>
-                <div className="flex items-baseline gap-1.5 mb-0.5">
-                  <span className="text-5xl font-extrabold text-white">₹500</span>
-                  <span className="text-blue-200 text-sm">/ month</span>
-                </div>
-                <p className="text-xs text-blue-300/70 mb-8">500–5,000 credits/mo, your choice</p>
-                <ul className="space-y-3 text-sm text-white flex-1 mb-8">
-                  {(content.proBullets ?? [
-                    'Everything in Free',
-                    'Subscribe to 10 new people a day, no cap',
-                    'Credits delivered automatically, never run out mid-month',
-                    'Change your tier or cancel any time',
-                  ]).map(item => (
-                    <li key={item} className="flex items-center gap-2.5">
-                      <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.5 6L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      </span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/signup" className="w-full text-center bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold py-3 rounded-xl transition-colors">
-                  Get Started
-                </Link>
-              </div>
-            </div>
+            <PricingCards freeBullets={content.freeBullets} proBullets={content.proBullets} />
           </div>
         </section>
 

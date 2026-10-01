@@ -99,7 +99,7 @@ const COMPETITORS: Record<string, Competitor & { featureRows: FeatureRow[] }> = 
     ],
     faqs: [
       { q: 'Can I use ProfilePush alongside Ceipal?', a: 'Yes. ProfilePush handles sourcing, matching, and outreach — Pulse, Jobs, Hotlist, and Inbox — while you continue managing compliance, payroll, and contracts in Ceipal. They complement each other well.' },
-      { q: 'Is ProfilePush cheaper than Ceipal?', a: 'ProfilePush has a free forever plan with monthly AI credits, and a Pro plan at ₹2,500/month with unlimited users. Ceipal is priced as enterprise ATS software and typically costs significantly more per seat.' },
+      { q: 'Is ProfilePush cheaper than Ceipal?', a: 'ProfilePush is free to start with 100 credits, then credit packs from ₹249 or Pro from ₹500/month, with unlimited users on every plan. Ceipal is priced as enterprise ATS software and typically costs significantly more per seat.' },
       { q: 'Does Ceipal watch social groups for new requirements?', a: 'No. Ceipal is built around job board postings and pipeline management, not real-time monitoring of LinkedIn, Facebook, WhatsApp, and Reddit groups the way ProfilePush\'s Jobs and Hotlist feeds do.' },
     ],
     featureRows: FEATURES_CEIPAL,
