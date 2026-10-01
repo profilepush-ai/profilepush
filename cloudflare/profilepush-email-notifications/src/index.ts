@@ -172,6 +172,288 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+// ── Morning brief ───────────────────────────────────────────────────────────
+// The weekday email that replaced the generic digest: what's new for this
+// person (requirements matching their consultants, consultants matching their
+// requirements, posts from people they subscribe to), today's market, and one
+// way back into the app. get_morning_brief picks the people and their
+// matches; get_market_brief is the same for everyone. Recently active people
+// get it every weekday, everyone else on Mondays only, and Android app users
+// are left out (they get push).
+type BriefItem = {
+  kind: "job" | "hotlist";
+  id: string;
+  title: string | null;
+  location?: string | null;
+  rate_min?: number | null;
+  rate_max?: number | null;
+  visa?: string | null;
+  experience?: number | null;
+  name?: string | null;
+};
+
+type BriefRecipient = {
+  user_id: string;
+  account_id: string;
+  email: string;
+  first_name: string | null;
+  persona: string | null;
+  recently_active: boolean;
+  consultant_count: number;
+  requirement_count: number;
+  match_kind: "job" | "hotlist" | null;
+  match_total: number;
+  matches: BriefItem[];
+  followed_total: number;
+  followed: BriefItem[];
+};
+
+type MarketBrief = {
+  jobs_24h: number;
+  hotlists_24h: number;
+  top_roles: Array<{ role: string; jobs_30d: number; avg_rate: number | null }>;
+  latest_jobs: BriefItem[];
+  latest_hotlists: BriefItem[];
+};
+
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.profilepush.app";
+
+function plural(n: number, one: string, many: string): string {
+  return `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+}
+
+function rateText(min?: number | null, max?: number | null): string {
+  const lo = Number(min) || 0;
+  const hi = Number(max) || 0;
+  if (lo && hi && lo !== hi) return `$${lo}–${hi}/hr`;
+  if (lo || hi) return `$${lo || hi}/hr`;
+  return "";
+}
+
+function itemDetails(item: BriefItem): string {
+  const parts = item.kind === "hotlist"
+    ? [item.experience ? `${item.experience} yrs` : "", item.visa ?? "", item.location ?? "", rateText(item.rate_min, item.rate_max)]
+    : [item.location ?? "", rateText(item.rate_min, item.rate_max)];
+  return parts.map((p) => p.trim()).filter(Boolean).join(" · ");
+}
+
+// "your consultant" / "your 3 consultants".
+function yourCount(n: number, one: string, many: string): string {
+  return n === 1 ? `your ${one}` : `your ${n.toLocaleString("en-US")} ${many}`;
+}
+
+// Two posts that read the same (title and details) show once.
+function distinctItems(list: BriefItem[]): BriefItem[] {
+  const seen = new Set<string>();
+  return list.filter((item) => {
+    const key = `${(item.title ?? "").toLowerCase()}|${itemDetails(item).toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function itemUrl(base: string, item: BriefItem): string {
+  return `${base}/${item.kind === "hotlist" ? "hotlist" : "job"}/${item.id}`;
+}
+
+function briefSubject(r: BriefRecipient, market: MarketBrief): string {
+  if (r.match_total > 0 && r.match_kind === "job") {
+    return `${plural(r.match_total, "new requirement matches", "new requirements match")} ${yourCount(r.consultant_count, "consultant", "consultants")}`;
+  }
+  if (r.match_total > 0 && r.match_kind === "hotlist") {
+    return `${plural(r.match_total, "new consultant matches", "new consultants match")} ${r.requirement_count === 1 ? "your requirement" : "your requirements"}`;
+  }
+  if (r.followed_total > 0) return `${plural(r.followed_total, "new post", "new posts")} from people you subscribe to`;
+  return r.persona === "vendor"
+    ? `${plural(market.hotlists_24h, "new consultant", "new consultants")} on the bench today`
+    : `${plural(market.jobs_24h, "new requirement", "new requirements")} on ProfilePush today`;
+}
+
+function renderMorningBrief(r: BriefRecipient, market: MarketBrief, unsubscribeUrl: string, appBaseUrl: string): EmailJob {
+  const base = appBaseUrl.replace(/\/$/, "");
+  const isVendor = r.match_kind === "hotlist" || (r.match_kind === null && r.persona === "vendor");
+  const hasOwnPosts = isVendor ? r.requirement_count > 0 : r.consultant_count > 0;
+  const subject = briefSubject(r, market);
+  const greeting = r.first_name ? `Hi ${r.first_name},` : "Hi,";
+
+  // The main list: their matches, or else today's newest posts for their side.
+  const personal = r.match_total > 0;
+  const items = distinctItems(personal ? r.matches : (isVendor ? market.latest_hotlists : market.latest_jobs));
+  const listTitle = personal
+    ? (r.match_kind === "job" ? "Top matches for your consultants" : "Top matches for your requirements")
+    : (isVendor ? "New on the bench today" : "New requirements today");
+  const seeAllUrl = personal
+    ? `${base}${r.match_kind === "job" ? "/posts/hotlist" : "/posts/jobs"}`
+    : `${base}${isVendor ? "/feed/hotlist" : "/feed/jobs"}`;
+  const seeAllLabel = personal && r.match_total > items.length ? `See all ${r.match_total.toLocaleString("en-US")} matches` : "Open ProfilePush";
+
+  const headline = personal
+    ? { number: r.match_total, label: r.match_kind === "job" ? `new ${r.match_total === 1 ? "requirement matches" : "requirements match"} ${yourCount(r.consultant_count, "consultant", "consultants")} today` : `new ${r.match_total === 1 ? "consultant matches" : "consultants match"} ${r.requirement_count === 1 ? "your requirement" : "your requirements"} today` }
+    : isVendor
+      ? { number: market.hotlists_24h, label: "new consultants on the bench today" }
+      : { number: market.jobs_24h, label: "new requirements posted today" };
+
+  const nudge = hasOwnPosts ? null : isVendor
+    ? { text: "Post your open requirements and we'll match bench consultants to them every morning.", label: "Post a requirement", url: `${base}/posts/jobs` }
+    : { text: "Add your consultants and we'll match new requirements to them every morning.", label: "Add consultants", url: `${base}/posts/hotlist` };
+
+  const row = (item: BriefItem, extra = "") => `
+          <tr>
+            <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
+              <a href="${itemUrl(base, item)}" style="font-size: 15px; font-weight: 700; color: #0f172a; text-decoration: none;">${escapeHtml(item.title || (item.kind === "hotlist" ? "Consultant" : "Requirement"))}</a>
+              <div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml([extra, itemDetails(item)].filter(Boolean).join(" · ") || "View details")}</div>
+            </td>
+          </tr>`;
+
+  const followedHtml = r.followed_total > 0 ? `
+          <tr><td style="padding: 24px 0 4px;"><div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b;">From people you subscribe to · ${r.followed_total.toLocaleString("en-US")} new</div></td></tr>
+          ${r.followed.map((item) => row(item, item.name ?? "")).join("")}` : "";
+
+  const roles = market.top_roles.filter((t) => t.role);
+  const marketHtml = roles.length > 0 ? `
+          <tr>
+            <td style="padding: 24px 0 0;">
+              <div style="background: #f8fafc; border-radius: 8px; padding: 16px;">
+                <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; margin-bottom: 8px;">Most requested this month</div>
+                ${roles.map((t) => `<div style="font-size: 14px; color: #1e293b; padding: 3px 0;"><b>${escapeHtml(t.role)}</b> · ${Number(t.jobs_30d).toLocaleString("en-US")} requirements${t.avg_rate ? ` · avg $${t.avg_rate}/hr` : ""}</div>`).join("")}
+                <div style="font-size: 13px; color: #64748b; margin-top: 8px;">Today: ${Number(market.jobs_24h).toLocaleString("en-US")} requirements and ${Number(market.hotlists_24h).toLocaleString("en-US")} consultants posted.</div>
+              </div>
+            </td>
+          </tr>` : "";
+
+  const nudgeHtml = nudge ? `
+          <tr>
+            <td style="padding: 24px 0 0;">
+              <div style="border: 1px solid #dbeafe; background: #eff6ff; border-radius: 8px; padding: 16px;">
+                <div style="font-size: 14px; color: #1e3a8a; line-height: 1.5;">${escapeHtml(nudge.text)}</div>
+                <a href="${nudge.url}" style="display: inline-block; margin-top: 10px; font-size: 14px; font-weight: 700; color: #2563eb; text-decoration: none;">${escapeHtml(nudge.label)} →</a>
+              </div>
+            </td>
+          </tr>` : "";
+
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">${escapeHtml(items[0]?.title ? `Top: ${items[0].title}${itemDetails(items[0]) ? ` · ${itemDetails(items[0])}` : ""}` : subject)}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff;">
+    <tr>
+      <td align="center" style="padding: 32px 20px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 520px;">
+          <tr>
+            <td style="padding-bottom: 24px;">
+              <img src="${base}/favicon.svg" width="24" height="24" alt="" style="vertical-align: middle; border-radius: 6px;" />
+              <span style="font-size: 16px; font-weight: 800; color: #0f172a; vertical-align: middle; margin-left: 8px;">ProfilePush</span>
+            </td>
+          </tr>
+          <tr><td style="padding-bottom: 6px;"><p style="margin: 0; font-size: 14px; color: #334155;">${escapeHtml(greeting)}</p></td></tr>
+          <tr>
+            <td style="padding-bottom: 18px;">
+              <div style="font-size: 40px; font-weight: 800; color: #2563eb; line-height: 1.1;">${Number(headline.number).toLocaleString("en-US")}</div>
+              <div style="font-size: 15px; color: #334155; margin-top: 2px;">${escapeHtml(headline.label)}</div>
+            </td>
+          </tr>
+          <tr><td style="padding-bottom: 4px;"><div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b;">${escapeHtml(listTitle)}</div></td></tr>
+          ${items.map((item) => row(item)).join("")}
+          <tr>
+            <td style="padding: 20px 0 0;">
+              <a href="${seeAllUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">${escapeHtml(seeAllLabel)}</a>
+            </td>
+          </tr>
+          ${followedHtml}
+          ${nudgeHtml}
+          ${marketHtml}
+          <tr>
+            <td style="padding: 24px 0 0;">
+              <p style="margin: 0; font-size: 13px; color: #64748b;">Get matches as a notification the moment they're posted: <a href="${PLAY_STORE_URL}" style="color: #2563eb;">install the Android app</a>.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 24px; text-align: center;">
+              <p style="margin: 16px 0 0; font-size: 12px; color: #94a3b8;">
+                Your ProfilePush brief, every weekday morning.
+                <a href="${unsubscribeUrl}" style="color: #94a3b8; text-decoration: underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  const lines = (list: BriefItem[], extra?: (i: BriefItem) => string) =>
+    list.map((i) => `- ${i.title ?? ""}${[extra?.(i) ?? "", itemDetails(i)].filter(Boolean).length ? ` (${[extra?.(i) ?? "", itemDetails(i)].filter(Boolean).join(" · ")})` : ""}: ${itemUrl(base, i)}`).join("\n");
+  const text = `${greeting}
+
+${Number(headline.number).toLocaleString("en-US")} ${headline.label}.
+
+${listTitle}:
+${lines(items)}
+
+${seeAllLabel}: ${seeAllUrl}
+${r.followed_total > 0 ? `\nFrom people you subscribe to (${r.followed_total} new):\n${lines(r.followed, (i) => i.name ?? "")}\n` : ""}${nudge ? `\n${nudge.text} ${nudge.url}\n` : ""}${roles.length ? `\nMost requested this month:\n${roles.map((t) => `- ${t.role}: ${t.jobs_30d} requirements${t.avg_rate ? `, avg $${t.avg_rate}/hr` : ""}`).join("\n")}\n` : ""}
+Get matches as a notification: ${PLAY_STORE_URL}
+
+---
+Your ProfilePush brief, every weekday morning. Unsubscribe: ${unsubscribeUrl}`;
+
+  return { to: r.email, subject, html, text, lane: "user", category: "morning_brief", unsubscribeUrl };
+}
+
+async function fetchMorningBrief(env: Env): Promise<{ recipients: BriefRecipient[]; market: MarketBrief }> {
+  const call = async (fn: string) => {
+    const response = await supabaseRequest(env, `rpc/${fn}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    if (!response.ok) throw new Error(`${fn} HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+    return response.json();
+  };
+  const [recipients, market] = await Promise.all([call("get_morning_brief"), call("get_market_brief")]);
+  return { recipients: recipients as BriefRecipient[], market: market as MarketBrief };
+}
+
+// New hotlists get their embeddings when someone runs AI Match on hotlists.
+// Run that catch-up first so vendors' matches include today's consultants.
+async function embedNewPosts(env: Env): Promise<void> {
+  try {
+    const response = await fetch(`${env.SUPABASE_URL}/functions/v1/ai-match`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, apikey: env.SUPABASE_ANON_KEY },
+      body: JSON.stringify({ mode: "embed_backlog" }),
+      signal: AbortSignal.timeout(150_000),
+    });
+    console.log("embed_backlog", response.status, (await response.text()).slice(0, 200));
+  } catch (error) {
+    console.error("embed_backlog failed", error);
+  }
+}
+
+async function runMorningBrief(env: Env, now = new Date()): Promise<{ emailed: number; skipped: number; reason?: string }> {
+  // The cron fires at 13:30 UTC, morning in the US. Weekends are quiet (job
+  // inflow drops from ~600 a day to ~40), so the brief is weekdays only.
+  const weekday = now.getUTCDay();
+  if (weekday === 0 || weekday === 6) return { emailed: 0, skipped: 0, reason: "weekend" };
+  await embedNewPosts(env);
+  const { recipients, market } = await fetchMorningBrief(env);
+  const jobs: EmailJob[] = [];
+  let skipped = 0;
+  for (const r of recipients) {
+    // People who haven't visited in 30 days get it on Mondays only.
+    if (!r.recently_active && weekday !== 1) { skipped += 1; continue; }
+    jobs.push(renderMorningBrief(r, market, await buildUnsubscribeUrl(env, r.user_id, r.account_id), env.APP_BASE_URL));
+  }
+  for (const chunk of chunkEmailJobsForQueue(jobs)) {
+    await env.EMAIL_QUEUE.sendBatch(chunk.map((job) => ({ body: job })));
+  }
+  return { emailed: jobs.length, skipped };
+}
+
+
 // Brand palette (from public/favicon.svg / src/components/Logo.tsx):
 // yellow #facc15, orange #f97316, blue #2563eb, ink #0f172a.
 function renderDigestEmail(
@@ -365,36 +647,24 @@ function selectWarmupRecipients(recipients: DigestRecipient[], cap: number, dayI
 
 async function runDailyDigest(
   env: Env,
-): Promise<{ jobsCount: number; hotlistCount: number; recipients: number; emailedRecipients: number }> {
+): Promise<{ jobsCount: number; hotlistCount: number; recipients: number }> {
+  // The digest email was replaced by the morning brief (runMorningBrief);
+  // this keeps the in-app bell and push digest.
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const [jobsCount, hotlistCount, allRecipients, topRoles] = await Promise.all([
+  const [jobsCount, hotlistCount, allRecipients] = await Promise.all([
     countSince(env, "radar_match_results", since),
     countSince(env, "radar_match_hotlist", since),
     fetchRecipients(env),
-    fetchTopRoles(env),
   ]);
-
-  const dayIndex = daysSince(env.GMASS_WARMUP_START_DATE, new Date());
-  const cap = warmupCapForDay(dayIndex);
-  const emailRecipients = selectWarmupRecipients(allRecipients, cap, dayIndex);
-
-  const jobs: EmailJob[] = [];
-  for (const recipient of emailRecipients) {
-    jobs.push(await buildDigestJob(env, recipient, jobsCount, hotlistCount, topRoles));
-  }
-
-  for (const chunk of chunkEmailJobsForQueue(jobs)) {
-    await env.EMAIL_QUEUE.sendBatch(chunk.map((job) => ({ body: job })));
-  }
 
   try {
     await notifyInAppAndPush(env, allRecipients, jobsCount, hotlistCount);
   } catch (error) {
-    // In-app/push notification is best-effort — never let it block the email send path.
+    // In-app/push notification is best-effort.
     console.error("notifyInAppAndPush threw", error);
   }
 
-  return { jobsCount, hotlistCount, recipients: allRecipients.length, emailedRecipients: emailRecipients.length };
+  return { jobsCount, hotlistCount, recipients: allRecipients.length };
 }
 
 // ── "X subscribed to you" for unclaimed publishers ──────────────────────────
@@ -1041,29 +1311,13 @@ async function handleTestDigest(request: Request, env: Env): Promise<Response> {
   const to = typeof body.to === "string" ? body.to.trim().toLowerCase() : "";
   if (!to) return jsonResponse({ error: "to is required" }, 400);
 
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const [jobsCount, hotlistCount, recipients, topRoles] = await Promise.all([
-    countSince(env, "radar_match_results", since),
-    countSince(env, "radar_match_hotlist", since),
-    fetchRecipients(env),
-    fetchTopRoles(env),
-  ]);
-
+  // Sends that person's morning brief now, whatever the day.
+  const { recipients, market } = await fetchMorningBrief(env);
   const recipient = recipients.find((r) => r.email.toLowerCase() === to);
-  if (!recipient) return jsonResponse({ error: "No signed-up recipient found with that email" }, 404);
-
-  const job = await buildDigestJob(env, recipient, jobsCount, hotlistCount, topRoles);
+  if (!recipient) return jsonResponse({ error: "That address isn't on the morning brief list" }, 404);
+  const job = renderMorningBrief(recipient, market, await buildUnsubscribeUrl(env, recipient.user_id, recipient.account_id), env.APP_BASE_URL);
   await logSend(env, job, "sent", await sendEmail(env, job));
-
-  let notified = false;
-  try {
-    await notifyInAppAndPush(env, [recipient], jobsCount, hotlistCount);
-    notified = true;
-  } catch (error) {
-    console.error("notifyInAppAndPush threw during test-digest", error);
-  }
-
-  return jsonResponse({ sent: true, notified, jobsCount, hotlistCount, to: job.to });
+  return jsonResponse({ sent: true, to: job.to, subject: job.subject });
 }
 
 async function handleUnsubscribe(request: Request, env: Env): Promise<Response> {
@@ -1109,6 +1363,10 @@ export default {
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
       if (pathname === "/send") return await handleSendRequest(request, env);
       if (pathname === "/run-digest") return await handleRunDigest(request, env);
+      if (pathname === "/run-morning-brief") {
+        if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
+        return jsonResponse(await runMorningBrief(env));
+      }
       if (pathname === "/test-digest") return await handleTestDigest(request, env);
       if (pathname === "/publisher-subscribed") return await handlePublisherSubscribed(request, env);
       if (pathname === "/run-low-credit-emails") return await handleRunLowCreditEmails(request, env);
@@ -1154,7 +1412,10 @@ export default {
     // one failing never silences the rest.
     const results = await Promise.allSettled([
       runDailyDigest(env).then((result) => {
-        console.log(`Daily digest: emailed ${result.emailedRecipients}/${result.recipients} recipients (${result.jobsCount} jobs, ${result.hotlistCount} hotlist profiles)`);
+        console.log(`Daily digest (in-app and push): ${result.recipients} recipients (${result.jobsCount} jobs, ${result.hotlistCount} hotlist profiles)`);
+      }),
+      runMorningBrief(env).then((result) => {
+        console.log(`Morning brief: emailed ${result.emailed}, skipped ${result.skipped}${result.reason ? ` (${result.reason})` : ""}`);
       }),
       runJobMatchNotifications(env),
       runLowCreditEmails(env).then((result) => {
