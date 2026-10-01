@@ -202,156 +202,116 @@ async function countMatchingJobsForHotlist(env: Env, hotlistId: string): Promise
   return await response.json<number>();
 }
 
+// What was sent, for logs and dry runs.
 interface PitchAngle {
   subject: string;
   hook: string;
 }
 
-function parseModelText(raw: unknown): unknown {
-  if (typeof raw === "string") {
-    const trimmed = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    return JSON.parse(trimmed);
-  }
-  return raw;
+// The poster's public profile, if they have one we can still email.
+type OutreachProfile = { id: string; slug: string; display_name: string };
+
+function publisherEmailKey(email: string): string {
+  return email.split(",")[0].trim().toLowerCase();
 }
 
-function normalizePitchAngle(raw: unknown): PitchAngle {
-  const parsed = parseModelText(raw);
-  if (!parsed || typeof parsed !== "object") throw new Error("AI response is not a JSON object");
-  const source = parsed as Record<string, unknown>;
-  const subject = String(source.subject ?? "").trim().slice(0, 200);
-  const hook = String(source.hook ?? "").trim().slice(0, 500);
-  const wordCount = hook.split(/\s+/).filter(Boolean).length;
-  if (!subject || !hook) throw new Error("AI response did not include subject and hook");
-  if (wordCount > 35) throw new Error("AI hook exceeded 35 words");
-  if (/profilepush/i.test(`${subject}\n${hook}`)) throw new Error("AI response included prohibited branding");
-  return { subject, hook };
+async function fetchOutreachProfile(env: Env, email: string): Promise<OutreachProfile | null> {
+  const response = await supabaseRequest(
+    env,
+    `publisher_profiles?email=eq.${encodeURIComponent(publisherEmailKey(email))}&select=id,slug,display_name,claimed_account_id,removed_at,email_opted_out&limit=1`,
+  );
+  if (!response.ok) throw new Error(`fetch publisher_profiles failed: HTTP ${response.status}`);
+  const row = (await response.json<Array<OutreachProfile & { claimed_account_id: string | null; removed_at: string | null; email_opted_out: boolean }>>())[0];
+  if (!row || row.claimed_account_id || row.removed_at || row.email_opted_out) return null;
+  return { id: row.id, slug: row.slug, display_name: row.display_name };
 }
 
-function fallbackPitchAngle(source: Source, roleTitle: string, matchingCount: number): PitchAngle {
-  const role = roleTitle || (source === "job" ? "requirement" : "consultant");
-  if (source === "job") {
-    return {
-      subject: `${matchingCount} consultants match your ${role} req`,
-      hook: `We found ${matchingCount} hotlist profiles that match your ${role} requirement.`,
-    };
-  }
-  return {
-    subject: `${matchingCount} jobs match your ${role} consultant`,
-    hook: `We found ${matchingCount} job requirements that match your ${role} consultant.`,
-  };
+async function createClaimUrl(env: Env, publisherId: string): Promise<string | null> {
+  const response = await supabaseRequest(env, "rpc/create_profile_claim_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_publisher_id: publisherId }),
+  });
+  if (!response.ok) return null;
+  const token = await response.json<string | null>();
+  return token ? `${env.SUPABASE_URL}/functions/v1/claim-profile?t=${token}` : null;
 }
 
-const JOB_SOURCE_SYSTEM_PROMPT = `You are a fast-paced, highly transactional IT staffing rep writing a short cold-email opening hook to a vendor/account manager who just posted a job requirement on social media.
-
-Rules:
-1. Reference their specific role, skill, or location naturally — don't just restate the stat robotically.
-2. Lead with or include the exact matching-consultant count you're given — this is the core value claim, do not omit or change the number.
-3. Zero fluff: no "I hope this email finds you well," no generic greetings.
-4. Extreme brevity: the hook must be under 35 words, one or two short sentences.
-5. Tone: casual, direct, confident — like a peer sharing a genuinely useful heads-up, not a sales pitch.
-6. Never mention the product/company by name.
-7. Grammar must agree with the count — "1 opening", not "1 openings"; "2 openings", not "2 opening".
-
-Return strict JSON with exactly these keys: "subject" and "hook".`;
-
-const HOTLIST_SOURCE_SYSTEM_PROMPT = `You are a fast-paced, highly transactional IT bench-sales rep writing a short cold-email opening hook to a recruiter who just posted a consultant on social media.
-
-Rules:
-1. Reference their specific consultant's role, skill, or location naturally — don't just restate the stat robotically.
-2. Lead with or include the exact matching-job count you're given — this is the core value claim, do not omit or change the number.
-3. Zero fluff: no "I hope this email finds you well," no generic greetings.
-4. Extreme brevity: the hook must be under 35 words, one or two short sentences.
-5. Tone: casual, direct, confident — like a peer sharing a genuinely useful heads-up, not a sales pitch.
-6. Never mention the product/company by name.
-7. Grammar must agree with the count — "1 opening", not "1 openings"; "2 openings", not "2 opening".
-
-Return strict JSON with exactly these keys: "subject" and "hook".`;
-
-async function draftPitchAngle(
-  env: Env,
-  source: Source,
-  context: LeadContext,
-  matchingCount: number,
-): Promise<PitchAngle> {
-  const model = (env.PARSER_MODEL || "@cf/meta/llama-3.1-8b-instruct-fp8").trim();
-  const systemPrompt = source === "job" ? JOB_SOURCE_SYSTEM_PROMPT : HOTLIST_SOURCE_SYSTEM_PROMPT;
-  const userPrompt = source === "job"
-    ? `Role: ${context.roleTitle || "Not specified"}\nSkills: ${context.skills.slice(0, 8).join(", ") || "Not specified"}\nLocation: ${context.location || "Not specified"}\nMatching hotlist profiles found: ${matchingCount}`
-    : `Consultant role: ${context.roleTitle || "Not specified"}\nSkills: ${context.skills.slice(0, 8).join(", ") || "Not specified"}\nLocation: ${context.location || "Not specified"}\nMatching jobs found: ${matchingCount}`;
-
-  try {
-    const aiResult = await env.AI.run(model, {
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.4,
-      max_tokens: 250,
-    });
-    return normalizePitchAngle((aiResult as Record<string, unknown>)?.response ?? aiResult);
-  } catch (error) {
-    console.error("market-stats-outreach: AI pitch drafting failed, using fallback", error);
-    return fallbackPitchAngle(source, context.roleTitle, matchingCount);
-  }
+async function buildRemoveProfileUrl(env: Env, email: string): Promise<string> {
+  const sig = await hmacHex(env.UNSUBSCRIBE_SECRET, `remove-profile:${email}`);
+  const url = new URL("/remove-profile", env.WORKER_BASE_URL);
+  url.searchParams.set("e", email);
+  url.searchParams.set("sig", sig);
+  return url.toString();
 }
 
-// Brand palette (from public/favicon.svg / src/components/Logo.tsx):
-// yellow #facc15, orange #f97316, blue #2563eb, ink #0f172a.
-function renderPitchEmail(pitch: PitchAngle, unsubscribeUrl: string, appBaseUrl: string) {
-  const base = appBaseUrl.replace(/\/$/, "");
-  const signupUrl = `${base}/signup`;
+// A short, personal email about the reader's own post: how many matches it
+// has on ProfilePush right now, and a one-tap claim of their profile to see
+// them. Plain layout, one button. Never says where their posts came from.
+function renderOutreachEmail(
+  input: { source: Source; context: LeadContext; matchingCount: number; profile: OutreachProfile },
+  urls: { claim: string; profile: string; remove: string; unsubscribe: string },
+) {
+  const first = (input.profile.display_name || "").trim().split(/\s+/)[0] || "";
+  const role = input.context.roleTitle || (input.source === "job" ? "recent" : "bench");
+  const n = input.matchingCount;
+  const isJob = input.source === "job";
+  const subject = isJob
+    ? `${n} bench ${n === 1 ? "consultant matches" : "consultants match"} your ${role} requirement`
+    : `${n} open ${n === 1 ? "requirement matches" : "requirements match"} your ${role} consultant`;
+  const line1 = isJob
+    ? `Your ${role} requirement${input.context.location ? ` (${input.context.location})` : ""} matches ${n} bench ${n === 1 ? "consultant" : "consultants"} on ProfilePush right now.`
+    : `Your ${role} consultant matches ${n} open ${n === 1 ? "requirement" : "requirements"} on ProfilePush right now.`;
+  const line2 = `Your ProfilePush profile already shows your recent posts. Claim it (free, one tap, no password) to see ${n === 1 ? "this match" : "these matches"} and reach ${isJob ? "their recruiters" : "the vendors"} in one click.`;
+  const cta = n === 1 ? "See the match" : `See the ${n} matches`;
 
-  const text = `${pitch.hook}
+  const text = `${first ? `Hi ${first},` : "Hi,"}
 
-Check it out: ${signupUrl}
+${line1}
+
+${line2}
+
+${cta}: ${urls.claim}
+Your profile: ${urls.profile}
 
 ---
-You're receiving this because we found your contact info on a public job or bench sales post. Don't want these? Unsubscribe: ${unsubscribeUrl}`;
+ProfilePush, the AI copilot for vendors and bench sales recruiters.
+Not you, or don't want a profile? Remove my profile: ${urls.remove}
+Unsubscribe: ${urls.unsubscribe}`;
 
+  const p = (t: string) => `<p style="margin: 0 0 14px; font-size: 15px; line-height: 1.55; color: #1e293b;">${t}</p>`;
   const html = `<!doctype html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(pitch.subject)}</title></head>
-<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff;">
-    <tr>
-      <td align="center" style="padding: 32px 20px;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 480px;">
-          <tr><td style="padding-bottom: 20px; font-size: 15px; color: #0f172a; line-height: 1.6;">${escapeHtml(pitch.hook)}</td></tr>
-          <tr>
-            <td align="left" style="padding-bottom: 28px;">
-              <a href="${signupUrl}" style="display: inline-block; padding: 12px 32px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">Check it out</a>
-            </td>
-          </tr>
-          <tr>
-            <td style="border-top: 1px solid #f1f5f9; padding-top: 16px;">
-              <p style="margin: 0; font-size: 12px; color: #94a3b8;">
-                You're receiving this because we found your contact info on a public job or bench sales post.<br>
-                <a href="${unsubscribeUrl}" style="color: #94a3b8; text-decoration: underline;">Unsubscribe</a>
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(subject)}</title></head>
+<body style="margin: 0; padding: 24px 20px; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 520px;">
+    ${p(escapeHtml(first ? `Hi ${first},` : "Hi,"))}
+    ${p(escapeHtml(line1))}
+    ${p(escapeHtml(line2))}
+    <p style="margin: 0 0 20px;"><a href="${urls.claim}" style="display: inline-block; padding: 11px 22px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">${escapeHtml(cta)}</a></p>
+    ${p(`<a href="${urls.profile}" style="color: #2563eb;">See your profile</a>`)}
+    <p style="margin: 24px 0 0; font-size: 12px; color: #94a3b8; line-height: 1.6;">
+      ProfilePush, the AI copilot for vendors and bench sales recruiters.<br>
+      Not you, or don't want a profile? <a href="${urls.remove}" style="color: #94a3b8;">Remove my profile</a> · <a href="${urls.unsubscribe}" style="color: #94a3b8;">Unsubscribe</a>
+    </p>
+  </div>
 </body>
 </html>`;
 
-  return { subject: pitch.subject, text, html };
+  return { subject, text, html };
 }
 
 async function sendLeadToGmass(
   env: Env,
-  params: { email: string; pitch: PitchAngle; unsubscribeUrl: string },
+  params: { email: string; subject: string; text: string; html: string },
 ): Promise<void> {
-  const { subject, text, html } = renderPitchEmail(params.pitch, params.unsubscribeUrl, env.APP_BASE_URL);
+  const { subject, text, html } = params;
 
   const response = await fetchEmailWorkerSend(env, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.EMAIL_WORKER_AUTH_TOKEN}` },
     // Outreach lane: these people aren't users, so this must never go through SES.
-    body: JSON.stringify({ to: params.email, subject, html, text, lane: "outreach" }),
+    body: JSON.stringify({ to: params.email, subject, html, text, lane: "outreach", category: "outreach_pitch" }),
   });
 
   if (!response.ok) {
@@ -379,6 +339,9 @@ async function processLead(
 
   if (!isValidEmailShape(email)) return { status: "skipped", email, source, reason: "invalid_email" };
   if (await emailHasAccount(env, email)) return { status: "skipped", email, source, reason: "has_account" };
+  // Every email links to the poster's profile, so no profile, no email.
+  const profile = await fetchOutreachProfile(env, email);
+  if (!profile) return { status: "skipped", email, source, reason: "no_profile_or_opted_out" };
 
   if (!options.dryRun) {
     // Checked before the claim so a paused run never burns a claim slot —
@@ -401,21 +364,22 @@ async function processLead(
   // than send a claim that undercuts the product's credibility.
   if (matchingCount <= 0) return { status: "skipped", email, source, reason: "no_matches" };
 
-  const pitch = await draftPitchAngle(env, source, context, matchingCount);
-  const unsubscribeUrl = await buildUnsubscribeUrl(env, email);
+  const base = env.APP_BASE_URL.replace(/\/$/, "");
+  const profileUrl = `${base}/profile/${encodeURIComponent(profile.slug)}`;
+  const urls = {
+    claim: options.dryRun ? `${base}/claim-preview` : (await createClaimUrl(env, profile.id)) ?? profileUrl,
+    profile: profileUrl,
+    remove: await buildRemoveProfileUrl(env, email),
+    unsubscribe: await buildUnsubscribeUrl(env, email),
+  };
+  const rendered = renderOutreachEmail({ source, context, matchingCount, profile }, urls);
+  const pitch = { subject: rendered.subject, hook: rendered.text.split("\n")[2] ?? "" } as PitchAngle;
 
   if (options.dryRun) {
-    return {
-      status: "sent",
-      email,
-      source,
-      matchingCount,
-      pitch,
-      dryRunPayload: { to: email, ...renderPitchEmail(pitch, unsubscribeUrl, env.APP_BASE_URL) },
-    };
+    return { status: "sent", email, source, matchingCount, pitch, dryRunPayload: { to: email, ...rendered } };
   }
 
-  await sendLeadToGmass(env, { email, pitch, unsubscribeUrl });
+  await sendLeadToGmass(env, { email, ...rendered });
   return { status: "sent", email, source, matchingCount, pitch };
 }
 
@@ -543,6 +507,25 @@ async function handleTestOutreach(request: Request, env: Env): Promise<Response>
   return jsonResponse(result);
 }
 
+async function handleRemoveProfile(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const email = (url.searchParams.get("e") ?? "").trim().toLowerCase();
+  const sig = url.searchParams.get("sig") ?? "";
+  const expected = await hmacHex(env.UNSUBSCRIBE_SECRET, `remove-profile:${email}`);
+  if (!email || !timingSafeEqual(sig, expected)) {
+    return new Response("Invalid or expired link.", { status: 400, headers: { "Content-Type": "text/plain" } });
+  }
+  const response = await supabaseRequest(env, "rpc/remove_publisher_profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_email: email }),
+  });
+  if (!response.ok) {
+    return new Response("Something went wrong. Please try again later.", { status: 500, headers: { "Content-Type": "text/plain" } });
+  }
+  return new Response("Your ProfilePush profile has been removed, and we won't email you about it again.", { status: 200, headers: { "Content-Type": "text/plain" } });
+}
+
 async function handleUnsubscribe(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const email = (url.searchParams.get("email") ?? "").trim().toLowerCase();
@@ -578,6 +561,7 @@ export default {
     const pathname = new URL(request.url).pathname;
     try {
       if (request.method === "GET" && pathname === "/unsubscribe") return await handleUnsubscribe(request, env);
+      if (request.method === "GET" && pathname === "/remove-profile") return await handleRemoveProfile(request, env);
       if (request.method === "GET") return jsonResponse({ status: "ok" });
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
       if (pathname === "/webhook/outreach") return await handleWebhookOutreach(request, env);

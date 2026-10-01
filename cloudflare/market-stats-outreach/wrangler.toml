@@ -15,13 +15,13 @@ service = "profilepush-email-notifications"
 
 [vars]
 # Set to "true" and redeploy to pause outbound sends entirely (queued/new
-# leads are held and retried later instead of hitting GMass) — flipped on
-# 2026-09-10 after this stream's sends contributed to the shared GMass
-# mailbox (Insights@profilepush.ai) hitting Google's daily sending limit,
-# which then blocked an unrelated signup notification from the same
-# mailbox. Do not flip back to "false" until GMass's bounce/complaint
-# dashboard and the mailbox's daily send volume have been reviewed.
-OUTREACH_PAUSED = "true"
+# leads are held and retried later instead of hitting GMass). Paused from
+# 2026-09-10 after the shared mailbox hit Google's daily limit; resumed
+# 2026-10-01 with personal emails (their own post's matches, linking to
+# their public profile and a one-tap claim), at most one a week per person,
+# a 300/day ceiling (market_stats_outreach_config.steady_state_cap), and
+# skips for bounced, complained, removed and unclicked-3-times addresses.
+OUTREACH_PAUSED = "false"
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 APP_BASE_URL = "https://profilepush.ai"
 WORKER_BASE_URL = "https://profilepush-market-stats-outreach.profilepush-ai.workers.dev"
