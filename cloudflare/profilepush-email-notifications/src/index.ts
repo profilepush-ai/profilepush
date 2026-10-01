@@ -14,13 +14,34 @@ export interface Env {
   APP_BASE_URL: string;
   WORKER_BASE_URL: string;
   DIGEST_NOTIFY_TOKEN: string;
+  // "ses" sends the user lane through Amazon SES; "gmass" puts it back on
+  // GMass (rollback switch). The outreach lane is always GMass.
+  EMAIL_PROVIDER: string;
+  AWS_SES_REGION: string;
+  AWS_SES_ACCESS_KEY_ID: string;
+  AWS_SES_SECRET_ACCESS_KEY: string;
+  SES_FROM_EMAIL: string;
+  SES_FROM_NAME: string;
+  SES_REPLY_TO: string;
 }
+
+// Two lanes that never share a sender. "user" is email to people who signed
+// up (digest, credit reminders, welcome, signup alerts) and goes through
+// Amazon SES on mail.profilepush.ai. "outreach" is email to people who aren't
+// users yet (market-stats pitches, "X subscribed to you" for unclaimed
+// publishers); SES's terms forbid unsolicited email, so it stays on GMass.
+type EmailLane = "user" | "outreach";
 
 type EmailJob = {
   to: string;
   subject: string;
   html: string;
   text: string;
+  lane?: EmailLane;
+  // Set on bulk email (digest, reminders) to add one-click unsubscribe
+  // headers (RFC 8058), which Gmail and Outlook require from bulk senders.
+  // Left off personal notifications so they read as one-to-one email.
+  unsubscribeUrl?: string;
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -280,7 +301,7 @@ async function buildDigestJob(
 ): Promise<EmailJob> {
   const unsubscribeUrl = await buildUnsubscribeUrl(env, recipient.user_id, recipient.account_id);
   const { subject, text, html } = renderDigestEmail(jobsCount, hotlistCount, topRoles, unsubscribeUrl, env.APP_BASE_URL);
-  return { to: recipient.email, subject, text, html };
+  return { to: recipient.email, subject, text, html, lane: "user", unsubscribeUrl };
 }
 
 async function notifyInAppAndPush(env: Env, recipients: DigestRecipient[], jobsCount: number, hotlistCount: number): Promise<void> {
@@ -464,7 +485,8 @@ Don't want these emails? Unsubscribe: ${unsubscribeUrl}`;
 </body>
 </html>`;
 
-  return { to: row.email, subject, text, html };
+  // Unclaimed publishers aren't users yet, so this is outreach-lane email.
+  return { to: row.email, subject, text, html, lane: "outreach", unsubscribeUrl };
 }
 
 // Called by the email_unclaimed_publisher_after_follow trigger (pg_net), which
@@ -609,7 +631,7 @@ Don't want these reminders? Unsubscribe: ${unsubscribeUrl}`;
 </body>
 </html>`;
 
-  return { to: r.email, subject, text, html };
+  return { to: r.email, subject, text, html, lane: "user", unsubscribeUrl };
 }
 
 async function runLowCreditEmails(env: Env): Promise<{ emailed: number }> {
@@ -691,6 +713,100 @@ async function sendGmassEmail(env: Env, job: EmailJob): Promise<void> {
   }
 }
 
+// ── Amazon SES (user lane) ──────────────────────────────────────────────────
+// SESv2 SendEmail over plain fetch, signed with AWS Signature Version 4 so the
+// worker needs no SDK. The key belongs to an IAM user that can only send.
+
+// A send SES refused for good (bad address, rejected content): retrying can't
+// help, so the queue drops it instead of retrying five times.
+class PermanentSendError extends Error {}
+
+function toHex(buffer: ArrayBuffer): string {
+  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sha256Hex(data: string): Promise<string> {
+  return toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data)));
+}
+
+async function hmacRaw(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
+  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
+}
+
+async function sendSesEmail(env: Env, job: EmailJob): Promise<void> {
+  const region = env.AWS_SES_REGION;
+  const host = `email.${region}.amazonaws.com`;
+  const path = "/v2/email/outbound-emails";
+  const headers = job.unsubscribeUrl
+    ? [
+        { Name: "List-Unsubscribe", Value: `<${job.unsubscribeUrl}>` },
+        { Name: "List-Unsubscribe-Post", Value: "List-Unsubscribe=One-Click" },
+      ]
+    : undefined;
+  const body = JSON.stringify({
+    FromEmailAddress: `${env.SES_FROM_NAME} <${env.SES_FROM_EMAIL}>`,
+    Destination: { ToAddresses: [job.to] },
+    ...(env.SES_REPLY_TO ? { ReplyToAddresses: [env.SES_REPLY_TO] } : {}),
+    Content: {
+      Simple: {
+        Subject: { Data: job.subject, Charset: "UTF-8" },
+        Body: {
+          ...(job.html ? { Html: { Data: job.html, Charset: "UTF-8" } } : {}),
+          ...(job.text ? { Text: { Data: job.text, Charset: "UTF-8" } } : {}),
+        },
+        ...(headers ? { Headers: headers } : {}),
+      },
+    },
+  });
+
+  const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const signedHeaders = "content-type;host;x-amz-date";
+  const canonicalRequest = [
+    "POST",
+    path,
+    "",
+    `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`,
+    signedHeaders,
+    await sha256Hex(body),
+  ].join("\n");
+  const scope = `${dateStamp}/${region}/ses/aws4_request`;
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, await sha256Hex(canonicalRequest)].join("\n");
+  let signingKey = await hmacRaw(new TextEncoder().encode(`AWS4${env.AWS_SES_SECRET_ACCESS_KEY}`), dateStamp);
+  for (const part of [region, "ses", "aws4_request"]) signingKey = await hmacRaw(signingKey, part);
+  const signature = toHex(await hmacRaw(signingKey, stringToSign));
+
+  const response = await fetch(`https://${host}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Amz-Date": amzDate,
+      Authorization: `AWS4-HMAC-SHA256 Credential=${env.AWS_SES_ACCESS_KEY_ID}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    },
+    body,
+  });
+  if (response.ok) return;
+
+  const detail = (await response.text().catch(() => "")).slice(0, 300);
+  const errorType = response.headers.get("x-amzn-ErrorType") ?? "";
+  // Only a rejected message or a malformed address is final. Everything else
+  // (throttling, a paused account, a bad key) retries, so a config mistake
+  // holds email in the queue instead of silently dropping it.
+  if (/MessageRejected|BadRequest/.test(`${errorType} ${detail}`)) {
+    throw new PermanentSendError(`SES ${errorType || response.status}: ${detail}`);
+  }
+  throw new Error(`SES ${errorType || response.status}: ${detail}`);
+}
+
+async function sendEmail(env: Env, job: EmailJob): Promise<void> {
+  // Jobs queued before lanes existed have no lane; they were all user email
+  // except /send calls from market-stats-outreach, which now always set one.
+  const lane = job.lane ?? "user";
+  if (lane === "user" && env.EMAIL_PROVIDER === "ses") return sendSesEmail(env, job);
+  return sendGmassEmail(env, job);
+}
+
 // Accepts either the general admin token or market-stats-outreach's own
 // dedicated token — kept independent so rotating one never risks breaking
 // the other's caller (send-welcome-email also authenticates with
@@ -708,7 +824,11 @@ async function handleSendRequest(request: Request, env: Env): Promise<Response> 
   if (!/^\S+@\S+\.\S+$/.test(to) || !subject || (!html && !text)) {
     return jsonResponse({ error: "to, subject, and html or text are required" }, 400);
   }
-  await env.EMAIL_QUEUE.send({ to, subject, html, text });
+  // market-stats-outreach mails people who aren't users, so anything sent
+  // with its token, or marked outreach, never goes through SES.
+  const bodyLane = (body as { lane?: unknown }).lane;
+  const lane: EmailLane = token === env.MARKET_STATS_AUTH_TOKEN || bodyLane === "outreach" ? "outreach" : "user";
+  await env.EMAIL_QUEUE.send({ to, subject, html, text, lane });
   return jsonResponse({ queued: true }, 202);
 }
 
@@ -742,7 +862,7 @@ async function handleTestDigest(request: Request, env: Env): Promise<Response> {
   if (!recipient) return jsonResponse({ error: "No signed-up recipient found with that email" }, 404);
 
   const job = await buildDigestJob(env, recipient, jobsCount, hotlistCount, topRoles);
-  await sendGmassEmail(env, job);
+  await sendEmail(env, job);
 
   let notified = false;
   try {
@@ -786,9 +906,12 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     try {
-      if (request.method === "GET" && pathname === "/unsubscribe") return await handleUnsubscribe(request, env);
-      if (request.method === "GET" && pathname === "/unsubscribe-publisher") return await handleUnsubscribePublisher(request, env);
-      if (request.method === "GET" && pathname === "/unsubscribe-low-credits") return await handleUnsubscribeLowCredits(request, env);
+      // GET is the link in the email footer; POST is the mail app's one-click
+      // unsubscribe (RFC 8058), which sends the same signed URL.
+      const unsubscribe = request.method === "GET" || request.method === "POST";
+      if (unsubscribe && pathname === "/unsubscribe") return await handleUnsubscribe(request, env);
+      if (unsubscribe && pathname === "/unsubscribe-publisher") return await handleUnsubscribePublisher(request, env);
+      if (unsubscribe && pathname === "/unsubscribe-low-credits") return await handleUnsubscribeLowCredits(request, env);
       if (request.method === "GET") return jsonResponse({ status: "ok" });
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
       if (pathname === "/send") return await handleSendRequest(request, env);
@@ -806,18 +929,19 @@ export default {
   async queue(batch: MessageBatch<EmailJob>, env: Env): Promise<void> {
     const paused = sendingPaused(env);
     for (const message of batch.messages) {
-      // Hold the message without calling GMass at all while paused — retrying
-      // immediately would just keep hammering a blocked account.
+      // Hold the message without calling the provider at all while paused —
+      // retrying immediately would just keep hammering a blocked account.
       if (paused) {
         message.retry({ delaySeconds: 1800 });
         continue;
       }
       try {
-        await sendGmassEmail(env, message.body);
+        await sendEmail(env, message.body);
         message.ack();
       } catch (error) {
-        console.error("Email queue job failed", error);
-        message.retry();
+        console.error("Email queue job failed", message.body.to, error);
+        if (error instanceof PermanentSendError) message.ack();
+        else message.retry({ delaySeconds: 60 });
       }
     }
   },

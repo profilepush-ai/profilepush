@@ -1,6 +1,6 @@
 # Email Notifications Worker
 
-General-purpose GMass email sender for ProfilePush, backed by a Cloudflare Queue. Its first (and currently only) producer is its own daily cron trigger, which sends every signed-up user a digest of jobs and hotlist profiles added in the last 24 hours — by email, and (via `notify-daily-digest`) as an in-app bell notification and push notification too. The `/send` endpoint is a generic entry point so future notification types (from Supabase functions or elsewhere) can queue an email without a new worker.
+General-purpose email sender for ProfilePush (Amazon SES for users, GMass for outreach; see "Sending lanes" below), backed by a Cloudflare Queue. Its first (and currently only) producer is its own daily cron trigger, which sends every signed-up user a digest of jobs and hotlist profiles added in the last 24 hours — by email, and (via `notify-daily-digest`) as an in-app bell notification and push notification too. The `/send` endpoint is a generic entry point so future notification types (from Supabase functions or elsewhere) can queue an email without a new worker.
 
 ## Depends on
 
@@ -36,6 +36,24 @@ npx supabase db push
 cd cloudflare/profilepush-email-notifications
 npx wrangler deploy
 ```
+
+## Sending lanes: Amazon SES and GMass
+
+Every email job has a lane, and the two lanes never share a sender:
+
+- **user** — email to people who signed up: the digest, credit reminders, and anything sent through `/send` with `WORKER_AUTH_TOKEN` (welcome email, signup alerts). Sent through **Amazon SES** (SESv2 `SendEmail`, signed with SigV4 in `sendSesEmail()`, no SDK) from `hello@mail.profilepush.ai`. Bulk email (digest, reminders) carries one-click unsubscribe headers (`List-Unsubscribe` + `List-Unsubscribe-Post`, RFC 8058), and the three `/unsubscribe*` routes accept the mail app's `POST` as well as the footer link's `GET`. Personal notifications go without those headers.
+- **outreach** — email to people who aren't users yet: market-stats-outreach pitches (`/send` with `MARKET_STATS_AUTH_TOKEN` or `"lane": "outreach"`) and "X subscribed to you" for unclaimed publishers. SES's terms forbid unsolicited email, so this lane **always stays on GMass**.
+
+SES setup (account in ap-southeast-2, out of the sandbox, 50,000/day at 14/second): the domain identity `mail.profilepush.ai` uses Easy DKIM, custom MAIL FROM is `noreply.mail.profilepush.ai`, and the IAM user `profilepush-ses-sender` can only send. Its keys are worker secrets:
+
+```bash
+npx wrangler secret put AWS_SES_ACCESS_KEY_ID
+npx wrangler secret put AWS_SES_SECRET_ACCESS_KEY
+```
+
+`max_concurrency = 1` on the queue consumer keeps sends under the 14/second limit. A message SES rejects for good (`MessageRejected`, a malformed address) is dropped. Anything else (throttling, a paused account, a bad key) retries after 60 seconds, so a config mistake holds email in the queue instead of losing it.
+
+**Rollback:** set `EMAIL_PROVIDER = "gmass"` in `wrangler.toml` and redeploy. The user lane then goes back to GMass.
 
 ## GMass configuration
 

@@ -20,6 +20,17 @@ GMASS_FROM_NAME = "Profile Push"
 # 30 days) — see "Warm-up ramp" in README.md. Set once; no need to touch it
 # again after the 30-day window passes.
 GMASS_WARMUP_START_DATE = "2026-08-23"
+# User-lane email (digest, credit reminders, welcome, signup alerts) goes
+# through Amazon SES; set to "gmass" and redeploy to roll back. Outreach-lane
+# email (non-users) always stays on GMass. AWS_SES_ACCESS_KEY_ID and
+# AWS_SES_SECRET_ACCESS_KEY are secrets (send-only IAM user).
+EMAIL_PROVIDER = "ses"
+AWS_SES_REGION = "ap-southeast-2"
+SES_FROM_EMAIL = "hello@mail.profilepush.ai"
+SES_FROM_NAME = "ProfilePush"
+# Where replies land. Switch to hello@mail.profilepush.ai once that Workspace
+# alias receives mail.
+SES_REPLY_TO = "profilepush.ai@gmail.com"
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5od3FjcXp2b3RnZG5ndHh1bHdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NjY3NDQsImV4cCI6MjA5NjQ0Mjc0NH0.DCPM9hZwqEsfmStT1beaUtp3P-uDVkCZL8xv0ZFpCss"
 APP_BASE_URL = "https://profilepush.ai"
@@ -34,4 +45,6 @@ queue = "email-notifications"
 max_batch_size = 10
 max_batch_timeout = 5
 max_retries = 5
+# One consumer at a time keeps sends under SES's 14/second account limit.
+max_concurrency = 1
 dead_letter_queue = "email-notifications-dlq"
