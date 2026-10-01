@@ -138,7 +138,7 @@ export default function PublicHotlistPage() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-lg font-extrabold text-gray-900">
-                  {lead.role_title || 'Available Consultant'}{lead.candidate_name ? ` — ${lead.candidate_name}` : ''}
+                  {lead.role_title || 'Available Consultant'}
                 </h1>
                 {isClosed && (
                   <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500">
@@ -210,17 +210,18 @@ export default function PublicHotlistPage() {
                   <p className="text-center text-[11px] text-gray-400 mt-3">You'll need to sign in first.</p>
                 )}
               </>
-            ) : lead.post_url ? (
-              <a
-                href={lead.post_url}
-                target="_blank"
-                rel="noreferrer"
+            ) : (
+              // Consultant identity stays inside the app; the public page
+              // never links out to the original post.
+              <button
+                type="button"
+                onClick={() => navigate(`/feed/hotlist/${lead.id}`)}
                 className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold text-sm px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
               >
                 <ExternalLink size={15} />
-                View Original Post
-              </a>
-            ) : null}
+                Open in ProfilePush
+              </button>
+            )}
           </div>
         </div>
       </div>
