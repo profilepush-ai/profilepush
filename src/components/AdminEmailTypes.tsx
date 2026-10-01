@@ -57,15 +57,6 @@ const SES_TYPES: EmailType[] = [
     example: 'Get ProfilePush on your phone',
   },
   {
-    category: 'screening_invite',
-    name: 'Screening invite',
-    to: 'A candidate submitted to a job posted in the app',
-    when: 'When a submission is made',
-    from: 'ProfilePush <hello@mail.profilepush.ai>',
-    optOut: 'None (one-time, about their own application)',
-    example: 'Quick video screening for Java Developer',
-  },
-  {
     category: 'signup_alert',
     name: 'Signup alert',
     to: 'The ProfilePush team (profilepush.ai@gmail.com)',

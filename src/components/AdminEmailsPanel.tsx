@@ -62,7 +62,7 @@ const CATEGORIES: Record<string, { label: string; detail: string; color: string 
   low_credits: { label: 'Low credits', detail: 'Daily upgrade reminder under half credits', color: '#d97706' },
   welcome: { label: 'Welcome', detail: 'Right after signup', color: '#059669' },
   signup_alert: { label: 'Signup alert', detail: 'New signup, to the ProfilePush team', color: '#64748b' },
-  screening_invite: { label: 'Screening invite', detail: 'Video screening link to a submitted candidate', color: '#7c3aed' },
+  screening_invite: { label: 'Screening invite (removed)', detail: 'Stopped 1 Oct: candidates are never emailed', color: '#c4b5fd' },
   subscriber_notice: { label: 'Subscriber notice', detail: '"X subscribed to you", to unclaimed publishers', color: '#db2777' },
   outreach_pitch: { label: 'Outreach pitch', detail: 'Market-stats pitch to non-users (paused)', color: '#0891b2' },
   campaign: { label: 'Campaigns', detail: 'Written and sent from Compose', color: '#0d9488' },

@@ -16,7 +16,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const APP_BASE_URL = "https://profilepush.ai";
 const MAX_SCREENING_TURNS = 3;
 
 function respond(body: unknown, status = 200) {
@@ -182,38 +181,9 @@ Deno.serve(async (req: Request) => {
 
     await supabase.from("job_applications").update({ status: "screening_sent" }).eq("id", applicationId);
 
-    // Email the candidate their screening link — best-effort, same as the
-    // resume parse: an email failure shouldn't fail the whole request, since
-    // the application + first question already exist and can be resent.
-    try {
-      const emailWorkerUrl = (Deno.env.get("EMAIL_WORKER_URL") ?? "").trim();
-      const emailWorkerToken = (Deno.env.get("EMAIL_WORKER_TOKEN") ?? "").trim();
-      if (emailWorkerUrl && emailWorkerToken && application.candidate_email) {
-        const screeningUrl = `${APP_BASE_URL}/screen/${applicationRow.screening_token}`;
-        const candidateFirstName = (application.candidate_name || "").trim().split(/\s+/)[0] || "";
-        const greeting = candidateFirstName ? `Hi ${candidateFirstName},` : "Hi,";
-        const subject = `Quick video screening for ${jobTitle}`;
-        const text = `${greeting}\n\nYou've been submitted for "${jobTitle}"${job?.company_name ? ` at ${job.company_name}` : ""}. Before this moves forward, please complete a short video screening — a few quick questions, answered on camera, no account needed:\n\n${screeningUrl}\n\nIt takes just a few minutes.\n\n— ProfilePush`;
-        const html = `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
-          <p>${greeting}</p>
-          <p>You've been submitted for <strong>${jobTitle}</strong>${job?.company_name ? ` at ${job.company_name}` : ""}. Before this moves forward, please complete a short video screening — a few quick questions, answered on camera, no account needed.</p>
-          <p><a href="${screeningUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Start screening</a></p>
-          <p style="color:#64748b;font-size:12px;">It takes just a few minutes.</p>
-        </body></html>`;
-
-        const sendResponse = await fetch(`${emailWorkerUrl.replace(/\/$/, "")}/send`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${emailWorkerToken}`, "Content-Type": "application/json" },
-          signal: AbortSignal.timeout(20_000),
-          body: JSON.stringify({ to: application.candidate_email, subject, html, text, category: "screening_invite" }),
-        });
-        if (!sendResponse.ok) {
-          console.error("process-job-application: email send failed", sendResponse.status, await sendResponse.text());
-        }
-      }
-    } catch (error) {
-      console.error("process-job-application: email send errored", error);
-    }
+    // ProfilePush never contacts candidates. The screening link goes to the
+    // bench sales recruiter who submitted them (SubmitApplicationModal shows
+    // it with Copy / Share), and they decide whether to pass it on.
 
     return respond({ ok: true });
   } catch (error) {
