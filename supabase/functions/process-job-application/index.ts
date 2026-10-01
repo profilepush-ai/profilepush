@@ -205,7 +205,7 @@ Deno.serve(async (req: Request) => {
           method: "POST",
           headers: { Authorization: `Bearer ${emailWorkerToken}`, "Content-Type": "application/json" },
           signal: AbortSignal.timeout(20_000),
-          body: JSON.stringify({ to: application.candidate_email, subject, html, text }),
+          body: JSON.stringify({ to: application.candidate_email, subject, html, text, category: "screening_invite" }),
         });
         if (!sendResponse.ok) {
           console.error("process-job-application: email send failed", sendResponse.status, await sendResponse.text());

@@ -82,7 +82,7 @@ Deno.serve(async (request: Request) => {
       method: "POST",
       headers: { Authorization: `Bearer ${workerToken}`, "Content-Type": "application/json" },
       signal: AbortSignal.timeout(20_000),
-      body: JSON.stringify({ to: NOTIFY_TO_EMAIL, subject, html, text }),
+      body: JSON.stringify({ to: NOTIFY_TO_EMAIL, subject, html, text, category: "signup_alert" }),
     });
 
     if (!sendResponse.ok) {
