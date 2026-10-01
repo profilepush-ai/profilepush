@@ -3,9 +3,10 @@ import { ArrowLeft, Bell, Mail, RefreshCcw, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 // Admin > Emails > Conversations: everyone we've emailed in the sidebar,
-// newest first; pick one to see everything we've sent them, oldest first:
+// newest first; pick one to see everything we've sent them:
 // each email (with its content when stored, status, opens and clicks) and,
-// for users, their in-app / push notifications. Stored email content is the
+// for users, their in-app / push notifications. Newest first, with the
+// newest email open. Stored email content is the
 // version before tracking, so opening it here never counts as their open.
 
 type Person = {
@@ -105,18 +106,34 @@ function inertHtml(html: string): string {
   return disabled.includes('</head>') ? disabled.replace('</head>', `${style}</head>`) : style + disabled;
 }
 
-function EmailBubble({ item }: { item: ThreadItem }) {
-  const [open, setOpen] = useState(false);
+// The first real line of the email, for a collapsed message.
+function snippet(item: ThreadItem): string {
+  const lines = (item.body_text ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const line = lines.find((l) => !/^(hi|hello)\b/i.test(l)) ?? lines[0] ?? '';
+  return line.length > 160 ? `${line.slice(0, 157)}…` : line;
+}
+
+// Grows the preview to the email's own height, so the email reads in full
+// with no scrollbar of its own. allow-same-origin (no scripts) is what lets
+// the page measure it.
+function fitToContent(frame: HTMLIFrameElement) {
+  const doc = frame.contentDocument;
+  if (doc?.documentElement) frame.style.height = `${doc.documentElement.scrollHeight + 4}px`;
+}
+
+function EmailBubble({ item, defaultOpen }: { item: ThreadItem; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const failed = item.status === 'failed' || item.status === 'rejected';
+  const hasContent = Boolean(item.body_html || item.body_text);
   return (
-    <div className="min-w-0 rounded-lg border border-gray-200 bg-white">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full min-w-0 flex-col gap-1.5 px-4 py-3 text-left hover:bg-gray-50">
-        <div className="flex min-w-0 items-center gap-2">
-          <Mail size={13} className="shrink-0 text-gray-400" />
-          <span className="truncate text-[13px] font-semibold text-gray-900">{item.subject || '(no subject)'}</span>
-          <span className="ml-auto shrink-0 text-[11px] text-gray-500" title={fullTime(item.created_at)}>{fullTime(item.created_at)}</span>
+    <article className="min-w-0 shrink-0 rounded-xl border border-gray-200 bg-white shadow-sm">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full min-w-0 flex-col gap-1.5 rounded-xl px-4 py-3 text-left hover:bg-gray-50">
+        <div className="flex min-w-0 items-start gap-2">
+          <Mail size={14} className="mt-0.5 shrink-0 text-gray-400" />
+          <span className={`min-w-0 flex-1 text-[14px] font-semibold text-gray-900 ${open ? '' : 'truncate'}`}>{item.subject || '(no subject)'}</span>
+          <span className="shrink-0 text-[11px] text-gray-500">{fullTime(item.created_at)}</span>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 pl-6">
           <Chip tone="gray">{label(item.category)}</Chip>
           <Chip tone="gray">{item.provider === 'ses' ? 'Amazon SES' : item.provider === 'gmass' ? 'GMass' : item.provider ?? ''}</Chip>
           {failed && <Chip tone="red">{item.status === 'rejected' ? 'Rejected' : 'Failed'}</Chip>}
@@ -126,28 +143,37 @@ function EmailBubble({ item }: { item: ThreadItem }) {
           {item.opened_at && <Chip tone="sky">{`Opened ${when(item.opened_at)} ago`}</Chip>}
           {item.clicked_at && <Chip tone="blue">{`Clicked ${when(item.clicked_at)} ago`}</Chip>}
         </div>
+        {!open && (
+          <p className="truncate pl-6 text-[12px] text-gray-500">{hasContent ? snippet(item) : 'Content wasn’t stored for this email.'}</p>
+        )}
       </button>
       {open && (
         <div className="border-t border-gray-100">
           {item.body_html ? (
             <>
-              <iframe title={item.subject ?? 'Email'} srcDoc={inertHtml(item.body_html)} sandbox="" className="h-[520px] w-full" />
+              <iframe
+                title={item.subject ?? 'Email'}
+                srcDoc={inertHtml(item.body_html)}
+                sandbox="allow-same-origin"
+                onLoad={(e) => fitToContent(e.currentTarget)}
+                className="block h-[480px] w-full"
+              />
               <p className="border-t border-gray-100 px-4 py-2 text-[11px] text-gray-400">Links are turned off in this preview, so it can&apos;t claim, remove or unsubscribe for them.</p>
             </>
           ) : item.body_text ? (
-            <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap break-words px-4 py-3 font-sans text-[13px] text-gray-700">{item.body_text}</pre>
+            <pre className="whitespace-pre-wrap break-words px-5 py-4 font-sans text-[13px] leading-relaxed text-gray-700">{item.body_text}</pre>
           ) : (
-            <p className="px-4 py-3 text-[12px] text-gray-500">Content wasn&apos;t stored for this email (sent before content was saved, on 1 Oct 2026).</p>
+            <p className="px-5 py-4 text-[12px] text-gray-500">Content wasn&apos;t stored for this email. Emails sent before 1 Oct 2026, 14:00 UTC show their subject and status only.</p>
           )}
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
 function NotificationBubble({ item }: { item: ThreadItem }) {
   return (
-    <div className="flex min-w-0 gap-2.5 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-2.5">
+    <div className="flex min-w-0 shrink-0 gap-2.5 rounded-xl border border-dashed border-gray-200 bg-white/70 px-4 py-2.5">
       <Bell size={13} className="mt-0.5 shrink-0 text-gray-400" />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
@@ -194,7 +220,7 @@ export default function AdminEmailConversations() {
     setThreadLoading(true);
     try {
       const data = await callAdminEmails({ action: 'thread', email: person.email });
-      setThread(((data.rows ?? []) as ThreadItem[]).slice().reverse());
+      setThread((data.rows ?? []) as ThreadItem[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load this conversation.');
     } finally {
@@ -203,6 +229,8 @@ export default function AdminEmailConversations() {
   }
 
   useEffect(() => { void loadPeople(filter, search); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [filter]);
+
+  const firstEmailId = useMemo(() => thread?.find((t) => t.kind === 'email')?.id ?? null, [thread]);
 
   const threadSummary = useMemo(() => {
     if (!thread) return '';
@@ -214,10 +242,10 @@ export default function AdminEmailConversations() {
   const pill = (active: boolean) => `rounded-full px-2.5 py-1 text-[11px] font-semibold ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
 
   return (
-    <div className="flex min-h-[620px] min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white">
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white">
       {/* Sidebar */}
-      <aside className={`${selected ? 'hidden md:flex' : 'flex'} w-full min-w-0 flex-col border-r border-gray-200 md:w-80 md:shrink-0`}>
-        <div className="flex flex-col gap-2 border-b border-gray-100 p-3">
+      <aside className={`${selected ? 'hidden md:flex' : 'flex'} min-h-0 w-full min-w-0 flex-col border-r border-gray-200 md:w-80 md:shrink-0`}>
+        <div className="flex shrink-0 flex-col gap-2 border-b border-gray-100 p-3">
           <form className="flex items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); void loadPeople(filter, search); }}>
             <div className="relative min-w-0 flex-1">
               <Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -239,7 +267,7 @@ export default function AdminEmailConversations() {
             <button type="button" className={pill(filter === 'non_users')} onClick={() => setFilter('non_users')}>Not users</button>
           </div>
         </div>
-        {error && <p className="px-3 py-2 text-[12px] text-red-600">{error}</p>}
+        {error && <p className="shrink-0 px-3 py-2 text-[12px] text-red-600">{error}</p>}
         <ul className="min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto">
           {(people ?? []).map((p) => (
             <li key={p.email}>
@@ -269,14 +297,14 @@ export default function AdminEmailConversations() {
       </aside>
 
       {/* Thread */}
-      <section className={`${selected ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col`}>
+      <section className={`${selected ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 flex-1 flex-col`}>
         {!selected ? (
           <div className="flex flex-1 items-center justify-center px-6 text-center text-[13px] text-gray-500">
             Pick someone on the left to see everything we&apos;ve sent them.
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
+            <div className="flex shrink-0 items-center gap-3 border-b border-gray-100 px-4 py-3">
               <button type="button" onClick={() => setSelected(null)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 md:hidden" aria-label="Back">
                 <ArrowLeft size={15} />
               </button>
@@ -288,10 +316,11 @@ export default function AdminEmailConversations() {
                 <div className="truncate text-[12px] text-gray-500">{selected.email}{threadSummary ? ` · ${threadSummary}` : ''}</div>
               </div>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto bg-gray-50/60 p-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-gray-50 p-4">
               {threadLoading && <p className="text-center text-[12px] text-gray-500">Loading…</p>}
+              {thread && thread.length > 0 && <p className="text-[11px] text-gray-400">Newest first. Click any message to open or close it.</p>}
               {(thread ?? []).map((item) => (item.kind === 'email'
-                ? <EmailBubble key={`e-${item.id}`} item={item} />
+                ? <EmailBubble key={`e-${item.id}`} item={item} defaultOpen={item.id === firstEmailId} />
                 : <NotificationBubble key={`n-${item.id}`} item={item} />))}
               {thread && thread.length === 0 && <p className="text-center text-[12px] text-gray-500">Nothing sent yet.</p>}
             </div>
