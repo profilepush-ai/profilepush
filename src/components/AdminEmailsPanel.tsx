@@ -450,8 +450,10 @@ export default function AdminEmailsPanel() {
     active ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-800'
   }`;
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-      <div className="flex gap-5 overflow-x-auto border-b border-gray-200">
+    // Conversations fills the screen and scrolls inside its own panes; the
+    // other tabs scroll as a page.
+    <div className={`flex min-h-0 flex-1 flex-col gap-3 p-4 ${tab === 'conversations' ? 'h-full overflow-hidden' : 'overflow-y-auto'}`}>
+      <div className="flex shrink-0 gap-5 overflow-x-auto border-b border-gray-200">
         <button type="button" className={tabClass(tab === 'performance')} onClick={() => setTab('performance')}>Performance</button>
         <button type="button" className={tabClass(tab === 'conversations')} onClick={() => setTab('conversations')}>Conversations</button>
         <button type="button" className={tabClass(tab === 'types')} onClick={() => setTab('types')}>Email types</button>
