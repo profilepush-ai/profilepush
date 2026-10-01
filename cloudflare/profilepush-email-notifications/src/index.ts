@@ -23,6 +23,8 @@ export interface Env {
   SES_FROM_EMAIL: string;
   SES_FROM_NAME: string;
   SES_REPLY_TO: string;
+  // Secret in the SNS subscription URL that delivers SES events to /ses-events.
+  SES_EVENTS_TOKEN: string;
 }
 
 // Two lanes that never share a sender. "user" is email to people who signed
@@ -38,6 +40,10 @@ type EmailJob = {
   html: string;
   text: string;
   lane?: EmailLane;
+  // What kind of email this is, for Admin > Emails: digest, low_credits,
+  // welcome, signup_alert, screening_invite, subscriber_notice,
+  // outreach_pitch or other.
+  category?: string;
   // Set on bulk email (digest, reminders) to add one-click unsubscribe
   // headers (RFC 8058), which Gmail and Outlook require from bulk senders.
   // Left off personal notifications so they read as one-to-one email.
@@ -301,7 +307,7 @@ async function buildDigestJob(
 ): Promise<EmailJob> {
   const unsubscribeUrl = await buildUnsubscribeUrl(env, recipient.user_id, recipient.account_id);
   const { subject, text, html } = renderDigestEmail(jobsCount, hotlistCount, topRoles, unsubscribeUrl, env.APP_BASE_URL);
-  return { to: recipient.email, subject, text, html, lane: "user", unsubscribeUrl };
+  return { to: recipient.email, subject, text, html, lane: "user", category: "digest", unsubscribeUrl };
 }
 
 async function notifyInAppAndPush(env: Env, recipients: DigestRecipient[], jobsCount: number, hotlistCount: number): Promise<void> {
@@ -486,7 +492,7 @@ Don't want these emails? Unsubscribe: ${unsubscribeUrl}`;
 </html>`;
 
   // Unclaimed publishers aren't users yet, so this is outreach-lane email.
-  return { to: row.email, subject, text, html, lane: "outreach", unsubscribeUrl };
+  return { to: row.email, subject, text, html, lane: "outreach", category: "subscriber_notice", unsubscribeUrl };
 }
 
 // Called by the email_unclaimed_publisher_after_follow trigger (pg_net), which
@@ -534,6 +540,7 @@ async function handleUnsubscribePublisher(request: Request, env: Env): Promise<R
   if (!response.ok) {
     return new Response("Something went wrong. Please try again later.", { status: 500, headers: { "Content-Type": "text/plain" } });
   }
+  await logUnsubscribe(env, "subscriber_notice", null, email);
   return new Response("You've been unsubscribed from ProfilePush subscriber emails.", { status: 200, headers: { "Content-Type": "text/plain" } });
 }
 
@@ -631,7 +638,7 @@ Don't want these reminders? Unsubscribe: ${unsubscribeUrl}`;
 </body>
 </html>`;
 
-  return { to: r.email, subject, text, html, lane: "user", unsubscribeUrl };
+  return { to: r.email, subject, text, html, lane: "user", category: "low_credits", unsubscribeUrl };
 }
 
 async function runLowCreditEmails(env: Env): Promise<{ emailed: number }> {
@@ -681,6 +688,7 @@ async function handleUnsubscribeLowCredits(request: Request, env: Env): Promise<
   if (!response.ok) {
     return new Response("Something went wrong. Please try again later.", { status: 500, headers: { "Content-Type": "text/plain" } });
   }
+  await logUnsubscribe(env, "low_credits", userId, null);
   return new Response("You've been unsubscribed from ProfilePush credit reminders.", { status: 200, headers: { "Content-Type": "text/plain" } });
 }
 
@@ -693,7 +701,7 @@ function sendingPaused(env: Env): boolean {
   return env.EMAIL_SENDING_PAUSED === "true";
 }
 
-async function sendGmassEmail(env: Env, job: EmailJob): Promise<void> {
+async function sendGmassEmail(env: Env, job: EmailJob): Promise<string | null> {
   const response = await fetch("https://api.gmass.co/api/transactional", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-apikey": env.GMASS_API_KEY },
@@ -711,6 +719,7 @@ async function sendGmassEmail(env: Env, job: EmailJob): Promise<void> {
     const errorMessage = payload.message ?? `GMass HTTP ${response.status}`;
     throw new Error(errorMessage);
   }
+  return null;
 }
 
 // ── Amazon SES (user lane) ──────────────────────────────────────────────────
@@ -734,7 +743,7 @@ async function hmacRaw(key: ArrayBuffer | Uint8Array, data: string): Promise<Arr
   return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
 }
 
-async function sendSesEmail(env: Env, job: EmailJob): Promise<void> {
+async function sendSesEmail(env: Env, job: EmailJob): Promise<string | null> {
   const region = env.AWS_SES_REGION;
   const host = `email.${region}.amazonaws.com`;
   const path = "/v2/email/outbound-emails";
@@ -786,7 +795,10 @@ async function sendSesEmail(env: Env, job: EmailJob): Promise<void> {
     },
     body,
   });
-  if (response.ok) return;
+  if (response.ok) {
+    const payload = await response.json<{ MessageId?: string }>().catch(() => ({}) as { MessageId?: string });
+    return payload.MessageId ?? null;
+  }
 
   const detail = (await response.text().catch(() => "")).slice(0, 300);
   const errorType = response.headers.get("x-amzn-ErrorType") ?? "";
@@ -799,12 +811,104 @@ async function sendSesEmail(env: Env, job: EmailJob): Promise<void> {
   throw new Error(`SES ${errorType || response.status}: ${detail}`);
 }
 
-async function sendEmail(env: Env, job: EmailJob): Promise<void> {
+function providerFor(env: Env, job: EmailJob): "ses" | "gmass" {
   // Jobs queued before lanes existed have no lane; they were all user email
   // except /send calls from market-stats-outreach, which now always set one.
-  const lane = job.lane ?? "user";
-  if (lane === "user" && env.EMAIL_PROVIDER === "ses") return sendSesEmail(env, job);
-  return sendGmassEmail(env, job);
+  return (job.lane ?? "user") === "user" && env.EMAIL_PROVIDER === "ses" ? "ses" : "gmass";
+}
+
+async function sendEmail(env: Env, job: EmailJob): Promise<string | null> {
+  return providerFor(env, job) === "ses" ? sendSesEmail(env, job) : sendGmassEmail(env, job);
+}
+
+// Records one send for Admin > Emails. Best-effort: a logging failure never
+// fails or repeats the email itself.
+async function logSend(
+  env: Env,
+  job: EmailJob,
+  status: "sent" | "rejected" | "failed",
+  messageId: string | null,
+  error?: unknown,
+): Promise<void> {
+  try {
+    const response = await supabaseRequest(env, "email_sends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({
+        category: job.category ?? "other",
+        lane: job.lane ?? "user",
+        provider: providerFor(env, job),
+        to_email: job.to,
+        subject: job.subject.slice(0, 300),
+        status,
+        provider_message_id: messageId,
+        error: error ? String((error as Error).message ?? error).slice(0, 500) : null,
+      }),
+    });
+    if (!response.ok) console.error("email_sends insert failed", response.status, await response.text().catch(() => ""));
+  } catch (err) {
+    console.error("email_sends insert threw", err);
+  }
+}
+
+async function logUnsubscribe(env: Env, category: string, userId: string | null, email: string | null): Promise<void> {
+  try {
+    await supabaseRequest(env, "email_unsubscribes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ category, user_id: userId, email }),
+    });
+  } catch (err) {
+    console.error("email_unsubscribes insert threw", err);
+  }
+}
+
+// ── SES events (delivery, bounce, complaint) ────────────────────────────────
+// The SES configuration set publishes events to an SNS topic, whose HTTPS
+// subscription posts here with ?token=SES_EVENTS_TOKEN. The first post is a
+// subscription confirmation, confirmed by visiting its SubscribeURL.
+type SesEvent = {
+  eventType?: string;
+  notificationType?: string;
+  mail?: { messageId?: string; timestamp?: string };
+  bounce?: { bounceType?: string; bounceSubType?: string; timestamp?: string };
+  complaint?: { timestamp?: string };
+  delivery?: { timestamp?: string };
+  reject?: { reason?: string };
+};
+
+async function handleSesEvents(request: Request, env: Env): Promise<Response> {
+  const token = new URL(request.url).searchParams.get("token") ?? "";
+  if (!env.SES_EVENTS_TOKEN || !timingSafeEqual(token, env.SES_EVENTS_TOKEN)) return jsonResponse({ error: "Unauthorized" }, 401);
+
+  const envelope = JSON.parse(await request.text()) as { Type?: string; SubscribeURL?: string; Message?: string };
+  if (envelope.Type === "SubscriptionConfirmation" && envelope.SubscribeURL) {
+    const confirmUrl = new URL(envelope.SubscribeURL);
+    if (confirmUrl.protocol !== "https:" || !/^sns\.[a-z0-9-]+\.amazonaws\.com$/.test(confirmUrl.hostname)) {
+      return jsonResponse({ error: "Unexpected SubscribeURL" }, 400);
+    }
+    const confirmed = await fetch(confirmUrl.toString());
+    return jsonResponse({ confirmed: confirmed.ok });
+  }
+  if (envelope.Type !== "Notification" || !envelope.Message) return jsonResponse({ ignored: true });
+
+  const event = JSON.parse(envelope.Message) as SesEvent;
+  const kind = event.eventType ?? event.notificationType ?? "";
+  const messageId = event.mail?.messageId;
+  if (!messageId || !["Delivery", "Bounce", "Complaint", "Reject"].includes(kind)) return jsonResponse({ ignored: true });
+
+  const at = event.delivery?.timestamp ?? event.bounce?.timestamp ?? event.complaint?.timestamp ?? event.mail?.timestamp ?? new Date().toISOString();
+  const detail = kind === "Bounce"
+    ? [event.bounce?.bounceType, event.bounce?.bounceSubType].filter(Boolean).join(" / ")
+    : kind === "Reject" ? event.reject?.reason ?? null : null;
+  const response = await supabaseRequest(env, "rpc/record_email_event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_message_id: messageId, p_event: kind, p_at: at, p_detail: detail }),
+  });
+  // A non-2xx makes SNS retry, which is what we want if the database hiccups.
+  if (!response.ok) return jsonResponse({ error: `record_email_event HTTP ${response.status}` }, 500);
+  return jsonResponse({ recorded: kind });
 }
 
 // Accepts either the general admin token or market-stats-outreach's own
@@ -828,7 +932,11 @@ async function handleSendRequest(request: Request, env: Env): Promise<Response> 
   // with its token, or marked outreach, never goes through SES.
   const bodyLane = (body as { lane?: unknown }).lane;
   const lane: EmailLane = token === env.MARKET_STATS_AUTH_TOKEN || bodyLane === "outreach" ? "outreach" : "user";
-  await env.EMAIL_QUEUE.send({ to, subject, html, text, lane });
+  const bodyCategory = (body as { category?: unknown }).category;
+  const category = typeof bodyCategory === "string" && /^[a-z_]{1,40}$/.test(bodyCategory)
+    ? bodyCategory
+    : lane === "outreach" ? "outreach_pitch" : "other";
+  await env.EMAIL_QUEUE.send({ to, subject, html, text, lane, category });
   return jsonResponse({ queued: true }, 202);
 }
 
@@ -862,7 +970,7 @@ async function handleTestDigest(request: Request, env: Env): Promise<Response> {
   if (!recipient) return jsonResponse({ error: "No signed-up recipient found with that email" }, 404);
 
   const job = await buildDigestJob(env, recipient, jobsCount, hotlistCount, topRoles);
-  await sendEmail(env, job);
+  await logSend(env, job, "sent", await sendEmail(env, job));
 
   let notified = false;
   try {
@@ -896,6 +1004,7 @@ async function handleUnsubscribe(request: Request, env: Env): Promise<Response> 
     return new Response("Something went wrong. Please try again later.", { status: 500, headers: { "Content-Type": "text/plain" } });
   }
 
+  await logUnsubscribe(env, "digest", userId, null);
   return new Response(
     "You've been unsubscribed from ProfilePush daily update emails.",
     { status: 200, headers: { "Content-Type": "text/plain" } },
@@ -919,6 +1028,7 @@ export default {
       if (pathname === "/test-digest") return await handleTestDigest(request, env);
       if (pathname === "/publisher-subscribed") return await handlePublisherSubscribed(request, env);
       if (pathname === "/run-low-credit-emails") return await handleRunLowCreditEmails(request, env);
+      if (pathname === "/ses-events") return await handleSesEvents(request, env);
       return jsonResponse({ error: "Not found" }, 404);
     } catch (error) {
       console.error("Email notification request failed", error);
@@ -936,12 +1046,19 @@ export default {
         continue;
       }
       try {
-        await sendEmail(env, message.body);
+        const messageId = await sendEmail(env, message.body);
         message.ack();
+        await logSend(env, message.body, "sent", messageId);
       } catch (error) {
         console.error("Email queue job failed", message.body.to, error);
-        if (error instanceof PermanentSendError) message.ack();
-        else message.retry({ delaySeconds: 60 });
+        if (error instanceof PermanentSendError) {
+          message.ack();
+          await logSend(env, message.body, "rejected", null, error);
+        } else {
+          message.retry({ delaySeconds: 60 });
+          // max_retries is 5, so the sixth failed attempt is the last one.
+          if (message.attempts > 5) await logSend(env, message.body, "failed", null, error);
+        }
       }
     }
   },

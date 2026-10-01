@@ -7,6 +7,7 @@ import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
 import AdminAiPromptsPanel from '../components/AdminAiPromptsPanel';
 import AdminChannelsPanel from '../components/AdminChannelsPanel';
 import AdminListsPanel from '../components/AdminListsPanel';
+import AdminEmailsPanel from '../components/AdminEmailsPanel';
 import AdminMarketPanel from '../components/AdminMarketPanel';
 import AdminSocialPosterPanel from '../components/AdminSocialPosterPanel';
 import AdminNotificationsPanel from '../components/AdminNotificationsPanel';
@@ -94,7 +95,7 @@ interface LinkedinScraperConfig {
   updated_at: string;
 }
 
-type AdminView = 'stats' | 'lists' | 'scraper' | 'scraper-logs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social' | 'notifications';
+type AdminView = 'stats' | 'lists' | 'emails' | 'scraper' | 'scraper-logs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social' | 'notifications';
 
 // The sidebar renders from this rather than from nine hand-written buttons,
 // which is what the top nav had become — adding a section meant editing the
@@ -102,6 +103,7 @@ type AdminView = 'stats' | 'lists' | 'scraper' | 'scraper-logs' | 'ai-prompts' |
 const ADMIN_NAV: Array<{ id: AdminView; label: string; Icon: typeof TrendingUp }> = [
   { id: 'stats', label: 'Account Stats', Icon: UserRound },
   { id: 'lists', label: 'Lists', Icon: ListIcon },
+  { id: 'emails', label: 'Emails', Icon: Mail },
   { id: 'scraper', label: 'Scraper Config', Icon: Database },
   { id: 'scraper-logs', label: 'Scraper Logs', Icon: FileSearch },
   { id: 'ai-prompts', label: 'AI Prompts', Icon: Sparkles },
@@ -694,6 +696,7 @@ export default function AdminDashboard() {
         : 'LinkedIn keyword search configuration')
       : adminView === 'scraper-logs' ? 'Hourly group and keyword pipeline logs'
       : adminView === 'lists' ? 'Vendor and bench sales contacts for GMass'
+      : adminView === 'emails' ? 'Every email we send, by type, and how it performs'
       : adminView === 'channels' ? 'Team channels'
       : adminView === 'market' ? 'Market Pulse leaderboard'
       : adminView === 'trends' ? 'Platform-wide daily trends'
@@ -1312,6 +1315,7 @@ export default function AdminDashboard() {
         {adminView === 'ai-prompts' && <AdminAiPromptsPanel />}
         {adminView === 'channels' && <AdminChannelsPanel />}
         {adminView === 'lists' && <AdminListsPanel />}
+        {adminView === 'emails' && <AdminEmailsPanel />}
         {adminView === 'market' && <AdminMarketPanel />}
         {adminView === 'trends' && <AdminTrendsPanel />}
         {adminView === 'post-outreach' && <AdminPostOutreachPanel />}
