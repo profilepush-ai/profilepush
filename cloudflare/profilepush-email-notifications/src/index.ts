@@ -769,6 +769,154 @@ Don't want these emails? Unsubscribe: ${unsubscribeUrl}`;
   return { to: row.email, subject, text, html, lane: "outreach", category: "subscriber_notice", unsubscribeUrl };
 }
 
+// ── Daily "X subscribed to you" for unclaimed publishers ────────────────────
+// Once a day, each unclaimed publisher with new subscribers gets one plain
+// email naming them, with a one-tap claim link (claim-profile signs them in
+// and lands them on their profile), a link to their public profile, and
+// links to remove the profile or stop these emails. These people aren't
+// users, so it's outreach lane (GMass), never SES.
+type SubscriberDigest = {
+  publisher_id: string;
+  email: string;
+  slug: string;
+  display_name: string;
+  post_noun: "requirements" | "hotlists";
+  new_count: number;
+  total_count: number;
+  new_names: string[];
+  new_follower_ids: string[];
+};
+
+async function buildRemoveProfileUrl(env: Env, email: string): Promise<string> {
+  const sig = await hmacHex(env.UNSUBSCRIBE_SECRET, `remove-profile:${email}`);
+  const url = new URL("/remove-profile", env.WORKER_BASE_URL);
+  url.searchParams.set("e", email);
+  url.searchParams.set("sig", sig);
+  return url.toString();
+}
+
+async function createClaimUrl(env: Env, publisherId: string): Promise<string | null> {
+  const response = await supabaseRequest(env, "rpc/create_profile_claim_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_publisher_id: publisherId }),
+  });
+  if (!response.ok) return null;
+  const token = await response.json<string | null>();
+  return token ? `${env.SUPABASE_URL}/functions/v1/claim-profile?t=${token}` : null;
+}
+
+function renderSubscriberDigest(d: SubscriberDigest, urls: { claim: string; profile: string; remove: string; unsubscribe: string }): EmailJob {
+  const first = (d.display_name || "").trim().split(/\s+/)[0] || "";
+  const names = d.new_names.filter(Boolean);
+  // "Priya (Acme)", "Priya and Ravi", "Priya, Ravi and 3 others".
+  const rest = (n: number) => `${n} ${n === 1 ? "other" : "others"}`;
+  const who = names.length === 0
+    ? `${d.new_count} ${d.new_count === 1 ? "recruiter" : "recruiters"}`
+    : d.new_count === 1 ? names[0]
+    : names.length === 1 ? `${names[0]} and ${rest(d.new_count - 1)}`
+    : d.new_count === 2 ? `${names[0]} and ${names[1]}`
+    : `${names[0]}, ${names[1]} and ${rest(d.new_count - 2)}`;
+  const leadName = names[0] ? names[0].replace(/\s*\(.*\)$/, "") : "Recruiters";
+  const subject = names.length === 0
+    ? `${who} subscribed to your ${d.post_noun} on ProfilePush`
+    : d.new_count === 1
+    ? `${leadName} subscribed to your ${d.post_noun} on ProfilePush`
+    : `${leadName} and ${d.new_count - 1} ${d.new_count - 1 === 1 ? "other" : "others"} subscribed to your ${d.post_noun}`;
+  const line1 = `${who} subscribed to your ${d.post_noun} on ProfilePush. They'll see your new ${d.post_noun} as soon as you post them.`;
+  const line2 = d.total_count > d.new_count ? `You now have ${d.total_count} subscribers.` : "";
+  const claimLine = "Claim your profile to see who subscribes, get matches for your posts every morning, and reply in one click. It's free and takes one tap, no password.";
+
+  const text = `${first ? `Hi ${first},` : "Hi,"}
+
+${line1}${line2 ? `\n${line2}` : ""}
+
+${claimLine}
+Claim your profile: ${urls.claim}
+
+Your profile: ${urls.profile}
+
+---
+Not you, or don't want a profile? Remove my profile: ${urls.remove}
+Stop these emails: ${urls.unsubscribe}`;
+
+  const p = (t: string) => `<p style="margin: 0 0 14px; font-size: 15px; line-height: 1.55; color: #1e293b;">${t}</p>`;
+  const html = `<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(subject)}</title></head>
+<body style="margin: 0; padding: 24px 20px; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 520px;">
+    ${p(escapeHtml(first ? `Hi ${first},` : "Hi,"))}
+    ${p(`${escapeHtml(line1)}${line2 ? `<br>${escapeHtml(line2)}` : ""}`)}
+    ${p(escapeHtml(claimLine))}
+    <p style="margin: 0 0 20px;"><a href="${urls.claim}" style="display: inline-block; padding: 11px 22px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">Claim your profile</a></p>
+    ${p(`<a href="${urls.profile}" style="color: #2563eb;">See your profile</a>`)}
+    <p style="margin: 24px 0 0; font-size: 12px; color: #94a3b8; line-height: 1.6;">
+      ProfilePush, the AI copilot for vendors and bench sales recruiters.<br>
+      Not you, or don't want a profile? <a href="${urls.remove}" style="color: #94a3b8;">Remove my profile</a> · <a href="${urls.unsubscribe}" style="color: #94a3b8;">Stop these emails</a>
+    </p>
+  </div>
+</body>
+</html>`;
+  return { to: d.email, subject, html, text, lane: "outreach", category: "subscriber_notice", unsubscribeUrl: urls.unsubscribe };
+}
+
+async function runSubscriberDigests(env: Env): Promise<{ emailed: number }> {
+  const response = await supabaseRequest(env, "rpc/get_pending_subscriber_digests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_limit: 300 }),
+  });
+  if (!response.ok) throw new Error(`get_pending_subscriber_digests HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  const rows = await response.json<SubscriberDigest[]>();
+  const base = env.APP_BASE_URL.replace(/\/$/, "");
+  const jobs: EmailJob[] = [];
+  const sent: Array<{ publisher_id: string; follower_ids: string[] }> = [];
+  for (const d of rows) {
+    const profile = `${base}/profile/${encodeURIComponent(d.slug)}`;
+    const claim = (await createClaimUrl(env, d.publisher_id)) ?? `${base}/signup?email=${encodeURIComponent(d.email)}`;
+    jobs.push(renderSubscriberDigest(d, {
+      claim,
+      profile,
+      remove: await buildRemoveProfileUrl(env, d.email),
+      unsubscribe: await buildPublisherUnsubscribeUrl(env, d.email),
+    }));
+    sent.push({ publisher_id: d.publisher_id, follower_ids: d.new_follower_ids });
+  }
+  for (const chunk of chunkEmailJobsForQueue(jobs)) {
+    await env.EMAIL_QUEUE.sendBatch(chunk.map((job) => ({ body: job })));
+  }
+  if (sent.length > 0) {
+    const marked = await supabaseRequest(env, "rpc/mark_subscriber_digests_sent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ p_rows: sent }),
+    });
+    if (!marked.ok) console.error("mark_subscriber_digests_sent failed", marked.status, await marked.text().catch(() => ""));
+  }
+  return { emailed: jobs.length };
+}
+
+async function handleRemoveProfile(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const email = (url.searchParams.get("e") ?? "").trim().toLowerCase();
+  const sig = url.searchParams.get("sig") ?? "";
+  const expected = await hmacHex(env.UNSUBSCRIBE_SECRET, `remove-profile:${email}`);
+  if (!email || !timingSafeEqual(sig, expected)) {
+    return new Response("Invalid or expired link.", { status: 400, headers: { "Content-Type": "text/plain" } });
+  }
+  const response = await supabaseRequest(env, "rpc/remove_publisher_profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_email: email }),
+  });
+  if (!response.ok) {
+    return new Response("Something went wrong. Please try again later.", { status: 500, headers: { "Content-Type": "text/plain" } });
+  }
+  await logUnsubscribe(env, "profile_removed", null, email);
+  return new Response("Your ProfilePush profile has been removed, and we won't email you about it again.", { status: 200, headers: { "Content-Type": "text/plain" } });
+}
+
 // Called by the email_unclaimed_publisher_after_follow trigger (pg_net), which
 // authenticates with the service role key — the same key this worker holds.
 async function handlePublisherSubscribed(request: Request, env: Env): Promise<Response> {
@@ -1434,10 +1582,15 @@ export default {
       if (unsubscribe && pathname === "/unsubscribe-publisher") return await handleUnsubscribePublisher(request, env);
       if (unsubscribe && pathname === "/unsubscribe-low-credits") return await handleUnsubscribeLowCredits(request, env);
       if (unsubscribe && pathname === "/unsubscribe-announcements") return await handleUnsubscribeAnnouncements(request, env);
+      if (request.method === "GET" && pathname === "/remove-profile") return await handleRemoveProfile(request, env);
       if (request.method === "GET") return jsonResponse({ status: "ok" });
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
       if (pathname === "/send") return await handleSendRequest(request, env);
       if (pathname === "/run-digest") return await handleRunDigest(request, env);
+      if (pathname === "/run-subscriber-digests") {
+        if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
+        return jsonResponse(await runSubscriberDigests(env));
+      }
       if (pathname === "/run-morning-brief") {
         if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
         return jsonResponse(await runMorningBrief(env));
@@ -1490,6 +1643,9 @@ export default {
       }),
       runMorningBrief(env).then((result) => {
         console.log(`Morning brief: emailed ${result.emailed}, skipped ${result.skipped}${result.reason ? ` (${result.reason})` : ""}`);
+      }),
+      runSubscriberDigests(env).then((result) => {
+        console.log(`Subscriber emails to unclaimed publishers: ${result.emailed}`);
       }),
       runJobMatchNotifications(env),
       runLowCreditEmails(env).then((result) => {
