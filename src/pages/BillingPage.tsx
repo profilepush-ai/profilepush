@@ -15,6 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
 import { getBillingErrorMessage, TIERS, fmtINR, openRazorpayCheckout } from '../lib/billing-plan';
 import { PlanModal } from '../components/PlanModal';
+import { fetchFirstPurchaseOffer, formatCountdown, useOfferCountdown } from '../lib/first-purchase-offer';
 
 declare global {
   interface Window {
@@ -246,6 +247,10 @@ export default function BillingPage() {
   const [buyingCredits, setBuyingCredits]             = useState(false);
   // Shown after a top-up: confirmed (credits added) or still confirming.
   const [purchaseResult, setPurchaseResult] = useState<{ credits: number; balance: number | null; paymentId: string; confirmed: boolean } | null>(null);
+  // First-purchase offer (double credits for an hour), if this account has one live.
+  const [offerExpiresAt, setOfferExpiresAt] = useState<Date | null>(null);
+  const offerSecondsLeft = useOfferCountdown(offerExpiresAt);
+  const offerLive = offerExpiresAt !== null && offerSecondsLeft > 0;
   const [purchases, setPurchases] = useState<Array<{ razorpay_order_id: string; razorpay_payment_id: string | null; credits: number; amount_inr_paise: number; created_at: string; paid_at: string | null }>>([]);
 
   const loadPurchases = useCallback(async () => {
@@ -290,6 +295,13 @@ export default function BillingPage() {
   }, [account?.id, timeframe]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!account?.id) return;
+    let cancelled = false;
+    void fetchFirstPurchaseOffer(account.id).then((date) => { if (!cancelled) setOfferExpiresAt(date); });
+    return () => { cancelled = true; };
+  }, [account?.id]);
 
   useEffect(() => {
     if (autoOpenPlanRef.current) return;
@@ -578,7 +590,13 @@ export default function BillingPage() {
           } catch {
             // Falls back to the webhook; the result screen says so.
           }
-          setPurchaseResult({ credits: selectedCreditTier, balance, paymentId, confirmed });
+          // The order knows whether the first-purchase bonus applied.
+          const added = selectedCreditTier + Number(data.bonus_credits ?? 0);
+          setPurchaseResult({ credits: added, balance, paymentId, confirmed });
+          if (Number(data.bonus_credits ?? 0) > 0 && account?.id) {
+            setOfferExpiresAt(null);
+            void fetchFirstPurchaseOffer(account.id, true);
+          }
           setBuyingCredits(false);
           await refreshAccount();
           void loadPurchases();
@@ -840,6 +858,7 @@ export default function BillingPage() {
       {/* ── Buy credits modal ─────────────────────────────────────────────── */}
       {showBuyCreditsModal && (
         <BuyCreditsModal
+          offerSecondsLeft={offerLive ? offerSecondsLeft : 0}
           selectedCreditTier={selectedCreditTier}
           setSelectedCreditTier={setSelectedCreditTier}
           buyingCredits={buyingCredits}
@@ -1322,15 +1341,22 @@ function TierComparison({ currentUsd }: { currentUsd: number }) {
 }
 
 // ── Buy credits modal ────────────────────────────────────────────────────────
+// The first-purchase offer applies to this pack only.
+const OFFER_TIER = 500;
+
 function BuyCreditsModal({
-  selectedCreditTier, setSelectedCreditTier, buyingCredits, onClose, onSubmit,
+  offerSecondsLeft, selectedCreditTier, setSelectedCreditTier, buyingCredits, onClose, onSubmit,
 }: {
+  // Seconds left on the first-purchase offer (500 pack only); 0 when there's no offer.
+  offerSecondsLeft: number;
   selectedCreditTier: number;
   setSelectedCreditTier: (v: number) => void;
   buyingCredits: boolean;
   onClose: () => void;
   onSubmit: () => void;
 }) {
+  // The offer doubles the 500 pack only.
+  const offerOnSelected = offerSecondsLeft > 0 && selectedCreditTier === OFFER_TIER;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -1340,16 +1366,33 @@ function BuyCreditsModal({
         </button>
         <div className="px-6 pt-6 pb-5">
           <p className="text-[11px] font-bold uppercase tracking-widest text-blue-600 mb-3">Buy credits</p>
+          {offerSecondsLeft > 0 && (
+            <div className="mb-4 flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800">
+              <span>1,000 credits for ₹500, first top-up</span>
+              <span className="tabular-nums">{formatCountdown(offerSecondsLeft)}</span>
+            </div>
+          )}
           <div className="mb-5">
-            <span className="text-3xl font-extrabold text-gray-900">{selectedCreditTier.toLocaleString('en-IN')} credits</span>
-            <p className="text-[13px] text-gray-400 mt-0.5">₹{selectedCreditTier.toLocaleString('en-IN')} · ₹1 per credit · one-time, no expiry</p>
+            {offerOnSelected ? (
+              <>
+                <span className="text-3xl font-extrabold text-gray-900">{(selectedCreditTier * 2).toLocaleString('en-IN')} credits</span>
+                <p className="text-[13px] text-gray-400 mt-0.5">
+                  <span className="line-through">{selectedCreditTier.toLocaleString('en-IN')}</span> · ₹{selectedCreditTier.toLocaleString('en-IN')} · one-time, no expiry
+                </p>
+              </>
+            ) : (
+              <>
+                <span className="text-3xl font-extrabold text-gray-900">{selectedCreditTier.toLocaleString('en-IN')} credits</span>
+                <p className="text-[13px] text-gray-400 mt-0.5">₹{selectedCreditTier.toLocaleString('en-IN')} · ₹1 per credit · one-time, no expiry</p>
+              </>
+            )}
           </div>
           <div className="relative mb-5">
             <select value={selectedCreditTier} onChange={e => setSelectedCreditTier(Number(e.target.value))}
               className="w-full appearance-none border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-[15px] font-semibold text-gray-800 bg-gray-50 focus:outline-none focus:border-blue-400 cursor-pointer">
               {CREDIT_TIERS.map(tier => (
                 <option key={tier} value={tier}>
-                  {tier.toLocaleString('en-IN')} credits — ₹{tier.toLocaleString('en-IN')}
+                  {(offerSecondsLeft > 0 && tier === OFFER_TIER ? tier * 2 : tier).toLocaleString('en-IN')} credits — ₹{tier.toLocaleString('en-IN')}{offerSecondsLeft > 0 && tier === OFFER_TIER ? ' (2× offer)' : ''}
                 </option>
               ))}
             </select>
@@ -1373,7 +1416,9 @@ function BuyCreditsModal({
           <button onClick={onSubmit} disabled={buyingCredits}
             className="w-full py-3 rounded-xl text-[15px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 shadow-sm">
             {buyingCredits && <LogoSpinner size={14} />}
-            {`Pay ₹${selectedCreditTier.toLocaleString('en-IN')}`}
+            {offerOnSelected
+              ? `Pay ₹${selectedCreditTier.toLocaleString('en-IN')} · get ${(selectedCreditTier * 2).toLocaleString('en-IN')}`
+              : `Pay ₹${selectedCreditTier.toLocaleString('en-IN')}`}
           </button>
         </div>
       </div>

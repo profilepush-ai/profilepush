@@ -59,6 +59,15 @@ Deno.serve(async (req: Request) => {
 
     const amountInrPaise = credits * INR_PAISE_PER_CREDIT;
 
+    // First-purchase offer: while it's live, the 500 pack comes with 500
+    // bonus credits (other packs are unchanged). apply_credit_topup adds the
+    // bonus once, on the first paid order.
+    let bonusCredits = 0;
+    if (credits === 500) {
+      const { data: offerActive } = await supabaseAdmin.rpc("first_purchase_offer_active", { p_account_id: member.account_id });
+      if (offerActive === true) bonusCredits = 500;
+    }
+
     const orderRes = await fetch("https://api.razorpay.com/v1/orders", {
       method: "POST",
       headers: { Authorization: razorpayAuth(), "Content-Type": "application/json" },
@@ -69,6 +78,7 @@ Deno.serve(async (req: Request) => {
           type: "credit_topup",
           account_id: member.account_id,
           credits: credits.toString(),
+          bonus_credits: bonusCredits.toString(),
         },
       }),
     });
@@ -80,6 +90,7 @@ Deno.serve(async (req: Request) => {
       user_id: user.id,
       razorpay_order_id: order.id,
       credits,
+      bonus_credits: bonusCredits,
       amount_inr_paise: amountInrPaise,
       status: "created",
     });
@@ -91,6 +102,7 @@ Deno.serve(async (req: Request) => {
         key_id: getRequiredEnv("RAZORPAY_KEY_ID"),
         amount_inr_paise: amountInrPaise,
         credits,
+        bonus_credits: bonusCredits,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
