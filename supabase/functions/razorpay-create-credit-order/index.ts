@@ -59,10 +59,14 @@ Deno.serve(async (req: Request) => {
 
     const amountInrPaise = credits * INR_PAISE_PER_CREDIT;
 
-    // First-purchase offer: while it's live, the pack's credits are doubled.
-    // apply_credit_topup adds the bonus once, on the first paid order.
-    const { data: offerActive } = await supabaseAdmin.rpc("first_purchase_offer_active", { p_account_id: member.account_id });
-    const bonusCredits = offerActive === true ? credits : 0;
+    // First-purchase offer: while it's live, the 500 pack comes with 500
+    // bonus credits (other packs are unchanged). apply_credit_topup adds the
+    // bonus once, on the first paid order.
+    let bonusCredits = 0;
+    if (credits === 500) {
+      const { data: offerActive } = await supabaseAdmin.rpc("first_purchase_offer_active", { p_account_id: member.account_id });
+      if (offerActive === true) bonusCredits = 500;
+    }
 
     const orderRes = await fetch("https://api.razorpay.com/v1/orders", {
       method: "POST",
