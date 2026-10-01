@@ -696,7 +696,7 @@ export default function AdminDashboard() {
         : 'LinkedIn keyword search configuration')
       : adminView === 'scraper-logs' ? 'Hourly group and keyword pipeline logs'
       : adminView === 'lists' ? 'Vendor and bench sales contacts for GMass'
-      : adminView === 'emails' ? 'Every email we send, by type, and how it performs'
+      : adminView === 'emails' ? 'Every email we send, how it performs, and new emails to users'
       : adminView === 'channels' ? 'Team channels'
       : adminView === 'market' ? 'Market Pulse leaderboard'
       : adminView === 'trends' ? 'Platform-wide daily trends'
