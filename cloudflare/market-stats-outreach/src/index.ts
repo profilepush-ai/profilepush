@@ -350,7 +350,8 @@ async function sendLeadToGmass(
   const response = await fetchEmailWorkerSend(env, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.EMAIL_WORKER_AUTH_TOKEN}` },
-    body: JSON.stringify({ to: params.email, subject, html, text }),
+    // Outreach lane: these people aren't users, so this must never go through SES.
+    body: JSON.stringify({ to: params.email, subject, html, text, lane: "outreach" }),
   });
 
   if (!response.ok) {
