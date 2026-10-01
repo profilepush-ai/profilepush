@@ -49,7 +49,8 @@ type SendRow = {
 };
 
 const CATEGORIES: Record<string, { label: string; detail: string; color: string }> = {
-  digest: { label: 'Daily digest', detail: 'New jobs and hotlists, to every user', color: '#2563eb' },
+  morning_brief: { label: 'Morning brief', detail: 'Weekday email: their matches, subscriptions and the market', color: '#1d4ed8' },
+  digest: { label: 'Daily digest (old)', detail: 'Replaced by the morning brief on Oct 1', color: '#93c5fd' },
   low_credits: { label: 'Low credits', detail: 'Daily upgrade reminder under half credits', color: '#d97706' },
   welcome: { label: 'Welcome', detail: 'Right after signup', color: '#059669' },
   signup_alert: { label: 'Signup alert', detail: 'New signup, to the ProfilePush team', color: '#64748b' },
