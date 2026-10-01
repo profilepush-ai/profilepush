@@ -137,6 +137,23 @@ Deno.serve(async (req: Request) => {
       return respond({ rows: data ?? [] });
     }
 
+    if (action === "conversations") {
+      const { data, error } = await supabase.rpc("admin_conversation_list", {
+        p_search: typeof search === "string" ? search : null,
+        p_filter: ["all", "users", "non_users"].includes(input.filter) ? input.filter : "all",
+        p_limit: typeof limit === "number" ? limit : 100,
+      });
+      if (error) return respond({ error: error.message }, 500);
+      return respond({ rows: data ?? [] });
+    }
+
+    if (action === "thread") {
+      if (typeof input.email !== "string" || !input.email.includes("@")) return respond({ error: "email is required" }, 400);
+      const { data, error } = await supabase.rpc("admin_conversation_thread", { p_email: input.email });
+      if (error) return respond({ error: error.message }, 500);
+      return respond({ rows: data ?? [] });
+    }
+
     if (action === "campaigns") {
       const { data, error } = await supabase.rpc("admin_campaign_report");
       if (error) return respond({ error: error.message }, 500);
