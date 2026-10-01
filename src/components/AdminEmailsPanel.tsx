@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { RefreshCcw, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AdminEmailCampaigns, AdminEmailComposer } from './AdminEmailComposer';
+import AdminEmailTypes from './AdminEmailTypes';
 
 // Admin > Emails: every email the email worker sends, by category, with how
 // each one performs. Sends are logged by the worker (email_sends); SES reports
@@ -440,7 +441,7 @@ function EmailPerformance() {
   );
 }
 
-type EmailsTab = 'performance' | 'compose' | 'campaigns';
+type EmailsTab = 'performance' | 'types' | 'compose' | 'campaigns';
 
 export default function AdminEmailsPanel() {
   const [tab, setTab] = useState<EmailsTab>('performance');
@@ -451,10 +452,12 @@ export default function AdminEmailsPanel() {
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
       <div className="flex gap-5 border-b border-gray-200">
         <button type="button" className={tabClass(tab === 'performance')} onClick={() => setTab('performance')}>Performance</button>
+        <button type="button" className={tabClass(tab === 'types')} onClick={() => setTab('types')}>Email types</button>
         <button type="button" className={tabClass(tab === 'compose')} onClick={() => setTab('compose')}>Compose</button>
         <button type="button" className={tabClass(tab === 'campaigns')} onClick={() => setTab('campaigns')}>Campaigns</button>
       </div>
       {tab === 'performance' && <EmailPerformance />}
+      {tab === 'types' && <AdminEmailTypes />}
       {tab === 'compose' && <AdminEmailComposer onSent={() => setTab('campaigns')} />}
       {tab === 'campaigns' && <AdminEmailCampaigns />}
     </div>
