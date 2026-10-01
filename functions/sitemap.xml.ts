@@ -91,6 +91,27 @@ const renderSitemap: PagesFunction<Env> = async ({ env }) => {
     urls.push(url(`/c2c-requirements/${row.role}/${row.state.toLowerCase()}`, today, "daily", "0.8"));
   }
 
+  // Public publisher profiles that posted in the last 30 days.
+  try {
+    const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/get_public_profile_index`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: env.SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`,
+      },
+      body: "{}",
+    });
+    if (res.ok) {
+      for (const p of await res.json() as Array<{ slug: string; updated_at: string | null }>) {
+        if (!p.slug) continue;
+        urls.push(url(`/profile/${encodeURIComponent(p.slug)}`, (p.updated_at ?? today).slice(0, 10), "daily", "0.6"));
+      }
+    }
+  } catch {
+    // Profiles are optional in the sitemap; the rest still ships.
+  }
+
   // Hubs carry the internal linking, so they rank above the leaves.
   for (const role of roleHubs) {
     urls.push(url(`/c2c-requirements/${role}`, today, "daily", "0.9"));
