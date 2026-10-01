@@ -195,6 +195,7 @@ export default function AdminEmailConversations() {
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
   const [people, setPeople] = useState<Person[] | null>(null);
+  const [counts, setCounts] = useState<{ all: number; users: number; non_users: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Person | null>(null);
@@ -207,6 +208,7 @@ export default function AdminEmailConversations() {
     try {
       const data = await callAdminEmails({ action: 'conversations', filter: nextFilter, search: nextSearch || null, limit: 200 });
       setPeople((data.rows ?? []) as Person[]);
+      if (data.counts) setCounts(data.counts);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load conversations.');
     } finally {
@@ -262,9 +264,16 @@ export default function AdminEmailConversations() {
             </button>
           </form>
           <div className="flex gap-1.5">
-            <button type="button" className={pill(filter === 'all')} onClick={() => setFilter('all')}>All</button>
-            <button type="button" className={pill(filter === 'users')} onClick={() => setFilter('users')}>Users</button>
-            <button type="button" className={pill(filter === 'non_users')} onClick={() => setFilter('non_users')}>Not users</button>
+            {([
+              ['all', 'All', counts?.all],
+              ['users', 'Users', counts?.users],
+              ['non_users', 'Not users', counts?.non_users],
+            ] as Array<[Filter, string, number | undefined]>).map(([id, text, n]) => (
+              <button key={id} type="button" className={pill(filter === id)} onClick={() => setFilter(id)}>
+                {text}
+                {n !== undefined && <span className={`ml-1 tabular-nums ${filter === id ? 'text-blue-100' : 'text-gray-400'}`}>{n.toLocaleString('en-US')}</span>}
+              </button>
+            ))}
           </div>
         </div>
         {error && <p className="shrink-0 px-3 py-2 text-[12px] text-red-600">{error}</p>}
