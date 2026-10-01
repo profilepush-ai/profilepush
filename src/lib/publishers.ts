@@ -304,3 +304,16 @@ export function profilePath(slug: string, persona: Persona, query?: string): str
   const q = query?.trim();
   return `${networkPath(persona)}/${encodeURIComponent(slug)}${q ? `?q=${encodeURIComponent(q)}` : ''}`;
 }
+
+// Subscriber counts by publisher id, for the subscriber badge. Missing ids
+// have no subscribers.
+export async function fetchFollowerCounts(ids: string[]): Promise<Record<string, number>> {
+  if (ids.length === 0) return {};
+  const { data, error } = await rpc('get_publisher_follower_counts', { p_ids: ids });
+  if (error) return {};
+  const out: Record<string, number> = {};
+  for (const row of (data as Array<{ publisher_id: string; follower_count: number }> | null) ?? []) {
+    out[row.publisher_id] = row.follower_count;
+  }
+  return out;
+}

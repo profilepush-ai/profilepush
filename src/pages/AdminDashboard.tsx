@@ -699,6 +699,7 @@ export default function AdminDashboard() {
       : adminView === 'trends' ? 'Platform-wide daily trends'
       : adminView === 'post-outreach' ? 'Scraped posts — AI comment outreach'
       : adminView === 'social' ? 'Publish one post to every connected network'
+      : adminView === 'notifications' ? 'Requests and notifications from users'
       : 'AI prompt configuration';
   const currentNavLabel = ADMIN_NAV.find((item) => item.id === adminView)?.label ?? 'Admin';
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ArrowLeft, Bell, BellOff, Search } from 'lucide-react';
 import LogoSpinner from '../LogoSpinner';
 import { useAuth } from '../../contexts/AuthContext';
-import { FollowButton, PublisherAvatar, Tag } from './PublisherBits';
+import { FollowButton, PublisherAvatar, SubscriberBadge, Tag } from './PublisherBits';
 import {
   fetchPublisherPosts,
   fetchPublisherProfile,
@@ -146,6 +146,7 @@ export function PublisherProfileView({
                 <PublisherAvatar publisher={profile} size={72} />
                 <div className="min-w-0">
                   <h1 className="break-words text-[18px] font-bold leading-snug">{publisherDisplayName(profile)}</h1>
+                  <div className="mt-1 flex justify-center"><SubscriberBadge count={profile.follower_count} size="md" /></div>
                   {profile.company_name && profile.display_name && (
                     <p className="mt-0.5 text-[13px] text-gray-600 dark:text-slate-300">{profile.company_name}</p>
                   )}

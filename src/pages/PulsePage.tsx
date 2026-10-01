@@ -1352,6 +1352,14 @@ interface LeadCardProps {
 // the visible list recomputed its full breakdown/palette/badges on every
 // PulsePage render, including ones triggered by unrelated interactions
 // elsewhere on the page (typing in search, hovering, etc).
+// Post text as shown in previews and the detail panel: any email address in
+// it is hidden. The way to a poster's email is AI Submit / AI Invite, which
+// writes the email and shows who it goes to.
+const EMAIL_IN_TEXT = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+function hideEmails(text: string | null | undefined): string {
+  return (text ?? '').replace(EMAIL_IN_TEXT, '[email hidden · use AI Submit]');
+}
+
 // A publisher's posts inside the profile panel, drawn with the feed's own
 // cards (renderCards is the feed's renderLeadCards) so every action works the
 // same as in the feed. Loads once per publisher; the query filters locally,
@@ -4628,9 +4636,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                     ))}
                   </div>
                 )}
-                {(selectedLead.posterName || selectedLead.posterEmail) && (
+                {selectedLead.posterName && (
                   <p className="mt-3 text-[12px] text-gray-500">
-                    Posted by {selectedLead.posterName || 'Unknown'}{selectedLead.posterEmail ? ` · ${selectedLead.posterEmail}` : ''}
+                    Posted by {selectedLead.posterName || 'Unknown'}
                   </p>
                 )}
                 <PublisherFollowInline kind={selectedIsHotlist ? 'hotlist' : 'job'} leadId={selectedLead.id} />
@@ -4640,7 +4648,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                     <div className="flex items-center justify-center py-6"><LogoSpinner size={20} /></div>
                   ) : (
                     <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700">
-                      {selectedContent ?? ''}
+                      {hideEmails(selectedContent)}
                     </p>
                   )}
                 </div>
@@ -9612,7 +9620,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700">{postContentPreview.content}</p>
+              <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700">{hideEmails(postContentPreview.content)}</p>
             </div>
           </div>
         </div>
