@@ -44,6 +44,8 @@ type EmailJob = {
   // welcome, signup_alert, screening_invite, subscriber_notice,
   // outreach_pitch or other.
   category?: string;
+  // Set on emails written and sent from Admin > Emails > Compose.
+  campaignId?: string;
   // Set on bulk email (digest, reminders) to add one-click unsubscribe
   // headers (RFC 8058), which Gmail and Outlook require from bulk senders.
   // Left off personal notifications so they read as one-to-one email.
@@ -842,6 +844,7 @@ async function logSend(
         subject: job.subject.slice(0, 300),
         status,
         provider_message_id: messageId,
+        campaign_id: job.campaignId ?? null,
         error: error ? String((error as Error).message ?? error).slice(0, 500) : null,
       }),
     });
@@ -851,12 +854,12 @@ async function logSend(
   }
 }
 
-async function logUnsubscribe(env: Env, category: string, userId: string | null, email: string | null): Promise<void> {
+async function logUnsubscribe(env: Env, category: string, userId: string | null, email: string | null, campaignId: string | null = null): Promise<void> {
   try {
     await supabaseRequest(env, "email_unsubscribes", {
       method: "POST",
       headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
-      body: JSON.stringify({ category, user_id: userId, email }),
+      body: JSON.stringify({ category, user_id: userId, email, campaign_id: campaignId }),
     });
   } catch (err) {
     console.error("email_unsubscribes insert threw", err);
@@ -940,6 +943,86 @@ async function handleSendRequest(request: Request, env: Env): Promise<Response> 
   return jsonResponse({ queued: true }, 202);
 }
 
+// ── Campaigns (Admin > Emails > Compose) ────────────────────────────────────
+// admin-emails picks the recipients and renders the email; this fills in each
+// recipient's first name and own signed unsubscribe link, and queues them on
+// the user lane (SES) with one-click unsubscribe headers. {{first_name}} and
+// {{unsubscribe_url}} are the only placeholders.
+type BroadcastRecipient = { user_id: string | null; account_id: string | null; email: string; first_name: string | null };
+
+const UUID_PATTERN = /^[0-9a-f-]{36}$/i;
+
+async function buildAnnouncementsUnsubscribeUrl(env: Env, userId: string, accountId: string, campaignId: string | null): Promise<string> {
+  const sig = await hmacHex(env.UNSUBSCRIBE_SECRET, `announcements:${userId}:${accountId}`);
+  const url = new URL("/unsubscribe-announcements", env.WORKER_BASE_URL);
+  url.searchParams.set("uid", userId);
+  url.searchParams.set("aid", accountId);
+  if (campaignId) url.searchParams.set("c", campaignId);
+  url.searchParams.set("sig", sig);
+  return url.toString();
+}
+
+async function handleBroadcast(request: Request, env: Env): Promise<Response> {
+  if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
+  const body = await request.json<{ campaign_id?: unknown; subject?: unknown; html?: unknown; text?: unknown; recipients?: unknown }>();
+  const campaignId = typeof body.campaign_id === "string" && UUID_PATTERN.test(body.campaign_id) ? body.campaign_id : null;
+  const subject = typeof body.subject === "string" ? body.subject : "";
+  const html = typeof body.html === "string" ? body.html : "";
+  const text = typeof body.text === "string" ? body.text : "";
+  const recipients = Array.isArray(body.recipients) ? (body.recipients as BroadcastRecipient[]) : [];
+  if (!subject || !html || recipients.length === 0) return jsonResponse({ error: "subject, html and recipients are required" }, 400);
+  if (recipients.length > 1000) return jsonResponse({ error: "At most 1,000 recipients per call" }, 400);
+
+  const appSettingsUrl = `${env.APP_BASE_URL.replace(/\/$/, "")}/account`;
+  const jobs: EmailJob[] = [];
+  for (const r of recipients) {
+    if (typeof r?.email !== "string" || !/^\S+@\S+\.\S+$/.test(r.email)) continue;
+    // A test send has no user behind it, so its link goes to account settings.
+    const unsubscribeUrl = r.user_id && r.account_id && UUID_PATTERN.test(r.user_id) && UUID_PATTERN.test(r.account_id)
+      ? await buildAnnouncementsUnsubscribeUrl(env, r.user_id, r.account_id, campaignId)
+      : appSettingsUrl;
+    const fill = (template: string, escape: boolean) => template
+      .replaceAll("{{first_name}}", escape ? escapeHtml(r.first_name || "there") : (r.first_name || "there"))
+      .replaceAll("{{unsubscribe_url}}", unsubscribeUrl);
+    jobs.push({
+      to: r.email,
+      subject: fill(subject, false),
+      html: fill(html, true),
+      text: fill(text, false),
+      lane: "user",
+      category: campaignId ? "campaign" : "campaign_test",
+      campaignId: campaignId ?? undefined,
+      unsubscribeUrl,
+    });
+  }
+  for (const chunk of chunkEmailJobsForQueue(jobs)) {
+    await env.EMAIL_QUEUE.sendBatch(chunk.map((job) => ({ body: job })));
+  }
+  return jsonResponse({ queued: jobs.length }, 202);
+}
+
+async function handleUnsubscribeAnnouncements(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const userId = url.searchParams.get("uid") ?? "";
+  const accountId = url.searchParams.get("aid") ?? "";
+  const campaignId = url.searchParams.get("c");
+  const sig = url.searchParams.get("sig") ?? "";
+  const expected = await hmacHex(env.UNSUBSCRIBE_SECRET, `announcements:${userId}:${accountId}`);
+  if (!UUID_PATTERN.test(userId) || !UUID_PATTERN.test(accountId) || !timingSafeEqual(sig, expected)) {
+    return new Response("Invalid or expired unsubscribe link.", { status: 400, headers: { "Content-Type": "text/plain" } });
+  }
+  const response = await supabaseRequest(env, "notification_preferences?on_conflict=user_id,notif_type", {
+    method: "POST",
+    headers: { ...serviceHeaders(env, true), Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ user_id: userId, account_id: accountId, notif_type: "announcements", email_enabled: false }),
+  });
+  if (!response.ok) {
+    return new Response("Something went wrong. Please try again later.", { status: 500, headers: { "Content-Type": "text/plain" } });
+  }
+  await logUnsubscribe(env, "campaign", userId, null, campaignId && UUID_PATTERN.test(campaignId) ? campaignId : null);
+  return new Response("You've been unsubscribed from ProfilePush announcement emails.", { status: 200, headers: { "Content-Type": "text/plain" } });
+}
+
 // Manually runs the exact same digest send as the daily cron, for catch-up
 // after a missed or failed scheduled run.
 async function handleRunDigest(request: Request, env: Env): Promise<Response> {
@@ -1021,6 +1104,7 @@ export default {
       if (unsubscribe && pathname === "/unsubscribe") return await handleUnsubscribe(request, env);
       if (unsubscribe && pathname === "/unsubscribe-publisher") return await handleUnsubscribePublisher(request, env);
       if (unsubscribe && pathname === "/unsubscribe-low-credits") return await handleUnsubscribeLowCredits(request, env);
+      if (unsubscribe && pathname === "/unsubscribe-announcements") return await handleUnsubscribeAnnouncements(request, env);
       if (request.method === "GET") return jsonResponse({ status: "ok" });
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
       if (pathname === "/send") return await handleSendRequest(request, env);
@@ -1029,6 +1113,7 @@ export default {
       if (pathname === "/publisher-subscribed") return await handlePublisherSubscribed(request, env);
       if (pathname === "/run-low-credit-emails") return await handleRunLowCreditEmails(request, env);
       if (pathname === "/ses-events") return await handleSesEvents(request, env);
+      if (pathname === "/broadcast") return await handleBroadcast(request, env);
       return jsonResponse({ error: "Not found" }, 404);
     } catch (error) {
       console.error("Email notification request failed", error);

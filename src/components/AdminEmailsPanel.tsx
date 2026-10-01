@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { RefreshCcw, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { AdminEmailCampaigns, AdminEmailComposer } from './AdminEmailComposer';
 
 // Admin > Emails: every email the email worker sends, by category, with how
 // each one performs. Sends are logged by the worker (email_sends); SES reports
@@ -55,6 +56,8 @@ const CATEGORIES: Record<string, { label: string; detail: string; color: string 
   screening_invite: { label: 'Screening invite', detail: 'Video screening link to a submitted candidate', color: '#7c3aed' },
   subscriber_notice: { label: 'Subscriber notice', detail: '"X subscribed to you", to unclaimed publishers', color: '#db2777' },
   outreach_pitch: { label: 'Outreach pitch', detail: 'Market-stats pitch to non-users (paused)', color: '#0891b2' },
+  campaign: { label: 'Campaigns', detail: 'Written and sent from Compose', color: '#0d9488' },
+  campaign_test: { label: 'Campaign tests', detail: 'Test sends from Compose', color: '#cbd5e1' },
   other: { label: 'Other', detail: 'Sent without a category', color: '#94a3b8' },
 };
 
@@ -119,7 +122,7 @@ function sendState(row: SendRow): { label: string; className: string } {
   return { label: row.provider === 'ses' ? 'Sent' : 'Sent (GMass)', className: 'bg-gray-100 text-gray-600' };
 }
 
-export default function AdminEmailsPanel() {
+function EmailPerformance() {
   const [days, setDays] = useState(30);
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(false);
@@ -212,7 +215,7 @@ export default function AdminEmailsPanel() {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+    <>
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white p-3">
         {RANGES.map((r) => (
           <button key={r} type="button" className={pill(days === r)} onClick={() => setDays(r)}>Last {r} days</button>
@@ -415,6 +418,27 @@ export default function AdminEmailsPanel() {
           </table>
         </div>
       </div>
+    </>
+  );
+}
+
+type EmailsTab = 'performance' | 'compose' | 'campaigns';
+
+export default function AdminEmailsPanel() {
+  const [tab, setTab] = useState<EmailsTab>('performance');
+  const tabClass = (active: boolean) => `border-b-2 px-1 pb-2 text-[13px] font-semibold transition ${
+    active ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-800'
+  }`;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+      <div className="flex gap-5 border-b border-gray-200">
+        <button type="button" className={tabClass(tab === 'performance')} onClick={() => setTab('performance')}>Performance</button>
+        <button type="button" className={tabClass(tab === 'compose')} onClick={() => setTab('compose')}>Compose</button>
+        <button type="button" className={tabClass(tab === 'campaigns')} onClick={() => setTab('campaigns')}>Campaigns</button>
+      </div>
+      {tab === 'performance' && <EmailPerformance />}
+      {tab === 'compose' && <AdminEmailComposer onSent={() => setTab('campaigns')} />}
+      {tab === 'campaigns' && <AdminEmailCampaigns />}
     </div>
   );
 }

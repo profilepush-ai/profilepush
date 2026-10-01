@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -18,6 +19,15 @@ function getAuthSessionId(accessToken: string) {
 
 export default function UserActivityTracker() {
   const { account, session } = useAuth();
+
+  // The Android app loads the live site, so it reports itself here once per
+  // open; Admin > Emails uses it for the "users without the app" audience.
+  useEffect(() => {
+    if (!account || !Capacitor.isNativePlatform()) return;
+    void supabase.rpc('record_app_install' as never, { p_platform: Capacitor.getPlatform() } as never).then(({ error }) => {
+      if (error) console.error('record_app_install failed', error);
+    });
+  }, [account?.id]);
 
   useEffect(() => {
     if (!account || !session?.access_token) return;
