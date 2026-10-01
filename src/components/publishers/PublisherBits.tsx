@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BellOff, Check, Plus } from 'lucide-react';
+import { BellOff, Check, Crown, Flame, Plus, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   FollowLimitError,
@@ -267,6 +267,29 @@ export function SubscribeTextLink({
         Subscribe
       </button>
       {error && <span className="text-red-500">{error}</span>}
+    </span>
+  );
+}
+
+// Badge for well-subscribed profiles: Rising (3+), Popular (10+), Top (50+).
+// The thresholds start low because the network is young; raise them as it grows.
+const SUBSCRIBER_TIERS = [
+  { min: 50, label: 'Top', className: 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-300', Icon: Crown },
+  { min: 10, label: 'Popular', className: 'border-rose-200 bg-rose-50 text-rose-600 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-300', Icon: Flame },
+  { min: 3, label: 'Rising', className: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300', Icon: TrendingUp },
+] as const;
+
+export function SubscriberBadge({ count, size = 'sm' }: { count: number | null | undefined; size?: 'sm' | 'md' }) {
+  const tier = SUBSCRIBER_TIERS.find((t) => (count ?? 0) >= t.min);
+  if (!tier) return null;
+  const Icon = tier.Icon;
+  return (
+    <span
+      title={`${count} subscribers`}
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded-full border font-semibold ${size === 'md' ? 'px-2 py-0.5 text-[11px]' : 'px-1.5 py-px text-[10px]'} ${tier.className}`}
+    >
+      <Icon size={size === 'md' ? 11 : 9} strokeWidth={2.5} />
+      {tier.label}
     </span>
   );
 }

@@ -10,11 +10,13 @@ import {
   FollowButton,
   MutedIcon,
   PublisherAvatar,
+  SubscriberBadge,
   Tag,
 } from '../components/publishers/PublisherBits';
 import {
   claimMyPublisherProfile,
   fetchFollowQuota,
+  fetchFollowerCounts,
   fetchFollowingFeed,
   fetchPublisherCounts,
   fetchSuggestedPublishers,
@@ -108,6 +110,8 @@ export default function FollowingPage() {
   const [results, setResults] = useState<PublisherSearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [activeTotal, setActiveTotal] = useState<number | null>(snapshot?.activeTotal ?? null);
+  // Subscriber counts for cards and search results, for the subscriber badge.
+  const [followerCounts, setFollowerCounts] = useState<Record<string, number>>({});
   const loadingMoreRef = useRef(false);
   const activeQuery = searchQuery.trim();
 
@@ -254,6 +258,16 @@ export default function FollowingPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const ids = [...new Set([...(cards ?? []).map((c) => c.publisher_id), ...(results ?? []).map((r) => r.publisher_id)])];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    void fetchFollowerCounts(ids).then((counts) => {
+      if (!cancelled) setFollowerCounts((prev) => ({ ...prev, ...counts }));
+    });
+    return () => { cancelled = true; };
+  }, [cards, results]);
+
   const unread = (cards ?? []).filter((c) => c.unread_count > 0);
   const read = (cards ?? []).filter((c) => c.unread_count === 0);
 
@@ -356,6 +370,7 @@ export default function FollowingPage() {
 
           {activeQuery.length >= 2 ? (
             <SearchResults
+              followerCounts={followerCounts}
               query={activeQuery}
               results={results}
               searching={searching}
@@ -376,13 +391,13 @@ export default function FollowingPage() {
             ) : (
               <section className="grid grid-cols-1 gap-2 lg:grid-cols-2 2xl:grid-cols-3">
                 {unread.map((card) => (
-                  <FollowingCardRow key={card.publisher_id} card={card} postNoun={postNoun} onOpen={() => navigate(profilePath(card.slug, persona))} />
+                  <FollowingCardRow key={card.publisher_id} card={card} followerCount={followerCounts[card.publisher_id]} postNoun={postNoun} onOpen={() => navigate(profilePath(card.slug, persona))} />
                 ))}
                 {read.length > 0 && unread.length > 0 && (
                   <p className="col-span-full px-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Up to date</p>
                 )}
                 {read.map((card) => (
-                  <FollowingCardRow key={card.publisher_id} card={card} postNoun={postNoun} onOpen={() => navigate(profilePath(card.slug, persona))} />
+                  <FollowingCardRow key={card.publisher_id} card={card} followerCount={followerCounts[card.publisher_id]} postNoun={postNoun} onOpen={() => navigate(profilePath(card.slug, persona))} />
                 ))}
               </section>
             )
@@ -406,6 +421,7 @@ export default function FollowingPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100">{publisherDisplayName(s)}</span>
+                      <SubscriberBadge count={s.follower_count} />
                     </div>
                     <p className="truncate text-[11px] text-gray-500 dark:text-slate-400">
                       {(s.follower_count ?? 0) > 0 && `${s.follower_count} subscriber${s.follower_count === 1 ? '' : 's'} · `}
@@ -517,6 +533,7 @@ function LoadMoreSentinel({ onVisible }: { onVisible: () => void }) {
 
 function SearchResults({
   query,
+  followerCounts,
   results,
   searching,
   postNoun,
@@ -524,6 +541,7 @@ function SearchResults({
   onFollowChange,
 }: {
   query: string;
+  followerCounts: Record<string, number>;
   results: PublisherSearchResult[] | null;
   searching: boolean;
   postNoun: string;
@@ -557,6 +575,7 @@ function SearchResults({
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="truncate text-[13px] font-semibold">{r.display_name || r.company_name || 'Recruiter'}</span>
+                <SubscriberBadge count={followerCounts[r.publisher_id]} />
               </div>
               <p className="truncate text-[11px] text-gray-500 dark:text-slate-400">
                 {r.match_count > 0
@@ -582,7 +601,7 @@ function SearchResults({
   );
 }
 
-function FollowingCardRow({ card, postNoun, onOpen }: { card: FollowingCard; postNoun: string; onOpen: () => void }) {
+function FollowingCardRow({ card, followerCount, postNoun, onOpen }: { card: FollowingCard; followerCount?: number; postNoun: string; onOpen: () => void }) {
   const hasNew = card.unread_count > 0;
   const moreRoles = Math.max(0, card.role_count - card.top_roles.length);
   const count = hasNew ? card.unread_count : card.recent_count;
@@ -604,6 +623,7 @@ function FollowingCardRow({ card, postNoun, onOpen }: { card: FollowingCard; pos
           <span className="truncate text-[14px] font-semibold text-gray-900 dark:text-slate-100">
             {card.display_name || card.company_name || 'Recruiter'}
           </span>
+          <SubscriberBadge count={followerCount} />
           {card.muted && <MutedIcon />}
           <span className="ml-auto shrink-0 text-[11px] text-gray-400">{timeAgo(card.latest_post_at)}</span>
         </div>
