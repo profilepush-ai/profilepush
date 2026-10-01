@@ -9,3 +9,14 @@ export const INR_PAISE_PER_CREDIT = 100; // ₹1 = 1 credit
 export function isValidCreditTier(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && (CREDIT_TIERS as readonly number[]).includes(value);
 }
+
+// One-time top-up packs: a ₹249 starter pack, then the same tiers as the
+// subscription plans. Subscriptions don't offer 249.
+export const CREDIT_PACKS = [249, ...CREDIT_TIERS] as const;
+
+export function isValidCreditPack(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && (CREDIT_PACKS as readonly number[]).includes(value);
+}
+
+// Packs the first-purchase offer doubles.
+export const FIRST_PURCHASE_OFFER_PACKS: readonly number[] = [249, 500];

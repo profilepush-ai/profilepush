@@ -26,7 +26,9 @@ declare global {
 const MARKUP = 4;
 const PAGE_SIZE = 15;
 // One-time credit-pack purchases: 500-credit increments up to 5000, flat ₹1/credit.
-const CREDIT_TIERS = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
+// One-time packs: a ₹249 starter, then 500-5000. The dialog opens on 500.
+const CREDIT_TIERS = [249, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
+const DEFAULT_CREDIT_PACK = 500;
 
 // What actually deducts credits today — credits are charged only for
 // genuine AI-generation calls, not for previews, exports, or post creation.
@@ -243,7 +245,7 @@ export default function BillingPage() {
   const [filterFn, setFilterFn]   = useState<string>('');
 
   const [showBuyCreditsModal, setShowBuyCreditsModal] = useState(false);
-  const [selectedCreditTier, setSelectedCreditTier]   = useState<number>(CREDIT_TIERS[0]);
+  const [selectedCreditTier, setSelectedCreditTier]   = useState<number>(DEFAULT_CREDIT_PACK);
   const [buyingCredits, setBuyingCredits]             = useState(false);
   // Shown after a top-up: confirmed (credits added) or still confirming.
   const [purchaseResult, setPurchaseResult] = useState<{ credits: number; balance: number | null; paymentId: string; confirmed: boolean } | null>(null);
@@ -344,7 +346,7 @@ export default function BillingPage() {
   }
 
   function openBuyCreditsModal() {
-    setSelectedCreditTier(CREDIT_TIERS[0]);
+    setSelectedCreditTier(DEFAULT_CREDIT_PACK);
     fireCrmEvent('billing.buy_credits_button_clicked', { current_balance: balance });
     setShowBuyCreditsModal(true);
   }
@@ -1341,13 +1343,13 @@ function TierComparison({ currentUsd }: { currentUsd: number }) {
 }
 
 // ── Buy credits modal ────────────────────────────────────────────────────────
-// The first-purchase offer applies to this pack only.
-const OFFER_TIER = 500;
+// The first-purchase offer doubles these packs only.
+const OFFER_TIERS = [249, 500];
 
 function BuyCreditsModal({
   offerSecondsLeft, selectedCreditTier, setSelectedCreditTier, buyingCredits, onClose, onSubmit,
 }: {
-  // Seconds left on the first-purchase offer (500 pack only); 0 when there's no offer.
+  // Seconds left on the first-purchase offer (249 and 500 packs); 0 when there's no offer.
   offerSecondsLeft: number;
   selectedCreditTier: number;
   setSelectedCreditTier: (v: number) => void;
@@ -1355,8 +1357,8 @@ function BuyCreditsModal({
   onClose: () => void;
   onSubmit: () => void;
 }) {
-  // The offer doubles the 500 pack only.
-  const offerOnSelected = offerSecondsLeft > 0 && selectedCreditTier === OFFER_TIER;
+  // The offer doubles the 249 and 500 packs only.
+  const offerOnSelected = offerSecondsLeft > 0 && OFFER_TIERS.includes(selectedCreditTier);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -1368,7 +1370,7 @@ function BuyCreditsModal({
           <p className="text-[11px] font-bold uppercase tracking-widest text-blue-600 mb-3">Buy credits</p>
           {offerSecondsLeft > 0 && (
             <div className="mb-4 flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800">
-              <span>1,000 credits for ₹500, first top-up</span>
+              <span>2× credits on ₹249 and ₹500, first top-up</span>
               <span className="tabular-nums">{formatCountdown(offerSecondsLeft)}</span>
             </div>
           )}
@@ -1392,7 +1394,7 @@ function BuyCreditsModal({
               className="w-full appearance-none border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-[15px] font-semibold text-gray-800 bg-gray-50 focus:outline-none focus:border-blue-400 cursor-pointer">
               {CREDIT_TIERS.map(tier => (
                 <option key={tier} value={tier}>
-                  {(offerSecondsLeft > 0 && tier === OFFER_TIER ? tier * 2 : tier).toLocaleString('en-IN')} credits — ₹{tier.toLocaleString('en-IN')}{offerSecondsLeft > 0 && tier === OFFER_TIER ? ' (2× offer)' : ''}
+                  {(offerSecondsLeft > 0 && OFFER_TIERS.includes(tier) ? tier * 2 : tier).toLocaleString('en-IN')} credits — ₹{tier.toLocaleString('en-IN')}{offerSecondsLeft > 0 && OFFER_TIERS.includes(tier) ? ' (2× offer)' : ''}
                 </option>
               ))}
             </select>

@@ -1,9 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { INR_PAISE_PER_CREDIT, isValidCreditTier } from "../_shared/credit-tiers.ts";
+import { FIRST_PURCHASE_OFFER_PACKS, INR_PAISE_PER_CREDIT, isValidCreditPack } from "../_shared/credit-tiers.ts";
 
 // Creates a plain one-time Razorpay Order (not a Subscription) for a credit
-// top-up: 500-5000 credits in 500 increments, flat ₹1/credit. Separate from
+// top-up: a 249 starter pack or 500-5000 credits in 500 increments, flat
+// ₹1/credit. Separate from
 // razorpay-create-subscription/razorpay-change-plan, which bill the same
 // tiers/rate on a recurring monthly cadence instead of one time.
 // razorpay-webhook credits the purchase on payment.captured via the
@@ -45,8 +46,8 @@ Deno.serve(async (req: Request) => {
     if (authErr || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
     const { credits } = await req.json();
-    if (!isValidCreditTier(credits)) {
-      return new Response(JSON.stringify({ error: "credits must be a multiple of 500, up to 5000" }), { status: 400, headers: corsHeaders });
+    if (!isValidCreditPack(credits)) {
+      return new Response(JSON.stringify({ error: "credits must be 249, or a multiple of 500 up to 5000" }), { status: 400, headers: corsHeaders });
     }
 
     const { data: member } = await supabaseAdmin
@@ -59,13 +60,13 @@ Deno.serve(async (req: Request) => {
 
     const amountInrPaise = credits * INR_PAISE_PER_CREDIT;
 
-    // First-purchase offer: while it's live, the 500 pack comes with 500
-    // bonus credits (other packs are unchanged). apply_credit_topup adds the
-    // bonus once, on the first paid order.
+    // First-purchase offer: while it's live, the 249 and 500 packs come with
+    // as many bonus credits again (other packs are unchanged).
+    // apply_credit_topup adds the bonus once, on the first paid order.
     let bonusCredits = 0;
-    if (credits === 500) {
+    if (FIRST_PURCHASE_OFFER_PACKS.includes(credits)) {
       const { data: offerActive } = await supabaseAdmin.rpc("first_purchase_offer_active", { p_account_id: member.account_id });
-      if (offerActive === true) bonusCredits = 500;
+      if (offerActive === true) bonusCredits = credits;
     }
 
     const orderRes = await fetch("https://api.razorpay.com/v1/orders", {
