@@ -2,6 +2,9 @@ name = "profilepush-email-notifications"
 main = "src/index.ts"
 compatibility_date = "2026-08-13"
 workers_dev = true
+# Open images and tracked links are served from our own domain, so links in
+# emails point at profilepush.ai rather than workers.dev.
+routes = [{ pattern = "t.profilepush.ai", custom_domain = true }]
 
 [triggers]
 crons = ["30 13 * * *"]
@@ -31,6 +34,7 @@ SES_FROM_NAME = "ProfilePush"
 # Where replies land. Switch to hello@mail.profilepush.ai once that Workspace
 # alias receives mail.
 SES_REPLY_TO = "profilepush.ai@gmail.com"
+TRACKING_BASE_URL = "https://t.profilepush.ai"
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5od3FjcXp2b3RnZG5ndHh1bHdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NjY3NDQsImV4cCI6MjA5NjQ0Mjc0NH0.DCPM9hZwqEsfmStT1beaUtp3P-uDVkCZL8xv0ZFpCss"
 APP_BASE_URL = "https://profilepush.ai"
