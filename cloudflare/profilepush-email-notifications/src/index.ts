@@ -1269,6 +1269,10 @@ async function logSend(
         status,
         provider_message_id: messageId,
         campaign_id: job.campaignId ?? null,
+        // The content as written, before tracking, so viewing it in Admin >
+        // Emails > Conversations never counts as the recipient opening it.
+        body_text: job.text ? job.text.slice(0, 50_000) : null,
+        body_html: job.html ? job.html.slice(0, 200_000) : null,
         error: error ? String((error as Error).message ?? error).slice(0, 500) : null,
       }),
     });
