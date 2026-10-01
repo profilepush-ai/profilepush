@@ -138,13 +138,21 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "conversations") {
-      const { data, error } = await supabase.rpc("admin_conversation_list", {
-        p_search: typeof search === "string" ? search : null,
-        p_filter: ["all", "users", "non_users"].includes(input.filter) ? input.filter : "all",
-        p_limit: typeof limit === "number" ? limit : 100,
+      const searchText = typeof search === "string" ? search : null;
+      const [list, counts] = await Promise.all([
+        supabase.rpc("admin_conversation_list", {
+          p_search: searchText,
+          p_filter: ["all", "users", "non_users"].includes(input.filter) ? input.filter : "all",
+          p_limit: typeof limit === "number" ? limit : 100,
+        }),
+        supabase.rpc("admin_conversation_counts", { p_search: searchText }),
+      ]);
+      if (list.error) return respond({ error: list.error.message }, 500);
+      const c = ((counts.data ?? []) as Array<{ all_count: number; users_count: number; non_users_count: number }>)[0];
+      return respond({
+        rows: list.data ?? [],
+        counts: c ? { all: c.all_count, users: c.users_count, non_users: c.non_users_count } : null,
       });
-      if (error) return respond({ error: error.message }, 500);
-      return respond({ rows: data ?? [] });
     }
 
     if (action === "thread") {
