@@ -15,7 +15,7 @@ import FeedbackPrompt from './FeedbackPrompt';
 import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
-import { followingLabelForPersona, networkPath } from '../lib/publishers';
+import { followingLabelForPersona, networkPath, profilePath } from '../lib/publishers';
 
 // Shows the account's real Google profile photo (from user_metadata, set by
 // Supabase's Google OAuth flow) when available, falling back to the same
@@ -336,6 +336,17 @@ export default function AppNav() {
   const TrackerIcon = trackerItem.icon;
   const [menuOpen, setMenuOpen] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
+  // The account's claimed public profile, for "My profile" in the menu.
+  const [myProfile, setMyProfile] = useState<{ slug: string; follower_count: number } | null>(null);
+  useEffect(() => {
+    if (!menuOpen || !account?.id) return;
+    let cancelled = false;
+    void supabase.rpc('get_my_publisher_profile' as never).then(({ data }) => {
+      const row = ((data as Array<{ slug: string; follower_count: number }> | null) ?? [])[0] ?? null;
+      if (!cancelled) setMyProfile(row);
+    });
+    return () => { cancelled = true; };
+  }, [menuOpen, account?.id]);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -472,6 +483,17 @@ export default function AppNav() {
                 </div>
 
                 <PersonaMenuSection onChosen={() => setMenuOpen(false)} />
+
+                {myProfile && (
+                  <button
+                    onClick={() => { setMenuOpen(false); navigate(profilePath(myProfile.slug, account?.active_persona)); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                  >
+                    <UserRound size={13} className="text-gray-400" />
+                    <span className="flex-1 text-left">My profile</span>
+                    <span className="text-[11px] tabular-nums text-gray-400">{myProfile.follower_count} subscriber{myProfile.follower_count === 1 ? '' : 's'}</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => { setMenuOpen(false); navigate('/account'); }}
