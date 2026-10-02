@@ -74,6 +74,7 @@ import LeadAvatar from '../components/LeadAvatar';
 import LocationChipInput from '../components/LocationChipInput';
 import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 import SubmitApplicationModal from '../components/SubmitApplicationModal';
+import { consultantTitle } from '../lib/consultant-title';
 
 type PulsePersona = {
   target_role: string;
@@ -4925,8 +4926,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
       const eventTime = row.posted_at || row.created_at;
       nextHotlistLeads[row.id] = {
         id: row.id,
-        title: row.role_title?.trim() || 'Available Consultant',
-        roleTitle: row.role_title?.trim() || '',
+        title: consultantTitle(row.role_title),
+        roleTitle: consultantTitle(row.role_title, ''),
         location: Array.isArray(row.locations) && row.locations.length > 0 ? row.locations.join(', ') : 'Location not specified',
         company: row.bench_sales_company_name?.trim() || '',
         posterName: row.bench_sales_recruiter_name?.trim() || 'Bench Sales Recruiter',
@@ -5888,8 +5889,14 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         const rowIsHotlist = rowKind ? rowKind === 'hotlist' : isHotlistFeed;
         return {
           id: row.id,
-          title: row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || (rowIsHotlist ? 'Available Consultant' : 'Untitled Job'),
-          roleTitle: (row as SocialJobRow & Record<string, unknown>).role_title?.trim() || row.job_title?.trim() || row.extracted_role_normalized?.trim() || '',
+          // A hotlist title never falls back to the post's first line, and
+          // never shows a consultant's name (consultantTitle).
+          title: rowIsHotlist
+            ? consultantTitle(row.job_title || row.extracted_role_normalized || (row as SocialJobRow & Record<string, unknown>).role_title as string | null)
+            : row.job_title?.trim() || row.extracted_role_normalized?.trim() || row.post_content?.trim().split('\n')[0]?.slice(0, 80) || 'Untitled Job',
+          roleTitle: rowIsHotlist
+            ? consultantTitle(((row as SocialJobRow & Record<string, unknown>).role_title as string | null) || row.job_title || row.extracted_role_normalized, '')
+            : (row as SocialJobRow & Record<string, unknown>).role_title?.trim() || row.job_title?.trim() || row.extracted_role_normalized?.trim() || '',
           location: row.location?.trim() || 'Location not specified',
           company: row.company_name?.trim() || '',
           posterName: row.posted_by_name?.trim() || (rowIsHotlist ? 'Bench Sales Recruiter' : 'Vendor contact'),
