@@ -76,6 +76,49 @@ async function deliverPush(job: PushJob, env: Env) {
   }
 }
 
+// Which of these users have the mobile app with push, from OneSignal (users
+// are addressed by external_id = Supabase user id). Feeds user_app_installs,
+// so emails can skip app users and target people without the app.
+type AppInstall = { user_id: string; platforms: string[]; first_active: number | null; last_active: number | null; known: boolean; subscription_types: string[] };
+
+async function lookupAppInstall(userId: string, env: Env): Promise<AppInstall> {
+  const response = await fetch(
+    `https://api.onesignal.com/apps/${ONESIGNAL_APP_ID}/users/by/external_id/${encodeURIComponent(userId)}`,
+    { headers: { Authorization: `Key ${env.ONESIGNAL_REST_API_KEY}` } },
+  );
+  if (response.status === 404) return { user_id: userId, platforms: [], first_active: null, last_active: null, known: false, subscription_types: [] };
+  if (!response.ok) throw new Error(`OneSignal user lookup HTTP ${response.status}`);
+  const user = await response.json() as {
+    properties?: { first_active?: number; last_active?: number };
+    subscriptions?: Array<{ type?: string; enabled?: boolean; notification_types?: number }>;
+  };
+  const platforms = [...new Set((user.subscriptions ?? [])
+    // An install counts whether or not notifications are allowed.
+    .filter((sub) => sub.type === "AndroidPush" || sub.type === "iOSPush")
+    .map((sub) => (sub.type === "AndroidPush" ? "android" : "ios")))];
+  return {
+    user_id: userId,
+    platforms,
+    first_active: user.properties?.first_active ?? null,
+    last_active: user.properties?.last_active ?? null,
+    known: true,
+    // e.g. "AndroidPush:off" for an install whose notifications are blocked.
+    subscription_types: (user.subscriptions ?? []).map((sub) => `${sub.type ?? "?"}:${sub.enabled === false ? "off" : "on"}`),
+  };
+}
+
+async function handleAppInstalls(request: Request, env: Env): Promise<Response> {
+  const body = await request.json().catch(() => ({})) as { user_ids?: unknown };
+  const ids = Array.isArray(body.user_ids) ? body.user_ids.filter((id): id is string => typeof id === "string").slice(0, 100) : [];
+  const results: AppInstall[] = [];
+  const failed: string[] = [];
+  for (let i = 0; i < ids.length; i += 10) {
+    const settled = await Promise.allSettled(ids.slice(i, i + 10).map((id) => lookupAppInstall(id, env)));
+    settled.forEach((r, j) => (r.status === "fulfilled" ? results.push(r.value) : failed.push(ids[i + j])));
+  }
+  return jsonResponse({ results, failed });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "GET") return jsonResponse({ status: "ok" });
@@ -83,6 +126,7 @@ export default {
     if (!env.PUSH_QUEUE_TOKEN || getBearerToken(request) !== env.PUSH_QUEUE_TOKEN) {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
+    if (new URL(request.url).pathname === "/app-installs") return handleAppInstalls(request, env);
 
     let payload: unknown;
     try {

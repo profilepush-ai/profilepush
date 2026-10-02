@@ -435,12 +435,28 @@ async function embedNewPosts(env: Env): Promise<void> {
   }
 }
 
+// Records who has the mobile app (from OneSignal) before the brief picks its
+// recipients, so app users get push instead of this email.
+async function syncAppInstalls(env: Env): Promise<void> {
+  try {
+    const response = await fetch(`${env.SUPABASE_URL}/functions/v1/sync-app-installs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, apikey: env.SUPABASE_ANON_KEY },
+      body: JSON.stringify({ token: env.DIGEST_NOTIFY_TOKEN }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    console.log("sync-app-installs", response.status, (await response.text()).slice(0, 200));
+  } catch (error) {
+    console.error("sync-app-installs failed", error);
+  }
+}
+
 async function runMorningBrief(env: Env, now = new Date()): Promise<{ emailed: number; skipped: number; reason?: string }> {
   // The cron fires at 13:30 UTC, morning in the US. Weekends are quiet (job
   // inflow drops from ~600 a day to ~40), so the brief is weekdays only.
   const weekday = now.getUTCDay();
   if (weekday === 0 || weekday === 6) return { emailed: 0, skipped: 0, reason: "weekend" };
-  await embedNewPosts(env);
+  await Promise.all([embedNewPosts(env), syncAppInstalls(env)]);
   const { recipients, market } = await fetchMorningBrief(env);
   const jobs: EmailJob[] = [];
   let skipped = 0;
