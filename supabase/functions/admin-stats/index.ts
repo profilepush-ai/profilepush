@@ -9,6 +9,24 @@ const corsHeaders = {
 
 const ADMIN_PASSWORD = Deno.env.get("ADMIN_PASSWORD") || "profilepush2024";
 
+// PostgREST returns at most 1,000 rows per request, which silently cut off
+// every total here once a table passed that (the credit ledger, daily
+// activity, AI requests). pageAll keeps asking for the next 1,000 until a
+// short page comes back. Each query is built fresh per page by the factory
+// and carries a fixed order, so pages neither overlap nor skip rows.
+const PAGE_SIZE = 1000;
+// deno-lint-ignore no-explicit-any
+async function pageAll(build: () => any): Promise<{ data: any[]; error: unknown }> {
+  // deno-lint-ignore no-explicit-any
+  const rows: any[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await build().range(from, from + PAGE_SIZE - 1);
+    if (error) return { data: rows, error };
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) return { data: rows, error: null };
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -29,10 +47,11 @@ Deno.serve(async (req: Request) => {
     );
 
     // Fetch all accounts
-    const { data: accounts } = await supabase
+    const { data: accounts } = await pageAll(() => supabase
       .from("accounts")
       .select("id, name, owner_id, credits_balance, is_trial, active_persona, created_at")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .order("id"));
 
     if (!accounts || accounts.length === 0) {
       return new Response(
@@ -78,12 +97,13 @@ Deno.serve(async (req: Request) => {
       claimedProfilesRes,
       playClicksRes,
     ] = await Promise.all([
-      supabase
+      pageAll(() => supabase
         .from("account_members")
         .select("account_id, user_id, invited_email, display_name, role, status, created_at")
         .in("account_id", accountIds)
-        .eq("status", "active"),
-      (() => {
+        .eq("status", "active").order("created_at")),
+
+      pageAll(() => (() => {
         let query = supabase
           .from("user_activity_daily")
           .select("account_id, session_count, active_seconds, activity_date, last_activity_at")
@@ -91,39 +111,44 @@ Deno.serve(async (req: Request) => {
         if (start_date) query = query.gte("activity_date", String(start_date).slice(0, 10));
         if (end_date) query = query.lte("activity_date", String(end_date).slice(0, 10));
         return query;
-      })(),
-      withDateRange(
+      })().order("activity_date").order("account_id").order("user_id")),
+
+      pageAll(() => withDateRange(
         supabase
           .from("job_search_history")
           .select("account_id, created_at")
           .in("account_id", accountIds)
-      ),
+      ).order("created_at")),
+
       // Posts, tracked separately for Jobs vs Hotlist.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("social_jobs")
           .select("created_by_account_id, created_at")
           .in("created_by_account_id", accountIds)
           .eq("post_source", "user_post")
-      ),
-      withDateRange(
+      ).order("created_at")),
+
+      pageAll(() => withDateRange(
         supabase
           .from("social_hotlist")
           .select("created_by_account_id, created_at")
           .in("created_by_account_id", accountIds)
           .eq("post_source", "user_post")
-      ),
+      ).order("created_at")),
+
       // Previews: the Preview action on a Pulse card (view the original
       // post). lead_id doesn't carry a job/hotlist flag itself, so this is
       // split further below by cross-referencing which table each lead_id
       // belongs to.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("pulse_lead_actions")
           .select("account_id, lead_id, created_at")
           .in("account_id", accountIds)
           .eq("action_type", "post_content_viewed")
-      ),
+      ).order("created_at")),
+
       // Drafts generated, read from the credit ledger rather than
       // pulse_ask_ai_previews. That table is written by the client after a
       // single generation and the bulk bar never writes it, so counting it
@@ -131,77 +156,84 @@ Deno.serve(async (req: Request) => {
       // and the funnel then widened below a node it had pinched to nothing.
       // The charge is taken server-side on every path, so the ledger is the
       // only complete record.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("credit_transactions")
           .select("account_id, created_at")
           .in("account_id", accountIds)
           .eq("description", "Usage: pulse_ask_ai_preview_generate")
-      ),
+      ).order("created_at")),
+
       // What each account was actually granted. Not a constant: the signup
       // grant was cut from 500 to 100 on 2026-09-21, so a fixed divisor would
       // report the same spend as a very different share depending on when
       // someone joined. Deliberately not date-filtered — the grant is a
       // property of the account, not activity inside the window.
-      supabase
+      pageAll(() => supabase
         .from("credit_transactions")
         .select("account_id, amount")
         .in("account_id", accountIds)
-        .eq("description", "Free signup credits"),
+        .eq("description", "Free signup credits").order("created_at")),
+
       // Credits actually spent, from the ledger rather than inferred from the
       // balance: a balance is also moved by top-ups and refunds, so it cannot
       // say how much of the free grant someone has used. The 2026-09-21
       // rebalance wrote its deductions as usage rows too; they are excluded
       // below, since nobody spent those credits on anything.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("credit_transactions")
           .select("account_id, amount, description, created_at")
           .in("account_id", accountIds)
           .eq("type", "usage")
-      ),
+      ).order("created_at")),
+
       // Refunds, netted against spend. Features that hold credits up front
       // (AI Match holds 10 per run) write the hold as usage and give back
       // whatever went undelivered as a separate refund row.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("credit_transactions")
           .select("account_id, amount, description, created_at")
           .in("account_id", accountIds)
           .eq("type", "refund")
-      ),
+      ).order("created_at")),
+
       // Sends from the bulk bar, as opposed to one at a time. Null for
       // everything sent before send_source existed.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("pulse_ask_ai_requests")
           .select("account_id, created_at")
           .in("account_id", accountIds)
           .eq("send_source", "bulk")
-      ),
+      ).order("created_at")),
+
       // AI Pitch (jobs) / AI Request (hotlist) are the same underlying
       // table, split by which foreign key is set.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("pulse_ask_ai_requests")
           .select("account_id, created_at")
           .in("account_id", accountIds)
           .not("job_id", "is", null)
-      ),
-      withDateRange(
+      ).order("created_at")),
+
+      pageAll(() => withDateRange(
         supabase
           .from("pulse_ask_ai_requests")
           .select("account_id, created_at")
           .in("account_id", accountIds)
           .not("hotlist_id", "is", null)
-      ),
+      ).order("created_at")),
+
       // AI Match: api_usage_log records nothing for it (ai-match logs
       // cost_usd 0 because Workers AI bills per neuron, and nothing else
       // writes that table), so the credit ledger is the only record of a run.
       // One row per run, but the amount is the up-front hold (10, or whatever
       // a short balance allowed), not the matches delivered — the undelivered
       // part comes back as a refund row, paired with its run below.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("credit_transactions")
           .select("account_id, amount, created_at")
@@ -209,63 +241,71 @@ Deno.serve(async (req: Request) => {
           .eq("type", "usage")
           .like("description", "%ai_match_run%")
           .order("created_at", { ascending: true })
-      ),
+      )),
+
       // Gmail: which accounts have connected a mailbox, and which address.
       // Not date-ranged — a connection is current state, not an event in the
       // window, so a range filter would make it vanish from older ranges.
-      supabase
+      pageAll(() => supabase
         .from("gmail_integrations")
         .select("account_id, gmail_address, status, last_synced_at")
-        .in("account_id", accountIds),
+        .in("account_id", accountIds).order("account_id")),
+
       // Chats: messages sent on an in-app user_post conversation.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("post_chat_messages")
           .select("sender_account_id, created_at")
           .in("sender_account_id", accountIds)
-      ),
+      ).order("created_at")),
+
       // Active List downloads: one row per download action (see
       // active_list_downloads / check_and_log_active_list_download), split
       // by download_type the same way AI Pitch/Request splits by which
       // foreign key is set.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("active_list_downloads")
           .select("account_id, created_at")
           .in("account_id", accountIds)
           .eq("download_type", "vendors")
-      ),
-      withDateRange(
+      ).order("created_at")),
+
+      pageAll(() => withDateRange(
         supabase
           .from("active_list_downloads")
           .select("account_id, created_at")
           .in("account_id", accountIds)
           .eq("download_type", "recruiters")
-      ),
+      ).order("created_at")),
+
       // Network subscriptions: current state, so not date-ranged. source is
       // 'manual' (tapped Subscribe) or 'auto' (created by an AI Submit/Invite).
-      supabase
+      pageAll(() => supabase
         .from("publisher_follows")
         .select("account_id, publisher_id, source, created_at")
-        .in("account_id", accountIds),
+        .in("account_id", accountIds).order("created_at")),
+
       // Subscribe taps inside the window (one row per tap, kept on unsubscribe).
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("publisher_follow_log")
           .select("account_id, created_at")
           .in("account_id", accountIds)
-      ),
+      ).order("created_at")),
+
       // Profiles an account has claimed, to count who subscribes to them.
-      supabase
+      pageAll(() => supabase
         .from("publisher_profiles")
         .select("id, claimed_account_id")
-        .not("claimed_account_id", "is", null),
+        .not("claimed_account_id", "is", null).order("id")),
+
       // Google Play link clicks; account is null when the clicker wasn't signed in.
-      withDateRange(
+      pageAll(() => withDateRange(
         supabase
           .from("play_store_clicks")
           .select("account_id, created_at")
-      ),
+      ).order("created_at")),
     ]);
 
     function countBy(rows: any[] | null, key = "account_id"): Record<string, number> {
@@ -370,6 +410,18 @@ Deno.serve(async (req: Request) => {
     }
     const recruiterDownloadsCounts = countBy(recruiterDownloadsRes.data);
 
+    // Which of these ids exist in a table, asked 200 at a time so the
+    // request URL stays short however many ids there are.
+    async function idsIn(table: string, ids: string[]) {
+      // deno-lint-ignore no-explicit-any
+      const found: any[] = [];
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data } = await supabase.from(table).select("id").in("id", ids.slice(i, i + 200));
+        found.push(...(data ?? []));
+      }
+      return { data: found };
+    }
+
     // Split previews by looking up which table each previewed lead_id
     // actually belongs to.
     const previewLeadIds = Array.from(new Set(
@@ -377,8 +429,8 @@ Deno.serve(async (req: Request) => {
     ));
     const [previewJobIdsRes, previewHotlistIdsRes] = previewLeadIds.length
       ? await Promise.all([
-          supabase.from("social_jobs").select("id").in("id", previewLeadIds),
-          supabase.from("social_hotlist").select("id").in("id", previewLeadIds),
+          idsIn("social_jobs", previewLeadIds),
+          idsIn("social_hotlist", previewLeadIds),
         ])
       : [{ data: [] as any[] }, { data: [] as any[] }];
     const previewJobIdSet = new Set((previewJobIdsRes.data ?? []).map((r: any) => r.id));
