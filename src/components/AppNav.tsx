@@ -4,7 +4,7 @@ import {
   ChevronDown, LogOut, Settings, Sparkles,
   Building2, CreditCard, AlertTriangle, FileText,
   Bell, BellRing, Check, X,
-  Briefcase, Mail, UserRound, Video, Rss,
+  Briefcase, Mail, UserRound, Video, Rss, CircleUser,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -15,7 +15,7 @@ import FeedbackPrompt from './FeedbackPrompt';
 import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
-import { followingLabelForPersona, networkPath, profilePath } from '../lib/publishers';
+import { followingLabelForPersona, networkPath } from '../lib/publishers';
 
 // Shows the account's real Google profile photo (from user_metadata, set by
 // Supabase's Google OAuth flow) when available, falling back to the same
@@ -69,6 +69,9 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
     { path: networkPath(persona), label: followingLabel, mobileLabel: followingLabel, icon: Rss,       hideOnMobile: false },
     { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
     { path: trackerPath,    label: trackerLabel,  mobileLabel: trackerLabel,  icon: trackerIcon, hideOnMobile: false },
+    // All of the account's posts, open or closed, with Open / AI Match / Close.
+    // Desktop nav; on a phone it's in the avatar menu (the bottom bar is full).
+    { path: '/me',          label: 'My Profile',  mobileLabel: 'Profile',     icon: CircleUser,  hideOnMobile: true },
   ];
 }
 
@@ -484,14 +487,14 @@ export default function AppNav() {
 
                 <PersonaMenuSection onChosen={() => setMenuOpen(false)} />
 
-                {myProfile && (
+                {(
                   <button
-                    onClick={() => { setMenuOpen(false); navigate(profilePath(myProfile.slug, account?.active_persona)); }}
+                    onClick={() => { setMenuOpen(false); navigate('/me'); }}
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
                   >
                     <UserRound size={13} className="text-gray-400" />
                     <span className="flex-1 text-left">My profile</span>
-                    <span className="text-[11px] tabular-nums text-gray-400">{myProfile.follower_count} subscriber{myProfile.follower_count === 1 ? '' : 's'}</span>
+                    {myProfile && <span className="text-[11px] tabular-nums text-gray-400">{myProfile.follower_count} subscriber{myProfile.follower_count === 1 ? '' : 's'}</span>}
                   </button>
                 )}
 

@@ -33,6 +33,7 @@ const ScreeningInterview = lazy(() => import('./pages/ScreeningInterview'));
 const PublicJobPage = lazy(() => import('./pages/PublicJobPage'));
 const PublicHotlistPage = lazy(() => import('./pages/PublicHotlistPage'));
 const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'));
+const MyProfilePage = lazy(() => import('./pages/MyProfilePage'));
 const PostApplicationsPage = lazy(() => import('./pages/PostApplicationsPage'));
 const HotlistRequestsPage = lazy(() => import('./pages/HotlistRequestsPage'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -286,6 +287,7 @@ export default function App() {
             <Route path="/job/:id" element={<ErrorBoundary><PublicJobPage /></ErrorBoundary>} />
             <Route path="/hotlist/:id" element={<ErrorBoundary><PublicHotlistPage /></ErrorBoundary>} />
             <Route path="/profile/:slug" element={<ErrorBoundary><PublicProfilePage /></ErrorBoundary>} />
+            <Route path="/me" element={<ProtectedRoute><ErrorBoundary><MyProfilePage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
             <Route path="/terms" element={<ErrorBoundary><TermsAndConditions /></ErrorBoundary>} />
             <Route path="/security" element={<ErrorBoundary><SecurityPage /></ErrorBoundary>} />
