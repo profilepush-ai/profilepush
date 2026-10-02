@@ -299,8 +299,8 @@ function renderMorningBrief(r: BriefRecipient, market: MarketBrief, unsubscribeU
       : { number: market.jobs_24h, label: "new requirements posted today" };
 
   const nudge = hasOwnPosts ? null : isVendor
-    ? { text: "Post your open requirements and we'll match bench consultants to them every morning.", label: "Post a requirement", url: `${base}/posts/jobs` }
-    : { text: "Add your consultants and we'll match new requirements to them every morning.", label: "Add consultants", url: `${base}/posts/hotlist` };
+    ? { text: "Post your open requirements and we'll match bench consultants to them every morning.", label: "Post a requirement", url: `${base}/match` }
+    : { text: "Add your consultants and we'll match new requirements to them every morning.", label: "Add consultants", url: `${base}/match` };
 
   const row = (item: BriefItem, extra = "") => `
           <tr>
@@ -847,7 +847,9 @@ function renderWeeklyResults(r: WeeklyResult, unsubscribeUrl: string, appBaseUrl
     : (isVendor ? r.requirement_count === 0 : r.consultant_count === 0)
       ? (isVendor ? "Post your open requirements and we'll match bench consultants to them every morning." : "Add your consultants and we'll match new requirements to them every morning.")
       : "";
-  const matchUrl = `${base}${isVendor ? "/posts/jobs" : "/posts/hotlist"}`;
+  // Their matches when there are some; otherwise AI Match, where pasting a
+  // requirement or hotlist posts it and finds its matches.
+  const matchUrl = r.matches > 0 ? `${base}${isVendor ? "/posts/jobs" : "/posts/hotlist"}` : `${base}/match`;
   const matchCta = r.matches > 0 ? "See your matches" : (isVendor ? "Post a requirement" : "Add consultants");
   const lowCredits = credits < 100;
 

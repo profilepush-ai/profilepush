@@ -166,11 +166,13 @@ export default function MyProfilePage() {
                   {s === 'open' ? 'Open' : s === 'closed' ? 'Closed' : 'All'} <span className="tabular-nums opacity-70">{statusCounts[s]}</span>
                 </button>
               ))}
+              {/* New posts start in AI Match: pasting a requirement or hotlist
+                  there posts it and finds its matches in one go. */}
               <Link
-                to={kind === 'job' ? '/posts/jobs' : '/posts/hotlist'}
+                to="/match"
                 className="ml-auto rounded-lg bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-blue-700"
               >
-                {kind === 'job' ? 'Post a requirement' : 'Add consultants'}
+                {matchableKind === 'job' ? 'Post a requirement' : 'Add consultants'}
               </Link>
             </div>
             {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{error}</p>}
