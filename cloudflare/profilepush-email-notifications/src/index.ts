@@ -1481,6 +1481,51 @@ async function logUnsubscribe(env: Env, category: string, userId: string | null,
   }
 }
 
+// ── Domain check for email to non-users ─────────────────────────────────────
+// Addresses read out of posts sometimes have a typo'd or glued-on ending
+// ("x.comkey", "x.om") or a domain that no longer exists, and those bounce.
+// Before any outreach-lane email the domain must have a mail server (an MX
+// record, or an address record as the fallback mail host), checked with
+// Cloudflare's DNS over HTTPS and cached in email_domain_checks for 30 days.
+// A DNS hiccup counts as "accepts mail" so a lookup failure never drops email.
+async function domainAcceptsMail(env: Env, email: string): Promise<boolean> {
+  const domain = email.split("@")[1]?.trim().toLowerCase() ?? "";
+  if (!domain || !domain.includes(".")) return false;
+
+  const cached = await supabaseRequest(env, `email_domain_checks?domain=eq.${encodeURIComponent(domain)}&select=accepts_mail,checked_at&limit=1`);
+  if (cached.ok) {
+    const row = (await cached.json<Array<{ accepts_mail: boolean; checked_at: string }>>())[0];
+    if (row && Date.now() - new Date(row.checked_at).getTime() < 30 * 24 * 60 * 60 * 1000) return row.accepts_mail;
+  }
+
+  const lookup = async (type: "MX" | "A"): Promise<"yes" | "no" | "unknown"> => {
+    try {
+      const response = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${type}`, {
+        headers: { Accept: "application/dns-json" },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) return "unknown";
+      const answer = await response.json<{ Status: number; Answer?: Array<{ type: number }> }>();
+      if (answer.Status === 3) return "no"; // NXDOMAIN: the domain doesn't exist
+      if (answer.Status !== 0) return "unknown";
+      return (answer.Answer ?? []).some((a) => a.type === (type === "MX" ? 15 : 1)) ? "yes" : "no";
+    } catch {
+      return "unknown";
+    }
+  };
+
+  const mx = await lookup("MX");
+  const result = mx === "yes" ? "yes" : mx === "unknown" ? "unknown" : await lookup("A");
+  if (result === "unknown") return true;
+  const accepts = result === "yes";
+  await supabaseRequest(env, "email_domain_checks?on_conflict=domain", {
+    method: "POST",
+    headers: { ...serviceHeaders(env, true), Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ domain, accepts_mail: accepts, checked_at: new Date().toISOString() }),
+  }).catch(() => undefined);
+  return accepts;
+}
+
 // ── Open and click tracking ─────────────────────────────────────────────────
 // Every email gets an id before it's sent. Its links go through
 // /c/<id> (signed, so the redirect can't be pointed anywhere else) and a 1x1
@@ -1813,6 +1858,11 @@ export default {
         continue;
       }
       try {
+        if ((message.body.lane ?? "user") === "outreach" && !(await domainAcceptsMail(env, message.body.to))) {
+          message.ack();
+          await logSend(env, message.body, "rejected", null, new Error("No mail server for this domain; not sent"));
+          continue;
+        }
         await sendTracked(env, message.body);
         message.ack();
       } catch (error) {

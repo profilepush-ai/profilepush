@@ -37,10 +37,20 @@ type HotlistExtraction = {
   result: Record<string, unknown>;
 };
 
+// Posts often run the address into the next word ("x@techmellousa.comKey
+// Skills"), which comes back as "x@techmellousa.comkey". Cut anything glued
+// onto a .com / .net / .org ending, keeping real endings that start the same.
+const REAL_LONGER_TLDS = new Set(["company", "community", "computer", "network", "organic", "comcast"]);
+function cleanEmail(email: string): string {
+  const match = email.match(/^(.+\.)(com|net|org)([a-z]+)$/);
+  if (!match || REAL_LONGER_TLDS.has(match[2] + match[3])) return email;
+  return match[1] + match[2];
+}
+
 function extractEmail(explicitValue: unknown, content: string): string {
   const explicit = asString(explicitValue).trim().toLowerCase();
-  if (EMAIL_PATTERN.test(explicit)) return explicit;
-  return content.match(EMAIL_IN_TEXT_PATTERN)?.[0]?.toLowerCase() ?? "";
+  if (EMAIL_PATTERN.test(explicit)) return cleanEmail(explicit);
+  return cleanEmail(content.match(EMAIL_IN_TEXT_PATTERN)?.[0]?.toLowerCase() ?? "");
 }
 
 function asIsoOrNull(value: unknown): string | null {
@@ -312,7 +322,7 @@ async function persistSocialHotlists(
     const consultantCount = validCandidates.length;
     const recruiterDetails = {
       bench_sales_recruiter_name: asString(result.bench_sales_recruiter_name).trim() || asString(source.posted_by_name),
-      bench_sales_recruiter_email: asString(result.bench_sales_recruiter_email).trim().toLowerCase() || asString(source.poster_email),
+      bench_sales_recruiter_email: cleanEmail(asString(result.bench_sales_recruiter_email).trim().toLowerCase() || asString(source.poster_email).trim().toLowerCase()),
       bench_sales_recruiter_phone: asString(result.bench_sales_recruiter_phone).trim() || asString(source.poster_phone),
       bench_sales_company_name: asString(result.bench_sales_company_name).trim(),
       recruiter_profile_link: asString(source.profile_link),
