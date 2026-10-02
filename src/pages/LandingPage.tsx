@@ -8,6 +8,7 @@ import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
 import MarketingNav from '../components/MarketingNav';
 import PricingCards from '../components/landing/PricingCards';
+import RatingBlock from '../components/landing/RatingBlock';
 
 interface WorkflowCard {
   persona: 'vendor' | 'bench_sales';
@@ -353,6 +354,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      <RatingBlock />
 
       {/* ── PRICING ── */}
       <section id="pricing" className="py-24 px-6 bg-white border-y border-gray-100">

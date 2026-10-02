@@ -75,6 +75,7 @@ import LocationChipInput from '../components/LocationChipInput';
 import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 import SubmitApplicationModal from '../components/SubmitApplicationModal';
 import { consultantTitle } from '../lib/consultant-title';
+import { requestFeedback } from '../lib/feedback';
 
 type PulsePersona = {
   target_role: string;
@@ -7509,6 +7510,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
       }
       setAskAIPreview(null);
       showToast('Sent via Gmail', 'success');
+      requestFeedback('ai_submit');
       // An inline send happens beside the results the person is working
       // through; jumping them to the Inbox would lose their place.
       if (data.conversation_id && !preview.inline) navigate(`/inbox/${data.conversation_id}`);
