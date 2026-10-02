@@ -255,7 +255,7 @@ function EmailPerformance() {
             {stat('Opened', pct(totals.opened, totals.engagementTracked), `${fmt(totals.opened)} of ${fmt(totals.engagementTracked)} tracked`)}
             {stat('Clicked', pct(totals.clicked, totals.engagementTracked), `${fmt(totals.clicked)} people clicked`)}
             {stat('Delivered', pct(totals.delivered, totals.tracked), `of ${fmt(totals.tracked)} sent through SES`)}
-            {stat('Bounced', pct(totals.bounced, totals.tracked), `${fmt(totals.bounced)} · keep under 2%`, rateTone(totals.bounced, totals.tracked, 0.02, 0.05).replace('text-gray-700', 'text-gray-900'))}
+            {stat('Bounced', pct(totals.bounced, totals.sent), `${fmt(totals.bounced)} · keep under 2%`, rateTone(totals.bounced, totals.sent, 0.02, 0.05).replace('text-gray-700', 'text-gray-900'))}
             {stat('Complaints', pct(totals.complained, totals.tracked), `${fmt(totals.complained)} · keep under 0.1%`, rateTone(totals.complained, totals.tracked, 0.001, 0.003).replace('text-gray-700', 'text-gray-900'))}
             {stat('Unsubscribed', fmt(totals.unsubscribed), pct(totals.unsubscribed, totals.sent) + ' of sent')}
           </div>
@@ -305,8 +305,9 @@ function EmailPerformance() {
                       <td className="px-3 py-2 text-right tabular-nums">{c.tracked ? pct(Number(c.delivered), Number(c.tracked)) : '—'}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{c.engagement_tracked ? pct(Number(c.opened), Number(c.engagement_tracked)) : '—'}</td>
                       <td className="px-3 py-2 text-right font-semibold tabular-nums">{c.engagement_tracked ? pct(Number(c.clicked), Number(c.engagement_tracked)) : '—'}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums ${rateTone(Number(c.bounced), Number(c.tracked), 0.02, 0.05)}`}>
-                        {c.tracked ? `${fmt(Number(c.bounced))} · ${pct(Number(c.bounced), Number(c.tracked))}` : '—'}
+                      {/* Out of all sent: SES reports bounces itself, GMass through its webhook. */}
+                      <td className={`px-3 py-2 text-right tabular-nums ${rateTone(Number(c.bounced), Number(c.sent), 0.02, 0.05)}`}>
+                        {c.sent ? `${fmt(Number(c.bounced))} · ${pct(Number(c.bounced), Number(c.sent))}` : '—'}
                       </td>
                       <td className={`px-3 py-2 text-right tabular-nums ${rateTone(Number(c.complained), Number(c.tracked), 0.001, 0.003)}`}>
                         {c.tracked ? fmt(Number(c.complained)) : '—'}

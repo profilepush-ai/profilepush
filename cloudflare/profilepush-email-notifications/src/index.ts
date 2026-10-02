@@ -27,6 +27,8 @@ export interface Env {
   SES_EVENTS_TOKEN: string;
   // Where open images and tracked links point (this worker, on our domain).
   TRACKING_BASE_URL: string;
+  // Secret in the GMass webhook URLs (bounces, blocks) that call /gmass-webhook.
+  GMASS_WEBHOOK_TOKEN: string;
 }
 
 // Two lanes that never share a sender. "user" is email to people who signed
@@ -1526,6 +1528,88 @@ async function domainAcceptsMail(env: Env, email: string): Promise<boolean> {
   return accepts;
 }
 
+// ── GMass verification and bounces (outreach lane) ──────────────────────────
+// Before the first email to someone who isn't a user, GMass's free verifier
+// checks the address (cached per address in email_verifications). Invalid,
+// Malformed and NoMxRecord are never sent; Unknown (catch-all domains) and
+// anything the verifier can't answer still go. Addresses GMass reports as
+// bounced or blocked (its webhooks call /gmass-webhook) land in
+// email_suppressions and are never emailed again.
+const UNSENDABLE_STATUSES = new Set(["Invalid", "Malformed", "NoMxRecord"]);
+
+async function outreachBlockReason(env: Env, email: string): Promise<string | null> {
+  const address = email.trim().toLowerCase();
+  const suppressed = await supabaseRequest(env, `email_suppressions?email=eq.${encodeURIComponent(address)}&select=reason&limit=1`);
+  if (suppressed.ok) {
+    const row = (await suppressed.json<Array<{ reason: string }>>())[0];
+    if (row) return `Earlier ${row.reason} (GMass); not sent`;
+  }
+  if (!(await domainAcceptsMail(env, address))) return "No mail server for this domain; not sent";
+
+  const cached = await supabaseRequest(env, `email_verifications?email=eq.${encodeURIComponent(address)}&select=status,sendable&limit=1`);
+  if (cached.ok) {
+    const row = (await cached.json<Array<{ status: string; sendable: boolean }>>())[0];
+    if (row) return row.sendable ? null : `Address failed verification (${row.status}); not sent`;
+  }
+  try {
+    const response = await fetch(`https://verify.gmass.co/verify?email=${encodeURIComponent(address)}&key=${encodeURIComponent(env.GMASS_API_KEY)}`, {
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) return null; // verifier unavailable: don't hold the email back
+    const result = await response.json<{ Success?: boolean; Valid?: boolean; Status?: string }>();
+    if (result.Success === false || !result.Status) return null;
+    const sendable = !UNSENDABLE_STATUSES.has(result.Status);
+    await supabaseRequest(env, "email_verifications?on_conflict=email", {
+      method: "POST",
+      headers: { ...serviceHeaders(env, true), Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({ email: address, status: result.Status, sendable, checked_at: new Date().toISOString() }),
+    }).catch(() => undefined);
+    return sendable ? null : `Address failed verification (${result.Status}); not sent`;
+  } catch {
+    return null;
+  }
+}
+
+// GMass calls this for bounces and blocks: one URL per event, e.g.
+// /gmass-webhook?token=...&event=bounce and ...&event=block. The payload
+// format isn't documented in detail, so every address in it (other than our
+// own) is taken, and the raw call is kept in gmass_webhook_events.
+async function handleGmassWebhook(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const token = url.searchParams.get("token") ?? "";
+  if (!env.GMASS_WEBHOOK_TOKEN || !timingSafeEqual(token, env.GMASS_WEBHOOK_TOKEN)) return jsonResponse({ error: "Unauthorized" }, 401);
+  const event = (url.searchParams.get("event") ?? "bounce").toLowerCase() === "block" ? "block" : "bounce";
+
+  let payload: unknown = null;
+  let raw = "";
+  if (request.method === "POST") {
+    raw = await request.text();
+    try { payload = JSON.parse(raw); } catch { payload = Object.fromEntries(new URLSearchParams(raw)); }
+  } else {
+    payload = Object.fromEntries(url.searchParams);
+  }
+  const own = new Set([env.GMASS_FROM_EMAIL, env.SES_FROM_EMAIL].map((e) => (e ?? "").toLowerCase()));
+  const found = [...new Set((JSON.stringify(payload ?? raw).match(/[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? [])
+    .map((e) => e.toLowerCase()))]
+    .filter((e) => !own.has(e) && !e.endsWith("@profilepush.ai") && !e.endsWith("@mail.profilepush.ai") && !e.endsWith("@gmass.co"));
+
+  await supabaseRequest(env, "gmass_webhook_events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ event, emails: found, payload: typeof payload === "object" ? payload : { raw } }),
+  }).catch(() => undefined);
+
+  if (found.length > 0) {
+    const response = await supabaseRequest(env, "rpc/record_gmass_bounces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ p_emails: found, p_reason: event }),
+    });
+    if (!response.ok) return jsonResponse({ error: `record_gmass_bounces HTTP ${response.status}` }, 500);
+  }
+  return jsonResponse({ recorded: found.length, event });
+}
+
 // ── Open and click tracking ─────────────────────────────────────────────────
 // Every email gets an id before it's sent. Its links go through
 // /c/<id> (signed, so the redirect can't be pointed anywhere else) and a 1x1
@@ -1805,6 +1889,7 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     try {
+      if (request.method === "GET" && pathname === "/gmass-webhook") return await handleGmassWebhook(request, env);
       if (request.method === "GET") {
         const open = pathname.match(/^\/o\/([0-9a-f-]{36})\.gif$/i);
         if (open && SEND_ID_PATTERN.test(open[1])) return handleOpen(env, ctx, open[1]);
@@ -1840,6 +1925,7 @@ export default {
       if (pathname === "/publisher-subscribed") return await handlePublisherSubscribed(request, env);
       if (pathname === "/run-low-credit-emails") return await handleRunLowCreditEmails(request, env);
       if (pathname === "/ses-events") return await handleSesEvents(request, env);
+      if (pathname === "/gmass-webhook") return await handleGmassWebhook(request, env);
       if (pathname === "/broadcast") return await handleBroadcast(request, env);
       return jsonResponse({ error: "Not found" }, 404);
     } catch (error) {
@@ -1858,10 +1944,13 @@ export default {
         continue;
       }
       try {
-        if ((message.body.lane ?? "user") === "outreach" && !(await domainAcceptsMail(env, message.body.to))) {
-          message.ack();
-          await logSend(env, message.body, "rejected", null, new Error("No mail server for this domain; not sent"));
-          continue;
+        if ((message.body.lane ?? "user") === "outreach") {
+          const blocked = await outreachBlockReason(env, message.body.to);
+          if (blocked) {
+            message.ack();
+            await logSend(env, message.body, "rejected", null, new Error(blocked));
+            continue;
+          }
         }
         await sendTracked(env, message.body);
         message.ack();
