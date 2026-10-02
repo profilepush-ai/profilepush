@@ -44,6 +44,7 @@ type Filter = 'all' | 'users' | 'non_users';
 
 const CATEGORY_LABELS: Record<string, string> = {
   morning_brief: 'Morning brief',
+  weekly_results: 'Weekly results',
   low_credits: 'Low credits',
   welcome: 'Welcome',
   campaign: 'Campaign',

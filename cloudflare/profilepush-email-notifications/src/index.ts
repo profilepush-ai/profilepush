@@ -769,6 +769,177 @@ Don't want these emails? Unsubscribe: ${unsubscribeUrl}`;
   return { to: row.email, subject, text, html, lane: "outreach", category: "subscriber_notice", unsubscribeUrl };
 }
 
+// ── Weekly results ──────────────────────────────────────────────────────────
+// Fridays: each active user's last 7 days (emails sent to vendors, AI drafts,
+// AI Match runs, new subscribers, and how many new posts matched their own
+// consultants or requirements), with one way back in and a top-up prompt
+// when credits are low. get_weekly_results picks the people and the numbers
+// and leaves out anyone with nothing to report.
+type WeeklyResult = {
+  user_id: string;
+  account_id: string;
+  email: string;
+  first_name: string | null;
+  persona: string | null;
+  credits_balance: number | string;
+  emails_sent: number;
+  drafts: number;
+  ai_match_runs: number;
+  new_subscribers: number;
+  matches: number;
+  match_kind: "job" | "hotlist" | null;
+  consultant_count: number;
+  requirement_count: number;
+};
+
+async function buildWeeklyUnsubscribeUrl(env: Env, userId: string, accountId: string): Promise<string> {
+  const sig = await hmacHex(env.UNSUBSCRIBE_SECRET, `weekly_results:${userId}:${accountId}`);
+  const url = new URL("/unsubscribe-weekly", env.WORKER_BASE_URL);
+  url.searchParams.set("uid", userId);
+  url.searchParams.set("aid", accountId);
+  url.searchParams.set("sig", sig);
+  return url.toString();
+}
+
+function renderWeeklyResults(r: WeeklyResult, unsubscribeUrl: string, appBaseUrl: string, now = new Date()): EmailJob {
+  const base = appBaseUrl.replace(/\/$/, "");
+  const credits = Math.max(0, Math.floor(Number(r.credits_balance) || 0));
+  const isVendor = r.match_kind === "hotlist" || (r.match_kind === null && r.persona === "vendor");
+  const start = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+  const range = `${start.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })} – ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}`;
+  const matchNoun = isVendor ? "consultants matched your requirements" : "requirements matched your consultants";
+
+  const subject = r.emails_sent > 0
+    ? `Your week: ${plural(r.emails_sent, "email", "emails")} to vendors${r.matches > 0 ? `, ${r.matches.toLocaleString("en-US")} new matches` : ""}`
+    : r.matches > 0
+      ? `${r.matches.toLocaleString("en-US")} new ${matchNoun} this week`
+      : "Your week on ProfilePush";
+
+  const stats: Array<[string, number]> = [
+    ["Emails to vendors", r.emails_sent],
+    ["AI drafts written", r.drafts],
+    ["AI Match runs", r.ai_match_runs],
+    ["New subscribers", r.new_subscribers],
+  ];
+
+  const matchLine = r.matches > 0
+    ? (r.emails_sent > 0
+      ? `${r.matches.toLocaleString("en-US")} new ${matchNoun} this week, and you emailed ${plural(r.emails_sent, "vendor", "vendors")}. Keep going: each one is a submission waiting to happen.`
+      : `${r.matches.toLocaleString("en-US")} new ${matchNoun} this week, and none of them heard from you yet.`)
+    : (isVendor ? r.requirement_count === 0 : r.consultant_count === 0)
+      ? (isVendor ? "Post your open requirements and we'll match bench consultants to them every morning." : "Add your consultants and we'll match new requirements to them every morning.")
+      : "";
+  const matchUrl = `${base}${isVendor ? "/posts/jobs" : "/posts/hotlist"}`;
+  const matchCta = r.matches > 0 ? "See your matches" : (isVendor ? "Post a requirement" : "Add consultants");
+  const lowCredits = credits < 100;
+
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">${escapeHtml(matchLine || subject)}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff;">
+    <tr>
+      <td align="center" style="padding: 32px 20px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 520px;">
+          <tr>
+            <td style="padding-bottom: 24px;">
+              <img src="${base}/favicon.svg" width="24" height="24" alt="" style="vertical-align: middle; border-radius: 6px;" />
+              <span style="font-size: 16px; font-weight: 800; color: #0f172a; vertical-align: middle; margin-left: 8px;">ProfilePush</span>
+            </td>
+          </tr>
+          <tr><td style="padding-bottom: 4px;"><p style="margin: 0; font-size: 14px; color: #334155;">${escapeHtml(r.first_name ? `Hi ${r.first_name},` : "Hi,")}</p></td></tr>
+          <tr><td style="padding-bottom: 18px;"><p style="margin: 0; font-size: 20px; font-weight: 800; color: #0f172a;">Your week on ProfilePush</p><p style="margin: 2px 0 0; font-size: 13px; color: #64748b;">${escapeHtml(range)}</p></td></tr>
+          <tr>
+            <td style="padding-bottom: 20px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  ${stats.map(([label, value]) => `<td width="25%" style="padding: 12px 6px; background: #f8fafc; border-radius: 8px; text-align: center; border: 4px solid #ffffff;"><div style="font-size: 24px; font-weight: 800; color: ${value > 0 ? "#2563eb" : "#94a3b8"};">${Number(value).toLocaleString("en-US")}</div><div style="font-size: 11px; color: #64748b; margin-top: 2px;">${escapeHtml(label)}</div></td>`).join("")}
+                </tr>
+              </table>
+            </td>
+          </tr>
+          ${matchLine ? `<tr><td style="padding-bottom: 16px;"><p style="margin: 0; font-size: 15px; line-height: 1.55; color: #1e293b;">${escapeHtml(matchLine)}</p></td></tr>` : ""}
+          <tr>
+            <td style="padding-bottom: 24px;">
+              <a href="${matchUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">${escapeHtml(matchCta)}</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom: 8px;">
+              <div style="background: ${lowCredits ? "#fff7ed" : "#f8fafc"}; border-radius: 8px; padding: 14px 16px; font-size: 14px; color: #1e293b;">
+                <b>${credits.toLocaleString("en-US")} credits left.</b>
+                ${lowCredits ? ` Top up from ₹249 to keep matching and sending next week. <a href="${base}/billing?openPlan=1" style="color: #2563eb; font-weight: 700;">Top up</a>` : ""}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top: 1px solid #f1f5f9; padding-top: 16px; text-align: center;">
+              <p style="margin: 16px 0 0; font-size: 12px; color: #94a3b8;">Your ProfilePush week, every Friday. <a href="${unsubscribeUrl}" style="color: #94a3b8; text-decoration: underline;">Unsubscribe</a></p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  const text = `${r.first_name ? `Hi ${r.first_name},` : "Hi,"}
+
+Your week on ProfilePush (${range}):
+${stats.map(([label, value]) => `- ${label}: ${value}`).join("\n")}
+${matchLine ? `\n${matchLine}\n` : ""}
+${matchCta}: ${matchUrl}
+
+${credits} credits left.${lowCredits ? ` Top up from ₹249: ${base}/billing?openPlan=1` : ""}
+
+---
+Your ProfilePush week, every Friday. Unsubscribe: ${unsubscribeUrl}`;
+
+  return { to: r.email, subject, html, text, lane: "user", category: "weekly_results", unsubscribeUrl };
+}
+
+async function runWeeklyResults(env: Env, force = false, now = new Date()): Promise<{ emailed: number; reason?: string }> {
+  if (!force && now.getUTCDay() !== 5) return { emailed: 0, reason: "not Friday" };
+  const response = await supabaseRequest(env, "rpc/get_weekly_results", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  if (!response.ok) throw new Error(`get_weekly_results HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  const rows = await response.json<WeeklyResult[]>();
+  const jobs: EmailJob[] = [];
+  for (const r of rows) {
+    jobs.push(renderWeeklyResults(r, await buildWeeklyUnsubscribeUrl(env, r.user_id, r.account_id), env.APP_BASE_URL, now));
+  }
+  for (const chunk of chunkEmailJobsForQueue(jobs)) {
+    await env.EMAIL_QUEUE.sendBatch(chunk.map((job) => ({ body: job })));
+  }
+  return { emailed: jobs.length };
+}
+
+async function handleUnsubscribeWeekly(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const userId = url.searchParams.get("uid") ?? "";
+  const accountId = url.searchParams.get("aid") ?? "";
+  const sig = url.searchParams.get("sig") ?? "";
+  const expected = await hmacHex(env.UNSUBSCRIBE_SECRET, `weekly_results:${userId}:${accountId}`);
+  if (!UUID_PATTERN.test(userId) || !UUID_PATTERN.test(accountId) || !timingSafeEqual(sig, expected)) {
+    return new Response("Invalid or expired unsubscribe link.", { status: 400, headers: { "Content-Type": "text/plain" } });
+  }
+  const response = await supabaseRequest(env, "notification_preferences?on_conflict=user_id,notif_type", {
+    method: "POST",
+    headers: { ...serviceHeaders(env, true), Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ user_id: userId, account_id: accountId, notif_type: "weekly_results", email_enabled: false }),
+  });
+  if (!response.ok) {
+    return new Response("Something went wrong. Please try again later.", { status: 500, headers: { "Content-Type": "text/plain" } });
+  }
+  await logUnsubscribe(env, "weekly_results", userId, null);
+  return new Response("You've been unsubscribed from the ProfilePush weekly summary.", { status: 200, headers: { "Content-Type": "text/plain" } });
+}
+
 // ── Daily "X subscribed to you" for unclaimed publishers ────────────────────
 // Once a day, each unclaimed publisher with new subscribers gets one plain
 // email naming them, with a one-tap claim link (claim-profile signs them in
@@ -1586,11 +1757,16 @@ export default {
       if (unsubscribe && pathname === "/unsubscribe-publisher") return await handleUnsubscribePublisher(request, env);
       if (unsubscribe && pathname === "/unsubscribe-low-credits") return await handleUnsubscribeLowCredits(request, env);
       if (unsubscribe && pathname === "/unsubscribe-announcements") return await handleUnsubscribeAnnouncements(request, env);
+      if (unsubscribe && pathname === "/unsubscribe-weekly") return await handleUnsubscribeWeekly(request, env);
       if (request.method === "GET" && pathname === "/remove-profile") return await handleRemoveProfile(request, env);
       if (request.method === "GET") return jsonResponse({ status: "ok" });
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
       if (pathname === "/send") return await handleSendRequest(request, env);
       if (pathname === "/run-digest") return await handleRunDigest(request, env);
+      if (pathname === "/run-weekly-results") {
+        if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
+        return jsonResponse(await runWeeklyResults(env, true));
+      }
       if (pathname === "/run-subscriber-digests") {
         if (getBearerToken(request) !== env.WORKER_AUTH_TOKEN) return jsonResponse({ error: "Unauthorized" }, 401);
         return jsonResponse(await runSubscriberDigests(env));
@@ -1650,6 +1826,9 @@ export default {
       }),
       runSubscriberDigests(env).then((result) => {
         console.log(`Subscriber emails to unclaimed publishers: ${result.emailed}`);
+      }),
+      runWeeklyResults(env).then((result) => {
+        console.log(`Weekly results: emailed ${result.emailed}${result.reason ? ` (${result.reason})` : ""}`);
       }),
       runJobMatchNotifications(env),
       runLowCreditEmails(env).then((result) => {

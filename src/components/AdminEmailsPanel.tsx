@@ -57,6 +57,7 @@ type SendRow = {
 };
 
 const CATEGORIES: Record<string, { label: string; detail: string; color: string }> = {
+  weekly_results: { label: 'Weekly results', detail: 'Fridays: their week in numbers and matches', color: '#4f46e5' },
   morning_brief: { label: 'Morning brief', detail: 'Weekday email: their matches, subscriptions and the market', color: '#1d4ed8' },
   digest: { label: 'Daily digest (old)', detail: 'Replaced by the morning brief on Oct 1', color: '#93c5fd' },
   low_credits: { label: 'Low credits', detail: 'Daily upgrade reminder under half credits', color: '#d97706' },
