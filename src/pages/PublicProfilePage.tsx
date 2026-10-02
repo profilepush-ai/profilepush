@@ -4,7 +4,7 @@ import { Briefcase, Clock3, MapPin, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ensureAccountForUser } from '../lib/account-provisioning';
-import { profilePath, publisherInitials, timeAgo } from '../lib/publishers';
+import { claimMyPublisherProfile, profilePath, publisherInitials, timeAgo } from '../lib/publishers';
 import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
 import SEO from '../components/SEO';
@@ -82,6 +82,10 @@ export default function PublicProfilePage() {
     void (async () => {
       if (claimed || !account) {
         await ensureAccountForUser(user);
+        // Claiming sets the account's user type from the profile (vendor if
+        // they post requirements, bench sales if hotlists), so wait for it
+        // before loading the account: otherwise they'd still be asked.
+        await claimMyPublisherProfile();
         await refreshAccount();
       }
       if (!cancelled) navigate(profilePath(slug, account?.active_persona ?? null), { replace: true });
