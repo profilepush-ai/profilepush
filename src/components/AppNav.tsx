@@ -11,6 +11,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
 import GooglePlayBanner from './GooglePlayBanner';
 import FirstPurchaseOfferModal from './FirstPurchaseOfferModal';
+import FeedbackPrompt from './FeedbackPrompt';
 import { supabase } from '../lib/supabase';
 import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
@@ -560,6 +561,7 @@ export default function AppNav() {
       )}
       <GooglePlayBanner />
       {shouldShowCreditsUi() && <FirstPurchaseOfferModal />}
+      <FeedbackPrompt />
     </>
   );
 }

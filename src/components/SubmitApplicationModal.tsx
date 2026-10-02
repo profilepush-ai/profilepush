@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, Copy, PartyPopper, RefreshCw, Send, Upload, Video, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
+import { requestFeedback } from '../lib/feedback';
 
 // Lets a recruiter submit one of their bench consultants to a self-posted
 // job they see in the Feed (cross-account by design — the job doesn't have
@@ -121,6 +122,7 @@ export default function SubmitApplicationModal({
 
       setApplicationId(row.id);
       setScreeningUrl(`${window.location.origin}/screen/${row.screening_token}`);
+      requestFeedback('in_app_submit');
       onSaved();
       await runPrepareScreening(row.id);
     } catch (error) {

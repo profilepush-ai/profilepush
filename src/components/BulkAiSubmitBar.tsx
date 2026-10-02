@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Check, Loader2, Mail, Video, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { withScreeningLink } from '../lib/screening-link';
+import { requestFeedback } from '../lib/feedback';
 
 // Bulk sending is the reason people adopt this feature — nobody switches tools
 // to send one email at a time. It is also the fastest way to get a user's own
@@ -226,6 +227,7 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
     // everything worked, so a run of ten finished by silently returning the
     // bar to its resting state with no word that anything had been sent.
     if (!stopped) setResult({ sent, failed });
+    if (sent > 0) requestFeedback('ai_submit_bulk');
   }
 
   if (!quota.gmail_connected) {
