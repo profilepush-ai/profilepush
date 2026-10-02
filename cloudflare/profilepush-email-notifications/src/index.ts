@@ -1570,10 +1570,9 @@ async function outreachBlockReason(env: Env, email: string): Promise<string | nu
   }
 }
 
-// GMass calls this for bounces and blocks: one URL per event, e.g.
-// /gmass-webhook?token=...&event=bounce and ...&event=block. The payload
-// format isn't documented in detail, so every address in it (other than our
-// own) is taken, and the raw call is kept in gmass_webhook_events.
+// GMass calls this for bounces (and blocks, with "Treat blocks as bounces"
+// on): /gmass-webhook?token=...&event=bounce, POST form data. The raw call
+// is kept in gmass_webhook_events.
 async function handleGmassWebhook(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const token = url.searchParams.get("token") ?? "";
@@ -1588,9 +1587,18 @@ async function handleGmassWebhook(request: Request, env: Env): Promise<Response>
   } else {
     payload = Object.fromEntries(url.searchParams);
   }
+  // GMass posts form fields named in its webhook bindings: EmailAddress,
+  // CampaignID, BounceMessage, TimeStamp. Only EmailAddress is the bounced
+  // recipient; the bounce message itself can name other addresses
+  // (mailer-daemon, postmaster) that must not be suppressed.
+  const fields = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+  const named = ["EmailAddress", "emailAddress", "email_address", "Email", "email"]
+    .map((key) => fields[key])
+    .find((value) => typeof value === "string" && value.includes("@")) as string | undefined;
   const own = new Set([env.GMASS_FROM_EMAIL, env.SES_FROM_EMAIL].map((e) => (e ?? "").toLowerCase()));
-  const found = [...new Set((JSON.stringify(payload ?? raw).match(/[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? [])
-    .map((e) => e.toLowerCase()))]
+  const found = (named ? named.split(/[,;\s]+/) : [])
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(e))
     .filter((e) => !own.has(e) && !e.endsWith("@profilepush.ai") && !e.endsWith("@mail.profilepush.ai") && !e.endsWith("@gmass.co"));
 
   await supabaseRequest(env, "gmass_webhook_events", {
