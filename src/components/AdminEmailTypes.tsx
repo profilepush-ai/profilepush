@@ -39,6 +39,15 @@ const SES_TYPES: EmailType[] = [
     example: 'Only 12 credits left. Keep your AI copilot working.',
   },
   {
+    category: 'weekly_results',
+    name: 'Weekly results',
+    to: 'Users active in the last 30 days with something to report',
+    when: 'Fridays at 13:30 UTC (19:00 IST)',
+    from: 'ProfilePush <hello@mail.profilepush.ai>',
+    optOut: 'Unsubscribe link and one-click unsubscribe (weekly summary only)',
+    example: 'Your week: 11 emails to vendors, 139 new matches',
+  },
+  {
     category: 'welcome',
     name: 'Welcome',
     to: 'Each new user',
