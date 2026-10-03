@@ -430,11 +430,11 @@ export default function BoardPage() {
                             if (card) void move(card, st.id);
                             setDragId('');
                           }}
-                          className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] font-semibold transition ${active ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
+                          className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] font-semibold transition ${active ? 'bg-white text-gray-900 shadow-sm dark:bg-[#2A2E35] dark:text-slate-100' : 'text-gray-500 hover:text-gray-800 dark:text-[#94A3B8]'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
                         >
                           {st.label}
                           {n > 0 && (
-                            <span className={`min-w-[16px] rounded-full px-1 text-center text-[10px] font-bold leading-[15px] tabular-nums ${st.id === 'new' && !active ? 'bg-green-600 text-white' : active ? 'bg-white text-blue-700' : 'bg-gray-200 text-gray-700'}`}>{n}</span>
+                            <span className={`min-w-[16px] rounded-full px-1 text-center text-[10px] font-bold leading-[15px] tabular-nums ${st.id === 'new' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 dark:bg-white/10 dark:text-slate-200'}`}>{n}</span>
                           )}
                         </button>
                       );
