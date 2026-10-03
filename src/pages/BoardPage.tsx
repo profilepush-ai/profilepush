@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock3, MapPin, MessageSquare, RefreshCw, Send, Sparkles, X, type LucideIcon } from 'lucide-react';
+import { Clock3, MapPin, MessageSquare, RefreshCw, Sparkles, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,7 +9,7 @@ import { timeAgo } from '../lib/publishers';
 import { consultantTitle } from '../lib/consultant-title';
 
 // The Board: a column per consultant (bench sales) or per requirement
-// (vendors), each with two icon tabs, New and Submitted (Invited for vendors),
+// (vendors), each with two tabs, New matches and Submitted (Invited for vendors),
 // and its own date range. Every match starts in New; sending an AI Submit
 // moves it to Submitted on the server (replies stay there, with a Reply
 // button). A column's ↻ rematches that post for fresh matches right here,
@@ -42,9 +42,9 @@ type Card = {
 };
 
 // The 'submitted' stage is an AI Invite for vendors, so it reads "Invited".
-const stagesFor = (isVendor: boolean): Array<{ id: Stage; label: string; icon: LucideIcon }> => [
-  { id: 'new', label: 'New matches', icon: Sparkles },
-  { id: 'submitted', label: isVendor ? 'Invited' : 'Submitted', icon: Send },
+const stagesFor = (isVendor: boolean): Array<{ id: Stage; label: string }> => [
+  { id: 'new', label: 'New matches' },
+  { id: 'submitted', label: isVendor ? 'Invited' : 'Submitted' },
 ];
 
 // Which matches a column shows. New defaults to the last 2 hours and every
@@ -374,10 +374,9 @@ export default function BoardPage() {
                   {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500">{subject.detail}</p>}
 
 
-                  {/* Stage switcher: icons only (drop a card on one to move it) */}
+                  {/* Stage switcher (drop a New card on Submitted to mark it sent) and rematch */}
                   <div className="mt-2 flex gap-0.5 rounded-lg bg-white p-0.5">
                     {STAGES.map((st) => {
-                      const Icon = st.icon;
                       const active = view.stage === st.id;
                       const n = colCounts[st.id] ?? 0;
                       const target = `${sid}:${st.id}`;
@@ -385,8 +384,6 @@ export default function BoardPage() {
                         <button
                           key={st.id}
                           type="button"
-                          title={st.label}
-                          aria-label={st.label}
                           aria-pressed={active}
                           onClick={() => setColumnView(sid, { stage: st.id, range: defaultRange(st.id) })}
                           onDragOver={(e) => {
@@ -401,11 +398,11 @@ export default function BoardPage() {
                             if (card) void move(card, st.id);
                             setDragId('');
                           }}
-                          className={`relative flex h-8 flex-1 items-center justify-center rounded-md transition ${active ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
+                          className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] font-semibold transition ${active ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
                         >
-                          <Icon size={15} />
+                          {st.label}
                           {n > 0 && (
-                            <span className={`absolute -right-0.5 -top-1 min-w-[16px] rounded-full px-1 text-center text-[9px] font-bold leading-[14px] tabular-nums ${st.id === 'new' ? 'bg-green-600 text-white' : active ? 'bg-white text-blue-700' : 'bg-gray-200 text-gray-700'}`}>{n}</span>
+                            <span className={`min-w-[16px] rounded-full px-1 text-center text-[10px] font-bold leading-[15px] tabular-nums ${st.id === 'new' && !active ? 'bg-green-600 text-white' : active ? 'bg-white text-blue-700' : 'bg-gray-200 text-gray-700'}`}>{n}</span>
                           )}
                         </button>
                       );
@@ -423,8 +420,7 @@ export default function BoardPage() {
                   </div>
 
                   <div className="mt-1.5 flex items-center gap-1.5">
-                    <span className="truncate text-[11px] font-semibold text-gray-700">{STAGES.find((st) => st.id === view.stage)?.label}</span>
-                    <span className="text-[11px] tabular-nums text-gray-400">{loaded ? list.length : '…'}</span>
+                    <span className="text-[11px] tabular-nums text-gray-500">{loaded ? `${list.length} shown` : '…'}</span>
                     {view.stage === 'new' && list.some((c) => c.has_email) && (
                       <button type="button" onClick={() => selectAll(sid, list)} className="text-[11px] font-semibold text-blue-700 hover:underline">
                         {selected.subjectId === sid && selected.ids.size > 0 ? 'Clear' : 'Select all'}
