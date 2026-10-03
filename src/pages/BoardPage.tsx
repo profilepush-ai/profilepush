@@ -7,18 +7,20 @@ import { supabase } from '../lib/supabase';
 import { timeAgo } from '../lib/publishers';
 import { consultantTitle } from '../lib/consultant-title';
 
-// The Board: one pipeline per consultant (bench sales) or per requirement
-// (vendors). Every match is a card in New; sending an AI Submit moves it to
-// Submitted and a vendor reply to Replied, on the server. Interview and
-// Closed are set here, by dragging a card or with its Move to menu. New
-// matches arrive live (realtime on pipeline_cards) and the tab title counts
-// them while the page is open.
+// The Board: a column per consultant (bench sales) or per requirement
+// (vendors), and a tab per stage, so "New" shows every consultant's new
+// matches side by side. Every match starts in New; sending an AI Submit moves
+// it to Submitted and a reply to Replied, on the server. Interview and Closed
+// are set here, with a card's Move to menu or by dropping it on a stage tab.
+// New matches arrive live (realtime on pipeline_cards) and the browser tab
+// title counts them while the page is open.
 
 type Stage = 'new' | 'submitted' | 'replied' | 'interview' | 'closed';
 
 type Subject = { subject_id: string; title: string; detail: string | null; created_at: string; new_count: number; active_count: number };
 
 type Card = {
+  subject_id: string;
   id: string;
   stage: Stage;
   similarity: number | null;
@@ -55,61 +57,65 @@ export default function BoardPage() {
   const navigate = useNavigate();
   const { account } = useAuth();
   const isVendor = account?.active_persona === 'vendor';
-  // Bench sales: each consultant (a hotlist row) is a pipeline of requirements.
-  // Vendors: each requirement is a pipeline of consultants.
+  // Bench sales: a column per consultant (a hotlist row) holding requirements.
+  // Vendors: a column per requirement holding consultants.
   const subjectKind: 'hotlist' | 'job' = isVendor ? 'job' : 'hotlist';
   const submitLabel = isVendor ? 'AI Invite' : 'AI Submit';
   const STAGES = stagesFor(isVendor);
 
+  const [stage, setStage] = useState<Stage>('new');
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
-  const [selected, setSelected] = useState<string>('');
+  const [counts, setCounts] = useState<Partial<Record<Stage, number>>>({});
   const [cards, setCards] = useState<Card[] | null>(null);
   const [error, setError] = useState('');
   const [dragId, setDragId] = useState('');
   const [overStage, setOverStage] = useState<Stage | ''>('');
   const [liveNew, setLiveNew] = useState(0);
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
-  const selectedRef = useRef('');
-  selectedRef.current = selected;
+  const stageRef = useRef<Stage>('new');
+  stageRef.current = stage;
 
   const loadSubjects = useCallback(async () => {
-    const { data, error: rpcError } = await supabase.rpc('get_pipeline_subjects' as never, { p_kind: subjectKind } as never);
-    if (rpcError) { setError('Could not load your board.'); setSubjects([]); return; }
-    const rows = (data as Subject[] | null) ?? [];
-    setSubjects(rows);
-    setSelected((current) => (current && rows.some((s) => s.subject_id === current) ? current : rows[0]?.subject_id ?? ''));
+    const [subj, cnt] = await Promise.all([
+      supabase.rpc('get_pipeline_subjects' as never, { p_kind: subjectKind } as never),
+      supabase.rpc('get_pipeline_stage_counts' as never, { p_kind: subjectKind } as never),
+    ]);
+    if (subj.error) { setError('Could not load your board.'); setSubjects([]); return; }
+    setSubjects((subj.data as Subject[] | null) ?? []);
+    const next: Partial<Record<Stage, number>> = {};
+    for (const row of (cnt.data as Array<{ stage: Stage; n: number }> | null) ?? []) next[row.stage] = row.n;
+    setCounts(next);
   }, [subjectKind]);
 
-  const loadCards = useCallback(async (subjectId: string) => {
-    if (!subjectId) { setCards([]); return; }
-    const { data, error: rpcError } = await supabase.rpc('get_pipeline_cards' as never, { p_subject_id: subjectId } as never);
+  const loadCards = useCallback(async (forStage: Stage) => {
+    const { data, error: rpcError } = await supabase.rpc('get_pipeline_board' as never, { p_kind: subjectKind, p_stage: forStage } as never);
     if (rpcError) { setError('Could not load matches.'); setCards([]); return; }
     setCards((data as Card[] | null) ?? []);
-  }, []);
+  }, [subjectKind]);
 
   useEffect(() => { if (account?.id) void loadSubjects(); }, [account?.id, loadSubjects]);
-  useEffect(() => { setCards(null); void loadCards(selected); }, [selected, loadCards]);
+  useEffect(() => { if (!account?.id) return; setCards(null); void loadCards(stage); }, [account?.id, stage, loadCards]);
 
   // Live: new matches and stage changes made elsewhere (a submit sent from
-  // the feed, a vendor reply) show up without a refresh.
+  // the feed, a reply) show up without a refresh.
   useEffect(() => {
     if (!account?.id) return;
     const channel = supabase
       .channel(`board-${account.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_cards', filter: `account_id=eq.${account.id}` }, (payload) => {
-        const row = (payload.new ?? {}) as { id?: string; subject_id?: string; stage?: Stage };
+        const row = (payload.new ?? {}) as { id?: string };
         if (payload.eventType === 'INSERT') {
           setLiveNew((n) => n + 1);
           if (row.id) setFlashIds((prev) => new Set(prev).add(row.id as string));
         }
-        if (row.subject_id && row.subject_id === selectedRef.current) void loadCards(row.subject_id);
+        void loadCards(stageRef.current);
         void loadSubjects();
       })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [account?.id, loadCards, loadSubjects]);
 
-  // "(3) Board" in the tab while new matches arrive and the tab is open.
+  // "(3) Board" in the browser tab while new matches arrive.
   useEffect(() => {
     const base = 'Board · ProfilePush';
     document.title = liveNew > 0 ? `(${liveNew}) ${base}` : base;
@@ -121,12 +127,14 @@ export default function BoardPage() {
     return () => window.removeEventListener('focus', clear);
   }, []);
 
-  async function move(card: Card, stage: Stage, reason?: string) {
-    if (card.stage === stage) return;
+  async function move(card: Card, to: Stage, reason?: string) {
+    if (card.stage === to) return;
     const previous = cards;
-    setCards((prev) => (prev ?? []).map((c) => (c.id === card.id ? { ...c, stage, stage_changed_at: new Date().toISOString() } : c)));
-    const { error: rpcError } = await supabase.rpc('move_pipeline_card' as never, { p_id: card.id, p_stage: stage, p_reason: reason ?? null } as never);
-    if (rpcError) { setCards(previous); setError('Could not move that card.'); return; }
+    // It leaves this tab; the tab counts follow.
+    setCards((prev) => (prev ?? []).filter((c) => c.id !== card.id));
+    setCounts((prev) => ({ ...prev, [card.stage]: Math.max(0, (prev[card.stage] ?? 1) - 1), [to]: (prev[to] ?? 0) + 1 }));
+    const { error: rpcError } = await supabase.rpc('move_pipeline_card' as never, { p_id: card.id, p_stage: to, p_reason: reason ?? null } as never);
+    if (rpcError) { setCards(previous); setError('Could not move that card.'); }
     void loadSubjects();
   }
 
@@ -134,133 +142,140 @@ export default function BoardPage() {
     navigate(`/feed/${card.lead_kind}/${card.lead_id}`);
   }
 
-  const byStage = useMemo(() => {
-    const groups: Record<Stage, Card[]> = { new: [], submitted: [], replied: [], interview: [], closed: [] };
-    for (const card of cards ?? []) groups[card.stage].push(card);
+  const bySubject = useMemo(() => {
+    const groups = new Map<string, Card[]>();
+    for (const card of cards ?? []) {
+      const list = groups.get(card.subject_id) ?? [];
+      list.push(card);
+      groups.set(card.subject_id, list);
+    }
     return groups;
   }, [cards]);
 
-  const current = subjects?.find((s) => s.subject_id === selected) ?? null;
+  // Columns with cards in this stage first, then the rest (newest first).
+  const columns = useMemo(() => {
+    const list = [...(subjects ?? [])];
+    list.sort((a, b) => (bySubject.get(b.subject_id)?.length ?? 0) - (bySubject.get(a.subject_id)?.length ?? 0));
+    return list;
+  }, [subjects, bySubject]);
+
   const subjectTitle = (s: Subject) => (subjectKind === 'hotlist' ? consultantTitle(s.title) : s.title);
+  const emptyColumnText = stage === 'new' ? 'No new matches yet.' : stage === 'submitted' ? `Send an ${submitLabel} from New.` : stage === 'replied' ? 'No replies yet.' : 'Nothing here yet.';
 
   return (
     <div className="flex h-[100dvh] flex-col overscroll-none bg-gray-50 pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
-      {/* Consultant / requirement tabs */}
+      {/* Stage tabs (also drop targets: drag a card onto a tab to move it) */}
       <div className="shrink-0 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-2 overflow-x-auto px-3 py-2 sm:px-6">
-          {(subjects ?? []).map((s) => (
+        <div className="flex items-center gap-1 overflow-x-auto px-3 pt-2 sm:px-6">
+          {STAGES.map((s) => (
             <button
-              key={s.subject_id}
+              key={s.id}
               type="button"
-              onClick={() => setSelected(s.subject_id)}
-              className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-1.5 text-left transition ${selected === s.subject_id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
-            >
-              <span className={`max-w-[180px] truncate text-[13px] font-semibold ${selected === s.subject_id ? 'text-blue-700' : 'text-gray-800'}`}>{subjectTitle(s)}</span>
-              {s.new_count > 0 && <span className="rounded-full bg-green-600 px-1.5 text-[10px] font-bold text-white tabular-nums">{s.new_count}</span>}
-            </button>
-          ))}
-          {subjects && subjects.length === 0 && (
-            <div className="flex items-center gap-3 py-1 text-[13px] text-gray-600">
-              {isVendor ? 'Post a requirement and its matching consultants show up here, live.' : 'Add your consultants and their matching requirements show up here, live.'}
-              <button type="button" onClick={() => navigate('/match')} className="rounded-lg bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-blue-700">
-                {isVendor ? 'Post a requirement' : 'Add consultants'}
-              </button>
-            </div>
-          )}
-        </div>
-        {current && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-2 text-[12px] text-gray-500 sm:px-6">
-            {current.detail && <span>{current.detail}</span>}
-            <span className="inline-flex items-center gap-1 text-green-700"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-600" /> Live: new matches appear here as they’re posted</span>
-          </div>
-        )}
-      </div>
-
-      {error && <p className="mx-3 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 sm:mx-6">{error}</p>}
-
-      {/* Stage columns */}
-      <div className="min-h-0 flex-1 overflow-x-auto">
-        <div className="flex h-full min-w-max gap-3 p-3 sm:px-6">
-          {STAGES.map((stage) => (
-            <section
-              key={stage.id}
-              onDragOver={(e) => { e.preventDefault(); setOverStage(stage.id); }}
-              onDragLeave={() => setOverStage((s) => (s === stage.id ? '' : s))}
+              onClick={() => setStage(s.id)}
+              onDragOver={(e) => { if (dragId) { e.preventDefault(); setOverStage(s.id); } }}
+              onDragLeave={() => setOverStage((o) => (o === s.id ? '' : o))}
               onDrop={(e) => {
                 e.preventDefault();
                 setOverStage('');
                 const card = (cards ?? []).find((c) => c.id === dragId);
-                if (card) void move(card, stage.id, stage.id === 'closed' ? 'closed' : undefined);
+                if (card) void move(card, s.id, s.id === 'closed' ? 'closed' : undefined);
                 setDragId('');
               }}
-              className={`flex h-full w-[280px] flex-col rounded-xl border bg-gray-100/70 ${overStage === stage.id ? 'border-blue-400 bg-blue-50/60' : 'border-gray-200'}`}
+              className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 pb-2 pt-1 text-[13px] font-semibold transition ${stage === s.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-600 hover:text-gray-900'} ${overStage === s.id ? 'rounded-t-md bg-blue-50' : ''}`}
             >
-              <header className="flex shrink-0 items-center justify-between px-3 py-2.5">
-                <span className="text-[13px] font-semibold text-gray-800">{stage.label}</span>
-                <span className="rounded-full bg-white px-2 text-[11px] font-semibold tabular-nums text-gray-600">{byStage[stage.id].length}</span>
-              </header>
-              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
-                {!cards && stage.id === 'new' && <p className="px-1 py-4 text-center text-[12px] text-gray-500">Loading…</p>}
-                {cards && byStage[stage.id].length === 0 && (
-                  <p className="px-2 py-6 text-center text-[11px] text-gray-400">
-                    {stage.id === 'new' ? 'No new matches yet. They appear here as they’re posted.' : stage.id === 'submitted' ? `Send an ${submitLabel} from a new match.` : stage.id === 'replied' ? isVendor ? 'Consultant replies land here.' : 'Vendor replies land here.' : 'Drag a card here.'}
-                  </p>
-                )}
-                {byStage[stage.id].map((card) => (
-                  <article
-                    key={card.id}
-                    draggable
-                    onDragStart={() => setDragId(card.id)}
-                    onDragEnd={() => setDragId('')}
-                    className={`cursor-grab rounded-lg border bg-white p-3 shadow-sm transition active:cursor-grabbing ${flashIds.has(card.id) ? 'border-green-400 ring-2 ring-green-200' : 'border-gray-200'} ${dragId === card.id ? 'opacity-50' : ''}`}
-                  >
-                    <button type="button" onClick={() => openLead(card)} className="block w-full text-left">
-                      <p className="text-[13px] font-semibold leading-snug text-gray-900">{card.lead_kind === 'hotlist' ? consultantTitle(card.title) : card.title}</p>
-                      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-500">
-                        {card.location && <span className="inline-flex items-center gap-0.5"><MapPin size={10} /> {card.location}</span>}
-                        {rateText(card.rate_min, card.rate_max) && <span>{rateText(card.rate_min, card.rate_max)}</span>}
-                        {card.detail && <span>{card.detail}</span>}
-                      </p>
-                      <p className="mt-1 flex items-center gap-2 text-[11px] text-gray-400">
-                        <span className="inline-flex items-center gap-0.5"><Clock3 size={10} /> posted {timeAgo(card.posted_at)}</span>
-                        {card.similarity != null && <span className="font-semibold text-green-700">{Math.round(card.similarity * 100)}% match</span>}
-                      </p>
-                    </button>
-                    <div className="mt-2 flex items-center gap-1.5">
-                      {card.stage === 'new' && (
-                        <>
-                          <button type="button" onClick={() => openLead(card)} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-700">
-                            <Sparkles size={11} /> {submitLabel}
-                          </button>
-                          <button type="button" onClick={() => void move(card, 'closed', 'skipped')} className="inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-[11px] font-semibold text-gray-500 hover:bg-gray-100">
-                            <X size={11} /> Skip
-                          </button>
-                        </>
-                      )}
-                      {card.conversation_id && card.stage !== 'new' && (
-                        <button type="button" onClick={() => navigate(`/inbox/${card.conversation_id}`)} className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-200">
-                          <MessageSquare size={11} /> {card.stage === 'replied' ? 'Reply' : 'Conversation'}
-                        </button>
-                      )}
-                      <select
-                        id={`move-${card.id}`}
-                        aria-label="Move to"
-                        value=""
-                        onChange={(e) => { const to = e.target.value as Stage; if (to) void move(card, to, to === 'closed' ? 'closed' : undefined); }}
-                        className="ml-auto rounded-md border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-600"
-                      >
-                        <option value="">Move to…</option>
-                        {STAGES.filter((s) => s.id !== card.stage).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                      </select>
-                    </div>
-                    {card.stage === 'closed' && card.closed_reason && <p className="mt-1 text-[10px] uppercase tracking-wide text-gray-400">{card.closed_reason}</p>}
-                  </article>
-                ))}
-              </div>
-            </section>
+              {s.label}
+              <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${s.id === 'new' && (counts.new ?? 0) > 0 ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>{counts[s.id] ?? 0}</span>
+            </button>
           ))}
+          <span className="ml-auto hidden shrink-0 items-center gap-1 pb-2 text-[12px] text-green-700 sm:inline-flex">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-600" /> Live
+          </span>
+        </div>
+      </div>
+
+      {error && <p className="mx-3 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 sm:mx-6">{error}</p>}
+
+      {subjects && subjects.length === 0 && (
+        <div className="mx-auto mt-16 max-w-sm text-center">
+          <p className="text-[14px] text-gray-700">{isVendor ? 'Post a requirement and its matching consultants show up here, live.' : 'Add your consultants and their matching requirements show up here, live.'}</p>
+          <button type="button" onClick={() => navigate('/match')} className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-blue-700">
+            {isVendor ? 'Post a requirement' : 'Add consultants'}
+          </button>
+        </div>
+      )}
+
+      {/* A column per consultant (or requirement) */}
+      <div className="min-h-0 flex-1 overflow-x-auto">
+        <div className="flex h-full min-w-max gap-3 p-3 sm:px-6">
+          {!subjects && <p className="p-4 text-[12px] text-gray-500">Loading…</p>}
+          {columns.map((subject) => {
+            const list = bySubject.get(subject.subject_id) ?? [];
+            return (
+              <section key={subject.subject_id} className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-gray-100/70">
+                <header className="shrink-0 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-[13px] font-semibold text-gray-800">{subjectTitle(subject)}</span>
+                    <span className="rounded-full bg-white px-2 text-[11px] font-semibold tabular-nums text-gray-600">{cards ? list.length : '…'}</span>
+                  </div>
+                  {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500">{subject.detail}</p>}
+                </header>
+                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+                  {cards && list.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{emptyColumnText}</p>}
+                  {list.map((card) => (
+                    <article
+                      key={card.id}
+                      draggable
+                      onDragStart={() => setDragId(card.id)}
+                      onDragEnd={() => { setDragId(''); setOverStage(''); }}
+                      className={`cursor-grab rounded-lg border bg-white p-3 shadow-sm transition active:cursor-grabbing ${flashIds.has(card.id) ? 'border-green-400 ring-2 ring-green-200' : 'border-gray-200'} ${dragId === card.id ? 'opacity-50' : ''}`}
+                    >
+                      <button type="button" onClick={() => openLead(card)} className="block w-full text-left">
+                        <p className="text-[13px] font-semibold leading-snug text-gray-900">{card.lead_kind === 'hotlist' ? consultantTitle(card.title) : card.title}</p>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-500">
+                          {card.location && <span className="inline-flex items-center gap-0.5"><MapPin size={10} /> {card.location}</span>}
+                          {rateText(card.rate_min, card.rate_max) && <span>{rateText(card.rate_min, card.rate_max)}</span>}
+                          {card.detail && <span>{card.detail}</span>}
+                        </p>
+                        <p className="mt-1 flex items-center gap-2 text-[11px] text-gray-400">
+                          <span className="inline-flex items-center gap-0.5"><Clock3 size={10} /> posted {timeAgo(card.posted_at)}</span>
+                          {card.similarity != null && <span className="font-semibold text-green-700">{Math.round(card.similarity * 100)}% match</span>}
+                        </p>
+                      </button>
+                      <div className="mt-2 flex items-center gap-1.5">
+                        {card.stage === 'new' && (
+                          <>
+                            <button type="button" onClick={() => openLead(card)} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-700">
+                              <Sparkles size={11} /> {submitLabel}
+                            </button>
+                            <button type="button" onClick={() => void move(card, 'closed', 'skipped')} className="inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-[11px] font-semibold text-gray-500 hover:bg-gray-100">
+                              <X size={11} /> Skip
+                            </button>
+                          </>
+                        )}
+                        {card.conversation_id && card.stage !== 'new' && (
+                          <button type="button" onClick={() => navigate(`/inbox/${card.conversation_id}`)} className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-200">
+                            <MessageSquare size={11} /> {card.stage === 'replied' ? 'Reply' : 'Conversation'}
+                          </button>
+                        )}
+                        <select
+                          aria-label="Move to"
+                          value=""
+                          onChange={(e) => { const to = e.target.value as Stage; if (to) void move(card, to, to === 'closed' ? 'closed' : undefined); }}
+                          className="ml-auto rounded-md border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-600"
+                        >
+                          <option value="">Move to…</option>
+                          {STAGES.filter((s) => s.id !== card.stage).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                        </select>
+                      </div>
+                      {card.stage === 'closed' && card.closed_reason && <p className="mt-1 text-[10px] uppercase tracking-wide text-gray-400">{card.closed_reason}</p>}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       </div>
     </div>
