@@ -274,7 +274,6 @@ ${line1}
 ${line2}
 
 ${cta}: ${urls.claim}
-Your profile: ${urls.profile}
 
 ---
 ProfilePush, the AI copilot for vendors and bench sales recruiters.
@@ -291,7 +290,6 @@ Unsubscribe: ${urls.unsubscribe}`;
     ${p(escapeHtml(line1))}
     ${p(escapeHtml(line2))}
     <p style="margin: 0 0 20px;"><a href="${urls.claim}" style="display: inline-block; padding: 11px 22px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">${escapeHtml(cta)}</a></p>
-    ${p(`<a href="${urls.profile}" style="color: #2563eb;">See your profile</a>`)}
     <p style="margin: 24px 0 0; font-size: 12px; color: #94a3b8; line-height: 1.6;">
       ProfilePush, the AI copilot for vendors and bench sales recruiters.<br>
       Not you, or don't want a profile? <a href="${urls.remove}" style="color: #94a3b8;">Remove my profile</a> · <a href="${urls.unsubscribe}" style="color: #94a3b8;">Unsubscribe</a>

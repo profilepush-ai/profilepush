@@ -95,7 +95,7 @@ export default function PublicProfilePage() {
       }
       if (fromEmail) {
         const { data } = await supabase.rpc('get_my_all_posts' as never);
-        const posts = ((data as Array<{ kind: 'job' | 'hotlist'; id: string; post_status: string; title: string | null; roles: string[] | null; match_text: string | null }> | null) ?? [])
+        const posts = ((data as Array<{ kind: 'job' | 'hotlist'; id: string; is_own_post: boolean; post_status: string; title: string | null; roles: string[] | null; match_text: string | null }> | null) ?? [])
           .filter((p) => p.post_status === 'open' && (p.match_text ?? '').trim().length >= 40);
         // AI Match matches a vendor's requirement against consultants and a
         // bench recruiter's hotlist against requirements, so only that kind of
@@ -110,7 +110,12 @@ export default function PublicProfilePage() {
         const post = candidates.find((p) => p.id === wantId) ?? candidates[0];
         if (post && !cancelled) {
           const title = post.kind === 'job' ? (post.title || 'your requirement') : ((post.roles ?? []).slice(0, 3).join(', ') || 'your hotlist');
-          navigate('/match', { replace: true, state: { aiMatchDescription: post.match_text, aiMatchFrom: title, aiMatchAutoRun: true } });
+          navigate('/match', { replace: true, state: {
+            aiMatchDescription: post.match_text,
+            aiMatchFrom: title,
+            aiMatchAutoRun: true,
+            aiMatchCloseSource: post.is_own_post ? undefined : { kind: post.kind, id: post.id },
+          } });
           return;
         }
       }
