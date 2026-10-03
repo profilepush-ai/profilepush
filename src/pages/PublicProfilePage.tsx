@@ -73,14 +73,19 @@ export default function PublicProfilePage() {
   const claimed = searchParams.get('claimed') === '1';
   const claimReason = searchParams.get('claim') ?? '';
 
-  // Arriving from a claim link (or already signed in): go to the full
-  // in-app profile. A brand-new account is set up first, which claims the
-  // profile for this confirmed address.
+  // Arriving from a claim link (or signed in with one): set up the account
+  // (which claims the profile and sets their user type from it), then open
+  // AI Match on the post the email was about, already running, so the
+  // matches the email promised are the first thing they see. Without a post
+  // to match, the full in-app profile. Signed-in visits from anywhere else
+  // also go to the in-app profile.
+  const fromEmail = claimed || Boolean(claimReason);
+  const postParam = searchParams.get('post') ?? '';
   useEffect(() => {
     if (authLoading || !user) return;
     let cancelled = false;
     void (async () => {
-      if (claimed || !account) {
+      if (fromEmail || !account) {
         await ensureAccountForUser(user);
         // Claiming sets the account's user type from the profile (vendor if
         // they post requirements, bench sales if hotlists), so wait for it
@@ -88,11 +93,32 @@ export default function PublicProfilePage() {
         await claimMyPublisherProfile();
         await refreshAccount();
       }
+      if (fromEmail) {
+        const { data } = await supabase.rpc('get_my_all_posts' as never);
+        const posts = ((data as Array<{ kind: 'job' | 'hotlist'; id: string; post_status: string; title: string | null; roles: string[] | null; match_text: string | null }> | null) ?? [])
+          .filter((p) => p.post_status === 'open' && (p.match_text ?? '').trim().length >= 40);
+        // AI Match matches a vendor's requirement against consultants and a
+        // bench recruiter's hotlist against requirements, so only that kind of
+        // post can run. The type was just set by the claim, so read it fresh.
+        const { data: member } = await supabase.from('account_members').select('account_id').eq('user_id', user.id).eq('status', 'active').limit(1).maybeSingle();
+        const { data: acct } = member
+          ? await supabase.from('accounts').select('active_persona').eq('id', (member as { account_id: string }).account_id).maybeSingle()
+          : { data: null };
+        const matchable = (acct as { active_persona?: string } | null)?.active_persona === 'bench_sales' ? 'hotlist' : 'job';
+        const [, wantId] = postParam.split(':');
+        const candidates = posts.filter((p) => p.kind === matchable);
+        const post = candidates.find((p) => p.id === wantId) ?? candidates[0];
+        if (post && !cancelled) {
+          const title = post.kind === 'job' ? (post.title || 'your requirement') : ((post.roles ?? []).slice(0, 3).join(', ') || 'your hotlist');
+          navigate('/match', { replace: true, state: { aiMatchDescription: post.match_text, aiMatchFrom: title, aiMatchAutoRun: true } });
+          return;
+        }
+      }
       if (!cancelled) navigate(profilePath(slug, account?.active_persona ?? null), { replace: true });
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id, claimed]);
+  }, [authLoading, user?.id, fromEmail]);
 
   useEffect(() => {
     let cancelled = false;

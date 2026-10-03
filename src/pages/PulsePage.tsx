@@ -2715,6 +2715,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   const aiMatchSeedTitle = typeof (routerLocation.state as { aiMatchFrom?: unknown } | null)?.aiMatchFrom === 'string'
     ? ((routerLocation.state as { aiMatchFrom: string }).aiMatchFrom).trim()
     : '';
+  // Set by a profile claim from an email: run the seeded post straight away,
+  // so the matches the email promised are what they land on.
+  const aiMatchSeedAutoRun = (routerLocation.state as { aiMatchAutoRun?: unknown } | null)?.aiMatchAutoRun === true;
   const navigate = useNavigate();
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
@@ -6294,7 +6297,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     setAiMatchComposerOpen(true);
     setAiMatchSummary(null);
     navigate(`${routerLocation.pathname}${routerLocation.search}`, { replace: true, state: null });
-  }, [aiMatch, aiMatchSeed, aiMatchSeedTitle, navigate, routerLocation.pathname, routerLocation.search]);
+    if (aiMatchSeedAutoRun) void runAiMatch(aiMatchSeed, aiMatchSeedTitle);
+  }, [aiMatch, aiMatchSeed, aiMatchSeedTitle, aiMatchSeedAutoRun, navigate, routerLocation.pathname, routerLocation.search, runAiMatch]);
 
   // Same typewriter as the feed's search bar, on the AI Match box. It only runs
   // while the box is empty and open: once there is text the placeholder is

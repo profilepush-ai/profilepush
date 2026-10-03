@@ -29,12 +29,14 @@ Deno.serve(async (req: Request) => {
   try {
     const { data, error } = await admin.rpc("use_profile_claim_token", { p_token: token });
     if (error) throw new Error(error.message);
-    const row = ((data ?? []) as Array<{ ok: boolean; reason: string | null; email: string | null; slug: string | null }>)[0];
+    const row = ((data ?? []) as Array<{ ok: boolean; reason: string | null; email: string | null; slug: string | null; lead_kind: string | null; lead_id: string | null }>)[0];
+    // The post the email was about, so the landing can open AI Match on it.
+    const post = row?.lead_kind && row?.lead_id ? `&post=${row.lead_kind}:${row.lead_id}` : "";
     if (!row?.ok || !row.email || !row.slug) {
-      return redirect(row?.slug ? `${APP_BASE_URL}/profile/${encodeURIComponent(row.slug)}?claim=${row.reason ?? "invalid"}` : `${APP_BASE_URL}/signup`);
+      return redirect(row?.slug ? `${APP_BASE_URL}/profile/${encodeURIComponent(row.slug)}?claim=${row.reason ?? "invalid"}${post}` : `${APP_BASE_URL}/signup`);
     }
 
-    const redirectTo = `${APP_BASE_URL}/profile/${encodeURIComponent(row.slug)}?claimed=1`;
+    const redirectTo = `${APP_BASE_URL}/profile/${encodeURIComponent(row.slug)}?claimed=1${post}`;
     let link = await admin.auth.admin.generateLink({ type: "magiclink", email: row.email, options: { redirectTo } });
     if (link.error) {
       // No account with that address yet: create it, confirmed (they reached
