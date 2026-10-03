@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock3, Loader2, MapPin, MessageSquare, RefreshCw, Send, Sparkles, X, type LucideIcon } from 'lucide-react';
+import { Clock3, MapPin, MessageSquare, RefreshCw, Send, Sparkles, X, type LucideIcon } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,8 +12,8 @@ import { consultantTitle } from '../lib/consultant-title';
 // (vendors), each with two icon tabs, New and Submitted (Invited for vendors),
 // and its own date range. Every match starts in New; sending an AI Submit
 // moves it to Submitted on the server (replies stay there, with a Reply
-// button). From a column you can run AI Match on that post, Rematch it for
-// fresh matches right here, or tick cards and AI Submit them in bulk. Skip
+// button). A column's ↻ rematches that post for fresh matches right here,
+// and its cards can be ticked and AI Submitted in bulk. Skip
 // takes a card off the board. New matches arrive live (realtime on
 // pipeline_cards) and the browser tab title counts them.
 
@@ -208,13 +208,6 @@ export default function BoardPage() {
     });
   }
 
-  function runAiMatch(subject: Subject) {
-    navigate('/match', { state: {
-      aiMatchDescription: subject.match_text || subject.title,
-      aiMatchFrom: subjectTitle(subject),
-      aiMatchAutoRun: true,
-    } });
-  }
 
   async function rematch(subject: Subject) {
     setRematching(subject.subject_id);
@@ -310,7 +303,7 @@ export default function BoardPage() {
 
   const emptyText = (view: ColumnView) => {
     if (view.range.preset !== defaultRange(view.stage).preset) return 'Nothing in this range.';
-    if (view.stage === 'new') return 'No new matches in the last 2 hours. Try Rematch.';
+    if (view.stage === 'new') return 'No new matches in the last 2 hours. Tap ↻ to rematch.';
     return `No ${isVendor ? 'invites' : 'submits'} today.`;
   };
   const allCards = () => [...(cards ?? []), ...Object.values(columnCards).flat()];
@@ -380,17 +373,9 @@ export default function BoardPage() {
                   <p className="truncate text-[13px] font-semibold text-gray-800" title={subjectTitle(subject)}>{subjectTitle(subject)}</p>
                   {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500">{subject.detail}</p>}
 
-                  <div className="mt-2 flex items-center gap-1.5">
-                    <button type="button" onClick={() => runAiMatch(subject)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-md bg-blue-600 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700">
-                      <Sparkles size={12} /> AI Match
-                    </button>
-                    <button type="button" onClick={() => void rematch(subject)} disabled={rematching === sid} title="Find fresh matches for this post now" className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
-                      {rematching === sid ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Rematch
-                    </button>
-                  </div>
 
                   {/* Stage switcher: icons only (drop a card on one to move it) */}
-                  <div className="mt-2 grid grid-cols-2 gap-0.5 rounded-lg bg-white p-0.5">
+                  <div className="mt-2 flex gap-0.5 rounded-lg bg-white p-0.5">
                     {STAGES.map((st) => {
                       const Icon = st.icon;
                       const active = view.stage === st.id;
@@ -416,7 +401,7 @@ export default function BoardPage() {
                             if (card) void move(card, st.id);
                             setDragId('');
                           }}
-                          className={`relative flex h-8 items-center justify-center rounded-md transition ${active ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
+                          className={`relative flex h-8 flex-1 items-center justify-center rounded-md transition ${active ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
                         >
                           <Icon size={15} />
                           {n > 0 && (
@@ -425,6 +410,16 @@ export default function BoardPage() {
                         </button>
                       );
                     })}
+                    <button
+                      type="button"
+                      title="Rematch: find fresh matches now"
+                      aria-label="Rematch"
+                      onClick={() => void rematch(subject)}
+                      disabled={rematching === sid}
+                      className="flex h-8 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-100 disabled:opacity-60"
+                    >
+                      <RefreshCw size={14} className={rematching === sid ? 'animate-spin' : ''} />
+                    </button>
                   </div>
 
                   <div className="mt-1.5 flex items-center gap-1.5">
