@@ -226,11 +226,13 @@ async function fetchOutreachProfile(env: Env, email: string): Promise<OutreachPr
   return { id: row.id, slug: row.slug, display_name: row.display_name };
 }
 
-async function createClaimUrl(env: Env, publisherId: string): Promise<string | null> {
+// The claim link carries the post this email is about, so claiming opens
+// AI Match on it.
+async function createClaimUrl(env: Env, publisherId: string, lead?: { kind: "job" | "hotlist"; id: string }): Promise<string | null> {
   const response = await supabaseRequest(env, "rpc/create_profile_claim_token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ p_publisher_id: publisherId }),
+    body: JSON.stringify({ p_publisher_id: publisherId, p_lead_kind: lead?.kind ?? null, p_lead_id: lead?.id ?? null }),
   });
   if (!response.ok) return null;
   const token = await response.json<string | null>();
@@ -367,7 +369,11 @@ async function processLead(
   const base = env.APP_BASE_URL.replace(/\/$/, "");
   const profileUrl = `${base}/profile/${encodeURIComponent(profile.slug)}`;
   const urls = {
-    claim: options.dryRun ? `${base}/claim-preview` : (await createClaimUrl(env, profile.id)) ?? profileUrl,
+    claim: options.dryRun
+      ? `${base}/claim-preview`
+      : (await createClaimUrl(env, profile.id, source === "job"
+        ? (input.jobId ? { kind: "job", id: input.jobId } : undefined)
+        : (input.hotlistId ? { kind: "hotlist", id: input.hotlistId } : undefined))) ?? profileUrl,
     profile: profileUrl,
     remove: await buildRemoveProfileUrl(env, email),
     unsubscribe: await buildUnsubscribeUrl(env, email),
