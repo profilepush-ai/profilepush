@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock3, MapPin, MessageSquare, Sparkles, X } from 'lucide-react';
+import { Archive, CalendarCheck, Clock3, MapPin, MessageSquare, MessageSquareReply, Send, Sparkles, X, type LucideIcon } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -8,12 +8,13 @@ import { timeAgo } from '../lib/publishers';
 import { consultantTitle } from '../lib/consultant-title';
 
 // The Board: a column per consultant (bench sales) or per requirement
-// (vendors), and a tab per stage, so "New" shows every consultant's new
-// matches side by side. Every match starts in New; sending an AI Submit moves
-// it to Submitted and a reply to Replied, on the server. Interview and Closed
-// are set here, with a card's Move to menu or by dropping it on a stage tab.
-// New matches arrive live (realtime on pipeline_cards) and the browser tab
-// title counts them while the page is open.
+// (vendors). Each column has its own icon-only stage switcher and date range,
+// so one consultant can sit on New while another shows Interview. Every match
+// starts in New; sending an AI Submit moves it to Submitted and a reply to
+// Replied, on the server. Interview and Closed are set here, with a card's
+// Move to menu or by dropping it on a stage icon in its column. New matches
+// arrive live (realtime on pipeline_cards) and the browser tab title counts
+// them while the page is open.
 
 type Stage = 'new' | 'submitted' | 'replied' | 'interview' | 'closed';
 
@@ -39,19 +40,69 @@ type Card = {
 };
 
 // The 'submitted' stage is an AI Invite for vendors, so it reads "Invited".
-const stagesFor = (isVendor: boolean): Array<{ id: Stage; label: string }> => [
-  { id: 'new', label: 'New matches' },
-  { id: 'submitted', label: isVendor ? 'Invited' : 'Submitted' },
-  { id: 'replied', label: 'Replied' },
-  { id: 'interview', label: 'Interview' },
-  { id: 'closed', label: 'Closed' },
+const stagesFor = (isVendor: boolean): Array<{ id: Stage; label: string; icon: LucideIcon }> => [
+  { id: 'new', label: 'New matches', icon: Sparkles },
+  { id: 'submitted', label: isVendor ? 'Invited' : 'Submitted', icon: Send },
+  { id: 'replied', label: 'Replied', icon: MessageSquareReply },
+  { id: 'interview', label: 'Interview', icon: CalendarCheck },
+  { id: 'closed', label: 'Closed', icon: Archive },
 ];
+
+// Which matches a column shows. New defaults to the last 2 hours and every
+// other stage to today; each column can pick its own range.
+type RangePreset = '2h' | 'today' | 'yesterday' | '7d' | '30d' | 'custom';
+type Range = { preset: RangePreset; from?: string; to?: string };
+
+const RANGE_LABELS: Record<RangePreset, string> = {
+  '2h': 'Last 2 hours', today: 'Today', yesterday: 'Yesterday', '7d': 'Last 7 days', '30d': 'Last 30 days', custom: 'Custom…',
+};
+
+const defaultRange = (stage: Stage): Range => ({ preset: stage === 'new' ? '2h' : 'today' });
+
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function daysFrom(base: Date, days: number): Date {
+  const d = new Date(base);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function localDay(value: string): Date {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function rangeBounds(range: Range): { since: string; until: string | null } {
+  const today = startOfToday();
+  switch (range.preset) {
+    case '2h': return { since: new Date(Date.now() - 2 * 3600_000).toISOString(), until: null };
+    case 'today': return { since: today.toISOString(), until: null };
+    case 'yesterday': return { since: daysFrom(today, -1).toISOString(), until: today.toISOString() };
+    case '7d': return { since: daysFrom(today, -6).toISOString(), until: null };
+    case '30d': return { since: daysFrom(today, -29).toISOString(), until: null };
+    case 'custom': {
+      const from = range.from ? localDay(range.from) : today;
+      const to = range.to ? daysFrom(localDay(range.to), 1) : null;
+      return { since: from.toISOString(), until: to ? to.toISOString() : null };
+    }
+  }
+}
+
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 function rateText(min: number | null, max: number | null): string {
   if (min && max && min !== max) return `$${min}–${max}/hr`;
   if (min || max) return `$${min || max}/hr`;
   return '';
 }
+
+type ColumnView = { stage: Stage; range: Range };
+const DEFAULT_VIEW: ColumnView = { stage: 'new', range: { preset: '2h' } };
+const isDefaultView = (v: ColumnView) => v.stage === 'new' && v.range.preset === '2h';
 
 export default function BoardPage() {
   const navigate = useNavigate();
@@ -63,38 +114,71 @@ export default function BoardPage() {
   const submitLabel = isVendor ? 'AI Invite' : 'AI Submit';
   const STAGES = stagesFor(isVendor);
 
-  const [stage, setStage] = useState<Stage>('new');
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
-  const [counts, setCounts] = useState<Partial<Record<Stage, number>>>({});
+  const [counts, setCounts] = useState<Record<string, Partial<Record<Stage, number>>>>({});
+  // Every column on its default view (New, last 2 hours) comes from one load;
+  // a column switched to another stage or range loads on its own.
   const [cards, setCards] = useState<Card[] | null>(null);
+  const [views, setViews] = useState<Record<string, ColumnView>>({});
+  const [columnCards, setColumnCards] = useState<Record<string, Card[]>>({});
   const [error, setError] = useState('');
   const [dragId, setDragId] = useState('');
-  const [overStage, setOverStage] = useState<Stage | ''>('');
+  const [overTarget, setOverTarget] = useState('');
   const [liveNew, setLiveNew] = useState(0);
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
-  const stageRef = useRef<Stage>('new');
-  stageRef.current = stage;
+  const viewsRef = useRef<Record<string, ColumnView>>({});
+  viewsRef.current = views;
 
   const loadSubjects = useCallback(async () => {
     const [subj, cnt] = await Promise.all([
       supabase.rpc('get_pipeline_subjects' as never, { p_kind: subjectKind } as never),
-      supabase.rpc('get_pipeline_stage_counts' as never, { p_kind: subjectKind } as never),
+      supabase.rpc('get_pipeline_column_counts' as never, {
+        p_kind: subjectKind, p_new_since: rangeBounds({ preset: '2h' }).since, p_since: startOfToday().toISOString(),
+      } as never),
     ]);
     if (subj.error) { setError('Could not load your board.'); setSubjects([]); return; }
     setSubjects((subj.data as Subject[] | null) ?? []);
-    const next: Partial<Record<Stage, number>> = {};
-    for (const row of (cnt.data as Array<{ stage: Stage; n: number }> | null) ?? []) next[row.stage] = row.n;
+    const next: Record<string, Partial<Record<Stage, number>>> = {};
+    for (const row of (cnt.data as Array<{ subject_id: string; stage: Stage; n: number }> | null) ?? []) {
+      (next[row.subject_id] ??= {})[row.stage] = row.n;
+    }
     setCounts(next);
   }, [subjectKind]);
 
-  const loadCards = useCallback(async (forStage: Stage) => {
-    const { data, error: rpcError } = await supabase.rpc('get_pipeline_board' as never, { p_kind: subjectKind, p_stage: forStage } as never);
-    if (rpcError) { setError('Could not load matches.'); setCards([]); return; }
-    setCards((data as Card[] | null) ?? []);
+  const fetchCards = useCallback(async (view: ColumnView, subjectId: string | null) => {
+    const { since, until } = rangeBounds(view.range);
+    const { data, error: rpcError } = await supabase.rpc('get_pipeline_board' as never, {
+      p_kind: subjectKind, p_stage: view.stage, p_since: since, p_until: until, p_subject_id: subjectId,
+    } as never);
+    if (rpcError) { setError('Could not load matches.'); return [] as Card[]; }
+    return (data as Card[] | null) ?? [];
   }, [subjectKind]);
 
-  useEffect(() => { if (account?.id) void loadSubjects(); }, [account?.id, loadSubjects]);
-  useEffect(() => { if (!account?.id) return; setCards(null); void loadCards(stage); }, [account?.id, stage, loadCards]);
+  const loadColumn = useCallback(async (subjectId: string, view: ColumnView) => {
+    const list = await fetchCards(view, subjectId);
+    // Ignore a stale answer if the column was switched again meanwhile.
+    if (viewsRef.current[subjectId] === view) setColumnCards((prev) => ({ ...prev, [subjectId]: list }));
+  }, [fetchCards]);
+
+  const loadAll = useCallback(async () => {
+    setCards(await fetchCards(DEFAULT_VIEW, null));
+    for (const [subjectId, view] of Object.entries(viewsRef.current)) void loadColumn(subjectId, view);
+  }, [fetchCards, loadColumn]);
+
+  useEffect(() => {
+    if (!account?.id) return;
+    void loadSubjects();
+    void loadAll();
+  }, [account?.id, loadSubjects, loadAll]);
+
+  function setColumnView(subjectId: string, view: ColumnView) {
+    const next = { ...viewsRef.current };
+    if (isDefaultView(view)) delete next[subjectId]; else next[subjectId] = view;
+    viewsRef.current = next;
+    setViews(next);
+    setColumnCards((prev) => { const copy = { ...prev }; delete copy[subjectId]; return copy; });
+    if (!isDefaultView(view) && (view.range.preset !== 'custom' || view.range.from)) void loadColumn(subjectId, view);
+  }
 
   // Live: new matches and stage changes made elsewhere (a submit sent from
   // the feed, a reply) show up without a refresh.
@@ -108,12 +192,12 @@ export default function BoardPage() {
           setLiveNew((n) => n + 1);
           if (row.id) setFlashIds((prev) => new Set(prev).add(row.id as string));
         }
-        void loadCards(stageRef.current);
+        void loadAll();
         void loadSubjects();
       })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [account?.id, loadCards, loadSubjects]);
+  }, [account?.id, loadAll, loadSubjects]);
 
   // "(3) Board" in the browser tab while new matches arrive.
   useEffect(() => {
@@ -129,12 +213,19 @@ export default function BoardPage() {
 
   async function move(card: Card, to: Stage, reason?: string) {
     if (card.stage === to) return;
-    const previous = cards;
-    // It leaves this tab; the tab counts follow.
+    const prevCards = cards;
+    const prevColumn = columnCards;
+    // It leaves the stage the column is showing; the icon counts follow.
     setCards((prev) => (prev ?? []).filter((c) => c.id !== card.id));
-    setCounts((prev) => ({ ...prev, [card.stage]: Math.max(0, (prev[card.stage] ?? 1) - 1), [to]: (prev[to] ?? 0) + 1 }));
+    setColumnCards((prev) => (prev[card.subject_id] ? { ...prev, [card.subject_id]: prev[card.subject_id].filter((c) => c.id !== card.id) } : prev));
+    setCounts((prev) => {
+      const col = { ...(prev[card.subject_id] ?? {}) };
+      col[card.stage] = Math.max(0, (col[card.stage] ?? 1) - 1);
+      col[to] = (col[to] ?? 0) + 1;
+      return { ...prev, [card.subject_id]: col };
+    });
     const { error: rpcError } = await supabase.rpc('move_pipeline_card' as never, { p_id: card.id, p_stage: to, p_reason: reason ?? null } as never);
-    if (rpcError) { setCards(previous); setError('Could not move that card.'); }
+    if (rpcError) { setCards(prevCards); setColumnCards(prevColumn); setError('Could not move that card.'); }
     void loadSubjects();
   }
 
@@ -142,7 +233,7 @@ export default function BoardPage() {
     navigate(`/feed/${card.lead_kind}/${card.lead_id}`);
   }
 
-  const bySubject = useMemo(() => {
+  const defaultBySubject = useMemo(() => {
     const groups = new Map<string, Card[]>();
     for (const card of cards ?? []) {
       const list = groups.get(card.subject_id) ?? [];
@@ -152,47 +243,33 @@ export default function BoardPage() {
     return groups;
   }, [cards]);
 
-  // Columns with cards in this stage first, then the rest (newest first).
+  // Columns with new matches first, then the rest (newest first).
   const columns = useMemo(() => {
     const list = [...(subjects ?? [])];
-    list.sort((a, b) => (bySubject.get(b.subject_id)?.length ?? 0) - (bySubject.get(a.subject_id)?.length ?? 0));
+    list.sort((a, b) => (counts[b.subject_id]?.new ?? 0) - (counts[a.subject_id]?.new ?? 0));
     return list;
-  }, [subjects, bySubject]);
+  }, [subjects, counts]);
 
   const subjectTitle = (s: Subject) => (subjectKind === 'hotlist' ? consultantTitle(s.title) : s.title);
-  const emptyColumnText = stage === 'new' ? 'No new matches yet.' : stage === 'submitted' ? `Send an ${submitLabel} from New.` : stage === 'replied' ? 'No replies yet.' : 'Nothing here yet.';
+  const emptyText = (view: ColumnView) => {
+    if (view.range.preset !== defaultRange(view.stage).preset) return 'Nothing in this range.';
+    if (view.stage === 'new') return 'No new matches in the last 2 hours.';
+    if (view.stage === 'submitted') return `No ${isVendor ? 'invites' : 'submits'} today.`;
+    if (view.stage === 'replied') return 'No replies today.';
+    return 'Nothing here today.';
+  };
+  const allCards = () => [...(cards ?? []), ...Object.values(columnCards).flat()];
 
   return (
     <div className="flex h-[100dvh] flex-col overscroll-none bg-gray-50 pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
       <AppNav />
 
-      {/* Stage tabs (also drop targets: drag a card onto a tab to move it) */}
-      <div className="shrink-0 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-1 overflow-x-auto px-3 pt-2 sm:px-6">
-          {STAGES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setStage(s.id)}
-              onDragOver={(e) => { if (dragId) { e.preventDefault(); setOverStage(s.id); } }}
-              onDragLeave={() => setOverStage((o) => (o === s.id ? '' : o))}
-              onDrop={(e) => {
-                e.preventDefault();
-                setOverStage('');
-                const card = (cards ?? []).find((c) => c.id === dragId);
-                if (card) void move(card, s.id, s.id === 'closed' ? 'closed' : undefined);
-                setDragId('');
-              }}
-              className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 pb-2 pt-1 text-[13px] font-semibold transition ${stage === s.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-600 hover:text-gray-900'} ${overStage === s.id ? 'rounded-t-md bg-blue-50' : ''}`}
-            >
-              {s.label}
-              <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${s.id === 'new' && (counts.new ?? 0) > 0 ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'}`}>{counts[s.id] ?? 0}</span>
-            </button>
-          ))}
-          <span className="ml-auto hidden shrink-0 items-center gap-1 pb-2 text-[12px] text-green-700 sm:inline-flex">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-600" /> Live
-          </span>
-        </div>
+      <div className="flex shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-6">
+        <h1 className="text-[14px] font-semibold text-gray-900">Board</h1>
+        <span className="text-[12px] text-gray-500">{isVendor ? 'A column per requirement' : 'A column per consultant'}</span>
+        <span className="ml-auto inline-flex items-center gap-1 text-[12px] text-green-700">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-600" /> Live
+        </span>
       </div>
 
       {error && <p className="mx-3 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 sm:mx-6">{error}</p>}
@@ -206,29 +283,96 @@ export default function BoardPage() {
         </div>
       )}
 
-      {/* A column per consultant (or requirement) */}
+      {/* A column per consultant (or requirement), each with its own stage icons */}
       <div className="min-h-0 flex-1 overflow-x-auto">
         <div className="flex h-full min-w-max gap-3 p-3 sm:px-6">
           {!subjects && <p className="p-4 text-[12px] text-gray-500">Loading…</p>}
           {columns.map((subject) => {
-            const list = bySubject.get(subject.subject_id) ?? [];
+            const sid = subject.subject_id;
+            const view = views[sid] ?? DEFAULT_VIEW;
+            const own = views[sid] !== undefined;
+            const waitingForDates = view.range.preset === 'custom' && !view.range.from;
+            const loaded = own ? columnCards[sid] !== undefined || waitingForDates : cards !== null;
+            const list = loaded ? (own ? columnCards[sid] ?? [] : defaultBySubject.get(sid) ?? []) : [];
+            const colCounts = counts[sid] ?? {};
+            const range = view.range;
             return (
-              <section key={subject.subject_id} className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-gray-100/70">
-                <header className="shrink-0 px-3 py-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-[13px] font-semibold text-gray-800">{subjectTitle(subject)}</span>
-                    <span className="rounded-full bg-white px-2 text-[11px] font-semibold tabular-nums text-gray-600">{cards ? list.length : '…'}</span>
-                  </div>
+              <section key={sid} className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-gray-100/70">
+                <header className="shrink-0 px-3 pt-2.5">
+                  <p className="truncate text-[13px] font-semibold text-gray-800" title={subjectTitle(subject)}>{subjectTitle(subject)}</p>
                   {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500">{subject.detail}</p>}
+
+                  {/* Stage switcher: icons only (drop a card on one to move it) */}
+                  <div className="mt-2 grid grid-cols-5 gap-0.5 rounded-lg bg-white p-0.5">
+                    {STAGES.map((st) => {
+                      const Icon = st.icon;
+                      const active = view.stage === st.id;
+                      const n = colCounts[st.id] ?? 0;
+                      const target = `${sid}:${st.id}`;
+                      return (
+                        <button
+                          key={st.id}
+                          type="button"
+                          title={st.label}
+                          aria-label={st.label}
+                          aria-pressed={active}
+                          onClick={() => setColumnView(sid, { stage: st.id, range: defaultRange(st.id) })}
+                          onDragOver={(e) => {
+                            const card = allCards().find((c) => c.id === dragId);
+                            if (card && card.subject_id === sid) { e.preventDefault(); setOverTarget(target); }
+                          }}
+                          onDragLeave={() => setOverTarget((o) => (o === target ? '' : o))}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setOverTarget('');
+                            const card = allCards().find((c) => c.id === dragId);
+                            if (card) void move(card, st.id, st.id === 'closed' ? 'closed' : undefined);
+                            setDragId('');
+                          }}
+                          className={`relative flex h-8 items-center justify-center rounded-md transition ${active ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
+                        >
+                          <Icon size={15} />
+                          {n > 0 && (
+                            <span className={`absolute -right-0.5 -top-1 min-w-[16px] rounded-full px-1 text-center text-[9px] font-bold leading-[14px] tabular-nums ${st.id === 'new' ? 'bg-green-600 text-white' : active ? 'bg-white text-blue-700' : 'bg-gray-200 text-gray-700'}`}>{n}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <span className="truncate text-[11px] font-semibold text-gray-700">{STAGES.find((st) => st.id === view.stage)?.label}</span>
+                    <span className="text-[11px] tabular-nums text-gray-400">{loaded ? list.length : '…'}</span>
+                    <select
+                      aria-label="Date range"
+                      value={range.preset}
+                      onChange={(e) => {
+                        const preset = e.target.value as RangePreset;
+                        setColumnView(sid, { stage: view.stage, range: preset === 'custom' ? { preset, from: isoDay(daysFrom(startOfToday(), -6)), to: isoDay(startOfToday()) } : { preset } });
+                      }}
+                      className={`ml-auto rounded-md border bg-white px-1 py-0.5 text-[11px] ${range.preset !== defaultRange(view.stage).preset ? 'border-blue-300 text-blue-700' : 'border-gray-200 text-gray-600'}`}
+                    >
+                      {(Object.keys(RANGE_LABELS) as RangePreset[]).filter((p) => p !== '2h' || view.stage === 'new').map((p) => <option key={p} value={p}>{RANGE_LABELS[p]}</option>)}
+                    </select>
+                  </div>
+                  {range.preset === 'custom' && (
+                    <div className="mt-1 flex items-center gap-1">
+                      <input type="date" aria-label="From" value={range.from ?? ''} max={range.to} onChange={(e) => setColumnView(sid, { stage: view.stage, range: { ...range, from: e.target.value } })} className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-1 py-0.5 text-[11px] text-gray-700" />
+                      <span className="text-[11px] text-gray-400">–</span>
+                      <input type="date" aria-label="To" value={range.to ?? ''} min={range.from} onChange={(e) => setColumnView(sid, { stage: view.stage, range: { ...range, to: e.target.value } })} className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-1 py-0.5 text-[11px] text-gray-700" />
+                    </div>
+                  )}
                 </header>
-                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
-                  {cards && list.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{emptyColumnText}</p>}
+
+                <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+                  {!loaded && <p className="px-2 py-6 text-center text-[11px] text-gray-400">Loading…</p>}
+                  {loaded && list.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{emptyText(view)}</p>}
                   {list.map((card) => (
                     <article
                       key={card.id}
                       draggable
                       onDragStart={() => setDragId(card.id)}
-                      onDragEnd={() => { setDragId(''); setOverStage(''); }}
+                      onDragEnd={() => { setDragId(''); setOverTarget(''); }}
                       className={`cursor-grab rounded-lg border bg-white p-3 shadow-sm transition active:cursor-grabbing ${flashIds.has(card.id) ? 'border-green-400 ring-2 ring-green-200' : 'border-gray-200'} ${dragId === card.id ? 'opacity-50' : ''}`}
                     >
                       <button type="button" onClick={() => openLead(card)} className="block w-full text-left">
@@ -266,7 +410,7 @@ export default function BoardPage() {
                           className="ml-auto rounded-md border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-600"
                         >
                           <option value="">Move to…</option>
-                          {STAGES.filter((s) => s.id !== card.stage).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                          {STAGES.filter((st) => st.id !== card.stage).map((st) => <option key={st.id} value={st.id}>{st.label}</option>)}
                         </select>
                       </div>
                       {card.stage === 'closed' && card.closed_reason && <p className="mt-1 text-[10px] uppercase tracking-wide text-gray-400">{card.closed_reason}</p>}
