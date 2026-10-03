@@ -2,9 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ChevronDown, LogOut, Settings, Sparkles,
-  Building2, CreditCard, AlertTriangle, FileText,
+  Building2, CreditCard, AlertTriangle,
   Bell, BellRing, Check, X,
-  Briefcase, Mail, UserRound, Video, Rss, CircleUser,
+  Briefcase, Mail, UserRound, Rss, CircleUser,
   Kanban,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -57,22 +57,15 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   const feedPath = isBenchSales ? '/feed/jobs' : '/feed/hotlist';
   const feedIcon = isBenchSales ? Briefcase : UserRound;
   const followingLabel = followingLabelForPersona(persona);
-  // Invites (a Vendor's outbound video-screening invitations) carries the
-  // video icon the AI Invite action uses, so the same thing has the same mark
-  // wherever it appears; Submissions (Bench Sales' outbound job applications)
-  // keeps the document icon it already had.
-  const trackerLabel = isBenchSales ? 'Submissions' : 'Invites';
-  const trackerPath = isBenchSales ? '/tracker/submissions' : '/tracker/requests';
-  const trackerIcon = isBenchSales ? FileText : Video;
   return [
     { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },
     { path: '/match',       label: 'AI Match',    mobileLabel: 'AI Match',    icon: Sparkles,    hideOnMobile: false },
     { path: networkPath(persona), label: followingLabel, mobileLabel: followingLabel, icon: Rss,       hideOnMobile: false },
     { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
-    { path: trackerPath,    label: trackerLabel,  mobileLabel: trackerLabel,  icon: trackerIcon, hideOnMobile: false },
-    // Tracker (the /board page): a column per consultant (or requirement),
-    // matches arriving live as cards. Not the Submissions / Invites list.
-    { path: '/board',       label: 'Tracker',     mobileLabel: 'Tracker',     icon: Kanban,      hideOnMobile: true },
+    // Tracker: a column per consultant (or requirement), matches arriving
+    // live as cards, with what was sent to each. It replaced the separate
+    // Submissions / Invites list.
+    { path: '/tracker',     label: 'Tracker',     mobileLabel: 'Tracker',     icon: Kanban,      hideOnMobile: false },
     // All of the account's posts, open or closed, with Open / AI Match / Close.
     // Desktop nav; on a phone it's in the avatar menu (the bottom bar is full).
     { path: '/me',          label: 'My Profile',  mobileLabel: 'Profile',     icon: CircleUser,  hideOnMobile: true },
