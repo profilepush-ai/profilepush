@@ -400,14 +400,14 @@ export default function BoardPage() {
             const colCounts = counts[sid] ?? {};
             const range = view.range;
             return (
-              <section key={sid} className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-gray-100/70">
+              <section key={sid} className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
                 <header className="shrink-0 px-3 pt-2.5">
                   <p className="truncate text-[13px] font-semibold text-gray-800" title={subjectTitle(subject)}>{subjectTitle(subject)}</p>
                   {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500">{subject.detail}</p>}
 
 
                   {/* Stage switcher (drop a New card on Submitted to mark it sent) and rematch */}
-                  <div className="mt-2 flex gap-0.5 rounded-lg bg-white p-0.5">
+                  <div className="mt-2 flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-[#171a1f]">
                     {STAGES.map((st) => {
                       const active = view.stage === st.id;
                       const n = colCounts[st.id] ?? 0;
@@ -488,7 +488,7 @@ export default function BoardPage() {
                       draggable
                       onDragStart={() => setDragId(card.id)}
                       onDragEnd={() => { setDragId(''); setOverTarget(''); }}
-                      className={`cursor-grab rounded-lg border bg-white p-3 shadow-sm transition active:cursor-grabbing ${flashIds.has(card.id) ? 'border-green-400 ring-2 ring-green-200' : 'border-gray-200'} ${dragId === card.id ? 'opacity-50' : ''}`}
+                      className={`cursor-grab rounded-lg border bg-white p-3 transition hover:border-gray-300 hover:shadow-sm dark:bg-[#1B1D21] active:cursor-grabbing ${flashIds.has(card.id) ? 'border-green-400 ring-2 ring-green-200' : 'border-gray-200'} ${dragId === card.id ? 'opacity-50' : ''}`}
                     >
                       <div className="flex items-start gap-2">
                       {card.stage === 'new' && card.has_email && (
