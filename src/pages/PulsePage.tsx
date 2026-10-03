@@ -2718,6 +2718,16 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   // Set by a profile claim from an email: run the seeded post straight away,
   // so the matches the email promised are what they land on.
   const aiMatchSeedAutoRun = (routerLocation.state as { aiMatchAutoRun?: unknown } | null)?.aiMatchAutoRun === true;
+  // An imported post (one carrying the user's email, not posted here) that
+  // seeded the box. Its first AI Match run saves it as the user's own post,
+  // so the imported copy is closed once that copy exists.
+  const aiMatchSeedCloseSource = (() => {
+    const value = (routerLocation.state as { aiMatchCloseSource?: unknown } | null)?.aiMatchCloseSource as { kind?: unknown; id?: unknown } | undefined;
+    return value && (value.kind === 'job' || value.kind === 'hotlist') && typeof value.id === 'string'
+      ? { kind: value.kind as 'job' | 'hotlist', id: value.id }
+      : null;
+  })();
+  const aiMatchCloseSourceRef = useRef<{ kind: 'job' | 'hotlist'; id: string } | null>(null);
   const navigate = useNavigate();
     const breakdownBorderClass = 'border-slate-600/45 dark:border-slate-500/40';
 
@@ -6248,6 +6258,14 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
       if (data?.matched_for) setAiMatchFromTitle(String(data.matched_for));
       await loadFeed(null, [], rows);
       setAiMatchHasRun(true);
+      // The run saved the seeded imported post as the user's own post (or it
+      // already was), so close the imported copy. Only then: if saving failed
+      // the imported post stays open.
+      const closeSource = aiMatchCloseSourceRef.current;
+      if (closeSource && (post?.status === 'created' || post?.status === 'duplicate')) {
+        aiMatchCloseSourceRef.current = null;
+        void supabase.rpc('set_my_post_status' as never, { p_kind: closeSource.kind, p_id: closeSource.id, p_status: 'closed' } as never);
+      }
       // Nothing found means the box is the only thing left to act on, so it
       // stays open. A second unconditional close used to sit below this and
       // collapsed it anyway, hiding the composer behind an empty list.
@@ -6292,6 +6310,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     aiMatchRestoredRef.current = true;
     setAiMatchDescription(aiMatchSeed);
     setAiMatchFromTitle(aiMatchSeedTitle);
+    aiMatchCloseSourceRef.current = aiMatchSeedCloseSource;
     // Open, not collapsed: the collapsed bar has no Find matches button, and
     // arriving from a post the whole point is that the next step is obvious.
     setAiMatchComposerOpen(true);

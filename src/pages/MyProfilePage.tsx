@@ -102,7 +102,13 @@ export default function MyProfilePage() {
   }
 
   function runMatch(post: MyPost) {
-    navigate('/match', { state: { aiMatchDescription: post.match_text ?? postTitle(post), aiMatchFrom: postTitle(post) } });
+    // Matching an imported post saves it as their own post; AI Match then
+    // closes the imported copy.
+    navigate('/match', { state: {
+      aiMatchDescription: post.match_text ?? postTitle(post),
+      aiMatchFrom: postTitle(post),
+      aiMatchCloseSource: post.is_own_post ? undefined : { kind: post.kind, id: post.id },
+    } });
   }
 
   const publicUrl = profile ? `https://profilepush.ai/profile/${profile.slug}` : '';
