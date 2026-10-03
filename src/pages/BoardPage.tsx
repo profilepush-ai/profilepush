@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase';
 import { timeAgo } from '../lib/publishers';
 import { consultantTitle } from '../lib/consultant-title';
 
-// The Board: a column per consultant (bench sales) or per requirement
+// Tracker (named Board in code, at /board): a column per consultant (bench sales) or per requirement
 // (vendors), each with two tabs, New matches and Submitted (Invited for vendors),
 // and its own date range. Every match starts in New; sending an AI Submit
 // moves it to Submitted on the server (replies stay there, with a Reply
@@ -251,9 +251,9 @@ export default function BoardPage() {
     return () => { void supabase.removeChannel(channel); };
   }, [account?.id, loadAll, loadSubjects]);
 
-  // "(3) Board" in the browser tab while new matches arrive.
+  // "(3) Tracker" in the browser tab while new matches arrive.
   useEffect(() => {
-    const base = 'Board · ProfilePush';
+    const base = 'Tracker · ProfilePush';
     document.title = liveNew > 0 ? `(${liveNew}) ${base}` : base;
     return () => { document.title = 'ProfilePush'; };
   }, [liveNew]);
