@@ -70,8 +70,9 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
     { path: networkPath(persona), label: followingLabel, mobileLabel: followingLabel, icon: Rss,       hideOnMobile: false },
     { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
     { path: trackerPath,    label: trackerLabel,  mobileLabel: trackerLabel,  icon: trackerIcon, hideOnMobile: false },
-    // One pipeline per consultant (or requirement); matches arrive live as cards.
-    { path: '/board',       label: 'Board',       mobileLabel: 'Board',       icon: Kanban,      hideOnMobile: true },
+    // Tracker (the /board page): a column per consultant (or requirement),
+    // matches arriving live as cards. Not the Submissions / Invites list.
+    { path: '/board',       label: 'Tracker',     mobileLabel: 'Tracker',     icon: Kanban,      hideOnMobile: true },
     // All of the account's posts, open or closed, with Open / AI Match / Close.
     // Desktop nav; on a phone it's in the avatar menu (the bottom bar is full).
     { path: '/me',          label: 'My Profile',  mobileLabel: 'Profile',     icon: CircleUser,  hideOnMobile: true },
