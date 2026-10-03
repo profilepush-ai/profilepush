@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock3, MapPin, MessageSquare, Plus, RefreshCw, Search, Sparkles, X } from 'lucide-react';
+import { Clock3, ExternalLink, FileText, MapPin, MessageSquare, Plus, RefreshCw, Search, Sparkles, Video, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
+import ScreeningSubmissionModal from '../components/ScreeningSubmissionModal';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { timeAgo } from '../lib/publishers';
 import { consultantTitle } from '../lib/consultant-title';
+import { loadTrackerSends, SEND_TONE_CLASSES, type TrackerSend } from '../lib/tracker-sends';
 
 // Tracker (named Board in code, at /board): a column per consultant (bench sales) or per requirement
 // (vendors), each with two tabs, New matches and Submitted (Invited for vendors),
@@ -133,6 +135,13 @@ export default function BoardPage() {
   const [rematching, setRematching] = useState('');
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
+  // Applications, resume requests and chats (what the old Submissions /
+  // Invites page listed). Shown on the card of the lead they went to, or in
+  // the Other column when that lead is not on the board.
+  const [sends, setSends] = useState<TrackerSend[]>([]);
+  const [leadsOnBoard, setLeadsOnBoard] = useState<Set<string>>(new Set());
+  const [otherTab, setOtherTab] = useState<'open' | 'closed'>('open');
+  const [watchSend, setWatchSend] = useState<TrackerSend | null>(null);
   const viewsRef = useRef<Record<string, ColumnView>>({});
   viewsRef.current = views;
 
@@ -172,9 +181,23 @@ export default function BoardPage() {
     for (const [subjectId, view] of Object.entries(viewsRef.current)) void loadColumn(subjectId, view);
   }, [fetchCards, loadColumn]);
 
+  const loadSends = useCallback(async () => {
+    if (!account?.id) return;
+    const list = await loadTrackerSends(account.id, account.active_persona);
+    const leadIds = [...new Set(list.map((x) => x.leadId))];
+    const onBoard = new Set<string>();
+    for (let i = 0; i < leadIds.length; i += 200) {
+      const { data } = await supabase.from('pipeline_cards' as never).select('lead_id').in('lead_id', leadIds.slice(i, i + 200));
+      for (const row of (data as Array<{ lead_id: string }> | null) ?? []) onBoard.add(row.lead_id);
+    }
+    setSends(list);
+    setLeadsOnBoard(onBoard);
+  }, [account?.id, account?.active_persona]);
+
   useEffect(() => {
     if (!account?.id) return;
     void loadSubjects();
+    void loadSends();
     void loadAll();
   }, [account?.id, loadSubjects, loadAll]);
 
@@ -188,7 +211,7 @@ export default function BoardPage() {
 
   async function connectGmail() {
     if (!account?.id) return;
-    const { data, error: fnError } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: account.id, return_to: '/board' } });
+    const { data, error: fnError } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: account.id, return_to: '/tracker' } });
     if (fnError || !data?.url) { setError('Could not start Gmail connection.'); return; }
     window.location.href = data.url;
   }
@@ -246,10 +269,11 @@ export default function BoardPage() {
         }
         void loadAll();
         void loadSubjects();
+        void loadSends();
       })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [account?.id, loadAll, loadSubjects]);
+  }, [account?.id, loadAll, loadSubjects, loadSends]);
 
   // "(3) Tracker" in the browser tab while new matches arrive.
   useEffect(() => {
@@ -313,6 +337,49 @@ export default function BoardPage() {
     if (view.stage === 'new') return 'No new matches in the last 2 hours. Tap ↻ to rematch.';
     return `No ${isVendor ? 'invites' : 'submits'} today.`;
   };
+  const sendsByLead = useMemo(() => {
+    const map = new Map<string, TrackerSend[]>();
+    for (const send of sends) map.set(send.leadId, [...(map.get(send.leadId) ?? []), send]);
+    return map;
+  }, [sends]);
+  const otherSends = sends.filter((x) => !leadsOnBoard.has(x.leadId));
+  const otherVisible = otherSends
+    .filter((x) => (otherTab === 'closed' ? x.closed : !x.closed))
+    .filter((x) => !q || `${x.title} ${x.subtitle}`.toLowerCase().includes(q));
+  const otherLabel = isVendor ? 'Other invites' : 'Other submissions';
+
+  // Status, screening, resume and chat for one send, as the old page showed.
+  const sendBadges = (send: TrackerSend) => (
+    <div key={send.key} className="flex flex-wrap items-center gap-1">
+      <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${SEND_TONE_CLASSES[send.statusTone]}`}>{send.statusLabel}</span>
+      {send.aiScore != null && (
+        <span className="inline-flex items-center gap-0.5 rounded-full border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:border-purple-400/30 dark:bg-purple-500/10 dark:text-purple-300">
+          <Sparkles size={9} /> {send.aiScore}/100
+        </span>
+      )}
+      {send.screeningUrl && (
+        <a href={send.screeningUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-100 dark:border-white/15 dark:bg-white/5 dark:text-slate-300">
+          <ExternalLink size={9} /> Screening link
+        </a>
+      )}
+      {send.turns?.some((t) => t.answered_at) && (
+        <button type="button" onClick={() => setWatchSend(send)} className="inline-flex items-center gap-0.5 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300">
+          <Video size={9} /> Watch
+        </button>
+      )}
+      {send.resumeUrl && (
+        <a href={send.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <FileText size={9} /> Resume
+        </a>
+      )}
+      {send.chatId && (
+        <button type="button" onClick={() => navigate(`/inbox/${send.chatId}`)} className="inline-flex items-center gap-0.5 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300">
+          <MessageSquare size={9} /> Open chat
+        </button>
+      )}
+    </div>
+  );
+
   const allCards = () => [...(cards ?? []), ...Object.values(columnCards).flat()];
 
   return (
@@ -370,12 +437,12 @@ export default function BoardPage() {
             isNarrowed
             onClearSelection={() => setSelected({ subjectId: '', ids: new Set() })}
             onConnectGmail={() => { void connectGmail(); }}
-            onDone={() => { setSelected({ subjectId: '', ids: new Set() }); void loadAll(); void loadSubjects(); }}
+            onDone={() => { setSelected({ subjectId: '', ids: new Set() }); void loadAll(); void loadSubjects(); void loadSends(); }}
           />
         </div>
       )}
 
-      {subjects && subjects.length === 0 && (
+      {subjects && subjects.length === 0 && otherSends.length === 0 && (
         <div className="mx-auto mt-16 max-w-sm text-center">
           <p className="text-[14px] text-gray-700">{isVendor ? 'Post a requirement and its matching consultants show up here, live.' : 'Add your consultants and their matching requirements show up here, live.'}</p>
           <button type="button" onClick={() => navigate('/match')} className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-blue-700">
@@ -513,6 +580,9 @@ export default function BoardPage() {
                         </p>
                       </button>
                       </div>
+                      {(sendsByLead.get(card.lead_id) ?? []).length > 0 && (
+                        <div className="mt-2 flex flex-col gap-1">{(sendsByLead.get(card.lead_id) ?? []).map(sendBadges)}</div>
+                      )}
                       <div className="mt-2 flex items-center gap-1.5">
                         {card.stage === 'new' && (
                           <>
@@ -538,8 +608,51 @@ export default function BoardPage() {
               </section>
             );
           })}
+
+          {/* Sends to leads that are not on the board (the old Submissions / Invites list) */}
+          {otherSends.length > 0 && (!q || otherVisible.length > 0) && (
+            <section className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
+              <header className="shrink-0 px-3 pt-2.5">
+                <p className="truncate text-[13px] font-semibold text-gray-800 dark:text-slate-100">{otherLabel}</p>
+                <p className="mt-0.5 truncate text-[11px] text-gray-500">{isVendor ? 'Requests and chats outside your requirements' : 'Applications outside your consultants'}</p>
+                <div className="mt-2 flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-[#171a1f]">
+                  {(['open', 'closed'] as const).map((t) => {
+                    const n = otherSends.filter((x) => (t === 'closed' ? x.closed : !x.closed)).length;
+                    return (
+                      <button key={t} type="button" onClick={() => setOtherTab(t)} className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] font-semibold transition ${otherTab === t ? 'bg-white text-gray-900 shadow-sm dark:bg-[#2A2E35] dark:text-slate-100' : 'text-gray-500 hover:text-gray-800 dark:text-[#94A3B8]'}`}>
+                        {t === 'open' ? 'Open' : 'Closed'}
+                        {n > 0 && <span className="min-w-[16px] rounded-full bg-gray-200 px-1 text-center text-[10px] font-bold leading-[15px] tabular-nums text-gray-700 dark:bg-white/10 dark:text-slate-200">{n}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </header>
+              <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+                {otherVisible.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{otherTab === 'closed' ? 'Nothing closed yet.' : 'Nothing open.'}</p>}
+                {otherVisible.map((send) => (
+                  <article key={send.key} className="rounded-lg border border-gray-200 bg-white p-3 transition hover:border-gray-300 dark:border-white/10 dark:bg-[#1B1D21]">
+                    <button type="button" onClick={() => navigate(`/feed/${send.leadKind}/${send.leadId}`)} className="block w-full text-left">
+                      <p className="text-[13px] font-semibold leading-snug text-gray-900 dark:text-slate-100">{send.leadKind === 'hotlist' ? consultantTitle(send.title) : send.title}</p>
+                      {send.subtitle && <p className="mt-0.5 truncate text-[11px] text-gray-500">{send.subtitle}</p>}
+                      <p className="mt-1 inline-flex items-center gap-0.5 text-[11px] text-gray-400"><Clock3 size={10} /> {timeAgo(send.createdAt)}</p>
+                    </button>
+                    <div className="mt-2">{sendBadges(send)}</div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
+
+      {watchSend?.applicationId && (
+        <ScreeningSubmissionModal
+          applicationId={watchSend.applicationId}
+          turns={watchSend.turns ?? []}
+          onClose={() => setWatchSend(null)}
+          showToast={(message, type) => (type === 'error' ? setError(message) : setNotice(message))}
+        />
+      )}
     </div>
   );
 }

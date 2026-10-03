@@ -40,7 +40,6 @@ const HotlistRequestsPage = lazy(() => import('./pages/HotlistRequestsPage'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsAndConditions = lazy(() => import('./pages/TermsAndConditions'));
 const SecurityPage = lazy(() => import('./pages/SecurityPage'));
-const TrackerPage = lazy(() => import('./pages/TrackerPage'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const AboutUs = lazy(() => import('./pages/AboutUs'));
 const ContactUs = lazy(() => import('./pages/ContactUs'));
@@ -214,17 +213,6 @@ function PostsRouteGuard() {
   return <MyPostsPage />;
 }
 
-// Same pattern again — Vendor's outbound activity lives at /tracker/requests,
-// Bench Sales' at /tracker/submissions.
-function TrackerRouteGuard() {
-  const { account } = useAuth();
-  const location = useLocation();
-  const expectedPath = account?.active_persona === 'bench_sales' ? '/tracker/submissions' : '/tracker/requests';
-  if (location.pathname !== expectedPath) {
-    return <Navigate to={{ pathname: expectedPath, search: location.search }} replace />;
-  }
-  return <TrackerPage />;
-}
 
 function SupabaseSetupRequired() {
   return (
@@ -289,7 +277,8 @@ export default function App() {
             <Route path="/hotlist/:id" element={<ErrorBoundary><PublicHotlistPage /></ErrorBoundary>} />
             <Route path="/profile/:slug" element={<ErrorBoundary><PublicProfilePage /></ErrorBoundary>} />
             <Route path="/me" element={<ProtectedRoute><ErrorBoundary><MyProfilePage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/board" element={<ProtectedRoute><ErrorBoundary><BoardPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><BoardPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/board" element={<Navigate to="/tracker" replace />} />
             <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
             <Route path="/terms" element={<ErrorBoundary><TermsAndConditions /></ErrorBoundary>} />
             <Route path="/security" element={<ErrorBoundary><SecurityPage /></ErrorBoundary>} />
@@ -320,10 +309,9 @@ export default function App() {
             <Route path="/support" element={<ProtectedRoute><ErrorBoundary><SupportPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/roadmap" element={<ProtectedRoute><ErrorBoundary><RoadmapPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/tracker/requests" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/tracker/submissions" element={<ProtectedRoute><ErrorBoundary><TrackerRouteGuard /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/tracker/applications" element={<ProtectedRoute><Navigate to="/tracker/submissions" replace /></ProtectedRoute>} />
+            <Route path="/tracker/requests" element={<Navigate to="/tracker" replace />} />
+            <Route path="/tracker/submissions" element={<Navigate to="/tracker" replace />} />
+            <Route path="/tracker/applications" element={<Navigate to="/tracker" replace />} />
             <Route path="/contacts" element={<ProtectedRoute><ErrorBoundary><ContactsPage /></ErrorBoundary></ProtectedRoute>} />
             {/* Active List downloads are withdrawn; Network replaces the list. */}
             <Route path="/active-list" element={<ProtectedRoute><Navigate to="/network" replace /></ProtectedRoute>} />
