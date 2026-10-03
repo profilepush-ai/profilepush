@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock3, MapPin, MessageSquare, RefreshCw, Sparkles, X } from 'lucide-react';
+import { Clock3, MapPin, MessageSquare, Plus, RefreshCw, Search, Sparkles, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
 import { useAuth } from '../contexts/AuthContext';
@@ -132,6 +132,7 @@ export default function BoardPage() {
   const [gmailConnected, setGmailConnected] = useState(false);
   const [rematching, setRematching] = useState('');
   const [notice, setNotice] = useState('');
+  const [query, setQuery] = useState('');
   const viewsRef = useRef<Record<string, ColumnView>>({});
   viewsRef.current = views;
 
@@ -301,6 +302,12 @@ export default function BoardPage() {
     return list;
   }, [subjects, counts]);
 
+  // Search narrows the board to columns whose post matches, or to the
+  // matching cards in the others.
+  const q = query.trim().toLowerCase();
+  const subjectMatches = (subject: Subject) => !q || `${subjectTitle(subject)} ${subject.detail ?? ''}`.toLowerCase().includes(q);
+  const cardMatches = (card: Card) => `${card.lead_kind === 'hotlist' ? consultantTitle(card.title) : card.title} ${card.location ?? ''} ${card.detail ?? ''}`.toLowerCase().includes(q);
+
   const emptyText = (view: ColumnView) => {
     if (view.range.preset !== defaultRange(view.stage).preset) return 'Nothing in this range.';
     if (view.stage === 'new') return 'No new matches in the last 2 hours. Tap ↻ to rematch.';
@@ -309,27 +316,50 @@ export default function BoardPage() {
   const allCards = () => [...(cards ?? []), ...Object.values(columnCards).flat()];
 
   return (
-    <div className="flex h-[100dvh] flex-col overscroll-none bg-gray-50 pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
+    <div className="flex h-[100dvh] flex-col overflow-hidden overscroll-none bg-[#f3f2ee] text-gray-900 pb-[calc(4.25rem+env(safe-area-inset-bottom))] dark:bg-[#1B1D21] dark:text-slate-100 sm:pb-0">
       <AppNav />
 
-      <div className="flex shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-6">
-        <h1 className="text-[14px] font-semibold text-gray-900">Board</h1>
-        <span className="text-[12px] text-gray-500">{isVendor ? 'A column per requirement' : 'A column per consultant'}</span>
-        <span className="ml-auto inline-flex items-center gap-1 text-[12px] text-green-700">
+      {/* Same toolbar as the other pages: search, then actions, then Add Post. */}
+      <div className="flex shrink-0 items-center gap-2 px-2 pt-2 sm:px-3">
+        <div className="relative flex min-w-[160px] flex-1 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 dark:border-white/10 dark:bg-[#20242a]">
+          <Search size={11} className="shrink-0 text-gray-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={isVendor ? 'Search requirements and consultants' : 'Search consultants and requirements'}
+            className="w-full min-w-0 border-0 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400 dark:text-slate-200 dark:placeholder:text-[#64748B]"
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery('')} className="shrink-0 rounded-full p-0.5 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-600 dark:hover:bg-white/10" aria-label="Clear search">
+              <X size={11} />
+            </button>
+          )}
+        </div>
+        <span className="hidden shrink-0 items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-1.5 text-[11px] font-semibold text-green-700 sm:inline-flex dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-600" /> Live
         </span>
+        {/* New posts start in AI Match, like everywhere else. */}
+        <button
+          type="button"
+          onClick={() => navigate('/match')}
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-blue-600 bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-blue-700"
+        >
+          <Plus size={13} />
+          Add Post
+        </button>
       </div>
 
-      {error && <p className="mx-3 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 sm:mx-6">{error}</p>}
+      {error && <p className="mx-2 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 sm:mx-3">{error}</p>}
       {notice && (
-        <p className="mx-3 mt-2 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-[12px] text-green-800 sm:mx-6">
+        <p className="mx-2 mt-2 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-[12px] text-green-800 sm:mx-3">
           {notice}
           <button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="ml-auto text-green-700"><X size={12} /></button>
         </p>
       )}
 
       {account?.id && selected.ids.size > 0 && (
-        <div className="mx-3 mt-2 sm:mx-6">
+        <div className="mx-2 mt-2 sm:mx-3">
           <BulkAiSubmitBar
             targets={allCards()
               .filter((c) => selected.ids.has(c.id))
@@ -356,7 +386,7 @@ export default function BoardPage() {
 
       {/* A column per consultant (or requirement), each with its own stage icons */}
       <div className="min-h-0 flex-1 overflow-x-auto">
-        <div className="flex h-full min-w-max gap-3 p-3 sm:px-6">
+        <div className="flex h-full min-w-max gap-3 p-2 sm:p-3">
           {!subjects && <p className="p-4 text-[12px] text-gray-500">Loading…</p>}
           {columns.map((subject) => {
             const sid = subject.subject_id;
@@ -364,7 +394,9 @@ export default function BoardPage() {
             const own = views[sid] !== undefined;
             const waitingForDates = view.range.preset === 'custom' && !view.range.from;
             const loaded = own ? columnCards[sid] !== undefined || waitingForDates : cards !== null;
-            const list = loaded ? (own ? columnCards[sid] ?? [] : defaultBySubject.get(sid) ?? []) : [];
+            const all = loaded ? (own ? columnCards[sid] ?? [] : defaultBySubject.get(sid) ?? []) : [];
+            const list = subjectMatches(subject) ? all : all.filter(cardMatches);
+            if (q && !subjectMatches(subject) && list.length === 0) return null;
             const colCounts = counts[sid] ?? {};
             const range = view.range;
             return (
