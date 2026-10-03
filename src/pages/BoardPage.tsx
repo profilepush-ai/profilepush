@@ -36,9 +36,10 @@ type Card = {
   detail: string | null;
 };
 
-const STAGES: Array<{ id: Stage; label: string }> = [
+// The 'submitted' stage is an AI Invite for vendors, so it reads "Invited".
+const stagesFor = (isVendor: boolean): Array<{ id: Stage; label: string }> => [
   { id: 'new', label: 'New matches' },
-  { id: 'submitted', label: 'Submitted' },
+  { id: 'submitted', label: isVendor ? 'Invited' : 'Submitted' },
   { id: 'replied', label: 'Replied' },
   { id: 'interview', label: 'Interview' },
   { id: 'closed', label: 'Closed' },
@@ -58,6 +59,7 @@ export default function BoardPage() {
   // Vendors: each requirement is a pipeline of consultants.
   const subjectKind: 'hotlist' | 'job' = isVendor ? 'job' : 'hotlist';
   const submitLabel = isVendor ? 'AI Invite' : 'AI Submit';
+  const STAGES = stagesFor(isVendor);
 
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
   const [selected, setSelected] = useState<string>('');
@@ -203,7 +205,7 @@ export default function BoardPage() {
                 {!cards && stage.id === 'new' && <p className="px-1 py-4 text-center text-[12px] text-gray-500">Loading…</p>}
                 {cards && byStage[stage.id].length === 0 && (
                   <p className="px-2 py-6 text-center text-[11px] text-gray-400">
-                    {stage.id === 'new' ? 'No new matches yet. They appear here as they’re posted.' : stage.id === 'submitted' ? `Send an ${submitLabel} from a new match.` : stage.id === 'replied' ? 'Vendor replies land here.' : 'Drag a card here.'}
+                    {stage.id === 'new' ? 'No new matches yet. They appear here as they’re posted.' : stage.id === 'submitted' ? `Send an ${submitLabel} from a new match.` : stage.id === 'replied' ? isVendor ? 'Consultant replies land here.' : 'Vendor replies land here.' : 'Drag a card here.'}
                   </p>
                 )}
                 {byStage[stage.id].map((card) => (
