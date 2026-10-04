@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock3, ExternalLink, FileText, MessageSquare, Plus, RefreshCw, Search, Sparkles, Video, X } from 'lucide-react';
+import { Clock3, Eye, EyeOff, ExternalLink, FileText, MessageSquare, Paperclip, Plus, RefreshCw, Search, Sparkles, Video, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
 import ScreeningSubmissionModal from '../components/ScreeningSubmissionModal';
@@ -12,6 +12,7 @@ import SubmitApplicationModal from '../components/SubmitApplicationModal';
 import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 import { supabase } from '../lib/supabase';
 import { consultantTitle } from '../lib/consultant-title';
+import { trackEvent } from '../lib/track';
 import { loadTrackerSends, SEND_TONE_CLASSES, type TrackerSend } from '../lib/tracker-sends';
 
 // Tracker (named Board in code, at /board): a column per consultant (bench sales) or per requirement
@@ -147,6 +148,16 @@ export default function BoardPage() {
   // hangs off that column's requirement).
   const [selected, setSelected] = useState<{ subjectId: string; ids: Set<string> }>({ subjectId: '', ids: new Set() });
   const [rematching, setRematching] = useState('');
+  // Bench sales: each consultant's resume (Tracker column header), sent as an
+  // attachment with AI Submit and previewed beside the column.
+  const [resumes, setResumes] = useState<Record<string, { url: string; name: string }>>({});
+  const [uploadingResumeFor, setUploadingResumeFor] = useState('');
+  const resumeInputRef = useRef<HTMLInputElement | null>(null);
+  const resumeTargetRef = useRef('');
+  const [hiddenPreviews, setHiddenPreviews] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('tracker_resume_preview_hidden') ?? '[]') as string[]); } catch { return new Set(); }
+  });
+  const aiResumeRef = useRef<{ url: string; name: string } | null>(null);
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
   const [rangeMenuFor, setRangeMenuFor] = useState('');
@@ -250,6 +261,7 @@ export default function BoardPage() {
       onPreview={(l) => void previewPost(l)}
       onAskAI={(l) => {
         aiSourceJobRef.current = subjectKind === 'job' && subjectId ? subjectId : null;
+        aiResumeRef.current = subjectKind === 'hotlist' && subjectId ? resumes[subjectId] ?? null : null;
         void ai.generate(l);
       }}
       onApply={(l) => setApplyLead(l)}
@@ -306,12 +318,60 @@ export default function BoardPage() {
     userId: user?.id,
     showToast,
     getSourceJobId: () => aiSourceJobRef.current,
+    getResume: () => aiResumeRef.current,
     onOutOfCredits: (action) => setOutOfCredits({ open: true, action }),
     // Stay on the board; the card moves to Submitted / Requested on its own.
     openInboxAfterSend: false,
   });
   const [postPreview, setPostPreview] = useState<{ title: string; content: string } | null>(null);
   const [applyLead, setApplyLead] = useState<SocialLead | null>(null);
+
+  const loadResumes = useCallback(async () => {
+    if (subjectKind !== 'hotlist') return;
+    const { data } = await supabase.from('hotlist_resumes' as never).select('hotlist_id, url, file_name');
+    const next: Record<string, { url: string; name: string }> = {};
+    for (const row of (data as Array<{ hotlist_id: string; url: string; file_name: string }> | null) ?? []) next[row.hotlist_id] = { url: row.url, name: row.file_name };
+    setResumes(next);
+  }, [subjectKind]);
+  useEffect(() => { if (account?.id) void loadResumes(); }, [account?.id, loadResumes]);
+
+  const setPreviewHidden = (subjectId: string, hidden: boolean) => {
+    setHiddenPreviews((prev) => {
+      const next = new Set(prev);
+      if (hidden) next.add(subjectId); else next.delete(subjectId);
+      try { localStorage.setItem('tracker_resume_preview_hidden', JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  async function uploadResume(subjectId: string, file: File) {
+    if (!account?.id) return;
+    if (!/\.(pdf|docx?)$/i.test(file.name)) { setError('Attach a PDF or Word resume.'); return; }
+    if (file.size > 4 * 1024 * 1024) { setError('Resume must be under 4 MB.'); return; }
+    setUploadingResumeFor(subjectId);
+    try {
+      const safeName = file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80);
+      const storagePath = `consultant-resumes/${account.id}/${crypto.randomUUID()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage.from('resumes').upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
+      if (uploadError) throw new Error(uploadError.message);
+      const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(storagePath);
+      const { error: rpcError } = await supabase.rpc('set_hotlist_resume' as never, { p_hotlist_id: subjectId, p_url: urlData.publicUrl, p_file_name: file.name } as never);
+      if (rpcError) throw new Error(rpcError.message);
+      setResumes((prev) => ({ ...prev, [subjectId]: { url: urlData.publicUrl, name: file.name } }));
+      setPreviewHidden(subjectId, false);
+      trackEvent('consultant_resume_attached', { type: file.name.split('.').pop()?.toLowerCase() ?? '' });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not attach the resume.');
+    } finally {
+      setUploadingResumeFor('');
+    }
+  }
+
+  async function removeResume(subjectId: string) {
+    const { error: rpcError } = await supabase.rpc('remove_hotlist_resume' as never, { p_hotlist_id: subjectId } as never);
+    if (rpcError) { setError('Could not remove the resume.'); return; }
+    setResumes((prev) => { const next = { ...prev }; delete next[subjectId]; return next; });
+  }
 
   const previewPost = useCallback(async (lead: SocialLead) => {
     // Same rule as the Feed: consultants have no post worth opening.
@@ -544,6 +604,7 @@ export default function BoardPage() {
               .map((c) => ({ id: c.lead_id, title: c.lead_kind === 'hotlist' ? consultantTitle(c.title) : c.title, company: '', hasEmail: c.has_email, kind: c.lead_kind }))}
             accountId={account.id}
             sourceJobId={subjectKind === 'job' ? selected.subjectId : null}
+            resume={subjectKind === 'hotlist' ? resumes[selected.subjectId] ?? null : null}
             gmailConnected={ai.gmailStatus === 'connected'}
             isNarrowed
             onClearSelection={() => setSelected({ subjectId: '', ids: new Set() })}
@@ -562,6 +623,18 @@ export default function BoardPage() {
         </div>
       )}
 
+      <input
+        ref={resumeInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,application/pdf"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file && resumeTargetRef.current) void uploadResume(resumeTargetRef.current, file);
+        }}
+      />
+
       {/* A column per consultant (or requirement), each with its own stage icons */}
       <div className="min-h-0 flex-1 overflow-x-auto">
         <div className="flex h-full min-w-max gap-3 p-2 sm:p-3">
@@ -578,13 +651,42 @@ export default function BoardPage() {
             // Counted over the columns actually shown, so hidden ones don't
             // put two of the same colour next to each other.
             const tint = COLUMN_TINTS[tintIndex++ % COLUMN_TINTS.length];
+            const resume = subjectKind === 'hotlist' ? resumes[sid] : undefined;
+            const showResumePreview = Boolean(resume) && !hiddenPreviews.has(sid);
             const colCounts = counts[sid] ?? {};
             const range = view.range;
             return (
-              <section key={sid} className="flex h-full w-[340px] flex-col rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
-                <header className={`shrink-0 rounded-t-xl border-b px-3 py-2.5 ${tint}`}>
-                  <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100" title={subjectTitle(subject)}>{subjectTitle(subject)}</p>
+              <div key={sid} className="flex h-full shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
+              <section className="flex h-full w-[340px] flex-col">
+                <header className={`shrink-0 border-b px-3 py-2.5 ${tint}`}>
+                  <div className="flex items-center gap-1.5">
+                    <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100" title={subjectTitle(subject)}>{subjectTitle(subject)}</p>
+                    {subjectKind === 'hotlist' && (
+                      <button
+                        type="button"
+                        title={resume ? 'Replace resume' : 'Attach resume (sent with AI Submit)'}
+                        aria-label={resume ? 'Replace resume' : 'Attach resume'}
+                        disabled={uploadingResumeFor === sid}
+                        onClick={() => { resumeTargetRef.current = sid; resumeInputRef.current?.click(); }}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:text-gray-800 disabled:opacity-60 dark:border-white/10 dark:bg-[#171a1f] dark:text-[#94A3B8]"
+                      >
+                        {uploadingResumeFor === sid ? <RefreshCw size={12} className="animate-spin" /> : <Paperclip size={13} />}
+                      </button>
+                    )}
+                  </div>
                   {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-[#94A3B8]">{subject.detail}</p>}
+                  {resume && (
+                    <div className="mt-1.5 flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-200">
+                      <FileText size={11} className="shrink-0 text-gray-500" />
+                      <span className="min-w-0 flex-1 truncate" title={resume.name}>{resume.name}</span>
+                      <button type="button" onClick={() => setPreviewHidden(sid, showResumePreview)} title={showResumePreview ? 'Hide preview' : 'Show preview'} aria-label={showResumePreview ? 'Hide resume preview' : 'Show resume preview'} className="shrink-0 text-gray-400 hover:text-gray-700">
+                        {showResumePreview ? <EyeOff size={11} /> : <Eye size={11} />}
+                      </button>
+                      <button type="button" onClick={() => void removeResume(sid)} title="Remove resume" aria-label="Remove resume" className="shrink-0 text-gray-400 hover:text-gray-700">
+                        <X size={11} />
+                      </button>
+                    </div>
+                  )}
 
                   {/* Stage pills, as on the other pages (drop a New card on
                       Submitted to mark it sent), and rematch */}
@@ -717,6 +819,26 @@ export default function BoardPage() {
                   })}
                 </div>
               </section>
+              {/* The consultant's resume, beside their column */}
+              {resume && showResumePreview && (
+                <aside className="flex h-full w-[420px] flex-col border-l border-gray-200 dark:border-white/10">
+                  <div className="flex shrink-0 items-center gap-2 border-b border-gray-200 px-3 py-2 dark:border-white/10">
+                    <FileText size={13} className="shrink-0 text-gray-500" />
+                    <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-gray-800 dark:text-slate-100">{resume.name}</span>
+                    <a href={resume.url} target="_blank" rel="noreferrer" title="Open in a new tab" className="shrink-0 text-gray-400 hover:text-gray-700"><ExternalLink size={13} /></a>
+                    <button type="button" onClick={() => setPreviewHidden(sid, true)} title="Hide preview" aria-label="Hide resume preview" className="shrink-0 text-gray-400 hover:text-gray-700"><X size={13} /></button>
+                  </div>
+                  {/\.pdf$/i.test(resume.name) ? (
+                    <iframe title={`Resume: ${resume.name}`} src={`${resume.url}#view=FitH`} className="min-h-0 w-full flex-1 bg-gray-50" />
+                  ) : (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-[12px] text-gray-500">
+                      <p>Word files can't be previewed here.</p>
+                      <a href={resume.url} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 hover:underline">Open {resume.name}</a>
+                    </div>
+                  )}
+                </aside>
+              )}
+              </div>
             );
           })}
 
