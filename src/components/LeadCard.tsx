@@ -461,6 +461,8 @@ export interface LeadCardProps {
    *  actions) that expands to the full card. Used on the Tracker. */
   collapsible?: boolean;
   defaultCollapsed?: boolean;
+  /** Tracker: dismiss this match ("Not a match"), an icon in the action bar. */
+  onDismiss?: (lead: SocialLead) => void;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -476,7 +478,7 @@ export const LeadCard = memo(function LeadCard({
   onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
   hideActions, isSelected, onSelect,
   bulkSelectable, isBulkSelected, onToggleBulkSelect, matchRank, isFocused, onFocus,
-  onChat, isProcessingChat, collapsible = false, defaultCollapsed = true,
+  onChat, isProcessingChat, collapsible = false, defaultCollapsed = true, onDismiss,
 }: LeadCardProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const compact = collapsible && collapsed;
@@ -566,6 +568,17 @@ export const LeadCard = memo(function LeadCard({
               {!compact && <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Submit'}</span>}
             </>
           )}
+        </button>
+      )}
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDismiss(lead); }}
+          title="Not a match (won't be suggested again)"
+          aria-label="Not a match"
+          className="inline-flex h-9 w-10 shrink-0 items-center justify-center bg-gray-50 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-red-500/10"
+        >
+          <X size={16} strokeWidth={1.75} />
         </button>
       )}
       {collapsible && (
