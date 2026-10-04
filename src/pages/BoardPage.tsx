@@ -163,6 +163,20 @@ export default function BoardPage() {
   const aiResumeRef = useRef<{ url: string; name: string } | null>(null);
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
+  // Ten cards per column at a time, then Load more. Keyed by column (and the
+  // Other column as 'other'); reset when a column changes stage or range.
+  const PAGE_SIZE = 10;
+  const [shownCount, setShownCount] = useState<Record<string, number>>({});
+  const shownFor = (key: string) => shownCount[key] ?? PAGE_SIZE;
+  const loadMoreButton = (key: string, total: number) => total > shownFor(key) && (
+    <button
+      type="button"
+      onClick={() => setShownCount((prev) => ({ ...prev, [key]: shownFor(key) + PAGE_SIZE }))}
+      className="mx-auto mt-1 rounded-full border border-gray-200 bg-white px-4 py-1.5 text-[12px] font-semibold text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-200"
+    >
+      Load more ({total - shownFor(key)})
+    </button>
+  );
   const [rangeMenuFor, setRangeMenuFor] = useState('');
   // Applications, resume requests and chats (what the old Submissions /
   // Invites page listed). Shown on the card of the lead they went to, or in
@@ -441,6 +455,7 @@ export default function BoardPage() {
   }
 
   function setColumnView(subjectId: string, view: ColumnView) {
+    setShownCount((prev) => { const copy = { ...prev }; delete copy[subjectId]; return copy; });
     const next = { ...viewsRef.current };
     if (isDefaultView(view)) delete next[subjectId]; else next[subjectId] = view;
     viewsRef.current = next;
@@ -800,7 +815,7 @@ export default function BoardPage() {
                       {selected.subjectId === sid && selected.ids.size > 0 ? 'Clear selection' : `Select all for ${submitLabel}`}
                     </button>
                   )}
-                  {list.map((card, cardIndex) => {
+                  {list.slice(0, shownFor(sid)).map((card, cardIndex) => {
                     const lead = leadsById[card.lead_id];
                     const cardSends = sendsByLead.get(card.lead_id) ?? [];
                     return (
@@ -851,6 +866,7 @@ export default function BoardPage() {
                       </div>
                     );
                   })}
+                  {loadMoreButton(sid, list.length)}
                 </div>
               </section>
               {/* The consultant's resume, beside their column */}
@@ -886,7 +902,7 @@ export default function BoardPage() {
                   {(['open', 'closed'] as const).map((t) => {
                     const n = otherSends.filter((x) => (t === 'closed' ? x.closed : !x.closed)).length;
                     return (
-                      <button key={t} type="button" onClick={() => setOtherTab(t)} className={`inline-flex items-center gap-1 rounded-full border bg-white px-2.5 py-1 text-[11px] font-semibold transition dark:bg-[#171a1f] ${otherTab === t ? 'border-gray-400 text-gray-900 dark:border-white/30 dark:text-slate-100' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-[#94A3B8]'}`}>
+                      <button key={t} type="button" onClick={() => { setOtherTab(t); setShownCount((prev) => { const copy = { ...prev }; delete copy.other; return copy; }); }} className={`inline-flex items-center gap-1 rounded-full border bg-white px-2.5 py-1 text-[11px] font-semibold transition dark:bg-[#171a1f] ${otherTab === t ? 'border-gray-400 text-gray-900 dark:border-white/30 dark:text-slate-100' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-[#94A3B8]'}`}>
                         <span>{t === 'open' ? 'Open' : 'Closed'}</span>
                         <span className={`tabular-nums ${n === 0 ? 'text-gray-400 dark:text-[#64748B]' : 'text-blue-600 dark:text-blue-400'}`}>{n}</span>
                       </button>
@@ -896,7 +912,7 @@ export default function BoardPage() {
               </header>
               <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
                 {otherVisible.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{otherTab === 'closed' ? 'Nothing closed yet.' : 'Nothing open.'}</p>}
-                {otherVisible.map((send, i) => (
+                {otherVisible.slice(0, shownFor('other')).map((send, i) => (
                   <div key={send.key}>
                     {leadsById[send.leadId]
                       ? feedCard(leadsById[send.leadId], i)
@@ -904,6 +920,7 @@ export default function BoardPage() {
                     <div className="mt-1 px-1">{sendBadges(send)}</div>
                   </div>
                 ))}
+                {loadMoreButton('other', otherVisible.length)}
               </div>
             </section>
           )}
