@@ -1,4 +1,4 @@
-import { Loader2, Mail, Send, Sparkles, Video } from 'lucide-react';
+import { FileText, Loader2, Mail, Send, Sparkles } from 'lucide-react';
 import { renderInvitePreview, type InvitePreviewLead } from '../lib/invite-preview';
 
 // The draft, beside the matches.
@@ -6,12 +6,14 @@ import { renderInvitePreview, type InvitePreviewLead } from '../lib/invite-previ
 // Nobody tries a feature whose output they cannot see. The top match is
 // generated for real, so the pane opens on the actual email rather than a
 // description of one. Every other card offers to generate and send its own in
-// a single action — the local render is only a fallback for a screening
-// invite, whose wording is a fixed template and so can be known for free.
+// a single action. A consultant's resume request is a fixed template, so its
+// exact wording is rendered here for free.
 
 type Props = {
   lead: (InvitePreviewLead & { id: string }) | null;
   senderName: string | undefined;
+  /** The vendor's requirement this run is for, named in a resume request. */
+  requirementTitle?: string | null;
   isGenerating: boolean;
   onSend: () => void;
   /** Mobile: sits under the tapped card and grows to its content, instead of
@@ -25,7 +27,7 @@ type Props = {
 };
 
 export default function AiMatchInvitePane({
-  lead, senderName, isGenerating, onSend, inline = false, draft = null, onGenerateAndSend, isSending = false,
+  lead, senderName, requirementTitle = null, isGenerating, onSend, inline = false, draft = null, onGenerateAndSend, isSending = false,
 }: Props) {
   if (!lead) {
     return (
@@ -35,9 +37,9 @@ export default function AiMatchInvitePane({
     );
   }
 
-  const local = renderInvitePreview(lead, senderName);
+  const local = renderInvitePreview(lead, senderName, requirementTitle ? { title: requirementTitle } : null);
   const isInvite = lead.kind === 'hotlist';
-  const Icon = isInvite ? Video : Mail;
+  const Icon = isInvite ? FileText : Mail;
   // A generated draft wins over the local render; it is what will actually go
   // out, and for a submission the local render is only a description.
   const preview = draft
@@ -61,7 +63,7 @@ export default function AiMatchInvitePane({
       <div className="flex items-center gap-2 border-b border-indigo-200/70 bg-indigo-100/50 px-3.5 py-2.5 dark:border-indigo-400/20 dark:bg-indigo-500/10">
         <Icon size={14} className="shrink-0 text-indigo-600 dark:text-indigo-300" />
         <p className="text-[12px] font-semibold text-indigo-900 dark:text-indigo-100">
-          {isInvite ? 'Screening invite' : 'Submission'}
+          {isInvite ? 'Resume request' : 'Submission'}
         </p>
         <span className="ml-auto text-[10px] text-indigo-400 dark:text-indigo-300/60">
           {draft ? 'generated' : showBanner ? '' : 'preview'}
@@ -129,12 +131,12 @@ export default function AiMatchInvitePane({
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 py-2.5 text-[13px] font-semibold text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Icon size={14} />}
-              {isSending ? 'Sending…' : isGenerating ? 'Preparing…' : isInvite ? 'AI Invite' : 'AI Submit'}
+              {isSending ? 'Sending…' : isGenerating ? 'Preparing…' : isInvite ? 'AI Request' : 'AI Submit'}
             </button>
             {/* Said before the click, not after: the draft above is free, the
                 one that gets sent is not. */}
             <p className="mt-1.5 text-center text-[10px] text-indigo-400 dark:text-indigo-300/70">
-              Costs 1 credit · you review it before it sends
+              {isInvite ? 'Free to draft · 1 credit to send · you review it first' : 'Costs 1 credit · you review it before it sends'}
             </p>
           </>
         )}

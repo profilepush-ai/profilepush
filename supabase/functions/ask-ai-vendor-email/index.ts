@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getValidAccessToken, sendViaGmail } from "../_shared/gmail.ts";
+import { isResumeRequest, renderResumeRequest } from "../_shared/resume-request.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,6 +71,8 @@ Deno.serve(async (req: Request) => {
     // exactly what its check constraint says.
     const sendSourceRaw = asString(body.send_source, 10);
     const sendSource = sendSourceRaw === "bulk" || sendSourceRaw === "single" ? sendSourceRaw : null;
+    // A vendor's own requirement a resume request is for, named in the email.
+    const sourceJobId = asString(body.source_job_id, 100);
     const resumeUrl = asString(body.resume_url, 2000);
     const resumeFileName = asString(body.resume_file_name, 255);
     const missingDetails = Array.isArray(body.missing_details)
@@ -168,6 +171,41 @@ Deno.serve(async (req: Request) => {
     const requesterFirstName = requesterName.split(/\s+/)[0] || "Recruiter";
     let emailSubject = asString(body.email_subject, 300);
     let emailContent = asString(body.email_content, 2_000);
+    if (action === 'preview' && leadType === "hotlist" && isResumeRequest(missingDetails)) {
+      // A resume request is a fixed template (shared with the app's preview),
+      // so it needs no model and costs nothing to draft. Only sending it
+      // through Gmail costs a credit, as for every email.
+      let requirementTitle = "";
+      let requirementLocation = "";
+      if (sourceJobId) {
+        const { data: requirement } = await supabaseAdmin
+          .from("social_jobs")
+          .select("job_title, location")
+          .eq("id", sourceJobId)
+          .eq("created_by_account_id", accountId)
+          .maybeSingle();
+        requirementTitle = asString(requirement?.job_title, 120);
+        requirementLocation = asString(requirement?.location, 80);
+      }
+      const draft = renderResumeRequest({
+        role: asString(hotlist!.role_title, 120),
+        recipientName: vendorName,
+        senderName: requesterFirstName,
+        requirementTitle,
+        requirementLocation,
+      });
+      return respond({
+        ok: true,
+        preview: true,
+        cached: false,
+        vendor_name: vendorDisplayName,
+        vendor_email: vendorEmail,
+        missing_details: missingDetails,
+        email_subject: draft.subject,
+        email_content: draft.body,
+      });
+    }
+
     if (action === 'preview') {
       const draftLookup = leadType === "hotlist"
         ? supabaseAdmin

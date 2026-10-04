@@ -62,9 +62,9 @@ const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: st
     short: '1 credit per AI Match result, up to 10 a run',
     note: 'Up to 10 per run, and only for matches you have not already been charged for: a rematch on the same text re-shows the previous results free and bills only the new ones. A run that finds nothing is refunded in full, though it needs 10 credits free to start.',
   },
-  { label: 'AI Submit / AI Invite — generate draft', cost: '1 credit', short: '1 credit to generate an AI Submit or Invite draft', note: 'Only the first generation per post; reopening an already-generated draft is free' },
+  { label: 'AI Submit — generate draft', cost: '1 credit', short: '1 credit to generate an AI Submit draft', note: 'Only the first generation per post; reopening an already-generated draft is free. AI Request drafts (resume requests to a bench recruiter) are free.' },
   { label: 'Inbox AI chat draft', cost: '1 credit', short: '1 credit per Inbox AI chat draft' },
-  { label: 'Email sent through your Gmail', cost: '1 credit', short: '1 credit per email sent through your connected Gmail', note: 'AI Submit, AI Invite and Inbox replies sent from your Gmail. Refunded if Gmail rejects the send.' },
+  { label: 'Email sent through your Gmail', cost: '1 credit', short: '1 credit per email sent through your connected Gmail', note: 'AI Submit, AI Request and Inbox replies sent from your Gmail. Refunded if Gmail rejects the send.' },
   { label: 'Video screening completed', cost: '10 credits', short: '10 credits when a candidate completes a video screening', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
 ];
 

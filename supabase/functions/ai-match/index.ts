@@ -215,7 +215,10 @@ Deno.serve(async (req: Request) => {
   // Publish the pasted description as the user's own post, concurrently with
   // the match so it adds no wait. Awaited before responding so the UI can say
   // it happened; its failure is reported, never thrown.
-  const postPromise = logPostOutcome(autoPostDescription({
+  // A sample run (a new user trying a ready-made requirement) is matched like
+  // any other but never published: it is not their post.
+  const isSample = body?.sample === true;
+  const postPromise: Promise<PostOutcome> = isSample ? Promise.resolve({ status: "skipped", reason: "sample" }) : logPostOutcome(autoPostDescription({
     supabaseAdmin,
     userClient,
     accountId,

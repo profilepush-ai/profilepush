@@ -199,7 +199,7 @@ export default function AdminEmailTypes() {
         </div>
       </section>
       <p className="text-[12px] text-gray-500">
-        Not listed: sign-up confirmation, password reset and the sign-in link from a profile claim. Those come from Supabase&apos;s own sign-in emails, not from SES or GMass. AI Submit and AI Invite emails go out from each user&apos;s own Gmail.
+        Not listed: sign-up confirmation, password reset and the sign-in link from a profile claim. Those come from Supabase&apos;s own sign-in emails, not from SES or GMass. AI Submit and AI Request emails go out from each user&apos;s own Gmail.
       </p>
     </div>
   );
