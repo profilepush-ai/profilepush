@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
-import { AtSign, Briefcase, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap, Eye, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { AtSign, Briefcase, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap, Eye, X } from 'lucide-react';
 import { PosterProfileLink, SubscribeTextLink } from './publishers/PublisherBits';
 import LogoSpinner from './LogoSpinner';
 import { supabase } from '../lib/supabase';
@@ -581,17 +581,6 @@ export const LeadCard = memo(function LeadCard({
           <X size={16} strokeWidth={1.75} />
         </button>
       )}
-      {collapsible && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setCollapsed((value) => !value); }}
-          title={compact ? 'Show the full card' : 'Collapse'}
-          aria-expanded={!compact}
-          className="inline-flex h-9 w-10 shrink-0 items-center justify-center bg-gray-50 text-gray-500 transition-colors hover:bg-gray-100 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
-        >
-          {compact ? <ChevronDown size={16} strokeWidth={1.75} /> : <ChevronUp size={16} strokeWidth={1.75} />}
-        </button>
-      )}
     </div>
   );
 
@@ -599,7 +588,14 @@ export const LeadCard = memo(function LeadCard({
     <div
       role={hideActions ? 'button' : undefined}
       tabIndex={hideActions ? 0 : undefined}
-      onClick={hideActions ? () => onSelect?.(lead) : undefined}
+      onClick={hideActions ? () => onSelect?.(lead) : collapsible ? (event) => {
+        // Collapsible: a click on the card itself expands or collapses it;
+        // the title, buttons, links and the tick keep their own actions.
+        if ((event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        setCollapsed((value) => !value);
+      } : undefined}
+      aria-expanded={collapsible ? !compact : undefined}
+      title={collapsible ? (compact ? 'Click to see the full card' : 'Click to collapse') : undefined}
       onKeyDown={hideActions ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect?.(lead); } } : undefined}
       onClickCapture={!hideActions && onFocus ? (event) => {
         // Ignore clicks on anything that already acts: buttons, links, the
@@ -611,7 +607,7 @@ export const LeadCard = memo(function LeadCard({
         isSelected ? 'border-blue-400 ring-1 ring-blue-200'
           : isFocused ? 'border-indigo-400 ring-1 ring-indigo-200'
           : 'border-[#dfdad2] dark:border-white/10'
-      } ${cardFillClass} ${hideActions || onFocus ? 'cursor-pointer' : ''}`}
+      } ${cardFillClass} ${hideActions || onFocus || collapsible ? 'cursor-pointer' : ''}`}
     >
       <LeadKindPill kind={lead.kind} variant="banner" onProfilePush={lead.postSource === 'user_post'} />
       {matchRank != null && (
