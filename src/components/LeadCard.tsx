@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
-import { AtSign, Briefcase, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Video, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap } from 'lucide-react';
+import { AtSign, Briefcase, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Video, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap, Eye, X } from 'lucide-react';
 import { PosterProfileLink, SubscribeTextLink } from './publishers/PublisherBits';
 import LogoSpinner from './LogoSpinner';
 import { supabase } from '../lib/supabase';
@@ -942,6 +942,91 @@ export async function loadLeadsByIds(kind: 'job' | 'hotlist', ids: string[]): Pr
     }
   }
   return leads;
+}
+
+// The details a job post leaves out, which an AI Submit email asks about.
+export function formatBreakdownFieldName(key: string) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\bmatch\b/gi, '')
+    .replace(/\bemployment\b/gi, 'Emp')
+    .replace(/\bexperience\b/gi, 'Exp')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export function getMissingJobDetails(lead: SocialLead): string[] {
+  const breakdownItems = orderPulseBreakdownItems(buildScoreBreakdownDisplayItems(
+    lead.scoreBreakdown as Record<string, number | { score: number; candidate_value: string; job_value: string; rule: string }> | undefined,
+    undefined,
+    {
+      employment_type: lead.employmentType || null,
+      work_type: null,
+    },
+  ).filter((item) => !isRoleLikeBreakdownKey(item.key)));
+
+  return Array.from(new Set(breakdownItems
+    .filter((item) => {
+      const value = (item.detail?.job_value ?? '').trim().toLowerCase();
+      return !value || value === '-' || value === 'unknown' || value === 'not specified' || value === 'n/a';
+    })
+    .map((item) => formatBreakdownFieldName(item.key))));
+}
+
+// Post text as shown in previews and the detail panel: any email address in
+// it is hidden. The way to a poster's email is AI Submit / AI Invite, which
+// writes the email and shows who it goes to.
+export const EMAIL_IN_TEXT = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+export function hideEmails(text: string | null | undefined): string {
+  return (text ?? '').replace(EMAIL_IN_TEXT, '[email hidden · use AI Submit]');
+}
+
+// A post's full text, for the preview popup and the detail panel.
+export async function fetchLeadPostContent(leadId: string, kind: 'job' | 'hotlist'): Promise<string> {
+  const previewIsHotlist = kind === 'hotlist';
+  const { data, error } = await supabase
+    .from(previewIsHotlist ? 'social_hotlist' : 'social_jobs')
+    .select(previewIsHotlist ? 'raw_post_content' : 'post_content')
+    .eq('id', leadId)
+    .maybeSingle();
+  if (error || !data) throw new Error(error?.message || 'Could not load the post');
+
+  const content = String((previewIsHotlist ? (data as { raw_post_content: string | null }).raw_post_content : (data as { post_content: string | null }).post_content) ?? '').trim();
+  return content || 'No post content available.';
+}
+
+// The post preview popup (the card's title / Preview), with emails hidden.
+export function PostPreviewModal({ title, content, onClose }: { title: string; content: string; onClose: () => void }) {
+  return (
+<div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="post-content-preview-title"
+      onClick={(e) => e.stopPropagation()}
+      className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-lg border border-gray-200 bg-white shadow-xl"
+    >
+      <div className="flex items-start gap-2.5 border-b border-gray-100 p-4">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-50 text-slate-500">
+          <Eye size={16} />
+        </span>
+        <h2 id="post-content-preview-title" className="min-w-0 flex-1 truncate text-[15px] font-semibold text-gray-900">{title}</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+          aria-label="Close post preview"
+        >
+          <X size={14} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4">
+        <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700">{hideEmails(content)}</p>
+      </div>
+    </div>
+  </div>
+  );
 }
 
 export default LeadCard;
