@@ -585,10 +585,11 @@ export default function BoardPage() {
                             if (card) void move(card, st.id);
                             setDragId('');
                           }}
-                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${active ? 'border-blue-600 bg-blue-600 text-white dark:border-white/25 dark:bg-[#2A2E35] dark:text-slate-100' : 'border-transparent bg-white text-gray-500 hover:text-gray-700 dark:bg-[#171a1f] dark:text-[#94A3B8]'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
+                          className={`inline-flex items-center gap-1 rounded-full border bg-white px-2.5 py-1 text-[11px] font-semibold transition dark:bg-[#171a1f] ${active ? 'border-gray-400 text-gray-900 dark:border-white/30 dark:text-slate-100' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-[#94A3B8]'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
                         >
                           <span>{st.label}</span>
-                          <span className="tabular-nums">{n}</span>
+                          {/* Only the count carries colour, and only when there is something */}
+                          <span className={`tabular-nums ${n === 0 ? 'text-gray-400 dark:text-[#64748B]' : st.id === 'new' ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>{n}</span>
                         </button>
                       );
                     })}
@@ -703,9 +704,9 @@ export default function BoardPage() {
                   {(['open', 'closed'] as const).map((t) => {
                     const n = otherSends.filter((x) => (t === 'closed' ? x.closed : !x.closed)).length;
                     return (
-                      <button key={t} type="button" onClick={() => setOtherTab(t)} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${otherTab === t ? 'border-blue-600 bg-blue-600 text-white dark:border-white/25 dark:bg-[#2A2E35] dark:text-slate-100' : 'border-transparent bg-white text-gray-500 hover:text-gray-700 dark:bg-[#171a1f] dark:text-[#94A3B8]'}`}>
+                      <button key={t} type="button" onClick={() => setOtherTab(t)} className={`inline-flex items-center gap-1 rounded-full border bg-white px-2.5 py-1 text-[11px] font-semibold transition dark:bg-[#171a1f] ${otherTab === t ? 'border-gray-400 text-gray-900 dark:border-white/30 dark:text-slate-100' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-[#94A3B8]'}`}>
                         <span>{t === 'open' ? 'Open' : 'Closed'}</span>
-                        <span className="tabular-nums">{n}</span>
+                        <span className={`tabular-nums ${n === 0 ? 'text-gray-400 dark:text-[#64748B]' : 'text-blue-600 dark:text-blue-400'}`}>{n}</span>
                       </button>
                     );
                   })}
