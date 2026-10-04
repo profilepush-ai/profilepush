@@ -826,13 +826,19 @@ export default function BoardPage() {
                         draggable
                         onDragStart={() => setDragId(card.id)}
                         onDragEnd={() => { setDragId(''); setOverTarget(''); }}
-                        className={`rounded-lg transition ${flashIds.has(card.id) ? 'ring-2 ring-green-300' : ''} ${dragId === card.id ? 'opacity-50' : ''}`}
+                        className={`shrink-0 rounded-lg transition ${flashIds.has(card.id) ? 'ring-2 ring-green-300' : ''} ${dragId === card.id ? 'opacity-50' : ''}`}
                       >
+                        {/* A plain block around the card: the card is h-full,
+                            and without it that resolved to this whole slot,
+                            extras row included, leaving a gap inside the card
+                            and pushing the extras under the next card. */}
+                        <div>
                         {lead
                           ? feedCard(lead, cardIndex, card.stage === 'new' && card.has_email
                             ? { selected: selected.subjectId === sid && selected.ids.has(card.id), onToggle: () => toggleSelect(card) }
                             : undefined, sid)
                           : <div className="h-28 animate-pulse rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5" />}
+                        </div>
                         {/* Tracker extras under the Feed card */}
                         {(cardSends.length > 0 || card.stage === 'new' || card.conversation_id) && (
                           <div className="mt-1 flex flex-col gap-1 px-1">
@@ -915,10 +921,12 @@ export default function BoardPage() {
               <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
                 {otherVisible.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{otherTab === 'closed' ? 'Nothing closed yet.' : 'Nothing open.'}</p>}
                 {otherVisible.slice(0, shownFor('other')).map((send, i) => (
-                  <div key={send.key}>
+                  <div key={send.key} className="shrink-0">
+                    <div>
                     {leadsById[send.leadId]
                       ? feedCard(leadsById[send.leadId], i)
                       : <div className="h-28 animate-pulse rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5" />}
+                    </div>
                     <div className="mt-1 px-1">{sendBadges(send)}</div>
                   </div>
                 ))}
