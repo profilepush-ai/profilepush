@@ -416,6 +416,9 @@ export interface LeadCardProps {
   askedRequestedAt: string | undefined;
   askedFulfilledAt: string | null | undefined;
   revealedAt: string | undefined;
+  /** The user opened this post's preview before, and when. */
+  isViewed?: boolean;
+  viewedAt?: string;
   isInlineBreakdownExpanded: boolean;
   isSkillsExpanded: boolean;
   isExpFieldExpanded: boolean;
@@ -463,7 +466,7 @@ export interface LeadCardProps {
 // elsewhere on the page (typing in search, hovering, etc).
 export const LeadCard = memo(function LeadCard({
   lead, accountId, userId, paletteIndex, isDark, isHotlistFeed, feedTimeBasis, isLeadRevealed, globalAskedJobState,
-  predictResult, askedRequestedAt, askedFulfilledAt, revealedAt, isSkillsExpanded,
+  predictResult, askedRequestedAt, askedFulfilledAt, revealedAt, isViewed = false, viewedAt, isSkillsExpanded,
   isExpFieldExpanded, isWorkTypeFieldExpanded, isEmpTypeFieldExpanded, isRateFieldExpanded, isVisaFieldExpanded, isLocationFieldExpanded,
   isLoadingPreview, isProcessingAskAI,
   onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
@@ -629,12 +632,15 @@ export const LeadCard = memo(function LeadCard({
               type="button"
               onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
               disabled={isLoadingPreview}
-              title="Open post"
+              title={isViewed ? 'Open post (viewed)' : 'Open post'}
               className="text-left text-[13px] font-semibold leading-snug underline-offset-2 hover:underline disabled:cursor-wait"
               style={titleToneStyle}
             >
               {lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}
-              {isLoadingPreview && <span className="ml-1.5 inline-block align-middle"><LogoSpinner size={11} /></span>}
+              {/* Says the title opens the post; filled blue once it has been opened. */}
+              {isLoadingPreview
+                ? <span className="ml-1.5 inline-block align-middle"><LogoSpinner size={11} /></span>
+                : <Eye size={12} strokeWidth={2.25} className={`ml-1 inline-block align-[-1px] ${isViewed ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-slate-500'}`} />}
             </button>
             )
           )}
@@ -666,6 +672,12 @@ export const LeadCard = memo(function LeadCard({
                     const label = isVerified ? 'Verified' : (isHotlistFeed ? 'Asked' : 'Submitted');
                     return stampIso ? `${label} ${formatAgoCompact(stampIso)}` : label;
                   })()}
+                </span>
+              )}
+              {isViewed && lead.kind !== 'hotlist' && (
+                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'border-blue-400/30 bg-blue-500/10 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>
+                  <Eye size={9} strokeWidth={2.5} />
+                  Viewed{viewedAt ? ` ${formatAgoCompact(viewedAt)}` : ''}
                 </span>
               )}
               {isLeadRevealed && (

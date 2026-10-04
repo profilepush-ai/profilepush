@@ -3234,6 +3234,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
       askedRequestedAt: askedState?.requestedAt,
       askedFulfilledAt: askedState?.fulfilledAt,
       revealedAt: revealedAtByLeadId[lead.id],
+      isViewed: postContentViewedLeadIds.has(lead.id),
+      viewedAt: postContentViewedAtByLeadId[lead.id],
       isInlineBreakdownExpanded: expandedInlineBreakdownLeadIds.has(lead.id),
       isSkillsExpanded: expandedSkillsLeadIds.has(lead.id),
       isExpFieldExpanded: expandedFieldKeys.has(`${lead.id}:exp`),
