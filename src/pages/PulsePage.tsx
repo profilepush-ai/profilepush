@@ -2024,8 +2024,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
 
   // Cards whatever is saved: a table row or a detail pane of a consultant is
   // mostly the fields the card already shows, minus the layout that makes them
-  // readable. The stored preference is left alone, so other feeds keep it.
-  const effectiveLayoutMode: PulseLayoutMode = hotlistOnlyFeed ? 'card' : layoutMode;
+  // readable. AI Match is always cards too: its draft pane (the AI Submit /
+  // AI Request email beside the matches) only exists in that layout, and a
+  // saved table or detail preference used to hide it along with the card
+  // buttons. The stored preference is left alone, so other feeds keep it.
+  const effectiveLayoutMode: PulseLayoutMode = hotlistOnlyFeed || aiMatch ? 'card' : layoutMode;
   const isTableLayout = effectiveLayoutMode === 'table' && !isMobileViewport;
   const isDetailLayout = effectiveLayoutMode === 'detail' && !isMobileViewport;
   const isSwipeLayout = SWIPE_LAYOUT_ENABLED && effectiveLayoutMode === 'swipe';
