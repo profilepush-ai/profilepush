@@ -12,7 +12,7 @@ import PostPromptNudge from './components/PostPromptNudge';
 import OnboardingChecklist from './components/OnboardingChecklist';
 import AndroidBackButtonHandler from './components/AndroidBackButtonHandler';
 import { useAuth } from './contexts/AuthContext';
-import { isSupabaseConfigured, supabaseConfigMissing } from './lib/supabase';
+import { isSupabaseConfigured, supabase, supabaseConfigMissing } from './lib/supabase';
 import { networkSectionForPersona } from './lib/publishers';
 import { initializeOneSignal, setOneSignalExternalUserId } from './lib/onesignal';
 import { registerNativeAuthDeepLinkListener } from './lib/native-auth';
@@ -140,7 +140,29 @@ function AppEntry() {
   }
 
   // Opening the app signed in lands where signing in lands.
-  return <Navigate to={user ? '/match' : '/signup'} replace />;
+  return <Navigate to={user ? '/home' : '/signup'} replace />;
+}
+
+// Where a signed-in user lands: AI Match the first time, the Tracker once
+// they have tried AI Match (my_landing_path decides).
+function HomeRedirect() {
+  const [path, setPath] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void supabase.rpc('my_landing_path' as never).then(({ data, error }) => {
+      if (cancelled) return;
+      setPath(!error && (data === '/tracker' || data === '/match') ? (data as string) : '/match');
+    });
+    return () => { cancelled = true; };
+  }, []);
+  if (!path) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <LogoSpinner size={20} />
+      </div>
+    );
+  }
+  return <Navigate to={path} replace />;
 }
 
 // /feed, /feed/jobs, /feed/hotlist, and /feed/:kind/:id (a specific lead's
@@ -277,6 +299,7 @@ export default function App() {
             <Route path="/hotlist/:id" element={<ErrorBoundary><PublicHotlistPage /></ErrorBoundary>} />
             <Route path="/profile/:slug" element={<ErrorBoundary><PublicProfilePage /></ErrorBoundary>} />
             <Route path="/me" element={<ProtectedRoute><ErrorBoundary><MyProfilePage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/home" element={<ProtectedRoute><ErrorBoundary><HomeRedirect /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><BoardPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/board" element={<Navigate to="/tracker" replace />} />
             <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
