@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
-import { AtSign, Briefcase, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Video, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap, Eye, X } from 'lucide-react';
+import { AtSign, Briefcase, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap, Eye, X } from 'lucide-react';
 import { PosterProfileLink, SubscribeTextLink } from './publishers/PublisherBits';
 import LogoSpinner from './LogoSpinner';
 import { supabase } from '../lib/supabase';
@@ -535,25 +535,23 @@ export const LeadCard = memo(function LeadCard({
           type="button"
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
-          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Invite for Video Screening' : lead.postSource === 'user_post' ? 'Request' : 'AI Submit')}
+          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Request: ask for resume, rate and availability' : lead.postSource === 'user_post' ? 'Request' : 'AI Submit')}
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
         >
           {isProcessingAskAI ? <LogoSpinner size={14} /> : lead.postSource === 'user_post' ? (
             <>
-              {/* Same action either way — a consultant is invited to a video
-                  screening whether the post came from the platform or a
-                  scrape, so it carries the same label and icon. */}
-              {isHotlistFeed ? <Video size={15} strokeWidth={1.75} /> : <FileText size={15} strokeWidth={1.75} />}
-              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Invite' : 'Request'}</span>
+              {/* Same action either way: a consultant gets a resume request
+                  whether the post came from the platform or elsewhere. */}
+              <FileText size={15} strokeWidth={1.75} />
+              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'Request'}</span>
             </>
           ) : (
             <>
-              {/* A hotlist action now invites the consultant to a video
-                  screening rather than asking for a resume, so it carries the
-                  video icon; a job gets the email icon, since AI Submit sends
-                  the recruiter an email. */}
-              {isHotlistFeed ? <Video size={15} strokeWidth={1.75} /> : <Mail size={15} strokeWidth={1.75} />}
-              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Invite' : 'AI Submit'}</span>
+              {/* A consultant gets a resume request (document icon; the video
+                  screening is an optional add-on in the draft); a job gets
+                  the email icon, since AI Submit emails the recruiter. */}
+              {isHotlistFeed ? <FileText size={15} strokeWidth={1.75} /> : <Mail size={15} strokeWidth={1.75} />}
+              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Submit'}</span>
             </>
           )}
         </button>
@@ -975,7 +973,7 @@ export function getMissingJobDetails(lead: SocialLead): string[] {
 }
 
 // Post text as shown in previews and the detail panel: any email address in
-// it is hidden. The way to a poster's email is AI Submit / AI Invite, which
+// it is hidden. The way to a poster's email is AI Submit / AI Request, which
 // writes the email and shows who it goes to.
 export const EMAIL_IN_TEXT = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 export function hideEmails(text: string | null | undefined): string {

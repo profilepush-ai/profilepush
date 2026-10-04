@@ -15,7 +15,7 @@ import { consultantTitle } from '../lib/consultant-title';
 import { loadTrackerSends, SEND_TONE_CLASSES, type TrackerSend } from '../lib/tracker-sends';
 
 // Tracker (named Board in code, at /board): a column per consultant (bench sales) or per requirement
-// (vendors), each with two tabs, New matches and Submitted (Invited for vendors),
+// (vendors), each with two tabs, New matches and Submitted (Requested for vendors),
 // and its own date range. Every match starts in New; sending an AI Submit
 // moves it to Submitted on the server (replies stay there, with a Reply
 // button). A column's ↻ rematches that post for fresh matches right here,
@@ -47,10 +47,10 @@ type Card = {
   has_email: boolean;
 };
 
-// The 'submitted' stage is an AI Invite for vendors, so it reads "Invited".
+// The 'submitted' stage is an AI Request for vendors, so it reads "Requested".
 const stagesFor = (isVendor: boolean): Array<{ id: Stage; label: string }> => [
   { id: 'new', label: 'New' },
-  { id: 'submitted', label: isVendor ? 'Invited' : 'Submitted' },
+  { id: 'submitted', label: isVendor ? 'Requested' : 'Submitted' },
 ];
 
 // Which matches a column shows. New defaults to the last 2 hours and every
@@ -127,7 +127,7 @@ export default function BoardPage() {
   // Bench sales: a column per consultant (a hotlist row) holding requirements.
   // Vendors: a column per requirement holding consultants.
   const subjectKind: 'hotlist' | 'job' = isVendor ? 'job' : 'hotlist';
-  const submitLabel = isVendor ? 'AI Invite' : 'AI Submit';
+  const submitLabel = isVendor ? 'AI Request' : 'AI Submit';
   const STAGES = stagesFor(isVendor);
   const subjectTitle = (s: Subject) => (subjectKind === 'hotlist' ? consultantTitle(s.title) : s.title);
 
@@ -293,7 +293,7 @@ export default function BoardPage() {
     void loadAll();
   }, [account?.id, loadSubjects, loadAll]);
 
-  // The Feed's own AI Submit / AI Invite, preview and Apply, right here: the
+  // The Feed's own AI Submit / AI Request, preview and Apply, right here: the
   // same draft popup, Gmail send, credits and screening link as everywhere.
   const showToast = useCallback((message: string, type?: 'success' | 'error') => {
     if (type === 'error') setError(message); else setNotice(message);
@@ -307,7 +307,7 @@ export default function BoardPage() {
     showToast,
     getSourceJobId: () => aiSourceJobRef.current,
     onOutOfCredits: (action) => setOutOfCredits({ open: true, action }),
-    // Stay on the board; the card moves to Submitted / Invited on its own.
+    // Stay on the board; the card moves to Submitted / Requested on its own.
     openInboxAfterSend: false,
   });
   const [postPreview, setPostPreview] = useState<{ title: string; content: string } | null>(null);
@@ -444,7 +444,7 @@ export default function BoardPage() {
   const emptyText = (view: ColumnView) => {
     if (view.range.preset !== defaultRange(view.stage).preset) return 'Nothing in this range.';
     if (view.stage === 'new') return 'No new matches in the last 2 hours. Tap ↻ to rematch.';
-    return `No ${isVendor ? 'invites' : 'submits'} in the last day.`;
+    return `No ${isVendor ? 'requests' : 'submits'} in the last day.`;
   };
   const sendsByLead = useMemo(() => {
     const map = new Map<string, TrackerSend[]>();
@@ -455,7 +455,7 @@ export default function BoardPage() {
   const otherVisible = otherSends
     .filter((x) => (otherTab === 'closed' ? x.closed : !x.closed))
     .filter((x) => !q || `${x.title} ${x.subtitle}`.toLowerCase().includes(q));
-  const otherLabel = isVendor ? 'Other invites' : 'Other submissions';
+  const otherLabel = isVendor ? 'Other requests' : 'Other submissions';
 
   // Status, screening, resume and chat for one send, as the old page showed.
   const sendBadges = (send: TrackerSend) => (
@@ -769,7 +769,7 @@ export default function BoardPage() {
         open={outOfCredits.open}
         onClose={() => setOutOfCredits({ open: false, action: null })}
         balance={account?.credits_balance ?? 0}
-        actionLabel={outOfCredits.action ?? (isVendor ? 'generate this invite' : 'generate this submission email')}
+        actionLabel={outOfCredits.action ?? (isVendor ? 'send this request' : 'generate this submission email')}
       />
 
       {watchSend?.applicationId && (

@@ -1,18 +1,15 @@
-// What an AI Invite will say, rendered locally.
+import { renderResumeRequest } from '../../supabase/functions/_shared/resume-request';
+
+// What an AI Request (to a consultant's recruiter) or AI Submit will say,
+// rendered locally.
 //
 // The point is showing someone the message before they spend anything on it.
 // Generating the real draft costs a credit, so a preview pane that called the
 // server would charge for every card somebody clicked through — ten credits to
 // browse ten matches, which is the opposite of an invitation to try it.
 //
-// It costs nothing here because the copy is no longer model-written: the
-// prompt in social-job-queue-consumer is a fixed template with two
-// substitutions, and the fallback beside it is the same sentence. So the exact
-// text can be produced on the client.
-//
-// The consequence is that this must be kept in step with that worker. If the
-// two drift, someone reads one message and sends another — which is worse than
-// showing nothing. The test pins the wording.
+// A resume request is a fixed template, imported from the same file the email
+// function uses, so the preview is exactly what is sent.
 
 export type InvitePreviewLead = {
   kind: 'job' | 'hotlist';
@@ -38,11 +35,10 @@ function firstName(value: string | undefined | null, fallback: string): string {
 export function renderInvitePreview(
   lead: InvitePreviewLead,
   senderName: string | undefined,
-  screeningLinkPlaceholder = 'https://profilepush.ai/screen/…',
+  requirement?: { title?: string | null; location?: string | null } | null,
 ): InvitePreview {
   const role = (lead.roleTitle || lead.title || 'consultant').trim();
   const recipient = firstName(lead.posterName, 'there');
-  const sender = firstName(senderName, 'Recruiter');
   const to = (lead.posterEmail ?? '').trim();
 
   if (lead.kind === 'job') {
@@ -57,21 +53,14 @@ export function renderInvitePreview(
     };
   }
 
-  return {
-    to,
-    subject: `Screening invite: ${role}`,
-    body: [
-      `Hi ${recipient},`,
-      '',
-      `I have a live ${role} requirement that fits your hotlist consultant.`,
-      '',
-      'To submit: share the screening link with your consultant and ask them to attach the resume and complete the 5-minute video screening.',
-      '',
-      'Link:',
-      screeningLinkPlaceholder,
-      '',
-      sender,
-    ].join('\n'),
-    sendable: Boolean(to),
-  };
+  // A consultant gets a resume request: the exact text that is sent, from the
+  // template the email function also uses.
+  const draft = renderResumeRequest({
+    role,
+    recipientName: lead.posterName,
+    senderName,
+    requirementTitle: requirement?.title,
+    requirementLocation: requirement?.location,
+  });
+  return { to, subject: draft.subject, body: draft.body, sendable: Boolean(to) };
 }

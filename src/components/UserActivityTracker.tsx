@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { trackEvent } from '../lib/track';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
@@ -19,6 +21,14 @@ function getAuthSessionId(accessToken: string) {
 
 export default function UserActivityTracker() {
   const { account, session } = useAuth();
+  const { pathname } = useLocation();
+
+  // Which pages signed-in people open, as product events: time on site alone
+  // could not say where a new vendor went before leaving.
+  useEffect(() => {
+    if (!account) return;
+    trackEvent('page_view', { persona: account.active_persona ?? null });
+  }, [account?.id, pathname]);
 
   // The Android app loads the live site, so it reports itself here once per
   // open; Admin > Emails uses it for the "users without the app" audience.

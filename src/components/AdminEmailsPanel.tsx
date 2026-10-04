@@ -323,7 +323,7 @@ function EmailPerformance() {
                     <div className="flex items-center gap-2">
                       <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-gray-300" />
                       <div>
-                        <div className="font-semibold text-gray-900">AI Submit / AI Invite</div>
+                        <div className="font-semibold text-gray-900">AI Submit / AI Request</div>
                         <div className="text-[11px] text-gray-500">Sent by users from their own Gmail</div>
                       </div>
                     </div>

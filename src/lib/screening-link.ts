@@ -43,3 +43,20 @@ export function withScreeningLink(body: string, url: string): string {
 export function hasScreeningLink(body: string): boolean {
   return body.includes('/screen/');
 }
+
+/**
+ * Adds a screening link to a resume request as an option for the consultant,
+ * with one sentence saying what it is. Unlike the old invite, the request does
+ * not depend on it: the resume, rate and availability are the ask.
+ */
+export function withOptionalScreeningLink(body: string, url: string): string {
+  const note = 'Optional: your consultant can also record a 5-minute video screening at this link to move faster.';
+  const trimmed = body.trimEnd();
+  const lines = trimmed.split('\n');
+  const last = lines[lines.length - 1] ?? '';
+  if (lines.length > 1 && isSignatureLine(last)) {
+    const head = lines.slice(0, -1).join('\n').trimEnd();
+    return `${head}\n\n${note}\n${LINK_LABEL}\n${url}\n\n${last.trim()}`;
+  }
+  return `${trimmed}\n\n${note}\n${LINK_LABEL}\n${url}`;
+}

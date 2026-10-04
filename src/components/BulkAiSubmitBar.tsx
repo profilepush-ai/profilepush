@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Check, Loader2, Mail, Video, X } from 'lucide-react';
+import { AlertTriangle, Check, FileText, Loader2, Mail, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { withScreeningLink } from '../lib/screening-link';
+import { trackEvent } from '../lib/track';
+import { RESUME_REQUEST_DETAILS } from '../../supabase/functions/_shared/resume-request';
 import { requestFeedback } from '../lib/feedback';
 
 // Bulk sending is the reason people adopt this feature — nobody switches tools
@@ -54,12 +55,7 @@ type Quota = {
 type Props = {
   targets: BulkTarget[];
   accountId: string;
-  /**
-   * The vendor's own job this match run came from, when there is one.
-   * A screening link hangs off a job_applications row, which needs a job — a
-   * run started from pasted text has none, so those invites go out as a plain
-   * ask with no link rather than silently dropping the screening.
-   */
+  /** The vendor's own requirement this run is for, named in resume requests. */
   sourceJobId?: string | null;
   /** Tracked by the page already; the quota RPC is not the source of truth for it. */
   gmailConnected: boolean;
@@ -108,14 +104,14 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
   }
 
   const sendable = targets.filter((t) => t.hasEmail);
-  // Label from what is actually in the batch. All consultants reads as an
-  // invite, all jobs as a submit, and a mixed batch says neither rather than
+  // Label from what is actually in the batch. All consultants reads as a
+  // resume request, all jobs as a submit, and a mixed batch says neither rather than
   // picking one and being wrong half the time.
   const hotlistCount = sendable.filter((t) => t.kind === 'hotlist').length;
   const allHotlist = hotlistCount === sendable.length && sendable.length > 0;
   const allJobs = hotlistCount === 0 && sendable.length > 0;
-  const label = allHotlist ? 'AI Invite' : allJobs ? 'AI Submit' : 'Send';
-  const Icon = allHotlist ? Video : Mail;
+  const label = allHotlist ? 'AI Request' : allJobs ? 'AI Submit' : 'Send';
+  const Icon = allHotlist ? FileText : Mail;
 
   const loadQuota = useCallback(async () => {
     const { data, error: rpcError } = await supabase.rpc('get_ai_submit_quota' as never);
@@ -157,27 +153,15 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
             account_id: accountId,
             job_id: target.id,
             lead_type: target.kind,
-            missing_details: target.kind === 'hotlist' ? ['video screening'] : ['Rate'],
+            missing_details: target.kind === 'hotlist' ? RESUME_REQUEST_DETAILS : ['Rate'],
+            source_job_id: target.kind === 'hotlist' ? sourceJobId ?? null : null,
           },
         });
         if (preview.error || !preview.data?.ok) throw new Error(preview.data?.error || 'draft failed');
 
-        // An invite is only an invite if it carries the link. The draft is
-        // appended to rather than replaced, so the AI's own wording for this
-        // specific consultant survives.
-        let emailContent = preview.data.email_content as string;
-        if (target.kind === 'hotlist' && sourceJobId) {
-          const { data: invite } = await supabase.rpc('invite_consultant_to_screening' as never, {
-            p_social_job_id: sourceJobId,
-            p_hotlist_id: target.id,
-          } as never);
-          const row = Array.isArray(invite) ? invite[0] : invite;
-          const token = (row as { screening_token?: string } | null)?.screening_token;
-          if (token) {
-            emailContent = withScreeningLink(emailContent, `${window.location.origin}/screen/${token}`);
-          }
-        }
-
+        // A consultant gets the plain resume request; the optional video
+        // screening is only offered on a single request, in its dialog.
+        const emailContent = preview.data.email_content as string;
         const send = await supabase.functions.invoke('ask-ai-vendor-email', {
           body: {
             action: 'send',
@@ -186,7 +170,7 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
             account_id: accountId,
             job_id: target.id,
             lead_type: target.kind,
-            missing_details: target.kind === 'hotlist' ? ['video screening'] : ['Rate'],
+            missing_details: target.kind === 'hotlist' ? RESUME_REQUEST_DETAILS : ['Rate'],
             email_subject: preview.data.email_subject,
             email_content: emailContent,
             channel: 'gmail',
@@ -228,6 +212,7 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
     // bar to its resting state with no word that anything had been sent.
     if (!stopped) setResult({ sent, failed });
     if (sent > 0) requestFeedback('ai_submit_bulk');
+    trackEvent('ai_request_bulk_sent', { sent, failed, hotlist: hotlistCount, jobs: sendable.length - hotlistCount });
   }
 
   if (!quota.gmail_connected) {

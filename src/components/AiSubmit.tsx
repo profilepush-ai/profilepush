@@ -2,14 +2,16 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { Copy, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { hasScreeningLink, withScreeningLink } from '../lib/screening-link';
+import { withOptionalScreeningLink } from '../lib/screening-link';
+import { trackEvent } from '../lib/track';
+import { RESUME_REQUEST_DETAILS } from '../../supabase/functions/_shared/resume-request';
 import { requestFeedback } from '../lib/feedback';
 import GmailIcon from './GmailIcon';
 import GmailConnectPrompt from './GmailConnectPrompt';
 import LogoSpinner from './LogoSpinner';
 import { extractPrimaryEmail, getMissingJobDetails, type SocialLead } from './LeadCard';
 
-// AI Submit / AI Invite: generate the email for a lead, review it, send it
+// AI Submit / AI Request: generate the email for a lead, review it, send it
 // from the user's Gmail. Shared by every page that offers it (Feed, AI Match,
 // Tracker) so the draft, the screening link, credits and Gmail all behave the
 // same everywhere. useAiSubmit holds the state and actions; AiSubmitDialog is
@@ -28,6 +30,10 @@ export type AskAIPreview = {
   emailContent: string;
   /** Why a screening link is missing, when one is. Shown in the modal. */
   screeningNotice?: string | null;
+  /** Resume requests: the vendor's requirement a screening link can hang off. */
+  screeningJobId?: string | null;
+  /** Resume requests: add the optional video screening link when sending. */
+  includeScreening?: boolean;
   isGenerating: boolean;
   /** Generated for the AI Match pane, which renders it itself. Keeps the
    *  modal closed: the whole point of the pane is not opening one. */
@@ -103,7 +109,9 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
     const leadType: 'job' | 'hotlist' = isHotlist(lead) ? 'hotlist' : 'job';
     // A job with every field already detected still has a valid "ask" — re-confirming
     // rate is always a safe, relevant question, so we never block sending outreach.
-    const detectedMissingDetails = leadType === 'hotlist' ? ['video screening'] : getMissingJobDetails(lead);
+    // A consultant gets a resume request (resume, rate, visa, availability);
+    // the video screening is an optional add-on chosen in the dialog.
+    const detectedMissingDetails = leadType === 'hotlist' ? RESUME_REQUEST_DETAILS : getMissingJobDetails(lead);
     const missingDetails = detectedMissingDetails.length > 0 ? detectedMissingDetails : ['Rate'];
     const primaryEmail = extractPrimaryEmail(lead.posterEmail);
     if (!primaryEmail) {
@@ -112,6 +120,7 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
     }
 
     const requestId = crypto.randomUUID();
+    trackEvent('ai_request_started', { lead_type: leadType, inline });
     setAskAIPreview({
       leadId: lead.id,
       leadType,
@@ -136,6 +145,7 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
           job_id: lead.id,
           lead_type: leadType,
           missing_details: missingDetails,
+          source_job_id: leadType === 'hotlist' ? getSourceJobId() : null,
         },
       });
 
@@ -151,36 +161,12 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
 
       const vendorName = data.vendor_name || lead.posterName || 'the vendor';
       const vendorEmail = primaryEmail;
-      const generatedSubject = removeNameFromEmail(data.email_subject || '', vendorName);
-      let generatedContent = removeNameFromEmail(data.email_content || '', vendorName);
-
-      // The draft says "link below", so the link has to be in the draft. It is
-      // minted here rather than at send time so the preview shows exactly what
-      // goes out — invisible until send reads as a broken invite. The RPC is
-      // idempotent per job and consultant, so regenerating or resending never
-      // creates a second screening.
-      let screeningNotice: string | null = null;
-      if (leadType === 'hotlist') {
-        if (!getSourceJobId()) {
-          screeningNotice = 'This match was run from pasted text, so there is no job to attach the screening to. Pick one of your jobs and the link is added.';
-        } else {
-          const { data: invite, error: inviteError } = await supabase.rpc('invite_consultant_to_screening' as never, {
-            p_social_job_id: getSourceJobId(),
-            p_hotlist_id: lead.id,
-          } as never);
-          const row = Array.isArray(invite) ? invite[0] : invite;
-          const token = (row as { screening_token?: string } | null)?.screening_token;
-          if (token) {
-            generatedContent = withScreeningLink(generatedContent, `${window.location.origin}/screen/${token}`);
-          } else {
-            // Every previous version swallowed this. A missing link then looked
-            // identical whether the job was absent, the RPC was undeployed or
-            // the consultant had no address — which is why it took four
-            // attempts to find. Say what happened, in the modal.
-            screeningNotice = `Could not create the screening link: ${inviteError?.message ?? 'no link returned'}`;
-          }
-        }
-      }
+      // A resume request is our own template, already addressed by first
+      // name exactly as the preview shows it; only model-written drafts have
+      // the vendor's name taken out.
+      const generatedSubject = leadType === 'hotlist' ? (data.email_subject || '') : removeNameFromEmail(data.email_subject || '', vendorName);
+      const generatedContent = leadType === 'hotlist' ? (data.email_content || '') : removeNameFromEmail(data.email_content || '', vendorName);
+      const screeningJobId = leadType === 'hotlist' ? getSourceJobId() : null;
       // Built as a value rather than a state updater so the caller can send
       // it straight away: "generate and send" cannot wait for a re-render to
       // read the draft back out of state.
@@ -195,11 +181,13 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
         missingDetails,
         emailSubject: generatedSubject,
         emailContent: generatedContent,
-        screeningNotice,
+        screeningJobId,
+        includeScreening: false,
         isGenerating: false,
         inline,
       };
       setAskAIPreview(finalPreview);
+      trackEvent('ai_request_drafted', { lead_type: leadType, inline, has_requirement: Boolean(screeningJobId) });
 
       // Log every generated email to the Inbox — nothing currently gets sent
       // (Gmail Sync isn't wired up), so this is the only record of it. One
@@ -294,15 +282,17 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
       // rather than when the draft is generated, so a draft the user abandons
       // does not leave a screening record behind.
       let emailContent = preview.emailContent;
-      if (preview.leadType === 'hotlist' && getSourceJobId() && !hasScreeningLink(emailContent)) {
+      // The video screening is opt-in on a resume request. Minted only when
+      // ticked, at send, so an unsent or plain request leaves no screening.
+      if (preview.leadType === 'hotlist' && preview.includeScreening && preview.screeningJobId) {
         const { data: invite } = await supabase.rpc('invite_consultant_to_screening' as never, {
-          p_social_job_id: getSourceJobId(),
+          p_social_job_id: preview.screeningJobId,
           p_hotlist_id: preview.leadId,
         } as never);
         const row = Array.isArray(invite) ? invite[0] : invite;
         const token = (row as { screening_token?: string } | null)?.screening_token;
         if (token) {
-          emailContent = withScreeningLink(emailContent, `${window.location.origin}/screen/${token}`);
+          emailContent = withOptionalScreeningLink(emailContent, `${window.location.origin}/screen/${token}`);
         }
       }
 
@@ -332,6 +322,7 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
         throw new Error(data?.error || await getFunctionErrorMessage(error, 'Could not send via Gmail'));
       }
       setAskAIPreview(null);
+      trackEvent('ai_request_sent', { lead_type: preview.leadType, inline: Boolean(preview.inline), include_screening: Boolean(preview.includeScreening) });
       showToast('Sent via Gmail', 'success');
       requestFeedback('ai_submit');
       // An inline send happens beside the results the person is working
@@ -386,12 +377,17 @@ export function AiSubmitDialog({ ai, screeningExtra }: { ai: AiSubmit; screening
     showGmailPrompt: showGmailConnectPrompt, setShowGmailPrompt: setShowGmailConnectPrompt,
     send: handleSendViaGmail, connectGmail: handleConnectGmail, copyText,
   } = ai;
+  // Closing an unsent draft is the drop-off worth measuring.
+  const dismiss = () => {
+    if (askAIPreview && !askAIPreview.isGenerating) trackEvent('ai_request_dismissed', { lead_type: askAIPreview.leadType });
+    setAskAIPreview(null);
+  };
   return (
     <>
     {/* Inline drafts belong to the AI Match pane, which renders them
         itself. Opening a modal over them would undo the point of it. */}
     {askAIPreview && !askAIPreview.inline && (
-      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => !processingAskAILeadId && setAskAIPreview(null)}>
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => !processingAskAILeadId && dismiss()}>
         <div
           role="dialog"
           aria-modal="true"
@@ -401,7 +397,7 @@ export function AiSubmitDialog({ ai, screeningExtra }: { ai: AiSubmit; screening
         >
           <div className="flex items-start gap-2.5">
             <div className="min-w-0 flex-1">
-              <h2 id="ask-ai-preview-title" className="text-[15px] font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Generating screening invite' : 'Generating email draft for submission') : (askAIPreview.leadType === 'hotlist' ? 'Review screening invite' : 'Review submission')}</h2>
+              <h2 id="ask-ai-preview-title" className="text-[15px] font-semibold text-gray-900">{askAIPreview.isGenerating ? (askAIPreview.leadType === 'hotlist' ? 'Preparing resume request' : 'Generating email draft for submission') : (askAIPreview.leadType === 'hotlist' ? 'Review resume request' : 'Review submission')}</h2>
               {!askAIPreview.isGenerating && (askAIPreview.jobTitle || askAIPreview.company) && (
                 <p className="mt-0.5 truncate text-[13px] text-gray-500">
                   {askAIPreview.jobTitle}{askAIPreview.jobTitle && askAIPreview.company ? ' · ' : ''}{askAIPreview.company}
@@ -410,7 +406,7 @@ export function AiSubmitDialog({ ai, screeningExtra }: { ai: AiSubmit; screening
             </div>
             <button
               type="button"
-              onClick={() => setAskAIPreview(null)}
+              onClick={dismiss}
               disabled={Boolean(processingAskAILeadId)}
               className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
               aria-label="Close email preview"
@@ -421,7 +417,7 @@ export function AiSubmitDialog({ ai, screeningExtra }: { ai: AiSubmit; screening
           {askAIPreview.isGenerating ? (
             <div className="flex min-h-56 flex-col items-center justify-center px-6 text-center">
               <LogoSpinner size={28} />
-              <p className="mt-4 text-[13px] leading-relaxed text-gray-500">{askAIPreview.leadType === 'hotlist' ? 'Generating email draft for request' : 'Generating email draft for submission'}</p>
+              <p className="mt-4 text-[13px] leading-relaxed text-gray-500">{askAIPreview.leadType === 'hotlist' ? 'Preparing the resume request' : 'Generating email draft for submission'}</p>
             </div>
           ) : <>
           <div className="mt-3 divide-y divide-gray-100 border-y border-gray-100 text-[13px]">
@@ -475,6 +471,19 @@ export function AiSubmitDialog({ ai, screeningExtra }: { ai: AiSubmit; screening
               </button>
             </div>
           </div>
+          {askAIPreview.leadType === 'hotlist' && askAIPreview.screeningJobId && (
+            // Opt-in: the resume request stands on its own. Ticking it adds a
+            // link where the consultant can record a 5-minute video screening.
+            <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md bg-gray-50 px-3 py-2 text-[12px] leading-snug text-gray-700">
+              <input
+                type="checkbox"
+                checked={Boolean(askAIPreview.includeScreening)}
+                onChange={(event) => setAskAIPreview((current) => current ? { ...current, includeScreening: event.target.checked } : current)}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-blue-600"
+              />
+              <span>Also include a video screening link <span className="text-gray-400">(optional for the consultant)</span></span>
+            </label>
+          )}
           {askAIPreview.screeningNotice && (
             // Every earlier version failed silently here: a missing link
             // looked the same whether the job was absent, the function was

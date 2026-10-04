@@ -9,18 +9,21 @@ const consultant = {
 };
 
 describe('renderInvitePreview', () => {
-  it('matches the wording the worker sends', () => {
-    // If this drifts from social-job-queue-consumer, someone reads one message
-    // and sends another. That is worse than showing no preview at all.
-    const preview = renderInvitePreview(consultant, 'Poorna Potluri', 'https://profilepush.ai/screen/ABC');
-    expect(preview.subject).toBe('Screening invite: Senior React Developer');
+  it('is the resume request the email function sends', () => {
+    // Both render from supabase/functions/_shared/resume-request.ts; this pins
+    // the wording so a change to it is a deliberate one.
+    const preview = renderInvitePreview(consultant, 'Poorna Potluri');
+    expect(preview.subject).toBe('Senior React Developer: resume and rate?');
     expect(preview.body).toBe(
       'Hi Gopal,\n\n'
-      + 'I have a live Senior React Developer requirement that fits your hotlist consultant.\n\n'
-      + 'To submit: share the screening link with your consultant and ask them to attach the resume and complete the 5-minute video screening.\n\n'
-      + 'Link:\nhttps://profilepush.ai/screen/ABC\n\n'
+      + 'I have a live requirement that fits your Senior React Developer consultant. Could you share their resume, rate, visa status and availability?\n\n'
       + 'Poorna',
     );
+  });
+
+  it('names the vendor requirement when there is one', () => {
+    const preview = renderInvitePreview(consultant, 'Poorna', { title: 'React Lead', location: 'Dallas, TX' });
+    expect(preview.body).toContain('I have a React Lead requirement (Dallas, TX) that fits');
   });
 
   it('uses first names on both sides', () => {

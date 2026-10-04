@@ -1,6 +1,6 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Activity, Brain, Briefcase, Building2, Cloud, Code2, Database, BadgeCheck, Check, Clock3, Rss, Eye, FileText, Video, Handshake, Hash, Layers, LayoutGrid, PanelRight, Phone, Radar, RefreshCw, Send, Search, Share2, Shield, CheckSquare, ChevronDown, ChevronLeft, ChevronUp, Server, Sparkles, Paperclip, Pencil, Mail, Table2, Gauge, Flame, Workflow, User, X, type LucideIcon } from 'lucide-react';
+import { Activity, Brain, Briefcase, Building2, Cloud, Code2, Database, BadgeCheck, Check, Clock3, Rss, Eye, FileText, Handshake, Hash, Layers, LayoutGrid, PanelRight, Phone, Radar, RefreshCw, Send, Search, Share2, Shield, CheckSquare, ChevronDown, ChevronLeft, ChevronUp, Server, Sparkles, Paperclip, Pencil, Mail, Table2, Gauge, Flame, Workflow, User, X, type LucideIcon } from 'lucide-react';
 import { PublisherFollowInline } from '../components/publishers/PublisherBits';
 import { PublisherProfileView } from '../components/publishers/PublisherProfileView';
 import { networkPath } from '../lib/publishers';
@@ -21,6 +21,7 @@ import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 import SubmitApplicationModal from '../components/SubmitApplicationModal';
 import { consultantTitle } from '../lib/consultant-title';
 import { useAiSubmit, AiSubmitDialog, getFunctionErrorMessage } from '../components/AiSubmit';
+import { trackEvent } from '../lib/track';
 import LeadCard, { extractPrimaryEmail, CARD_PALETTE, getLeadBreakdownFieldValues, formatAgo, formatAgoCompact, type SocialLead, type FeedTimeBasis, type GlobalAskedJobState, type PredictCategory, type PredictResult, PersonaMissingTag, type LeadCardProps, shareLead, jobRowToLead, hotlistRowToLead, JOB_LEAD_COLUMNS, HOTLIST_LEAD_COLUMNS, safeNumber, type SocialJobRow, type HotlistLeadRow, getMissingJobDetails, hideEmails, fetchLeadPostContent, PostPreviewModal } from '../components/LeadCard';
 
 type PulsePersona = {
@@ -469,6 +470,22 @@ const DESKTOP_MATCHES_PAGE_SIZE = 12;
 // AI Match takes a whole consultant or requirement, not a search phrase, so its
 // examples are short pastes rather than keywords — they double as a hint about
 // what to put in (skills, years, visa, rate, location).
+// Ready-made requirements a new vendor can run in one tap (not published).
+const AI_MATCH_VENDOR_SAMPLES: Array<{ label: string; text: string }> = [
+  {
+    label: 'Java Full Stack · Dallas',
+    text: 'Java Full Stack Developer, Dallas, TX (Hybrid, 3 days onsite). 8+ years. Java 17, Spring Boot, Microservices, React, AWS, Kafka. C2C or W2. Rate up to $65/hr. Visa: H1B, GC, USC.',
+  },
+  {
+    label: 'Data Engineer · Remote',
+    text: 'Data Engineer, Remote (US). 7+ years. Python, Spark, Databricks, Snowflake, Airflow, AWS Glue, SQL. C2C. Rate up to $70/hr. Visa: H1B, GC EAD, USC.',
+  },
+  {
+    label: 'Salesforce Developer · Charlotte',
+    text: 'Salesforce Developer, Charlotte, NC (Onsite 3 days a week). 6+ years. Apex, LWC, Sales Cloud, Service Cloud, REST integrations. C2C or W2. Rate up to $60/hr. Any visa.',
+  },
+];
+
 const AI_MATCH_PLACEHOLDER_EXAMPLES: Record<'jobs' | 'hotlist', string[]> = {
   // Bench sales paste a consultant to find jobs.
   jobs: [
@@ -3283,6 +3300,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         inline
         lead={aiMatchPreviewLead}
         senderName={aiMatchSenderName}
+        requirementTitle={aiMatchOwnPosts.find((post) => post.id === aiMatchSourcePostId)?.title ?? null}
         isGenerating={processingAskAILeadId === aiMatchPreviewLead.id}
         isSending={sendingViaGmail}
         draft={aiMatchInlineDraft && !aiMatchInlineDraft.isGenerating
@@ -3737,9 +3755,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                     className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {selectedIsProcessingAskAI ? <LogoSpinner size={14} /> : selectedLead.postSource === 'user_post' ? (
-                      <>{selectedIsHotlist ? <Video size={14} /> : <FileText size={14} />}{selectedIsHotlist ? 'AI Invite' : 'Request'}</>
+                      <><FileText size={14} />{selectedIsHotlist ? 'AI Request' : 'Request'}</>
                     ) : (
-                      <>{selectedIsHotlist ? <Video size={14} /> : <Mail size={14} />}{selectedIsHotlist ? 'AI Invite' : 'AI Submit'}</>
+                      <>{selectedIsHotlist ? <FileText size={14} /> : <Mail size={14} />}{selectedIsHotlist ? 'AI Request' : 'AI Submit'}</>
                     )}
                   </button>
                 )}
@@ -5035,7 +5053,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     return null;
   }, [aiMatchRunPostId, aiMatchSelectedPostId, aiMatchChosenJobId, aiMatchDescription, aiMatchFromTitle, aiMatchOwnPosts, aiMatchRecents, aiMatchTarget]);
 
-  // AI Submit / AI Invite, shared with every page that offers it. Destructured
+  // AI Submit / AI Request, shared with every page that offers it. Destructured
   // into the names this page has always used.
   const aiSourceJobIdRef = useRef<string | null>(null);
   aiSourceJobIdRef.current = aiMatchSourcePostId;
@@ -5056,6 +5074,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   // The overrides let the sidebar run one of their own posts without a detour
   // through state — setState is async, so reading the box back would run the
   // previous post's text.
+  // Set for one run started from a sample requirement: matched normally, not
+  // published as the user's post.
+  const aiMatchSampleRunRef = useRef(false);
   const runAiMatch = useCallback(async (overrideDescription?: string, overrideTitle?: string, overridePostId?: string) => {
     setAiMatchRunPostId(overridePostId ?? null);
     const description = (overrideDescription ?? aiMatchDescription).trim();
@@ -5093,10 +5114,13 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         'Content-Type': 'application/json',
       };
       if (authHeaders.Authorization) headers.Authorization = authHeaders.Authorization;
+      const isSampleRun = aiMatchSampleRunRef.current;
+      aiMatchSampleRunRef.current = false;
+      trackEvent('ai_match_started', { target: aiMatchTarget, sample: isSampleRun, chars: description.length });
       const response = await fetch(`${supabaseFunctionsUrl}/ai-match`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ target: aiMatchTarget, description, stream: true, seen_ids: previousRows.map((row) => row.lead_id) }),
+        body: JSON.stringify({ target: aiMatchTarget, description, stream: true, seen_ids: previousRows.map((row) => row.lead_id), sample: isSampleRun }),
       });
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => null) as { error?: string } | null;
@@ -6122,10 +6146,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   // returns cache hits before charging: reopening the same run, or reloading
   // the page, costs nothing.
   //
-  // Jobs only. Generating a screening invite also mints its screening link,
-  // which would leave a screening record against a consultant nobody has
-  // decided to contact yet — and an invite's wording is a fixed template the
-  // pane already renders exactly, for free, so there is nothing to gain.
+  // Jobs only. A consultant's resume request is a fixed template the pane
+  // already renders exactly, for free, naming the vendor's requirement, so
+  // there is nothing to generate.
   //
   // The ref is load-bearing beyond de-duplication: a failed generation clears
   // askAIPreview, which would re-satisfy this effect and retry forever,
@@ -7727,6 +7750,29 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                             </div>
                           </div>
                         </div>
+                        {/* A new vendor often has no requirement to hand. One
+                            tap runs a realistic one, matched for real but not
+                            published as their post. */}
+                        {aiMatchTarget === 'hotlist' && !aiMatchHasRun && !aiMatchRunning && aiMatchDescription.trim().length === 0 && (
+                          <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+                            <span className="text-[12px] text-gray-500 dark:text-slate-400">No requirement handy? Try one:</span>
+                            {AI_MATCH_VENDOR_SAMPLES.map((sample) => (
+                              <button
+                                key={sample.label}
+                                type="button"
+                                onClick={() => {
+                                  trackEvent('ai_match_sample_clicked', { sample: sample.label });
+                                  setAiMatchDescription(sample.text);
+                                  aiMatchSampleRunRef.current = true;
+                                  void runAiMatch(sample.text, sample.label);
+                                }}
+                                className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[12px] font-medium text-gray-700 transition hover:border-blue-300 hover:text-blue-700 dark:border-white/10 dark:bg-[#171A1F] dark:text-slate-200"
+                              >
+                                {sample.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
