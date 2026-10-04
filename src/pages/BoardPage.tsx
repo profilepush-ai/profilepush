@@ -45,7 +45,7 @@ type Card = {
 
 // The 'submitted' stage is an AI Invite for vendors, so it reads "Invited".
 const stagesFor = (isVendor: boolean): Array<{ id: Stage; label: string }> => [
-  { id: 'new', label: 'New matches' },
+  { id: 'new', label: 'New' },
   { id: 'submitted', label: isVendor ? 'Invited' : 'Submitted' },
 ];
 
@@ -468,13 +468,13 @@ export default function BoardPage() {
             const range = view.range;
             return (
               <section key={sid} className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
-                <header className="shrink-0 px-3 pt-2.5">
-                  <p className="truncate text-[13px] font-semibold text-gray-800" title={subjectTitle(subject)}>{subjectTitle(subject)}</p>
-                  {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500">{subject.detail}</p>}
+                <header className="shrink-0 rounded-t-xl border-b border-[#dde3ee] bg-[#eef2f8] px-3 py-2.5 dark:border-white/10 dark:bg-[#252a33]">
+                  <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100" title={subjectTitle(subject)}>{subjectTitle(subject)}</p>
+                  {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-[#94A3B8]">{subject.detail}</p>}
 
-
-                  {/* Stage switcher (drop a New card on Submitted to mark it sent) and rematch */}
-                  <div className="mt-2 flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-[#171a1f]">
+                  {/* Stage pills, as on the other pages (drop a New card on
+                      Submitted to mark it sent), and rematch */}
+                  <div className="mt-2 flex items-center gap-1">
                     {STAGES.map((st) => {
                       const active = view.stage === st.id;
                       const n = colCounts[st.id] ?? 0;
@@ -497,12 +497,10 @@ export default function BoardPage() {
                             if (card) void move(card, st.id);
                             setDragId('');
                           }}
-                          className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] font-semibold transition ${active ? 'bg-white text-gray-900 shadow-sm dark:bg-[#2A2E35] dark:text-slate-100' : 'text-gray-500 hover:text-gray-800 dark:text-[#94A3B8]'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
+                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${active ? 'border-blue-600 bg-blue-600 text-white dark:border-white/25 dark:bg-[#2A2E35] dark:text-slate-100' : 'border-transparent bg-white text-gray-500 hover:text-gray-700 dark:bg-[#171a1f] dark:text-[#94A3B8]'} ${overTarget === target ? 'ring-2 ring-blue-400' : ''}`}
                         >
-                          {st.label}
-                          {n > 0 && (
-                            <span className={`min-w-[16px] rounded-full px-1 text-center text-[10px] font-bold leading-[15px] tabular-nums ${st.id === 'new' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 dark:bg-white/10 dark:text-slate-200'}`}>{n}</span>
-                          )}
+                          <span>{st.label}</span>
+                          <span className="tabular-nums">{n}</span>
                         </button>
                       );
                     })}
@@ -512,14 +510,14 @@ export default function BoardPage() {
                       aria-label="Rematch"
                       onClick={() => void rematch(subject)}
                       disabled={rematching === sid}
-                      className="flex h-8 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-100 disabled:opacity-60"
+                      className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-gray-500 transition hover:text-gray-800 disabled:opacity-60 dark:bg-[#171a1f] dark:text-[#94A3B8]"
                     >
-                      <RefreshCw size={14} className={rematching === sid ? 'animate-spin' : ''} />
+                      <RefreshCw size={13} className={rematching === sid ? 'animate-spin' : ''} />
                     </button>
                   </div>
 
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <span className="text-[11px] tabular-nums text-gray-500">{loaded ? `${list.length} shown` : '…'}</span>
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <span className="text-[11px] tabular-nums text-gray-500 dark:text-[#94A3B8]">{loaded ? `${list.length} shown` : '…'}</span>
                     {view.stage === 'new' && list.some((c) => c.has_email) && (
                       <button type="button" onClick={() => selectAll(sid, list)} className="text-[11px] font-semibold text-blue-700 hover:underline">
                         {selected.subjectId === sid && selected.ids.size > 0 ? 'Clear' : 'Select all'}
@@ -532,7 +530,7 @@ export default function BoardPage() {
                         const preset = e.target.value as RangePreset;
                         setColumnView(sid, { stage: view.stage, range: preset === 'custom' ? { preset, from: isoDay(daysFrom(startOfToday(), -6)), to: isoDay(startOfToday()) } : { preset } });
                       }}
-                      className={`ml-auto rounded-md border bg-white px-1 py-0.5 text-[11px] ${range.preset !== defaultRange(view.stage).preset ? 'border-blue-300 text-blue-700' : 'border-gray-200 text-gray-600'}`}
+                      className={`ml-auto rounded-full border bg-white px-2 py-1 text-[11px] font-semibold outline-none dark:bg-[#171a1f] ${range.preset !== defaultRange(view.stage).preset ? 'border-blue-300 text-blue-700' : 'border-gray-200 text-gray-600 dark:border-white/10 dark:text-[#94A3B8]'}`}
                     >
                       {(Object.keys(RANGE_LABELS) as RangePreset[]).filter((p) => p !== '2h' || view.stage === 'new').map((p) => <option key={p} value={p}>{RANGE_LABELS[p]}</option>)}
                     </select>
@@ -612,16 +610,16 @@ export default function BoardPage() {
           {/* Sends to leads that are not on the board (the old Submissions / Invites list) */}
           {otherSends.length > 0 && (!q || otherVisible.length > 0) && (
             <section className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
-              <header className="shrink-0 px-3 pt-2.5">
-                <p className="truncate text-[13px] font-semibold text-gray-800 dark:text-slate-100">{otherLabel}</p>
-                <p className="mt-0.5 truncate text-[11px] text-gray-500">{isVendor ? 'Requests and chats outside your requirements' : 'Applications outside your consultants'}</p>
-                <div className="mt-2 flex gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-[#171a1f]">
+              <header className="shrink-0 rounded-t-xl border-b border-[#dde3ee] bg-[#eef2f8] px-3 py-2.5 dark:border-white/10 dark:bg-[#252a33]">
+                <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100">{otherLabel}</p>
+                <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-[#94A3B8]">{isVendor ? 'Requests and chats outside your requirements' : 'Applications outside your consultants'}</p>
+                <div className="mt-2 flex items-center gap-1">
                   {(['open', 'closed'] as const).map((t) => {
                     const n = otherSends.filter((x) => (t === 'closed' ? x.closed : !x.closed)).length;
                     return (
-                      <button key={t} type="button" onClick={() => setOtherTab(t)} className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] font-semibold transition ${otherTab === t ? 'bg-white text-gray-900 shadow-sm dark:bg-[#2A2E35] dark:text-slate-100' : 'text-gray-500 hover:text-gray-800 dark:text-[#94A3B8]'}`}>
-                        {t === 'open' ? 'Open' : 'Closed'}
-                        {n > 0 && <span className="min-w-[16px] rounded-full bg-gray-200 px-1 text-center text-[10px] font-bold leading-[15px] tabular-nums text-gray-700 dark:bg-white/10 dark:text-slate-200">{n}</span>}
+                      <button key={t} type="button" onClick={() => setOtherTab(t)} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${otherTab === t ? 'border-blue-600 bg-blue-600 text-white dark:border-white/25 dark:bg-[#2A2E35] dark:text-slate-100' : 'border-transparent bg-white text-gray-500 hover:text-gray-700 dark:bg-[#171a1f] dark:text-[#94A3B8]'}`}>
+                        <span>{t === 'open' ? 'Open' : 'Closed'}</span>
+                        <span className="tabular-nums">{n}</span>
                       </button>
                     );
                   })}
