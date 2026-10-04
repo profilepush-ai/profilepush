@@ -20,7 +20,7 @@ import { loadTrackerSends, SEND_TONE_CLASSES, type TrackerSend } from '../lib/tr
 // and its own date range. Every match starts in New; sending an AI Submit
 // moves it to Submitted on the server (replies stay there, with a Reply
 // button). A column's ↻ rematches that post for fresh matches right here,
-// and its cards can be ticked and AI Submitted in bulk. Skip
+// and its cards can be ticked and AI Submitted in bulk. Not a match
 // takes a card off the board. New matches arrive live (realtime on
 // pipeline_cards) and the browser tab title counts them.
 
@@ -54,13 +54,15 @@ const stagesFor = (isVendor: boolean): Array<{ id: Stage; label: string }> => [
   { id: 'submitted', label: isVendor ? 'Requested' : 'Submitted' },
 ];
 
-// Which matches a column shows. New defaults to the last 2 hours and every
-// other stage to the last day; each column can pick its own range from a
-// short pill (2h, 1d, 7d, 30d, custom), like the range pill on other pages.
-type RangePreset = '2h' | '1d' | '7d' | '30d' | 'custom';
+// Which matches a column shows. New shows every open match by default (newest
+// first, live arrivals on top) so a column never looks empty; Submitted shows
+// the last 7 days. Each column can pick its own range from a short pill
+// (all, 2h, 1d, 7d, 30d, custom), like the range pill on other pages.
+type RangePreset = 'all' | '2h' | '1d' | '7d' | '30d' | 'custom';
 type Range = { preset: RangePreset; from?: string; to?: string };
 
 const RANGE_OPTIONS: Array<{ id: RangePreset; label: string }> = [
+  { id: 'all', label: 'All open' },
   { id: '2h', label: 'Last 2 hours' },
   { id: '1d', label: 'Last 24 hours' },
   { id: '7d', label: 'Last 7 days' },
@@ -68,7 +70,7 @@ const RANGE_OPTIONS: Array<{ id: RangePreset; label: string }> = [
   { id: 'custom', label: 'Custom dates' },
 ];
 
-const defaultRange = (stage: Stage): Range => ({ preset: stage === 'new' ? '2h' : '1d' });
+const defaultRange = (stage: Stage): Range => ({ preset: stage === 'new' ? 'all' : '7d' });
 
 function startOfToday(): Date {
   const d = new Date();
@@ -90,6 +92,7 @@ function localDay(value: string): Date {
 function rangeBounds(range: Range): { since: string; until: string | null } {
   const today = startOfToday();
   switch (range.preset) {
+    case 'all': return { since: '1970-01-01T00:00:00.000Z', until: null };
     case '2h': return { since: new Date(Date.now() - 2 * 3600_000).toISOString(), until: null };
     case '1d': return { since: new Date(Date.now() - 24 * 3600_000).toISOString(), until: null };
     case '7d': return { since: new Date(Date.now() - 7 * 24 * 3600_000).toISOString(), until: null };
@@ -117,8 +120,8 @@ const COLUMN_TINTS = [
 ];
 
 type ColumnView = { stage: Stage; range: Range };
-const DEFAULT_VIEW: ColumnView = { stage: 'new', range: { preset: '2h' } };
-const isDefaultView = (v: ColumnView) => v.stage === 'new' && v.range.preset === '2h';
+const DEFAULT_VIEW: ColumnView = { stage: 'new', range: { preset: 'all' } };
+const isDefaultView = (v: ColumnView) => v.stage === 'new' && v.range.preset === 'all';
 
 export default function BoardPage() {
   const navigate = useNavigate();
@@ -182,7 +185,7 @@ export default function BoardPage() {
     const [subj, cnt] = await Promise.all([
       supabase.rpc('get_pipeline_subjects' as never, { p_kind: subjectKind } as never),
       supabase.rpc('get_pipeline_column_counts' as never, {
-        p_kind: subjectKind, p_new_since: rangeBounds({ preset: '2h' }).since, p_since: rangeBounds({ preset: '1d' }).since,
+        p_kind: subjectKind, p_new_since: rangeBounds({ preset: 'all' }).since, p_since: rangeBounds({ preset: '7d' }).since,
       } as never),
     ]);
     if (subj.error) { setError('Could not load your board.'); setSubjects([]); return; }
@@ -503,8 +506,8 @@ export default function BoardPage() {
 
   const emptyText = (view: ColumnView) => {
     if (view.range.preset !== defaultRange(view.stage).preset) return 'Nothing in this range.';
-    if (view.stage === 'new') return 'No new matches in the last 2 hours. Tap ↻ to rematch.';
-    return `No ${isVendor ? 'requests' : 'submits'} in the last day.`;
+    if (view.stage === 'new') return 'Finding matches. New ones appear here the moment they’re posted.';
+    return `No ${isVendor ? 'requests' : 'submits'} in the last 7 days.`;
   };
   const sendsByLead = useMemo(() => {
     const map = new Map<string, TrackerSend[]>();
@@ -800,15 +803,28 @@ export default function BoardPage() {
                           <div className="mt-1 flex flex-col gap-1 px-1">
                             {cardSends.map(sendBadges)}
                             <div className="flex items-center gap-1.5">
-                              {card.similarity != null && <span className="text-[10px] font-semibold text-green-700 dark:text-green-400">{Math.round(card.similarity * 100)}% match</span>}
+                              {(flashIds.has(card.id) || Date.now() - Date.parse(card.created_at) < 30 * 60_000) && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-green-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> Just now
+                                </span>
+                              )}
+                              {card.similarity != null && (card.similarity >= 0.7
+                                ? <span className="text-[10px] font-semibold text-green-700 dark:text-green-400">{Math.round(card.similarity * 100)}% match</span>
+                                // Topped up so the column is never empty: the closest there is, not a strong fit.
+                                : <span title="Closest available in the last 30 days, below the usual match bar" className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Closest available · {Math.round(card.similarity * 100)}%</span>)}
                               {card.conversation_id && card.stage !== 'new' && (
                                 <button type="button" onClick={() => navigate(`/inbox/${card.conversation_id}`)} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-200">
                                   <MessageSquare size={10} /> {card.stage === 'replied' ? 'Replied · open' : 'Conversation'}
                                 </button>
                               )}
                               {card.stage === 'new' && (
-                                <button type="button" onClick={() => void move(card, 'closed', 'skipped')} className="ml-auto inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5">
-                                  <X size={10} /> Skip
+                                <button
+                                  type="button"
+                                  title="Remove it from this column; it won't be suggested again"
+                                  onClick={() => { trackEvent('tracker_not_a_match', { similarity: card.similarity, lead_kind: card.lead_kind }); void move(card, 'closed', 'not_a_match'); }}
+                                  className="ml-auto inline-flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-300"
+                                >
+                                  <X size={10} /> Not a match
                                 </button>
                               )}
                             </div>
