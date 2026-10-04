@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { getValidAccessToken, sendViaGmail } from "../_shared/gmail.ts";
+import { getValidAccessToken, sendViaGmail, type GmailAttachment } from "../_shared/gmail.ts";
 import { isResumeRequest, renderResumeRequest } from "../_shared/resume-request.ts";
 
 const corsHeaders = {
@@ -73,7 +73,11 @@ Deno.serve(async (req: Request) => {
     const sendSource = sendSourceRaw === "bulk" || sendSourceRaw === "single" ? sendSourceRaw : null;
     // A vendor's own requirement a resume request is for, named in the email.
     const sourceJobId = asString(body.source_job_id, 100);
-    const resumeUrl = asString(body.resume_url, 2000);
+    // Only a file in our own public resumes bucket: the function fetches it to
+    // attach, so an arbitrary URL would let a caller make it fetch anything.
+    const resumeUrlRaw = asString(body.resume_url, 2000);
+    const resumePrefix = `${(Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "")}/storage/v1/object/public/resumes/`;
+    const resumeUrl = resumeUrlRaw.startsWith(resumePrefix) ? resumeUrlRaw : "";
     const resumeFileName = asString(body.resume_file_name, 255);
     const missingDetails = Array.isArray(body.missing_details)
       ? body.missing_details.map((item) => asString(item, 100)).filter(Boolean).slice(0, 20)
@@ -343,7 +347,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const finalEmailContent = resumeUrl
-      ? `${emailContent}\n\nI've attached my resume as well.`
+      ? `${emailContent}\n\nI've attached the resume.`
       : emailContent;
 
     // Daily send cap, enforced here rather than only in the UI: bulk sending
@@ -523,7 +527,21 @@ Deno.serve(async (req: Request) => {
     let deliveryResponse: string | null = null;
     if (channel === "gmail") {
       try {
+        // The consultant's resume, attached to the Gmail send as well.
+        let attachment: GmailAttachment | null = null;
+        if (resumeUrl) {
+          const fileResponse = await fetch(resumeUrl, { signal: AbortSignal.timeout(15_000) });
+          if (!fileResponse.ok) throw new Error(`Could not read the resume (HTTP ${fileResponse.status})`);
+          const bytes = new Uint8Array(await fileResponse.arrayBuffer());
+          if (bytes.byteLength > 4 * 1024 * 1024) throw new Error("Resume is over 4 MB");
+          attachment = {
+            fileName: resumeFileName || "resume.pdf",
+            mimeType: fileResponse.headers.get("content-type")?.split(";")[0] || "application/pdf",
+            bytes,
+          };
+        }
         const sendResult = await sendViaGmail({
+          attachment,
           accessToken: gmailAccessToken!,
           fromName: requesterName,
           fromAddress: gmailFromAddress!,

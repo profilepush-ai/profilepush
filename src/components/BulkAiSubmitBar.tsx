@@ -57,6 +57,8 @@ type Props = {
   accountId: string;
   /** The vendor's own requirement this run is for, named in resume requests. */
   sourceJobId?: string | null;
+  /** AI Submit: the consultant's resume, attached to every email sent. */
+  resume?: { url: string; name: string } | null;
   /** Tracked by the page already; the quota RPC is not the source of truth for it. */
   gmailConnected: boolean;
   /** True when the user has ticked specific cards rather than taking all of them. */
@@ -81,7 +83,7 @@ const FALLBACK_QUOTA: Quota = {
 type Progress = { sent: number; failed: number; current: string } | null;
 type Result = { sent: number; failed: number } | null;
 
-export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmailConnected, isNarrowed, onClearSelection, onConnectGmail, onDone }: Props) {
+export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, resume = null, gmailConnected, isNarrowed, onClearSelection, onConnectGmail, onDone }: Props) {
   const [quota, setQuota] = useState<Quota>({ ...FALLBACK_QUOTA, gmail_connected: gmailConnected });
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<Progress>(null);
@@ -174,6 +176,7 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, gmail
             email_subject: preview.data.email_subject,
             email_content: emailContent,
             channel: 'gmail',
+            ...(resume && target.kind === 'job' ? { resume_url: resume.url, resume_file_name: resume.name } : {}),
           },
         });
         if (send.error || !send.data?.ok) {

@@ -190,6 +190,8 @@ export async function getValidAccessToken(supabaseAdmin: SupabaseClient<any, any
   }
 }
 
+export type GmailAttachment = { fileName: string; mimeType: string; bytes: Uint8Array };
+
 function buildRawMessage(params: {
   fromName: string;
   fromAddress: string;
@@ -198,6 +200,7 @@ function buildRawMessage(params: {
   textBody: string;
   inReplyTo?: string | null;
   references?: string | null;
+  attachment?: GmailAttachment | null;
 }): string {
   const safeFromName = params.fromName.replace(/[\r\n"]/g, "");
   const headers = [
@@ -205,12 +208,38 @@ function buildRawMessage(params: {
     `To: ${params.toAddress}`,
     `Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(params.subject)))}?=`,
     "MIME-Version: 1.0",
-    `Content-Type: text/plain; charset="UTF-8"`,
-    "Content-Transfer-Encoding: 7bit",
   ];
   if (params.inReplyTo) headers.push(`In-Reply-To: ${params.inReplyTo}`);
   if (params.references) headers.push(`References: ${params.references}`);
-  return `${headers.join("\r\n")}\r\n\r\n${params.textBody}`;
+
+  if (!params.attachment) {
+    headers.push(`Content-Type: text/plain; charset="UTF-8"`, "Content-Transfer-Encoding: 7bit");
+    return `${headers.join("\r\n")}\r\n\r\n${params.textBody}`;
+  }
+
+  // A resume rides along as a second MIME part (multipart/mixed).
+  const boundary = `pp_${crypto.randomUUID().replace(/-/g, "")}`;
+  const safeName = params.attachment.fileName.replace(/[\r\n"]/g, "").slice(0, 120) || "resume.pdf";
+  const encodedName = `=?UTF-8?B?${btoa(unescape(encodeURIComponent(safeName)))}?=`;
+  const attachmentBase64 = base64Encode(params.attachment.bytes).replace(/(.{76})/g, "$1\r\n");
+  headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+  return [
+    headers.join("\r\n"),
+    "",
+    `--${boundary}`,
+    `Content-Type: text/plain; charset="UTF-8"`,
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    params.textBody,
+    `--${boundary}`,
+    `Content-Type: ${params.attachment.mimeType}; name="${encodedName}"`,
+    `Content-Disposition: attachment; filename="${encodedName}"`,
+    "Content-Transfer-Encoding: base64",
+    "",
+    attachmentBase64,
+    `--${boundary}--`,
+    "",
+  ].join("\r\n");
 }
 
 /** Decodes a Gmail API base64url-encoded message body part into UTF-8 text. */
@@ -229,6 +258,7 @@ export async function sendViaGmail(params: {
   threadId?: string | null;
   inReplyTo?: string | null;
   references?: string | null;
+  attachment?: GmailAttachment | null;
 }): Promise<{ id: string; threadId: string }> {
   const raw = buildRawMessage(params);
   const encodedRaw = base64UrlEncode(new TextEncoder().encode(raw));

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, X } from 'lucide-react';
+import { Copy, Paperclip, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { withOptionalScreeningLink } from '../lib/screening-link';
 import { trackEvent } from '../lib/track';
@@ -34,6 +34,8 @@ export type AskAIPreview = {
   screeningJobId?: string | null;
   /** Resume requests: add the optional video screening link when sending. */
   includeScreening?: boolean;
+  /** AI Submit: the consultant's resume, sent as an attachment. */
+  resume?: { url: string; name: string } | null;
   isGenerating: boolean;
   /** Generated for the AI Match pane, which renders it itself. Keeps the
    *  modal closed: the whole point of the pane is not opening one. */
@@ -77,6 +79,8 @@ export type UseAiSubmitOptions = {
   showToast: (message: string, type?: 'success' | 'error') => void;
   /** The requirement an invite's screening link hangs off, when there is one. */
   getSourceJobId?: () => string | null;
+  /** AI Submit: the consultant resume to attach, when the page knows one. */
+  getResume?: () => { url: string; name: string } | null;
   /** Defaults to lead.kind. The Feed passes its own rule for single-kind feeds. */
   isHotlist?: (lead: SocialLead) => boolean;
   /** Out of credits: the page shows its credits prompt for this action. */
@@ -167,6 +171,7 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
       const generatedSubject = leadType === 'hotlist' ? (data.email_subject || '') : removeNameFromEmail(data.email_subject || '', vendorName);
       const generatedContent = leadType === 'hotlist' ? (data.email_content || '') : removeNameFromEmail(data.email_content || '', vendorName);
       const screeningJobId = leadType === 'hotlist' ? getSourceJobId() : null;
+      const resume = leadType === 'job' ? optionsRef.current.getResume?.() ?? null : null;
       // Built as a value rather than a state updater so the caller can send
       // it straight away: "generate and send" cannot wait for a re-render to
       // read the draft back out of state.
@@ -183,6 +188,7 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
         emailContent: generatedContent,
         screeningJobId,
         includeScreening: false,
+        resume,
         isGenerating: false,
         inline,
       };
@@ -308,6 +314,7 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
           email_subject: preview.emailSubject,
           email_content: emailContent,
           channel: 'gmail',
+          ...(preview.resume ? { resume_url: preview.resume.url, resume_file_name: preview.resume.name } : {}),
         },
       });
       if (error || !data?.ok) {
@@ -471,6 +478,20 @@ export function AiSubmitDialog({ ai, screeningExtra }: { ai: AiSubmit; screening
               </button>
             </div>
           </div>
+          {askAIPreview.resume && (
+            <div className="mt-3 flex items-center gap-2 rounded-md bg-gray-50 px-3 py-2 text-[12px] text-gray-700">
+              <Paperclip size={12} className="shrink-0 text-gray-500" />
+              <a href={askAIPreview.resume.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{askAIPreview.resume.name}</a>
+              <button
+                type="button"
+                onClick={() => setAskAIPreview((current) => current ? { ...current, resume: null } : current)}
+                className="shrink-0 text-gray-400 hover:text-gray-600"
+                aria-label="Don't attach the resume"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
           {askAIPreview.leadType === 'hotlist' && askAIPreview.screeningJobId && (
             // Opt-in: the resume request stands on its own. Ticking it adds a
             // link where the consultant can record a 5-minute video screening.
