@@ -50,15 +50,20 @@ const stagesFor = (isVendor: boolean): Array<{ id: Stage; label: string }> => [
 ];
 
 // Which matches a column shows. New defaults to the last 2 hours and every
-// other stage to today; each column can pick its own range.
-type RangePreset = '2h' | 'today' | 'yesterday' | '7d' | '30d' | 'custom';
+// other stage to the last day; each column can pick its own range from a
+// short pill (2h, 1d, 7d, 30d, custom), like the range pill on other pages.
+type RangePreset = '2h' | '1d' | '7d' | '30d' | 'custom';
 type Range = { preset: RangePreset; from?: string; to?: string };
 
-const RANGE_LABELS: Record<RangePreset, string> = {
-  '2h': 'Last 2 hours', today: 'Today', yesterday: 'Yesterday', '7d': 'Last 7 days', '30d': 'Last 30 days', custom: 'Custom…',
-};
+const RANGE_OPTIONS: Array<{ id: RangePreset; label: string }> = [
+  { id: '2h', label: 'Last 2 hours' },
+  { id: '1d', label: 'Last 24 hours' },
+  { id: '7d', label: 'Last 7 days' },
+  { id: '30d', label: 'Last 30 days' },
+  { id: 'custom', label: 'Custom dates' },
+];
 
-const defaultRange = (stage: Stage): Range => ({ preset: stage === 'new' ? '2h' : 'today' });
+const defaultRange = (stage: Stage): Range => ({ preset: stage === 'new' ? '2h' : '1d' });
 
 function startOfToday(): Date {
   const d = new Date();
@@ -81,10 +86,9 @@ function rangeBounds(range: Range): { since: string; until: string | null } {
   const today = startOfToday();
   switch (range.preset) {
     case '2h': return { since: new Date(Date.now() - 2 * 3600_000).toISOString(), until: null };
-    case 'today': return { since: today.toISOString(), until: null };
-    case 'yesterday': return { since: daysFrom(today, -1).toISOString(), until: today.toISOString() };
-    case '7d': return { since: daysFrom(today, -6).toISOString(), until: null };
-    case '30d': return { since: daysFrom(today, -29).toISOString(), until: null };
+    case '1d': return { since: new Date(Date.now() - 24 * 3600_000).toISOString(), until: null };
+    case '7d': return { since: new Date(Date.now() - 7 * 24 * 3600_000).toISOString(), until: null };
+    case '30d': return { since: new Date(Date.now() - 30 * 24 * 3600_000).toISOString(), until: null };
     case 'custom': {
       const from = range.from ? localDay(range.from) : today;
       const to = range.to ? daysFrom(localDay(range.to), 1) : null;
@@ -135,6 +139,7 @@ export default function BoardPage() {
   const [rematching, setRematching] = useState('');
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
+  const [rangeMenuFor, setRangeMenuFor] = useState('');
   // Applications, resume requests and chats (what the old Submissions /
   // Invites page listed). Shown on the card of the lead they went to, or in
   // the Other column when that lead is not on the board.
@@ -149,7 +154,7 @@ export default function BoardPage() {
     const [subj, cnt] = await Promise.all([
       supabase.rpc('get_pipeline_subjects' as never, { p_kind: subjectKind } as never),
       supabase.rpc('get_pipeline_column_counts' as never, {
-        p_kind: subjectKind, p_new_since: rangeBounds({ preset: '2h' }).since, p_since: startOfToday().toISOString(),
+        p_kind: subjectKind, p_new_since: rangeBounds({ preset: '2h' }).since, p_since: rangeBounds({ preset: '1d' }).since,
       } as never),
     ]);
     if (subj.error) { setError('Could not load your board.'); setSubjects([]); return; }
@@ -180,6 +185,16 @@ export default function BoardPage() {
     setCards(await fetchCards(DEFAULT_VIEW, null));
     for (const [subjectId, view] of Object.entries(viewsRef.current)) void loadColumn(subjectId, view);
   }, [fetchCards, loadColumn]);
+
+  // Close a column's range menu on any click outside it.
+  useEffect(() => {
+    if (!rangeMenuFor) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement | null)?.closest?.('[data-range-menu]')) setRangeMenuFor('');
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [rangeMenuFor]);
 
   const loadSends = useCallback(async () => {
     if (!account?.id) return;
@@ -335,7 +350,7 @@ export default function BoardPage() {
   const emptyText = (view: ColumnView) => {
     if (view.range.preset !== defaultRange(view.stage).preset) return 'Nothing in this range.';
     if (view.stage === 'new') return 'No new matches in the last 2 hours. Tap ↻ to rematch.';
-    return `No ${isVendor ? 'invites' : 'submits'} today.`;
+    return `No ${isVendor ? 'invites' : 'submits'} in the last day.`;
   };
   const sendsByLead = useMemo(() => {
     const map = new Map<string, TrackerSend[]>();
@@ -504,37 +519,47 @@ export default function BoardPage() {
                         </button>
                       );
                     })}
+                    {/* Range pill, as on the other pages' search rows */}
+                    <div data-range-menu className="relative ml-auto shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setRangeMenuFor((open) => (open === sid ? '' : sid))}
+                        aria-label="Change date range"
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold transition ${range.preset !== defaultRange(view.stage).preset ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-white/10 dark:bg-[#171a1f] dark:text-[#94A3B8]'}`}
+                      >
+                        <Clock3 size={11} />
+                        <span>{range.preset}</span>
+                      </button>
+                      {rangeMenuFor === sid && (
+                        <div className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[130px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg dark:border-white/10 dark:bg-[#20242a]">
+                          {RANGE_OPTIONS.filter((o) => o.id !== '2h' || view.stage === 'new').map((o) => (
+                            <button
+                              key={o.id}
+                              type="button"
+                              onClick={() => {
+                                setRangeMenuFor('');
+                                setColumnView(sid, { stage: view.stage, range: o.id === 'custom' ? { preset: 'custom', from: isoDay(daysFrom(startOfToday(), -6)), to: isoDay(startOfToday()) } : { preset: o.id } });
+                              }}
+                              className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${o.id === range.preset ? 'bg-gray-100 text-gray-800 dark:bg-[#2A2E35] dark:text-slate-100' : 'text-gray-600 hover:bg-gray-50 dark:text-[#94A3B8] dark:hover:bg-white/5'}`}
+                            >
+                              {o.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button
                       type="button"
                       title="Rematch: find fresh matches now"
                       aria-label="Rematch"
                       onClick={() => void rematch(subject)}
                       disabled={rematching === sid}
-                      className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-gray-500 transition hover:text-gray-800 disabled:opacity-60 dark:bg-[#171a1f] dark:text-[#94A3B8]"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:text-gray-800 disabled:opacity-60 dark:border-white/10 dark:bg-[#171a1f] dark:text-[#94A3B8]"
                     >
                       <RefreshCw size={13} className={rematching === sid ? 'animate-spin' : ''} />
                     </button>
                   </div>
 
-                  <div className="mt-2 flex items-center gap-1.5">
-                    <span className="text-[11px] tabular-nums text-gray-500 dark:text-[#94A3B8]">{loaded ? `${list.length} shown` : '…'}</span>
-                    {view.stage === 'new' && list.some((c) => c.has_email) && (
-                      <button type="button" onClick={() => selectAll(sid, list)} className="text-[11px] font-semibold text-blue-700 hover:underline">
-                        {selected.subjectId === sid && selected.ids.size > 0 ? 'Clear' : 'Select all'}
-                      </button>
-                    )}
-                    <select
-                      aria-label="Date range"
-                      value={range.preset}
-                      onChange={(e) => {
-                        const preset = e.target.value as RangePreset;
-                        setColumnView(sid, { stage: view.stage, range: preset === 'custom' ? { preset, from: isoDay(daysFrom(startOfToday(), -6)), to: isoDay(startOfToday()) } : { preset } });
-                      }}
-                      className={`ml-auto rounded-full border bg-white px-2 py-1 text-[11px] font-semibold outline-none dark:bg-[#171a1f] ${range.preset !== defaultRange(view.stage).preset ? 'border-blue-300 text-blue-700' : 'border-gray-200 text-gray-600 dark:border-white/10 dark:text-[#94A3B8]'}`}
-                    >
-                      {(Object.keys(RANGE_LABELS) as RangePreset[]).filter((p) => p !== '2h' || view.stage === 'new').map((p) => <option key={p} value={p}>{RANGE_LABELS[p]}</option>)}
-                    </select>
-                  </div>
                   {range.preset === 'custom' && (
                     <div className="mt-1 flex items-center gap-1">
                       <input type="date" aria-label="From" value={range.from ?? ''} max={range.to} onChange={(e) => setColumnView(sid, { stage: view.stage, range: { ...range, from: e.target.value } })} className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-1 py-0.5 text-[11px] text-gray-700" />
@@ -547,6 +572,11 @@ export default function BoardPage() {
                 <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
                   {!loaded && <p className="px-2 py-6 text-center text-[11px] text-gray-400">Loading…</p>}
                   {loaded && list.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{emptyText(view)}</p>}
+                  {view.stage === 'new' && list.some((c) => c.has_email) && (
+                    <button type="button" onClick={() => selectAll(sid, list)} className="self-end px-1 text-[11px] font-semibold text-blue-700 hover:underline dark:text-blue-300">
+                      {selected.subjectId === sid && selected.ids.size > 0 ? 'Clear selection' : `Select all for ${submitLabel}`}
+                    </button>
+                  )}
                   {list.map((card) => (
                     <article
                       key={card.id}
