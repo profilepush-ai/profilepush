@@ -99,25 +99,17 @@ function rangeBounds(range: Range): { since: string; until: string | null } {
 
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-// Each column's header gets its own soft tint so columns are easy to tell
-// apart. Picked from the post's id, so a column keeps its colour when the
-// order changes.
+// Each column's header gets its own soft tint, by position, alternating cool
+// and warm so two similar colours (blue / sky, emerald / teal, amber /
+// orange) never sit side by side, including where the cycle wraps.
 const COLUMN_TINTS = [
   'border-blue-100 bg-blue-50 dark:border-blue-400/20 dark:bg-blue-500/10',
-  'border-violet-100 bg-violet-50 dark:border-violet-400/20 dark:bg-violet-500/10',
-  'border-emerald-100 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-500/10',
   'border-amber-100 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-500/10',
+  'border-emerald-100 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-500/10',
   'border-rose-100 bg-rose-50 dark:border-rose-400/20 dark:bg-rose-500/10',
-  'border-sky-100 bg-sky-50 dark:border-sky-400/20 dark:bg-sky-500/10',
-  'border-teal-100 bg-teal-50 dark:border-teal-400/20 dark:bg-teal-500/10',
+  'border-violet-100 bg-violet-50 dark:border-violet-400/20 dark:bg-violet-500/10',
   'border-orange-100 bg-orange-50 dark:border-orange-400/20 dark:bg-orange-500/10',
 ];
-
-function columnTint(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return COLUMN_TINTS[h % COLUMN_TINTS.length];
-}
 
 function rateText(min: number | null, max: number | null): string {
   if (min && max && min !== max) return `$${min}–${max}/hr`;
@@ -415,6 +407,8 @@ export default function BoardPage() {
     </div>
   );
 
+  // Next column colour; reset every render (see COLUMN_TINTS).
+  let tintIndex = 0;
   const allCards = () => [...(cards ?? []), ...Object.values(columnCards).flat()];
 
   return (
@@ -499,11 +493,14 @@ export default function BoardPage() {
             const all = loaded ? (own ? columnCards[sid] ?? [] : defaultBySubject.get(sid) ?? []) : [];
             const list = subjectMatches(subject) ? all : all.filter(cardMatches);
             if (q && !subjectMatches(subject) && list.length === 0) return null;
+            // Counted over the columns actually shown, so hidden ones don't
+            // put two of the same colour next to each other.
+            const tint = COLUMN_TINTS[tintIndex++ % COLUMN_TINTS.length];
             const colCounts = counts[sid] ?? {};
             const range = view.range;
             return (
               <section key={sid} className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
-                <header className={`shrink-0 rounded-t-xl border-b px-3 py-2.5 ${columnTint(sid)}`}>
+                <header className={`shrink-0 rounded-t-xl border-b px-3 py-2.5 ${tint}`}>
                   <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100" title={subjectTitle(subject)}>{subjectTitle(subject)}</p>
                   {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-[#94A3B8]">{subject.detail}</p>}
 
