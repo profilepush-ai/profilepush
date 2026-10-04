@@ -769,7 +769,12 @@ export const LeadCard = memo(function LeadCard({
         </div>
         );
       })()}
-      {/* Collapsed: no poster line; it comes back with the full card. */}
+      {/* Collapsed: just when it was posted; the poster line comes back with the full card. */}
+      {compact && (
+        <p className="mt-1.5 text-[11px] text-[#94A3B8]">
+          {feedTimeBasis === 'created' ? 'Added ' : 'Posted '}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}
+        </p>
+      )}
       {!compact && (
       <div className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
         <PosterProfileLink kind={lead.kind === 'hotlist' ? 'hotlist' : 'job'} leadId={lead.id}>
