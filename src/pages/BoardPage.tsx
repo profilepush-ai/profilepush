@@ -6,7 +6,10 @@ import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
 import ScreeningSubmissionModal from '../components/ScreeningSubmissionModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import LeadCard, { loadLeadsByIds, type SocialLead } from '../components/LeadCard';
+import LeadCard, { fetchLeadPostContent, loadLeadsByIds, PostPreviewModal, type SocialLead } from '../components/LeadCard';
+import { AiSubmitDialog, useAiSubmit } from '../components/AiSubmit';
+import SubmitApplicationModal from '../components/SubmitApplicationModal';
+import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 import { supabase } from '../lib/supabase';
 import { consultantTitle } from '../lib/consultant-title';
 import { loadTrackerSends, SEND_TONE_CLASSES, type TrackerSend } from '../lib/tracker-sends';
@@ -143,7 +146,6 @@ export default function BoardPage() {
   // Bulk AI Submit works on one column at a time (an invite's screening link
   // hangs off that column's requirement).
   const [selected, setSelected] = useState<{ subjectId: string; ids: Set<string> }>({ subjectId: '', ids: new Set() });
-  const [gmailConnected, setGmailConnected] = useState(false);
   const [rematching, setRematching] = useState('');
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
@@ -219,9 +221,8 @@ export default function BoardPage() {
       return next;
     });
 
-  // The Feed card, exactly as the Feed draws it. Its actions open the post in
-  // the Feed, where AI Submit / AI Invite and the preview live.
-  const feedCard = (lead: SocialLead, paletteIndex: number, bulk?: { selected: boolean; onToggle: () => void }) => (
+  // The Feed card, exactly as the Feed draws it, with the Feed's actions.
+  const feedCard = (lead: SocialLead, paletteIndex: number, bulk?: { selected: boolean; onToggle: () => void }, subjectId?: string) => (
     <LeadCard
       lead={lead}
       accountId={account?.id}
@@ -245,10 +246,13 @@ export default function BoardPage() {
       isVisaFieldExpanded={expandedFields.has(`${lead.id}:visa`)}
       isLocationFieldExpanded={expandedFields.has(`${lead.id}:location`)}
       isLoadingPreview={false}
-      isProcessingAskAI={false}
-      onPreview={(l) => navigate(`/feed/${l.kind}/${l.id}`)}
-      onAskAI={(l) => navigate(`/feed/${l.kind}/${l.id}`)}
-      onApply={(l) => navigate(`/feed/${l.kind}/${l.id}`)}
+      isProcessingAskAI={ai.processingLeadId === lead.id}
+      onPreview={(l) => void previewPost(l)}
+      onAskAI={(l) => {
+        aiSourceJobRef.current = subjectKind === 'job' && subjectId ? subjectId : null;
+        void ai.generate(l);
+      }}
+      onApply={(l) => setApplyLead(l)}
       onToggleInlineBreakdown={(id) => toggleIn(setExpandedBreakdown, id)}
       onExpandSkills={(id) => toggleIn(setExpandedSkills, id, true)}
       onCollapseSkills={(id) => toggleIn(setExpandedSkills, id, false)}
@@ -289,20 +293,42 @@ export default function BoardPage() {
     void loadAll();
   }, [account?.id, loadSubjects, loadAll]);
 
-  useEffect(() => {
-    supabase
-      .from('gmail_integration_status' as never)
-      .select('status')
-      .maybeSingle()
-      .then(({ data }: { data: { status?: string } | null }) => setGmailConnected(data?.status === 'connected'));
+  // The Feed's own AI Submit / AI Invite, preview and Apply, right here: the
+  // same draft popup, Gmail send, credits and screening link as everywhere.
+  const showToast = useCallback((message: string, type?: 'success' | 'error') => {
+    if (type === 'error') setError(message); else setNotice(message);
   }, []);
+  const [outOfCredits, setOutOfCredits] = useState<{ open: boolean; action: string | null }>({ open: false, action: null });
+  // An invite's screening link hangs off the requirement whose column it was sent from.
+  const aiSourceJobRef = useRef<string | null>(null);
+  const ai = useAiSubmit({
+    accountId: account?.id,
+    userId: user?.id,
+    showToast,
+    getSourceJobId: () => aiSourceJobRef.current,
+    onOutOfCredits: (action) => setOutOfCredits({ open: true, action }),
+    // Stay on the board; the card moves to Submitted / Invited on its own.
+    openInboxAfterSend: false,
+  });
+  const [postPreview, setPostPreview] = useState<{ title: string; content: string } | null>(null);
+  const [applyLead, setApplyLead] = useState<SocialLead | null>(null);
 
-  async function connectGmail() {
-    if (!account?.id) return;
-    const { data, error: fnError } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: account.id, return_to: '/tracker' } });
-    if (fnError || !data?.url) { setError('Could not start Gmail connection.'); return; }
-    window.location.href = data.url;
-  }
+  const previewPost = useCallback(async (lead: SocialLead) => {
+    // Same rule as the Feed: consultants have no post worth opening.
+    if (lead.kind === 'hotlist') return;
+    try {
+      const content = await fetchLeadPostContent(lead.id, lead.kind);
+      if (account?.id) {
+        void supabase.from('pulse_lead_actions' as never).upsert(
+          { account_id: account.id, user_id: user?.id ?? null, lead_id: lead.id, action_type: 'post_content_viewed' } as never,
+          { onConflict: 'account_id,user_id,lead_id,action_type', ignoreDuplicates: true },
+        );
+      }
+      setPostPreview({ title: lead.title || 'Job Opportunity', content });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load the post');
+    }
+  }, [account?.id, user?.id]);
 
   function toggleSelect(card: Card) {
     setSelected((prev) => {
@@ -518,10 +544,10 @@ export default function BoardPage() {
               .map((c) => ({ id: c.lead_id, title: c.lead_kind === 'hotlist' ? consultantTitle(c.title) : c.title, company: '', hasEmail: c.has_email, kind: c.lead_kind }))}
             accountId={account.id}
             sourceJobId={subjectKind === 'job' ? selected.subjectId : null}
-            gmailConnected={gmailConnected}
+            gmailConnected={ai.gmailStatus === 'connected'}
             isNarrowed
             onClearSelection={() => setSelected({ subjectId: '', ids: new Set() })}
-            onConnectGmail={() => { void connectGmail(); }}
+            onConnectGmail={() => { void ai.connectGmailStandalone(); }}
             onDone={() => { setSelected({ subjectId: '', ids: new Set() }); void loadAll(); void loadSubjects(); void loadSends(); }}
           />
         </div>
@@ -665,7 +691,7 @@ export default function BoardPage() {
                         {lead
                           ? feedCard(lead, cardIndex, card.stage === 'new' && card.has_email
                             ? { selected: selected.subjectId === sid && selected.ids.has(card.id), onToggle: () => toggleSelect(card) }
-                            : undefined)
+                            : undefined, sid)
                           : <div className="h-28 animate-pulse rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5" />}
                         {/* Tracker extras under the Feed card */}
                         {(cardSends.length > 0 || card.stage === 'new' || card.conversation_id) && (
@@ -727,6 +753,24 @@ export default function BoardPage() {
           )}
         </div>
       </div>
+
+      <AiSubmitDialog ai={ai} />
+      {postPreview && <PostPreviewModal title={postPreview.title} content={postPreview.content} onClose={() => setPostPreview(null)} />}
+      {applyLead && (
+        <SubmitApplicationModal
+          jobId={applyLead.id}
+          jobTitle={applyLead.title || 'this job'}
+          onClose={() => setApplyLead(null)}
+          onSaved={() => { setApplyLead(null); void loadAll(); void loadSends(); }}
+          showToast={showToast}
+        />
+      )}
+      <InsufficientCreditsModal
+        open={outOfCredits.open}
+        onClose={() => setOutOfCredits({ open: false, action: null })}
+        balance={account?.credits_balance ?? 0}
+        actionLabel={outOfCredits.action ?? (isVendor ? 'generate this invite' : 'generate this submission email')}
+      />
 
       {watchSend?.applicationId && (
         <ScreeningSubmissionModal
