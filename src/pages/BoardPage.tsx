@@ -291,6 +291,8 @@ export default function BoardPage() {
       bulkSelectable={Boolean(bulk)}
       isBulkSelected={bulk?.selected}
       onToggleBulkSelect={bulk ? () => bulk.onToggle() : undefined}
+      collapsible
+      defaultCollapsed
     />
   );
 

@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
-import { AtSign, Briefcase, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap, Eye, X } from 'lucide-react';
+import { AtSign, Briefcase, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap, Eye, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { PosterProfileLink, SubscribeTextLink } from './publishers/PublisherBits';
 import LogoSpinner from './LogoSpinner';
 import { supabase } from '../lib/supabase';
@@ -457,6 +457,10 @@ export interface LeadCardProps {
   /** Profile pages of publishers who have joined: start a chat on this post. */
   onChat?: (lead: SocialLead) => void;
   isProcessingChat?: boolean;
+  /** Collapsible card: a compact view (title, one summary line, icon-only
+   *  actions) that expands to the full card. Used on the Tracker. */
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -472,8 +476,10 @@ export const LeadCard = memo(function LeadCard({
   onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
   hideActions, isSelected, onSelect,
   bulkSelectable, isBulkSelected, onToggleBulkSelect, matchRank, isFocused, onFocus,
-  onChat, isProcessingChat,
+  onChat, isProcessingChat, collapsible = false, defaultCollapsed = true,
 }: LeadCardProps) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const compact = collapsible && collapsed;
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
   // An opened post reads as visited: grey title (like a visited link).
@@ -505,7 +511,7 @@ export const LeadCard = memo(function LeadCard({
         className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
       >
         {justCopiedShare ? <Check size={17} strokeWidth={1.75} /> : <Share2 size={17} strokeWidth={1.75} />}
-        <span className="text-[12px] font-normal">{justCopiedShare ? 'Copied' : 'Share'}</span>
+        {!compact && <span className="text-[12px] font-normal">{justCopiedShare ? 'Copied' : 'Share'}</span>}
       </button>
       {onChat && (
         <button
@@ -516,7 +522,7 @@ export const LeadCard = memo(function LeadCard({
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-gray-50 text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
         >
           {isProcessingChat ? <LogoSpinner size={14} /> : <MessageCircle size={16} strokeWidth={1.75} />}
-          <span className="text-[12px] font-normal">Chat</span>
+          {!compact && <span className="text-[12px] font-normal">Chat</span>}
         </button>
       )}
       {lead.kind === 'job' && lead.postSource === 'user_post' ? (
@@ -527,7 +533,7 @@ export const LeadCard = memo(function LeadCard({
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
         >
           <Mail size={15} strokeWidth={1.75} />
-          <span className="text-[12px] font-normal">AI Submit</span>
+          {!compact && <span className="text-[12px] font-normal">AI Submit</span>}
         </button>
       ) : isAskPending || isVerified ? (
         <span
@@ -549,7 +555,7 @@ export const LeadCard = memo(function LeadCard({
               {/* Same action either way: a consultant gets a resume request
                   whether the post came from the platform or elsewhere. */}
               <FileText size={15} strokeWidth={1.75} />
-              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'Request'}</span>
+              {!compact && <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'Request'}</span>}
             </>
           ) : (
             <>
@@ -557,9 +563,20 @@ export const LeadCard = memo(function LeadCard({
                   screening is an optional add-on in the draft); a job gets
                   the email icon, since AI Submit emails the recruiter. */}
               {isHotlistFeed ? <FileText size={15} strokeWidth={1.75} /> : <Mail size={15} strokeWidth={1.75} />}
-              <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Submit'}</span>
+              {!compact && <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Submit'}</span>}
             </>
           )}
+        </button>
+      )}
+      {collapsible && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setCollapsed((value) => !value); }}
+          title={compact ? 'Show the full card' : 'Collapse'}
+          aria-expanded={!compact}
+          className="inline-flex h-9 w-10 shrink-0 items-center justify-center bg-gray-50 text-gray-500 transition-colors hover:bg-gray-100 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-white/5"
+        >
+          {compact ? <ChevronDown size={16} strokeWidth={1.75} /> : <ChevronUp size={16} strokeWidth={1.75} />}
         </button>
       )}
     </div>
@@ -701,6 +718,7 @@ export const LeadCard = memo(function LeadCard({
         </div>
       </div>
       {(() => {
+        if (compact) return null;
         const chipFields = [
           { key: 'exp', value: expValue, isExpanded: isExpFieldExpanded, icon: GraduationCap, title: 'Experience' },
           { key: 'workType', value: workTypeValue, isExpanded: isWorkTypeFieldExpanded, icon: Laptop, title: 'Work type' },
@@ -768,6 +786,19 @@ export const LeadCard = memo(function LeadCard({
         )}
         <span className="whitespace-nowrap">•</span>
         <span className="whitespace-nowrap">{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
+        {/* Collapsed: the two facts that decide a click, on the same line. */}
+        {compact && locationValue !== '-' && (
+          <>
+            <span className="whitespace-nowrap">•</span>
+            <span className="max-w-[9rem] truncate" title={locationValue}>{locationValue}</span>
+          </>
+        )}
+        {compact && rateValue !== '-' && (
+          <>
+            <span className="whitespace-nowrap">•</span>
+            <span className="whitespace-nowrap">{rateValue}</span>
+          </>
+        )}
       </div>
       </div>
       {!hideActions && actionButtonsBar}
