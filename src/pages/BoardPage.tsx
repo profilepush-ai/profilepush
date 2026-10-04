@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock3, Eye, EyeOff, ExternalLink, FileText, MessageSquare, Paperclip, Plus, RefreshCw, Search, Sparkles, Video, X } from 'lucide-react';
+import { Archive, Clock3, Eye, EyeOff, ExternalLink, FileText, MessageSquare, Paperclip, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2, Video, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
 import ScreeningSubmissionModal from '../components/ScreeningSubmissionModal';
@@ -9,6 +9,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import LeadCard, { fetchLeadPostContent, loadLeadsByIds, PostPreviewModal, type SocialLead } from '../components/LeadCard';
 import { AiSubmitDialog, useAiSubmit } from '../components/AiSubmit';
 import SubmitApplicationModal from '../components/SubmitApplicationModal';
+import PostFormModal, { type UserPost } from '../components/posts/PostFormModal';
+import { deleteUserPost, loadUserPost, setUserPostStatus } from '../lib/user-posts';
 import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 import { supabase } from '../lib/supabase';
 import { consultantTitle } from '../lib/consultant-title';
@@ -180,6 +182,9 @@ export default function BoardPage() {
     </button>
   );
   const [rangeMenuFor, setRangeMenuFor] = useState('');
+  // Column header menu: edit / view / close / delete the post the column is for.
+  const [postMenuFor, setPostMenuFor] = useState('');
+  const [editingPost, setEditingPost] = useState<UserPost | null>(null);
   // Applications, resume requests and chats (what the old Submissions /
   // Invites page listed). Shown on the card of the lead they went to, or in
   // the Other column when that lead is not on the board.
@@ -298,6 +303,43 @@ export default function BoardPage() {
       onDismiss={onDismiss ? () => onDismiss() : undefined}
     />
   );
+
+  useEffect(() => {
+    if (!postMenuFor) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement | null)?.closest?.('[data-post-menu]')) setPostMenuFor('');
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [postMenuFor]);
+
+  async function postAction(subject: Subject, action: 'edit' | 'view' | 'close' | 'delete') {
+    setPostMenuFor('');
+    trackEvent('tracker_post_menu', { action, kind: subjectKind });
+    try {
+      if (action === 'view') {
+        const content = await fetchLeadPostContent(subject.subject_id, subjectKind);
+        setPostPreview({ title: subjectTitle(subject), content });
+        return;
+      }
+      const post = await loadUserPost(subjectKind, subject.subject_id);
+      if (!post) { setError('Could not load this post.'); return; }
+      if (action === 'edit') { setEditingPost(post); return; }
+      if (action === 'close') {
+        const { error: rpcError } = await setUserPostStatus(post, 'closed');
+        if (rpcError) throw new Error(rpcError.message);
+        setNotice(`Closed ${subjectTitle(subject)}. Reopen it any time from My Posts.`);
+      } else {
+        if (!window.confirm(`Delete ${subjectTitle(subject)}? This cannot be undone.`)) return;
+        const { error: rpcError } = await deleteUserPost(post);
+        if (rpcError) throw new Error(rpcError.message);
+        setNotice(`Deleted ${subjectTitle(subject)}.`);
+      }
+      void loadSubjects();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong.');
+    }
+  }
 
   // Close a column's range menu on any click outside it.
   useEffect(() => {
@@ -702,6 +744,36 @@ export default function BoardPage() {
                 <header className={`shrink-0 border-b px-3 py-2.5 ${tint.header}`}>
                   <div className="flex items-center gap-1.5">
                     <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100" title={subjectTitle(subject)}>{subjectTitle(subject)}</p>
+                    <div data-post-menu className="relative shrink-0">
+                      <button
+                        type="button"
+                        title="Edit, view, close or delete this post"
+                        aria-label="Post options"
+                        onClick={() => setPostMenuFor((open) => (open === sid ? '' : sid))}
+                        className="flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:text-gray-800 dark:border-white/10 dark:bg-[#171a1f] dark:text-[#94A3B8]"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      {postMenuFor === sid && (
+                        <div className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[150px] overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-lg dark:border-white/10 dark:bg-[#20242a]">
+                          {([
+                            { id: 'edit', label: 'Edit post', icon: Pencil },
+                            { id: 'view', label: 'View post', icon: Eye },
+                            { id: 'close', label: 'Close post', icon: Archive },
+                            { id: 'delete', label: 'Delete post', icon: Trash2 },
+                          ] as const).map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => void postAction(subject, item.id)}
+                              className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] font-semibold transition ${item.id === 'delete' ? 'text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10' : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/5'}`}
+                            >
+                              <item.icon size={13} /> {item.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     {subjectKind === 'hotlist' && (
                       <button
                         type="button"
@@ -931,6 +1003,15 @@ export default function BoardPage() {
       </div>
 
       <AiSubmitDialog ai={ai} />
+      {editingPost && (
+        <PostFormModal
+          kind={subjectKind}
+          existingPost={editingPost}
+          onClose={() => setEditingPost(null)}
+          onSaved={() => { setEditingPost(null); setNotice('Post updated.'); void loadSubjects(); }}
+          showToast={showToast}
+        />
+      )}
       {postPreview && <PostPreviewModal title={postPreview.title} content={postPreview.content} onClose={() => setPostPreview(null)} />}
       {applyLead && (
         <SubmitApplicationModal

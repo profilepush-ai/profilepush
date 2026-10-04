@@ -11,6 +11,7 @@ import LogoSpinner from '../components/LogoSpinner';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { USER_JOB_POST_COLUMNS, USER_HOTLIST_POST_COLUMNS, jobRowToUserPost, hotlistRowToUserPost, setUserPostStatus, deleteUserPost, type UserJobPostRow, type UserHotlistPostRow } from '../lib/user-posts';
 import PostFormModal, { type PostKind, type UserPost } from '../components/posts/PostFormModal';
 import ClaimPostsWidget from '../components/posts/ClaimPostsWidget';
 import ScreeningSubmissionModal, { type ScreeningTurn } from '../components/ScreeningSubmissionModal';
@@ -226,7 +227,7 @@ export default function MyPostsPage() {
       includeJobs
         ? supabase
           .from('social_jobs')
-          .select('id, job_title, company_name, location, employment_type, seniority_level, salary_range, job_description, post_content, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, poster_email, poster_phone, post_status, created_at')
+          .select(USER_JOB_POST_COLUMNS)
           .eq('created_by_account_id', account.id)
           .eq('post_source', 'user_post')
           .is('hidden_at', null)
@@ -235,7 +236,7 @@ export default function MyPostsPage() {
       includeHotlist
         ? supabase
           .from('social_hotlist')
-          .select('id, role_title, candidate_name, core_skills, years_experience, visa_type, employment_type, work_type, locations, hourly_rate_min, hourly_rate_max, availability, candidate_summary, raw_post_content, bench_sales_recruiter_email, bench_sales_recruiter_phone, post_status, created_at')
+          .select(USER_HOTLIST_POST_COLUMNS)
           .eq('created_by_account_id', account.id)
           .eq('post_source', 'user_post')
           .is('hidden_at', null)
@@ -245,79 +246,13 @@ export default function MyPostsPage() {
     ]);
 
     if (!jobResult.error) {
-      const jobRows = (jobResult.data ?? []) as Array<{
-        id: string; job_title: string | null; company_name: string | null; location: string | null;
-        employment_type: string | null; seniority_level: string | null; salary_range: string | null;
-        job_description: string | null; post_content: string | null; extracted_skills: string[] | null;
-        extracted_experience_years: number | null; extracted_visa_types: string[] | null;
-        extracted_hourly_rate_min: number | null; extracted_hourly_rate_max: number | null;
-        poster_email: string | null; poster_phone: string | null; post_status: string | null; created_at: string;
-      }>;
-      setJobPosts(jobRows.map((row): UserPost => ({
-        id: row.id,
-        kind: 'job',
-        title: row.job_title ?? '',
-        company: row.company_name ?? '',
-        location: row.location ?? '',
-        employmentType: row.employment_type ?? '',
-        seniorityLevel: row.seniority_level ?? '',
-        salaryRange: row.salary_range ?? '',
-        jobDescription: row.job_description ?? '',
-        postContent: row.post_content ?? '',
-        skills: Array.isArray(row.extracted_skills) ? row.extracted_skills : [],
-        experienceYears: row.extracted_experience_years ?? null,
-        visaTypes: Array.isArray(row.extracted_visa_types) ? row.extracted_visa_types : [],
-        hourlyRateMin: row.extracted_hourly_rate_min ?? null,
-        hourlyRateMax: row.extracted_hourly_rate_max ?? null,
-        contactEmail: row.poster_email ?? '',
-        contactPhone: row.poster_phone ?? '',
-        candidateName: '',
-        visaType: '',
-        workType: '',
-        locations: [],
-        availability: '',
-        candidateSummary: '',
-        postStatus: (row.post_status as 'open' | 'closed') ?? 'open',
-        createdAt: row.created_at,
-      })));
+      const jobRows = (jobResult.data ?? []) as UserJobPostRow[];
+      setJobPosts(jobRows.map(jobRowToUserPost));
     }
 
     if (!hotlistResult.error) {
-      const hotlistRows = (hotlistResult.data ?? []) as Array<{
-        id: string; role_title: string | null; candidate_name: string | null; core_skills: string[] | null;
-        years_experience: number | null; visa_type: string | null; employment_type: string | null; work_type: string | null;
-        locations: string[] | null; hourly_rate_min: number | null; hourly_rate_max: number | null;
-        availability: string | null; candidate_summary: string | null; raw_post_content: string | null;
-        bench_sales_recruiter_email: string | null; bench_sales_recruiter_phone: string | null;
-        post_status: string | null; created_at: string;
-      }>;
-      setHotlistPosts(hotlistRows.map((row): UserPost => ({
-        id: row.id,
-        kind: 'hotlist',
-        title: row.role_title ?? '',
-        company: '',
-        location: '',
-        employmentType: row.employment_type ?? '',
-        seniorityLevel: '',
-        salaryRange: '',
-        jobDescription: '',
-        postContent: row.raw_post_content ?? '',
-        skills: Array.isArray(row.core_skills) ? row.core_skills : [],
-        experienceYears: row.years_experience ?? null,
-        visaTypes: [],
-        hourlyRateMin: row.hourly_rate_min ?? null,
-        hourlyRateMax: row.hourly_rate_max ?? null,
-        contactEmail: row.bench_sales_recruiter_email ?? '',
-        contactPhone: row.bench_sales_recruiter_phone ?? '',
-        candidateName: row.candidate_name ?? '',
-        visaType: row.visa_type ?? '',
-        workType: row.work_type ?? '',
-        locations: Array.isArray(row.locations) ? row.locations : [],
-        availability: row.availability ?? '',
-        candidateSummary: row.candidate_summary ?? '',
-        postStatus: (row.post_status as 'open' | 'closed') ?? 'open',
-        createdAt: row.created_at,
-      })));
+      const hotlistRows = (hotlistResult.data ?? []) as UserHotlistPostRow[];
+      setHotlistPosts(hotlistRows.map(hotlistRowToUserPost));
     }
 
     if (!metricsResult.error) {
@@ -359,25 +294,7 @@ export default function MyPostsPage() {
 
   async function handleToggleStatus(post: UserPost) {
     const nextStatus = post.postStatus === 'open' ? 'closed' : 'open';
-    const rpcName = post.kind === 'job' ? 'update_user_job_post' : 'update_user_hotlist_post';
-    const args = post.kind === 'job'
-      ? {
-        p_id: post.id, p_job_title: post.title, p_company_name: post.company, p_location: post.location,
-        p_employment_type: post.employmentType, p_seniority_level: post.seniorityLevel, p_salary_range: post.salaryRange,
-        p_job_description: post.jobDescription, p_post_content: post.postContent, p_skills: post.skills,
-        p_experience_years: post.experienceYears, p_visa_types: post.visaTypes, p_hourly_rate_min: post.hourlyRateMin,
-        p_hourly_rate_max: post.hourlyRateMax, p_contact_email: post.contactEmail, p_contact_phone: post.contactPhone,
-        p_post_status: nextStatus,
-      }
-      : {
-        p_id: post.id, p_role_title: post.title, p_candidate_name: post.candidateName, p_core_skills: post.skills,
-        p_years_experience: post.experienceYears, p_visa_type: post.visaType, p_employment_type: post.employmentType,
-        p_work_type: post.workType, p_locations: post.locations, p_hourly_rate_min: post.hourlyRateMin,
-        p_hourly_rate_max: post.hourlyRateMax, p_availability: post.availability, p_candidate_summary: post.candidateSummary,
-        p_post_content: post.postContent, p_contact_email: post.contactEmail, p_contact_phone: post.contactPhone,
-        p_post_status: nextStatus,
-      };
-    const { error } = await supabase.rpc(rpcName as never, args as never);
+    const { error } = await setUserPostStatus(post, nextStatus);
     if (error) {
       showToast(error.message, 'error');
       return;
@@ -388,8 +305,7 @@ export default function MyPostsPage() {
 
   async function handleDelete(post: UserPost) {
     if (!window.confirm('Delete this post? This cannot be undone.')) return;
-    const rpcName = post.kind === 'job' ? 'delete_user_job_post' : 'delete_user_hotlist_post';
-    const { error } = await supabase.rpc(rpcName as never, { p_id: post.id } as never);
+    const { error } = await deleteUserPost(post);
     if (error) {
       showToast(error.message, 'error');
       return;
