@@ -251,6 +251,8 @@ export default function BoardPage() {
       askedRequestedAt={undefined}
       askedFulfilledAt={undefined}
       revealedAt={undefined}
+      isViewed={Boolean(viewedAt[lead.id])}
+      viewedAt={viewedAt[lead.id]}
       isInlineBreakdownExpanded={expandedBreakdown.has(lead.id)}
       isSkillsExpanded={expandedSkills.has(lead.id)}
       isExpFieldExpanded={expandedFields.has(`${lead.id}:exp`)}
@@ -327,6 +329,21 @@ export default function BoardPage() {
     openInboxAfterSend: false,
   });
   const [postPreview, setPostPreview] = useState<{ title: string; content: string } | null>(null);
+  // Posts this user has opened (same record the Feed keeps), shown on the card.
+  const [viewedAt, setViewedAt] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!user?.id) return;
+    void supabase
+      .from('pulse_lead_actions' as never)
+      .select('lead_id, created_at')
+      .eq('user_id', user.id)
+      .eq('action_type', 'post_content_viewed')
+      .then(({ data }: { data: Array<{ lead_id: string; created_at: string }> | null }) => {
+        const next: Record<string, string> = {};
+        for (const row of data ?? []) next[row.lead_id] = row.created_at;
+        setViewedAt(next);
+      });
+  }, [user?.id]);
   const [applyLead, setApplyLead] = useState<SocialLead | null>(null);
 
   const loadResumes = useCallback(async () => {
@@ -388,6 +405,7 @@ export default function BoardPage() {
         );
       }
       setPostPreview({ title: lead.title || 'Job Opportunity', content });
+      setViewedAt((prev) => (prev[lead.id] ? prev : { ...prev, [lead.id]: new Date().toISOString() }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the post');
     }
