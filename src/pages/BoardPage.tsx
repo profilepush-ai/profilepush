@@ -250,7 +250,7 @@ export default function BoardPage() {
     });
 
   // The Feed card, exactly as the Feed draws it, with the Feed's actions.
-  const feedCard = (lead: SocialLead, paletteIndex: number, bulk?: { selected: boolean; onToggle: () => void }, subjectId?: string) => (
+  const feedCard = (lead: SocialLead, paletteIndex: number, bulk?: { selected: boolean; onToggle: () => void }, subjectId?: string, onDismiss?: () => void) => (
     <LeadCard
       lead={lead}
       accountId={account?.id}
@@ -293,6 +293,7 @@ export default function BoardPage() {
       onToggleBulkSelect={bulk ? () => bulk.onToggle() : undefined}
       collapsible
       defaultCollapsed
+      onDismiss={onDismiss ? () => onDismiss() : undefined}
     />
   );
 
@@ -836,11 +837,14 @@ export default function BoardPage() {
                         {lead
                           ? feedCard(lead, cardIndex, card.stage === 'new' && card.has_email
                             ? { selected: selected.subjectId === sid && selected.ids.has(card.id), onToggle: () => toggleSelect(card) }
-                            : undefined, sid)
+                            : undefined, sid,
+                            card.stage === 'new'
+                              ? () => { trackEvent('tracker_not_a_match', { similarity: card.similarity, lead_kind: card.lead_kind }); void move(card, 'closed', 'not_a_match'); }
+                              : undefined)
                           : <div className="h-28 animate-pulse rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5" />}
                         </div>
                         {/* Tracker extras under the Feed card */}
-                        {(cardSends.length > 0 || card.stage === 'new' || card.conversation_id) && (
+                        {(cardSends.length > 0 || card.conversation_id || flashIds.has(card.id) || Date.now() - Date.parse(card.created_at) < 30 * 60_000) && (
                           <div className="mt-1 flex flex-col gap-1 px-1">
                             {cardSends.map(sendBadges)}
                             <div className="flex items-center gap-1.5">
@@ -849,25 +853,12 @@ export default function BoardPage() {
                                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> Just now
                                 </span>
                               )}
-                              {card.similarity != null && (card.similarity >= 0.7
-                                ? <span className="text-[10px] font-semibold text-green-700 dark:text-green-400">{Math.round(card.similarity * 100)}% match</span>
-                                // Topped up so the column is never empty: the closest there is, not a strong fit.
-                                : <span title="Closest available in the last 30 days, below the usual match bar" className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Closest available · {Math.round(card.similarity * 100)}%</span>)}
                               {card.conversation_id && card.stage !== 'new' && (
                                 <button type="button" onClick={() => navigate(`/inbox/${card.conversation_id}`)} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-200">
                                   <MessageSquare size={10} /> {card.stage === 'replied' ? 'Replied · open' : 'Conversation'}
                                 </button>
                               )}
-                              {card.stage === 'new' && (
-                                <button
-                                  type="button"
-                                  title="Remove it from this column; it won't be suggested again"
-                                  onClick={() => { trackEvent('tracker_not_a_match', { similarity: card.similarity, lead_kind: card.lead_kind }); void move(card, 'closed', 'not_a_match'); }}
-                                  className="ml-auto inline-flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-300"
-                                >
-                                  <X size={10} /> Not a match
-                                </button>
-                              )}
+
                             </div>
                           </div>
                         )}
