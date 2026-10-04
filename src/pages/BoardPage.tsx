@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock3, ExternalLink, FileText, MapPin, MessageSquare, Plus, RefreshCw, Search, Sparkles, Video, X } from 'lucide-react';
+import { Clock3, ExternalLink, FileText, MessageSquare, Plus, RefreshCw, Search, Sparkles, Video, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
 import ScreeningSubmissionModal from '../components/ScreeningSubmissionModal';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import LeadCard, { loadLeadsByIds, type SocialLead } from '../components/LeadCard';
 import { supabase } from '../lib/supabase';
-import { timeAgo } from '../lib/publishers';
 import { consultantTitle } from '../lib/consultant-title';
 import { loadTrackerSends, SEND_TONE_CLASSES, type TrackerSend } from '../lib/tracker-sends';
 
@@ -111,19 +112,14 @@ const COLUMN_TINTS = [
   'border-orange-100 bg-orange-50 dark:border-orange-400/20 dark:bg-orange-500/10',
 ];
 
-function rateText(min: number | null, max: number | null): string {
-  if (min && max && min !== max) return `$${min}–${max}/hr`;
-  if (min || max) return `$${min || max}/hr`;
-  return '';
-}
-
 type ColumnView = { stage: Stage; range: Range };
 const DEFAULT_VIEW: ColumnView = { stage: 'new', range: { preset: '2h' } };
 const isDefaultView = (v: ColumnView) => v.stage === 'new' && v.range.preset === '2h';
 
 export default function BoardPage() {
   const navigate = useNavigate();
-  const { account } = useAuth();
+  const { account, user } = useAuth();
+  const { isDark } = useTheme();
   const isVendor = account?.active_persona === 'vendor';
   // Bench sales: a column per consultant (a hotlist row) holding requirements.
   // Vendors: a column per requirement holding consultants.
@@ -159,6 +155,13 @@ export default function BoardPage() {
   const [leadsOnBoard, setLeadsOnBoard] = useState<Set<string>>(new Set());
   const [otherTab, setOtherTab] = useState<'open' | 'closed'>('open');
   const [watchSend, setWatchSend] = useState<TrackerSend | null>(null);
+  // Full lead rows for the shared Feed card, loaded by id as cards appear.
+  const [leadsById, setLeadsById] = useState<Record<string, SocialLead>>({});
+  const requestedLeadIds = useRef<Set<string>>(new Set());
+  // The Feed card's expandable sections (skills, breakdown, fields).
+  const [expandedBreakdown, setExpandedBreakdown] = useState<Set<string>>(new Set());
+  const [expandedSkills, setExpandedSkills] = useState<Set<string>>(new Set());
+  const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const viewsRef = useRef<Record<string, ColumnView>>({});
   viewsRef.current = views;
 
@@ -197,6 +200,64 @@ export default function BoardPage() {
     setCards(await fetchCards(DEFAULT_VIEW, null));
     for (const [subjectId, view] of Object.entries(viewsRef.current)) void loadColumn(subjectId, view);
   }, [fetchCards, loadColumn]);
+
+  useEffect(() => {
+    const wanted: Record<'job' | 'hotlist', string[]> = { job: [], hotlist: [] };
+    const all = [...(cards ?? []), ...Object.values(columnCards).flat()];
+    for (const c of all) if (!requestedLeadIds.current.has(c.lead_id)) { requestedLeadIds.current.add(c.lead_id); wanted[c.lead_kind].push(c.lead_id); }
+    for (const x of sends) if (!requestedLeadIds.current.has(x.leadId)) { requestedLeadIds.current.add(x.leadId); wanted[x.leadKind].push(x.leadId); }
+    for (const kind of ['job', 'hotlist'] as const) {
+      if (wanted[kind].length === 0) continue;
+      void loadLeadsByIds(kind, wanted[kind]).then((found) => setLeadsById((prev) => ({ ...prev, ...found })));
+    }
+  }, [cards, columnCards, sends]);
+
+  const toggleIn = (setter: typeof setExpandedSkills, key: string, on?: boolean) =>
+    setter((prev) => {
+      const next = new Set(prev);
+      if (on ?? !next.has(key)) next.add(key); else next.delete(key);
+      return next;
+    });
+
+  // The Feed card, exactly as the Feed draws it. Its actions open the post in
+  // the Feed, where AI Submit / AI Invite and the preview live.
+  const feedCard = (lead: SocialLead, paletteIndex: number, bulk?: { selected: boolean; onToggle: () => void }) => (
+    <LeadCard
+      lead={lead}
+      accountId={account?.id}
+      userId={user?.id}
+      paletteIndex={paletteIndex}
+      isDark={isDark}
+      isHotlistFeed={lead.kind === 'hotlist'}
+      feedTimeBasis="posted"
+      isLeadRevealed={false}
+      globalAskedJobState={undefined}
+      predictResult={undefined}
+      askedRequestedAt={undefined}
+      askedFulfilledAt={undefined}
+      revealedAt={undefined}
+      isInlineBreakdownExpanded={expandedBreakdown.has(lead.id)}
+      isSkillsExpanded={expandedSkills.has(lead.id)}
+      isExpFieldExpanded={expandedFields.has(`${lead.id}:exp`)}
+      isWorkTypeFieldExpanded={expandedFields.has(`${lead.id}:workType`)}
+      isEmpTypeFieldExpanded={expandedFields.has(`${lead.id}:empType`)}
+      isRateFieldExpanded={expandedFields.has(`${lead.id}:rate`)}
+      isVisaFieldExpanded={expandedFields.has(`${lead.id}:visa`)}
+      isLocationFieldExpanded={expandedFields.has(`${lead.id}:location`)}
+      isLoadingPreview={false}
+      isProcessingAskAI={false}
+      onPreview={(l) => navigate(`/feed/${l.kind}/${l.id}`)}
+      onAskAI={(l) => navigate(`/feed/${l.kind}/${l.id}`)}
+      onApply={(l) => navigate(`/feed/${l.kind}/${l.id}`)}
+      onToggleInlineBreakdown={(id) => toggleIn(setExpandedBreakdown, id)}
+      onExpandSkills={(id) => toggleIn(setExpandedSkills, id, true)}
+      onCollapseSkills={(id) => toggleIn(setExpandedSkills, id, false)}
+      onToggleField={(key) => toggleIn(setExpandedFields, key)}
+      bulkSelectable={Boolean(bulk)}
+      isBulkSelected={bulk?.selected}
+      onToggleBulkSelect={bulk ? () => bulk.onToggle() : undefined}
+    />
+  );
 
   // Close a column's range menu on any click outside it.
   useEffect(() => {
@@ -258,7 +319,6 @@ export default function BoardPage() {
       return all ? { subjectId: '', ids: new Set() } : { subjectId, ids: new Set(sendable) };
     });
   }
-
 
   async function rematch(subject: Subject) {
     setRematching(subject.subject_id);
@@ -330,10 +390,6 @@ export default function BoardPage() {
     const { error: rpcError } = await supabase.rpc('move_pipeline_card' as never, { p_id: card.id, p_stage: to, p_reason: reason ?? null } as never);
     if (rpcError) { setCards(prevCards); setColumnCards(prevColumn); setError('Could not move that card.'); }
     void loadSubjects();
-  }
-
-  function openLead(card: Card) {
-    navigate(`/feed/${card.lead_kind}/${card.lead_id}`);
   }
 
   const defaultBySubject = useMemo(() => {
@@ -499,7 +555,7 @@ export default function BoardPage() {
             const colCounts = counts[sid] ?? {};
             const range = view.range;
             return (
-              <section key={sid} className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
+              <section key={sid} className="flex h-full w-[340px] flex-col rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
                 <header className={`shrink-0 rounded-t-xl border-b px-3 py-2.5 ${tint}`}>
                   <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100" title={subjectTitle(subject)}>{subjectTitle(subject)}</p>
                   {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-[#94A3B8]">{subject.detail}</p>}
@@ -594,61 +650,44 @@ export default function BoardPage() {
                       {selected.subjectId === sid && selected.ids.size > 0 ? 'Clear selection' : `Select all for ${submitLabel}`}
                     </button>
                   )}
-                  {list.map((card) => (
-                    <article
-                      key={card.id}
-                      draggable
-                      onDragStart={() => setDragId(card.id)}
-                      onDragEnd={() => { setDragId(''); setOverTarget(''); }}
-                      className={`cursor-grab rounded-lg border bg-white p-3 transition hover:border-gray-300 hover:shadow-sm dark:bg-[#1B1D21] active:cursor-grabbing ${flashIds.has(card.id) ? 'border-green-400 ring-2 ring-green-200' : 'border-gray-200'} ${dragId === card.id ? 'opacity-50' : ''}`}
-                    >
-                      <div className="flex items-start gap-2">
-                      {card.stage === 'new' && card.has_email && (
-                        <input
-                          type="checkbox"
-                          aria-label="Select for bulk"
-                          checked={selected.subjectId === sid && selected.ids.has(card.id)}
-                          onChange={() => toggleSelect(card)}
-                          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-blue-600"
-                        />
-                      )}
-                      <button type="button" onClick={() => openLead(card)} className="block min-w-0 flex-1 text-left">
-                        <p className="text-[13px] font-semibold leading-snug text-gray-900">{card.lead_kind === 'hotlist' ? consultantTitle(card.title) : card.title}</p>
-                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-500">
-                          {card.location && <span className="inline-flex items-center gap-0.5"><MapPin size={10} /> {card.location}</span>}
-                          {rateText(card.rate_min, card.rate_max) && <span>{rateText(card.rate_min, card.rate_max)}</span>}
-                          {card.detail && <span>{card.detail}</span>}
-                        </p>
-                        <p className="mt-1 flex items-center gap-2 text-[11px] text-gray-400">
-                          <span className="inline-flex items-center gap-0.5"><Clock3 size={10} /> posted {timeAgo(card.posted_at)}</span>
-                          {card.similarity != null && <span className="font-semibold text-green-700">{Math.round(card.similarity * 100)}% match</span>}
-                        </p>
-                      </button>
-                      </div>
-                      {(sendsByLead.get(card.lead_id) ?? []).length > 0 && (
-                        <div className="mt-2 flex flex-col gap-1">{(sendsByLead.get(card.lead_id) ?? []).map(sendBadges)}</div>
-                      )}
-                      <div className="mt-2 flex items-center gap-1.5">
-                        {card.stage === 'new' && (
-                          <>
-                            {card.has_email && (
-                              <button type="button" onClick={() => openLead(card)} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-700">
-                                <Sparkles size={11} /> {submitLabel}
-                              </button>
-                            )}
-                            <button type="button" onClick={() => void move(card, 'closed', 'skipped')} className="inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-[11px] font-semibold text-gray-500 hover:bg-gray-100">
-                              <X size={11} /> Skip
-                            </button>
-                          </>
-                        )}
-                        {card.conversation_id && card.stage !== 'new' && (
-                          <button type="button" onClick={() => navigate(`/inbox/${card.conversation_id}`)} className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-200">
-                            <MessageSquare size={11} /> {card.stage === 'replied' ? 'Replied · open' : 'Conversation'}
-                          </button>
+                  {list.map((card, cardIndex) => {
+                    const lead = leadsById[card.lead_id];
+                    const cardSends = sendsByLead.get(card.lead_id) ?? [];
+                    return (
+                      <div
+                        key={card.id}
+                        draggable
+                        onDragStart={() => setDragId(card.id)}
+                        onDragEnd={() => { setDragId(''); setOverTarget(''); }}
+                        className={`rounded-lg transition ${flashIds.has(card.id) ? 'ring-2 ring-green-300' : ''} ${dragId === card.id ? 'opacity-50' : ''}`}
+                      >
+                        {lead
+                          ? feedCard(lead, cardIndex, card.stage === 'new' && card.has_email
+                            ? { selected: selected.subjectId === sid && selected.ids.has(card.id), onToggle: () => toggleSelect(card) }
+                            : undefined)
+                          : <div className="h-28 animate-pulse rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5" />}
+                        {/* Tracker extras under the Feed card */}
+                        {(cardSends.length > 0 || card.stage === 'new' || card.conversation_id) && (
+                          <div className="mt-1 flex flex-col gap-1 px-1">
+                            {cardSends.map(sendBadges)}
+                            <div className="flex items-center gap-1.5">
+                              {card.similarity != null && <span className="text-[10px] font-semibold text-green-700 dark:text-green-400">{Math.round(card.similarity * 100)}% match</span>}
+                              {card.conversation_id && card.stage !== 'new' && (
+                                <button type="button" onClick={() => navigate(`/inbox/${card.conversation_id}`)} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-200">
+                                  <MessageSquare size={10} /> {card.stage === 'replied' ? 'Replied · open' : 'Conversation'}
+                                </button>
+                              )}
+                              {card.stage === 'new' && (
+                                <button type="button" onClick={() => void move(card, 'closed', 'skipped')} className="ml-auto inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5">
+                                  <X size={10} /> Skip
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         )}
                       </div>
-                    </article>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             );
@@ -656,7 +695,7 @@ export default function BoardPage() {
 
           {/* Sends to leads that are not on the board (the old Submissions / Invites list) */}
           {otherSends.length > 0 && (!q || otherVisible.length > 0) && (
-            <section className="flex h-full w-[280px] flex-col rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
+            <section className="flex h-full w-[340px] flex-col rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
               <header className="shrink-0 rounded-t-xl border-b border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-white/10 dark:bg-[#252a33]">
                 <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100">{otherLabel}</p>
                 <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-[#94A3B8]">{isVendor ? 'Requests and chats outside your requirements' : 'Applications outside your consultants'}</p>
@@ -674,15 +713,13 @@ export default function BoardPage() {
               </header>
               <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
                 {otherVisible.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{otherTab === 'closed' ? 'Nothing closed yet.' : 'Nothing open.'}</p>}
-                {otherVisible.map((send) => (
-                  <article key={send.key} className="rounded-lg border border-gray-200 bg-white p-3 transition hover:border-gray-300 dark:border-white/10 dark:bg-[#1B1D21]">
-                    <button type="button" onClick={() => navigate(`/feed/${send.leadKind}/${send.leadId}`)} className="block w-full text-left">
-                      <p className="text-[13px] font-semibold leading-snug text-gray-900 dark:text-slate-100">{send.leadKind === 'hotlist' ? consultantTitle(send.title) : send.title}</p>
-                      {send.subtitle && <p className="mt-0.5 truncate text-[11px] text-gray-500">{send.subtitle}</p>}
-                      <p className="mt-1 inline-flex items-center gap-0.5 text-[11px] text-gray-400"><Clock3 size={10} /> {timeAgo(send.createdAt)}</p>
-                    </button>
-                    <div className="mt-2">{sendBadges(send)}</div>
-                  </article>
+                {otherVisible.map((send, i) => (
+                  <div key={send.key}>
+                    {leadsById[send.leadId]
+                      ? feedCard(leadsById[send.leadId], i)
+                      : <div className="h-28 animate-pulse rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5" />}
+                    <div className="mt-1 px-1">{sendBadges(send)}</div>
+                  </div>
                 ))}
               </div>
             </section>
