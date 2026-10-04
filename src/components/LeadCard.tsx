@@ -718,7 +718,6 @@ export const LeadCard = memo(function LeadCard({
         </div>
       </div>
       {(() => {
-        if (compact) return null;
         const chipFields = [
           { key: 'exp', value: expValue, isExpanded: isExpFieldExpanded, icon: GraduationCap, title: 'Experience' },
           { key: 'workType', value: workTypeValue, isExpanded: isWorkTypeFieldExpanded, icon: Laptop, title: 'Work type' },
@@ -727,7 +726,8 @@ export const LeadCard = memo(function LeadCard({
           { key: 'visa', value: visaValue, isExpanded: isVisaFieldExpanded, icon: Shield, title: 'Visa' },
           { key: 'location', value: locationValue, isExpanded: isLocationFieldExpanded, icon: MapPin, title: 'Location' },
         ].filter((field) => field.value !== '-');
-        if (chipFields.length === 0 && skillsValue === '-') return null;
+        // Collapsed: the field pills only; skills wait for the full card.
+        if (chipFields.length === 0 && (compact || skillsValue === '-')) return null;
         return (
         <div className="mt-1.5 min-w-0 rounded-md px-2.5 py-2 text-left bg-transparent">
           {(() => {
@@ -747,7 +747,7 @@ export const LeadCard = memo(function LeadCard({
               </div>
             );
           })()}
-          {skillsValue !== '-' && (
+          {!compact && skillsValue !== '-' && (
             <button
               type="button"
               onClick={() => onToggleInlineBreakdown(lead.id)}
@@ -769,6 +769,8 @@ export const LeadCard = memo(function LeadCard({
         </div>
         );
       })()}
+      {/* Collapsed: no poster line; it comes back with the full card. */}
+      {!compact && (
       <div className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
         <PosterProfileLink kind={lead.kind === 'hotlist' ? 'hotlist' : 'job'} leadId={lead.id}>
           <LeadAvatar avatarUrl={lead.avatarUrl} name={lead.posterName} size={14} />
@@ -786,20 +788,8 @@ export const LeadCard = memo(function LeadCard({
         )}
         <span className="whitespace-nowrap">•</span>
         <span className="whitespace-nowrap">{feedTimeBasis === 'created' ? 'Added ' : ''}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
-        {/* Collapsed: the two facts that decide a click, on the same line. */}
-        {compact && locationValue !== '-' && (
-          <>
-            <span className="whitespace-nowrap">•</span>
-            <span className="max-w-[9rem] truncate" title={locationValue}>{locationValue}</span>
-          </>
-        )}
-        {compact && rateValue !== '-' && (
-          <>
-            <span className="whitespace-nowrap">•</span>
-            <span className="whitespace-nowrap">{rateValue}</span>
-          </>
-        )}
       </div>
+      )}
       </div>
       {!hideActions && actionButtonsBar}
     </div>
