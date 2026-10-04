@@ -42,30 +42,29 @@ function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | 
   );
 }
 
-// Feed and Tracker take their labels from the persona; Network (the people
-// you subscribe to) and Inbox keep one name. My Hotlist / My Jobs moved into
+// Order: Feed, Tracker, AI Match, Network, Inbox, My Profile (the phone's
+// bottom bar is the first five, AI Match raised in the middle). Network's
+// label follows the persona; the rest keep one name. My Hotlist / My Jobs moved into
 // AI Match's own tab; Pulse and List are hidden from the nav. Their routes
 // all still work.
 function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   const isBenchSales = persona === 'bench_sales';
-  // Feed is named (and iconed) for what it shows — the content being
-  // browsed: Vendor browses Hotlist (consultants, UserRound icon) to find
-  // consultants, Bench Sales browses Jobs (Briefcase icon) to apply. Posts
-  // is the opposite: named/iconed for what each persona owns, so its icons
-  // are swapped relative to Feed's.
-  const feedLabel = isBenchSales ? 'Jobs' : 'Hotlist';
+  // Feed is called Feed for everyone; its icon still says what it shows:
+  // Vendors browse Hotlist (consultants, UserRound), Bench Sales browse Jobs
+  // (Briefcase).
+  const feedLabel = 'Feed';
   const feedPath = isBenchSales ? '/feed/jobs' : '/feed/hotlist';
   const feedIcon = isBenchSales ? Briefcase : UserRound;
   const followingLabel = followingLabelForPersona(persona);
   return [
     { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },
-    { path: '/match',       label: 'AI Match',    mobileLabel: 'AI Match',    icon: Sparkles,    hideOnMobile: false },
-    { path: networkPath(persona), label: followingLabel, mobileLabel: followingLabel, icon: Rss,       hideOnMobile: false },
-    { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
     // Tracker: a column per consultant (or requirement), matches arriving
     // live as cards, with what was sent to each. It replaced the separate
     // Submissions / Invites list.
     { path: '/tracker',     label: 'Tracker',     mobileLabel: 'Tracker',     icon: Kanban,      hideOnMobile: false },
+    { path: '/match',       label: 'AI Match',    mobileLabel: 'AI Match',    icon: Sparkles,    hideOnMobile: false },
+    { path: networkPath(persona), label: followingLabel, mobileLabel: followingLabel, icon: Rss,       hideOnMobile: false },
+    { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
     // All of the account's posts, open or closed, with Open / AI Match / Close.
     // Desktop nav; on a phone it's in the avatar menu (the bottom bar is full).
     { path: '/me',          label: 'My Profile',  mobileLabel: 'Profile',     icon: CircleUser,  hideOnMobile: true },
@@ -538,15 +537,15 @@ export default function AppNav() {
             <span>{feedItem.label}</span>
           </Link>
           <Link
-            to={followingItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/network') ? 'text-blue-600' : 'text-gray-500'}`}
+            to={trackerItem.path}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <FollowingIcon size={24} />
-            <span>{followingItem.label}</span>
+            <TrackerIcon size={24} />
+            <span>{trackerItem.label}</span>
           </Link>
           {/* AI Match is the centre action, raised above the bar so it reads as
               the primary thing to do. It uses the same py-2 / gap-1 / 24px icon
-              slot as the other four items so every label sits on one baseline;
+              slot as the other four items (Feed, Tracker | Network, Inbox) so every label sits on one baseline;
               the circle is positioned out of that slot upwards and takes no
               layout space, which is what keeps the row aligned. */}
           <Link
@@ -565,19 +564,19 @@ export default function AppNav() {
             <span>AI Match</span>
           </Link>
           <Link
+            to={followingItem.path}
+            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/network') ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <FollowingIcon size={24} />
+            <span>{followingItem.label}</span>
+          </Link>
+          <Link
             to="/inbox"
             className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <Mail size={24} />
             <span>Inbox</span>
             {inboxUnread > 0 && <span className="absolute right-[24%] top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
-          </Link>
-          <Link
-            to={trackerItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <TrackerIcon size={24} />
-            <span>{trackerItem.label}</span>
           </Link>
         </nav>
       )}
