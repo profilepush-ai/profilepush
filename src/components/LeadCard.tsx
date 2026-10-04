@@ -576,7 +576,7 @@ export const LeadCard = memo(function LeadCard({
           onClick={(e) => { e.stopPropagation(); onDismiss(lead); }}
           title="Not a match (won't be suggested again)"
           aria-label="Not a match"
-          className="inline-flex h-9 w-10 shrink-0 items-center justify-center bg-gray-50 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-white/[0.03] dark:text-gray-300 dark:hover:bg-red-500/10"
+          className="inline-flex h-9 w-10 shrink-0 items-center justify-center bg-red-50 text-red-600 transition-colors hover:bg-red-100 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
         >
           <X size={16} strokeWidth={1.75} />
         </button>
