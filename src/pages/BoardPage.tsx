@@ -152,7 +152,6 @@ export default function BoardPage() {
   const [dragId, setDragId] = useState('');
   const [overTarget, setOverTarget] = useState('');
   const [liveNew, setLiveNew] = useState(0);
-  const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
   // Bulk AI Submit works on one column at a time (an invite's screening link
   // hangs off that column's requirement).
   const [selected, setSelected] = useState<{ subjectId: string; ids: Set<string> }>({ subjectId: '', ids: new Set() });
@@ -605,10 +604,8 @@ export default function BoardPage() {
     const channel = supabase
       .channel(`board-${account.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_cards', filter: `account_id=eq.${account.id}` }, (payload) => {
-        const row = (payload.new ?? {}) as { id?: string };
         if (payload.eventType === 'INSERT') {
           setLiveNew((n) => n + 1);
-          if (row.id) setFlashIds((prev) => new Set(prev).add(row.id as string));
         }
         void loadAll();
         void loadSubjects();
@@ -1018,7 +1015,7 @@ export default function BoardPage() {
                         draggable
                         onDragStart={() => setDragId(card.id)}
                         onDragEnd={() => { setDragId(''); setOverTarget(''); }}
-                        className={`shrink-0 rounded-lg transition ${flashIds.has(card.id) ? 'ring-2 ring-green-300' : ''} ${dragId === card.id ? 'opacity-50' : ''}`}
+                        className={`shrink-0 rounded-lg transition ${dragId === card.id ? 'opacity-50' : ''}`}
                       >
                         {/* A plain block around the card: the card is h-full,
                             and without it that resolved to this whole slot,
@@ -1035,15 +1032,10 @@ export default function BoardPage() {
                           : <div className="h-28 animate-pulse rounded-lg border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5" />}
                         </div>
                         {/* Tracker extras under the Feed card */}
-                        {(cardSends.length > 0 || card.conversation_id || flashIds.has(card.id) || Date.now() - Date.parse(card.created_at) < 30 * 60_000) && (
+                        {(cardSends.length > 0 || card.conversation_id) && (
                           <div className="mt-1 flex flex-col gap-1 px-1">
                             {cardSends.map(sendBadges)}
                             <div className="flex items-center gap-1.5">
-                              {(flashIds.has(card.id) || Date.now() - Date.parse(card.created_at) < 30 * 60_000) && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-green-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> Just now
-                                </span>
-                              )}
                               {card.conversation_id && card.stage !== 'new' && (
                                 <button type="button" onClick={() => navigate(`/inbox/${card.conversation_id}`)} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-200">
                                   <MessageSquare size={10} /> {card.stage === 'replied' ? 'Replied · open' : 'Conversation'}
