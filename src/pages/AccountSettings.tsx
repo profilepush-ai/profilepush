@@ -424,12 +424,11 @@ export default function AccountSettings() {
   const initial        = displayName[0]?.toUpperCase() ?? '?';
 
   // ─── Plan helpers ──────────────────────────────────────────────
-  const planLabel = (() => {
-    if (!subscription || subscription.status === 'inactive') return account?.is_trial ? 'Free Trial' : 'Free';
-    if (subscription.status === 'active') return `₹${subscription.plan_credits}/mo`;
-    return subscription.status.charAt(0).toUpperCase() + subscription.status.slice(1);
-  })();
-  const planStyle = subscription?.status === 'active'
+  // No subscriptions: an account is Free until it buys credits (is_trial is
+  // cleared by the first purchase), then Paid.
+  const hasPaid = account?.is_trial === false;
+  const planLabel = hasPaid ? 'Paid · credits' : 'Free';
+  const planStyle = hasPaid
     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
     : 'bg-amber-50 text-amber-700 border-amber-200';
 
@@ -770,14 +769,11 @@ export default function AccountSettings() {
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`account-settings-label text-[13px] font-semibold px-2.5 py-1 rounded-lg border ${planStyle}`}>{planLabel}</span>
-                        {subscription?.cancel_at_period_end && (
-                          <span className="account-settings-label text-[13px] text-red-500 bg-red-50 border border-red-100 px-2 py-0.5 rounded-lg">Cancels at period end</span>
-                        )}
                       </div>
                       <p className="text-[13px] text-gray-400 mt-1">
-                        {subscription?.current_period_end
-                          ? `Renews ${new Date(subscription.current_period_end).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}`
-                          : account?.is_trial ? 'Free trial — upgrade to unlock all features' : 'No active subscription'}
+                        {hasPaid
+                          ? 'Unlimited open consultants or requirements. Top up credits any time.'
+                          : 'Up to 3 open consultants or requirements. Buy credits once to unlock unlimited.'}
                       </p>
                     </div>
                     {isOwner && (

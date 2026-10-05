@@ -52,7 +52,6 @@ interface PersonaContent {
   pricingHeading?: string;
   pricingBody?: string;
   freeBullets?: string[];
-  proBullets?: string[];
   faq: FaqPair[];
   ctaHeadlineLine1: string;
   ctaHeadlineLine2?: string;
@@ -216,7 +215,7 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
       { n: '5', t: 'Tracks', d: 'every match and submission on a live board', dot: 'bg-emerald-500', num: 'text-emerald-500', ring: 'ring-emerald-100' },
     ],
     workflowClosing: 'The recruiter: picks the vendors and closes the deal.',
-    pricingHeading: 'Free forever. Pro when needed.',
+    pricingHeading: 'Free forever. Credits when you need more.',
     pricingBody: '100 credits that never expire, plus 20 more as you get started. Browsing, submitting and editing are always free.',
     freeBullets: [
       'All features included',
@@ -224,13 +223,6 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
       '3 open consultants or requirements on the Tracker',
       'Subscribe to 5 new people a day, up to 10',
       '1 credit per AI Match result, AI draft or Gmail send',
-    ],
-    proBullets: [
-      'Everything in Free',
-      'Unlimited open consultants or requirements',
-      '500–5,000 credits every month',
-      'Credits arrive automatically',
-      'Cancel anytime',
     ],
     faq: [
       { q: 'How does the copilot find prime vendors?', a: 'It matches every new requirement against your consultants. The vendors posting what your bench fits show up first, in each consultant\'s column.' },
@@ -522,11 +514,11 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
                 {content.pricingHeading ?? 'Simple, transparent pricing.'}
               </h2>
               <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">
-                {content.pricingBody ?? 'Start free with credits that never expire. Top up from ₹249 when you need more, or go Pro to get them every month.'}
+                {content.pricingBody ?? 'Start free with credits that never expire. Top up from ₹249 when you need more. No subscription.'}
               </p>
             </div>
 
-            <PricingCards freeBullets={content.freeBullets} proBullets={content.proBullets} />
+            <PricingCards freeBullets={content.freeBullets} />
           </div>
         </section>
 

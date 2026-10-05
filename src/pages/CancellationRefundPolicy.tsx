@@ -18,7 +18,7 @@ export default function CancellationRefundPolicy() {
     <div className="min-h-screen bg-white">
       <SEO
         title="Cancellation & Refund Policy | ProfilePush"
-        description="ProfilePush cancellation and refund policy — how to cancel your subscription, when refunds are issued, and what happens to your data after cancellation."
+        description="ProfilePush refund policy — when refunds are issued for credit purchases, and what happens to your data after cancellation."
         canonical="https://profilepush.ai/cancellation-refund"
       />
       <header className="border-b border-gray-100 bg-white/90 backdrop-blur-md sticky top-0 z-50">
@@ -39,8 +39,9 @@ export default function CancellationRefundPolicy() {
 
           <Section title="1. Overview">
             <p>
-              ProfilePush operates on a subscription-based model. This policy explains how cancellations are handled,
-              when refunds may be issued, and what happens to your data and AI credits when a subscription ends.
+              ProfilePush is free to use, with optional one-time purchases of AI credits. There are no subscriptions
+              or recurring charges. This policy explains when refunds may be issued for credit purchases and what
+              happens to your data when an account is closed.
               By using ProfilePush, you agree to the terms set out in this policy.
             </p>
           </Section>
@@ -49,17 +50,16 @@ export default function CancellationRefundPolicy() {
             <p>
               Every new account is free forever, with no payment or credit card required. New accounts receive
               100 AI credits at signup, granted once, which never expire — there is no trial period and no point
-              at which the Free plan stops working or requires a subscription. Every feature of the Platform is
-              available on the Free plan; a paid Pro subscription only adds more AI credits, delivered
-              automatically each billing cycle.
+              at which the Free plan stops working. Every feature of the Platform is available on the Free plan,
+              which can keep up to 3 consultants or requirements open at a time; a one-time credit purchase adds
+              credits and removes that limit.
             </p>
           </Section>
 
-          <Section title="3. Subscription Cancellation">
+          <Section title="3. No Subscriptions">
             <p>
-              You may cancel your subscription at any time from the Billing section of your account settings.
-              Cancellations take effect at the end of the current billing cycle. You will continue to have full
-              access to all features until that date.
+              ProfilePush does not sell subscriptions, so there is nothing to cancel and nothing renews. You are
+              only charged when you choose to buy a credit pack.
             </p>
             <p>
               ProfilePush does not charge cancellation fees. There are no lock-in contracts or minimum commitment periods.
@@ -67,11 +67,6 @@ export default function CancellationRefundPolicy() {
           </Section>
 
           <Section title="4. Refund Policy">
-            <p>
-              <strong>Pro Subscriptions:</strong> ProfilePush's Pro plan bills monthly only, in the tier (500–5,000
-              credits/month) you choose. We do not provide prorated refunds for partial months. If you cancel
-              mid-cycle, you retain access through the end of the billing period and are not charged again after that.
-            </p>
             <p>
               <strong>AI Credit Top-Ups:</strong> Credits purchased as one-time top-ups are non-refundable once
               they have been added to your wallet, regardless of whether they have been used.
@@ -86,26 +81,26 @@ export default function CancellationRefundPolicy() {
           <Section title="5. Account Termination by ProfilePush">
             <p>
               If we terminate your account for a violation of our Terms &amp; Conditions, no refund will be issued
-              for any remaining subscription period or unused AI credits.
+              for unused AI credits.
             </p>
             <p>
-              If ProfilePush discontinues the service, we will provide at least 30 days' notice and issue
-              prorated refunds for any unused subscription period.
+              If ProfilePush discontinues the service, we will provide at least 30 days' notice so you can use
+              your remaining credits.
             </p>
           </Section>
 
-          <Section title="6. Data Retention After Cancellation">
+          <Section title="6. Data Retention After Account Closure">
             <p>
-              After cancellation, your data (profiles, resumes, job searches, and activity logs) is retained for
-              30 days. During this window you may reactivate your subscription and resume normal use.
+              After an account is closed, your data (profiles, resumes, job searches, and activity logs) is retained
+              for 30 days. During this window you may reopen the account and resume normal use.
               After 30 days, your data will be permanently deleted in accordance with our{' '}
               <Link to="/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link>.
             </p>
           </Section>
 
-          <Section title="7. How to Request a Refund or Cancel">
+          <Section title="7. How to Request a Refund or Close Your Account">
             <p>
-              To cancel your subscription: log in → go to <strong>Billing</strong> → click <strong>Cancel Plan</strong>.
+              To close your account, email us from your account email address.
             </p>
             <p>
               To request a refund or for any billing enquiry, email us at{' '}

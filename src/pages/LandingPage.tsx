@@ -86,7 +86,7 @@ const FAQS = [
   },
   {
     q: 'What does it cost?',
-    a: 'Free. 100 credits that never expire, plus 10 more when you publish your first post and 10 when you send your first submission. A post costs 1 credit. An AI Submit draft costs 1 credit (AI Request drafts are free), and sending from your Gmail costs 1 credit, refunded if the send fails. Submitting is always free. Need more? Buy a credit pack from ₹249 or go Pro from ₹500 a month.',
+    a: 'Free. 100 credits that never expire, plus 10 more when you publish your first post and 10 when you send your first submission. A post costs 1 credit. An AI Submit draft costs 1 credit (AI Request drafts are free), and sending from your Gmail costs 1 credit, refunded if the send fails. Submitting is always free. Need more? Buy a credit pack from ₹249. There is no subscription.',
   },
   {
     q: 'Is the data safe?',

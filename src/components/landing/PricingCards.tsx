@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
 
-// The three pricing cards on the landing pages: Free, one-time credit packs
-// (from ₹249) and Pro (monthly). Prices mirror the Billing page: packs are
-// 249, 500, 1,000 … 5,000 credits at ₹1 a credit; Pro is the same tiers
-// monthly. The first-purchase offer (2× on the ₹249 and ₹500 packs) only
-// appears in the app, for an hour, so it's mentioned, not promised.
+// The two pricing cards on the landing pages: Free and one-time credit packs
+// (from ₹249). There is no subscription. Prices mirror the Billing page:
+// 249, 500, 1,000 … 5,000 credits at ₹1 a credit. Any purchase makes the
+// account paid (unlimited open posts, the bigger Network allowance). The
+// first-purchase offer (2× on the ₹249 and ₹500 packs) only appears in the
+// app, for an hour, so it's mentioned, not promised.
 
 const CHECK_DARK = 'M1.5 4L3.5 6L6.5 2';
 
@@ -29,28 +30,20 @@ export const DEFAULT_FREE_BULLETS = [
   '1 credit per AI Match result, AI draft or Gmail send',
 ];
 
-export const DEFAULT_PRO_BULLETS = [
-  'Everything in Free',
-  'Unlimited open consultants or requirements',
-  'Subscribe to 10 new people a day, no cap',
-  'Credits arrive automatically every month',
-  'Change your tier or cancel any time',
-];
-
 const PACK_BULLETS = [
   'Pay once, credits never expire',
   'Unlimited open consultants or requirements',
+  'Subscribe to 10 new people a day, no cap',
   '249, 500, 1,000 … up to 5,000 credits',
   '₹1 per credit, no subscription',
   'First top-up? Look for the 2× offer in the app',
 ];
 
-export default function PricingCards({ freeBullets = DEFAULT_FREE_BULLETS, proBullets = DEFAULT_PRO_BULLETS }: {
+export default function PricingCards({ freeBullets = DEFAULT_FREE_BULLETS }: {
   freeBullets?: string[];
-  proBullets?: string[];
 }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
       {/* Free */}
       <div className="bg-white rounded-2xl border border-gray-200 p-8 flex flex-col">
         <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-yellow-100 text-yellow-700 w-fit">
@@ -84,25 +77,6 @@ export default function PricingCards({ freeBullets = DEFAULT_FREE_BULLETS, proBu
           {PACK_BULLETS.map((item) => <Bullet key={item} tone="blue">{item}</Bullet>)}
         </ul>
         <Link to="/signup" className="w-full text-center bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-3 rounded-xl transition-colors">
-          Get Started
-        </Link>
-      </div>
-
-      {/* Pro */}
-      <div className="rounded-2xl p-8 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
-        <span className="absolute -top-3 left-8 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm text-blue-900" style={{ backgroundColor: '#facc15' }}>Auto-renews</span>
-        <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-white/15 text-white w-fit">
-          Pro
-        </span>
-        <div className="flex items-baseline gap-1.5 mb-0.5">
-          <span className="text-5xl font-extrabold text-white">₹500</span>
-          <span className="text-blue-200 text-sm">/ month</span>
-        </div>
-        <p className="text-xs text-blue-200 mb-8">500–5,000 credits a month, your choice</p>
-        <ul className="space-y-3 text-sm text-white flex-1 mb-8">
-          {proBullets.map((item) => <Bullet key={item} tone="white">{item}</Bullet>)}
-        </ul>
-        <Link to="/signup" className="w-full text-center bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold py-3 rounded-xl transition-colors">
           Get Started
         </Link>
       </div>
