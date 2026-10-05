@@ -63,6 +63,7 @@ const VendorsLandingPage = lazy(() => import('./pages/VendorsLandingPage'));
 const BenchSalesLandingPage = lazy(() => import('./pages/BenchSalesLandingPage'));
 const WebsitesLandingPage = lazy(() => import('./pages/WebsitesLandingPage'));
 const WebsitePage = lazy(() => import('./pages/WebsitePage'));
+const ClaimWebsitePage = lazy(() => import('./pages/ClaimWebsitePage'));
 
 function PageLoader() {
   return (
@@ -314,6 +315,7 @@ export default function App() {
             <Route path="/vendors" element={<ErrorBoundary><VendorsLandingPage /></ErrorBoundary>} />
             <Route path="/bench-sales" element={<ErrorBoundary><BenchSalesLandingPage /></ErrorBoundary>} />
             <Route path="/websites" element={<ErrorBoundary><WebsitesLandingPage /></ErrorBoundary>} />
+            <Route path="/claim/:token" element={<ErrorBoundary><ClaimWebsitePage /></ErrorBoundary>} />
             <Route path="/contact" element={<ErrorBoundary><ContactUs /></ErrorBoundary>} />
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
             <Route path="/cancellation-refund" element={<ErrorBoundary><CancellationRefundPolicy /></ErrorBoundary>} />

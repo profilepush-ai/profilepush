@@ -5,7 +5,8 @@ import { WEBSITE_PLAN_BONUS_CREDITS, WEBSITE_PLAN_PRICE_INR_PAISE, WEBSITE_PLAN_
 // Creates a one-time Razorpay Order for the Website Modernization plan
 // (₹29,999 a year, all inclusive, with 5,000 credits). Same shape as
 // razorpay-create-credit-order. razorpay-verify-website-payment or the
-// webhook applies it via the pending row this writes.
+// webhook applies it via the pending row this writes. With a claim_token,
+// the order also claims that demo website (once the payment is applied).
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,6 +48,23 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (!member) return new Response(JSON.stringify({ error: "Account not found" }), { status: 404, headers: corsHeaders });
 
+    // Claiming a demo: check this user may claim it before taking payment.
+    const body = await req.json().catch(() => ({}));
+    const claimToken = typeof body?.claim_token === "string" && body.claim_token ? body.claim_token : null;
+    let websiteId: string | null = null;
+    if (claimToken) {
+      const { data: target, error: claimErr } = await supabaseAdmin.rpc("website_claim_target", { p_token: claimToken, p_user_id: user.id });
+      if (claimErr) return new Response(JSON.stringify({ error: claimErr.message }), { status: 400, headers: corsHeaders });
+      websiteId = target as string;
+      const { count } = await supabaseAdmin
+        .from("websites")
+        .select("id", { count: "exact", head: true })
+        .eq("account_id", member.account_id);
+      if ((count ?? 0) > 0) {
+        return new Response(JSON.stringify({ error: "Your plan already has a website. Contact us to add another." }), { status: 400, headers: corsHeaders });
+      }
+    }
+
     const orderRes = await fetch("https://api.razorpay.com/v1/orders", {
       method: "POST",
       headers: { Authorization: razorpayAuth(), "Content-Type": "application/json" },
@@ -58,6 +76,7 @@ Deno.serve(async (req: Request) => {
           account_id: member.account_id,
           term_months: WEBSITE_PLAN_TERM_MONTHS.toString(),
           bonus_credits: WEBSITE_PLAN_BONUS_CREDITS.toString(),
+          website_id: websiteId ?? "",
         },
       }),
     });
@@ -71,6 +90,7 @@ Deno.serve(async (req: Request) => {
       amount_inr_paise: WEBSITE_PLAN_PRICE_INR_PAISE,
       bonus_credits: WEBSITE_PLAN_BONUS_CREDITS,
       term_months: WEBSITE_PLAN_TERM_MONTHS,
+      website_id: websiteId,
       status: "created",
     });
     if (insertError) throw new Error(`Could not save pending website order: ${insertError.message}`);

@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart3, Bell, CheckCircle, Globe, Inbox, Sparkles } from 'lucide-react';
+import { BarChart3, Bell, CheckCircle, Globe, Sparkles } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import { useAuth } from '../contexts/AuthContext';
 import { WEBSITE_PLAN } from '../lib/website-plan';
-import { fetchMyWebsitePlan, startWebsiteCheckout, type WebsiteCheckoutResult, type WebsitePlanStatus } from '../lib/website-checkout';
+import WebsiteSubmissions from '../components/website/WebsiteSubmissions';
+import {
+  fetchMyWebsitePlan, fetchMyWebsites, startWebsiteCheckout,
+  type MyWebsite, type WebsiteCheckoutResult, type WebsitePlanStatus,
+} from '../lib/website-checkout';
 
-// The account's Website Modernization plan: status, and the ₹29,999 yearly
-// checkout (which also adds 5,000 credits). Submissions, analytics, domain
-// and notification settings join this page as those parts are built.
+// The account's Website Modernization plan (status, and the ₹29,999 yearly
+// checkout, which also adds 5,000 credits) and each claimed website's
+// enquiries. Analytics, domain and notification settings join this page as
+// those parts are built.
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 const COMING = [
-  { icon: Inbox, t: 'Submissions', d: 'Candidate and vendor enquiries, with résumés.' },
   { icon: BarChart3, t: 'Analytics', d: 'Visitors, sources and enquiry conversions.' },
   { icon: Globe, t: 'Domain', d: 'Connect your domain, with HTTPS.' },
   { icon: Bell, t: 'Notifications', d: 'Who gets enquiry alerts and the daily report.' },
@@ -25,6 +29,7 @@ const COMING = [
 export default function WebsitePage() {
   const { user, refreshAccount } = useAuth();
   const [plan, setPlan] = useState<WebsitePlanStatus | null>(null);
+  const [sites, setSites] = useState<MyWebsite[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [buying, setBuying] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
@@ -32,7 +37,9 @@ export default function WebsitePage() {
 
   const load = useCallback(async () => {
     try {
-      setPlan(await fetchMyWebsitePlan());
+      const [p, w] = await Promise.all([fetchMyWebsitePlan(), fetchMyWebsites()]);
+      setPlan(p);
+      setSites(w);
       setLoadError(null);
     } catch {
       setLoadError('Could not load your website plan. Please refresh.');
@@ -133,8 +140,16 @@ export default function WebsitePage() {
             </div>
           )}
 
+          {sites.map(site => <WebsiteSubmissions key={site.id} site={site} />)}
+
+          {plan && plan.active && sites.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-5 text-sm text-gray-600">
+              Your plan is active. We're building your website; once it's ready you'll get a link to claim it, and its enquiries will show here.
+            </div>
+          )}
+
           {plan && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {COMING.map(c => (
                 <div key={c.t} className="bg-white rounded-2xl border border-gray-200 p-5 flex gap-3 opacity-70">
                   <span className="w-9 h-9 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center shrink-0"><c.icon size={16} /></span>
