@@ -2,17 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Briefcase, Download, ExternalLink, FileText, Inbox, Mail, Phone, UserRound } from 'lucide-react';
 import LogoSpinner from '../LogoSpinner';
 import {
-  fetchSubmissions, resumeDownloadUrl, setSubmissionStatus, submissionsCsv, websiteUrl,
-  type MyWebsite, type WebsiteSubmission,
+  fetchSubmissions, KIND_LABEL, resumeDownloadUrl, setSubmissionStatus, submissionsCsv, websiteUrl,
+  type MyWebsite, type SubmissionKind, type WebsiteSubmission,
 } from '../../lib/website-checkout';
 
 // Enquiries from one website: filter by type, open each to see every field,
 // download the résumé, move it along (New → Contacted → Closed), export CSV.
 
-const KIND_LABEL: Record<WebsiteSubmission['kind'], string> = { candidate: 'Candidate', partner: 'Partner', contact: 'Contact' };
-const KIND_TONE: Record<WebsiteSubmission['kind'], string> = {
+const KIND_TONE: Record<SubmissionKind, string> = {
   candidate: 'bg-yellow-100 text-yellow-800',
+  consultant: 'bg-amber-100 text-amber-800',
+  employer: 'bg-emerald-100 text-emerald-700',
   partner: 'bg-violet-100 text-violet-700',
+  training: 'bg-sky-100 text-sky-700',
   contact: 'bg-gray-100 text-gray-700',
 };
 const STATUSES: WebsiteSubmission['status'][] = ['new', 'contacted', 'closed'];
@@ -24,7 +26,7 @@ function fmt(iso: string) {
 export default function WebsiteSubmissions({ site }: { site: MyWebsite }) {
   const [rows, setRows] = useState<WebsiteSubmission[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [kind, setKind] = useState<'all' | WebsiteSubmission['kind']>('all');
+  const [kind, setKind] = useState<'all' | SubmissionKind>('all');
   const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -40,10 +42,14 @@ export default function WebsiteSubmissions({ site }: { site: MyWebsite }) {
 
   const shown = useMemo(() => (rows ?? []).filter(r => kind === 'all' || r.kind === kind), [rows, kind]);
   const counts = useMemo(() => {
-    const c = { all: rows?.length ?? 0, candidate: 0, partner: 0, contact: 0 };
-    (rows ?? []).forEach(r => { c[r.kind] += 1; });
+    const c: Partial<Record<'all' | SubmissionKind, number>> = { all: rows?.length ?? 0 };
+    (rows ?? []).forEach(r => { c[r.kind] = (c[r.kind] ?? 0) + 1; });
     return c;
   }, [rows]);
+  const filters = useMemo(
+    () => ['all', ...(Object.keys(KIND_LABEL) as SubmissionKind[]).filter(k => counts[k])] as ('all' | SubmissionKind)[],
+    [counts],
+  );
 
   async function changeStatus(row: WebsiteSubmission, status: WebsiteSubmission['status']) {
     setRows(prev => prev?.map(r => (r.id === row.id ? { ...r, status } : r)) ?? prev);
@@ -83,13 +89,13 @@ export default function WebsiteSubmissions({ site }: { site: MyWebsite }) {
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-xl border border-gray-200 p-0.5 text-[13px]">
-            {(['all', 'candidate', 'partner', 'contact'] as const).map(k => (
+            {filters.map(k => (
               <button
                 key={k}
                 onClick={() => setKind(k)}
                 className={`px-3 py-1.5 rounded-lg font-medium ${kind === k ? 'bg-blue-600 text-white' : 'text-gray-600 hover:text-gray-900'}`}
               >
-                {k === 'all' ? 'All' : KIND_LABEL[k]} <span className="opacity-70">{counts[k]}</span>
+                {k === 'all' ? 'All' : KIND_LABEL[k]} <span className="opacity-70">{counts[k] ?? 0}</span>
               </button>
             ))}
           </div>
@@ -110,7 +116,7 @@ export default function WebsiteSubmissions({ site }: { site: MyWebsite }) {
       <ul className="divide-y divide-gray-100">
         {shown.map(r => {
           const open = openId === r.id;
-          const Icon = r.kind === 'partner' ? Briefcase : UserRound;
+          const Icon = r.kind === 'partner' || r.kind === 'employer' ? Briefcase : UserRound;
           return (
             <li key={r.id} className={r.status === 'new' ? 'bg-blue-50/30' : ''}>
               <div className="px-5 py-3 flex items-center gap-3">
@@ -123,7 +129,7 @@ export default function WebsiteSubmissions({ site }: { site: MyWebsite }) {
                     </span>
                     <span className="block text-xs text-gray-500 truncate">
                       {KIND_LABEL[r.kind]} · {fmt(r.created_at)}
-                      {r.data?.primary_skill ? ` · ${r.data.primary_skill}` : r.data?.company ? ` · ${r.data.company}` : ''}
+                      {(r.data?.primary_skill || r.data?.technology || r.data?.course || r.data?.role || r.data?.company) ? ` · ${r.data.primary_skill || r.data.technology || r.data.course || r.data.role || r.data.company}` : ''}
                     </span>
                   </span>
                 </button>
