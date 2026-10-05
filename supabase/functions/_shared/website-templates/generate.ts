@@ -1,8 +1,10 @@
 // Demo generator: reads a firm's current website and writes SiteContent for
 // a template, using only what the site says. Called by admin-websites.
 //
-// Writing runs on Claude Fable 5.1 (Anthropic's most capable model) with
-// structured outputs, so the reply always parses into SiteContent.
+// Writing runs on Claude Fable 5.1 (Anthropic's most capable model). The
+// JSON shape is given in the system prompt and the reply is parsed and
+// checked here: the full schema is too large for strict structured outputs
+// (the API rejects its compiled grammar).
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.131.0';
 import { GOAL_IDS } from './goals.ts';
@@ -98,18 +100,26 @@ function hexColors(css: string): string[] {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c).slice(0, 6);
 }
 
-export async function crawlSite(rawUrl: string, maxPages = 8): Promise<Crawl> {
+export async function crawlSite(rawUrl: string, maxPages = 12): Promise<Crawl> {
   const start = assertPublicUrl(rawUrl);
   const home = await fetchPage(start.toString());
   if (!home) throw new Error(`Could not load ${start.hostname}. Check the address.`);
   const base = new URL(home.url);
 
-  const links = sameSiteLinks(home.html, base)
-    .filter(l => l !== home.url)
-    .sort((a, b) => Number(PAGE_KEYWORDS.test(b)) - Number(PAGE_KEYWORDS.test(a)))
-    .slice(0, maxPages);
-  const others = (await Promise.all(links.map(fetchPage))).filter((p): p is { url: string; html: string } => !!p);
-  const all = [home, ...others];
+  // Two levels: many old sites open on a splash page that links to the real
+  // home page, so follow the links found on the first pages too.
+  const seen = new Set([home.url, start.toString()]);
+  const rank = (links: string[]) => links
+    .filter(l => !seen.has(l))
+    .sort((a, b) => Number(PAGE_KEYWORDS.test(b)) - Number(PAGE_KEYWORDS.test(a)));
+  const all = [home];
+  let frontier = [home];
+  for (let depth = 0; depth < 2 && all.length < maxPages; depth++) {
+    const next = rank([...new Set(frontier.flatMap(p => sameSiteLinks(p.html, base)))]).slice(0, maxPages - all.length);
+    next.forEach(l => seen.add(l));
+    frontier = (await Promise.all(next.map(fetchPage))).filter((p): p is { url: string; html: string } => !!p);
+    all.push(...frontier);
+  }
 
   // Colours: theme-color, inline styles and the first couple of stylesheets.
   let css = all.map(p => (p.html.match(/<style[\s\S]*?<\/style>|style="[^"]*"/gi) ?? []).join(' ')).join(' ');
@@ -134,8 +144,8 @@ export async function crawlSite(rawUrl: string, maxPages = 8): Promise<Crawl> {
   return { url: home.url, host: base.hostname.replace(/^www\./, ''), pages, colors, emails, phones };
 }
 
-// JSON schema for structured outputs: every object closed, every key
-// required (empty string / empty array when the site doesn't say).
+// The JSON shape Claude must return: every key present (empty string /
+// empty array when the site doesn't say). Sent as text in the system prompt.
 const str = { type: 'string' };
 const obj = (props: Record<string, unknown>) => ({ type: 'object', properties: props, required: Object.keys(props), additionalProperties: false });
 const arr = (items: unknown) => ({ type: 'array', items });
@@ -206,9 +216,10 @@ Hard rules:
 - Testimonials must be verbatim excerpts with the name shown on the site.
 - Plain, confident, specific language. No hype words like "cutting-edge", "world-class", "synergy".
 - theme colours must come from the colour list provided; primary = the strongest brand colour.
-- Fill every field of the schema; use "" or [] where the site says nothing.`;
+- Fill every field of the schema; use "" or [] where the site says nothing.
+- Reply with the JSON object only: no code fences, no text before or after it.`;
 
-export async function generateContent(crawl: Crawl, apiKey: string): Promise<SiteContent> {
+async function generateOnce(crawl: Crawl, apiKey: string): Promise<SiteContent> {
   const client = new Anthropic({ apiKey });
   const source = crawl.pages.map(p => `### ${p.title || p.url}\nURL: ${p.url}\n${p.text}`).join('\n\n');
   const userText = `Website: ${crawl.url}
@@ -227,8 +238,8 @@ ${source}`;
     max_tokens: 32000,
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
-    output_config: { effort: 'high', format: { type: 'json_schema', schema: SCHEMA } },
-    system: `${RULES}\n\n${FIELD_GUIDE}`,
+    output_config: { effort: 'high' },
+    system: `${RULES}\n\nJSON schema of the reply:\n${JSON.stringify(SCHEMA)}\n\n${FIELD_GUIDE}`,
     messages: [{ role: 'user', content: userText }],
   });
   const message = await stream.finalMessage();
@@ -238,7 +249,10 @@ ${source}`;
   const text = message.content.map(b => (b.type === 'text' ? b.text : '')).join('');
   let content: SiteContent;
   try {
-    content = JSON.parse(text) as SiteContent;
+    // Tolerate a stray code fence or a sentence around the object.
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    content = JSON.parse(start >= 0 && end > start ? text.slice(start, end + 1) : text) as SiteContent;
   } catch {
     throw new Error('Claude returned content that could not be read. Try again.');
   }
@@ -247,6 +261,16 @@ ${source}`;
     throw new Error('The generated content was incomplete. Try again.');
   }
   return content;
+}
+
+// One retry: the reply is occasionally not valid JSON.
+export async function generateContent(crawl: Crawl, apiKey: string): Promise<SiteContent> {
+  try {
+    return await generateOnce(crawl, apiKey);
+  } catch (err) {
+    if (err instanceof Error && /declined|cut off/.test(err.message)) throw err;
+    return await generateOnce(crawl, apiKey);
+  }
 }
 
 // Demo address slug from the firm's domain: 3sbc.com → 3sbc-com.
