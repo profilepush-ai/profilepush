@@ -152,9 +152,10 @@ function SiteRow({ s, templates, onChange }: { s: Site; templates: string[]; onC
   );
 }
 
-export default function AdminWebsitesPage() {
-  const [authed, setAuthed] = useState(!!sessionStorage.getItem('admin_authed'));
-  const [pw, setPw] = useState('');
+// The demos/live/requests manager. Rendered as the Websites section of the
+// /admin sidebar and on its own at /admin/websites; both use the admin
+// password already in sessionStorage.
+export function AdminWebsitesPanel() {
   const [data, setData] = useState<{ requests: Request[]; sites: Site[]; templates: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'demos' | 'live' | 'requests'>('demos');
@@ -166,13 +167,11 @@ export default function AdminWebsitesPage() {
       setData(await call<{ requests: Request[]; sites: Site[]; templates: string[] }>({ action: 'list' }));
       setError(null);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to load';
-      if (msg === 'Invalid password') { sessionStorage.removeItem('admin_authed'); setAuthed(false); }
-      setError(msg);
+      setError(e instanceof Error ? e.message : 'Failed to load');
     }
   }, []);
 
-  useEffect(() => { if (authed) void load(); }, [authed, load]);
+  useEffect(() => { void load(); }, [load]);
 
   // Poll while a generation is in flight.
   const running = useMemo(() => (data?.requests ?? []).some(r => r.generation_status === 'queued' || r.generation_status === 'running'), [data]);
@@ -193,23 +192,6 @@ export default function AdminWebsitesPage() {
     setStarting(false);
   }
 
-  if (!authed) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <form
-          onSubmit={e => { e.preventDefault(); sessionStorage.setItem('admin_authed', pw); setAuthed(true); }}
-          className="bg-white rounded-2xl border border-gray-200 p-6 w-full max-w-sm space-y-3"
-        >
-          <Logo size="md" />
-          <p className="font-semibold text-gray-900">Website Demos admin</p>
-          <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Admin password" className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" autoFocus />
-          <button className="w-full bg-blue-600 text-white rounded-xl py-2 text-sm font-semibold">Sign in</button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-        </form>
-      </div>
-    );
-  }
-
   const sites = data?.sites ?? [];
   const demos = sites.filter(s => !s.account_id);
   const live = sites.filter(s => s.account_id);
@@ -217,15 +199,10 @@ export default function AdminWebsitesPage() {
   const sitesById = new Map(sites.map(s => [s.id, s]));
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3"><Link to="/admin"><Logo size="sm" /></Link><span className="text-sm font-semibold text-gray-900">Website Demos</span></div>
+      <div className="space-y-5">
+        <div className="flex justify-end">
           <button onClick={() => void load()} className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900"><RefreshCw size={14} /> Refresh</button>
         </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             ['Demos', demos.length],
@@ -323,6 +300,39 @@ export default function AdminWebsitesPage() {
             {data.requests.length === 0 && <p className="text-center text-sm text-gray-500 py-10">No demo requests yet.</p>}
           </div>
         )}
+      </div>
+  );
+}
+
+export default function AdminWebsitesPage() {
+  const [authed, setAuthed] = useState(!!sessionStorage.getItem('admin_authed'));
+  const [pw, setPw] = useState('');
+
+  if (!authed) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <form
+          onSubmit={e => { e.preventDefault(); sessionStorage.setItem('admin_authed', pw); setAuthed(true); }}
+          className="bg-white rounded-2xl border border-gray-200 p-6 w-full max-w-sm space-y-3"
+        >
+          <Logo size="md" />
+          <p className="font-semibold text-gray-900">Website Demos admin</p>
+          <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Admin password" className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" autoFocus />
+          <button className="w-full bg-blue-600 text-white rounded-xl py-2 text-sm font-semibold">Sign in</button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-3">
+          <Link to="/admin?view=websites"><Logo size="sm" /></Link><span className="text-sm font-semibold text-gray-900">Website Demos</span>
+        </div>
+      </header>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        <AdminWebsitesPanel />
       </main>
     </div>
   );

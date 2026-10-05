@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bell, Filter, Lock, Menu, RefreshCcw, Target, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Rss, Users, Smartphone, List as ListIcon, Table as TableIcon, Star } from 'lucide-react';
+import { Bell, Filter, Lock, Menu, RefreshCcw, Target, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Rss, Users, Smartphone, List as ListIcon, Table as TableIcon, Star, Globe } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
@@ -20,6 +20,7 @@ import { formatChange, trendOf, type Trend } from '../lib/admin-targets';
 import type { BriefLine } from '../lib/admin-briefing';
 import AdminTrendsPanel from '../components/AdminTrendsPanel';
 import AdminPostOutreachPanel from '../components/AdminPostOutreachPanel';
+import { AdminWebsitesPanel } from './AdminWebsitesPage';
 import { supabase } from '../lib/supabase';
 import { filterAndSortAccountStats, formatUserType, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
 
@@ -96,13 +97,14 @@ interface LinkedinScraperConfig {
   updated_at: string;
 }
 
-type AdminView = 'stats' | 'lists' | 'emails' | 'feedback' | 'scraper' | 'scraper-logs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social' | 'notifications';
+type AdminView = 'stats' | 'websites' | 'lists' | 'emails' | 'feedback' | 'scraper' | 'scraper-logs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social' | 'notifications';
 
 // The sidebar renders from this rather than from nine hand-written buttons,
 // which is what the top nav had become — adding a section meant editing the
 // markup in three places and the subtitle chain in a fourth.
 const ADMIN_NAV: Array<{ id: AdminView; label: string; Icon: typeof TrendingUp }> = [
   { id: 'stats', label: 'Account Stats', Icon: UserRound },
+  { id: 'websites', label: 'Websites', Icon: Globe },
   { id: 'lists', label: 'Lists', Icon: ListIcon },
   { id: 'emails', label: 'Emails', Icon: Mail },
   { id: 'feedback', label: 'Feedback', Icon: Star },
@@ -706,6 +708,7 @@ export default function AdminDashboard() {
       : adminView === 'post-outreach' ? 'Scraped posts — AI comment outreach'
       : adminView === 'social' ? 'Publish one post to every connected network'
       : adminView === 'notifications' ? 'Requests and notifications from users'
+      : adminView === 'websites' ? 'Website Modernization: demos, live sites and demo requests'
       : 'AI prompt configuration';
   const currentNavLabel = ADMIN_NAV.find((item) => item.id === adminView)?.label ?? 'Admin';
 
@@ -1316,6 +1319,7 @@ export default function AdminDashboard() {
   {adminView === 'scraper-logs' && <AdminScraperLogsPanel />}
 
         {adminView === 'ai-prompts' && <AdminAiPromptsPanel />}
+        {adminView === 'websites' && <AdminWebsitesPanel />}
         {adminView === 'channels' && <AdminChannelsPanel />}
         {adminView === 'lists' && <AdminListsPanel />}
         {adminView === 'emails' && <AdminEmailsPanel />}
