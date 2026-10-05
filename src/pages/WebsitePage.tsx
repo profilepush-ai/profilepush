@@ -4,7 +4,7 @@ import { BarChart3, Bell, CheckCircle, Globe, Inbox, Sparkles } from 'lucide-rea
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import { useAuth } from '../contexts/AuthContext';
-import { WEBSITE_PLAN } from '../lib/website-plan';
+import { LIVE_UPGRADE, WEBSITE_PLANS, type WebsitePlanTier } from '../lib/website-plan';
 import WebsiteSubmissions from '../components/website/WebsiteSubmissions';
 import WebsiteAnalytics from '../components/website/WebsiteAnalytics';
 import WebsiteDomain from '../components/website/WebsiteDomain';
@@ -59,7 +59,7 @@ export default function WebsitePage() {
   const [plan, setPlan] = useState<WebsitePlanStatus | null>(null);
   const [sites, setSites] = useState<MyWebsite[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [buying, setBuying] = useState(false);
+  const [buying, setBuying] = useState<WebsitePlanTier | 'live_upgrade' | null>(null);
   const [buyError, setBuyError] = useState<string | null>(null);
   const [result, setResult] = useState<WebsiteCheckoutResult | null>(null);
 
@@ -76,11 +76,11 @@ export default function WebsitePage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function buy() {
-    setBuying(true);
+  async function buy(plan: WebsitePlanTier | 'live_upgrade') {
+    setBuying(plan);
     setBuyError(null);
     try {
-      const res = await startWebsiteCheckout({ name: user?.user_metadata?.full_name ?? '', email: user?.email ?? '' });
+      const res = await startWebsiteCheckout({ name: user?.user_metadata?.full_name ?? '', email: user?.email ?? '' }, plan);
       if (res) {
         setResult(res);
         await Promise.all([load(), refreshAccount()]);
@@ -88,10 +88,10 @@ export default function WebsitePage() {
     } catch (err) {
       setBuyError(err instanceof Error ? err.message : 'Failed to start checkout');
     }
-    setBuying(false);
+    setBuying(null);
   }
 
-  const renew = plan?.active ?? false;
+  const current = plan?.active ? (plan.plan ?? 'live') : null;
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-gray-50 pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-0">
@@ -118,7 +118,7 @@ export default function WebsitePage() {
                 <p className="font-bold">Payment received{result.paymentId ? ` (${result.paymentId})` : ''}.</p>
                 {result.confirmed ? (
                   <p>
-                    Your website plan is active{result.planExpiresAt ? ` until ${fmtDate(result.planExpiresAt)}` : ''}, and {WEBSITE_PLAN.bonusCreditsLabel} credits
+                    Your plan is active{result.planExpiresAt ? ` until ${fmtDate(result.planExpiresAt)}` : ''} and your credits
                     were added{result.balance !== null ? `. Balance: ${result.balance.toLocaleString('en-IN')} credits` : ''}.
                   </p>
                 ) : (
@@ -128,43 +128,52 @@ export default function WebsitePage() {
             </div>
           )}
 
-          {plan && (
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 md:p-8">
-              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
-                <div>
-                  <span className={`inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 ${plan.active ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
-                    {plan.active ? 'Active' : plan.expiresAt ? 'Expired' : 'Website plan'}
-                  </span>
-                  <h2 className="text-2xl font-extrabold text-gray-900 mb-1">
-                    {plan.active
-                      ? `Active until ${fmtDate(plan.expiresAt!)}`
-                      : plan.expiresAt
-                        ? `Ended on ${fmtDate(plan.expiresAt)}`
-                        : 'Your staffing website, rebuilt to get enquiries'}
-                  </h2>
-                  <p className="text-sm text-gray-500 max-w-md">
-                    {plan.active
-                      ? 'Renewing early adds 12 months to your current end date, plus another ' + WEBSITE_PLAN.bonusCreditsLabel + ' credits.'
-                      : `${WEBSITE_PLAN.priceLabel} a year, all inclusive (GST included). Includes ${WEBSITE_PLAN.bonusCreditsLabel} ProfilePush credits.`}
-                  </p>
-                  {!plan.active && (
-                    <Link to="/websites" className="inline-block mt-3 text-sm font-semibold text-blue-600 hover:underline">What's included →</Link>
-                  )}
-                </div>
-                <div className="md:text-right shrink-0">
-                  <p className="text-3xl font-extrabold text-gray-900">{WEBSITE_PLAN.priceLabel}<span className="text-sm font-medium text-gray-500"> / year</span></p>
-                  <p className="text-xs text-gray-500 mb-3 flex md:justify-end items-center gap-1"><Sparkles size={11} className="text-orange-500" /> + {WEBSITE_PLAN.bonusCreditsLabel} credits</p>
-                  <button
-                    onClick={buy}
-                    disabled={buying}
-                    className="w-full md:w-auto px-6 py-3 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 disabled:opacity-60 transition-opacity"
-                    style={{ background: 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)' }}
-                  >
-                    {buying ? 'Opening checkout…' : renew ? 'Renew for 1 year' : 'Activate website plan'}
-                  </button>
-                  {buyError && <p className="text-xs text-red-600 mt-2 max-w-xs md:ml-auto">{buyError}</p>}
-                </div>
+          {plan && current && (
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-2 bg-emerald-100 text-emerald-700">
+                  {WEBSITE_PLANS[current].name} · Active
+                </span>
+                <h2 className="text-xl font-extrabold text-gray-900">Active until {fmtDate(plan.expiresAt!)}</h2>
+                <p className="text-sm text-gray-500">Renewing early adds 12 months to your end date, plus that plan's credits.</p>
               </div>
+              <div className="flex flex-wrap gap-2 md:justify-end">
+                {current === 'website' && (
+                  <button onClick={() => buy('live_upgrade')} disabled={!!buying} className="px-5 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-60" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)' }}>
+                    {buying === 'live_upgrade' ? 'Opening checkout…' : `Upgrade to Live · ${LIVE_UPGRADE.priceLabel}`}
+                  </button>
+                )}
+                <button onClick={() => buy(current)} disabled={!!buying} className="px-5 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 text-gray-800 hover:border-gray-300 disabled:opacity-60">
+                  {buying === current ? 'Opening checkout…' : `Renew ${WEBSITE_PLANS[current].name} · ${WEBSITE_PLANS[current].priceLabel}`}
+                </button>
+              </div>
+              {buyError && <p className="text-xs text-red-600 md:basis-full">{buyError}</p>}
+            </div>
+          )}
+
+          {plan && !current && (
+            <div className="space-y-3">
+              <div>
+                <h2 className="text-xl font-extrabold text-gray-900">{plan.expiresAt ? `Your plan ended on ${fmtDate(plan.expiresAt)}` : 'Choose a website plan'}</h2>
+                <p className="text-sm text-gray-500">Yearly, all inclusive (GST included). <Link to="/websites" className="text-blue-600 font-semibold hover:underline">What's included →</Link></p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {(['website', 'live'] as const).map(id => {
+                  const p = WEBSITE_PLANS[id];
+                  return (
+                    <div key={id} className={`bg-white rounded-2xl p-6 flex flex-col ${id === 'live' ? 'border-2 border-blue-600' : 'border border-gray-200'}`}>
+                      <p className="text-xs font-bold uppercase tracking-wider text-blue-700">{p.name}</p>
+                      <p className="text-3xl font-extrabold text-gray-900 mt-2">{p.priceLabel}<span className="text-sm font-medium text-gray-500"> / year</span></p>
+                      <p className="text-xs text-gray-500 flex items-center gap-1 mt-1"><Sparkles size={11} className="text-orange-500" /> + {p.creditsLabel} ProfilePush credits</p>
+                      <ul className="mt-4 space-y-1.5 text-sm text-gray-600 flex-1">{p.features.map(f => <li key={f} className="flex gap-2"><CheckCircle size={14} className="text-blue-600 mt-0.5 shrink-0" />{f}</li>)}</ul>
+                      <button onClick={() => buy(id)} disabled={!!buying} className={`mt-5 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-60 ${id === 'live' ? 'text-white' : 'border border-gray-300 text-gray-900'}`} style={id === 'live' ? { background: 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)' } : undefined}>
+                        {buying === id ? 'Opening checkout…' : `Activate ${p.name}`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {buyError && <p className="text-xs text-red-600">{buyError}</p>}
             </div>
           )}
 

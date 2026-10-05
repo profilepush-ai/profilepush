@@ -1,17 +1,17 @@
 import { buildSupabaseFunctionHeaders, supabase } from './supabase';
 import { getBillingErrorMessage, openRazorpayCheckout } from './billing-plan';
-import { WEBSITE_PLAN } from './website-plan';
+import type { WebsitePlanTier } from './website-plan';
 
 // Website plan status and checkout, for signed-in pages. Kept apart from
 // website-plan.ts so the public /websites page doesn't load Razorpay code.
 
-export type WebsitePlanStatus = { expiresAt: string | null; active: boolean };
+export type WebsitePlanStatus = { expiresAt: string | null; active: boolean; plan: WebsitePlanTier | null };
 
 export async function fetchMyWebsitePlan(): Promise<WebsitePlanStatus> {
   const { data, error } = await supabase.rpc('get_my_website_plan' as never);
   if (error) throw error;
-  const row = (data as unknown as { expires_at: string | null; active: boolean }[] | null)?.[0];
-  return { expiresAt: row?.expires_at ?? null, active: row?.active ?? false };
+  const row = (data as unknown as { expires_at: string | null; active: boolean; plan: WebsitePlanTier | null }[] | null)?.[0];
+  return { expiresAt: row?.expires_at ?? null, active: row?.active ?? false, plan: row?.plan ?? null };
 }
 
 export type WebsiteCheckoutResult = {
@@ -25,10 +25,18 @@ export type WebsiteCheckoutResult = {
 // paid (null if the buyer closes the checkout). Confirms the payment with us
 // right away so the plan and credits land now; the webhook would apply it
 // too, but only once either way.
-// With a claimToken, the payment also claims that demo website.
-export async function startWebsiteCheckout(prefill: { name?: string; email?: string }, claimToken?: string): Promise<WebsiteCheckoutResult | null> {
+// plan: 'website' | 'live', or 'live_upgrade' (Website → Live for the rest of
+// the term). With a claimToken, the payment also claims that demo website.
+export async function startWebsiteCheckout(
+  prefill: { name?: string; email?: string },
+  plan: WebsitePlanTier | 'live_upgrade',
+  claimToken?: string,
+): Promise<WebsiteCheckoutResult | null> {
   const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
-  const { data, error } = await supabase.functions.invoke('razorpay-create-website-order', { body: claimToken ? { claim_token: claimToken } : {}, headers: headers as Record<string, string> });
+  const { data, error } = await supabase.functions.invoke('razorpay-create-website-order', {
+    body: { plan, ...(claimToken ? { claim_token: claimToken } : {}) },
+    headers: headers as Record<string, string>,
+  });
   if (error || !data?.order_id) {
     let serverPayload: unknown = data;
     try { serverPayload = await (error as { context?: Response } | null)?.context?.json?.(); } catch { /* keep data */ }
@@ -42,7 +50,7 @@ export async function startWebsiteCheckout(prefill: { name?: string; email?: str
       amount: data.amount_inr_paise,
       currency: 'INR',
       name: 'ProfilePush',
-      description: `Website plan, 1 year + ${WEBSITE_PLAN.bonusCreditsLabel} credits`,
+      description: `${data.label ?? 'Website plan'} + ${Number(data.bonus_credits ?? 0).toLocaleString('en-IN')} credits`,
       image: '/favicon.svg',
       prefill,
       theme: { color: '#2563eb' },

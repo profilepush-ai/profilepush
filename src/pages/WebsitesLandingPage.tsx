@@ -9,20 +9,21 @@ import SiteFooter from '../components/SiteFooter';
 import MarketingNav from '../components/MarketingNav';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { WEBSITE_PLAN } from '../lib/website-plan';
+import { WEBSITE_PLANS } from '../lib/website-plan';
 
 // Website Modernization: an add-on for staffing firms. We rebuild a firm's
 // existing website from its own content into a modern site built around the
 // 2–3 enquiries that fit the firm (candidates, consultants, hiring clients,
 // partners, training), send a private demo, and the owner claims it for one
-// yearly price that also includes ProfilePush credits.
+// yearly plan (Website, or Live Website with a live jobs and bench portal)
+// that also includes ProfilePush credits.
 // The demo request form below writes to website_demo_requests and also goes
 // to the CRM webhook the Contact page uses.
 
 const CRM_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/48XyGfN1WxneooOcHGHn/webhook-trigger/5acdf9f6-c8e2-44ea-91be-163a46cf83fd';
 const CANONICAL = 'https://profilepush.ai/websites';
 const TITLE = 'Website Modernization for IT Staffing Firms — ProfilePush';
-const DESCRIPTION = `We rebuild your staffing website from your existing content into a modern site built to bring in the enquiries that grow your firm. Free demo. ${WEBSITE_PLAN.priceLabel} a year, including hosting, an admin portal, email alerts and ${WEBSITE_PLAN.bonusCreditsLabel} ProfilePush credits.`;
+const DESCRIPTION = `We rebuild your staffing website from your existing content into a modern site built to bring in the enquiries that grow your firm. Free demo. From ${WEBSITE_PLANS.website.priceLabel} a year, including hosting, an admin portal, email alerts and ProfilePush credits.`;
 
 // Example sites on the page. Only firms that have agreed to be featured
 // (the site's showcase flag in Admin > Website Demos).
@@ -49,12 +50,14 @@ const STEPS = [
   { n: '1', t: 'Send your current website', d: 'Share the link. No forms to fill, no content to write.' },
   { n: '2', t: 'We rebuild it', d: 'Your own services, story and contact details, in a modern design built to get enquiries.' },
   { n: '3', t: 'Review your private demo', d: 'You get a private demo link to see the new site before paying anything.' },
-  { n: '4', t: 'Claim it and go live', d: `Pay ${WEBSITE_PLAN.priceLabel} for the year, connect your domain and start receiving enquiries.` },
+  { n: '4', t: 'Claim it and go live', d: `Pick Website (${WEBSITE_PLANS.website.priceLabel}) or Live Website (${WEBSITE_PLANS.live.priceLabel}) for the year, connect your domain and start receiving enquiries.` },
 ];
 
 const FAQ = [
   { q: 'Is the demo really free?', a: 'Yes. We build the demo from your current website at no cost. You only pay if you want to claim it and go live.' },
-  { q: `What does ${WEBSITE_PLAN.priceLabel} a year include?`, a: `Everything, including GST: the rebuilt website, hosting with HTTPS, connecting your domain, the admin portal with submissions and analytics, email alerts, a daily analytics email, and ${WEBSITE_PLAN.bonusCreditsLabel} ProfilePush credits.` },
+  { q: `What does the Website plan include?`, a: `Everything, including GST, for ${WEBSITE_PLANS.website.priceLabel} a year: the rebuilt website, hosting with HTTPS, connecting your domain, the admin portal with submissions and analytics, email alerts, a daily analytics email, and ${WEBSITE_PLANS.website.creditsLabel} ProfilePush credits.` },
+  { q: 'What does Live Website add?', a: `A live portal on your site that shows your current ProfilePush job posts and bench consultants, updated automatically as you post, so the site never goes stale. ${WEBSITE_PLANS.live.priceLabel} a year with ${WEBSITE_PLANS.live.creditsLabel} credits. You can upgrade from Website at any time.` },
+  { q: 'Does the live portal show consultant names or rates?', a: 'No. It shows role, skills, experience, visa, location and availability only. Visitors who are interested send an enquiry through your site.' },
   { q: 'What can I do with the ProfilePush credits?', a: 'Use them across ProfilePush: AI Match results, AI drafts, Gmail sends, posts and video screenings. Credits never expire.' },
   { q: 'Do I need to write new content?', a: 'No. We use the content already on your website: your services, industries, about text and contact details. You can ask for changes before you go live.' },
   { q: 'Can I keep my domain?', a: 'Yes. Your domain stays yours. You point it to the new site with a DNS change, or we do it for you.' },
@@ -226,7 +229,7 @@ export default function WebsitesLandingPage() {
         name: 'Website Modernization for IT Staffing Firms',
         description: DESCRIPTION,
         provider: { '@id': 'https://profilepush.ai/#organization' },
-        offers: { '@type': 'Offer', price: WEBSITE_PLAN.priceInr, priceCurrency: 'INR', url: CANONICAL },
+        offers: { '@type': 'AggregateOffer', lowPrice: WEBSITE_PLANS.website.priceInr, highPrice: WEBSITE_PLANS.live.priceInr, offerCount: 2, priceCurrency: 'INR', url: CANONICAL },
       },
       {
         '@type': 'BreadcrumbList',
@@ -274,9 +277,9 @@ export default function WebsitesLandingPage() {
             <p className="mt-4 text-xs text-gray-500 flex items-center gap-2 flex-wrap justify-center">
               <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />Free demo</span>
               <span className="text-gray-400">·</span>
-              <span>{WEBSITE_PLAN.priceLabel} / year, all inclusive</span>
+              <span>From {WEBSITE_PLANS.website.priceLabel} / year, all inclusive</span>
               <span className="text-gray-400">·</span>
-              <span>{WEBSITE_PLAN.bonusCreditsLabel} ProfilePush credits included</span>
+              <span>ProfilePush credits included</span>
             </p>
           </div>
           <div className="relative mt-12 max-w-5xl mx-auto">
@@ -392,33 +395,36 @@ export default function WebsitesLandingPage() {
           <div className="max-w-5xl mx-auto">
             <div className="text-center mb-14">
               <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Pricing</p>
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">One plan. Everything included.</h2>
-              <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">The demo is free. Claim your website for one yearly price, and get ProfilePush credits with it.</p>
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Two plans. Everything included.</h2>
+              <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">The demo is free, and you pay only if you claim it. Pick a plan for the year, with ProfilePush credits included.</p>
             </div>
-            <div className="max-w-md mx-auto bg-white rounded-2xl border-2 border-blue-600 p-8 flex flex-col relative shadow-xl shadow-blue-600/10">
-              <span className="absolute -top-3 left-8 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm text-white bg-blue-600">Yearly</span>
-              <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-blue-50 text-blue-700 w-fit">Website</span>
-              <div className="flex items-baseline gap-1.5 mb-0.5">
-                <span className="text-5xl font-extrabold text-gray-900">{WEBSITE_PLAN.priceLabel}</span>
-                <span className="text-gray-500 text-sm">/ year</span>
-              </div>
-              <p className="text-xs text-gray-500 mb-6">All inclusive, GST included · free demo first, pay only if you claim it</p>
-              <div className="rounded-xl bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 px-4 py-3 mb-6 flex items-center gap-3">
-                <Sparkles size={18} className="text-orange-500 shrink-0" />
-                <p className="text-sm text-gray-800"><b>{WEBSITE_PLAN.bonusCreditsLabel} ProfilePush credits free</b> <span className="text-gray-500">(worth ₹{WEBSITE_PLAN.bonusCredits.toLocaleString('en-IN')}), credits never expire</span></p>
-              </div>
-              <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
-                <Check>Modern website rebuilt from your content</Check>
-                <Check>Candidate and vendor enquiry forms, with résumé uploads</Check>
-                <Check>Admin portal: submissions, analytics, CSV export</Check>
-                <Check>Email alerts for every enquiry, sent to the addresses you choose</Check>
-                <Check>Daily analytics email</Check>
-                <Check>Hosting, HTTPS and domain connection included</Check>
-                <Check>Changes to your content on request</Check>
-              </ul>
-              <a href="#demo" className="w-full text-center bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-3.5 rounded-xl transition-colors">
-                Get my free demo
-              </a>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+              {(['website', 'live'] as const).map(id => {
+                const plan = WEBSITE_PLANS[id];
+                const hot = id === 'live';
+                return (
+                  <div key={id} className={`bg-white rounded-2xl p-8 flex flex-col relative ${hot ? 'border-2 border-blue-600 shadow-xl shadow-blue-600/10' : 'border border-gray-200'}`}>
+                    {hot && <span className="absolute -top-3 left-8 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm text-white bg-blue-600">Most value</span>}
+                    <span className={`inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-4 w-fit ${hot ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{plan.name}</span>
+                    <div className="flex items-baseline gap-1.5 mb-0.5">
+                      <span className="text-5xl font-extrabold text-gray-900">{plan.priceLabel}</span>
+                      <span className="text-gray-500 text-sm">/ year</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-4">All inclusive, GST included</p>
+                    <p className="text-sm text-gray-600 mb-5 leading-relaxed">{plan.summary}</p>
+                    <div className="rounded-xl bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 px-4 py-3 mb-6 flex items-center gap-3">
+                      <Sparkles size={18} className="text-orange-500 shrink-0" />
+                      <p className="text-sm text-gray-800"><b>{plan.creditsLabel} ProfilePush credits</b> <span className="text-gray-500">included, never expire</span></p>
+                    </div>
+                    <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
+                      {plan.features.map(f => <Check key={f}>{f}</Check>)}
+                    </ul>
+                    <a href="#demo" className={`w-full text-center text-sm font-semibold py-3.5 rounded-xl transition-colors ${hot ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'border border-gray-300 hover:border-gray-400 text-gray-800'}`}>
+                      Get my free demo
+                    </a>
+                  </div>
+                );
+              })}
             </div>
             <p className="text-center text-xs text-gray-500 mt-5 flex items-center justify-center gap-1.5">
               <ShieldCheck size={12} className="text-emerald-500" /> Already on ProfilePush? Your credits are added to your existing account.
