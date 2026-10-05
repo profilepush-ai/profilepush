@@ -22,10 +22,16 @@ const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'applic
 const FREE = new Set(['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'aol.com', 'live.com', 'protonmail.com', 'proton.me', 'ymail.com', 'rediffmail.com', 'msn.com', 'me.com', 'zoho.com', 'mail.com', 'gmx.com', 'yahoo.co.in', 'googlemail.com', 'zohomail.in', 'zohomail.com', 'yandex.com', 'qq.com', '163.com']);
 const DOMAIN = /^[a-z0-9.-]+\.[a-z]{2,}$/;
 
-// 1. Domains from the database, with activity.
-const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/website_build_list_sources`, { method: 'POST', headers: H, body: '{}' });
-if (!res.ok) { console.error('website_build_list_sources', res.status, await res.text()); process.exit(1); }
-const rows = new Map((await res.json()).map(r => [r.domain, { ...r, company: null }]));
+// 1. Domains from the database, with activity. The API returns at most
+// 1,000 rows per request, so page through them.
+const rows = new Map();
+for (let offset = 0; ; offset += 1000) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/website_build_list_sources?order=domain&limit=1000&offset=${offset}`, { method: 'POST', headers: H, body: '{}' });
+  if (!res.ok) { console.error('website_build_list_sources', res.status, await res.text()); process.exit(1); }
+  const page = await res.json();
+  for (const r of page) rows.set(r.domain, { ...r, company: null });
+  if (page.length < 1000) break;
+}
 
 // 2. Contact lists.
 for (const file of opt('csv')) {
