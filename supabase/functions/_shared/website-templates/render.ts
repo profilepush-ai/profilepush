@@ -31,7 +31,8 @@ export type SiteContent = {
   company_name: string;
   legal_name?: string;
   logo_text?: string;
-  theme?: { primary?: string; secondary?: string };
+  // Colours and Google Fonts families taken from the firm's own site.
+  theme?: { primary?: string; secondary?: string; font_display?: string; font_body?: string };
   seo?: { title?: string; description?: string };
   hero: { eyebrow: string; title: string; sub: string };
   goals: SiteGoal[];
@@ -116,6 +117,26 @@ function run(nodes: Node[], ctx: unknown, item: unknown): string {
     }
   }
   return out;
+}
+
+// Each template's own pairing, used only when the firm's site has no
+// Google Fonts of its own (plain Arial/Helvetica sites).
+const DEFAULT_FONTS: Record<string, { display: string; body: string }> = {
+  meridian: { display: 'Fraunces', body: 'Manrope' },
+  atlas: { display: 'Plus Jakarta Sans', body: 'Plus Jakarta Sans' },
+  nova: { display: 'Syne', body: 'DM Sans' },
+};
+const FAMILY = /^[A-Za-z][A-Za-z0-9 ]{1,40}$/;
+
+function fontsFor(template: string, theme: SiteContent['theme']) {
+  const d = DEFAULT_FONTS[template] ?? DEFAULT_FONTS.nova;
+  const body = theme?.font_body && FAMILY.test(theme.font_body) ? theme.font_body : d.body;
+  const display = theme?.font_display && FAMILY.test(theme.font_display) ? theme.font_display : (theme?.font_body && FAMILY.test(theme.font_body) ? body : d.display);
+  // 400 and 700 exist for nearly every family; asking for a weight a family
+  // lacks makes Google Fonts reject the whole request.
+  const fam = (f: string) => `family=${encodeURIComponent(f).replace(/%20/g, '+')}:wght@400;700`;
+  const href = `https://fonts.googleapis.com/css2?${[...new Set([display, body])].map(fam).join('&')}&display=swap`;
+  return { display, body, href };
 }
 
 const parsed: Record<string, Node[]> = {};
@@ -220,5 +241,5 @@ export function prepare(c: SiteContent): Record<string, unknown> {
 }
 
 export function renderSite(template: string, content: SiteContent): string {
-  return run(compiled(template), prepare(content), undefined);
+  return run(compiled(template), { ...prepare(content), fonts: fontsFor(template, content.theme) }, undefined);
 }
