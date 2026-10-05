@@ -100,13 +100,14 @@ export async function claimWithActivePlan(token: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export const WEBSITE_HOST_URL = 'https://profilepush-website-host.profilepush-ai.workers.dev';
-// Set once the sites domain is routed to the website-host Worker.
-export const SITES_DOMAIN = '';
+// Demos and live sites: https://site.profilepush.ai/<slug>/ (slug = the
+// firm's domain, e.g. 3sbc-com). A connected custom domain takes over once
+// it's active.
+export const SITE_BASE_URL = 'https://site.profilepush.ai';
 
-export function websiteUrl(site: { slug: string; custom_domain?: string | null }): string {
-  if (site.custom_domain) return `https://${site.custom_domain}/`;
-  return SITES_DOMAIN ? `https://${site.slug}.${SITES_DOMAIN}/` : `${WEBSITE_HOST_URL}/s/${site.slug}/`;
+export function websiteUrl(site: { slug: string; custom_domain?: string | null; domain_status?: string | null }): string {
+  if (site.custom_domain && site.domain_status === 'active') return `https://${site.custom_domain}/`;
+  return `${SITE_BASE_URL}/${site.slug}/`;
 }
 
 export type MyWebsite = {
@@ -115,23 +116,37 @@ export type MyWebsite = {
   name: string;
   status: string;
   custom_domain: string | null;
+  domain_status: string | null;
   claimed_at: string | null;
+  notify_emails: string[];
+  daily_report: boolean;
 };
 
 export async function fetchMyWebsites(): Promise<MyWebsite[]> {
   const { data, error } = await supabase
     .from('websites' as never)
-    .select('id, slug, name, status, custom_domain, claimed_at')
+    .select('id, slug, name, status, custom_domain, domain_status, claimed_at, notify_emails, daily_report')
     .order('claimed_at', { ascending: true });
   if (error) throw error;
   return (data ?? []) as unknown as MyWebsite[];
 }
 
+export type SubmissionKind = 'candidate' | 'consultant' | 'employer' | 'partner' | 'training' | 'contact';
+
+export const KIND_LABEL: Record<SubmissionKind, string> = {
+  candidate: 'Candidate',
+  consultant: 'Consultant',
+  employer: 'Employer',
+  partner: 'Partner',
+  training: 'Training',
+  contact: 'Contact',
+};
+
 export type WebsiteSubmission = {
   id: string;
   created_at: string;
   website_id: string;
-  kind: 'candidate' | 'partner' | 'contact';
+  kind: SubmissionKind;
   name: string | null;
   email: string | null;
   phone: string | null;
@@ -178,4 +193,49 @@ export function submissionsCsv(rows: WebsiteSubmission[]): string {
     r.resume_filename ?? '',
   ].map(cell).join(','));
   return [header.map(cell).join(','), ...lines].join('\n');
+}
+
+export type WebsiteAnalytics = {
+  days: number;
+  totals: { visitors: number; pageviews: number; cta_clicks: number; enquiries: number };
+  series: { day: string; visitors: number; pageviews: number; enquiries: number }[];
+  enquiries_by_kind: Partial<Record<SubmissionKind, number>>;
+  referrers: { name: string; count: number }[];
+  countries: { name: string; count: number }[];
+  devices: Partial<Record<'mobile' | 'tablet' | 'desktop', number>>;
+  ctas: { name: string; count: number }[];
+};
+
+export async function fetchAnalytics(websiteId: string, days: number): Promise<WebsiteAnalytics> {
+  const { data, error } = await supabase.rpc('get_website_analytics' as never, { p_website_id: websiteId, p_days: days } as never);
+  if (error) throw error;
+  return data as unknown as WebsiteAnalytics;
+}
+
+export async function updateNotifications(websiteId: string, emails: string[], dailyReport: boolean): Promise<void> {
+  const { error } = await supabase.rpc('update_website_notifications' as never, {
+    p_website_id: websiteId, p_emails: emails, p_daily_report: dailyReport,
+  } as never);
+  if (error) throw new Error(error.message);
+}
+
+export type DomainState = {
+  domain: string | null;
+  status: 'pending' | 'active' | 'failed' | null;
+  records: { type: string; name: string; value: string }[];
+  errors?: string[];
+};
+
+export async function domainAction(action: 'connect' | 'status' | 'remove', websiteId: string, domain?: string): Promise<DomainState> {
+  const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
+  const { data, error } = await supabase.functions.invoke('website-domain', {
+    body: { action, website_id: websiteId, domain },
+    headers: headers as Record<string, string>,
+  });
+  if (error || data?.error) {
+    let serverPayload: unknown = data;
+    try { serverPayload = await (error as { context?: Response } | null)?.context?.json?.(); } catch { /* keep data */ }
+    throw new Error(getBillingErrorMessage(error ?? data?.error, 'Something went wrong. Please try again.', serverPayload));
+  }
+  return data as DomainState;
 }

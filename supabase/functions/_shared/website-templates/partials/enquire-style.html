@@ -1,0 +1,43 @@
+/* Shared enquiry forms. Each template sets --pp-brand, --pp-brand-ink,
+   --pp-text, --pp-muted, --pp-line, --pp-field-bg, --pp-surface, --pp-radius. */
+.pp-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+.pp-eyebrow{font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--pp-brand);margin:0 0 12px}
+.pp-tabs{display:inline-flex;gap:4px;padding:4px;border-radius:999px;border:1px solid var(--pp-line);margin:24px 0}
+.pp-tabs button{border:0;background:none;padding:10px 18px;border-radius:999px;font:inherit;font-weight:600;font-size:14px;color:var(--pp-muted);cursor:pointer}
+.pp-tabs button[aria-selected="true"]{background:var(--pp-brand);color:var(--pp-brand-ink)}
+.pp-contact{list-style:none;padding:0;margin:0 0 20px;display:grid;gap:8px;color:var(--pp-muted);font-size:15px}
+.pp-contact a{color:inherit;text-decoration:none}
+.pp-contact a:hover{color:var(--pp-brand)}
+.pp-badges{display:flex;flex-wrap:wrap;gap:8px}
+.pp-badge{font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;border:1px solid var(--pp-line);color:var(--pp-text)}
+.pp-form{display:block}
+.pp-form[hidden],.pp-success[hidden]{display:none}
+.pp-choices{border:0;padding:0;margin:0 0 18px;display:flex;flex-wrap:wrap;gap:8px}
+.pp-choices legend{font-size:14px;color:var(--pp-muted);margin-bottom:10px;padding:0}
+.pp-choices label{position:relative;cursor:pointer}
+.pp-choices input{position:absolute;opacity:0;pointer-events:none}
+.pp-choices span{display:inline-block;padding:9px 15px;border-radius:999px;border:1px solid var(--pp-line);font-size:14px;transition:all .15s}
+.pp-choices input:checked + span{background:var(--pp-brand);border-color:var(--pp-brand);color:var(--pp-brand-ink)}
+.pp-choices input:focus-visible + span{outline:2px solid var(--pp-brand);outline-offset:2px}
+.pp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pp-full{grid-column:1/-1}
+@media (max-width:600px){.pp-grid{grid-template-columns:1fr}}
+.pp-field{display:grid;gap:6px;font-size:13px;color:var(--pp-muted)}
+.pp-field input,.pp-field select,.pp-field textarea{width:100%;box-sizing:border-box;padding:12px 14px;border-radius:var(--pp-radius);border:1px solid var(--pp-line);background:var(--pp-field-bg);color:var(--pp-text);font:inherit;font-size:15px;outline:none;transition:border-color .15s,box-shadow .15s}
+.pp-field textarea{resize:vertical;min-height:90px}
+.pp-field input:focus,.pp-field select:focus,.pp-field textarea:focus{border-color:var(--pp-brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--pp-brand) 20%,transparent)}
+.pp-field .pp-err{border-color:#e5484d}
+.pp-drop{display:grid;gap:2px;padding:16px;border-radius:var(--pp-radius);border:1.5px dashed var(--pp-line);cursor:pointer;text-align:center;color:var(--pp-text);transition:border-color .15s}
+.pp-drop:hover,.pp-drop.pp-over{border-color:var(--pp-brand)}
+.pp-drop input{display:none}
+.pp-drop small{color:var(--pp-muted)}
+.pp-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:18px}
+.pp-foot p{font-size:12.5px;color:var(--pp-muted);max-width:38ch;margin:0}
+.pp-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;padding:14px 26px;border-radius:999px;background:var(--pp-brand);color:var(--pp-brand-ink);font:inherit;font-weight:700;font-size:15px;transition:transform .15s,box-shadow .15s}
+.pp-btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px -8px var(--pp-brand)}
+.pp-btn[disabled]{opacity:.6;cursor:default;transform:none}
+.pp-btn-ghost{background:transparent;color:var(--pp-text);border:1px solid var(--pp-line)}
+.pp-success{text-align:center;padding:48px 8px}
+.pp-check{width:72px;height:72px;margin:0 auto 18px;border-radius:50%;display:grid;place-items:center;background:var(--pp-brand);color:var(--pp-brand-ink);font-size:32px}
+.pp-success h3{margin:0 0 8px;font-size:24px}
+.pp-success p{color:var(--pp-muted);margin:0 auto 20px;max-width:40ch}

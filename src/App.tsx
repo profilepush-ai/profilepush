@@ -64,6 +64,7 @@ const BenchSalesLandingPage = lazy(() => import('./pages/BenchSalesLandingPage')
 const WebsitesLandingPage = lazy(() => import('./pages/WebsitesLandingPage'));
 const WebsitePage = lazy(() => import('./pages/WebsitePage'));
 const ClaimWebsitePage = lazy(() => import('./pages/ClaimWebsitePage'));
+const AdminWebsitesPage = lazy(() => import('./pages/AdminWebsitesPage'));
 
 function PageLoader() {
   return (
@@ -325,6 +326,7 @@ export default function App() {
             <Route path="/how-it-works" element={<ErrorBoundary><HowItWorks /></ErrorBoundary>} />
             <Route path="/admin" element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
             <Route path="/admin/commands" element={<ErrorBoundary><AdminCommands /></ErrorBoundary>} />
+            <Route path="/admin/websites" element={<ErrorBoundary><AdminWebsitesPage /></ErrorBoundary>} />
 
             {/* Protected */}
             <Route path="/desk" element={<ProtectedRoute><Navigate to="/feed" replace /></ProtectedRoute>} />

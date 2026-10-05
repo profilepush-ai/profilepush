@@ -1,30 +1,58 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart3, Bell, CheckCircle, Globe, Sparkles } from 'lucide-react';
+import { BarChart3, Bell, CheckCircle, Globe, Inbox, Sparkles } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import { useAuth } from '../contexts/AuthContext';
 import { WEBSITE_PLAN } from '../lib/website-plan';
 import WebsiteSubmissions from '../components/website/WebsiteSubmissions';
+import WebsiteAnalytics from '../components/website/WebsiteAnalytics';
+import WebsiteDomain from '../components/website/WebsiteDomain';
+import WebsiteNotifications from '../components/website/WebsiteNotifications';
 import {
   fetchMyWebsitePlan, fetchMyWebsites, startWebsiteCheckout,
   type MyWebsite, type WebsiteCheckoutResult, type WebsitePlanStatus,
 } from '../lib/website-checkout';
 
 // The account's Website Modernization plan (status, and the ₹29,999 yearly
-// checkout, which also adds 5,000 credits) and each claimed website's
-// enquiries. Analytics, domain and notification settings join this page as
-// those parts are built.
+// checkout, which also adds 5,000 credits) and, for each claimed website,
+// tabs for its enquiries, analytics, domain and notification settings.
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-const COMING = [
-  { icon: BarChart3, t: 'Analytics', d: 'Visitors, sources and enquiry conversions.' },
-  { icon: Globe, t: 'Domain', d: 'Connect your domain, with HTTPS.' },
-  { icon: Bell, t: 'Notifications', d: 'Who gets enquiry alerts and the daily report.' },
-];
+const TABS = [
+  { id: 'enquiries', label: 'Enquiries', icon: Inbox },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { id: 'domain', label: 'Domain', icon: Globe },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+] as const;
+
+function SiteManager({ site, onChanged }: { site: MyWebsite; onChanged: () => void }) {
+  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('enquiries');
+  return (
+    <section className="space-y-3">
+      <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label={`${site.name} website`}>
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold whitespace-nowrap ${tab === t.id ? 'bg-white border border-gray-200 text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+          >
+            <t.icon size={14} /> {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'enquiries' && <WebsiteSubmissions site={site} />}
+      {tab === 'analytics' && <WebsiteAnalytics websiteId={site.id} />}
+      {tab === 'domain' && <WebsiteDomain site={site} onChanged={onChanged} />}
+      {tab === 'notifications' && <WebsiteNotifications key={site.id} site={site} onSaved={onChanged} />}
+    </section>
+  );
+}
 
 export default function WebsitePage() {
   const { user, refreshAccount } = useAuth();
@@ -140,7 +168,7 @@ export default function WebsitePage() {
             </div>
           )}
 
-          {sites.map(site => <WebsiteSubmissions key={site.id} site={site} />)}
+          {sites.map(site => <SiteManager key={site.id} site={site} onChanged={load} />)}
 
           {plan && plan.active && sites.length === 0 && (
             <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-5 text-sm text-gray-600">
@@ -148,19 +176,6 @@ export default function WebsitePage() {
             </div>
           )}
 
-          {plan && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {COMING.map(c => (
-                <div key={c.t} className="bg-white rounded-2xl border border-gray-200 p-5 flex gap-3 opacity-70">
-                  <span className="w-9 h-9 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center shrink-0"><c.icon size={16} /></span>
-                  <div>
-                    <p className="font-semibold text-gray-900 text-sm">{c.t} <span className="ml-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Coming soon</span></p>
-                    <p className="text-xs text-gray-500">{c.d}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </main>
     </div>

@@ -12,20 +12,33 @@ import { useAuth } from '../contexts/AuthContext';
 import { WEBSITE_PLAN } from '../lib/website-plan';
 
 // Website Modernization: an add-on for staffing firms. We rebuild a firm's
-// existing website from its own content into a modern site built for two
-// enquiries (candidates and vendor partners), send a private demo, and the
-// owner claims it for one yearly price that also includes ProfilePush credits.
+// existing website from its own content into a modern site built around the
+// 2–3 enquiries that fit the firm (candidates, consultants, hiring clients,
+// partners, training), send a private demo, and the owner claims it for one
+// yearly price that also includes ProfilePush credits.
 // The demo request form below writes to website_demo_requests and also goes
 // to the CRM webhook the Contact page uses.
 
 const CRM_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/48XyGfN1WxneooOcHGHn/webhook-trigger/5acdf9f6-c8e2-44ea-91be-163a46cf83fd';
 const CANONICAL = 'https://profilepush.ai/websites';
 const TITLE = 'Website Modernization for IT Staffing Firms — ProfilePush';
-const DESCRIPTION = `We rebuild your staffing website from your existing content into a modern site that brings in candidates and vendor partners. Free demo. ${WEBSITE_PLAN.priceLabel} a year, including hosting, an admin portal, email alerts and ${WEBSITE_PLAN.bonusCreditsLabel} ProfilePush credits.`;
+const DESCRIPTION = `We rebuild your staffing website from your existing content into a modern site built to bring in the enquiries that grow your firm. Free demo. ${WEBSITE_PLAN.priceLabel} a year, including hosting, an admin portal, email alerts and ${WEBSITE_PLAN.bonusCreditsLabel} ProfilePush credits.`;
+
+// Example sites on the page. Only firms that have agreed to be featured
+// (the site's showcase flag in Admin > Website Demos).
+const EXAMPLES = [
+  {
+    name: 'Cerf IT',
+    what: 'IT, validation & quality staffing',
+    goals: ['Candidates', 'Vendor partners'],
+    url: 'https://site.profilepush.ai/cerfits-com/',
+    image: '/screens/websites/cerf-it.jpg',
+  },
+];
 
 const FEATURES = [
-  { icon: UserRound, t: 'Candidate enquiries', d: 'A clear "find a role" path with skills, work authorization, availability and résumé upload.', tone: 'bg-yellow-100 text-yellow-700' },
-  { icon: Briefcase, t: 'Vendor & partner enquiries', d: 'A separate path for subvendors, prime vendors and hiring clients, with bench size and core skills.', tone: 'bg-blue-100 text-blue-700' },
+  { icon: UserRound, t: 'Built around your 2–3 goals', d: 'Candidates, consultant sign-ups, hiring clients, vendor partners or training enquiries: whichever bring your firm business.', tone: 'bg-yellow-100 text-yellow-700' },
+  { icon: Briefcase, t: 'A form for each goal', d: 'Skills, work authorization, availability and résumé upload for people; roles, headcount and start dates for clients.', tone: 'bg-blue-100 text-blue-700' },
   { icon: Inbox, t: 'Admin portal', d: 'Every submission in one place, with résumé downloads, status tracking and CSV export.', tone: 'bg-purple-100 text-purple-700' },
   { icon: BarChart3, t: 'Website analytics', d: 'Visitors, top pages, traffic sources, devices, and how many visitors became enquiries.', tone: 'bg-emerald-100 text-emerald-700' },
   { icon: Bell, t: 'Email alerts & daily report', d: 'Choose who gets an email for each new enquiry, plus a daily analytics summary.', tone: 'bg-rose-100 text-rose-700' },
@@ -102,10 +115,10 @@ function BeforeAfter() {
           <div className="absolute -bottom-16 -left-10 w-48 h-48 rounded-full bg-lime-300/30 blur-3xl" />
           <div className="relative">
             <span className="inline-flex items-center gap-1.5 text-[10px] text-white/70 border border-white/15 rounded-full px-2 py-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-lime-300" /> E-Verified Employer
+              <span className="w-1.5 h-1.5 rounded-full bg-lime-300" /> Your firm · Since 2010
             </span>
             <p className="mt-3 text-2xl font-black leading-none tracking-tight text-white">
-              Talent that <span className="bg-gradient-to-r from-lime-300 via-cyan-300 to-violet-400 bg-clip-text text-transparent">ships.</span>
+              Your headline, <span className="bg-gradient-to-r from-lime-300 via-cyan-300 to-violet-400 bg-clip-text text-transparent">rewritten.</span>
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-lime-300/40 bg-white/5 p-3">
@@ -113,12 +126,12 @@ function BeforeAfter() {
                 <p className="text-[11px] text-white mt-1 font-semibold">Find my next role →</p>
               </div>
               <div className="rounded-xl border border-violet-400/50 bg-white/5 p-3">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-violet-300">Partners</p>
-                <p className="text-[11px] text-white mt-1 font-semibold">Partner with us →</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-violet-300">Employers</p>
+                <p className="text-[11px] text-white mt-1 font-semibold">Hire talent →</p>
               </div>
             </div>
             <div className="mt-3 flex items-center gap-2 text-[10px] text-white/60">
-              <Bell size={11} className="text-lime-300" /> New candidate enquiry · résumé attached
+              <Bell size={11} className="text-lime-300" /> New enquiry · résumé attached
             </div>
           </div>
         </div>
@@ -160,7 +173,7 @@ function DemoRequestForm() {
     setError(null);
     // No .select(): the table has no read policy, so asking for the row back
     // would fail even though the insert succeeded.
-    const { error: insertError } = await supabase.from('website_demo_requests').insert(row);
+    const { error: insertError } = await supabase.from('website_demo_requests' as never).insert(row as never);
     if (insertError) {
       setSending(false);
       setError('Something went wrong. Please try again, or email poorna@profilepush.ai.');
@@ -244,11 +257,11 @@ export default function WebsitesLandingPage() {
             </span>
             <h1 className="text-[clamp(2.2rem,7vw,4.5rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-5">
               <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">
-                Your staffing website, rebuilt to bring in candidates and vendors.
+                Your staffing website, rebuilt to bring in enquiries.
               </span>
             </h1>
             <p className="text-base md:text-lg text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
-              We take the content already on your website and rebuild it as a modern site with one job: getting enquiries from candidates and vendor partners. See your demo free, and claim it only if you like it.
+              We take the content already on your website and rebuild it as a modern site designed around the 2–3 enquiries that grow your firm, whether that's candidates, consultants, hiring clients or partners. See your demo free, and claim it only if you like it.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <a href="#demo" className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-semibold px-8 py-3.5 rounded-xl flex items-center gap-2 text-base w-full sm:w-auto justify-center">
@@ -268,6 +281,43 @@ export default function WebsitesLandingPage() {
           </div>
           <div className="relative mt-12 max-w-5xl mx-auto">
             <BeforeAfter />
+          </div>
+        </section>
+
+        {/* ── EXAMPLES ── */}
+        <section id="examples" className="py-20 md:py-24 px-6 bg-white border-t border-gray-100 scroll-mt-16">
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center mb-12">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Examples</p>
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900">See a rebuilt website.</h2>
+              <p className="text-base text-gray-500 max-w-xl mx-auto mt-3">Each site is designed around that firm's own goals and built only from its own content.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+              {EXAMPLES.map(ex => (
+                <a key={ex.name} href={ex.url} target="_blank" rel="noreferrer" className="group block rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all">
+                  <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-100 bg-gray-50">
+                    <span className="w-2.5 h-2.5 rounded-full bg-gray-300" /><span className="w-2.5 h-2.5 rounded-full bg-gray-300" /><span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
+                    <span className="ml-3 text-[11px] text-gray-400 truncate">{ex.url.replace('https://', '').replace(/\/$/, '')}</span>
+                  </div>
+                  <img src={ex.image} alt={`${ex.name} website`} loading="lazy" className="w-full aspect-[16/10] object-cover object-top" />
+                  <div className="p-5 flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-bold text-gray-900">{ex.name}</p>
+                      <p className="text-sm text-gray-500">{ex.what}</p>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {ex.goals.map(g => <span key={g} className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">{g}</span>)}
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 whitespace-nowrap group-hover:gap-2 transition-all">View site <ArrowRight size={14} /></span>
+                  </div>
+                </a>
+              ))}
+              <a href="#demo" className="flex flex-col items-center justify-center text-center rounded-2xl border-2 border-dashed border-gray-200 p-8 hover:border-blue-300 hover:bg-blue-50/40 transition-colors min-h-[260px]">
+                <span className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center mb-4"><Sparkles size={20} /></span>
+                <p className="font-bold text-gray-900">Your firm next</p>
+                <p className="text-sm text-gray-500 mt-1 max-w-xs">Send us your current website and we'll build your free demo.</p>
+              </a>
+            </div>
           </div>
         </section>
 

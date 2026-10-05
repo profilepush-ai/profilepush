@@ -2,18 +2,20 @@ name = "profilepush-website-host"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 workers_dev = true
-# Sites are served by hostname: <slug>.<SITES_DOMAIN> for demos and live
-# sites, and customers' own domains (Cloudflare for SaaS custom hostnames,
-# with this Worker as the fallback origin). Until SITES_DOMAIN is routed,
-# sites are reachable on workers.dev at /s/<slug>/.
-# routes = [{ pattern = "*.profilepush.site/*", zone_name = "profilepush.site" }]
+# Demos and live sites: https://site.profilepush.ai/<slug>/ (slug = the firm's
+# domain, e.g. 3sbc-com). Customers' own domains reach this Worker through
+# Cloudflare for SaaS custom hostnames on the profilepush.ai zone, with
+# site.profilepush.ai as the fallback origin (see README).
+routes = [{ pattern = "site.profilepush.ai", custom_domain = true }]
+
+[triggers]
+# Daily report, 07:30 IST (02:00 UTC), covering the previous UTC day.
+crons = ["0 2 * * *"]
 
 [vars]
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 APP_BASE_URL = "https://profilepush.ai"
-# The wildcard domain for sites, e.g. "profilepush.site" -> cerfits-x7k2.profilepush.site.
-# Empty until that zone is set up.
-SITES_DOMAIN = ""
+SITE_HOST = "site.profilepush.ai"
 # Seconds a site lookup is cached at the edge. Publishing a change shows
 # within this window.
 SITE_CACHE_SECONDS = "60"
@@ -21,6 +23,7 @@ SITE_CACHE_SECONDS = "60"
 # Secrets (wrangler secret put):
 #   SUPABASE_SERVICE_ROLE_KEY  reads sites, writes submissions and résumés
 #   WORKER_AUTH_TOKEN          the email worker's /send token, for enquiry alerts
+#   ANALYTICS_SALT             any long random string; salts visitor hashes
 
 # Enquiry alert emails go through the existing email worker (SES, user lane).
 [[services]]
@@ -32,3 +35,8 @@ service = "profilepush-email-notifications"
 name = "SUBMIT_LIMITER"
 namespace_id = "41001"
 simple = { limit = 5, period = 60 }
+
+[[ratelimits]]
+name = "COLLECT_LIMITER"
+namespace_id = "41002"
+simple = { limit = 60, period = 60 }

@@ -1,0 +1,84 @@
+<script>
+/* Shared enquiry logic. Forms post to "api/submit" (the ProfilePush website
+   host, relative to the page). If that's unreachable, the visitor's email app
+   opens with the details filled in. Any element with data-path="<goal>"
+   opens that goal's form. */
+(function () {
+  var SITE = JSON.parse(document.getElementById("pp-site-data").textContent);
+  var tabs = document.querySelectorAll(".pp-tabs [data-tab]");
+  var forms = Array.prototype.slice.call(document.querySelectorAll(".pp-form"));
+  var success = document.getElementById("pp-success");
+  var mode = forms[0] ? forms[0].getAttribute("data-type") : "";
+
+  function setMode(m) {
+    if (!document.getElementById("pp-form-" + m)) return;
+    mode = m;
+    tabs.forEach(function (t) { t.setAttribute("aria-selected", String(t.getAttribute("data-tab") === mode)); });
+    forms.forEach(function (f) { f.hidden = f.getAttribute("data-type") !== mode; });
+    success.hidden = true;
+  }
+  tabs.forEach(function (t) { t.addEventListener("click", function () { setMode(t.getAttribute("data-tab")); }); });
+  document.querySelectorAll("[data-path]").forEach(function (el) {
+    el.addEventListener("click", function () { setMode(el.getAttribute("data-path")); });
+  });
+  document.getElementById("pp-again").addEventListener("click", function () { setMode(mode); });
+
+  document.querySelectorAll(".pp-drop").forEach(function (drop) {
+    var fileIn = drop.querySelector("input"), dropName = drop.querySelector(".pp-drop-name");
+    var show = function () { dropName.textContent = fileIn.files[0] ? "✓ " + fileIn.files[0].name : "Upload your résumé"; };
+    fileIn.addEventListener("change", show);
+    ["dragenter", "dragover"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("pp-over"); }); });
+    ["dragleave", "drop"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("pp-over"); }); });
+    drop.addEventListener("drop", function (e) { if (e.dataTransfer.files.length) { fileIn.files = e.dataTransfer.files; show(); } });
+    drop.ppReset = show;
+  });
+
+  async function submit(form) {
+    var first = null;
+    form.querySelectorAll("[required]").forEach(function (el) {
+      var bad = !el.value.trim() || (el.type === "email" && !/^\S+@\S+\.\S+$/.test(el.value));
+      el.classList.toggle("pp-err", bad);
+      if (bad && !first) first = el;
+    });
+    if (first) { first.focus(); return; }
+
+    var data = new FormData(form), type = form.getAttribute("data-type");
+    data.append("enquiry_type", type);
+    var btn = form.querySelector("button[type=submit]"), label = btn.textContent;
+    btn.disabled = true; btn.textContent = "Sending…";
+
+    var mailFallback = false, serverMsg = "";
+    try {
+      var r = await fetch("api/submit", { method: "POST", body: data, headers: { Accept: "application/json" } });
+      if (r.status === 400 || r.status === 413 || r.status === 429) serverMsg = ((await r.json().catch(function () { return {}; })).error) || "Please check the form and try again.";
+      else if (!r.ok) mailFallback = true;
+    } catch (e) { mailFallback = true; }
+    btn.disabled = false; btn.textContent = label;
+    if (serverMsg) { alert(serverMsg); return; }
+
+    var file = form.querySelector("input[type=file]");
+    var hasFile = !!(file && file.files[0]);
+    if (mailFallback && SITE.email) {
+      var lines = [];
+      data.forEach(function (v, k) { if (typeof v === "string" && v && k.charAt(0) !== "_") lines.push(k.replace(/_/g, " ") + ": " + v); });
+      if (hasFile) lines.push("", "(Résumé attached)");
+      var subject = "Website enquiry (" + type + "): " + (data.get("name") || data.get("company") || "");
+      location.href = "mailto:" + SITE.email + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(lines.join("\n"));
+    }
+
+    form.hidden = true;
+    document.getElementById("pp-s-title").textContent = form.getAttribute("data-done") || "Thanks, we've received it.";
+    document.getElementById("pp-s-text").textContent = mailFallback
+      ? "Your email app has opened with the details filled in. " + (hasFile ? "Attach your résumé and press send." : "Press send to finish.")
+      : "Someone from " + SITE.company + " will be in touch shortly.";
+    success.hidden = false;
+    if (!mailFallback && window.ppTrack) window.ppTrack("submit", type);
+    form.reset();
+    var drop = form.querySelector(".pp-drop"); if (drop && drop.ppReset) drop.ppReset();
+  }
+  forms.forEach(function (f) {
+    f.addEventListener("submit", function (e) { e.preventDefault(); submit(f); });
+    f.addEventListener("input", function (e) { e.target.classList.remove("pp-err"); });
+  });
+})();
+</script>
