@@ -209,7 +209,7 @@ async function handleLive(env: Env, ctx: ExecutionContext, site: Site): Promise<
 const LIVE_WIDGET = `<script>(function(){try{
 var APP="https://profilepush.ai";
 fetch("api/live").then(function(r){return r.json()}).then(function(d){
-if(!d||d.mode==="off")return;var jobs=d.jobs||[],hot=d.hotlist||[];if(!jobs.length&&!hot.length)return;
+if(!d||d.mode==="off")return;var jobs=d.jobs||[],hot=d.hotlist||[];jobs=uniq(jobs,function(j){return (j.title+"|"+j.location+"|"+j.type).toLowerCase()});if(!jobs.length&&!hot.length)return;
 var host=document.createElement("div");host.setAttribute("data-pp-live","");document.body.appendChild(host);
 var root=host.attachShadow?host.attachShadow({mode:"open"}):host;
 var st=document.createElement("style");st.textContent=${JSON.stringify(`
@@ -244,7 +244,12 @@ var st=document.createElement("style");st.textContent=${JSON.stringify(`
 `)};root.appendChild(st);
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
 function ago(s){var d=Math.max(0,Math.round((Date.now()-new Date(s).getTime())/864e5));return d<1?"Today":d<2?"Yesterday":d+" days ago"}
-function arr(v){return Array.isArray(v)?v:(v?[v]:[])}
+function arr(v){return (Array.isArray(v)?v:(v?[v]:[])).filter(ok)}
+function ok(v){return v!=null&&!/^(|unknown|n\\/?a|none|null|-|tbd|not specified)$/i.test(String(v).trim())}
+function av(v){return !ok(v)?"":/^(yes|y|true|immediate(ly)?)$/i.test(String(v).trim())?"Available now":/^(no|n|false)$/i.test(String(v).trim())?"":String(v)}
+function meta(parts,when){return parts.filter(ok).concat([ago(when)]).join(" · ")}
+function chips(title,list){var seen={};seen[String(title).toLowerCase()]=1;return list.filter(function(c){c=String(c).trim();var k=c.toLowerCase();if(!ok(c)||seen[k])return false;seen[k]=1;return true})}
+function uniq(a,key){var m={};return a.filter(function(x){var k=key(x);if(m[k])return false;m[k]=1;return true})}
 var preview=d.mode==="preview";
 var wrap=el("div");root.appendChild(wrap);
 var tab=el("button","tab");tab.type="button";tab.setAttribute("aria-label","Open live openings");tab.appendChild(el("span","dot"));tab.appendChild(el("span",null,"Live · "+(jobs.length+hot.length)));wrap.appendChild(tab);
@@ -260,8 +265,8 @@ var list=el("div","list");panel.appendChild(list);
 var ft=el("div","ft");ft.appendChild(document.createTextNode("Powered by "));var pa=el("a",null,"ProfilePush");pa.href=APP;pa.target="_blank";pa.rel="noopener";ft.appendChild(pa);panel.appendChild(ft);
 function item(href,title,meta,chips){var a=el("a","it");a.href=href;a.target="_blank";a.rel="noopener";a.appendChild(el("p","t",title));if(meta)a.appendChild(el("p","m",meta));var c=el("div","chips");chips.filter(Boolean).slice(0,6).forEach(function(s){c.appendChild(el("span","c",String(s)))});a.appendChild(c);return a}
 function show(which){list.textContent="";Array.prototype.forEach.call(tabs.children,function(b){b.setAttribute("aria-selected",b.getAttribute("data-k")===which?"true":"false")});
-if(which==="jobs")jobs.forEach(function(j){list.appendChild(item(APP+"/job/"+j.id,j.title,[j.location,j.type].filter(Boolean).join(" · ")+" · "+ago(j.posted_at),arr(j.skills).slice(0,4).concat(j.experience?[j.experience+"+ yrs"]:[])))});
-else hot.forEach(function(h){list.appendChild(item(APP+"/hotlist/"+h.id,h.title,[arr(h.locations).slice(0,2).join(", "),h.availability].filter(Boolean).join(" · ")+" · "+ago(h.posted_at),(h.experience?[h.experience+" yrs"]:[]).concat(h.visa?[h.visa]:[],h.work_type?[h.work_type]:[],arr(h.skills).slice(0,3))))});
+if(which==="jobs")jobs.forEach(function(j){list.appendChild(item(APP+"/job/"+j.id,j.title,meta([j.location,j.type],j.posted_at),chips(j.title,arr(j.skills)).slice(0,4).concat(j.experience?[j.experience+"+ yrs"]:[])))});
+else hot.forEach(function(h){list.appendChild(item(APP+"/hotlist/"+h.id,h.title,meta([arr(h.locations).slice(0,2).join(", "),av(h.availability)],h.posted_at),(h.experience?[h.experience+" yrs"]:[]).concat(chips(h.title,arr(h.visa).concat(arr(h.work_type),arr(h.skills))).slice(0,5))))});
 list.scrollTop=0}
 [["jobs","Jobs",jobs.length],["bench","Bench",hot.length]].forEach(function(t){if(!t[2])return;var b=el("button","tb",t[1]+" ("+t[2]+")");b.type="button";b.setAttribute("role","tab");b.setAttribute("data-k",t[0]);b.onclick=function(){show(t[0])};tabs.appendChild(b)});
 function open(){wrap.className="open";show(jobs.length?"jobs":"bench");x.focus();if(window.ppTrack)window.ppTrack("cta","live-portal")}
