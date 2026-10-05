@@ -772,6 +772,24 @@ export default function BoardPage() {
         </button>
       </div>
 
+      {/* Each new match costs a credit (charge_tracker_match), so at zero the
+          matcher quietly stops adding cards. Say so, or the board just looks
+          dead. Not dismissible: it goes away when there are credits again. */}
+      {account && Number(account.credits_balance ?? 0) < 1 && (
+        <div className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900 sm:mx-3 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
+          <span className="min-w-0 flex-1">
+            New matches are paused: you’re out of credits. Buy credits to resume (from ₹249).
+          </span>
+          <button
+            type="button"
+            onClick={() => { trackEvent('tracker_out_of_credits_clicked', {}); navigate('/billing'); }}
+            className="rounded-full bg-amber-600 px-3 py-1 text-[12px] font-semibold text-white hover:bg-amber-700"
+          >
+            Buy credits
+          </button>
+        </div>
+      )}
+
       {pushState !== 'granted' && pushState !== 'unsupported' && !pushPromptHidden && (
         <div className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] text-blue-900 sm:mx-3 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-100">
           <span className="min-w-0 flex-1">
