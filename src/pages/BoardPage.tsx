@@ -505,6 +505,12 @@ export default function BoardPage() {
   const pullStart = useRef<{ key: string; x: number; y: number } | null>(null);
   const [pull, setPull] = useState<{ key: string; dy: number } | null>(null);
   const [pullRefreshing, setPullRefreshing] = useState('');
+  // The board scrolls sideways; while a column is being pulled down that has
+  // to stop, or the slightest sideways drift pans the board instead.
+  const boardScrollRef = useRef<HTMLDivElement | null>(null);
+  const lockBoardX = (locked: boolean) => {
+    if (boardScrollRef.current) boardScrollRef.current.style.overflowX = locked ? 'hidden' : '';
+  };
 
   async function pullRefresh(key: string) {
     setPullRefreshing(key);
@@ -534,12 +540,21 @@ export default function BoardPage() {
       if (!start || start.key !== key) return;
       const dy = e.touches[0].clientY - start.y;
       const dx = e.touches[0].clientX - start.x;
-      if (dy <= 0 || Math.abs(dx) > Math.abs(dy) || e.currentTarget.scrollTop > 0) { setPull(null); return; }
+      if (dy <= 0 || Math.abs(dx) > Math.abs(dy) || e.currentTarget.scrollTop > 0) {
+        // A sideways swipe: let the board scroll, and stop treating it as a pull.
+        if (Math.abs(dx) > Math.abs(dy)) pullStart.current = null;
+        lockBoardX(false);
+        setPull(null);
+        return;
+      }
+      if (dy > 6) lockBoardX(true);
       setPull({ key, dy: Math.min(dy * 0.5, 96) });
     },
+    onTouchCancel: () => { pullStart.current = null; lockBoardX(false); setPull(null); },
     onTouchEnd: () => {
       const ready = pull && pull.key === key && pull.dy >= PULL_TRIGGER;
       pullStart.current = null;
+      lockBoardX(false);
       setPull(null);
       if (ready) void pullRefresh(key);
     },
@@ -817,7 +832,7 @@ export default function BoardPage() {
       />
 
       {/* A column per consultant (or requirement), each with its own stage icons */}
-      <div className="min-h-0 flex-1 overflow-x-auto">
+      <div ref={boardScrollRef} className="min-h-0 flex-1 overflow-x-auto">
         <div className="flex h-full min-w-max gap-3 p-2 sm:p-3">
           {!subjects && <p className="p-4 text-[12px] text-gray-500">Loading…</p>}
           {columns.map((subject) => {
