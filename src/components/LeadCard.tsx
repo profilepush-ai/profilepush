@@ -584,6 +584,54 @@ export const LeadCard = memo(function LeadCard({
     </div>
   );
 
+  // Collapsed card: the same actions as plain icons beside "Posted …", with no
+  // bar, dividers or fills, so a column of cards isn't a grid of lines.
+  const iconButtonClass = 'inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40';
+  const compactActions = (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); void shareLead(lead, accountId, userId).then((copied) => { if (copied) { setJustCopiedShare(true); setTimeout(() => setJustCopiedShare(false), 1500); } }); }}
+        title={justCopiedShare ? 'Link copied' : 'Share this post'}
+        aria-label="Share"
+        className={`${iconButtonClass} text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5`}
+      >
+        {justCopiedShare ? <Check size={16} strokeWidth={1.75} /> : <Share2 size={16} strokeWidth={1.75} />}
+      </button>
+      {lead.kind === 'job' && lead.postSource === 'user_post' ? (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onApply(lead); }} title="Submit a consultant to this job" aria-label="AI Submit" className={`${iconButtonClass} text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10`}>
+          <Mail size={16} strokeWidth={1.75} />
+        </button>
+      ) : isAskPending || isVerified ? (
+        <span title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')} className={`${iconButtonClass} ${isVerified ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}`}>
+          {isVerified ? <BadgeCheck size={16} strokeWidth={1.75} /> : <Check size={16} strokeWidth={1.75} />}
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
+          disabled={!canAskAI || isProcessingAskAI}
+          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Request: ask for resume, rate and availability' : 'AI Submit')}
+          aria-label={isHotlistFeed ? 'AI Request' : 'AI Submit'}
+          className={`${iconButtonClass} text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10`}
+        >
+          {isProcessingAskAI ? <LogoSpinner size={14} /> : isHotlistFeed ? <FileText size={16} strokeWidth={1.75} /> : <Mail size={16} strokeWidth={1.75} />}
+        </button>
+      )}
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDismiss(lead); }}
+          title="Not a match (won't be suggested again)"
+          aria-label="Not a match"
+          className={`${iconButtonClass} text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10`}
+        >
+          <X size={16} strokeWidth={2} />
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div
       role={hideActions ? 'button' : undefined}
@@ -606,10 +654,11 @@ export const LeadCard = memo(function LeadCard({
       className={`relative flex ${hideActions ? 'h-auto' : 'h-full'} min-w-0 flex-col overflow-hidden rounded-lg border ${
         isSelected ? 'border-blue-400 ring-1 ring-blue-200'
           : isFocused ? 'border-indigo-400 ring-1 ring-indigo-200'
+          : compact ? 'border-transparent shadow-[0_1px_3px_rgba(15,23,42,0.08)] dark:border-white/5'
           : 'border-[#dfdad2] dark:border-white/10'
       } ${cardFillClass} ${hideActions || onFocus || collapsible ? 'cursor-pointer' : ''}`}
     >
-      <LeadKindPill kind={lead.kind} variant="banner" onProfilePush={lead.postSource === 'user_post'} />
+      {!compact && <LeadKindPill kind={lead.kind} variant="banner" onProfilePush={lead.postSource === 'user_post'} />}
       {matchRank != null && (
         // Top right, beside the kind icon rather than under it: below, it
         // would land on the second line of a wrapping title. The header
@@ -747,7 +796,7 @@ export const LeadCard = memo(function LeadCard({
                   <span
                     key={field.key}
                     title={field.title}
-                    className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] leading-tight ${isDark ? 'border-white/10 bg-white/5 text-[#CBD5E1]' : 'border-gray-200 bg-gray-50 text-slate-700'}`}
+                    className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] leading-tight ${compact ? (isDark ? 'bg-white/5 text-[#CBD5E1]' : 'bg-slate-100 text-slate-700') : `border ${isDark ? 'border-white/10 bg-white/5 text-[#CBD5E1]' : 'border-gray-200 bg-gray-50 text-slate-700'}`}`}
                   >
                     <field.icon size={10} className={isDark ? 'shrink-0 text-[#94A3B8]' : 'shrink-0 text-gray-400'} />
                     <ClampedField value={field.value} linkClassName={linkClassName} isExpanded={field.isExpanded} onToggle={() => onToggleField(`${lead.id}:${field.key}`)} />
@@ -780,9 +829,12 @@ export const LeadCard = memo(function LeadCard({
       })()}
       {/* Collapsed: just when it was posted; the poster line comes back with the full card. */}
       {compact && (
-        <p className="mt-1.5 text-[11px] text-[#94A3B8]">
-          {feedTimeBasis === 'created' ? 'Added ' : 'Posted '}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}
-        </p>
+        <div className="mt-1.5 flex items-center gap-1">
+          <p className="min-w-0 flex-1 truncate text-[11px] text-[#94A3B8]">
+            {feedTimeBasis === 'created' ? 'Added ' : 'Posted '}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}
+          </p>
+          {!hideActions && compactActions}
+        </div>
       )}
       {!compact && (
       <div className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
@@ -805,7 +857,7 @@ export const LeadCard = memo(function LeadCard({
       </div>
       )}
       </div>
-      {!hideActions && actionButtonsBar}
+      {!hideActions && !compact && actionButtonsBar}
     </div>
   );
 });
