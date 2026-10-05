@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { WEBSITE_PLAN_BONUS_CREDITS, WEBSITE_PLAN_PRICE_INR_PAISE, WEBSITE_PLAN_TERM_MONTHS } from "../_shared/website-plan.ts";
 
 // Creates a one-time Razorpay Order for the Website Modernization plan
-// (₹29,999 a year, all inclusive, with 5,000 credits). Same shape as
+// (₹36,999 a year, all inclusive, with 5,000 credits). Same shape as
 // razorpay-create-credit-order. razorpay-verify-website-payment or the
 // webhook applies it via the pending row this writes. With a claim_token,
 // the order also claims that demo website (once the payment is applied).

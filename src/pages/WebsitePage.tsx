@@ -14,7 +14,7 @@ import {
   type MyWebsite, type WebsiteCheckoutResult, type WebsitePlanStatus,
 } from '../lib/website-checkout';
 
-// The account's Website Modernization plan (status, and the ₹29,999 yearly
+// The account's Website Modernization plan (status, and the ₹36,999 yearly
 // checkout, which also adds 5,000 credits) and, for each claimed website,
 // tabs for its enquiries, analytics, domain and notification settings.
 
