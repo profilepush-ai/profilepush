@@ -13,8 +13,7 @@ import Toast from '../components/Toast';
 import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
-import { getBillingErrorMessage, TIERS, fmtINR, openRazorpayCheckout } from '../lib/billing-plan';
-import { PlanModal } from '../components/PlanModal';
+import { getBillingErrorMessage, openRazorpayCheckout } from '../lib/billing-plan';
 import { fetchFirstPurchaseOffer, formatCountdown, useOfferCountdown } from '../lib/first-purchase-offer';
 
 declare global {
@@ -228,7 +227,7 @@ function Tip({ text }: { text: string }) {
 }
 
 export default function BillingPage() {
-  const { account, user, subscription, membership, refreshAccount } = useAuth();
+  const { account, user, refreshAccount } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const autoOpenPlanRef = useRef(false);
@@ -263,11 +262,6 @@ export default function BillingPage() {
   useEffect(() => { void loadPurchases(); }, [loadPurchases]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  const [showPlanModal, setShowPlanModal]     = useState(false);
-  const [selectedNewTier, setSelectedNewTier] = useState<number>(TIERS[0]);
-  const [changingPlan, setChangingPlan]       = useState(false);
-  const [subscribing, setSubscribing]         = useState(false);
-  const [cancelling, setCancelling]           = useState(false);
 
   const showToast = (message: string, type: 'success' | 'error') => setToast({ message, type });
 
@@ -349,126 +343,6 @@ export default function BillingPage() {
     setSelectedCreditTier(DEFAULT_CREDIT_PACK);
     fireCrmEvent('billing.buy_credits_button_clicked', { current_balance: balance });
     setShowBuyCreditsModal(true);
-  }
-
-  const hasActiveSub = subscription?.status === 'active';
-  const isOwner = membership?.role === 'owner';
-  const pendingPeriodEnd = subscription?.current_period_end
-    ? new Date(subscription.current_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : null;
-  const canUpgrade = !hasActiveSub || TIERS.indexOf(subscription?.plan_credits ?? 0) < TIERS.length - 1;
-  const canDowngrade = hasActiveSub && TIERS.indexOf(subscription?.plan_credits ?? 0) > 0;
-
-  function openUpgradeModal() {
-    const idx = hasActiveSub ? TIERS.indexOf(subscription?.plan_credits ?? 0) : -1;
-    setSelectedNewTier(idx >= 0 && idx < TIERS.length - 1 ? TIERS[idx + 1] : TIERS[0]);
-    fireCrmEvent('billing.upgrade_button_clicked', { current_plan_credits: subscription?.plan_credits ?? null, subscription_status: subscription?.status ?? 'inactive' });
-    setShowPlanModal(true);
-  }
-  function openDowngradeModal() {
-    if (hasActiveSub && subscription?.plan_credits) {
-      const idx = TIERS.indexOf(subscription.plan_credits);
-      setSelectedNewTier(idx > 0 ? TIERS[idx - 1] : subscription.plan_credits);
-    }
-    fireCrmEvent('billing.downgrade_button_clicked', { current_plan_credits: subscription?.plan_credits ?? null });
-    setShowPlanModal(true);
-  }
-
-  async function handleSubscribe() {
-    setSubscribing(true);
-    try {
-      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
-      const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
-        body: { plan_credits: selectedNewTier },
-        headers,
-      });
-      if (error || !data?.subscription_id) {
-        throw new Error(getBillingErrorMessage(error, 'Failed to create subscription', data?.error));
-      }
-      await openRazorpayCheckout({
-        key: data.key_id, subscription_id: data.subscription_id,
-        name: 'ProfilePush',
-        description: `Pro Plan – ${fmtINR(selectedNewTier)}/month (${selectedNewTier} credits)`,
-        image: '/favicon.svg',
-        handler: async () => {
-          fireCrmEvent('subscription.payment_success', { plan_credits: selectedNewTier, razorpay_subscription_id: data.subscription_id });
-          showToast('Subscription activated! Credits will be added shortly.', 'success');
-          await refreshAccount();
-          setShowPlanModal(false);
-        },
-        prefill: { name: user?.user_metadata?.full_name ?? '', email: user?.email ?? '' },
-        theme: { color: '#2563eb' },
-        onDismiss: () => { fireCrmEvent('subscription.checkout_dismissed', { plan_credits: selectedNewTier }); setSubscribing(false); },
-      });
-    } catch (err) {
-      const msg = getBillingErrorMessage(err, 'Failed to start subscription');
-      fireCrmEvent('subscription.checkout_failed', { plan_credits: selectedNewTier, error: msg });
-      showToast(msg, 'error');
-      setSubscribing(false);
-    }
-  }
-
-  async function handleChangePlan() {
-    if (!subscription || selectedNewTier === subscription.plan_credits) return;
-    setChangingPlan(true);
-    try {
-      const isUpgrade = selectedNewTier > subscription.plan_credits;
-      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
-      const { data, error } = await supabase.functions.invoke('razorpay-change-plan', {
-        body: { new_plan_credits: selectedNewTier },
-        headers,
-      });
-      if (error || !data) {
-        throw new Error(getBillingErrorMessage(error, 'Failed to change plan'));
-      }
-      if (isUpgrade && data.order_id) {
-        await openRazorpayCheckout({
-          key: data.key_id, order_id: data.order_id, amount: data.amount_inr_paise, currency: 'INR',
-          name: 'ProfilePush',
-          description: `Upgrade ₹${data.old_plan_credits} → ₹${data.new_plan_credits}`,
-          image: '/favicon.svg',
-          handler: async () => {
-            fireCrmEvent('subscription.upgrade_payment_success', { old_plan_credits: data.old_plan_credits, new_plan_credits: data.new_plan_credits });
-            showToast(`Upgraded to ${fmtINR(selectedNewTier)}/mo! Extra credits added.`, 'success');
-            await refreshAccount();
-            setShowPlanModal(false);
-          },
-          prefill: { email: user?.email ?? '' },
-          theme: { color: '#2563eb' },
-        });
-      } else {
-        const effectiveDate = data.effective_date
-          ? new Date(data.effective_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          : 'next billing date';
-        fireCrmEvent('subscription.downgrade_confirmed', { old_plan_credits: data.old_plan_credits, new_plan_credits: data.new_plan_credits });
-        showToast(`Downgrade to ${fmtINR(selectedNewTier)}/mo scheduled for ${effectiveDate}.`, 'success');
-        await refreshAccount();
-        setShowPlanModal(false);
-      }
-    } catch (err) {
-      const msg = getBillingErrorMessage(err, 'Failed to change plan');
-      fireCrmEvent('subscription.change_plan_failed', { selected_plan_credits: selectedNewTier, error: msg });
-      showToast(msg, 'error');
-    }
-    setChangingPlan(false);
-  }
-
-  async function handleCancelSubscription() {
-    if (!window.confirm(`Cancel your Pro subscription? You'll keep your credits and access until ${pendingPeriodEnd ?? 'the end of this billing cycle'}, then it won't renew.`)) return;
-    setCancelling(true);
-    try {
-      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
-      const { data, error } = await supabase.functions.invoke('razorpay-cancel-subscription', { headers });
-      if (error || !data?.ok) {
-        throw new Error(getBillingErrorMessage(error, 'Failed to cancel subscription', data?.error));
-      }
-      fireCrmEvent('subscription.cancel_confirmed', { plan_credits: subscription?.plan_credits ?? null });
-      showToast('Subscription will end at your next renewal date.', 'success');
-      await refreshAccount();
-    } catch (err) {
-      showToast(getBillingErrorMessage(err, 'Failed to cancel subscription'), 'error');
-    }
-    setCancelling(false);
   }
 
   // ── Analytics computations ─────────────────────────────────────────────────
@@ -658,7 +532,7 @@ export default function BillingPage() {
             {/* ── LEFT: Summary ─────────────────────────────── */}
             <div className="flex-1 flex flex-col gap-4 min-w-0">
 
-              {/* 2-card pricing: Free vs Pro */}
+              {/* 2-card pricing: Free vs credit packs (no subscription) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 flex flex-col">
                   <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-yellow-100 text-yellow-700 w-fit">Free</span>
@@ -678,60 +552,20 @@ export default function BillingPage() {
                 </div>
 
                 <div className="rounded-2xl p-5 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
-                  <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-white/15 text-white w-fit">Pro</span>
-                  {hasActiveSub && subscription ? (
-                    <>
-                      <p className="text-2xl font-extrabold text-white">{fmtINR(subscription.plan_credits)}/mo</p>
-                      <p className="text-[13px] text-blue-200 mt-0.5 mb-4">
-                        {subscription.plan_credits.toLocaleString('en-IN')} credits every cycle
-                        {subscription.cancel_at_period_end
-                          ? ` · cancels ${pendingPeriodEnd ?? 'at period end'}`
-                          : pendingPeriodEnd ? ` · renews ${pendingPeriodEnd}` : ''}
-                      </p>
-                      <div className="flex-1" />
-                      <div className="flex flex-col gap-2">
-                        {(canUpgrade || canDowngrade) && (
-                          <button onClick={canUpgrade ? openUpgradeModal : openDowngradeModal} className="w-full rounded-xl bg-white px-4 py-2.5 text-[13px] font-bold text-blue-700 transition hover:bg-blue-50">
-                            Change plan
-                          </button>
-                        )}
-                        {!subscription.cancel_at_period_end && (
-                          <button onClick={() => void handleCancelSubscription()} disabled={cancelling} className="w-full rounded-xl border border-white/30 px-4 py-2 text-[13px] font-semibold text-white/90 transition hover:bg-white/10 disabled:opacity-50">
-                            {cancelling ? 'Cancelling…' : 'Cancel subscription'}
-                          </button>
-                        )}
-                      </div>
-                    </>
-                  ) : subscription?.status === 'pending' ? (
-                    <>
-                      <p className="text-2xl font-extrabold text-white">Payment pending</p>
-                      <p className="text-[13px] text-blue-200 mt-0.5 mb-4">Complete checkout to activate Pro.</p>
-                      <div className="flex-1" />
-                      <button onClick={openUpgradeModal} className="w-full rounded-xl bg-white px-4 py-2.5 text-[13px] font-bold text-blue-700 transition hover:bg-blue-50">
-                        Complete checkout
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-2xl font-extrabold text-white">{fmtINR(TIERS[0])}<span className="text-[15px] font-semibold text-blue-200">/mo</span></p>
-                      <p className="text-[13px] text-blue-200 mt-0.5 mb-4">{TIERS[0].toLocaleString('en-IN')}–{TIERS[TIERS.length - 1].toLocaleString('en-IN')} credits/mo, your choice</p>
-                      <ul className="space-y-2 text-[13px] text-white flex-1 mb-4">
-                        {['Everything in Free', 'Network: subscribe to 10 new people a day, no cap', 'Delivered automatically, never run out mid-month', 'Cancel any time, keeps access till period end'].map(item => (
-                          <li key={item} className="flex items-start gap-2">
-                            <Check size={12} className="mt-0.5 shrink-0 text-white" />
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                      {isOwner ? (
-                        <button onClick={openUpgradeModal} className="w-full rounded-xl bg-white px-4 py-2.5 text-[13px] font-bold text-blue-700 transition hover:bg-blue-50">
-                          Subscribe to Pro
-                        </button>
-                      ) : (
-                        <p className="text-[12px] text-blue-200">Only the account owner can manage subscriptions.</p>
-                      )}
-                    </>
-                  )}
+                  <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-white/15 text-white w-fit">Credit packs</span>
+                  <p className="text-2xl font-extrabold text-white"><span className="text-[15px] font-semibold text-blue-200">from </span>₹249</p>
+                  <p className="text-[13px] text-blue-200 mt-0.5 mb-4">Pay once · credits never expire · no subscription</p>
+                  <ul className="space-y-2 text-[13px] text-white flex-1 mb-4">
+                    {['Unlimited open consultants or requirements', 'Network: subscribe to 10 new people a day, no cap', '249, 500, 1,000 … up to 5,000 credits at ₹1 each', 'First top-up? 2× credits on the ₹249 and ₹500 packs when the offer shows'].map(item => (
+                      <li key={item} className="flex items-start gap-2">
+                        <Check size={12} className="mt-0.5 shrink-0 text-white" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                  <button onClick={openBuyCreditsModal} className="w-full rounded-xl bg-white px-4 py-2.5 text-[13px] font-bold text-blue-700 transition hover:bg-blue-50">
+                    Buy credits
+                  </button>
                 </div>
               </div>
 
@@ -866,22 +700,6 @@ export default function BillingPage() {
           buyingCredits={buyingCredits}
           onClose={() => setShowBuyCreditsModal(false)}
           onSubmit={handleBuyCredits}
-        />
-      )}
-
-      {/* ── Pro plan modal ─────────────────────────────────────────────────── */}
-      {showPlanModal && (
-        <PlanModal
-          hasActiveSub={hasActiveSub}
-          subscription={subscription}
-          selectedNewTier={selectedNewTier}
-          setSelectedNewTier={setSelectedNewTier}
-          pendingPeriodEnd={pendingPeriodEnd}
-          changingPlan={changingPlan}
-          subscribing={subscribing}
-          onClose={() => setShowPlanModal(false)}
-          onSubmit={hasActiveSub ? handleChangePlan : handleSubscribe}
-          user={user}
         />
       )}
 

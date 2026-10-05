@@ -32,7 +32,7 @@ const PILLARS = [
     color: 'text-orange-600',
     bg: 'bg-orange-50',
     items: [
-      'Authentication & Unlimited Users — our Pro Plan allows unlimited users across all tiers, but access requires secure, individual login credentials.',
+      'Authentication & Unlimited Users — every account allows unlimited users, but access requires secure, individual login credentials.',
       'Granular Activity Intelligence — every action (searches, parses, emails generated) is logged with a timestamp attributed to specific user accounts, serving as both an operational dashboard and a strict security audit log to monitor for unauthorized data egress.',
       'Internal Access — ProfilePush staff access to production databases is strictly limited by role and requires explicit logging and authorization.',
     ],
