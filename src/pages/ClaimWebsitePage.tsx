@@ -12,7 +12,7 @@ import {
 } from '../lib/website-checkout';
 
 // /claim/:token — where a demo's "Claim this website" banner leads. Shows
-// what's being claimed; signed in, it either takes the ₹29,999 payment (which
+// what's being claimed; signed in, it either takes the ₹36,999 payment (which
 // claims the site) or, with a plan already running, claims it directly. The
 // server checks the claimant's email against the firm we pitched.
 
