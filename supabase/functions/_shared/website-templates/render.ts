@@ -46,6 +46,7 @@ export type SiteContent = {
   industries?: { name: string; text?: string }[];
   process_title?: string;
   process?: { title: string; text: string }[];
+  finale?: string;
   testimonials_title?: string;
   testimonials?: { quote: string; name: string; role?: string }[];
   faq?: { q: string; a: string }[];
@@ -134,6 +135,16 @@ function luminance(hex: string): number {
 // Text colour that reads on the given background.
 const inkFor = (hex: string) => (luminance(hex) > 0.42 ? '#0e1116' : '#ffffff');
 
+// The brand colour, lightened until it stands out on a near-black page
+// (dark navy or forest green would otherwise disappear).
+function glowFor(hex: string): string {
+  let [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  for (let i = 0; i < 12 && luminance(`#${[r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`) < 0.28; i++) {
+    [r, g, b] = [r, g, b].map(v => v + (255 - v) * 0.15);
+  }
+  return `#${[r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+}
+
 // ── Content → template context ───────────────────────────────────────────
 const clean = (s: unknown, max = 600) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, max) : '');
 const list = <T>(v: T[] | undefined, max: number) => (Array.isArray(v) ? v.slice(0, max) : []);
@@ -165,7 +176,10 @@ export function prepare(c: SiteContent): Record<string, unknown> {
     company_name: name,
     legal_name: clean(c.legal_name, 120) || name,
     logo_text: clean(c.logo_text, 40) || name,
-    theme: { primary, secondary, primary_ink: inkFor(primary), secondary_ink: inkFor(secondary) },
+    theme: {
+      primary, secondary, primary_ink: inkFor(primary), secondary_ink: inkFor(secondary),
+      glow: glowFor(primary), glow2: glowFor(secondary), glow_ink: inkFor(glowFor(primary)),
+    },
     seo: {
       title: clean(c.seo?.title, 70) || name,
       description: clean(c.seo?.description, 160) || clean(c.hero.sub, 160),
@@ -182,7 +196,8 @@ export function prepare(c: SiteContent): Record<string, unknown> {
     industries_title: clean(c.industries_title, 80) || 'Industries we serve.',
     process: list(c.process, 6),
     process_title: clean(c.process_title, 80) || 'How it works.',
-    testimonials: list(c.testimonials, 6),
+    testimonials: list(c.testimonials, 6).map((t, i) => ({ ...t, first: i === 0 })),
+    finale: clean(c.finale, 40) || "Let's talk.",
     testimonials_title: clean(c.testimonials_title, 80) || 'What people say.',
     faq: list(c.faq, 8).map((f, i) => ({ ...f, open: i === 0 })),
     footer_blurb: clean(c.footer_blurb, 240),
