@@ -498,6 +498,65 @@ export default function BoardPage() {
     });
   }
 
+  // Pull to refresh (phones): pull a column down from its top to reload the
+  // board and quietly rematch that column. Vertical pulls only, so swiping
+  // sideways between columns never triggers it.
+  const PULL_TRIGGER = 64;
+  const pullStart = useRef<{ key: string; x: number; y: number } | null>(null);
+  const [pull, setPull] = useState<{ key: string; dy: number } | null>(null);
+  const [pullRefreshing, setPullRefreshing] = useState('');
+
+  async function pullRefresh(key: string) {
+    setPullRefreshing(key);
+    trackEvent('tracker_pull_refresh', { column: key === 'other' ? 'other' : 'subject' });
+    try {
+      const jobs: Array<Promise<unknown>> = [loadAll(), loadSubjects(), loadSends()];
+      if (key !== 'other') {
+        jobs.push(Promise.resolve(supabase.rpc('rematch_pipeline_subject' as never, { p_subject_id: key } as never)).then(({ data }) => {
+          const added = Number(data) || 0;
+          if (added > 0) { setNotice(`${added} new match${added === 1 ? '' : 'es'} found.`); void loadAll(); void loadSubjects(); }
+        }));
+      }
+      await Promise.all(jobs);
+    } finally {
+      setPullRefreshing('');
+    }
+  }
+
+  const pullHandlers = (key: string) => ({
+    onTouchStart: (e: React.TouchEvent<HTMLDivElement>) => {
+      pullStart.current = e.currentTarget.scrollTop <= 0 && !pullRefreshing
+        ? { key, x: e.touches[0].clientX, y: e.touches[0].clientY }
+        : null;
+    },
+    onTouchMove: (e: React.TouchEvent<HTMLDivElement>) => {
+      const start = pullStart.current;
+      if (!start || start.key !== key) return;
+      const dy = e.touches[0].clientY - start.y;
+      const dx = e.touches[0].clientX - start.x;
+      if (dy <= 0 || Math.abs(dx) > Math.abs(dy) || e.currentTarget.scrollTop > 0) { setPull(null); return; }
+      setPull({ key, dy: Math.min(dy * 0.5, 96) });
+    },
+    onTouchEnd: () => {
+      const ready = pull && pull.key === key && pull.dy >= PULL_TRIGGER;
+      pullStart.current = null;
+      setPull(null);
+      if (ready) void pullRefresh(key);
+    },
+  });
+
+  const pullIndicator = (key: string) => {
+    const dy = pull?.key === key ? pull.dy : 0;
+    const busy = pullRefreshing === key;
+    if (!dy && !busy) return null;
+    return (
+      <div className="flex shrink-0 items-center justify-center gap-1.5 text-[11px] font-semibold text-gray-500 transition-[height]" style={{ height: busy ? 36 : dy }}>
+        <RefreshCw size={13} className={busy ? 'animate-spin' : ''} style={busy ? undefined : { transform: `rotate(${dy * 4}deg)` }} />
+        {busy ? 'Refreshing…' : dy >= PULL_TRIGGER ? 'Release to refresh' : 'Pull to refresh'}
+      </div>
+    );
+  };
+
   async function rematch(subject: Subject) {
     setRematching(subject.subject_id);
     const { data, error: rpcError } = await supabase.rpc('rematch_pipeline_subject' as never, { p_subject_id: subject.subject_id } as never);
@@ -923,7 +982,8 @@ export default function BoardPage() {
                   )}
                 </header>
 
-                <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+                <div {...pullHandlers(sid)} className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2 pb-2">
+                  {pullIndicator(sid)}
                   {!loaded && <p className="px-2 py-6 text-center text-[11px] text-gray-400">Loading…</p>}
                   {loaded && list.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{emptyText(view)}</p>}
                   {view.stage === 'new' && list.some((c) => c.has_email) && (
@@ -1022,7 +1082,8 @@ export default function BoardPage() {
                   })}
                 </div>
               </header>
-              <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+              <div {...pullHandlers('other')} className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2 pb-2">
+                {pullIndicator('other')}
                 {otherVisible.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{otherTab === 'closed' ? 'Nothing closed yet.' : 'Nothing open.'}</p>}
                 {otherVisible.slice(0, shownFor('other')).map((send, i) => (
                   <div key={send.key} className="shrink-0">
