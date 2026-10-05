@@ -72,7 +72,7 @@ tagline: 'Got a hot req from a vendor on LinkedIn? Find the candidate instantly.
     points: [
       { label: 'Automated CRM', text: 'Every time you execute a pitch, the Tracker logs the candidate, the vendor, and the submission status. Your desk builds its own CRM on autopilot, preventing double-submittals.' },
       { label: 'Unlimited Users', text: "Add your entire recruiting team. You don't pay per seat; you just share your AI credit pool." },
-      { label: 'Usage Analytics', text: 'Total transparency. The dashboard shows exactly who is scraping jobs, matching resumes, and making submittals, down to the exact cent of AI credit usage.' },
+      { label: 'Usage Analytics', text: 'Total transparency. Billing shows exactly who is matching, drafting and sending, down to every AI credit used.' },
     ],
   },
 ];
