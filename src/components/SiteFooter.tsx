@@ -60,6 +60,7 @@ export default function SiteFooter() {
               <li><Link to="/about" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">About Us</Link></li>
               <li><Link to="/contact" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Contact Us</Link></li>
               <li><Link to="/#pricing" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Pricing</Link></li>
+              <li><Link to="/websites" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Website Modernization</Link></li>
             </ul>
           </div>
 

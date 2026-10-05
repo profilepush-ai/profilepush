@@ -61,6 +61,9 @@ const FollowingPage = lazy(() => import('./pages/FollowingPage'));
 const PublisherProfilePage = lazy(() => import('./pages/PublisherProfilePage'));
 const VendorsLandingPage = lazy(() => import('./pages/VendorsLandingPage'));
 const BenchSalesLandingPage = lazy(() => import('./pages/BenchSalesLandingPage'));
+const WebsitesLandingPage = lazy(() => import('./pages/WebsitesLandingPage'));
+const WebsitePage = lazy(() => import('./pages/WebsitePage'));
+const ClaimWebsitePage = lazy(() => import('./pages/ClaimWebsitePage'));
 
 function PageLoader() {
   return (
@@ -311,6 +314,8 @@ export default function App() {
             <Route path="/it-staffing-bench-sales-recruiters-list" element={<Navigate to="/bench-sales" replace />} />
             <Route path="/vendors" element={<ErrorBoundary><VendorsLandingPage /></ErrorBoundary>} />
             <Route path="/bench-sales" element={<ErrorBoundary><BenchSalesLandingPage /></ErrorBoundary>} />
+            <Route path="/websites" element={<ErrorBoundary><WebsitesLandingPage /></ErrorBoundary>} />
+            <Route path="/claim/:token" element={<ErrorBoundary><ClaimWebsitePage /></ErrorBoundary>} />
             <Route path="/contact" element={<ErrorBoundary><ContactUs /></ErrorBoundary>} />
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
             <Route path="/cancellation-refund" element={<ErrorBoundary><CancellationRefundPolicy /></ErrorBoundary>} />
@@ -332,6 +337,7 @@ export default function App() {
             <Route path="/support" element={<ProtectedRoute><ErrorBoundary><SupportPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/roadmap" element={<ProtectedRoute><ErrorBoundary><RoadmapPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/website" element={<ProtectedRoute><ErrorBoundary><WebsitePage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker/requests" element={<Navigate to="/tracker" replace />} />
             <Route path="/tracker/submissions" element={<Navigate to="/tracker" replace />} />
             <Route path="/tracker/applications" element={<Navigate to="/tracker" replace />} />
