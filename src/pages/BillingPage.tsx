@@ -665,7 +665,7 @@ export default function BillingPage() {
                   <p className="text-2xl font-extrabold text-gray-900">₹0<span className="text-[15px] font-semibold text-gray-500">/mo</span></p>
                   <p className="text-[13px] text-gray-500 mt-0.5 mb-4">100 credits, one time · never expire · no card required</p>
                   <ul className="space-y-2 text-[13px] text-gray-600 flex-1 mb-4">
-                    {['Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', 'Network: subscribe to 5 new people a day, up to 10', 'Credit costs vary by feature — see breakdown below'].map(item => (
+                    {['Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', '3 open consultants or requirements on the Tracker (unlimited once you buy credits)', 'Network: subscribe to 5 new people a day, up to 10', 'Credit costs vary by feature — see breakdown below'].map(item => (
                       <li key={item} className="flex items-start gap-2">
                         <Check size={12} className="mt-0.5 shrink-0 text-emerald-600" />
                         {item}

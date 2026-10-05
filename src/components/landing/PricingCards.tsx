@@ -24,12 +24,14 @@ function Bullet({ children, tone }: { children: string; tone: 'yellow' | 'blue' 
 export const DEFAULT_FREE_BULLETS = [
   'All features included',
   'Unlimited team members',
+  '3 open consultants or requirements on the Tracker',
   'Subscribe to 5 new people a day, up to 10',
   '1 credit per AI Match result, AI draft or Gmail send',
 ];
 
 export const DEFAULT_PRO_BULLETS = [
   'Everything in Free',
+  'Unlimited open consultants or requirements',
   'Subscribe to 10 new people a day, no cap',
   'Credits arrive automatically every month',
   'Change your tier or cancel any time',
@@ -37,6 +39,7 @@ export const DEFAULT_PRO_BULLETS = [
 
 const PACK_BULLETS = [
   'Pay once, credits never expire',
+  'Unlimited open consultants or requirements',
   '249, 500, 1,000 … up to 5,000 credits',
   '₹1 per credit, no subscription',
   'First top-up? Look for the 2× offer in the app',

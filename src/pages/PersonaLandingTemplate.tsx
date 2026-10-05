@@ -221,11 +221,13 @@ const PERSONA_CONTENT: Record<Persona, PersonaContent> = {
     freeBullets: [
       'All features included',
       'Unlimited team members',
+      '3 open consultants or requirements on the Tracker',
       'Subscribe to 5 new people a day, up to 10',
       '1 credit per AI Match result, AI draft or Gmail send',
     ],
     proBullets: [
       'Everything in Free',
+      'Unlimited open consultants or requirements',
       '500–5,000 credits every month',
       'Credits arrive automatically',
       'Cancel anytime',
