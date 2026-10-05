@@ -11,6 +11,8 @@
 //   request_status { request_id, status }
 //   delete    { website_id }               unclaimed demos only
 //   analytics { website_id, days? }
+//   build_list { side?, site?, status?, q?, page? }  the Build list tab
+//   build_update { domain, status?, notes? }
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
 import { crawlSite, generateContent, slugForHost } from "../_shared/website-templates/generate.ts";
@@ -175,6 +177,67 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await db.rpc("get_website_analytics", { p_website_id: payload.website_id, p_days: Number(payload.days) || 30 });
       if (error) return json({ error: error.message }, 500);
       return json({ analytics: data });
+    }
+
+    // ── Build list ────────────────────────────────────────────────────────
+    if (action === "build_list") {
+      const PAGE = 100;
+      const page = Math.max(0, Number(payload.page) || 0);
+      let q = db.from("website_build_list")
+        .select("domain, company, side, is_user, user_persona, hotlist_posts, job_posts, site_status, words, title, staffing_score, priority, status, notes, checked_at", { count: "exact" });
+      const side = String(payload.side ?? "all");
+      if (side === "users") q = q.eq("is_user", true);
+      else if (["bench", "vendor", "both", "other"].includes(side)) q = q.eq("side", side);
+      const site = String(payload.site ?? "buildable");
+      if (site === "buildable") q = q.eq("site_status", "ok");
+      else if (["ok", "thin", "dead", "parked"].includes(site)) q = q.eq("site_status", site);
+      const status = String(payload.status ?? "todo");
+      if (["todo", "building", "built", "skipped"].includes(status)) q = q.eq("status", status);
+      const search = String(payload.q ?? "").trim().toLowerCase().replace(/[%,()]/g, "");
+      if (search) q = q.or(`domain.ilike.%${search}%,company.ilike.%${search}%,title.ilike.%${search}%`);
+      const { data, error, count } = await q.order("priority", { ascending: false }).order("domain").range(page * PAGE, page * PAGE + PAGE - 1);
+      if (error) return json({ error: error.message }, 500);
+
+      // Totals for the header, over the whole list.
+      const head = () => db.from("website_build_list").select("domain", { count: "exact", head: true });
+      const [all, buildable, benchBuildable, built, building] = await Promise.all([
+        head(),
+        head().eq("site_status", "ok"),
+        head().eq("site_status", "ok").in("side", ["bench", "both"]),
+        head().eq("status", "built"),
+        head().eq("status", "building"),
+      ]);
+      const totals = {
+        all: all.count ?? 0,
+        buildable: buildable.count ?? 0,
+        bench_buildable: benchBuildable.count ?? 0,
+        built: built.count ?? 0,
+        building: building.count ?? 0,
+      };
+
+      // Link rows that already have a demo (slug = domain with dots as dashes).
+      const slugs = (data ?? []).map(r => r.domain.replace(/[^a-z0-9]+/g, "-"));
+      const { data: sites } = slugs.length
+        ? await db.from("websites").select("slug, account_id").in("slug", slugs)
+        : { data: [] as { slug: string; account_id: string | null }[] };
+      const bySlug = new Map((sites ?? []).map(s => [s.slug, s]));
+      const rows = (data ?? []).map(r => {
+        const s = bySlug.get(r.domain.replace(/[^a-z0-9]+/g, "-"));
+        return { ...r, demo_slug: s?.slug ?? null, claimed: !!s?.account_id };
+      });
+      return json({ rows, count: count ?? 0, page, page_size: PAGE, totals });
+    }
+
+    if (action === "build_update") {
+      const fields: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (typeof payload.status === "string") {
+        if (!["todo", "building", "built", "skipped"].includes(payload.status)) return json({ error: "Invalid status" }, 400);
+        fields.status = payload.status;
+      }
+      if (typeof payload.notes === "string") fields.notes = payload.notes.slice(0, 2000) || null;
+      const { error } = await db.from("website_build_list").update(fields).eq("domain", String(payload.domain ?? ""));
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);
