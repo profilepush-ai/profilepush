@@ -303,7 +303,7 @@ export default function BoardPage() {
         aiResumeRef.current = subjectKind === 'hotlist' && subjectId ? resumes[subjectId] ?? null : null;
         void ai.generate(l);
       }}
-      onApply={(l) => setApplyLead(l)}
+      onApply={(l) => { setApplyResume(subjectKind === 'hotlist' && subjectId ? resumes[subjectId] ?? null : null); setApplyLead(l); }}
       onToggleInlineBreakdown={(id) => toggleIn(setExpandedBreakdown, id)}
       onExpandSkills={(id) => toggleIn(setExpandedSkills, id, true)}
       onCollapseSkills={(id) => toggleIn(setExpandedSkills, id, false)}
@@ -419,6 +419,8 @@ export default function BoardPage() {
       });
   }, [user?.id]);
   const [applyLead, setApplyLead] = useState<SocialLead | null>(null);
+  // The consultant's attached resume, handed to the submit form so it isn't asked for again.
+  const [applyResume, setApplyResume] = useState<{ url: string; name: string } | null>(null);
 
   const loadResumes = useCallback(async () => {
     if (subjectKind !== 'hotlist') return;
@@ -1136,6 +1138,7 @@ export default function BoardPage() {
           onClose={() => setApplyLead(null)}
           onSaved={() => { setApplyLead(null); void loadAll(); void loadSends(); }}
           showToast={showToast}
+          attachedResume={applyResume}
         />
       )}
       <InsufficientCreditsModal
