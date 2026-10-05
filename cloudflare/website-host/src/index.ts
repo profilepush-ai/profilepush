@@ -15,6 +15,11 @@
 //   salted daily hash. Demo traffic is stored but kept out of the owner's
 //   analytics (the admin page uses it to see which firms opened their demo).
 // - A daily cron emails each live site's owners yesterday's numbers.
+// - Live portal: every page gets a widget that reads "api/live" and, when
+//   there is something to show, opens a drawer of the firm's current
+//   ProfilePush job posts and bench consultants. Live Website plan: the
+//   account's own posts. Unclaimed demos: a preview from posts sent from
+//   the firm's email domain. Otherwise nothing renders.
 
 interface Env {
   SUPABASE_URL: string;
@@ -136,7 +141,7 @@ async function serveSite(site: Site, base: string, env: Env): Promise<Response> 
   // Under site.profilepush.ai the site lives in /<slug>/; a <base> keeps its
   // relative links (api/submit, api/collect) inside that folder.
   if (base !== '/') html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${base}">`);
-  html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${TRACKER}</body>`) : html + TRACKER;
+  html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${TRACKER}${LIVE_WIDGET}</body>`) : html + TRACKER + LIVE_WIDGET;
   const headers: Record<string, string> = { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff' };
   if (site.live) {
     headers['Cache-Control'] = 'public, max-age=60';
@@ -175,6 +180,94 @@ window.ppTrack=function(t,l){if(t==="cta")s({t:"cta",l:String(l||"").slice(0,60)
 s({t:"pageview",p:location.pathname,r:document.referrer});
 document.addEventListener("click",function(e){var el=e.target&&e.target.closest&&e.target.closest("[data-path],[data-mode],[data-track]");if(el)s({t:"cta",l:(el.getAttribute("data-path")||el.getAttribute("data-mode")||el.getAttribute("data-track")||"").slice(0,60)})},true);
 }catch(e){}})();</script>`;
+
+// Live portal feed, cached at the edge for 10 minutes per site.
+async function handleLive(env: Env, ctx: ExecutionContext, site: Site): Promise<Response> {
+  const cacheKey = new Request(`https://website-host.internal/live/${site.id}`);
+  const cache = caches.default;
+  const hit = await cache.match(cacheKey);
+  let body = hit ? await hit.text() : null;
+  if (body === null) {
+    const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/website_live_feed`, {
+      method: 'POST',
+      headers: supabaseHeaders(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ p_website_id: site.id }),
+    });
+    if (!res.ok) {
+      console.error('website_live_feed', res.status, await res.text());
+      return json({ mode: 'off' });
+    }
+    body = await res.text();
+    ctx.waitUntil(cache.put(cacheKey, new Response(body, { headers: { 'Cache-Control': 'max-age=600' } })));
+  }
+  return new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' } });
+}
+
+// The live portal widget: a tab on the right edge that opens a drawer with
+// Jobs and Bench lists. Shadow DOM so it looks the same on every template;
+// text only via textContent. Renders nothing when the feed is off or empty.
+const LIVE_WIDGET = `<script>(function(){try{
+var APP="https://profilepush.ai";
+fetch("api/live").then(function(r){return r.json()}).then(function(d){
+if(!d||d.mode==="off")return;var jobs=d.jobs||[],hot=d.hotlist||[];if(!jobs.length&&!hot.length)return;
+var host=document.createElement("div");host.setAttribute("data-pp-live","");document.body.appendChild(host);
+var root=host.attachShadow?host.attachShadow({mode:"open"}):host;
+var st=document.createElement("style");st.textContent=${JSON.stringify(`
+:host{all:initial}
+*{box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+.tab{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:2147483646;writing-mode:vertical-rl;background:#0f172a;color:#fff;border:1px solid rgba(255,255,255,.15);border-right:0;border-radius:12px 0 0 12px;padding:14px 9px;font:700 12px/1 system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:-6px 8px 30px rgba(0,0,0,.25)}
+.tab:hover{padding-right:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:p 2s infinite}
+@keyframes p{70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+.scrim{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:2147483646;opacity:0;pointer-events:none;transition:opacity .25s}
+.panel{position:fixed;top:0;right:0;height:100%;width:min(440px,100%);background:#fff;color:#0f172a;z-index:2147483647;transform:translateX(100%);transition:transform .3s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.25)}
+.open .scrim{opacity:1;pointer-events:auto}.open .panel{transform:none}
+.hd{padding:20px 20px 12px;border-bottom:1px solid #e2e8f0}
+.k{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#16a34a}
+.h{font-size:20px;font-weight:800;margin:6px 0 2px}
+.s{font-size:13px;color:#64748b;margin:0}
+.x{position:absolute;top:14px;right:14px;width:36px;height:36px;border-radius:50%;border:1px solid #e2e8f0;background:#fff;font-size:20px;line-height:1;cursor:pointer;color:#334155}
+.tabs{display:flex;gap:6px;margin-top:14px}
+.tb{flex:1;padding:9px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;font-size:13px;font-weight:700;color:#475569;cursor:pointer}
+.tb[aria-selected=true]{background:#0f172a;border-color:#0f172a;color:#fff}
+.list{flex:1;overflow:auto;padding:12px 16px 24px;display:flex;flex-direction:column;gap:10px}
+.it{display:block;text-decoration:none;color:inherit;border:1px solid #e2e8f0;border-radius:14px;padding:14px;transition:border-color .15s,transform .15s}
+.it:hover{border-color:#0f172a;transform:translateY(-1px)}
+.t{font-size:15px;font-weight:700;margin:0 0 4px}
+.m{font-size:12.5px;color:#64748b;margin:0 0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.c{font-size:11.5px;font-weight:600;background:#f1f5f9;color:#334155;border-radius:999px;padding:3px 9px}
+.ft{padding:12px 16px;border-top:1px solid #e2e8f0;font-size:11.5px;color:#94a3b8;text-align:center}
+.ft a{color:#64748b}
+@media (prefers-reduced-motion:reduce){.dot{animation:none}.panel,.scrim,.it{transition:none}}
+@media (max-width:640px){.tab{padding:12px 7px;font-size:11px}}
+`)};root.appendChild(st);
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function ago(s){var d=Math.max(0,Math.round((Date.now()-new Date(s).getTime())/864e5));return d<1?"Today":d<2?"Yesterday":d+" days ago"}
+function arr(v){return Array.isArray(v)?v:(v?[v]:[])}
+var preview=d.mode==="preview";
+var wrap=el("div");root.appendChild(wrap);
+var tab=el("button","tab");tab.type="button";tab.setAttribute("aria-label","Open live openings");tab.appendChild(el("span","dot"));tab.appendChild(el("span",null,"Live · "+(jobs.length+hot.length)));wrap.appendChild(tab);
+var scrim=el("div","scrim");wrap.appendChild(scrim);
+var panel=el("aside","panel");panel.setAttribute("role","dialog");panel.setAttribute("aria-modal","true");panel.setAttribute("aria-label","Live openings");wrap.appendChild(panel);
+var hd=el("div","hd");panel.appendChild(hd);
+var k=el("div","k");k.appendChild(el("span","dot"));k.appendChild(el("span",null,preview?"Preview of Live Website":"Live · updated automatically"));hd.appendChild(k);
+hd.appendChild(el("p","h","Current openings"));
+hd.appendChild(el("p","s","Posted in the last 45 days"));
+var x=el("button","x","×");x.type="button";x.setAttribute("aria-label","Close");panel.appendChild(x);
+var tabs=el("div","tabs");tabs.setAttribute("role","tablist");hd.appendChild(tabs);
+var list=el("div","list");panel.appendChild(list);
+var ft=el("div","ft");ft.appendChild(document.createTextNode("Powered by "));var pa=el("a",null,"ProfilePush");pa.href=APP;pa.target="_blank";pa.rel="noopener";ft.appendChild(pa);panel.appendChild(ft);
+function item(href,title,meta,chips){var a=el("a","it");a.href=href;a.target="_blank";a.rel="noopener";a.appendChild(el("p","t",title));if(meta)a.appendChild(el("p","m",meta));var c=el("div","chips");chips.filter(Boolean).slice(0,6).forEach(function(s){c.appendChild(el("span","c",String(s)))});a.appendChild(c);return a}
+function show(which){list.textContent="";Array.prototype.forEach.call(tabs.children,function(b){b.setAttribute("aria-selected",b.getAttribute("data-k")===which?"true":"false")});
+if(which==="jobs")jobs.forEach(function(j){list.appendChild(item(APP+"/job/"+j.id,j.title,[j.location,j.type].filter(Boolean).join(" · ")+" · "+ago(j.posted_at),arr(j.skills).slice(0,4).concat(j.experience?[j.experience+"+ yrs"]:[])))});
+else hot.forEach(function(h){list.appendChild(item(APP+"/hotlist/"+h.id,h.title,[arr(h.locations).slice(0,2).join(", "),h.availability].filter(Boolean).join(" · ")+" · "+ago(h.posted_at),(h.experience?[h.experience+" yrs"]:[]).concat(h.visa?[h.visa]:[],h.work_type?[h.work_type]:[],arr(h.skills).slice(0,3))))});
+list.scrollTop=0}
+[["jobs","Jobs",jobs.length],["bench","Bench",hot.length]].forEach(function(t){if(!t[2])return;var b=el("button","tb",t[1]+" ("+t[2]+")");b.type="button";b.setAttribute("role","tab");b.setAttribute("data-k",t[0]);b.onclick=function(){show(t[0])};tabs.appendChild(b)});
+function open(){wrap.className="open";show(jobs.length?"jobs":"bench");x.focus();if(window.ppTrack)window.ppTrack("cta","live-portal")}
+function close(){wrap.className="";tab.focus()}
+tab.onclick=open;scrim.onclick=close;x.onclick=close;document.addEventListener("keydown",function(e){if(e.key==="Escape"&&wrap.className)close()});
+}).catch(function(){})}catch(e){}})();</script>`;
 
 function deviceOf(ua: string): 'mobile' | 'tablet' | 'desktop' {
   if (/iPad|Tablet/i.test(ua)) return 'tablet';
@@ -430,6 +523,7 @@ export default {
         return await handleSubmit(request, env, ctx, site);
       }
       if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'Method not allowed' }, 405);
+      if (path === '/api/live') return await handleLive(env, ctx, site);
       if (path === '/robots.txt') {
         return new Response(site.live ? 'User-agent: *\nAllow: /\n' : 'User-agent: *\nDisallow: /\n', { headers: { 'Content-Type': 'text/plain' } });
       }

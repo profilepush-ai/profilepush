@@ -1,9 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { WEBSITE_PLAN_BONUS_CREDITS, WEBSITE_PLAN_PRICE_INR_PAISE, WEBSITE_PLAN_TERM_MONTHS } from "../_shared/website-plan.ts";
+import { isWebsitePlanId, WEBSITE_PLANS, type WebsitePlanId } from "../_shared/website-plan.ts";
 
-// Creates a one-time Razorpay Order for the Website Modernization plan
-// (₹36,999 a year, all inclusive, with 5,000 credits). Same shape as
+// Creates a one-time Razorpay Order for a Website Modernization plan:
+// website (₹9,999/yr, 1,000 credits), live (₹19,999/yr, 3,000 credits) or
+// live_upgrade (₹10,000: website → live for the rest of the term). Same shape as
 // razorpay-create-credit-order. razorpay-verify-website-payment or the
 // webhook applies it via the pending row this writes. With a claim_token,
 // the order also claims that demo website (once the payment is applied).
@@ -51,6 +52,18 @@ Deno.serve(async (req: Request) => {
     // Claiming a demo: check this user may claim it before taking payment.
     const body = await req.json().catch(() => ({}));
     const claimToken = typeof body?.claim_token === "string" && body.claim_token ? body.claim_token : null;
+    const requestedPlan: unknown = body?.plan;
+    const planId: WebsitePlanId = isWebsitePlanId(requestedPlan) ? requestedPlan : "website";
+    const plan = WEBSITE_PLANS[planId];
+
+    // An upgrade needs a running Website plan; Live → Live is just a renewal.
+    if (planId === "live_upgrade") {
+      const { data: acct } = await supabaseAdmin.from("accounts").select("website_plan, website_plan_expires_at").eq("id", member.account_id).single();
+      const active = !!acct?.website_plan_expires_at && new Date(acct.website_plan_expires_at) > new Date();
+      if (!active) return new Response(JSON.stringify({ error: "Upgrading needs an active Website plan. Choose Live Website instead." }), { status: 400, headers: corsHeaders });
+      if (acct?.website_plan === "live") return new Response(JSON.stringify({ error: "You're already on Live Website." }), { status: 400, headers: corsHeaders });
+      if (claimToken) return new Response(JSON.stringify({ error: "Claim a website with Website or Live Website, not an upgrade." }), { status: 400, headers: corsHeaders });
+    }
     let websiteId: string | null = null;
     if (claimToken) {
       const { data: target, error: claimErr } = await supabaseAdmin.rpc("website_claim_target", { p_token: claimToken, p_user_id: user.id });
@@ -69,13 +82,14 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: { Authorization: razorpayAuth(), "Content-Type": "application/json" },
       body: JSON.stringify({
-        amount: WEBSITE_PLAN_PRICE_INR_PAISE,
+        amount: plan.paise,
         currency: "INR",
         notes: {
           type: "website_plan",
           account_id: member.account_id,
-          term_months: WEBSITE_PLAN_TERM_MONTHS.toString(),
-          bonus_credits: WEBSITE_PLAN_BONUS_CREDITS.toString(),
+          plan: planId,
+          term_months: plan.termMonths.toString(),
+          bonus_credits: plan.credits.toString(),
           website_id: websiteId ?? "",
         },
       }),
@@ -87,9 +101,10 @@ Deno.serve(async (req: Request) => {
       account_id: member.account_id,
       user_id: user.id,
       razorpay_order_id: order.id,
-      amount_inr_paise: WEBSITE_PLAN_PRICE_INR_PAISE,
-      bonus_credits: WEBSITE_PLAN_BONUS_CREDITS,
-      term_months: WEBSITE_PLAN_TERM_MONTHS,
+      amount_inr_paise: plan.paise,
+      plan: planId,
+      bonus_credits: plan.credits,
+      term_months: Math.max(1, plan.termMonths),
       website_id: websiteId,
       status: "created",
     });
@@ -99,8 +114,10 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         order_id: order.id,
         key_id: getRequiredEnv("RAZORPAY_KEY_ID"),
-        amount_inr_paise: WEBSITE_PLAN_PRICE_INR_PAISE,
-        bonus_credits: WEBSITE_PLAN_BONUS_CREDITS,
+        amount_inr_paise: plan.paise,
+        plan: planId,
+        label: plan.label,
+        bonus_credits: plan.credits,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
