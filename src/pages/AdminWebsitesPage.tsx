@@ -4,6 +4,7 @@ import { CheckCircle, Copy, ExternalLink, Eye, Globe, Loader2, RefreshCw, Sparkl
 import Logo from '../components/Logo';
 import { supabase } from '../lib/supabase';
 import { SITE_BASE_URL } from '../lib/website-checkout';
+import AdminWebsiteBuildList from '../components/AdminWebsiteBuildList';
 
 // Admin > Website Demos: generate demos from a firm's current website, see
 // which firms opened theirs, and follow live sites. Same password gate as
@@ -158,7 +159,7 @@ function SiteRow({ s, templates, onChange }: { s: Site; templates: string[]; onC
 export function AdminWebsitesPanel() {
   const [data, setData] = useState<{ requests: Request[]; sites: Site[]; templates: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'demos' | 'live' | 'requests'>('demos');
+  const [tab, setTab] = useState<'demos' | 'live' | 'requests' | 'build'>('demos');
   const [form, setForm] = useState({ url: '', company: '', email: '', template: '' });
   const [starting, setStarting] = useState(false);
 
@@ -237,14 +238,16 @@ export function AdminWebsitesPanel() {
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div className="flex gap-1">
-          {([['demos', `Demos (${demos.length})`], ['live', `Live (${live.length})`], ['requests', `Requests (${data?.requests.length ?? 0})`]] as const).map(([id, label]) => (
+          {([['demos', `Demos (${demos.length})`], ['live', `Live (${live.length})`], ['requests', `Requests (${data?.requests.length ?? 0})`], ['build', 'Build list']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} className={`px-3.5 py-2 rounded-xl text-[13px] font-semibold ${tab === id ? 'bg-white border border-gray-200 shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>{label}</button>
           ))}
         </div>
 
         {!data && !error && <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div>}
 
-        {data && tab !== 'requests' && (
+        {tab === 'build' && <AdminWebsiteBuildList />}
+
+        {data && (tab === 'demos' || tab === 'live') && (
           <div className="bg-white rounded-2xl border border-gray-200 overflow-x-auto">
             <table className="w-full min-w-[960px]">
               <thead><tr className="text-left text-[12px] text-gray-500"><th className="px-4 py-2.5 font-medium">Site</th><th className="py-2.5 pr-4 font-medium">Status</th><th className="py-2.5 pr-4 font-medium">{tab === 'demos' ? 'Demo views' : 'Traffic'}</th><th className="py-2.5 pr-4 font-medium">Links</th><th className="py-2.5 pr-4 font-medium">{tab === 'demos' ? 'Who can claim' : 'Claimed'}</th><th className="py-2.5 font-medium">Actions</th></tr></thead>
