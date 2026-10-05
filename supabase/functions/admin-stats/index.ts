@@ -61,6 +61,26 @@ Deno.serve(async (req: Request) => {
     }
 
     const accountIds = accounts.map((a: any) => a.id);
+
+    // Every account id in one .in() filter put ~37 characters per account
+    // into the request URL; past ~370 accounts the gateway rejected it, and
+    // since nothing checked the error every column silently read zero. So
+    // the ids go 150 at a time. An account's rows all land in one batch, so
+    // per-account ordering (which AI Match refund pairing relies on) holds.
+    // A failed query throws rather than passing for "no activity".
+    const ID_BATCH = 150;
+    // deno-lint-ignore no-explicit-any
+    async function pageAllByAccount(build: (ids: string[]) => any): Promise<{ data: any[]; error: null }> {
+      // deno-lint-ignore no-explicit-any
+      const rows: any[] = [];
+      for (let i = 0; i < accountIds.length; i += ID_BATCH) {
+        const batch = accountIds.slice(i, i + ID_BATCH);
+        const { data, error } = await pageAll(() => build(batch));
+        if (error) throw new Error((error as { message?: string }).message ?? String(error));
+        rows.push(...data);
+      }
+      return { data: rows, error: null };
+    }
     // Persona per account, so the daily buckets below can be split without a
     // second pass over the accounts array for every row.
     const accountPersona: Record<string, string | null> = {};
@@ -97,43 +117,43 @@ Deno.serve(async (req: Request) => {
       claimedProfilesRes,
       playClicksRes,
     ] = await Promise.all([
-      pageAll(() => supabase
+      pageAllByAccount((ids) => supabase
         .from("account_members")
         .select("account_id, user_id, invited_email, display_name, role, status, created_at")
-        .in("account_id", accountIds)
+        .in("account_id", ids)
         .eq("status", "active").order("created_at")),
 
-      pageAll(() => (() => {
+      pageAllByAccount((ids) => (() => {
         let query = supabase
           .from("user_activity_daily")
           .select("account_id, session_count, active_seconds, activity_date, last_activity_at")
-          .in("account_id", accountIds);
+          .in("account_id", ids);
         if (start_date) query = query.gte("activity_date", String(start_date).slice(0, 10));
         if (end_date) query = query.lte("activity_date", String(end_date).slice(0, 10));
         return query;
       })().order("activity_date").order("account_id").order("user_id")),
 
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("job_search_history")
           .select("account_id, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
       ).order("created_at")),
 
       // Posts, tracked separately for Jobs vs Hotlist.
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("social_jobs")
           .select("created_by_account_id, created_at")
-          .in("created_by_account_id", accountIds)
+          .in("created_by_account_id", ids)
           .eq("post_source", "user_post")
       ).order("created_at")),
 
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("social_hotlist")
           .select("created_by_account_id, created_at")
-          .in("created_by_account_id", accountIds)
+          .in("created_by_account_id", ids)
           .eq("post_source", "user_post")
       ).order("created_at")),
 
@@ -141,11 +161,11 @@ Deno.serve(async (req: Request) => {
       // post). lead_id doesn't carry a job/hotlist flag itself, so this is
       // split further below by cross-referencing which table each lead_id
       // belongs to.
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("pulse_lead_actions")
           .select("account_id, lead_id, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
           .eq("action_type", "post_content_viewed")
       ).order("created_at")),
 
@@ -156,11 +176,11 @@ Deno.serve(async (req: Request) => {
       // and the funnel then widened below a node it had pinched to nothing.
       // The charge is taken server-side on every path, so the ledger is the
       // only complete record.
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("credit_transactions")
           .select("account_id, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
           .eq("description", "Usage: pulse_ask_ai_preview_generate")
       ).order("created_at")),
 
@@ -169,10 +189,10 @@ Deno.serve(async (req: Request) => {
       // report the same spend as a very different share depending on when
       // someone joined. Deliberately not date-filtered — the grant is a
       // property of the account, not activity inside the window.
-      pageAll(() => supabase
+      pageAllByAccount((ids) => supabase
         .from("credit_transactions")
         .select("account_id, amount")
-        .in("account_id", accountIds)
+        .in("account_id", ids)
         .eq("description", "Free signup credits").order("created_at")),
 
       // Credits actually spent, from the ledger rather than inferred from the
@@ -180,50 +200,50 @@ Deno.serve(async (req: Request) => {
       // say how much of the free grant someone has used. The 2026-09-21
       // rebalance wrote its deductions as usage rows too; they are excluded
       // below, since nobody spent those credits on anything.
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("credit_transactions")
           .select("account_id, amount, description, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
           .eq("type", "usage")
       ).order("created_at")),
 
       // Refunds, netted against spend. Features that hold credits up front
       // (AI Match holds 10 per run) write the hold as usage and give back
       // whatever went undelivered as a separate refund row.
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("credit_transactions")
           .select("account_id, amount, description, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
           .eq("type", "refund")
       ).order("created_at")),
 
       // Sends from the bulk bar, as opposed to one at a time. Null for
       // everything sent before send_source existed.
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("pulse_ask_ai_requests")
           .select("account_id, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
           .eq("send_source", "bulk")
       ).order("created_at")),
 
       // AI Pitch (jobs) / AI Request (hotlist) are the same underlying
       // table, split by which foreign key is set.
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("pulse_ask_ai_requests")
           .select("account_id, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
           .not("job_id", "is", null)
       ).order("created_at")),
 
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("pulse_ask_ai_requests")
           .select("account_id, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
           .not("hotlist_id", "is", null)
       ).order("created_at")),
 
@@ -233,11 +253,11 @@ Deno.serve(async (req: Request) => {
       // One row per run, but the amount is the up-front hold (10, or whatever
       // a short balance allowed), not the matches delivered — the undelivered
       // part comes back as a refund row, paired with its run below.
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("credit_transactions")
           .select("account_id, amount, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
           .eq("type", "usage")
           .like("description", "%ai_match_run%")
           .order("created_at", { ascending: true })
@@ -246,52 +266,52 @@ Deno.serve(async (req: Request) => {
       // Gmail: which accounts have connected a mailbox, and which address.
       // Not date-ranged — a connection is current state, not an event in the
       // window, so a range filter would make it vanish from older ranges.
-      pageAll(() => supabase
+      pageAllByAccount((ids) => supabase
         .from("gmail_integrations")
         .select("account_id, gmail_address, status, last_synced_at")
-        .in("account_id", accountIds).order("account_id")),
+        .in("account_id", ids).order("account_id")),
 
       // Chats: messages sent on an in-app user_post conversation.
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("post_chat_messages")
           .select("sender_account_id, created_at")
-          .in("sender_account_id", accountIds)
+          .in("sender_account_id", ids)
       ).order("created_at")),
 
       // Active List downloads: one row per download action (see
       // active_list_downloads / check_and_log_active_list_download), split
       // by download_type the same way AI Pitch/Request splits by which
       // foreign key is set.
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("active_list_downloads")
           .select("account_id, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
           .eq("download_type", "vendors")
       ).order("created_at")),
 
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("active_list_downloads")
           .select("account_id, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
           .eq("download_type", "recruiters")
       ).order("created_at")),
 
       // Network subscriptions: current state, so not date-ranged. source is
       // 'manual' (tapped Subscribe) or 'auto' (created by an AI Submit/Invite).
-      pageAll(() => supabase
+      pageAllByAccount((ids) => supabase
         .from("publisher_follows")
         .select("account_id, publisher_id, source, created_at")
-        .in("account_id", accountIds).order("created_at")),
+        .in("account_id", ids).order("created_at")),
 
       // Subscribe taps inside the window (one row per tap, kept on unsubscribe).
-      pageAll(() => withDateRange(
+      pageAllByAccount((ids) => withDateRange(
         supabase
           .from("publisher_follow_log")
           .select("account_id, created_at")
-          .in("account_id", accountIds)
+          .in("account_id", ids)
       ).order("created_at")),
 
       // Profiles an account has claimed, to count who subscribes to them.
