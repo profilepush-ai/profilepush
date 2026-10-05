@@ -8,13 +8,13 @@
 <meta name="theme-color" content="{{theme.primary}}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="{{fonts.href}}" rel="stylesheet">
 <style>
 :root{
   --brand:{{theme.primary}}; --brand-ink:{{theme.primary_ink}}; --accent:{{theme.secondary}}; --accent-ink:{{theme.secondary_ink}};
   --bg:#f5f6f8; --card:#fff; --text:#0e1116; --muted:#5b6270; --line:#e3e6eb;
   --deep:color-mix(in srgb,var(--brand) 82%,#000);
-  --font:"Plus Jakarta Sans",system-ui,sans-serif;
+  --font:"{{fonts.body}}",system-ui,sans-serif; --display:"{{fonts.display}}",system-ui,sans-serif;
   --pp-brand:var(--brand); --pp-brand-ink:var(--brand-ink); --pp-text:var(--text); --pp-muted:var(--muted);
   --pp-line:var(--line); --pp-field-bg:#fff; --pp-surface:#fff; --pp-radius:14px;
 }
@@ -22,7 +22,7 @@
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 var(--font);-webkit-font-smoothing:antialiased;overflow-x:hidden}
 a{color:inherit}
-h1,h2,h3{margin:0;letter-spacing:-.03em;line-height:1.05;font-weight:800}
+h1,h2,h3{margin:0;letter-spacing:-.03em;line-height:1.05;font-weight:800;font-family:var(--display)}
 .wrap{width:min(1200px,100% - 32px);margin-inline:auto}
 section{padding:100px 0}
 @media (max-width:720px){section{padding:68px 0}}

@@ -1,7 +1,7 @@
 // Demo generator: reads a firm's current website and writes SiteContent for
 // a template, using only what the site says. Called by admin-websites.
 //
-// Writing runs on Claude Fable 5.1 (Anthropic's most capable model). The
+// Writing runs on Claude Opus 5.5 at high effort. The
 // JSON shape is given in the system prompt and the reply is parsed and
 // checked here: the full schema is too large for strict structured outputs
 // (the API rejects its compiled grammar).
@@ -10,7 +10,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.131.0';
 import { GOAL_IDS } from './goals.ts';
 import type { SiteContent } from './render.ts';
 
-const MODEL = 'claude-fable-5-1';
+const MODEL = 'claude-opus-5-5';
 const UA = 'Mozilla/5.0 (compatible; ProfilePushSiteReader/1.0; +https://profilepush.ai/websites)';
 const PAGE_KEYWORDS = /about|who|what|service|solution|career|job|candidate|employer|client|training|course|process|why|industr|contact|partner|vendor/i;
 
@@ -19,6 +19,9 @@ export type Crawl = {
   host: string;
   pages: { url: string; title: string; text: string }[];
   colors: string[];
+  // The site's own fonts that Google Fonts serves: what its headings use,
+  // and what its body text uses (most used first).
+  fonts: { heading: string | null; body: string | null };
   emails: string[];
   phones: string[];
 };
@@ -88,16 +91,75 @@ function sameSiteLinks(html: string, base: URL): string[] {
 
 function hexColors(css: string): string[] {
   const counts = new Map<string, number>();
+  const add = (r: number, g: number, b: number) => {
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    // Skip greys, near-white and near-black: we want the brand colours.
+    if (max - min < 40 || max < 50 || min > 225) return;
+    const hex = `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+    counts.set(hex, (counts.get(hex) ?? 0) + 1);
+  };
   for (const m of css.matchAll(/#([0-9a-f]{6}|[0-9a-f]{3})\b/gi)) {
     let h = m[1].toLowerCase();
     if (h.length === 3) h = h.split('').map(c => c + c).join('');
-    const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    // Skip greys, near-white and near-black: we want the brand colours.
-    if (max - min < 40 || max < 50 || min > 225) continue;
-    counts.set(`#${h}`, (counts.get(`#${h}`) ?? 0) + 1);
+    add(...([0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)) as [number, number, number]));
+  }
+  for (const m of css.matchAll(/rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})/gi)) {
+    add(Number(m[1]), Number(m[2]), Number(m[3]));
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c).slice(0, 6);
+}
+
+// Third-party CSS whose colours and fonts aren't the firm's brand.
+const VENDOR_CSS = /bootstrap|font-?awesome|fontawesome|jquery|owl\.|slick|animate|swiper|magnific|fancybox|select2|datepicker|icomoon|ionicons|material-?icons|wp-includes|elementor\/assets|woocommerce|revslider|settings_[0-9a-f]+\.css|cdn\./i;
+const ICON_OR_GENERIC = /awesome|icon|glyph|revicons|eicons|dashicons|^(serif|sans-serif|monospace|cursive|fantasy|system-ui|inherit|initial|-apple-system|blinkmacsystemfont|helvetica( neue)?|arial|verdana|tahoma|georgia|times( new roman)?|segoe ui|courier( new)?)$/i;
+
+function stylesheetLinks(html: string, base: URL): string[] {
+  const out: string[] = [];
+  for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
+    if (!/\brel\s*=\s*["']?[^"'>]*stylesheet/i.test(tag)) continue;
+    const href = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1];
+    if (!href) continue;
+    try { out.push(new URL(href, base).toString()); } catch { /* ignore */ }
+  }
+  return out;
+}
+
+// Families named in Google Fonts links (css and css2 formats).
+function googleFamilies(urls: string[]): string[] {
+  const out: string[] = [];
+  for (const u of urls) {
+    if (!/fonts\.googleapis\.com/.test(u)) continue;
+    try {
+      const url = new URL(u);
+      for (const fam of url.searchParams.getAll('family')) {
+        for (const part of fam.split('|')) out.push(part.split(':')[0].replace(/\+/g, ' ').trim());
+      }
+    } catch { /* ignore */ }
+  }
+  return out.filter(Boolean);
+}
+
+// First real family in each font-family declaration, counted; headings
+// (h1–h3 rules) counted separately.
+function fontUsage(css: string): { all: Map<string, number>; heading: Map<string, number> } {
+  const all = new Map<string, number>(), heading = new Map<string, number>();
+  const first = (decl: string) => decl.split(',').map(f => f.replace(/["']/g, '').trim()).find(f => f && !ICON_OR_GENERIC.test(f));
+  for (const m of css.matchAll(/([^{}]*)\{([^}]*)\}/g)) {
+    const fam = m[2].match(/font-family\s*:\s*([^;}!]+)/i)?.[1];
+    if (!fam) continue;
+    const f = first(fam);
+    if (!f) continue;
+    all.set(f, (all.get(f) ?? 0) + 1);
+    if (/(^|[\s,>])h[1-3]\b|title|heading|banner|hero/i.test(m[1])) heading.set(f, (heading.get(f) ?? 0) + 1);
+  }
+  return { all, heading };
+}
+
+async function onGoogleFonts(family: string): Promise<boolean> {
+  try {
+    const r = await fetch(`https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}`, { signal: AbortSignal.timeout(6000) });
+    return r.ok;
+  } catch { return false; }
 }
 
 export async function crawlSite(rawUrl: string, maxPages = 12): Promise<Crawl> {
@@ -121,27 +183,44 @@ export async function crawlSite(rawUrl: string, maxPages = 12): Promise<Crawl> {
     all.push(...frontier);
   }
 
-  // Colours: theme-color, inline styles and the first couple of stylesheets.
-  let css = all.map(p => (p.html.match(/<style[\s\S]*?<\/style>|style="[^"]*"/gi) ?? []).join(' ')).join(' ');
-  const theme = home.html.match(/<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)/i)?.[1];
-  const sheets = [...home.html.matchAll(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)/gi)]
-    .map(m => { try { return new URL(m[1], base).toString(); } catch { return ''; } })
-    .filter(u => u && !/bootstrap|font-awesome|fonts\.googleapis|cdn/i.test(u))
-    .slice(0, 2);
-  for (const s of sheets) {
+  // Brand: the firm's own stylesheets (any page, any attribute order),
+  // <style> blocks counted once each however many pages repeat them, and
+  // theme-color. Library CSS is skipped.
+  const links = [...new Set(all.flatMap(p => stylesheetLinks(p.html, base)))];
+  const ownSheets = links.filter(u => !/fonts\.googleapis/.test(u) && !VENDOR_CSS.test(u)).slice(0, 6);
+  const styleBlocks = [...new Set(all.flatMap(p => p.html.match(/<style[\s\S]*?<\/style>/gi) ?? []))];
+  let css = styleBlocks.join(' ');
+  const sheetTexts = await Promise.all(ownSheets.map(async u => {
     try {
-      const r = await fetch(s, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8000) });
-      if (r.ok) css += ' ' + (await r.text()).slice(0, 300_000);
-    } catch { /* ignore */ }
-  }
+      const r = await fetch(u, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8000) });
+      return r.ok ? (await r.text()).slice(0, 400_000) : '';
+    } catch { return ''; }
+  }));
+  css += ' ' + sheetTexts.join(' ');
+  const theme = home.html.match(/<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)/i)?.[1];
   const colors = [...new Set([...(theme && /^#[0-9a-f]{6}$/i.test(theme) ? [theme.toLowerCase()] : []), ...hexColors(css)])];
+
+  // Fonts: Google Fonts links first, then what the CSS actually uses.
+  const usage = fontUsage(css);
+  const linked = googleFamilies(links);
+  const byUse = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([f]) => f);
+  const candidates = [...new Set([...byUse(usage.heading), ...byUse(usage.all), ...linked])].slice(0, 6);
+  const available = new Set<string>();
+  await Promise.all(candidates.map(async f => { if (linked.includes(f) || await onGoogleFonts(f)) available.add(f); }));
+  const body = byUse(usage.all).find(f => available.has(f)) ?? linked.find(f => available.has(f)) ?? null;
+  // Headings: a Google font the site loads besides its body font (often its
+  // display face, e.g. Raleway beside Roboto), else what its h1–h3 rules use.
+  const cssHeading = byUse(usage.heading).find(f => available.has(f));
+  const linkedOther = linked.find(f => f !== body && available.has(f));
+  const heading = (cssHeading && cssHeading !== body ? cssHeading : linkedOther ?? cssHeading) ?? body;
+  const fonts = { heading, body };
 
   const pages = all.map(p => ({ url: p.url, ...pageText(p.html) }));
   const allText = pages.map(p => p.text).join('\n') + ' ' + all.map(p => p.html.match(/mailto:[^"']+/gi)?.join(' ') ?? '').join(' ');
   const emails = [...new Set((allText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}/gi) ?? []).map(e => e.toLowerCase()))].slice(0, 5);
   const phones = [...new Set(allText.match(/(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/g) ?? [])].slice(0, 3);
 
-  return { url: home.url, host: base.hostname.replace(/^www\./, ''), pages, colors, emails, phones };
+  return { url: home.url, host: base.hostname.replace(/^www\./, ''), pages, colors, fonts, emails, phones };
 }
 
 // The JSON shape Claude must return: every key present (empty string /
@@ -229,15 +308,16 @@ async function generateOnce(crawl: Crawl, apiKey: string): Promise<SiteContent> 
   const client = new Anthropic({ apiKey });
   const source = crawl.pages.map(p => `### ${p.title || p.url}\nURL: ${p.url}\n${p.text}`).join('\n\n');
   const userText = `Website: ${crawl.url}
-Colours found (most used first): ${crawl.colors.join(', ') || 'none — choose a calm blue and a complementary accent'}
+Brand colours from the site's own CSS (most used first): ${crawl.colors.join(', ') || 'none found'}. theme.primary must be the first of these unless it's clearly not a brand colour; theme.secondary another one from this list.
 Emails found: ${crawl.emails.join(', ') || 'none'}
 Phones found: ${crawl.phones.join(', ') || 'none'}
 
 Website text:
 ${source}`;
 
-  // Streaming keeps a long generation clear of HTTP timeouts. fallbacks:
-  // "default" re-runs the request on Anthropic's recommended model if Fable
+  // Streaming keeps a long generation clear of HTTP timeouts. Opus 5.5
+  // defaults to medium effort, so high is set explicitly. fallbacks:
+  // "default" re-runs the request on Anthropic's recommended model if Opus
   // declines it.
   const stream = client.beta.messages.stream({
     model: MODEL,
@@ -263,6 +343,18 @@ ${source}`;
     throw new Error('Claude returned content that could not be read. Try again.');
   }
   content.goals = (content.goals ?? []).filter(g => (GOAL_IDS as string[]).includes(g.id)).slice(0, 3);
+  // Brand comes from the site, not the model: keep Claude's colour choice
+  // only if it's one of the site's own colours, and use the site's fonts.
+  const own = crawl.colors.map(c => c.toLowerCase());
+  const pick = (c: string | undefined, fallback: string | undefined) => (c && own.includes(c.toLowerCase()) ? c.toLowerCase() : fallback);
+  const primary = pick(content.theme?.primary, own[0]);
+  const secondary = pick(content.theme?.secondary, own.find(c => c !== primary));
+  content.theme = {
+    ...(primary ? { primary } : {}),
+    ...(secondary ? { secondary } : {}),
+    ...(crawl.fonts.heading ? { font_display: crawl.fonts.heading } : {}),
+    ...(crawl.fonts.body ? { font_body: crawl.fonts.body } : {}),
+  };
   if (!content.company_name || !content.hero?.title || content.goals.length === 0) {
     throw new Error('The generated content was incomplete. Try again.');
   }

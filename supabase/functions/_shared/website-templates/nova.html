@@ -5,15 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{seo.title}}</title>
 <meta name="description" content="{{seo.description}}">
-<meta name="theme-color" content="#08090d">
+<meta name="theme-color" content="{{theme.primary}}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+<link href="{{fonts.href}}" rel="stylesheet">
 <style>
 :root{
-  --bg:#08090d; --panel:#101219; --line:rgba(255,255,255,.1); --text:#f4f5f8; --muted:#9aa1b2;
+  --brand:{{theme.primary}}; --brand-ink:{{theme.primary_ink}};
+  --bg:color-mix(in srgb,var(--brand) 16%,#05060a); --panel:color-mix(in srgb,var(--brand) 22%,#0b0d12);
+  --line:rgba(255,255,255,.12); --text:#f4f5f8; --muted:#a3abbd;
   --a:{{theme.glow}}; --b:{{theme.glow2}}; --a-ink:{{theme.glow_ink}};
-  --display:"Syne",system-ui,sans-serif; --body:"DM Sans",system-ui,sans-serif;
+  --display:"{{fonts.display}}",system-ui,sans-serif; --body:"{{fonts.body}}",system-ui,sans-serif;
   --ease:cubic-bezier(.22,1,.36,1);
   --pp-brand:var(--a); --pp-brand-ink:var(--a-ink); --pp-text:var(--text); --pp-muted:var(--muted);
   --pp-line:var(--line); --pp-field-bg:rgba(255,255,255,.04); --pp-surface:var(--panel); --pp-radius:14px;
@@ -52,6 +54,8 @@ nav.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:
 /* hero */
 .hero{min-height:100vh;min-height:100svh;display:flex;align-items:center;padding:140px 0 90px;overflow:hidden}
 #field{position:absolute;inset:0;width:100%;height:100%;z-index:0}
+.hero::before{content:"";position:absolute;width:70vmax;height:70vmax;right:-20vmax;top:-30vmax;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--brand) 55%,transparent),transparent 62%);z-index:0;pointer-events:none;animation:drift 16s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate(-8vmax,6vmax) scale(1.1)}}
 .hero::after{content:"";position:absolute;inset:auto 0 0;height:40%;background:linear-gradient(transparent,var(--bg));z-index:0;pointer-events:none}
 .hero .wrap{position:relative;z-index:1}
 .chip{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-size:13px;font-weight:500;color:var(--muted)}
@@ -78,7 +82,8 @@ nav.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:
 @media (max-width:820px){.doors{flex-direction:column}.door:hover{flex:1}}
 
 /* stats ticker */
-.stats{border-block:1px solid var(--line);padding:36px 0}
+.stats{background:var(--brand);color:var(--brand-ink);padding:44px 0}
+.stats .stat span{color:inherit;opacity:.8}
 .stats .wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:28px}
 .stat b{display:block;font-family:var(--display);font-size:clamp(36px,4vw,60px);font-weight:800;line-height:1;letter-spacing:-.04em;white-space:nowrap}
 .stat span{color:var(--muted);font-size:14px}

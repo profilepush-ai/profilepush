@@ -8,12 +8,12 @@
 <meta name="theme-color" content="{{theme.primary}}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="{{fonts.href}}" rel="stylesheet">
 <style>
 :root{
   --brand:{{theme.primary}}; --brand-ink:{{theme.primary_ink}}; --accent:{{theme.secondary}};
   --bg:#fbfaf7; --paper:#ffffff; --text:#1c1b19; --muted:#6b6862; --line:#e7e3dc; --tint:color-mix(in srgb,var(--brand) 7%,#fbfaf7);
-  --serif:"Fraunces",Georgia,serif; --sans:"Manrope",system-ui,sans-serif;
+  --serif:"{{fonts.display}}",Georgia,serif; --sans:"{{fonts.body}}",system-ui,sans-serif;
   --pp-brand:var(--brand); --pp-brand-ink:var(--brand-ink); --pp-text:var(--text); --pp-muted:var(--muted);
   --pp-line:var(--line); --pp-field-bg:#fff; --pp-surface:#fff; --pp-radius:10px;
 }
