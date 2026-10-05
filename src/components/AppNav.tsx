@@ -5,7 +5,7 @@ import {
   Building2, CreditCard, AlertTriangle,
   Bell, BellRing, Check, X,
   Briefcase, Mail, UserRound, Rss, CircleUser,
-  Kanban,
+  Kanban, Globe
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -508,6 +508,14 @@ export default function AppNav() {
                 >
                   <CreditCard size={13} className="text-gray-400" />
                   Billing & Credits
+                </button>
+
+                <button
+                  onClick={() => { setMenuOpen(false); navigate('/website'); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                >
+                  <Globe size={13} className="text-gray-400" />
+                  Website
                 </button>
 
                 <div className="border-t border-gray-100 mt-1 pt-1">

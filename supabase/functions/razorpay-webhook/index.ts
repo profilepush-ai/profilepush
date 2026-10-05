@@ -189,6 +189,24 @@ Deno.serve(async (req: Request) => {
             payment_id: payment?.id ?? null,
           });
         }
+      } else if (notes?.type === "website_plan" && orderId) {
+        // Website Modernization plan: extends the plan 12 months and adds its
+        // credits, at most once (razorpay-verify-website-payment may have
+        // applied it already).
+        const { data } = await supabase.rpc("apply_website_plan_order", {
+          p_razorpay_order_id: orderId,
+          p_razorpay_payment_id: (payment?.id as string | undefined) ?? null,
+        });
+        const row = (data ?? [])[0];
+        if (row?.applied) {
+          fireCrmWebhook(supabaseUrl, serviceRoleKey, "website_plan.purchased", row.account_id as string, {
+            razorpay_payload: payload,
+            credits: row.credits,
+            plan_expires_at: row.plan_expires_at,
+            razorpay_order_id: orderId,
+            payment_id: payment?.id ?? null,
+          });
+        }
       } else if (notes?.type === "plan_upgrade" && orderId) {
         const { data: upgradeOrder } = await supabase
           .from("razorpay_upgrade_orders")
