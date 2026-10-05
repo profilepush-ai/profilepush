@@ -767,6 +767,8 @@ async function autoPostDescription(input: {
     console.error("ai-match create post RPC failed:", kind, JSON.stringify(rpcError));
     return /daily post limit/i.test(rpcError.message)
       ? { status: "skipped", reason: "daily post limit reached" }
+      : /free plan/i.test(rpcError.message)
+      ? { status: "skipped", reason: "free_plan_limit" }
       : { status: "failed", reason: rpcError.message.slice(0, 200) };
   }
 

@@ -5217,6 +5217,12 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         // The rail is loaded once; without this the posts just created aren't
         // there to match the rest of the batch from.
         setAiMatchOwnPostsReloadKey((key) => key + 1);
+      } else if (post?.status === 'skipped' && post.reason === 'free_plan_limit') {
+        // The matches still run; only the post (and so its Tracker column)
+        // waits for a free slot.
+        showToast('Matches ready. Your free plan keeps 3 consultants or requirements open on the Tracker, so this one wasn\'t added. Close one, or buy credits for unlimited.', 'error');
+      } else if (post?.status === 'skipped' && post.reason === 'sample') {
+        // A sample run is never posted, on purpose.
       } else if (post?.status === 'failed' || post?.status === 'skipped') {
         // Silence here is what hid auto-posting failing entirely: the matches
         // arrived, nothing was posted, and nobody could tell why.
