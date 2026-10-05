@@ -152,6 +152,10 @@ export default function BoardPage() {
   const [dragId, setDragId] = useState('');
   const [overTarget, setOverTarget] = useState('');
   const [liveNew, setLiveNew] = useState(0);
+  // Green ring on new arrivals: cards added while the page is open, plus any
+  // whose post came in within the last 30 minutes (cards are dated by their
+  // post, so an old post never gets it). No label.
+  const [arrivedIds, setArrivedIds] = useState<Set<string>>(new Set());
   // Bulk AI Submit works on one column at a time (an invite's screening link
   // hangs off that column's requirement).
   const [selected, setSelected] = useState<{ subjectId: string; ids: Set<string> }>({ subjectId: '', ids: new Set() });
@@ -606,6 +610,8 @@ export default function BoardPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_cards', filter: `account_id=eq.${account.id}` }, (payload) => {
         if (payload.eventType === 'INSERT') {
           setLiveNew((n) => n + 1);
+          const id = (payload.new as { id?: string } | null)?.id;
+          if (id) setArrivedIds((prev) => new Set(prev).add(id));
         }
         void loadAll();
         void loadSubjects();
@@ -1015,7 +1021,7 @@ export default function BoardPage() {
                         draggable
                         onDragStart={() => setDragId(card.id)}
                         onDragEnd={() => { setDragId(''); setOverTarget(''); }}
-                        className={`shrink-0 rounded-lg transition ${dragId === card.id ? 'opacity-50' : ''}`}
+                        className={`shrink-0 rounded-lg transition ${arrivedIds.has(card.id) || Date.now() - Date.parse(card.created_at) < 30 * 60_000 ? 'ring-2 ring-green-400' : ''} ${dragId === card.id ? 'opacity-50' : ''}`}
                       >
                         {/* A plain block around the card: the card is h-full,
                             and without it that resolved to this whole slot,
