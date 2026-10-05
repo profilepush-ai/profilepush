@@ -212,6 +212,7 @@ export function prepare(c: SiteContent): Record<string, unknown> {
     secondary_goal: goals[1] ?? null,
     goals_title: clean(c.goals_title, 80) || 'How we can work together.',
     highlights: list(c.highlights, 4),
+    highlight_count: Math.max(1, list(c.highlights, 4).length),
     services: list(c.services, 9),
     industries: list(c.industries, 12),
     industries_title: clean(c.industries_title, 80) || 'Industries we serve.',

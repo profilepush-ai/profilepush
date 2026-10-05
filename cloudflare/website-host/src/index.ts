@@ -112,12 +112,23 @@ function page(title: string, message: string, status: number): Response {
 // the same on any template.
 function banner(site: Site, env: Env): string {
   const claimUrl = `${env.APP_BASE_URL}/claim/${encodeURIComponent(site.claim_token)}`;
-  const text = site.showcase && !site.claimed
-    ? `Example website built with ProfilePush. Forms are switched off on this example. <a href="${env.APP_BASE_URL}/websites" style="color:#0f172a;background:#fff;border-radius:999px;padding:6px 14px;font-weight:700;text-decoration:none;margin-left:8px;white-space:nowrap">Get yours →</a>`
+  const btn = (href: string, label: string) => `<a href="${href}" class="ppb-btn">${label}</a>`;
+  // Short text always; the longer sentence only where there's room.
+  const [short, long, action] = site.showcase && !site.claimed
+    ? ['Example website', ' built with ProfilePush', btn(`${env.APP_BASE_URL}/websites`, 'Get yours →')]
     : site.claimed
-    ? `This website is paused. <a href="${env.APP_BASE_URL}/website" style="color:#fff;font-weight:700;text-decoration:underline">Renew the plan</a> to bring it back.`
-    : `Demo prepared for <b>${escapeHtml(site.name)}</b> by ProfilePush. Forms are switched off until it's claimed. <a href="${claimUrl}" style="color:#0f172a;background:#fff;border-radius:999px;padding:6px 14px;font-weight:700;text-decoration:none;margin-left:8px;white-space:nowrap">Claim this website →</a>`;
-  return `<div role="region" aria-label="Demo notice" style="position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483647;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;padding:12px 16px;border-radius:16px;background:#2563eb;color:#fff;font:600 14px/1.5 system-ui,sans-serif;box-shadow:0 10px 40px rgba(0,0,0,.35);text-align:center">${text}</div>`;
+    ? ['Website paused', '. The plan has ended.', btn(`${env.APP_BASE_URL}/website`, 'Renew →')]
+    : [`Demo for ${escapeHtml(site.name)}`, ' · forms are off until claimed', btn(claimUrl, 'Claim this website →')];
+  // A compact pill, the same on every template. Sets --pp-banner so a
+  // template's own bottom bar can sit above it.
+  return `<style>
+:root{--pp-banner:64px}
+.ppb{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;max-width:calc(100% - 24px);padding:7px 7px 7px 16px;border-radius:999px;background:rgba(15,23,42,.92);color:#fff;font:600 13px/1.3 system-ui,sans-serif;box-shadow:0 10px 40px rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.ppb-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ppb-dot{width:7px;height:7px;border-radius:50%;background:#3b82f6;flex:none;box-shadow:0 0 0 3px rgba(59,130,246,.3)}
+.ppb-btn{flex:none;background:#fff;color:#0f172a;border-radius:999px;padding:8px 14px;font-weight:700;text-decoration:none;white-space:nowrap}
+@media (max-width:640px){.ppb-long{display:none}.ppb{font-size:12px;bottom:10px}}
+</style><div class="ppb" role="region" aria-label="Demo notice"><span class="ppb-dot" aria-hidden="true"></span><span class="ppb-t">${short}<span class="ppb-long">${long}</span></span>${action}</div>`;
 }
 
 async function serveSite(site: Site, base: string, env: Env): Promise<Response> {
