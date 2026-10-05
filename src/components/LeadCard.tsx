@@ -431,7 +431,8 @@ export interface LeadCardProps {
   isProcessingAskAI: boolean;
   onPreview: (lead: SocialLead) => void;
   onAskAI: (lead: SocialLead) => void;
-  onApply: (lead: SocialLead) => void;
+  /** No longer used by the card (AI Submit is always the email); kept for callers. */
+  onApply?: (lead: SocialLead) => void;
   onToggleInlineBreakdown: (leadId: string) => void;
   onExpandSkills: (leadId: string) => void;
   onCollapseSkills: (leadId: string) => void;
@@ -475,7 +476,7 @@ export const LeadCard = memo(function LeadCard({
   predictResult, askedRequestedAt, askedFulfilledAt, revealedAt, isViewed = false, viewedAt, isSkillsExpanded,
   isExpFieldExpanded, isWorkTypeFieldExpanded, isEmpTypeFieldExpanded, isRateFieldExpanded, isVisaFieldExpanded, isLocationFieldExpanded,
   isLoadingPreview, isProcessingAskAI,
-  onPreview, onAskAI, onApply, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
+  onPreview, onAskAI, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
   hideActions, isSelected, onSelect,
   bulkSelectable, isBulkSelected, onToggleBulkSelect, matchRank, isFocused, onFocus,
   onChat, isProcessingChat, collapsible = false, defaultCollapsed = true, onDismiss,
@@ -527,17 +528,10 @@ export const LeadCard = memo(function LeadCard({
           {!compact && <span className="text-[12px] font-normal">Chat</span>}
         </button>
       )}
-      {lead.kind === 'job' && lead.postSource === 'user_post' ? (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onApply(lead); }}
-          title="Submit a consultant to this job"
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
-        >
-          <Mail size={15} strokeWidth={1.75} />
-          {!compact && <span className="text-[12px] font-normal">AI Submit</span>}
-        </button>
-      ) : isAskPending || isVerified ? (
+      {/* AI Submit is always the email (with the resume when attached), for
+          jobs posted on ProfilePush too; the old application form is no
+          longer offered from the card. */}
+      {isAskPending || isVerified ? (
         <span
           title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
           className={`inline-flex h-9 flex-1 items-center justify-center ${isVerified ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'}`}
@@ -549,21 +543,15 @@ export const LeadCard = memo(function LeadCard({
           type="button"
           onClick={(e) => { e.stopPropagation(); onAskAI(lead); }}
           disabled={!canAskAI || isProcessingAskAI}
-          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Request: ask for resume, rate and availability' : lead.postSource === 'user_post' ? 'Request' : 'AI Submit')}
+          title={!lead.posterEmail ? 'No email' : (isHotlistFeed ? 'AI Request: ask for resume, rate and availability' : 'AI Submit')}
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
         >
-          {isProcessingAskAI ? <LogoSpinner size={14} /> : lead.postSource === 'user_post' ? (
-            <>
-              {/* Same action either way: a consultant gets a resume request
-                  whether the post came from the platform or elsewhere. */}
-              <FileText size={15} strokeWidth={1.75} />
-              {!compact && <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'Request'}</span>}
-            </>
-          ) : (
+          {isProcessingAskAI ? <LogoSpinner size={14} /> : (
             <>
               {/* A consultant gets a resume request (document icon; the video
                   screening is an optional add-on in the draft); a job gets
-                  the email icon, since AI Submit emails the recruiter. */}
+                  AI Submit, the email to its recruiter (mail icon), wherever
+                  the job was posted. */}
               {isHotlistFeed ? <FileText size={15} strokeWidth={1.75} /> : <Mail size={15} strokeWidth={1.75} />}
               {!compact && <span className="text-[12px] font-normal">{isHotlistFeed ? 'AI Request' : 'AI Submit'}</span>}
             </>
@@ -598,11 +586,7 @@ export const LeadCard = memo(function LeadCard({
       >
         {justCopiedShare ? <Check size={16} strokeWidth={1.75} /> : <Share2 size={16} strokeWidth={1.75} />}
       </button>
-      {lead.kind === 'job' && lead.postSource === 'user_post' ? (
-        <button type="button" onClick={(e) => { e.stopPropagation(); onApply(lead); }} title="Submit a consultant to this job" aria-label="AI Submit" className={`${iconButtonClass} text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10`}>
-          <Mail size={16} strokeWidth={1.75} />
-        </button>
-      ) : isAskPending || isVerified ? (
+      {isAskPending || isVerified ? (
         <span title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')} className={`${iconButtonClass} ${isVerified ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}`}>
           {isVerified ? <BadgeCheck size={16} strokeWidth={1.75} /> : <Check size={16} strokeWidth={1.75} />}
         </span>
