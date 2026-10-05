@@ -7,7 +7,7 @@ workers_dev = true
 routes = [{ pattern = "t.profilepush.ai", custom_domain = true }]
 
 [triggers]
-crons = ["30 13 * * *"]
+crons = ["30 13 * * *", "30 18 * * *"]
 
 [vars]
 # Set to "true" and redeploy to pause all outbound sends (queue jobs are held

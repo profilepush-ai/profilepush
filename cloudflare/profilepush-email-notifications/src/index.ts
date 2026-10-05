@@ -220,6 +220,9 @@ type MarketBrief = {
   latest_hotlists: BriefItem[];
 };
 
+// wrangler.toml: the daily jobs run at 30 13; this one only sends the nudge.
+const TRACKER_NUDGE_CRON = "30 18 * * *";
+
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.profilepush.app";
 
 function plural(n: number, one: string, many: string): string {
@@ -288,7 +291,7 @@ function renderMorningBrief(r: BriefRecipient, market: MarketBrief, unsubscribeU
     ? (r.match_kind === "job" ? "Top matches for your consultants" : "Top matches for your requirements")
     : (isVendor ? "New on the bench today" : "New requirements today");
   const seeAllUrl = personal
-    ? `${base}${r.match_kind === "job" ? "/posts/hotlist" : "/posts/jobs"}`
+    ? `${base}/tracker`
     : `${base}${isVendor ? "/feed/hotlist" : "/feed/jobs"}`;
   const seeAllLabel = personal && r.match_total > items.length ? `See all ${r.match_total.toLocaleString("en-US")} matches` : "Open ProfilePush";
 
@@ -409,6 +412,111 @@ Get matches as a notification: ${PLAY_STORE_URL}
 Your ProfilePush brief, every weekday morning. Unsubscribe: ${unsubscribeUrl}`;
 
   return { to: r.email, subject, html, text, lane: "user", category: "morning_brief", unsubscribeUrl };
+}
+
+type TrackerNudge = {
+  user_id: string;
+  account_id: string;
+  email: string;
+  first_name: string | null;
+  persona: string | null;
+  new_count: number;
+  subjects: number;
+  items: Array<{ title: string; detail: string | null }>;
+};
+
+// The Tracker nudge: new strong matches that landed since the morning brief,
+// for people who haven't been back since. Never names a consultant.
+function renderTrackerNudge(n: TrackerNudge, unsubscribeUrl: string, appBaseUrl: string): EmailJob {
+  const base = appBaseUrl.replace(/\/$/, "");
+  const isVendor = n.persona === "vendor";
+  const trackerUrl = `${base}/tracker`;
+  const greeting = n.first_name ? `Hi ${n.first_name},` : "Hi,";
+  const what = isVendor
+    ? `new consultant${n.new_count === 1 ? "" : "s"} for ${n.subjects === 1 ? "your requirement" : `${n.subjects} of your requirements`}`
+    : `new requirement${n.new_count === 1 ? "" : "s"} for ${n.subjects === 1 ? "your consultant" : `${n.subjects} of your consultants`}`;
+  const subject = `${n.new_count} ${what}`;
+  const listTitle = isVendor ? "Your requirements" : "Just posted";
+  const rows = n.items.map((item) => `
+          <tr>
+            <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
+              <a href="${trackerUrl}" style="font-size: 15px; font-weight: 700; color: #0f172a; text-decoration: none;">${escapeHtml(item.title)}</a>
+              ${item.detail ? `<div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml(item.detail)}</div>` : ""}
+            </td>
+          </tr>`).join("");
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">${escapeHtml(n.items[0] ? `${n.items[0].title}${n.items[0].detail ? ` · ${n.items[0].detail}` : ""}` : subject)}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff;">
+    <tr>
+      <td align="center" style="padding: 32px 20px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 520px;">
+          <tr>
+            <td style="padding-bottom: 24px;">
+              <img src="${base}/favicon.svg" width="24" height="24" alt="" style="vertical-align: middle; border-radius: 6px;" />
+              <span style="font-size: 16px; font-weight: 800; color: #0f172a; vertical-align: middle; margin-left: 8px;">ProfilePush</span>
+            </td>
+          </tr>
+          <tr><td style="padding-bottom: 6px;"><p style="margin: 0; font-size: 14px; color: #334155;">${escapeHtml(greeting)}</p></td></tr>
+          <tr>
+            <td style="padding-bottom: 18px;">
+              <div style="font-size: 40px; font-weight: 800; color: #2563eb; line-height: 1.1;">${n.new_count}</div>
+              <div style="font-size: 15px; color: #334155; margin-top: 2px;">${escapeHtml(what)} since you last checked</div>
+            </td>
+          </tr>
+          <tr><td style="padding-bottom: 4px;"><div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b;">${escapeHtml(listTitle)}</div></td></tr>
+          ${rows}
+          <tr>
+            <td style="padding: 20px 0 0;">
+              <a href="${trackerUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">Open your Tracker</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top: 1px solid #f1f5f9; padding-top: 16px; text-align: center;">
+              <p style="margin: 16px 0 0; font-size: 12px; color: #94a3b8;">
+                Sent when new matches land and you haven't been back yet.
+                <a href="${unsubscribeUrl}" style="color: #94a3b8; text-decoration: underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+  const text = `${greeting}
+
+${n.new_count} ${what} since you last checked.
+
+${listTitle}:
+${n.items.map((i) => `- ${i.title}${i.detail ? ` (${i.detail})` : ""}`).join("\n")}
+
+Open your Tracker: ${trackerUrl}
+
+---
+Sent when new matches land and you haven't been back yet. Unsubscribe: ${unsubscribeUrl}`;
+  return { to: n.email, subject, html, text, lane: "user", category: "tracker_nudge", unsubscribeUrl };
+}
+
+async function runTrackerNudges(env: Env, now = new Date()): Promise<{ emailed: number; reason?: string }> {
+  const weekday = now.getUTCDay();
+  if (weekday === 0 || weekday === 6) return { emailed: 0, reason: "weekend" };
+  const response = await supabaseRequest(env, "rpc/get_tracker_nudges", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  if (!response.ok) throw new Error(`get_tracker_nudges HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  const nudges = await response.json() as TrackerNudge[];
+  const jobs: EmailJob[] = [];
+  for (const n of nudges) jobs.push(renderTrackerNudge(n, await buildUnsubscribeUrl(env, n.user_id, n.account_id), env.APP_BASE_URL));
+  for (const chunk of chunkEmailJobsForQueue(jobs)) {
+    await env.EMAIL_QUEUE.sendBatch(chunk.map((job) => ({ body: job })));
+  }
+  return { emailed: jobs.length };
 }
 
 async function fetchMorningBrief(env: Env): Promise<{ recipients: BriefRecipient[]; market: MarketBrief }> {
@@ -1975,7 +2083,13 @@ export default {
     }
   },
 
-  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
+    // The evening run only sends the Tracker nudge.
+    if (controller.cron === TRACKER_NUDGE_CRON) {
+      const result = await runTrackerNudges(env);
+      console.log(`Tracker nudge: emailed ${result.emailed}${result.reason ? ` (${result.reason})` : ""}`);
+      return;
+    }
     // Three independent daily jobs share this cron: the digest, the match
     // nudge and the low-credit reminder. Each runs even if another throws, so
     // one failing never silences the rest.
