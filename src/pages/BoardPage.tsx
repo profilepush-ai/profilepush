@@ -117,12 +117,12 @@ const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padSt
 // (200) shade and the column body a light tint of the same colour; cards stay as
 // they are on top.
 const COLUMN_TINTS: Array<{ header: string; body: string }> = [
-  { header: 'border-blue-300 bg-blue-200 dark:border-blue-400/40 dark:bg-blue-500/30', body: 'bg-blue-50/70 dark:bg-blue-500/[0.06]' },
-  { header: 'border-amber-300 bg-amber-200 dark:border-amber-400/40 dark:bg-amber-500/30', body: 'bg-amber-50/70 dark:bg-amber-500/[0.06]' },
-  { header: 'border-emerald-300 bg-emerald-200 dark:border-emerald-400/40 dark:bg-emerald-500/30', body: 'bg-emerald-50/70 dark:bg-emerald-500/[0.06]' },
-  { header: 'border-rose-300 bg-rose-200 dark:border-rose-400/40 dark:bg-rose-500/30', body: 'bg-rose-50/70 dark:bg-rose-500/[0.06]' },
-  { header: 'border-violet-300 bg-violet-200 dark:border-violet-400/40 dark:bg-violet-500/30', body: 'bg-violet-50/70 dark:bg-violet-500/[0.06]' },
-  { header: 'border-orange-300 bg-orange-200 dark:border-orange-400/40 dark:bg-orange-500/30', body: 'bg-orange-50/70 dark:bg-orange-500/[0.06]' },
+  { header: 'border-transparent bg-blue-200 dark:bg-blue-500/30', body: 'bg-blue-50/70 dark:bg-blue-500/[0.06]' },
+  { header: 'border-transparent bg-amber-200 dark:bg-amber-500/30', body: 'bg-amber-50/70 dark:bg-amber-500/[0.06]' },
+  { header: 'border-transparent bg-emerald-200 dark:bg-emerald-500/30', body: 'bg-emerald-50/70 dark:bg-emerald-500/[0.06]' },
+  { header: 'border-transparent bg-rose-200 dark:bg-rose-500/30', body: 'bg-rose-50/70 dark:bg-rose-500/[0.06]' },
+  { header: 'border-transparent bg-violet-200 dark:bg-violet-500/30', body: 'bg-violet-50/70 dark:bg-violet-500/[0.06]' },
+  { header: 'border-transparent bg-orange-200 dark:bg-orange-500/30', body: 'bg-orange-50/70 dark:bg-orange-500/[0.06]' },
 ];
 
 type ColumnView = { stage: Stage; range: Range };
@@ -855,7 +855,7 @@ export default function BoardPage() {
             const colCounts = counts[sid] ?? {};
             const range = view.range;
             return (
-              <div key={sid} className="flex h-full shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
+              <div key={sid} className="flex h-full shrink-0 overflow-hidden rounded-xl bg-white dark:bg-[#20242a]">
               <section className={`flex h-full w-[340px] flex-col ${tint.body}`}>
                 <header className={`shrink-0 border-b px-3 py-2.5 ${tint.header}`}>
                   <div className="flex items-center gap-1.5">
@@ -1084,8 +1084,8 @@ export default function BoardPage() {
 
           {/* Sends to leads that are not on the board (the old Submissions / Invites list) */}
           {otherSends.length > 0 && (!q || otherVisible.length > 0) && (
-            <section className="flex h-full w-[340px] flex-col rounded-xl border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-[#1f232a]">
-              <header className="shrink-0 rounded-t-xl border-b border-gray-300 bg-gray-200 px-3 py-2.5 dark:border-white/15 dark:bg-[#333946]">
+            <section className="flex h-full w-[340px] flex-col overflow-hidden rounded-xl bg-gray-50 dark:bg-[#1f232a]">
+              <header className="shrink-0 rounded-t-xl bg-gray-200 px-3 py-2.5 dark:bg-[#333946]">
                 <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-slate-100">{otherLabel}</p>
                 <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-[#94A3B8]">{isVendor ? 'Requests and chats outside your requirements' : 'Applications outside your consultants'}</p>
                 <div className="mt-2 flex items-center gap-1">
