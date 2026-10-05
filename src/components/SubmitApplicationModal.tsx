@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Copy, PartyPopper, RefreshCw, Send, Upload, Video, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
@@ -33,16 +33,35 @@ export default function SubmitApplicationModal({
   onClose,
   onSaved,
   showToast,
+  attachedResume = null,
 }: {
   jobId: string;
   jobTitle: string;
   onClose: () => void;
   onSaved: () => void;
   showToast: (message: string, type?: 'success' | 'error') => void;
+  /** The consultant's resume already attached on the Tracker: used as the
+   *  upload, so it isn't asked for again (another file can still be chosen). */
+  attachedResume?: { url: string; name: string } | null;
 }) {
   const { isDark } = useTheme();
   const [step, setStep] = useState<Step>('form');
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [loadingAttached, setLoadingAttached] = useState(false);
+  useEffect(() => {
+    if (!attachedResume) return;
+    let cancelled = false;
+    setLoadingAttached(true);
+    fetch(attachedResume.url)
+      .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((blob) => {
+        if (cancelled) return;
+        setResumeFile((current) => current ?? new File([blob], attachedResume.name, { type: blob.type || 'application/pdf' }));
+      })
+      .catch(() => { /* fall back to choosing a file */ })
+      .finally(() => { if (!cancelled) setLoadingAttached(false); });
+    return () => { cancelled = true; };
+  }, [attachedResume]);
   const [note, setNote] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [applicationId, setApplicationId] = useState('');
@@ -182,7 +201,18 @@ export default function SubmitApplicationModal({
                   }`}
                 >
                   <Upload size={14} />
-                  {resumeFile ? resumeFile.name : 'Click to choose a file'}
+                  {loadingAttached && !resumeFile
+                    ? 'Loading the attached resume…'
+                    : resumeFile
+                      ? (
+                        <span className="flex min-w-0 flex-col items-center text-center">
+                          <span className="max-w-full truncate">{resumeFile.name}</span>
+                          {attachedResume && resumeFile.name === attachedResume.name && (
+                            <span className="text-[11px] text-gray-400">Attached resume · click to use a different file</span>
+                          )}
+                        </span>
+                      )
+                      : 'Click to choose a file'}
                   <input
                     type="file"
                     accept=".pdf,.docx,.rtf,.txt"
