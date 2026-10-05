@@ -40,9 +40,12 @@ export interface AdminAccountStatsRow {
   last_activity_at: string | null;
   last_logged_in: string | null;
   is_trial: boolean;
+  is_paid?: boolean;
+  emails_received_count?: number;
+  emails_received_daily_avg?: number;
 }
 
-export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'active_persona' | 'credits_balance' | 'searches_count' | 'job_posts_count' | 'hotlist_posts_count' | 'job_previews_count' | 'hotlist_previews_count' | 'ai_pitches_count' | 'ai_requests_count' | 'chats_count' | 'vendor_downloads_count' | 'recruiter_downloads_count' | 'subscriptions_count' | 'auto_subscriptions_count' | 'subscribe_taps_count' | 'subscribers_count' | 'play_clicks_count' | 'account_age_days' | 'session_count' | 'active_seconds' | 'active_days' | 'last_activity_at' | 'last_logged_in' | 'created_at';
+export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'active_persona' | 'is_paid' | 'credits_balance' | 'emails_received_count' | 'emails_received_daily_avg' | 'searches_count' | 'job_posts_count' | 'hotlist_posts_count' | 'job_previews_count' | 'hotlist_previews_count' | 'ai_pitches_count' | 'ai_requests_count' | 'chats_count' | 'vendor_downloads_count' | 'recruiter_downloads_count' | 'subscriptions_count' | 'auto_subscriptions_count' | 'subscribe_taps_count' | 'subscribers_count' | 'play_clicks_count' | 'account_age_days' | 'session_count' | 'active_seconds' | 'active_days' | 'last_activity_at' | 'last_logged_in' | 'created_at';
 export type AdminStatsSortDirection = 'asc' | 'desc';
 
 export interface AdminStatsFilterState {

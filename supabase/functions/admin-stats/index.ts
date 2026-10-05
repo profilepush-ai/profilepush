@@ -529,6 +529,33 @@ Deno.serve(async (req: Request) => {
       };
     }));
 
+    // Emails we sent each account (every lane, accepted by the provider),
+    // matched on the address the account signs in with. email_sends only
+    // exists from 2026-10-01, so the daily average counts days from then.
+    const EMAIL_LOG_START = Date.parse("2026-10-01T00:00:00Z");
+    const { data: emailRows, error: emailError } = await pageAll(() => withDateRange(
+      supabase.from("email_sends").select("to_email, created_at").eq("status", "sent")
+    ).order("created_at").order("id"));
+    if (emailError) throw new Error((emailError as { message?: string }).message ?? String(emailError));
+    const emailsByAddress = countBy(
+      emailRows.map((r: { to_email?: string }) => ({ account_id: (r.to_email ?? "").trim().toLowerCase() })),
+    );
+    const rangeStart = start_date ? Date.parse(start_date) : 0;
+    const rangeEnd = end_date ? Math.min(Date.parse(end_date), Date.now()) : Date.now();
+
+    // Paid = any paid credit pack or a subscription that ever started; the
+    // same test as account_has_paid.
+    const [paidOrdersRes, paidSubsRes] = await Promise.all([
+      pageAllByAccount((ids) => supabase.from("credit_topup_orders").select("account_id")
+        .in("account_id", ids).eq("status", "paid").order("account_id")),
+      pageAllByAccount((ids) => supabase.from("subscriptions").select("account_id, status, current_period_start")
+        .in("account_id", ids).order("account_id")),
+    ]);
+    const paidAccounts = new Set<string>(paidOrdersRes.data.map((r: { account_id: string }) => r.account_id));
+    for (const r of paidSubsRes.data as Array<{ account_id: string; status?: string; current_period_start?: string | null }>) {
+      if (r.status === "active" || r.current_period_start) paidAccounts.add(r.account_id);
+    }
+
     const stats = accounts.map((a: any) => {
       const primaryMember = primaryMemberByAccount[a.id] ?? null;
       const authUser = primaryMember?.user_id ? authUsersById[primaryMember.user_id] : null;
@@ -580,6 +607,15 @@ Deno.serve(async (req: Request) => {
         last_activity_at: activity?.last_activity_at ?? null,
         last_logged_in: authUser?.last_sign_in_at ?? null,
         is_trial: a.is_trial,
+        is_paid: paidAccounts.has(a.id),
+        emails_received_count: authUser?.email ? emailsByAddress[authUser.email.trim().toLowerCase()] || 0 : 0,
+        emails_received_daily_avg: (() => {
+          const email = authUser?.email?.trim().toLowerCase();
+          const sent = email ? emailsByAddress[email] || 0 : 0;
+          const from = Math.max(rangeStart, EMAIL_LOG_START, Date.parse(a.created_at));
+          const days = Math.max(1, Math.ceil((rangeEnd - from) / 86_400_000));
+          return Math.round((sent / days) * 10) / 10;
+        })(),
       };
     });
 

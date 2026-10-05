@@ -72,6 +72,12 @@ interface AccountStats {
   last_activity_at: string | null;
   last_logged_in: string | null;
   is_trial: boolean;
+  /** Bought any credit pack (or ever had a subscription). */
+  is_paid: boolean;
+  /** Emails we sent this account in the range, and per day since email
+   *  logging began on 2026-10-01. */
+  emails_received_count: number;
+  emails_received_daily_avg: number;
 }
 
 interface LinkedinGroupRow {
@@ -145,11 +151,14 @@ function getDateRange(preset: DatePreset, customStart: string, customEnd: string
   return { start_date: d.toISOString(), end_date: null };
 }
 
-const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.ReactNode; kind: 'text' | 'persona' | 'number' | 'duration' | 'age' | 'date'; widthClass: string }> = [
+const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.ReactNode; kind: 'text' | 'persona' | 'plan' | 'number' | 'duration' | 'age' | 'date'; widthClass: string }> = [
   { key: 'user_name', label: 'User Name', icon: <UserCheck size={12} />, kind: 'text', widthClass: 'w-[140px]' },
   { key: 'user_email', label: 'User Email', icon: <Mail size={12} />, kind: 'text', widthClass: 'w-[210px]' },
   { key: 'active_persona', label: 'User Type', icon: <UserRound size={12} />, kind: 'persona', widthClass: 'w-[125px]' },
+  { key: 'is_paid', label: 'Plan', icon: <Star size={12} />, kind: 'plan', widthClass: 'w-[90px]' },
   { key: 'credits_balance', label: 'Credits', icon: <Database size={12} />, kind: 'number', widthClass: 'w-[110px]' },
+  { key: 'emails_received_count', label: 'Emails Sent', icon: <Mail size={12} />, kind: 'number', widthClass: 'w-[115px]' },
+  { key: 'emails_received_daily_avg', label: 'Emails / Day', icon: <Mail size={12} />, kind: 'number', widthClass: 'w-[115px]' },
   { key: 'searches_count', label: 'Searches', icon: <Search size={12} />, kind: 'number', widthClass: 'w-[95px]' },
   { key: 'job_posts_count', label: 'Job Posts', icon: <Megaphone size={12} />, kind: 'number', widthClass: 'w-[100px]' },
   { key: 'hotlist_posts_count', label: 'Hotlist Posts', icon: <Megaphone size={12} />, kind: 'number', widthClass: 'w-[115px]' },
@@ -1046,6 +1055,10 @@ export default function AdminDashboard() {
                               ) : (
                                 <span className="text-xs font-normal text-gray-400">-</span>
                               )
+                            ) : col.kind === 'plan' ? (
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${value ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+                                {value ? 'Paid' : 'Free'}
+                              </span>
                             ) : col.kind === 'date' ? (
                               <span className="block truncate text-xs font-normal text-gray-600 whitespace-nowrap">
                                 {typeof value === 'string' ? formatCompactDateTime(value) : '-'}
