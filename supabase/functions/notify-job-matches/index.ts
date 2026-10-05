@@ -26,7 +26,7 @@ const DEFAULT_WINDOW_HOURS = 24;
 const DEFAULT_MIN_SIMILARITY = 0.7;
 // Where the notification leads: their own consultants, each with a Matches
 // button. Not straight into a run, which spends credits.
-const NOTIF_LINK = "/posts/hotlist";
+const NOTIF_LINK = '/tracker';
 
 function respond(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
