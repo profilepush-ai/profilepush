@@ -570,13 +570,13 @@ export default function AppNav() {
             <FollowingIcon size={24} />
             <span>{followingItem.label}</span>
           </Link>
+          {/* My Profile in the phone bar; Inbox stays in the desktop nav. */}
           <Link
-            to="/inbox"
-            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/inbox') ? 'text-blue-600' : 'text-gray-500'}`}
+            to="/me"
+            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/me') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <Mail size={24} />
-            <span>Inbox</span>
-            {inboxUnread > 0 && <span className="absolute right-[24%] top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{inboxUnread > 9 ? '9+' : inboxUnread}</span>}
+            <CircleUser size={24} />
+            <span>Profile</span>
           </Link>
         </nav>
       )}
