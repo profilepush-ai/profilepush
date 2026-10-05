@@ -28,7 +28,7 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-const pickTemplate = (t: unknown) => (typeof t === "string" && TEMPLATE_NAMES.includes(t) ? t : TEMPLATE_NAMES[Math.floor(Math.random() * TEMPLATE_NAMES.length)]);
+const pickTemplate = (t: unknown) => (typeof t === "string" && TEMPLATE_NAMES.includes(t) ? t : "nova");
 
 async function uniqueSlug(db: SupabaseClient, base: string): Promise<string> {
   for (let i = 0; i < 20; i++) {

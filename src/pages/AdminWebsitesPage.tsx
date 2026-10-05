@@ -248,7 +248,7 @@ export default function AdminWebsitesPage() {
             <input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} placeholder="Company (optional)" className="rounded-xl border border-gray-200 px-3 py-2 text-sm" />
             <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} type="email" placeholder="Contact email (can claim)" className="rounded-xl border border-gray-200 px-3 py-2 text-sm" />
             <select value={form.template} onChange={e => setForm(f => ({ ...f, template: e.target.value }))} className="rounded-xl border border-gray-200 px-3 py-2 text-sm capitalize">
-              <option value="">Any template</option>
+              <option value="">Nova (default)</option>
               {templates.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
             <button disabled={starting} className="inline-flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60">

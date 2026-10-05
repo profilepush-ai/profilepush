@@ -173,6 +173,7 @@ const SCHEMA = obj({
   industries_title: str,
   industries: arr(obj({ name: str })),
   process_title: str,
+  finale: str,
   process: arr(titleText),
   testimonials_title: str,
   testimonials: arr(obj({ quote: str, name: str, role: str })),
@@ -185,20 +186,25 @@ const SCHEMA = obj({
   footer_blurb: str,
 });
 
-const FIELD_GUIDE = `Field guide:
+const FIELD_GUIDE = `Field guide. Write like a bold, modern brand site: short, punchy, scannable. Fewer words always wins.
 - company_name as the site writes it; legal_name only if shown (else ""); logo_text = short brand name for the logo (e.g. "3SBC").
 - theme.primary / theme.secondary: "#rrggbb", chosen from the colours found on the site.
 - seo.title ≤ 60 chars, seo.description ≤ 155 chars.
-- hero: eyebrow ≤ 40 chars, title ≤ 60 chars and punchy, sub ≤ 220 chars.
-- goals: 2 or 3, most important first. audience = 1–2 words ("Consultants"), cta = 2–4 words ("Hire talent"), card_text ≤ 110, section_text ≤ 260, 3–4 points each (text ≤ 110).
-- highlights: 0–4, only facts stated on the site.
-- about.text ≤ 500 chars. nav_services_label: "Services" or "Solutions".
-- services: 3–9 (text ≤ 140). industries: 0–10. process: 0–6 steps (text ≤ 140).
-- testimonials: 0–4 verbatim excerpts (≤ 240 chars) with the name shown on the site; role "" if not shown.
-- faq: 3–6, answered only from site facts.
-- skill_options: 6–14 technologies/skills the site mentions. course_options: only if the site sells training, else [].
+- hero.eyebrow ≤ 32 chars (e.g. "Houston, TX · Since 2010"). hero.title: 3–7 words, a confident promise. hero.sub: ONE sentence, ≤ 110 chars.
+- goals: 2 or 3, most important first. audience = 1–2 words ("Consultants"), cta = 2–3 words ("Hire talent").
+  card_title ≤ 5 words, card_text ≤ 70 chars. section_title ≤ 6 words. section_text ≤ 120 chars.
+  points: 3–5, each title 1–4 words (shown as chips), text ≤ 60 chars.
+- highlights: 0–4, only facts stated on the site; value is short ("2010", "5,000+", "Inc. 5000"), label ≤ 4 words.
+- about.title ≤ 6 words, about.text ≤ 220 chars (or "" if nothing distinctive). nav_services_label: "Services" or "Solutions".
+- services_title ≤ 6 words; services_intro ≤ 100 chars. services: 4–6, title ≤ 4 words, text ≤ 70 chars.
+- industries: 0–8 names, 1–3 words each. process: 0–5 steps, title 1–2 words, text ≤ 70 chars.
+- testimonials: 0–3 verbatim excerpts ≤ 160 chars (trim to the strongest sentence) with the name shown on the site; role "" if not shown.
+- faq: 0–4, only when the site answers real questions; answers ≤ 160 chars.
+- finale: a 2–4 word closing line for the final call to action (e.g. "Let's build your team.").
+- enquire.title ≤ 6 words, enquire.text ≤ 110 chars.
+- skill_options: 6–12 technologies/skills the site mentions. course_options: only if the site sells training, else [].
 - contact: from the site; "" when missing. badges: certifications stated on the site (E-Verify, MBE, ISO…), else [].
-- footer_blurb ≤ 160 chars.`;
+- footer_blurb ≤ 100 chars.`;
 
 const RULES = `You are rewriting a staffing / IT services firm's existing website into the content for a modern single-page site.
 
