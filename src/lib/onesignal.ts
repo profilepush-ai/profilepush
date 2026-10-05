@@ -220,6 +220,28 @@ function requestPushPermissionOnWeb(): void {
   });
 }
 
+/**
+ * Asks the browser for notification permission now, from a button the user
+ * pressed (unlike the one-time ask at sign-in). Resolves with the browser's
+ * resulting state: 'granted', 'denied' or 'default' (dismissed).
+ */
+export function enableWebPush(): Promise<NotificationPermission | 'unsupported'> {
+  if (typeof window === 'undefined' || !('Notification' in window) || Capacitor.isNativePlatform()) {
+    return Promise.resolve('unsupported');
+  }
+  return new Promise((resolve) => {
+    withWebOneSignal(async (instance) => {
+      markPermissionRequested();
+      try {
+        await instance.Notifications.requestPermission();
+      } catch (error) {
+        console.warn('[OneSignal] Web permission request failed:', error);
+      }
+      resolve(Notification.permission);
+    });
+  });
+}
+
 export function setOneSignalExternalUserId(externalId: string | null | undefined): void {
   pendingExternalId = externalId ?? null;
   applyPendingIdentity();

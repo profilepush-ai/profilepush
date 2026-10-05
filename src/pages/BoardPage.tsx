@@ -15,6 +15,8 @@ import InsufficientCreditsModal from '../components/InsufficientCreditsModal';
 import { supabase } from '../lib/supabase';
 import { consultantTitle } from '../lib/consultant-title';
 import { trackEvent } from '../lib/track';
+import { enableWebPush } from '../lib/onesignal';
+import { Capacitor } from '@capacitor/core';
 import { loadTrackerSends, SEND_TONE_CLASSES, type TrackerSend } from '../lib/tracker-sends';
 
 // Tracker (named Board in code, at /board): a column per consultant (bench sales) or per requirement
@@ -167,6 +169,14 @@ export default function BoardPage() {
   const aiResumeRef = useRef<{ url: string; name: string } | null>(null);
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
+  // Browser notifications for new matches: shown until they're on (or the
+  // person dismisses this), since the one-time ask at sign-in is easy to miss.
+  const [pushState, setPushState] = useState<NotificationPermission | 'unsupported'>(() => (
+    typeof window !== 'undefined' && 'Notification' in window && !Capacitor.isNativePlatform() ? Notification.permission : 'unsupported'
+  ));
+  const [pushPromptHidden, setPushPromptHidden] = useState(() => {
+    try { return localStorage.getItem('tracker_push_prompt_hidden') === '1'; } catch { return false; }
+  });
   // Ten cards per column at a time, then Load more. Keyed by column (and the
   // Other column as 'other'); reset when a column changes stage or range.
   const PAGE_SIZE = 10;
@@ -671,6 +681,35 @@ export default function BoardPage() {
         </button>
       </div>
 
+      {pushState !== 'granted' && pushState !== 'unsupported' && !pushPromptHidden && (
+        <div className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] text-blue-900 sm:mx-3 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-100">
+          <span className="min-w-0 flex-1">
+            {pushState === 'denied'
+              ? 'Notifications are blocked in this browser. Allow them for profilepush.ai in your browser’s site settings to hear about new matches.'
+              : 'Get a notification the moment a new match lands for your ' + (isVendor ? 'requirements.' : 'consultants.')}
+          </span>
+          {pushState !== 'denied' && (
+            <button
+              type="button"
+              onClick={() => {
+                trackEvent('push_prompt_clicked', { from: 'tracker' });
+                void enableWebPush().then((state) => { setPushState(state); trackEvent('push_prompt_result', { state }); });
+              }}
+              className="rounded-full bg-blue-600 px-3 py-1 text-[12px] font-semibold text-white hover:bg-blue-700"
+            >
+              Turn on notifications
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => { setPushPromptHidden(true); try { localStorage.setItem('tracker_push_prompt_hidden', '1'); } catch { /* ignore */ } }}
+            className="text-blue-700/70 hover:text-blue-900 dark:text-blue-200/70"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
       {error && <p className="mx-2 mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 sm:mx-3">{error}</p>}
       {notice && (
         <p className="mx-2 mt-2 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-[12px] text-green-800 sm:mx-3">
