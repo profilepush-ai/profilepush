@@ -42,6 +42,7 @@ const MARKETING: MarketingEntry[] = [
   { path: "/", lastmod: "2026-09-09", changefreq: "weekly", priority: "1.0" },
   { path: "/vendors", lastmod: "2026-09-09", changefreq: "weekly", priority: "0.95" },
   { path: "/bench-sales", lastmod: "2026-09-09", changefreq: "weekly", priority: "0.95" },
+  { path: "/websites", lastmod: "2026-10-05", changefreq: "weekly", priority: "0.8" },
   { path: "/how-it-works", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.9" },
   { path: "/why-ai-copilot", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.8" },
   { path: "/about", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.8" },
