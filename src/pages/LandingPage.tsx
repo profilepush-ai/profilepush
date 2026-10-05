@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, Briefcase, Check, ChevronRight, Plus, Minus, ShieldCheck, UserRound,
-  Radar, Sparkles, Send, Video, Clock3, MapPin,
+  Radar, Sparkles, Send, KanbanSquare, Clock3, MapPin,
 } from 'lucide-react';
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
@@ -33,12 +33,12 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     persona: 'vendor',
     icon: Briefcase,
     title: 'Vendor',
-    tagline: 'Protect the client relationship.',
+    tagline: 'Fill every requirement faster.',
     bullets: [
-      'Interviews every consultant on video before submission',
-      'Finds fake resumes and proxies early',
-      'Watches every group for available consultants',
-      'Writes every resume request',
+      'Matching consultants appear the day they are available',
+      'One tap asks for resume, rate, visa and availability',
+      'A live Tracker for every requirement',
+      'Optional video screening when you want it',
     ],
     accent: 'from-blue-600 to-indigo-500',
     iconBg: 'bg-blue-50',
@@ -55,9 +55,9 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
     title: 'Bench Sales',
     tagline: 'Market the right consultants.',
     bullets: [
-      'Shows how a consultant really answers questions',
-      'Fills every submission from the resume',
-      'Shows which skills vendors are posting now',
+      'New requirements matched to each consultant, live',
+      'AI Submit writes the email and attaches the resume',
+      'An alert the moment a strong match lands',
       'Submissions are always free',
     ],
     accent: 'from-orange-500 to-amber-400',
@@ -74,19 +74,19 @@ const WORKFLOW_CARDS: WorkflowCard[] = [
 const FAQS = [
   {
     q: 'What is ProfilePush?',
-    a: 'An AI copilot for US IT staffing. It watches every group for reqs and consultants. It writes the emails. It interviews every consultant on video.',
+    a: 'An AI copilot for US IT staffing. Paste a consultant or a requirement and it ranks the matches, writes the email, and keeps every new match in a live Tracker.',
   },
   {
     q: 'Vendor or Bench Sales?',
     a: 'Vendor for reqs. Bench sales for consultants. One switch in the header. Same account either way.',
   },
   {
-    q: 'How does video screening find fake resumes?',
-    a: 'The interview is recorded. Each new question is based on the last answer. The copilot asks for a real number, a real tool, a real project. False claims fail fast.',
+    q: 'What is the Tracker?',
+    a: 'A live board with a column for each consultant or requirement you post. New matches arrive there all day, newest first, and you get a notification when strong ones land. Reposts are merged, and anything you mark "Not a match" never comes back.',
   },
   {
     q: 'What does it cost?',
-    a: 'Free. 100 credits that never expire, plus 10 more when you publish your first post and 10 when you send your first submission. A post costs 1 credit. An AI draft costs 1 credit, and sending it from your Gmail costs 1 more, refunded if the send fails. Submitting is always free. Need more? Buy a credit pack from ₹249 or go Pro from ₹500 a month.',
+    a: 'Free. 100 credits that never expire, plus 10 more when you publish your first post and 10 when you send your first submission. A post costs 1 credit. An AI Submit draft costs 1 credit (AI Request drafts are free), and sending from your Gmail costs 1 credit, refunded if the send fails. Submitting is always free. Need more? Buy a credit pack from ₹249 or go Pro from ₹500 a month.',
   },
   {
     q: 'Is the data safe?',
@@ -137,7 +137,7 @@ export default function LandingPage() {
       <main>
       <SEO
         title="ProfilePush — AI Copilot for Vendors & Bench Sales in US IT Staffing"
-        description="ProfilePush is the AI copilot for both sides of US IT staffing. Vendors get AI video screening that catches fake resumes and proxy interviews before submission. Bench Sales get a live list of vendors actively posting requirements, one-paste bulk posting, and free unlimited submissions."
+        description="ProfilePush is the AI copilot for both sides of US IT staffing. Paste a consultant or a requirement, get ranked matches, and the email writes itself. Every new match then lands in your live Tracker, all day. Submissions are always free."
         canonical="https://profilepush.ai/"
         jsonLd={LANDING_FAQ_JSONLD}
       />
@@ -151,6 +151,9 @@ export default function LandingPage() {
           <h1 className="text-[clamp(2rem,6vw,3.75rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-6">
             <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">An AI copilot for both sides of US IT staffing.</span>
           </h1>
+          <p className="text-base md:text-lg text-gray-600 max-w-2xl mx-auto mb-8 leading-relaxed">
+            Paste a consultant or a requirement. Get ranked matches. The email writes itself. Then every new match lands in your Tracker, live, all day.
+          </p>
 
           <div className="flex flex-col items-center justify-center gap-4">
             <Link
@@ -243,7 +246,7 @@ export default function LandingPage() {
           <div className="text-center mb-10">
             <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">The market, today</p>
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">Around 900 new requirements land every weekday.</h2>
-            <p className="text-gray-500 max-w-2xl mx-auto">Collected from LinkedIn, WhatsApp, Telegram and job boards, de-duplicated by recruiter, and refreshed daily. Browse a slice of it without an account.</p>
+            <p className="text-gray-500 max-w-2xl mx-auto">New requirements and consultants every day, de-duplicated by recruiter and refreshed all day. Browse a slice of it without an account.</p>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
@@ -291,7 +294,7 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
             <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">How it works</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Paste. Match. Submit.</h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Paste. Match. Send.</h2>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {[
@@ -310,8 +313,8 @@ export default function LandingPage() {
               {
                 icon: Send,
                 step: '03',
-                title: 'Submit in one tap',
-                body: 'The email writes itself from the match. Submissions are always free, and replies land back in your inbox inside the platform.',
+                title: 'The email writes itself',
+                body: 'AI Submit or AI Request drafts the email from the match and sends it from your own Gmail, with the resume attached. Submissions are always free.',
               },
             ].map(item => (
               <div key={item.step} className="rounded-2xl border border-gray-200 bg-white p-6">
@@ -329,22 +332,21 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── SCREENING ── the one capability the competing bench-sales tools
-           do not have, so it gets its own section rather than a bullet. */}
+      {/* ── TRACKER ── what brings people back: their matches keep coming. */}
       <section className="py-16 md:py-20 px-6 bg-gray-50 border-y border-gray-100">
         <div className="max-w-4xl mx-auto text-center">
           <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white border border-gray-200 text-blue-600 mb-4">
-            <Video size={22} />
+            <KanbanSquare size={22} />
           </span>
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Every consultant arrives screened.</h2>
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Your matches keep coming. Live.</h2>
           <p className="text-gray-600 max-w-2xl mx-auto mb-8">
-            An adaptive video interview runs before a submission reaches the vendor, so fake resumes and proxy interviews surface early — while it is still your decision, not your client's discovery.
+            Every consultant or requirement you post gets its own column in your Tracker. New matches land there all day, so you see them before everyone else does.
           </p>
           <div className="grid sm:grid-cols-3 gap-4 text-left">
             {[
-              ['Adaptive questions', 'Generated from the actual requirement, not a generic template.'],
-              ['Recorded and scored', 'The vendor sees how the consultant really answers, not a claim on a resume.'],
-              ['Before submission', 'Problems show up at your end, not in front of the client.'],
+              ['A column per post', 'Each consultant or requirement you post has its own live column of matches, newest first.'],
+              ['Alerts that matter', 'A notification when strong new matches land, at most once an hour.'],
+              ['Nothing twice', 'Reposts are merged, and anything you mark "Not a match" never comes back.'],
             ].map(([title, body]) => (
               <div key={title} className="rounded-xl bg-white border border-gray-200 p-4">
                 <p className="text-sm font-bold text-gray-900 mb-1">{title}</p>
@@ -404,7 +406,7 @@ export default function LandingPage() {
             Let the AI copilot power your workflow.
           </h2>
           <p className="text-gray-500 mb-10">
-            Stop scrolling groups. Start closing deals.
+            Stop chasing posts. Start closing deals.
           </p>
           <Link
             to="/signup"
