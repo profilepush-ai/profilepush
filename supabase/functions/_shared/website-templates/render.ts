@@ -219,6 +219,8 @@ export function prepare(c: SiteContent): Record<string, unknown> {
     process_title: clean(c.process_title, 80) || 'How it works.',
     testimonials: list(c.testimonials, 6).map((t, i) => ({ ...t, first: i === 0 })),
     finale: clean(c.finale, 40) || "Let's talk.",
+    // Words for Nova's kinetic banner: the firm's skills, else its services.
+    ticker: (skills.length ? skills : list(c.services, 9).map(sv => clean(sv.title, 40))).slice(0, 12),
     testimonials_title: clean(c.testimonials_title, 80) || 'What people say.',
     faq: list(c.faq, 8).map((f, i) => ({ ...f, open: i === 0 })),
     footer_blurb: clean(c.footer_blurb, 240),
