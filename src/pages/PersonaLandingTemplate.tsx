@@ -317,6 +317,7 @@ export default function PersonaLandingTemplate({ persona }: { persona: Persona }
     inbox: { desktop: '/screens/features/inbox.jpg', mobile: '/screens/features/inbox-mobile.jpg' },
     pulse: { desktop: '/screens/features/pulse.jpg', mobile: '/screens/features/pulse-mobile.jpg' },
     posts: { desktop: '/screens/features/posts.jpg', mobile: '/screens/features/posts-mobile.jpg' },
+    tracker: { desktop: '/screens/features/tracker.jpg', mobile: '/screens/features/tracker-mobile.jpg' },
   };
 
   const storageBaseUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/landing-assets/features`;
