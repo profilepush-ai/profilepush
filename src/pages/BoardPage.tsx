@@ -50,6 +50,7 @@ type Card = {
   posted_at: string;
   detail: string | null;
   has_email: boolean;
+  added_at: string;
 };
 
 // The 'submitted' stage is an AI Request for vendors, so it reads "Requested".
@@ -153,9 +154,9 @@ export default function BoardPage() {
   const [overTarget, setOverTarget] = useState('');
   const [liveNew, setLiveNew] = useState(0);
   // Green ring on new arrivals: cards added while the page is open, plus any
-  // whose post came in within the last 30 minutes (cards are dated by their
-  // post, so an old post never gets it). No label.
+  // added since this person's last Tracker visit (mark_tracker_visit). No label.
   const [arrivedIds, setArrivedIds] = useState<Set<string>>(new Set());
+  const [unseenSince, setUnseenSince] = useState<number | null>(null);
   // Bulk AI Submit works on one column at a time (an invite's screening link
   // hangs off that column's requirement).
   const [selected, setSelected] = useState<{ subjectId: string; ids: Set<string> }>({ subjectId: '', ids: new Set() });
@@ -383,6 +384,14 @@ export default function BoardPage() {
     void loadSends();
     void loadAll();
   }, [account?.id, loadSubjects, loadAll]);
+
+  // Once per open: the ring's cut-off. Null on a first visit.
+  useEffect(() => {
+    if (!user?.id) return;
+    void Promise.resolve(supabase.rpc('mark_tracker_visit' as never)).then(({ data }) => {
+      if (typeof data === 'string') setUnseenSince(Date.parse(data));
+    });
+  }, [user?.id]);
 
   // The Feed's own AI Submit / AI Request, preview and Apply, right here: the
   // same draft popup, Gmail send, credits and screening link as everywhere.
@@ -1023,7 +1032,7 @@ export default function BoardPage() {
                         draggable
                         onDragStart={() => setDragId(card.id)}
                         onDragEnd={() => { setDragId(''); setOverTarget(''); }}
-                        className={`shrink-0 rounded-lg transition ${arrivedIds.has(card.id) || Date.now() - Date.parse(card.created_at) < 30 * 60_000 ? 'ring-2 ring-green-400' : ''} ${dragId === card.id ? 'opacity-50' : ''}`}
+                        className={`shrink-0 rounded-lg transition ${arrivedIds.has(card.id) || (unseenSince !== null && Date.parse(card.added_at) > unseenSince) ? 'ring-2 ring-green-400' : ''} ${dragId === card.id ? 'opacity-50' : ''}`}
                       >
                         {/* A plain block around the card: the card is h-full,
                             and without it that resolved to this whole slot,
