@@ -540,15 +540,18 @@ export default function BoardPage() {
       if (!start || start.key !== key) return;
       const dy = e.touches[0].clientY - start.y;
       const dx = e.touches[0].clientX - start.x;
-      if (dy <= 0 || Math.abs(dx) > Math.abs(dy) || e.currentTarget.scrollTop > 0) {
+      // Only a clearly downward drag is a pull; anything diagonal or
+      // sideways belongs to the board's horizontal swipe.
+      if (dy <= 0 || Math.abs(dx) * 1.5 > dy || e.currentTarget.scrollTop > 0) {
         // A sideways swipe: let the board scroll, and stop treating it as a pull.
-        if (Math.abs(dx) > Math.abs(dy)) pullStart.current = null;
+        if (Math.abs(dx) > 8 && Math.abs(dx) * 1.5 > Math.abs(dy)) pullStart.current = null;
         lockBoardX(false);
         setPull(null);
         return;
       }
-      if (dy > 6) lockBoardX(true);
-      setPull({ key, dy: Math.min(dy * 0.5, 96) });
+      if (dy < 10) return;
+      lockBoardX(true);
+      setPull({ key, dy: Math.min((dy - 10) * 0.5, 96) });
     },
     onTouchCancel: () => { pullStart.current = null; lockBoardX(false); setPull(null); },
     onTouchEnd: () => {
@@ -997,7 +1000,7 @@ export default function BoardPage() {
                   )}
                 </header>
 
-                <div {...pullHandlers(sid)} className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2 pb-2">
+                <div {...pullHandlers(sid)} className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-2 pb-2">
                   {pullIndicator(sid)}
                   {!loaded && <p className="px-2 py-6 text-center text-[11px] text-gray-400">Loading…</p>}
                   {loaded && list.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{emptyText(view)}</p>}
@@ -1097,7 +1100,7 @@ export default function BoardPage() {
                   })}
                 </div>
               </header>
-              <div {...pullHandlers('other')} className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2 pb-2">
+              <div {...pullHandlers('other')} className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-2 pb-2">
                 {pullIndicator('other')}
                 {otherVisible.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{otherTab === 'closed' ? 'Nothing closed yet.' : 'Nothing open.'}</p>}
                 {otherVisible.slice(0, shownFor('other')).map((send, i) => (
