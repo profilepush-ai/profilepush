@@ -42,7 +42,7 @@ export default function LandingPage() {
   return (
     <>
       <SEO
-        title="ProfilePush — AI Copilot for Vendors & Bench Sales in US IT Staffing"
+        title="ProfilePush — AI Copilot for US IT Staffing (Vendors & Bench Sales)"
         description="ProfilePush is the AI copilot for both sides of US IT staffing. Vendors post a requirement and matching bench consultants land in a live Tracker. Bench sales paste a hotlist and every consultant gets a live column of matching requirements. The email writes itself, sent from your own Gmail. Submissions are always free."
         canonical="https://profilepush.ai/"
         jsonLd={LANDING_FAQ_JSONLD}
@@ -93,26 +93,26 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                 <h1 id="h1" className="intro d1">
                   {' '}
                   <span className="x-both">
-                    The AI Copilot for
+                    AI Copilot for
                     <br />
                     <span className="grad">
-                      both sides of the deal.
+                      US IT Staffing.
                     </span>
                   </span>
                   {' '}
                   <span className="x-v swapin" style={{ "--push": "-30px" } as CSSProperties}>
-                    Your AI Copilot
+                    AI Copilot for
                     <br />
                     <span className="gv">
-                      for every requirement.
+                      US IT Staffing.
                     </span>
                   </span>
                   {' '}
                   <span className="x-b swapin" style={{ "--push": "30px" } as CSSProperties}>
-                    Your AI Copilot
+                    AI Copilot for
                     <br />
                     <span className="gb">
-                      for the whole bench.
+                      US IT Staffing.
                     </span>
                   </span>
                   {' '}
