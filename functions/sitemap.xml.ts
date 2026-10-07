@@ -38,24 +38,26 @@ type MarketingEntry = {
   priority: string;
 };
 
+// lastmod is the date the page's content last changed (its source file's last
+// commit), not today: a lastmod that always moves teaches crawlers to ignore it.
 const MARKETING: MarketingEntry[] = [
-  { path: "/", lastmod: "2026-09-09", changefreq: "weekly", priority: "1.0" },
-  { path: "/vendors", lastmod: "2026-09-09", changefreq: "weekly", priority: "0.95" },
-  { path: "/bench-sales", lastmod: "2026-09-09", changefreq: "weekly", priority: "0.95" },
-  { path: "/websites", lastmod: "2026-10-05", changefreq: "weekly", priority: "0.8" },
-  { path: "/how-it-works", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.9" },
-  { path: "/why-ai-copilot", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.8" },
-  { path: "/about", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.8" },
-  { path: "/contact", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.7" },
-  { path: "/book-demo", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.7" },
-  { path: "/vs/ceipal", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.6" },
-  { path: "/vs/jobright-ai", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.6" },
-  { path: "/vs/drivetube-ai", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.6" },
-  { path: "/vs/apply-nxt", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.6" },
-  { path: "/security", lastmod: "2026-08-04", changefreq: "monthly", priority: "0.5" },
-  { path: "/privacy", lastmod: "2026-08-04", changefreq: "yearly", priority: "0.4" },
-  { path: "/terms", lastmod: "2026-08-04", changefreq: "yearly", priority: "0.4" },
-  { path: "/cancellation-refund", lastmod: "2026-08-04", changefreq: "yearly", priority: "0.3" },
+  { path: "/", lastmod: "2026-10-07", changefreq: "daily", priority: "1.0" },
+  { path: "/vendors", lastmod: "2026-10-07", changefreq: "daily", priority: "0.95" },
+  { path: "/bench-sales", lastmod: "2026-10-07", changefreq: "daily", priority: "0.95" },
+  { path: "/websites", lastmod: "2026-10-07", changefreq: "weekly", priority: "0.8" },
+  { path: "/how-it-works", lastmod: "2026-10-07", changefreq: "monthly", priority: "0.7" },
+  { path: "/why-ai-copilot", lastmod: "2026-10-07", changefreq: "monthly", priority: "0.6" },
+  { path: "/about", lastmod: "2026-08-14", changefreq: "monthly", priority: "0.7" },
+  { path: "/contact", lastmod: "2026-08-14", changefreq: "monthly", priority: "0.6" },
+  { path: "/book-demo", lastmod: "2026-08-14", changefreq: "monthly", priority: "0.6" },
+  { path: "/vs/ceipal", lastmod: "2026-10-05", changefreq: "monthly", priority: "0.6" },
+  { path: "/vs/jobright-ai", lastmod: "2026-10-05", changefreq: "monthly", priority: "0.6" },
+  { path: "/vs/drivetube-ai", lastmod: "2026-10-05", changefreq: "monthly", priority: "0.6" },
+  { path: "/vs/apply-nxt", lastmod: "2026-10-05", changefreq: "monthly", priority: "0.6" },
+  { path: "/security", lastmod: "2026-10-05", changefreq: "monthly", priority: "0.5" },
+  { path: "/privacy", lastmod: "2026-09-07", changefreq: "yearly", priority: "0.4" },
+  { path: "/terms", lastmod: "2026-10-05", changefreq: "yearly", priority: "0.4" },
+  { path: "/cancellation-refund", lastmod: "2026-10-05", changefreq: "yearly", priority: "0.3" },
 ];
 
 const url = (loc: string, lastmod: string, changefreq: string, priority: string) =>

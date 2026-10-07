@@ -441,6 +441,13 @@
 .pp-home .switch .knob{width:46px}
 .pp-home .free .ctas .btn{width:100%}
 }
+/* "Also on Android": Google's Play badge, kept quiet under the primary CTAs. */
+.pp-home .andr{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 12px;margin-top:26px;color:var(--dim);font-size:13.5px;font-weight:600}
+.pp-home .andr a{display:block;line-height:0;border-radius:7px;text-decoration:none;transition:transform .2s var(--ease)}
+.pp-home .andr a:hover{transform:translateY(-1px)}
+.pp-home .andr a:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+.pp-home .andr img{display:block;height:40px;width:auto}
+.pp-home .andr.fin-app{margin:0;padding:22px var(--g) 26px;background:var(--bg)}
 @media (prefers-reduced-motion:reduce){
 .pp-home *,.pp-home *:before,.pp-home *:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 .pp-home .rv,.pp-home .intro{opacity:1!important;transform:none!important}

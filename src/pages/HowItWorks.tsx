@@ -5,74 +5,69 @@ import SiteFooter from '../components/SiteFooter';
 import MarketingNav from '../components/MarketingNav';
 
 const phases = [
+  // The current product, checked against the app (posting free with 3 open on
+  // the free plan, 1 credit per Tracker match, AI Request draft free, AI Submit
+  // draft 1 credit, Gmail send 1 credit refunded on failure, screening 10
+  // credits to the vendor). The old phases described retired tools (multi-
+  // board search, Resume AI, Submission Queue, JD AI) that now redirect to /feed.
   {
     number: '1',
-    title: 'Organizing the Talent (The Bench)',
-    tagline: 'Stop manually typing out consultant details.',
+    title: 'Post what you have',
+    tagline: 'Paste it exactly as you have it.',
     points: [
-      { label: 'Instant Parsing', text: "Upload your candidate's PDF resume. ProfilePush AI instantly reads the file and extracts their name, phone number, education, work history, core skills, and visa status into a clean digital profile." },
-      { label: 'Priority Skills Auto-Generation', text: "The AI automatically suggests the top 5 priority skills based on the candidate's history, giving you an instant marketing angle for your search." },
-      { label: 'Centralized Hub', text: 'Your entire team\'s active consultants live in one syncable dashboard. No more digging through desktop folders to find the "latest version" of a resume.' },
+      { label: 'A requirement', text: 'Paste the requirement text from an email or a job board. The AI fills in the skills, visa, rate and experience for you.' },
+      { label: 'A whole hotlist', text: 'Bench sales can paste the hotlist table, up to 50 consultants at a time. Every consultant is read and posted together.' },
+      { label: 'Free to post', text: 'Posting and editing are free. The free plan keeps 3 consultants or requirements open at a time; any credit pack removes that limit.' },
     ],
   },
   {
     number: '2',
-    title: 'Sourcing Requirements (Omni-Board Search)',
-    tagline: 'Stop switching between 15 browser tabs.',
+    title: 'The AI Copilot reads the market',
+    tagline: 'Stop scrolling hotlists and requirement emails.',
     points: [
-      { label: 'One Matrix, 4 Boards', text: 'Select your candidate, apply your filters (location, job type, timeline, seniority), and hit search. ProfilePush simultaneously sweeps LinkedIn, Dice, Indeed, and Monster.' },
-      { label: 'Live Aggregation', text: 'Dozens of live, active requirements are fetched and loaded directly into a single, unified feed.' },
-      { label: 'Quick Preview', text: 'Click any job to instantly preview the full Job Description and apply link without ever leaving the ProfilePush dashboard.' },
+      { label: 'The live market', text: 'New requirements and hotlist consultants arrive all day, thousands a month. Each one is read as it arrives.' },
+      { label: 'Only what fits', text: 'Every arrival is matched against each consultant or requirement you posted. What does not fit falls away.' },
+      { label: 'AI Match on demand', text: 'Paste any consultant or requirement for ranked matches with fit and skill gaps: 1 credit per result, up to 10 a run.' },
     ],
   },
   {
     number: '3',
-    title: 'Qualifying the Fit (AI Match Scoring)',
-    tagline: 'Stop guessing if your candidate will pass the ATS.',
+    title: 'Matches land in your Tracker',
+    tagline: 'A live column for every consultant and every requirement.',
     points: [
-      { label: 'Instant Match Score', text: "Click the match icon on any job. The AI cross-references the live JD with your candidate's parsed profile and generates a definitive percentage match (e.g., 88%)." },
-      { label: 'Skill Gap Analysis', text: 'The AI highlights exact strengths and flags critical missing requirements (like a missing location preference or specific tech stack).' },
-      { label: 'The Routing System', text: 'Instantly route high-match jobs to your Submission Queue (for outreach) or your Resume Queue (for formatting).' },
+      { label: 'A column each', text: 'Each thing you posted gets its own column, and new matches land in it all day, newest first. Each new match costs 1 credit, up to 10 a day on the free plan (30 once you have bought credits).' },
+      { label: 'No noise twice', text: 'Reposts are merged into one card, and anything you mark "Not a match" never comes back.' },
+      { label: 'Alerts', text: 'A notification on your phone (Android app) or browser when strong matches land, and an email if matches are waiting while you are away.' },
     ],
   },
   {
     number: '4',
-    title: 'Bypassing MS Word (AI Resume Rewrite)',
-    tagline: 'Stop spending 20 minutes manually formatting margins and bolding keywords.',
+    title: 'Vendors: AI Request',
+    tagline: 'One tap asks for the resume.',
     points: [
-      { label: '10-Second Tailoring', text: "Go to your Resume Queue and click Rewrite Resume. The AI uses the skill gap analysis to automatically adjust the candidate's bullet points, highlighting the exact experience the Prime Vendor is asking for." },
-      { label: 'Live Editor', text: 'View the rewritten profile, hide irrelevant skills with a single click, and toggle between different formatting styles.' },
-      { label: 'Download & Go', text: "Download the perfectly tailored PDF instantly, or save it directly to the candidate's profile." },
+      { label: 'The ask writes itself', text: 'From a matched consultant, AI Request drafts an email to the bench recruiter asking for the resume, rate, visa and availability. The draft is free.' },
+      { label: 'From your own Gmail', text: 'You review it and it sends from your connected Gmail. A send costs 1 credit, refunded if it fails.' },
+      { label: 'Optional screening', text: 'Tick one box to include a short video screening link. You get a recording, a score and a summary; a finished screening costs 10 credits.' },
     ],
   },
   {
     number: '5',
-    title: 'Executing the Pitch (Submission Queue)',
-    tagline: 'Stop typing generic "Please find attached" emails.',
+    title: 'Bench sales: AI Submit',
+    tagline: 'The pitch writes itself, resume attached.',
     points: [
-      { label: 'One-Click Email Generation', text: 'Inside your Submission Queue, click to generate a pitch email. The AI drafts a highly contextual, professional outreach email specifically designed for that exact role.' },
-      { label: 'Client & Candidate Approvals', text: 'Generate a pitch for the hiring manager, or generate an approval email with an apply-link to send directly to your candidate.' },
-      { label: 'Log the Submission', text: 'Mark the job as "Submission Initiated" to instantly log the activity.' },
+      { label: 'Submit from the match', text: 'From a matched requirement, AI Submit writes the submission email with the resume attached. The draft costs 1 credit.' },
+      { label: 'Free submissions', text: 'Submissions are free and unlimited. Sending from your Gmail costs 1 credit, refunded if it fails.' },
+      { label: 'Inbound requests', text: 'When a vendor asks for a resume from your hotlist, it lands in one list with a clear status. Upload the resume, add a note, done. Replying never costs a credit.' },
     ],
   },
   {
     number: '6',
-    title: 'Reverse Matching (JD AI)',
-tagline: 'Got a hot req from a vendor on LinkedIn? Find the candidate instantly.',
+    title: 'Your team and your credits',
+    tagline: 'No seats, no subscription.',
     points: [
-      { label: 'Paste the JD', text: 'Copy any raw job description from LinkedIn, an email thread, or social media and paste it into JD AI.' },
-      { label: 'Scan the Bench', text: 'The AI scans your entire Bench and Hotlist simultaneously.' },
-      { label: 'Bulk Match', text: 'It automatically scores every available candidate against the JD, showing you exactly who to submit. Select the top matches and push them straight to the Submission Queue in one click.' },
-    ],
-  },
-  {
-    number: '7',
-    title: 'Tracking & Team Scaling (The Desk)',
-    tagline: 'Throw away your messy Excel sheets.',
-    points: [
-      { label: 'Automated CRM', text: 'Every time you execute a pitch, the Tracker logs the candidate, the vendor, and the submission status. Your desk builds its own CRM on autopilot, preventing double-submittals.' },
-      { label: 'Unlimited Users', text: "Add your entire recruiting team. You don't pay per seat; you just share your AI credit pool." },
-      { label: 'Usage Analytics', text: 'Total transparency. Billing shows exactly who is matching, drafting and sending, down to every AI credit used.' },
+      { label: 'Unlimited members', text: 'Add your whole team to one account. Everyone shares one credit balance.' },
+      { label: 'Start free', text: '100 free credits at signup that never expire, plus 10 on your first post and 10 on your first submission.' },
+      { label: 'Credit packs', text: 'One-time packs from ₹249, at ₹1 a credit. No subscription. Every credit spent is listed in Billing.' },
     ],
   },
 ];
@@ -80,9 +75,8 @@ tagline: 'Got a hot req from a vendor on LinkedIn? Find the candidate instantly.
 const HOW_IT_WORKS_JSONLD = {
   '@context': 'https://schema.org',
   '@type': 'HowTo',
-  name: 'How ProfilePush works for bench sales recruiters and vendor teams',
-  description: 'Seven-step workflow to source, qualify, and submit candidates faster with Pulse, Jobs, Hotlist, Inbox, Tracker, and AI recruiter workflows.',
-  totalTime: 'PT30M',
+  name: 'How ProfilePush works for vendors and bench sales recruiters',
+  description: 'Post a requirement or paste a hotlist, let the AI Copilot match it against the live US IT staffing market, and act on the matches in your Tracker with AI Request and AI Submit.',
   step: phases.map((phase, index) => ({
     '@type': 'HowToStep',
     position: index + 1,
@@ -95,8 +89,8 @@ export default function HowItWorks() {
   return (
     <div className="min-h-screen bg-white">
       <SEO
-        title="How it Works | ProfilePush"
-        description="See how ProfilePush AI Copilot helps bench sales recruiters and vendor teams hit 10X placements in 7 phases."
+        title="How ProfilePush Works: AI Copilot for US IT Staffing"
+        description="Post a requirement or paste a hotlist. The AI Copilot matches it to the live market, fills your Tracker, and writes the email from your own Gmail."
         canonical="https://profilepush.ai/how-it-works"
         jsonLd={HOW_IT_WORKS_JSONLD}
       />
@@ -180,13 +174,13 @@ export default function HowItWorks() {
             Join the Bench Sales teams using ProfilePush to automate the grunt work and scale their submittals.
           </p>
           <Link
-            to="/sign-up"
+            to="/signup"
             className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-blue-600 text-white font-semibold text-lg shadow-lg shadow-blue-600/25 hover:bg-blue-700 hover:shadow-blue-700/30 transition-all duration-200"
           >
             Start Free <ArrowRight size={13} />
           </Link>
           <p className="mt-4 text-sm text-gray-500">
-            Includes $5 in monthly AI credits. No credit card required. Setup takes 10 seconds.
+            100 free credits that never expire. No credit card required.
           </p>
         </div>
       </section>

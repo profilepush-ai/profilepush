@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
 import LandingHeader from './landing/LandingHeader';
+import AndroidApp from './landing/AndroidApp';
 import { useLandingEngine } from './landing/useLandingEngine';
 import { startVendors } from './landing/vendorsEngine';
 import { fmt, fmtDate } from './landing/engine';
@@ -16,15 +17,19 @@ import './landing/vendors.css';
 // The markup is static JSX; the motion runs from vendorsEngine on the root
 // element and stops on unmount.
 
-const TITLE = 'ProfilePush for Vendors — Matching Consultants, Live, for Every Requirement';
-const DESCRIPTION = 'ProfilePush is the AI copilot for vendor teams. Paste a requirement and the form fills itself. Matching bench consultants land in your Tracker all day, and one tap sends an AI Request for the resume, rate, visa and availability, from your own Gmail.';
+const TITLE = 'ProfilePush for Vendors — Find Bench Consultants with AI';
+const DESCRIPTION = 'Post a requirement and ProfilePush matches it to bench consultants posted daily. Fits land in your Tracker; AI Request asks for the resume from your Gmail.';
 const CANONICAL = 'https://profilepush.ai/vendors';
 
+// Checked against the app: posting is free (3 open on the free plan), each
+// Tracker match is 1 credit, a finished screening is 10. The FAQPage JSON-LD
+// is built from this list, so it always matches what is on the page.
 const FAQS = [
-  { q: "How do matching consultants reach me?", a: "Add a requirement and the AI Copilot matches it against bench consultants every day. Strong matches land in your Tracker, and you get a notification." },
+  { q: "How do vendors find bench consultants?", a: "Post your requirement, or paste it as text. The AI Copilot matches it against the bench consultants posted every day. Strong matches land in your Tracker, and you get a notification." },
   { q: "What is an AI Request?", a: "An email to the bench recruiter asking for the consultant’s resume, rate, visa status and availability. The draft is free, and it sends from your own Gmail." },
   { q: "Is video screening available?", a: "Yes, as an option. Tick “include a video screening link” on any request. The consultant records a short adaptive interview, and you get a recording, a score and a summary." },
-  { q: "What costs credits?", a: "A post costs 1 credit. AI Request drafts and editing are free. Sending from your Gmail costs 1 credit, refunded if the send fails. A finished screening costs 10 credits. Credit packs start at ₹249." },
+  { q: "What costs credits?", a: "Posting is free, with 3 open requirements on the free plan and no limit once you buy credits. Each new Tracker match costs 1 credit. AI Request drafts and editing are free. Sending from your Gmail costs 1 credit, refunded if the send fails. A finished screening costs 10 credits. Credit packs start at ₹249." },
+  { q: "Is there a mobile app?", a: "Yes. ProfilePush is on Google Play for Android, so match alerts reach your phone. It also runs in any web browser." },
   { q: "Is my data safe?", a: "Yes. All data is encrypted, and it is never sold or shared. Emails send from your connected Gmail address." },
 ];
 
@@ -38,7 +43,9 @@ const PAGE_JSONLD = {
       name: TITLE,
       description: DESCRIPTION,
       isPartOf: { '@id': 'https://profilepush.ai/#website' },
-      about: { '@id': 'https://profilepush.ai/#organization' },
+      about: { '@id': 'https://profilepush.ai/#software' },
+      publisher: { '@id': 'https://profilepush.ai/#organization' },
+      audience: { '@type': 'BusinessAudience', audienceType: 'IT staffing vendors and account managers' },
     },
     {
       '@type': 'BreadcrumbList',
@@ -49,6 +56,8 @@ const PAGE_JSONLD = {
     },
     {
       '@type': 'FAQPage',
+      '@id': `${CANONICAL}#faq`,
+      isPartOf: { '@id': `${CANONICAL}#webpage` },
       mainEntity: FAQS.map((f) => ({
         '@type': 'Question',
         name: f.q,
@@ -118,6 +127,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                     </svg>
                   </Link>
                 </div>
+                <AndroidApp source="vendors-hero" className="intro d3" />
                 <a className="cue intro d4" href="#req">
                   {"Watch it sort "}
                   <span className="ddc" aria-hidden="true">
@@ -169,7 +179,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                   <div className="col req" id="reqCard" aria-label="The requirement, structured"></div>
                 </div>
                 <p className="parse-note rv">
-                  Posting costs 1 credit, and your first post earns 10 free credits.
+                  Posting is free, and your first post earns 10 free credits.
                 </p>
               </div>
             </section>
@@ -682,7 +692,16 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                   <div className="rv">
                     <ul className="plist">
                       <li>
-                        Match a requirement
+                        Posting a requirement
+                        <span className="c f">
+                          Free
+                          <small>
+                            3 open on the free plan
+                          </small>
+                        </span>
+                      </li>
+                      <li>
+                        Each new Tracker match
                         <span className="c">
                           1 credit
                         </span>
@@ -831,6 +850,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                     <use href="#chev"></use>
                   </svg>
                 </Link>
+                <AndroidApp source="vendors-final" label="Match alerts on your phone" className="fin-app" lazy />
               </div>
             </section>
           </main>

@@ -406,6 +406,13 @@
 .pp-bench .ctas{width:100%}
 .pp-bench .rq{padding:14px}
 }
+/* "Also on Android": Google's Play badge, kept quiet under the primary CTAs. */
+.pp-bench .andr{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 12px;margin-top:22px;color:var(--dim);font-size:13.5px;font-weight:600}
+.pp-bench .andr a{display:block;line-height:0;border-radius:7px;text-decoration:none;transition:transform .2s var(--ease)}
+.pp-bench .andr a:hover{transform:translateY(-1px)}
+.pp-bench .andr a:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+.pp-bench .andr img{display:block;height:40px;width:auto}
+.pp-bench .andr.fin-app{margin-top:26px}
 @media (prefers-reduced-motion:reduce){
 .pp-bench *,.pp-bench *:before,.pp-bench *:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 .pp-bench .rv,.pp-bench .intro{opacity:1!important;transform:none!important}

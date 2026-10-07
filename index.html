@@ -27,9 +27,11 @@
     <meta name="mobile-web-app-capable" content="yes" />
 
     <!-- Primary SEO -->
-    <title>ProfilePush — AI Copilot for Vendors & Bench Sales in US IT Staffing</title>
-    <meta name="description" content="ProfilePush is the AI copilot for both sides of US IT staffing. Paste a consultant or a requirement, get ranked matches, and the email writes itself. Every new match then lands in your live Tracker, all day. Submissions are always free." />
-    <meta name="keywords" content="AI copilot for IT staffing, bench sales recruiter software, vendor management team software, AI matching for consultants and requirements, live staffing tracker, AI resume request, AI submission email, bench sales automation, staffing submission tracker, C2C W2 Direct recruiting tool, AI recruiter outreach, US IT staffing platform" />
+    <!-- What crawlers and link previews see before JS runs; mirrors the
+         homepage's <SEO> (src/pages/LandingPage.tsx). Keep the two in step. -->
+    <title>ProfilePush — AI Copilot for US IT Staffing</title>
+    <meta name="description" content="AI Copilot for US IT staffing. Vendors get matching bench consultants; bench sales get matching C2C requirements, live all day. Free to start. On Android." />
+    <meta name="keywords" content="AI copilot for US IT staffing, C2C requirements, bench sales recruiter software, hotlist consultants, IT staffing vendor software, bench consultants, AI matching for consultants and requirements, live staffing tracker, AI resume request, AI submission email, C2C W2 contract staffing, US IT staffing app" />
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
     <meta name="author" content="ProfilePush" />
 
@@ -38,15 +40,19 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://profilepush.ai/" />
-    <meta property="og:title" content="ProfilePush — AI Copilot for Vendors & Bench Sales in US IT Staffing" />
-    <meta property="og:description" content="Paste a consultant or a requirement, get ranked matches, and the email writes itself. Every new match lands in your live Tracker, all day. One AI copilot for both sides of the desk." />
+    <meta property="og:title" content="ProfilePush — AI Copilot for US IT Staffing" />
+    <meta property="og:description" content="Vendors get matching bench consultants. Bench sales get matching C2C requirements for every consultant. Live all day, emails sent from your own Gmail. Free to start, on web and Android." />
     <meta property="og:image" content="https://profilepush.ai/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="ProfilePush: AI Copilot for US IT Staffing. Vendors, bench sales, live market." />
 
     <!-- Twitter / X -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@profilepush" />
-    <meta name="twitter:title" content="ProfilePush — AI Copilot for Vendors & Bench Sales in US IT Staffing" />
-    <meta name="twitter:description" content="Paste a consultant or a requirement, get ranked matches, and the email writes itself. Every new match lands in your live Tracker, all day. One AI copilot for both sides of the desk." />
+    <meta name="twitter:title" content="ProfilePush — AI Copilot for US IT Staffing" />
+    <meta name="twitter:description" content="Vendors get matching bench consultants. Bench sales get matching C2C requirements for every consultant. Live all day, emails sent from your own Gmail. Free to start, on web and Android." />
+    <meta name="twitter:image:alt" content="ProfilePush: AI Copilot for US IT Staffing. Vendors, bench sales, live market." />
     <meta name="twitter:image" content="https://profilepush.ai/og-image.png" />
 
     <!-- Canonical -->
@@ -62,7 +68,7 @@
       "name": "ProfilePush",
       "url": "https://profilepush.ai",
       "logo": "https://profilepush.ai/logo.png",
-      "description": "ProfilePush is an AI copilot for US IT staffing teams. It helps bench sales recruiters and vendor/account management teams discover matched requirements and consultants, run AI-drafted outreach, and manage submissions from one workspace — built to 10X placements.",
+      "description": "ProfilePush makes the AI Copilot for US IT staffing. Vendors post requirements and get matching bench consultants; bench sales recruiters paste a hotlist and get matching C2C requirements for every consultant. Matches land in a live Tracker, and AI-written emails send from the user's own Gmail. Available on the web and on Android.",
       "email": "poorna@profilepush.ai",
       "areaServed": ["US", "IN"],
       "sameAs": [
@@ -78,27 +84,40 @@
     }
     </script>
 
-    <!-- JSON-LD: SoftwareApplication -->
+    <!-- JSON-LD: SoftwareApplication. One entity for the web app and the
+         Android app (com.profilepush.app). Prices are the real ones:
+         supabase/functions/_shared/credit-tiers.ts, 100 signup credits per
+         the accounts trigger. No aggregateRating here: RatingBlock adds it
+         on this same @id only when there are 10+ real user ratings. -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "@id": "https://profilepush.ai/#software",
       "name": "ProfilePush",
-      "url": "https://profilepush.ai",
+      "alternateName": "ProfilePush AI Copilot",
+      "url": "https://profilepush.ai/",
       "applicationCategory": "BusinessApplication",
+      "applicationSubCategory": "Staffing and recruiting",
       "operatingSystem": "Web, Android",
-      "description": "ProfilePush helps US IT staffing teams — Vendors and Bench Sales recruiters — match consultants and requirements with AI, send AI-written submissions and resume requests from their own Gmail, and follow every new match in a live Tracker, all from one AI copilot.",
+      "downloadUrl": "https://play.google.com/store/apps/details?id=com.profilepush.app",
+      "installUrl": "https://play.google.com/store/apps/details?id=com.profilepush.app",
+      "image": "https://profilepush.ai/og-image.png",
+      "screenshot": [
+        "https://profilepush.ai/screens/vendors.jpg",
+        "https://profilepush.ai/screens/bench-sales.jpg"
+      ],
+      "description": "The AI Copilot for US IT staffing. Vendors post a requirement and matching bench consultants land in a live Tracker; bench sales recruiters paste a hotlist and every consultant gets a live column of matching C2C requirements. AI Request and AI Submit write the email, sent from the user's own Gmail.",
       "featureList": [
-        "AI Match: paste a consultant or a requirement and get ranked matches with a one-line reason",
         "Tracker: a live column for each posted consultant or requirement, with new matches arriving all day",
-        "AI Submit: an AI-written submission email with the consultant's resume attached, sent from your Gmail",
-        "AI Request: one tap asks a bench recruiter for a consultant's resume, rate, visa and availability",
-        "Match alerts: push and email notifications when strong new matches land",
-        "Jobs and Hotlist feeds of live requirements and available consultants",
-        "Posts: post a requirement or a whole bench in one paste",
+        "AI Match: paste a consultant or a requirement and get ranked matches with fit and skill gaps",
+        "AI Request: one tap asks a bench recruiter for a consultant's resume, rate, visa and availability (draft free)",
+        "AI Submit: an AI-written submission email with the resume attached, sent from your own Gmail",
+        "Hotlist paste: post a whole bench, up to 50 consultants, in one paste",
+        "Inbound resume requests in one list, replies free",
+        "Match alerts on Android, web push and email",
         "Optional AI video screening with a recording, a score and a summary",
-        "Multi-user workspace for bench sales and vendor teams"
+        "Team accounts with unlimited members"
       ],
       "offers": [
         {
@@ -106,22 +125,15 @@
           "name": "Free",
           "price": "0",
           "priceCurrency": "INR",
-          "priceSpecification": { "@type": "UnitPriceSpecification", "price": "0", "priceCurrency": "INR", "unitText": "MONTH" },
-          "description": "Free forever, with 100 AI credits granted once at signup that never expire. Browsing, submitting, and editing are always free."
+          "description": "Free to start: 100 credits at signup that never expire. Posting and submissions are free; up to 3 open consultants or requirements on the free plan."
         },
         {
-          "@type": "Offer",
-          "name": "Pro",
-          "priceCurrency": "INR",
-          "priceSpecification": { "@type": "UnitPriceSpecification", "minPrice": "500", "maxPrice": "5000", "priceCurrency": "INR", "unitText": "MONTH" },
-          "description": "Pro plan: choose 500-5,000 AI credits delivered automatically every month at a flat ₹1/credit, with unlimited users"
-        },
-        {
-          "@type": "Offer",
+          "@type": "AggregateOffer",
           "name": "Credit packs",
+          "lowPrice": "249",
+          "highPrice": "5000",
           "priceCurrency": "INR",
-          "priceSpecification": { "@type": "UnitPriceSpecification", "minPrice": "249", "maxPrice": "5000", "priceCurrency": "INR" },
-          "description": "One-time credit packs from ₹249 (249 to 5,000 credits at ₹1/credit) that never expire"
+          "description": "One-time credit packs from ₹249 to ₹5,000 at ₹1 per credit. Credits never expire. No subscription."
         }
       ],
       "publisher": { "@id": "https://profilepush.ai/#organization" }
@@ -136,7 +148,8 @@
       "@id": "https://profilepush.ai/#website",
       "url": "https://profilepush.ai",
       "name": "ProfilePush",
-      "description": "AI Copilot for US IT Staffing Teams — Bench Sales Recruiters & Vendor Teams",
+      "description": "AI Copilot for US IT Staffing: vendors and bench sales recruiters, matched on the live market.",
+      "inLanguage": "en-US",
       "publisher": { "@id": "https://profilepush.ai/#organization" }
     }
     </script>

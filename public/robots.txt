@@ -1,9 +1,16 @@
 User-agent: *
 Allow: /
 
+# Marketing pages, stated explicitly. Robots rules are prefix matches, so the
+# app route /bench below would otherwise also block /bench-sales.
+Allow: /vendors
+Allow: /bench-sales
+Allow: /websites
+Allow: /llms.txt
+
 # Block authenticated and non-marketing app pages
 Disallow: /desk
-Disallow: /bench
+Disallow: /bench$
 Disallow: /profile-details/
 Disallow: /job-finder
 Disallow: /submission-queue
