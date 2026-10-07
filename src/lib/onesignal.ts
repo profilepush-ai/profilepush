@@ -68,6 +68,19 @@ type NotificationClickEvent = {
   };
 };
 
+// Opens a tapped push's link, tagged src=push with the notification id and
+// type. The page reloads right away, so the open is recorded once the app has
+// loaded (UserActivityTracker), not here where the request could be cut off.
+function openPushLink(data: Record<string, unknown> | undefined): void {
+  const link = data?.link;
+  if (typeof link !== 'string' || !link.startsWith('/')) return;
+  const url = new URL(link, window.location.origin);
+  url.searchParams.set('src', 'push');
+  if (typeof data?.notification_id === 'string') url.searchParams.set('nid', data.notification_id);
+  if (typeof data?.type === 'string') url.searchParams.set('nt', data.type);
+  window.location.assign(url.pathname + url.search + url.hash);
+}
+
 function isRealSubscriptionId(subscriptionId: string | null | undefined): boolean {
   return !!subscriptionId && !subscriptionId.startsWith('local-');
 }
@@ -125,10 +138,7 @@ function registerNotificationClickListener(): void {
   }
 
   OneSignal.Notifications.addEventListener('click', (event: NotificationClickEvent) => {
-    const link = event.notification?.additionalData?.link;
-    if (typeof link === 'string' && link.startsWith('/')) {
-      window.location.assign(link);
-    }
+    openPushLink(event.notification?.additionalData);
   });
   hasRegisteredNotificationClickListener = true;
 }
@@ -175,11 +185,7 @@ function initializeOneSignalWeb(): void {
     });
 
     instance.Notifications.addEventListener('click', (event) => {
-      const link = (event as { notification?: { additionalData?: { link?: unknown } } })
-        ?.notification?.additionalData?.link;
-      if (typeof link === 'string' && link.startsWith('/')) {
-        window.location.assign(link);
-      }
+      openPushLink((event as NotificationClickEvent)?.notification?.additionalData);
     });
 
     oneSignalInitialized = true;
