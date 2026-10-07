@@ -93,26 +93,26 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                 <h1 id="h1" className="intro d1">
                   {' '}
                   <span className="x-both">
-                    Both sides
+                    The AI Copilot for
                     <br />
                     <span className="grad">
-                      of the deal.
+                      both sides of the deal.
                     </span>
                   </span>
                   {' '}
                   <span className="x-v swapin" style={{ "--push": "-30px" } as CSSProperties}>
-                    Post a req.
+                    Your AI Copilot
                     <br />
                     <span className="gv">
-                      Get consultants.
+                      for every requirement.
                     </span>
                   </span>
                   {' '}
                   <span className="x-b swapin" style={{ "--push": "30px" } as CSSProperties}>
-                    Paste a hotlist.
+                    Your AI Copilot
                     <br />
                     <span className="gb">
-                      Get reqs.
+                      for the whole bench.
                     </span>
                   </span>
                   {' '}
@@ -121,10 +121,10 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                   {' '}
                   <span className="x-both">
                     <span className="phx">
-                      Requirements on one side, consultants on the other. Your copilot reads the flood and pushes only what fits.
+                      Requirements on one side, consultants on the other. Your AI Copilot reads the flood and pushes only what fits.
                     </span>
                     <span className="pho">
-                      Two sides. One copilot.
+                      Two sides. One AI Copilot.
                     </span>
                   </span>
                   {' '}
@@ -251,7 +251,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                         </div>
                         <div className="cap" data-cap="1">
                           <h2>
-                            {"The copilot "}
+                            {"The AI Copilot "}
                             <span className="grad">
                               reads every one.
                             </span>

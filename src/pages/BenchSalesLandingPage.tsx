@@ -95,7 +95,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
               <div className="wrap hero-in">
                 <span className="live intro">
                   <span className="pulse"></span>
-                  <span>{"For bench sales · Live market, "}<span data-asof="">{date}</span></span>
+                  <span>{"AI Copilot for bench sales · "}<span data-asof="">{date}</span></span>
                 </span>
                 <h1 id="h1" className="intro d1">
                   <span className="num grad" id="hnum" data-stat="jobs30d" data-n={st.jobs30d}>
@@ -106,12 +106,12 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                       {"requirements in 30 days."}
                     </span>
                     <span>
-                      Your bench fits some.
+                      Your AI Copilot finds the fits.
                     </span>
                   </span>
                 </h1>
                 <p className="sub intro d2">
-                  Paste your hotlist. Each consultant gets a live column of reqs that fit.
+                  Paste your hotlist. Your AI Copilot gives each consultant a live column of reqs that fit.
                 </p>
                 <div className="ctas intro d3">
                   <Link className="btn btn-p" to="/signup" data-path="bench">
