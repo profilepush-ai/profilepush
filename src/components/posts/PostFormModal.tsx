@@ -213,6 +213,18 @@ export default function PostFormModal({
   const [showMore, setShowMore] = useState(Boolean(existingPost));
   const [parsedCandidates, setParsedCandidates] = useState<HotlistCandidateDraft[]>([]);
   const isMultiCandidateMode = kind === 'hotlist' && parsedCandidates.length > 0;
+  // How many more posts the free plan lets this account open (null = paid,
+  // unlimited). A paste beyond it posts what fits; the note says so up front.
+  const [openAllowance, setOpenAllowance] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isMultiCandidateMode) return;
+    let cancelled = false;
+    void supabase.rpc('my_open_post_allowance' as never).then(({ data, error }) => {
+      if (!cancelled && !error) setOpenAllowance(typeof data === 'number' ? data : null);
+    });
+    return () => { cancelled = true; };
+  }, [isMultiCandidateMode]);
+  const pasteOverAllowance = isMultiCandidateMode && openAllowance !== null && parsedCandidates.length > openAllowance;
   const autoFillTriggeredRef = useRef(false);
 
   useEffect(() => {
@@ -310,6 +322,7 @@ export default function PostFormModal({
 
   async function handleSubmit() {
     setSaving(true);
+    let postedCount = 0;
     try {
       if (kind === 'job') {
         if (!jobForm.jobTitle.trim()) throw new Error('Job title is required');
@@ -351,13 +364,14 @@ export default function PostFormModal({
           availability: c.availability.trim(),
           candidate_summary: c.candidateSummary.trim(),
         }));
-        const { error } = await supabase.rpc('create_user_hotlist_posts_batch' as never, {
+        const { data: postedIds, error } = await supabase.rpc('create_user_hotlist_posts_batch' as never, {
           p_candidates: candidatesPayload,
           p_post_content: pasteText.trim(),
           p_contact_email: hotlistForm.contactEmail.trim(),
           p_contact_phone: hotlistForm.contactPhone.trim(),
         } as never);
         if (error) throw new Error(error.message);
+        postedCount = Array.isArray(postedIds) ? (postedIds as unknown[]).length : parsedCandidates.length;
       } else {
         if (!hotlistForm.roleTitle.trim()) throw new Error('Role title is required');
         const args = {
@@ -393,7 +407,14 @@ export default function PostFormModal({
         if (bonusGranted === true) showToast('First post published — 10 bonus credits added', 'success');
       }
 
-      showToast(isEditing ? 'Post updated' : isMultiCandidateMode ? `${parsedCandidates.length} posts created — they will appear in the feed shortly` : 'Post created — it will appear in the feed shortly', 'success');
+      const leftOut = isMultiCandidateMode ? parsedCandidates.length - postedCount : 0;
+      showToast(
+        isEditing ? 'Post updated'
+          : leftOut > 0 ? `Posted ${postedCount} of ${parsedCandidates.length}. The free plan keeps 3 open — add credits (from ₹249) on Billing to post the other ${leftOut}.`
+          : isMultiCandidateMode ? `${parsedCandidates.length} posts created — they will appear in the feed shortly`
+          : 'Post created — it will appear in the feed shortly',
+        'success',
+      );
       onSaved();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not save post';
@@ -541,6 +562,12 @@ export default function PostFormModal({
                 Post one consultant instead
               </button>
             </div>
+            {pasteOverAllowance && (
+              <div className={`rounded-md border p-2.5 text-[12px] ${isDark ? 'border-amber-400/20 bg-amber-500/5 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                The free plan keeps 3 consultants or requirements open at a time, so {openAllowance === 0 ? 'none of these can be posted yet' : `the first ${openAllowance} will be posted`}.{' '}
+                <a href="/billing" className="font-semibold underline">Add credits (from ₹249)</a> to post all {parsedCandidates.length}.
+              </div>
+            )}
 
             <div className="space-y-2">
               {parsedCandidates.map((candidate, index) => (
