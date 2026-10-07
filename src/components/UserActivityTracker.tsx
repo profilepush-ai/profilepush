@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -21,7 +21,8 @@ function getAuthSessionId(accessToken: string) {
 
 export default function UserActivityTracker() {
   const { account, session } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const navigate = useNavigate();
 
   // Which pages signed-in people open, as product events: time on site alone
   // could not say where a new vendor went before leaving.
@@ -29,6 +30,20 @@ export default function UserActivityTracker() {
     if (!account) return;
     trackEvent('page_view', { persona: account.active_persona ?? null });
   }, [account?.id, pathname]);
+
+  // A tapped push lands here tagged src=push (see openPushLink). Record the
+  // open, mark that notification read, and drop the tags from the address.
+  useEffect(() => {
+    if (!account) return;
+    const params = new URLSearchParams(search);
+    if (params.get('src') !== 'push') return;
+    const nid = params.get('nid');
+    trackEvent('push_opened', { notification_id: nid, type: params.get('nt') });
+    if (nid) void supabase.from('notifications').update({ read: true }).eq('id', nid).then(() => undefined, () => undefined);
+    ['src', 'nid', 'nt'].forEach(k => params.delete(k));
+    const rest = params.toString();
+    navigate({ pathname, search: rest ? `?${rest}` : '' }, { replace: true });
+  }, [account?.id, search]);
 
   // The Android app loads the live site, so it reports itself here once per
   // open; Admin > Emails uses it for the "users without the app" audience.
