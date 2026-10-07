@@ -1,0 +1,37 @@
+/* Shared by the three marketing pages (/, /vendors, /bench-sales). */
+
+/* The page roots stand in for the demos' <body>. */
+.pp-lp{position:relative;min-height:100vh}
+
+/* Browser defaults that Tailwind's preflight removes, restored inside the
+   marketing pages only, so the ported demo CSS renders as it did standalone.
+   Specificity 0,1,0: every page rule (0,2,0 and up) still wins. */
+.pp-lp :where(*,::before,::after){border-color:currentColor}
+.pp-lp :where(p){margin:1em 0}
+.pp-lp :where(h1){font-size:2em;font-weight:bold}
+.pp-lp :where(h2){font-size:1.5em;font-weight:bold}
+.pp-lp :where(h3){font-size:1.17em;font-weight:bold}
+.pp-lp :where(ul){list-style:disc;margin:1em 0;padding-left:40px}
+.pp-lp :where(ol){list-style:decimal;margin:1em 0;padding-left:40px}
+.pp-lp :where(figure){margin:1em 40px}
+.pp-lp :where(table){border-collapse:separate;border-spacing:2px;text-indent:initial}
+.pp-lp :where(th){font-weight:bold;text-align:center}
+.pp-lp :where(td,th){padding:1px}
+.pp-lp :where(a){text-decoration:underline}
+.pp-lp :where(canvas){display:inline}
+
+/* Header: a compact "Start free" (or "Open app") beside "Sign in" on phones. */
+.pp-lp .top .lp-m{display:none}
+@media (max-width:899px){
+  .pp-lp .top .lp-m{display:flex;align-items:center;gap:6px;flex:none}
+  .pp-lp .top .lp-m .btn{--h:44px;padding:0 13px;font-size:14.5px;gap:7px;color:#fff}
+  .pp-lp .top .lp-m .btn .chev{width:8px;height:13px}
+  .pp-lp .top .lp-m .signin-m{padding:0 3px}
+}
+@media (max-width:374px){
+  .pp-lp .top .lp-m .signin-m{display:none}
+}
+
+/* Demo class names that are also Tailwind utilities: neutralise the utility. */
+.pp-lp .filter{filter:none}
+.pp-lp .ring{box-shadow:none}

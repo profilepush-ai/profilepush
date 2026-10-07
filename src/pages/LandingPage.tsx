@@ -1,426 +1,994 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  ArrowRight, Briefcase, Check, ChevronRight, Plus, Minus, ShieldCheck, UserRound,
-  Radar, Sparkles, Send, KanbanSquare, Clock3, MapPin,
-} from 'lucide-react';
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
-import MarketingNav from '../components/MarketingNav';
-import PricingCards from '../components/landing/PricingCards';
 import RatingBlock from '../components/landing/RatingBlock';
+import LandingHeader from './landing/LandingHeader';
+import { useLandingEngine } from './landing/useLandingEngine';
+import { startHome } from './landing/homeEngine';
+import { fmt, fmtDate } from './landing/engine';
+import { composeStoryData, initialSnapshot } from '../lib/marketSnapshot';
+import type { StoryData } from '../lib/marketSnapshot';
+import './landing/landing-shared.css';
+import './landing/home.css';
 
-interface WorkflowCard {
-  persona: 'vendor' | 'bench_sales';
-  icon: typeof Briefcase;
-  title: string;
-  tagline: string;
-  bullets: string[];
-  accent: string;
-  iconBg: string;
-  iconColor: string;
-  buttonClass: string;
-  path: string;
-  cta: string;
-  // Play Store screenshot for this persona. Full-bleed at the top of the card,
-  // so the first thing a visitor sees is the product rather than a bullet list.
-  image: string;
-  imageAlt: string;
-}
-
-const WORKFLOW_CARDS: WorkflowCard[] = [
-  {
-    persona: 'vendor',
-    icon: Briefcase,
-    title: 'Vendor',
-    tagline: 'Fill every requirement faster.',
-    bullets: [
-      'Matching consultants appear the day they are available',
-      'One tap asks for resume, rate, visa and availability',
-      'A live Tracker for every requirement',
-      'Optional video screening when you want it',
-    ],
-    accent: 'from-blue-600 to-indigo-500',
-    iconBg: 'bg-blue-50',
-    iconColor: 'text-blue-600',
-    buttonClass: 'border-2 border-blue-600 text-blue-600 hover:bg-blue-50',
-    path: '/vendors',
-    cta: 'Explore',
-    image: '/screens/vendors.jpg',
-    imageAlt: 'ProfilePush for vendors: hotlist feed with consultant cards, rates, visa status and resume request',
-  },
-  {
-    persona: 'bench_sales',
-    icon: UserRound,
-    title: 'Bench Sales',
-    tagline: 'Market the right consultants.',
-    bullets: [
-      'New requirements matched to each consultant, live',
-      'AI Submit writes the email and attaches the resume',
-      'An alert the moment a strong match lands',
-      'Submissions are always free',
-    ],
-    accent: 'from-orange-500 to-amber-400',
-    iconBg: 'bg-orange-50',
-    iconColor: 'text-orange-600',
-    buttonClass: 'border-2 border-orange-500 text-orange-500 hover:bg-orange-50',
-    path: '/bench-sales',
-    cta: 'Explore',
-    image: '/screens/bench-sales.jpg',
-    imageAlt: 'ProfilePush for bench sales: live job feed with rates, locations and one-tap AI Submit',
-  },
-];
+// The homepage: both sides of the deal. Ported from the approved demo
+// (website-demos/profilepush-ai/both-sides-v2). The markup is static JSX; the
+// motion (hero torrent, the side switch and its auto-toggle, the pinned filter,
+// the phone ticker, the emails and the live Tracker) runs from homeEngine on
+// the root element and stops on unmount.
 
 const FAQS = [
-  {
-    q: 'What is ProfilePush?',
-    a: 'An AI copilot for US IT staffing. Paste a consultant or a requirement and it ranks the matches, writes the email, and keeps every new match in a live Tracker.',
-  },
-  {
-    q: 'Vendor or Bench Sales?',
-    a: 'Vendor for reqs. Bench sales for consultants. One switch in the header. Same account either way.',
-  },
-  {
-    q: 'What is the Tracker?',
-    a: 'A live board with a column for each consultant or requirement you post. New matches arrive there all day, newest first, and you get a notification when strong ones land. Reposts are merged, and anything you mark "Not a match" never comes back.',
-  },
-  {
-    q: 'What does it cost?',
-    a: 'Free. 100 credits that never expire, plus 10 more when you publish your first post and 10 when you send your first submission. A post costs 1 credit. An AI Submit draft costs 1 credit (AI Request drafts are free), and sending from your Gmail costs 1 credit, refunded if the send fails. Submitting is always free. Need more? Buy a credit pack from ₹249. There is no subscription.',
-  },
-  {
-    q: 'Is the data safe?',
-    a: 'Yes. All data is encrypted. It is never sold. It is never shared between accounts.',
-  },
-  {
-    q: 'Can a team share one account?',
-    a: 'Yes. Unlimited members. No extra cost per person.',
-  },
+  { q: "Who is ProfilePush for?", a: "US IT staffing, both sides. Vendors post requirements and get matching bench consultants. Bench sales paste a hotlist and get matching requirements for every consultant." },
+  { q: "Whose email does it send from?", a: "Yours. AI Request and AI Submit drafts go out from your own Gmail, after you review them." },
+  { q: "Will my consultant be contacted?", a: "Never. Your data is encrypted and never sold." },
+  { q: "What does it cost?", a: "You start with 100 free credits that never expire. Submissions are always free. Credit packs start at ₹249, with no subscription." },
+  { q: "Can my whole team use it?", a: "Yes. Team accounts have unlimited members." },
 ];
 
 const LANDING_FAQ_JSONLD = {
   '@context': 'https://schema.org',
   '@type': 'FAQPage',
-  mainEntity: FAQS.map(f => ({
+  mainEntity: FAQS.map((f) => ({
     '@type': 'Question',
     name: f.q,
     acceptedAnswer: { '@type': 'Answer', text: f.a },
   })),
 };
 
-// ── FAQ accordion item ─────────────────────────────────────────────────────────
-function FaqItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-5 py-4 text-left gap-4"
-        aria-expanded={open}
-      >
-        <span className="font-semibold text-gray-900 text-sm leading-snug">{q}</span>
-        {open ? <Minus size={14} className="shrink-0 text-gray-400" /> : <Plus size={14} className="shrink-0 text-gray-400" />}
-      </button>
-      {open && (
-        <div className="px-5 pb-4 text-sm text-gray-500 leading-relaxed border-t border-gray-50 pt-3">
-          {a}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Landing Page ───────────────────────────────────────────────────────────────
 export default function LandingPage() {
+  const [data] = useState(() => composeStoryData(initialSnapshot()));
   return (
-    <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
-      <main>
+    <>
       <SEO
         title="ProfilePush — AI Copilot for Vendors & Bench Sales in US IT Staffing"
-        description="ProfilePush is the AI copilot for both sides of US IT staffing. Paste a consultant or a requirement, get ranked matches, and the email writes itself. Every new match then lands in your live Tracker, all day. Submissions are always free."
+        description="ProfilePush is the AI copilot for both sides of US IT staffing. Vendors post a requirement and matching bench consultants land in a live Tracker. Bench sales paste a hotlist and every consultant gets a live column of matching requirements. The email writes itself, sent from your own Gmail. Submissions are always free."
         canonical="https://profilepush.ai/"
         jsonLd={LANDING_FAQ_JSONLD}
       />
+      <HomeBody data={data} />
+    </>
+  );
+}
 
-      <MarketingNav />
-
-      {/* ── HERO ── */}
-      <section className="relative pt-24 md:pt-20 pb-16 md:pb-24 px-6 text-center overflow-hidden">
-        <div className="relative max-w-3xl mx-auto">
-
-          <h1 className="text-[clamp(2rem,6vw,3.75rem)] font-extrabold tracking-[-0.02em] leading-[1.08] mb-6">
-            <span className="bg-gradient-to-r from-blue-600 via-orange-500 to-yellow-400 bg-clip-text text-transparent">An AI copilot for both sides of US IT staffing.</span>
-          </h1>
-          <p className="text-base md:text-lg text-gray-600 max-w-2xl mx-auto mb-8 leading-relaxed">
-            Paste a consultant or a requirement. Get ranked matches. The email writes itself. Then every new match lands in your Tracker, live, all day.
-          </p>
-
-          <div className="flex flex-col items-center justify-center gap-4">
-            <Link
-              to="/signup"
-              className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-semibold px-8 py-3.5 rounded-xl flex items-center gap-2 text-base w-full sm:w-auto justify-center"
-            >
-              Start Free <ChevronRight size={16} />
-            </Link>
-            <p className="text-xs text-gray-500 flex items-center gap-2 flex-wrap justify-center">
-              <span className="inline-flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                Forever Free
-              </span>
-              <span className="text-gray-400">·</span>
-              <span>100 Free AI Credits</span>
-              <span className="text-gray-400">·</span>
-              <span>No Credit Card Required</span>
-            </p>
-            <div className="hidden sm:flex flex-wrap items-center justify-center gap-2">
-              {['AES-256 Encrypted', '100% Privacy-First — Your Data Never Sold'].map(badge => (
-                <span key={badge} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">
-                  <ShieldCheck size={11} className="text-emerald-500 shrink-0" />
-                  {badge}
+// Memoised with stable props: the engine owns this DOM after mount, so React
+// must not re-render it (auth changes only re-render the header).
+const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
+  const { rootRef, footRef } = useLandingEngine(startHome, data);
+  const st = data.stats;
+  const date = fmtDate(data.asOf);
+  return (
+    <>
+    <div ref={rootRef} className="pp-lp pp-home" data-side="both" data-pick="vendor">
+          <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
+            <defs>
+              <symbol id="chev" viewBox="0 0 10 16">
+                <path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"></path>
+              </symbol>
+              <symbol id="ddchev" viewBox="0 0 10 16">
+                <path d="M2 2l6 6-6 6" fill="none" stroke="#2563eb" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"></path>
+              </symbol>
+              <symbol id="mark" viewBox="0 0 24 24">
+                <circle cx="5" cy="6.4" r="3.6" fill="#facc15"></circle>
+                <circle cx="5" cy="17.6" r="3.6" fill="#f97316"></circle>
+                <path d="M12.6 3.4 20.4 12l-7.8 8.6" fill="none" stroke="#2563eb" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"></path>
+              </symbol>
+            </defs>
+          </svg>
+          <LandingHeader active={null} startPath="start" />
+    <main id="top">
+            <section className="hero" aria-labelledby="h1">
+              <canvas id="torrent" aria-hidden="true"></canvas>
+              <div className="tint" aria-hidden="true">
+                <i className="tv"></i>
+                <i className="tb"></i>
+              </div>
+              <div className="seam" aria-hidden="true"></div>
+              <div className="wrap hero-in">
+                <span className="live intro">
+                  <span className="pulse"></span>
+                  <span>{"Live market · "}<span data-asof="">{date}</span></span>
                 </span>
-              ))}
-            </div>
-          </div>
-
-        </div>
-
-        <div className="relative z-10 mt-8 md:mt-10 max-w-5xl mx-auto">
-          <div className="grid grid-cols-2 gap-3 sm:gap-6 md:gap-8">
-            {WORKFLOW_CARDS.map((card) => (
-              <div key={card.persona} className="rounded-xl sm:rounded-2xl p-px gradient-border-frame shadow-xl shadow-gray-200/60">
-                <div className="relative flex h-full flex-col rounded-xl sm:rounded-2xl bg-white overflow-hidden text-left">
-                  <span className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${card.accent} z-10`} />
-                  {/* Edge to edge: the card's padding starts below this, so the
-                      screenshot spans the full width of the section column.
-                      On a phone the whole 1080x1920 screenshot is shown, since
-                      there is width to spare and the detail is legible. From
-                      sm up it crops to the top half (9:8 of the full frame),
-                      which keeps the header and first listings without making
-                      a desktop card two screens tall. */}
-                  <img
-                    src={card.image}
-                    alt={card.imageAlt}
-                    width={820}
-                    height={1458}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full border-b border-gray-100 object-cover object-top aspect-auto sm:aspect-[9/8]"
-                  />
-                  <div className="flex flex-1 flex-col p-3.5 sm:p-6 md:p-8">
-                  <span className={`inline-flex h-8 w-8 sm:h-11 sm:w-11 md:h-12 md:w-12 items-center justify-center rounded-lg sm:rounded-xl ${card.iconBg} ${card.iconColor} mb-2.5 sm:mb-4 md:mb-5`}>
-                    <card.icon size={16} className="sm:hidden" />
-                    <card.icon size={20} className="hidden sm:block" />
+                <h1 id="h1" className="intro d1">
+                  {' '}
+                  <span className="x-both">
+                    Both sides
+                    <br />
+                    <span className="grad">
+                      of the deal.
+                    </span>
                   </span>
-                  <h3 className="text-base sm:text-xl md:text-2xl font-extrabold text-gray-900 mb-1 sm:mb-1.5">{card.title}</h3>
-                  <p className="text-[11px] sm:text-sm text-gray-500 mb-3 sm:mb-5 md:mb-6">{card.tagline}</p>
-                  <ul className="space-y-1.5 sm:space-y-3 mb-4 sm:mb-6 md:mb-8 flex-1">
-                    {card.bullets.map((bullet) => (
-                      <li key={bullet} className="flex items-start gap-1.5 sm:gap-2.5 text-[11px] sm:text-sm text-gray-700">
-                        <span className={`mt-0.5 inline-flex h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 items-center justify-center rounded-full ${card.iconBg}`}>
-                          <Check size={9} className={card.iconColor} strokeWidth={3} />
-                        </span>
-                        {bullet}
-                      </li>
-                    ))}
-                  </ul>
-                  <Link
-                    to={card.path}
-                    className={`w-full text-center bg-white text-[11px] sm:text-sm font-semibold py-2 sm:py-3 rounded-lg sm:rounded-xl transition-colors flex items-center justify-center gap-1 sm:gap-1.5 ${card.buttonClass}`}
-                  >
-                    {card.cta} <ArrowRight size={12} className="hidden sm:inline" />
-                  </Link>
+                  {' '}
+                  <span className="x-v swapin" style={{ "--push": "-30px" } as CSSProperties}>
+                    Post a req.
+                    <br />
+                    <span className="gv">
+                      Get consultants.
+                    </span>
+                  </span>
+                  {' '}
+                  <span className="x-b swapin" style={{ "--push": "30px" } as CSSProperties}>
+                    Paste a hotlist.
+                    <br />
+                    <span className="gb">
+                      Get reqs.
+                    </span>
+                  </span>
+                  {' '}
+                </h1>
+                <p className="sub intro d2">
+                  {' '}
+                  <span className="x-both">
+                    <span className="phx">
+                      Requirements on one side, consultants on the other. Your copilot reads the flood and pushes only what fits.
+                    </span>
+                    <span className="pho">
+                      Two sides. One copilot.
+                    </span>
+                  </span>
+                  {' '}
+                  <span className="x-v">
+                    <span className="phx">
+                      Matching bench consultants land in your Tracker all day. One tap asks for the resume.
+                    </span>
+                    <span className="pho">
+                      Matching consultants land all day.
+                    </span>
+                  </span>
+                  {' '}
+                  <span className="x-b">
+                    <span className="phx">
+                      Every consultant gets a live column of matching reqs. One tap submits, resume attached.
+                    </span>
+                    <span className="pho">
+                      Matching reqs for every consultant.
+                    </span>
+                  </span>
+                  {' '}
+                </p>
+                <div className="switch intro d2" role="radiogroup" aria-label="Show the page for">
+                  <span className="knob" aria-hidden="true"></span>
+                  <input type="radio" name="side1" id="s1v" value="vendor" />
+                  <label className="lv" htmlFor="s1v">
+                    <svg className="sw-ico" aria-hidden="true">
+                      <use href="#chev"></use>
+                    </svg>
+                    Vendor
+                  </label>
+                  <input type="radio" name="side1" id="s1x" value="both" defaultChecked />
+                  <label className="mid" htmlFor="s1x">
+                    <span className="sr">
+                      Both sides
+                    </span>
+                    <span className="dotpair" aria-hidden="true">
+                      <i></i>
+                      <i></i>
+                    </span>
+                  </label>
+                  <input type="radio" name="side1" id="s1b" value="bench" />
+                  <label className="lb" htmlFor="s1b">
+                    Bench sales
+                    <svg className="sw-ico" aria-hidden="true" style={{ transform: "scaleX(-1)" }}>
+                      <use href="#chev"></use>
+                    </svg>
+                  </label>
+                </div>
+                <div className="zones intro d3" id="zones">
+                  <div className="zone v side-v">
+                    <span className="side-label v">
+                      <i></i>
+                      I have a requirement
+                    </span>
+                    <span className="big gv" id="nV" data-stat="hot30d" data-n={st.hot30d}>
+                      {fmt(st.hot30d)}
+                    </span>
+                    <span className="what">
+                      {"hotlist consultants posted in the last 30 days"}
+                    </span>
+                    <Link className="btn btn-p" to="/signup" data-path="vendor">
+                      {"Match my requirement "}
+                      <svg className="chev" aria-hidden="true">
+                        <use href="#chev"></use>
+                      </svg>
+                    </Link>
+                  </div>
+                  <div className="zone b side-b">
+                    <span className="side-label b">
+                      <i></i>
+                      I have consultants
+                    </span>
+                    <span className="big gb" id="nB" data-stat="jobs30d" data-n={st.jobs30d}>
+                      {fmt(st.jobs30d)}
+                    </span>
+                    <span className="what">
+                      {"new requirements posted in the last 30 days"}
+                    </span>
+                    <Link className="btn btn-b" to="/signup" data-path="bench">
+                      {"Match my bench "}
+                      <svg className="chev" aria-hidden="true">
+                        <use href="#chev"></use>
+                      </svg>
+                    </Link>
+                  </div>
+                </div>
+                <a className="cue intro d4" href="#filter">
+                  <span className="x-both">
+                    Watch both sides filter
+                  </span>
+                  <span className="x-v">
+                    Watch your req fill
+                  </span>
+                  <span className="x-b">
+                    Watch your bench match
+                  </span>
+                  {' '}
+                  <span className="ddc" aria-hidden="true">
+                    <i></i>
+                    <i></i>
+                    <svg viewBox="0 0 10 16">
+                      <use href="#ddchev"></use>
+                    </svg>
+                  </span>
+                </a>
+              </div>
+            </section>
+            <section className="filter" id="filter" aria-label="How ProfilePush filters the market for both sides">
+              {/* pinned, scroll-driven (desktop) */}
+              <div className="fx-pin" id="fxPin">
+                <div className="fx-stage">
+                  <div className="wrap">
+                    <div className="fx-bar">
+                      <div className="caps">
+                        <div className="cap" data-cap="0">
+                          <h2>
+                            {"Everything. "}
+                            <span className="grad">
+                              All at once.
+                            </span>
+                          </h2>
+                          <p data-t="c0"></p>
+                        </div>
+                        <div className="cap" data-cap="1">
+                          <h2>
+                            {"The copilot "}
+                            <span className="grad">
+                              reads every one.
+                            </span>
+                          </h2>
+                          <p>
+                            Noise falls away. What fits gets pushed forward.
+                          </p>
+                        </div>
+                        <div className="cap" data-cap="2">
+                          <h2>
+                            {"Only "}
+                            <span className="grad">
+                              what fits.
+                            </span>
+                          </h2>
+                          <p data-t="c2"></p>
+                        </div>
+                      </div>
+                      <div className="switch" role="radiogroup" aria-label="Show the story for">
+                        <span className="knob" aria-hidden="true"></span>
+                        <input type="radio" name="side2" id="s2v" value="vendor" />
+                        <label className="lv" htmlFor="s2v">
+                          <svg className="sw-ico" aria-hidden="true">
+                            <use href="#chev"></use>
+                          </svg>
+                          Vendor
+                        </label>
+                        <input type="radio" name="side2" id="s2x" value="both" defaultChecked />
+                        <label className="mid" htmlFor="s2x">
+                          <span className="sr">
+                            Both sides
+                          </span>
+                          <span className="dotpair" aria-hidden="true">
+                            <i></i>
+                            <i></i>
+                          </span>
+                        </label>
+                        <input type="radio" name="side2" id="s2b" value="bench" />
+                        <label className="lb" htmlFor="s2b">
+                          Bench sales
+                          <svg className="sw-ico" aria-hidden="true" style={{ transform: "scaleX(-1)" }}>
+                            <use href="#chev"></use>
+                          </svg>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="boards" id="boards"></div>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── MARKET ── live counts, and the entry point to the public
-           requirement pages. Numbers a visitor can check beat adjectives, and
-           these links are what make those pages part of the site rather than
-           a sitemap-only appendix. */}
-      <section className="py-16 md:py-20 px-6 bg-white border-y border-gray-100">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">The market, today</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">Around 900 new requirements land every weekday.</h2>
-            <p className="text-gray-500 max-w-2xl mx-auto">New requirements and consultants every day, de-duplicated by recruiter and refreshed all day. Browse a slice of it without an account.</p>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-            {[
-              { icon: Radar, stat: '~900', label: 'new requirements a weekday' },
-              { icon: Clock3, stat: '30 days', label: 'rolling live window' },
-              { icon: MapPin, stat: '50 states', label: 'plus remote' },
-              { icon: Send, stat: 'Free', label: 'unlimited submissions' },
-            ].map(item => (
-              <div key={item.label} className="rounded-2xl border border-gray-200 p-5 text-center">
-                <item.icon size={18} className="mx-auto mb-2 text-blue-600" />
-                <p className="text-2xl font-extrabold text-gray-900">{item.stat}</p>
-                <p className="text-xs text-gray-500 mt-1">{item.label}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap justify-center gap-2">
-            {[
-              ['java-developer', 'Java'],
-              ['data-engineer', 'Data Engineer'],
-              ['cloud-engineer', 'Cloud'],
-              ['sap', 'SAP'],
-              ['salesforce', 'Salesforce'],
-              ['business-analyst', 'Business Analyst'],
-              ['qa-automation', 'QA'],
-              ['devops', 'DevOps'],
-            ].map(([slug, label]) => (
-              /* Plain anchors: these routes are served by a Pages Function, not
-                 the SPA router, so a client-side navigation would 404. */
-              <a
-                key={slug}
-                href={`/c2c-requirements/${slug}`}
-                className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-700"
-              >
-                {label} C2C requirements
-              </a>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── HOW IT WORKS ── */}
-      <section id="how-it-works" className="py-16 md:py-24 px-6">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">How it works</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Paste. Match. Send.</h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {[
-              {
-                icon: Sparkles,
-                step: '01',
-                title: 'Paste a consultant or a job',
-                body: 'Paste the text you already have, or upload a resume. No forms, no field-by-field entry. It becomes your post at the same time.',
-              },
-              {
-                icon: Radar,
-                step: '02',
-                title: 'Get matches ranked 1 to 10',
-                body: 'Every open requirement from the last 30 days is scored against it, with a one-line reason and a flag when the visa, rate or location does not line up.',
-              },
-              {
-                icon: Send,
-                step: '03',
-                title: 'The email writes itself',
-                body: 'AI Submit or AI Request drafts the email from the match and sends it from your own Gmail, with the resume attached. Submissions are always free.',
-              },
-            ].map(item => (
-              <div key={item.step} className="rounded-2xl border border-gray-200 bg-white p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                    <item.icon size={18} />
-                  </span>
-                  <span className="text-xs font-bold text-gray-400">{item.step}</span>
+              {/* stacked scenes (phones, reduced motion) */}
+              <div className="fx-stack" id="fxStack">
+                <div className="wrap">
+                  <h2>
+                    {"Signal from "}
+                    <span className="grad">
+                      the noise.
+                    </span>
+                  </h2>
+                  <div className="pick always" role="group" aria-label="Show the story for">
+                    <button type="button" data-pick="vendor" aria-pressed="true">
+                      <i></i>
+                      Vendor
+                    </button>
+                    <button type="button" data-pick="bench" aria-pressed="false">
+                      <i></i>
+                      Bench sales
+                    </button>
+                  </div>
+                  <p className="fx-note" data-t="s0"></p>
+                  <div className="tk" id="tk" aria-hidden="true">
+                    <div className="tk-cap">
+                      <span className="pulse"></span>
+                      <span id="tkCap"></span>
+                    </div>
+                    <div className="tk-win">
+                      <div className="tk-track" id="tkTrack"></div>
+                    </div>
+                  </div>
+                  <div className="gate" id="gate" aria-hidden="true">
+                    <span className="ddc">
+                      <i></i>
+                      <i></i>
+                      <svg viewBox="0 0 10 16">
+                        <use href="#ddchev"></use>
+                      </svg>
+                    </span>
+                  </div>
+                  <div className="scol" id="scol"></div>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1.5">{item.title}</h3>
-                <p className="text-sm text-gray-600 leading-relaxed">{item.body}</p>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── TRACKER ── what brings people back: their matches keep coming. */}
-      <section className="py-16 md:py-20 px-6 bg-gray-50 border-y border-gray-100">
-        <div className="max-w-4xl mx-auto text-center">
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white border border-gray-200 text-blue-600 mb-4">
-            <KanbanSquare size={22} />
-          </span>
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Your matches keep coming. Live.</h2>
-          <p className="text-gray-600 max-w-2xl mx-auto mb-8">
-            Every consultant or requirement you post gets its own column in your Tracker. New matches land there all day, so you see them before everyone else does.
-          </p>
-          <div className="grid sm:grid-cols-3 gap-4 text-left">
-            {[
-              ['A column per post', 'Each consultant or requirement you post has its own live column of matches, newest first.'],
-              ['Alerts that matter', 'A notification when strong new matches land, at most once an hour.'],
-              ['Nothing twice', 'Reposts are merged, and anything you mark "Not a match" never comes back.'],
-            ].map(([title, body]) => (
-              <div key={title} className="rounded-xl bg-white border border-gray-200 p-4">
-                <p className="text-sm font-bold text-gray-900 mb-1">{title}</p>
-                <p className="text-xs text-gray-600 leading-relaxed">{body}</p>
+            </section>
+            <div className="divider" aria-hidden="true">
+              <span className="ddc">
+                <i></i>
+                <i></i>
+                <svg viewBox="0 0 10 16">
+                  <use href="#ddchev"></use>
+                </svg>
+              </span>
+            </div>
+            <section className="sec mailsec" aria-labelledby="mailh">
+              <div className="wrap">
+                <div className="rv">
+                  <span className="eyebrow">
+                    <span className="x-both">
+                      AI Request · AI Submit
+                    </span>
+                    <span className="x-v">
+                      AI Request
+                    </span>
+                    <span className="x-b">
+                      AI Submit
+                    </span>
+                  </span>
+                  <h2 id="mailh" style={{ marginTop: "14px" }}>
+                    {"The email "}
+                    <span className="grad">
+                      writes itself.
+                    </span>
+                  </h2>
+                  <p className="lede phx">
+                    <span className="x-both">
+                      One real match, written up from both ends. Sent from your own Gmail.
+                    </span>
+                    <span className="x-v">
+                      From the match, one tap asks the recruiter for the resume. Sent from your own Gmail.
+                    </span>
+                    <span className="x-b">
+                      From the match, with the resume attached. Sent from your own Gmail.
+                    </span>
+                  </p>
+                </div>
+                <div className="pick" role="group" aria-label="Show the email for">
+                  <button type="button" data-pick="vendor" aria-pressed="true">
+                    <i></i>
+                    AI Request
+                  </button>
+                  <button type="button" data-pick="bench" aria-pressed="false">
+                    <i></i>
+                    AI Submit
+                  </button>
+                </div>
+                <div className="mails">
+                  <div className="mg v side-v pk-v" data-mode="vendor">
+                    <div className="rv info">
+                      <span className="side-label v">
+                        <i></i>
+                        Vendor
+                      </span>
+                      <h3>
+                        AI Request
+                      </h3>
+                      <p className="lede">
+                        Asks for resume, rate, visa and availability.
+                      </p>
+                      <div className="pair" aria-label="The match">
+                        <div className="pc"></div>
+                        <svg className="pushchev" viewBox="0 0 34 96" aria-hidden="true">
+                          <path d="M6 6 28 48 6 90" fill="none" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"></path>
+                        </svg>
+                      </div>
+                      <div className="facts"></div>
+                    </div>
+                    <figure className="mail rv" aria-label="The AI Request email ProfilePush writes from this match">
+                      <div className="row">
+                        <span className="k">
+                          To
+                        </span>
+                        <span className="v mu m-to"></span>
+                      </div>
+                      <div className="row">
+                        <span className="k">
+                          Subject
+                        </span>
+                        <span className="v m-sub"></span>
+                      </div>
+                      <div className="mbody"></div>
+                      <div className="m-extra"></div>
+                      <div className="pushrow">
+                        <span className="ddc" aria-hidden="true">
+                          <i></i>
+                          <i></i>
+                          <svg viewBox="0 0 10 16">
+                            <use href="#ddchev"></use>
+                          </svg>
+                        </span>
+                        <span>
+                          Pushed from your own Gmail
+                        </span>
+                      </div>
+                    </figure>
+                  </div>
+                  <div className="mg b side-b pk-b" data-mode="bench">
+                    <div className="rv info">
+                      <span className="side-label b">
+                        <i></i>
+                        Bench sales
+                      </span>
+                      <h3>
+                        AI Submit
+                      </h3>
+                      <p className="lede">
+                        Writes the submission, resume attached.
+                      </p>
+                      <div className="pair" aria-label="The match">
+                        <div className="pc"></div>
+                        <svg className="pushchev" viewBox="0 0 34 96" aria-hidden="true">
+                          <path d="M6 6 28 48 6 90" fill="none" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"></path>
+                        </svg>
+                      </div>
+                      <div className="facts"></div>
+                    </div>
+                    <figure className="mail rv" aria-label="The AI Submit email ProfilePush writes from this match">
+                      <div className="row">
+                        <span className="k">
+                          To
+                        </span>
+                        <span className="v mu m-to"></span>
+                      </div>
+                      <div className="row">
+                        <span className="k">
+                          Subject
+                        </span>
+                        <span className="v m-sub"></span>
+                      </div>
+                      <div className="mbody"></div>
+                      <div className="m-extra"></div>
+                      <div className="pushrow">
+                        <span className="ddc" aria-hidden="true">
+                          <i></i>
+                          <i></i>
+                          <svg viewBox="0 0 10 16">
+                            <use href="#ddchev"></use>
+                          </svg>
+                        </span>
+                        <span>
+                          Pushed from your own Gmail
+                        </span>
+                      </div>
+                    </figure>
+                  </div>
+                </div>
               </div>
-            ))}
+            </section>
+            <section className="sec" id="tracker" aria-labelledby="trkh">
+              <div className="wrap">
+                <div className="rv">
+                  <span className="eyebrow">
+                    The Tracker
+                  </span>
+                  <h2 id="trkh" style={{ marginTop: "14px" }}>
+                    {"Then it "}
+                    <span className="grad">
+                      keeps collecting.
+                    </span>
+                  </h2>
+                  <p className="lede">
+                    <span className="phx">
+                      New matches land in the column all day. You just decide.
+                    </span>
+                    <span className="pho">
+                      Matches land all day. You decide.
+                    </span>
+                  </p>
+                </div>
+                <div className="pick" role="group" aria-label="Show the Tracker for">
+                  <button type="button" data-pick="vendor" aria-pressed="true">
+                    <i></i>
+                    Vendor
+                  </button>
+                  <button type="button" data-pick="bench" aria-pressed="false">
+                    <i></i>
+                    Bench sales
+                  </button>
+                </div>
+                <div className="trk-grid">
+                  <div className="lw v side-v pk-v rv" data-mode="vendor">
+                    <span className="side-label v">
+                      <i></i>
+                      Vendor · your requirement
+                    </span>
+                    <div className="live-col" aria-label="Vendor Tracker column, updating">
+                      <div className="col-host"></div>
+                      <div className="toast" aria-hidden="true">
+                        <span className="bell">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
+                            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
+                          </svg>
+                        </span>
+                        <div>
+                          <b>
+                            Strong match landed
+                          </b>
+                          <span className="toast-t"></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="lw b side-b pk-b rv" data-mode="bench">
+                    <span className="side-label b">
+                      <i></i>
+                      Bench sales · your consultant
+                    </span>
+                    <div className="live-col" aria-label="Bench sales Tracker column, updating">
+                      <div className="col-host"></div>
+                      <div className="toast" aria-hidden="true">
+                        <span className="bell">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
+                            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
+                          </svg>
+                        </span>
+                        <div>
+                          <b>
+                            Strong match landed
+                          </b>
+                          <span className="toast-t"></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <ul className="feat rv">
+                    <li className="phx">
+                      <span className="ddc" aria-hidden="true">
+                        <i></i>
+                        <i></i>
+                        <svg viewBox="0 0 10 16">
+                          <use href="#ddchev"></use>
+                        </svg>
+                      </span>
+                      Alerts when a strong match lands
+                    </li>
+                    <li>
+                      <span className="ddc" aria-hidden="true">
+                        <i></i>
+                        <i></i>
+                        <svg viewBox="0 0 10 16">
+                          <use href="#ddchev"></use>
+                        </svg>
+                      </span>
+                      AI Match: ranked fit and skill gaps
+                    </li>
+                    <li className="phx">
+                      <span className="ddc" aria-hidden="true">
+                        <i></i>
+                        <i></i>
+                        <svg viewBox="0 0 10 16">
+                          <use href="#ddchev"></use>
+                        </svg>
+                      </span>
+                      Reposts merged into one card
+                    </li>
+                    <li className="phx">
+                      <span className="ddc" aria-hidden="true">
+                        <i></i>
+                        <i></i>
+                        <svg viewBox="0 0 10 16">
+                          <use href="#ddchev"></use>
+                        </svg>
+                      </span>
+                      “Not a match” never comes back
+                    </li>
+                    <li className="side-b">
+                      <span className="ddc" aria-hidden="true">
+                        <i></i>
+                        <i></i>
+                        <svg viewBox="0 0 10 16">
+                          <use href="#ddchev"></use>
+                        </svg>
+                      </span>
+                      Inbound resume requests in one list
+                    </li>
+                    <li className="side-v">
+                      <span className="ddc" aria-hidden="true">
+                        <i></i>
+                        <i></i>
+                        <svg viewBox="0 0 10 16">
+                          <use href="#ddchev"></use>
+                        </svg>
+                      </span>
+                      Optional video screening
+                    </li>
+                    <li>
+                      <span className="ddc" aria-hidden="true">
+                        <i></i>
+                        <i></i>
+                        <svg viewBox="0 0 10 16">
+                          <use href="#ddchev"></use>
+                        </svg>
+                      </span>
+                      Team accounts, unlimited members
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+            <section className="sec numsec" aria-labelledby="numh">
+              <div className="wrap">
+                <span className="eyebrow">
+                  The live market
+                </span>
+                <h2 id="numh" style={{ marginTop: "14px" }}>
+                  {"Both floods, "}
+                  <span className="grad">
+                    counted.
+                  </span>
+                </h2>
+                <div className="nums rv" id="nums">
+                  <div className="hd"></div>
+                  <div className="hd">
+                    Last 24h
+                  </div>
+                  <div className="hd">
+                    Last 7 days
+                  </div>
+                  <div className="hd">
+                    Last 30 days
+                  </div>
+                  <div className="hd">
+                    All time
+                  </div>
+                  <div className="lab">
+                    <span>
+                      <i></i>
+                      Requirements posted
+                    </span>
+                    <em className="b side-b">
+                      For bench sales
+                    </em>
+                  </div>
+                  <div className="n" data-stat="jobs24h" data-n={st.jobs24h}>
+                    {fmt(st.jobs24h)}
+                    <small>
+                      24 hours
+                    </small>
+                  </div>
+                  <div className="n" data-stat="jobs7d" data-n={st.jobs7d}>
+                    {fmt(st.jobs7d)}
+                    <small>
+                      7 days
+                    </small>
+                  </div>
+                  <div className="n" data-stat="jobs30d" data-n={st.jobs30d}>
+                    {fmt(st.jobs30d)}
+                    <small>
+                      30 days
+                    </small>
+                  </div>
+                  <div className="n" data-stat="jobsAll" data-n={st.jobsAll}>
+                    {fmt(st.jobsAll)}
+                    <small>
+                      All time
+                    </small>
+                  </div>
+                  <div className="lab h">
+                    <span>
+                      <i></i>
+                      Hotlist consultants
+                    </span>
+                    <em className="v side-v">
+                      For vendors
+                    </em>
+                  </div>
+                  <div className="n" data-stat="hot24h" data-n={st.hot24h}>
+                    {fmt(st.hot24h)}
+                    <small>
+                      24 hours
+                    </small>
+                  </div>
+                  <div className="n" data-stat="hot7d" data-n={st.hot7d}>
+                    {fmt(st.hot7d)}
+                    <small>
+                      7 days
+                    </small>
+                  </div>
+                  <div className="n" data-stat="hot30d" data-n={st.hot30d}>
+                    {fmt(st.hot30d)}
+                    <small>
+                      30 days
+                    </small>
+                  </div>
+                  <div className="n" data-stat="hotAll" data-n={st.hotAll}>
+                    {fmt(st.hotAll)}
+                    <small>
+                      All time
+                    </small>
+                  </div>
+                </div>
+                <p className="asof">
+                  <span>{"From the ProfilePush database, "}<span data-asof="">{date}</span>{"."}</span>
+                </p>
+              </div>
+            </section>
+            <div className="divider" aria-hidden="true">
+              <span className="ddc">
+                <i></i>
+                <i></i>
+                <svg viewBox="0 0 10 16">
+                  <use href="#ddchev"></use>
+                </svg>
+              </span>
+            </div>
+            <section className="sec" aria-labelledby="priceh">
+              <div className="wrap">
+                <span className="eyebrow">
+                  Pricing
+                </span>
+                <h2 id="priceh" style={{ marginTop: "14px" }}>
+                  {"Pay in credits. "}
+                  <span className="grad">
+                    Start free.
+                  </span>
+                </h2>
+                <div className="price-grid">
+                  <div className="free rv">
+                    <div className="big grad">
+                      100
+                    </div>
+                    <div className="u">
+                      free credits that never expire
+                    </div>
+                    <div className="x">
+                      +10 on your first post. +10 on your first submission.
+                    </div>
+                    <div className="ctas">
+                      <Link className="btn btn-p side-v" to="/signup" data-path="vendor">
+                        {"Match my requirement "}
+                        <svg className="chev" aria-hidden="true">
+                          <use href="#chev"></use>
+                        </svg>
+                      </Link>
+                      <Link className="btn btn-b side-b" to="/signup" data-path="bench">
+                        {"Match my bench "}
+                        <svg className="chev" aria-hidden="true">
+                          <use href="#chev"></use>
+                        </svg>
+                      </Link>
+                    </div>
+                  </div>
+                  <div className="rv">
+                    <ul className="plist">
+                      <li className="side-b">
+                        <span className="w">
+                          <i className="b"></i>
+                          Submissions
+                        </span>
+                        <span className="c f">
+                          Free, unlimited
+                        </span>
+                      </li>
+                      <li className="side-v">
+                        <span className="w">
+                          <i className="v"></i>
+                          AI Request draft
+                        </span>
+                        <span className="c f">
+                          Free
+                        </span>
+                      </li>
+                      <li className="side-v">
+                        <span className="w">
+                          <i className="v"></i>
+                          Match a requirement
+                        </span>
+                        <span className="c">
+                          1 credit
+                        </span>
+                      </li>
+                      <li className="side-b">
+                        <span className="w">
+                          <i className="b"></i>
+                          AI Submit draft
+                        </span>
+                        <span className="c">
+                          1 credit
+                        </span>
+                      </li>
+                      <li>
+                        <span className="w">
+                          <i></i>
+                          Send from Gmail
+                        </span>
+                        <span className="c">
+                          1 credit
+                          <small>
+                            refunded if it fails
+                          </small>
+                        </span>
+                      </li>
+                      <li className="side-v">
+                        <span className="w">
+                          <i className="v"></i>
+                          Video screening
+                        </span>
+                        <span className="c">
+                          10 credits
+                        </span>
+                      </li>
+                      <li>
+                        <span className="w">
+                          <i></i>
+                          Credit packs
+                        </span>
+                        <span className="c">
+                          from ₹249
+                          <small>
+                            no subscription
+                          </small>
+                        </span>
+                      </li>
+                    </ul>
+                    <div className="plegend x-both" aria-hidden="true">
+                      <span>
+                        <i style={{ background: "var(--blue)" }}></i>
+                        Vendor
+                      </span>
+                      <span>
+                        <i style={{ background: "var(--orange)" }}></i>
+                        Bench sales
+                      </span>
+                      <span>
+                        <i style={{ background: "var(--dim)" }}></i>
+                        Both
+                      </span>
+                    </div>
+                    <div className="trust">
+                      <span className="fact">
+                        Unlimited team members
+                      </span>
+                      <span className="fact">
+                        Encrypted, never sold
+                      </span>
+                      <span className="fact">
+                        The consultant is never contacted
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section className="sec" aria-labelledby="faqh" style={{ paddingTop: "0" }}>
+              <div className="wrap">
+                <h2 id="faqh">
+                  Quick answers.
+                </h2>
+                <div className="faq">
+                  {FAQS.map((f) => (
+                    <details key={f.q}>
+                      <summary>
+                        {f.q + ' '}
+                        <svg className="chev" aria-hidden="true">
+                          <use href="#chev"></use>
+                        </svg>
+                      </summary>
+                      <p>{f.a}</p>
+                    </details>
+                  ))}
+                </div>
+              </div>
+            </section>
+            <section aria-labelledby="finh">
+              <h2 id="finh" className="sr">
+                Pick your side
+              </h2>
+              <div className="final">
+                <div className="fin v">
+                  <span className="side-label">
+                    <i></i>
+                    I have a requirement
+                  </span>
+                  <h2>
+                    Post a req.
+                    <br />
+                    Get consultants.
+                  </h2>
+                  <Link className="btn" to="/signup" data-path="vendor">
+                    {"Match my requirement "}
+                    <svg className="chev" aria-hidden="true">
+                      <use href="#chev"></use>
+                    </svg>
+                  </Link>
+                </div>
+                <div className="fin b">
+                  <span className="side-label">
+                    <i></i>
+                    I have consultants
+                  </span>
+                  <h2>
+                    Paste a hotlist.
+                    <br />
+                    Get reqs.
+                  </h2>
+                  <Link className="btn" to="/signup" data-path="bench">
+                    {"Match my bench "}
+                    <svg className="chev" aria-hidden="true">
+                      <use href="#chev"></use>
+                    </svg>
+                  </Link>
+                </div>
+                <div className="fin-core" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <use href="#mark"></use>
+                  </svg>
+                </div>
+              </div>
+            </section>
+          </main>
+          <div className="mbar away" id="mbar">
+            <Link className="btn btn-p side-v" to="/signup" data-path="vendor">
+              {"Match my requirement "}
+              <svg className="chev" aria-hidden="true">
+                <use href="#chev"></use>
+              </svg>
+            </Link>
+            <Link className="btn btn-b x-b" to="/signup" data-path="bench">
+              {"Match my bench "}
+              <svg className="chev" aria-hidden="true">
+                <use href="#chev"></use>
+              </svg>
+            </Link>
+            <Link className="mlink x-both" to="/signup" data-path="bench">
+              or match my bench
+            </Link>
+            <Link className="mlink x-v" to="/signup" data-path="bench">
+              Have consultants?
+            </Link>
+            <Link className="mlink x-b" to="/signup" data-path="vendor">
+              Have a req?
+            </Link>
           </div>
-        </div>
-      </section>
-
-      <RatingBlock />
-
-      {/* ── PRICING ── */}
-      <section id="pricing" className="py-24 px-6 bg-white border-y border-gray-100">
-        <div className="max-w-5xl mx-auto">
-
-          <div className="text-center mb-14">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Pricing</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              Free. Then cheap.
-            </h2>
-            <p className="text-base text-gray-500 max-w-lg mx-auto leading-relaxed">
-              100 credits that never expire, plus 20 more as you get started. Browsing, submitting and editing are always free.
-            </p>
-          </div>
-
-          <PricingCards />
-
-        </div>
-      </section>
-
-      {/* ── FAQ ── */}
-      <section aria-label="Frequently asked questions" className="py-24 px-6 bg-gray-50 border-y border-gray-100">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">FAQ</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Common questions</h2>
-          </div>
-          <div className="space-y-2">
-            {FAQS.map((faq) => (
-              <FaqItem key={faq.q} q={faq.q} a={faq.a} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── CTA ── */}
-      <section className="py-28 px-6">
-        <div className="max-w-xl mx-auto text-center">
-          {/* Decorative accent bar */}
-          <div className="flex items-center justify-center gap-1.5 mb-8">
-            <span className="h-1 w-8 rounded-full bg-blue-600" />
-            <span className="h-1 w-4 rounded-full bg-orange-400" />
-            <span className="h-1 w-2 rounded-full bg-yellow-400" />
-          </div>
-          <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 mb-4">
-            Let the AI copilot power your workflow.
-          </h2>
-          <p className="text-gray-500 mb-10">
-            Stop chasing posts. Start closing deals.
-          </p>
-          <Link
-            to="/signup"
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-10 py-4 rounded-xl transition-all text-base"
-          >
-            Create Free Account <ArrowRight size={16} />
-          </Link>
-          <p className="text-xs text-gray-500 mt-5">No card needed.</p>
-        </div>
-      </section>
-
-      {/* ── FOOTER ── */}
-      </main>
+    </div>
+    <RatingBlock />
+    <div ref={footRef}>
       <SiteFooter />
     </div>
+    </>
   );
-}
+});

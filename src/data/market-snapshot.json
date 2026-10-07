@@ -1,0 +1,916 @@
+{
+ "jobs": [
+  {
+   "t": "Senior Cloud Architect",
+   "loc": "New York",
+   "type": "Full-time",
+   "skills": [
+    "Oracle Cloud Infrastruct",
+    "OCI",
+    "Cloud DevOps",
+    "Cloud Security"
+   ],
+   "exp": 9,
+   "at": "2026-10-07T15:19:35.741278+00:00"
+  },
+  {
+   "t": "Solutions Architect – Expert",
+   "loc": "Albany, NY 12237",
+   "type": "Contract",
+   "skills": [
+    "SOA",
+    "PaaS",
+    "IaaS",
+    "SaaS"
+   ],
+   "exp": 84,
+   "at": "2026-10-07T15:19:20.992446+00:00"
+  },
+  {
+   "t": "Ab Initio Developer",
+   "loc": "Hartford, CT, Irving, TX",
+   "type": "Full-time",
+   "skills": [
+    "Ab Initio Suite",
+    "Google Cloud Platform",
+    "Python",
+    "BigQuery"
+   ],
+   "exp": 11,
+   "at": "2026-10-07T15:19:03.093086+00:00"
+  },
+  {
+   "t": "Supply Chain Process Engineer",
+   "loc": "Nashville, TN",
+   "type": "Contract",
+   "skills": [
+    "Supply Chain Planning",
+    "Forecasting",
+    "Replenishment & Inventor",
+    "Warehousing"
+   ],
+   "exp": 8,
+   "at": "2026-10-07T15:18:56.231251+00:00"
+  },
+  {
+   "t": "Azure Data Engineer",
+   "loc": "Raleigh, NC",
+   "type": "Full-time",
+   "skills": [
+    "Azure",
+    "Power BI",
+    "dataflows",
+    "Direct Query"
+   ],
+   "exp": 15,
+   "at": "2026-10-07T15:18:55.656195+00:00"
+  },
+  {
+   "t": "Senior Python full stack Developer with AI/ML",
+   "loc": "",
+   "type": "Contract",
+   "skills": [
+    "Python",
+    "React",
+    "AI/ML",
+    "SQL"
+   ],
+   "exp": null,
+   "at": "2026-10-07T15:18:50.465697+00:00"
+  },
+  {
+   "t": "SaaS Analyst – IAM / IGA",
+   "loc": "Alpharetta, GA",
+   "type": "C2C/W2",
+   "skills": [
+    "IAM / IGA",
+    "SaaS Application Governa",
+    "SSO, RBAC, Provisioning ",
+    "SailPoint / Saviynt / En"
+   ],
+   "exp": null,
+   "at": "2026-10-07T15:18:39.215862+00:00"
+  },
+  {
+   "t": "Lead Data Analyst, Lead Business Analyst, Data Architect",
+   "loc": "Hartford, CT",
+   "type": "Full-time",
+   "skills": [
+    "Data Architecture",
+    "Data Analysis",
+    "Business Analysis",
+    "Duck Creek Integration"
+   ],
+   "exp": 14,
+   "at": "2026-10-07T15:18:34.416745+00:00"
+  },
+  {
+   "t": "Network Security Engineer",
+   "loc": "Lake County, IL",
+   "type": "Full-time",
+   "skills": [
+    "Networking & Network Sec",
+    "Firewalls & WAF",
+    "HTTP/HTTPS troubleshooti",
+    "Cloudflare WAF"
+   ],
+   "exp": 1,
+   "at": "2026-10-07T15:18:22.10089+00:00"
+  },
+  {
+   "t": "Snowflake Migration Architect",
+   "loc": "Pittsburgh, PA",
+   "type": "C2C",
+   "skills": [
+    "Snowflake",
+    "SQL",
+    "T_SQL",
+    "Oracle"
+   ],
+   "exp": null,
+   "at": "2026-10-07T15:18:20.891857+00:00"
+  },
+  {
+   "t": "Embedded Software Test Engineer",
+   "loc": "Plymouth, MN",
+   "type": "Contract",
+   "skills": [
+    "Embedded Software Test E",
+    "Cybersecurity",
+    "IV&V",
+    "Embedded C"
+   ],
+   "exp": 5,
+   "at": "2026-10-07T15:18:05.278733+00:00"
+  },
+  {
+   "t": "Program Management Consultant / Program Director",
+   "loc": "New York, New Jersey, Pennsylvania, Conn",
+   "type": "C2C",
+   "skills": [
+    "Program Management",
+    "Project Management",
+    "Business Transformation",
+    "Change Management"
+   ],
+   "exp": 14,
+   "at": "2026-10-07T15:17:52.094665+00:00"
+  },
+  {
+   "t": "Android Developer",
+   "loc": "Alpharetta, GA",
+   "type": "Full-time",
+   "skills": [
+    "Android development",
+    "Kotlin",
+    "Java",
+    "Android SDK"
+   ],
+   "exp": 5,
+   "at": "2026-10-07T15:17:51.058331+00:00"
+  },
+  {
+   "t": "Full Stack Developer",
+   "loc": "Dallas, TX",
+   "type": "W2",
+   "skills": [
+    "Angular",
+    "Node.js",
+    "JavaScript",
+    "SQL Server"
+   ],
+   "exp": 6,
+   "at": "2026-10-07T15:17:24.214916+00:00"
+  },
+  {
+   "t": "Java Full Stack Developer",
+   "loc": "Wilmington, DE",
+   "type": "C2C",
+   "skills": [
+    "Java",
+    "AWS",
+    "AWS Backend Engineering",
+    "IAM"
+   ],
+   "exp": 12,
+   "at": "2026-10-07T15:16:38.574948+00:00"
+  },
+  {
+   "t": "Oracle Fusion Financials Techno-Functional Consultant",
+   "loc": "Atlanta, GA",
+   "type": "Full-time",
+   "skills": [
+    "Oracle Fusion",
+    "Oracle Cloud Financials",
+    "Order-to-Cash (O2C)",
+    "Oracle Receivables (AR)"
+   ],
+   "exp": 15,
+   "at": "2026-10-07T15:16:32.332442+00:00"
+  },
+  {
+   "t": "Client Partner",
+   "loc": "Bay Area, CA",
+   "type": "Full-time",
+   "skills": [
+    "Client Partner",
+    "Account Executive",
+    "Business Development/Sal",
+    "Cloud"
+   ],
+   "exp": null,
+   "at": "2026-10-07T15:16:23.440943+00:00"
+  },
+  {
+   "t": "Senior Frontend Engineer",
+   "loc": "San Francisco, CA",
+   "type": "W2",
+   "skills": [
+    "React",
+    "TypeScript",
+    "Redux/Saga",
+    "TanStack Query"
+   ],
+   "exp": 10,
+   "at": "2026-10-07T15:16:22.149164+00:00"
+  },
+  {
+   "t": "SAP S/4HANA Basis Consultant",
+   "loc": "Collegeville, PA",
+   "type": "Full-time",
+   "skills": [
+    "SAP S/4HANA & HANA Admin",
+    "SUM/DMO – S/4HANA Conver",
+    "HANA Backup/Recovery & S",
+    "HA/DR & Performance Tuni"
+   ],
+   "exp": 10,
+   "at": "2026-10-07T15:16:20.428912+00:00"
+  },
+  {
+   "t": "Senior Full Stack Java Developer",
+   "loc": "Chicago, IL",
+   "type": "C2C",
+   "skills": [
+    "Java",
+    "Spring Boot",
+    "Microservices",
+    "React JS"
+   ],
+   "exp": 10,
+   "at": "2026-10-07T15:16:19.659738+00:00"
+  },
+  {
+   "t": "Java Developer",
+   "loc": "New York City, NY",
+   "type": "Contract",
+   "skills": [
+    "Java",
+    "Oracle",
+    "SQL",
+    "Angular"
+   ],
+   "exp": 12,
+   "at": "2026-10-07T15:16:07.162257+00:00"
+  },
+  {
+   "t": "Middleware Integration Developer",
+   "loc": "Multiple Locations",
+   "type": "C2C/W2",
+   "skills": [
+    "middleware",
+    "integration",
+    "ESB",
+    "APIs"
+   ],
+   "exp": 12,
+   "at": "2026-10-07T15:16:04.817218+00:00"
+  },
+  {
+   "t": "Program Manager",
+   "loc": "Columbus, OH",
+   "type": "Full-time",
+   "skills": [
+    "Project Management",
+    "IT Project Management",
+    "Vendor Management",
+    "Project Planning"
+   ],
+   "exp": 8,
+   "at": "2026-10-07T15:15:53.888161+00:00"
+  },
+  {
+   "t": "SAP ATTP Serialization Consultant",
+   "loc": "",
+   "type": "C2C/W2",
+   "skills": [
+    "SAP ATTP Configuration &",
+    "Serial Number Management",
+    "EPCIS & GS1 Standards (G",
+    "US DSCSA / EU FMD Compli"
+   ],
+   "exp": 8,
+   "at": "2026-10-07T15:15:50.047528+00:00"
+  },
+  {
+   "t": "Java Full Stack Developer With Angular",
+   "loc": "Westlake, TX",
+   "type": "C2C",
+   "skills": [
+    "Java",
+    "Angular",
+    "Spring Boot",
+    "Spring MVC"
+   ],
+   "exp": 15,
+   "at": "2026-10-07T15:15:49.570498+00:00"
+  },
+  {
+   "t": "Varonis Developer/Engineer",
+   "loc": "",
+   "type": "Contract",
+   "skills": [
+    "Varonis",
+    "ITAR",
+    "data governance",
+    "compliance"
+   ],
+   "exp": null,
+   "at": "2026-10-07T15:15:48.585074+00:00"
+  },
+  {
+   "t": "Network Infrastructure Engineer",
+   "loc": "Jackson, MS",
+   "type": "Full-time",
+   "skills": [
+    "Cisco ACI",
+    "Nexus platforms",
+    "multi-tenant segmentatio",
+    "SDA campus architectures"
+   ],
+   "exp": 15,
+   "at": "2026-10-07T15:15:34.516997+00:00"
+  },
+  {
+   "t": "Power BI/Tableau Admin/Developer with Azure",
+   "loc": "Hartford, CT",
+   "type": "Full-time",
+   "skills": [
+    "Microsoft SQL Server",
+    "Transact SQL",
+    "SSRS",
+    "Tableau Cloud"
+   ],
+   "exp": 10,
+   "at": "2026-10-07T15:12:47.243115+00:00"
+  },
+  {
+   "t": "Business Analyst",
+   "loc": "Toronto, Canada",
+   "type": "C2C",
+   "skills": [
+    "Finance",
+    "Business",
+    "Computer Science",
+    "Data"
+   ],
+   "exp": null,
+   "at": "2026-10-07T15:12:32.429096+00:00"
+  },
+  {
+   "t": "Oracle Fusion HCM US Payroll Solution Architect",
+   "loc": "Houston, TX",
+   "type": "Full-time",
+   "skills": [
+    "Oracle Fusion HCM Cloud",
+    "Oracle Fusion US Payroll",
+    "Solution Architect",
+    "Lead Consultant"
+   ],
+   "exp": 12,
+   "at": "2026-10-07T15:12:17.019145+00:00"
+  },
+  {
+   "t": "Azure Security Engineer (Azure Front Door & API Management (APIM) Engi",
+   "loc": "Madison, WI",
+   "type": "C2C",
+   "skills": [
+    "Azure Front Door",
+    "Azure API Management (AP",
+    "WAF Administration",
+    "API Security - OAuth2"
+   ],
+   "exp": 12,
+   "at": "2026-10-07T15:12:16.775011+00:00"
+  },
+  {
+   "t": "Forward Deployment Engineer",
+   "loc": "USA",
+   "type": "Internship",
+   "skills": [
+    "AWS",
+    "Azure",
+    "Linux",
+    "Python"
+   ],
+   "exp": null,
+   "at": "2026-10-07T15:12:14.815544+00:00"
+  },
+  {
+   "t": "Hybrid/Local Govt Azure Data Engineer",
+   "loc": "Raleigh, NC",
+   "type": "Full-time",
+   "skills": [
+    "Azure",
+    "Power BI",
+    "dataflows",
+    "Direct Query"
+   ],
+   "exp": 15,
+   "at": "2026-10-07T15:10:57.283027+00:00"
+  },
+  {
+   "t": "Data Engineer",
+   "loc": "USA",
+   "type": "Contract",
+   "skills": [
+    "OCI",
+    "Oracle Cloud Infrastruct",
+    "PySpark",
+    "Python"
+   ],
+   "exp": null,
+   "at": "2026-10-07T15:10:54.823858+00:00"
+  },
+  {
+   "t": "IBM DataPower Consultant",
+   "loc": "Phoenix, AZ",
+   "type": "C2C",
+   "skills": [
+    "IBM DataPower",
+    "XSLT",
+    "XML",
+    "JSON"
+   ],
+   "exp": 8,
+   "at": "2026-10-07T15:10:25.383072+00:00"
+  },
+  {
+   "t": "React Web Developer",
+   "loc": "Alpharetta, GA",
+   "type": "Full-time",
+   "skills": [
+    "React",
+    "JavaScript",
+    "HTML5",
+    "CSS3"
+   ],
+   "exp": 7,
+   "at": "2026-10-07T15:10:21.385403+00:00"
+  },
+  {
+   "t": "Integration Architect",
+   "loc": "Columbus, OH",
+   "type": "Full-time",
+   "skills": [
+    "Azure APIM",
+    "Java",
+    "Spring Boot",
+    "REST APIs"
+   ],
+   "exp": 10,
+   "at": "2026-10-07T15:10:21.224293+00:00"
+  },
+  {
+   "t": "Sr Functional Analyst Oracle Fusion - Idea to Market (PLM)",
+   "loc": "Irvine, CA",
+   "type": "Contract",
+   "skills": [
+    "Oracle Fusion",
+    "EBS PLM"
+   ],
+   "exp": null,
+   "at": "2026-10-07T15:09:15.726405+00:00"
+  },
+  {
+   "t": "PowerApps Developer",
+   "loc": "Mechanicsville, VA",
+   "type": "Full-time",
+   "skills": [
+    "PowerApps",
+    "Power BI",
+    "Automate",
+    "Pages"
+   ],
+   "exp": 15,
+   "at": "2026-10-07T15:09:14.492689+00:00"
+  },
+  {
+   "t": "EDI Developer",
+   "loc": "",
+   "type": "W2",
+   "skills": [
+    "X12 EDI",
+    "Azure Logic Apps",
+    "Azure Functions",
+    "C#"
+   ],
+   "exp": 5,
+   "at": "2026-10-07T15:08:52.94187+00:00"
+  }
+ ],
+ "hotlist": [
+  {
+   "t": "Senior Power BI Developer",
+   "skills": [
+    "Power BI",
+    "DAX",
+    "Power Query",
+    "SQL"
+   ],
+   "exp": 10,
+   "visa": "H1B",
+   "work": "Remote/Hybrid/On",
+   "loc": "",
+   "at": "2026-10-07T15:18:24.495278+00:00"
+  },
+  {
+   "t": "ServiceNow Developer / Administrator",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Unknown",
+   "loc": "",
+   "at": "2026-10-07T15:08:35.358076+00:00"
+  },
+  {
+   "t": "AI/ML Engineer",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Unknown",
+   "loc": "",
+   "at": "2026-10-07T15:08:35.358076+00:00"
+  },
+  {
+   "t": "SAP Consultant",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Unknown",
+   "loc": "",
+   "at": "2026-10-07T15:08:35.358076+00:00"
+  },
+  {
+   "t": ".NET Developer",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Unknown",
+   "loc": "",
+   "at": "2026-10-07T15:08:35.358076+00:00"
+  },
+  {
+   "t": "Python Developer",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Unknown",
+   "loc": "",
+   "at": "2026-10-07T15:08:35.358076+00:00"
+  },
+  {
+   "t": "Data Engineer",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Unknown",
+   "loc": "",
+   "at": "2026-10-07T15:08:35.358076+00:00"
+  },
+  {
+   "t": "Java Full Stack Developer",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Unknown",
+   "loc": "",
+   "at": "2026-10-07T15:08:35.358076+00:00"
+  },
+  {
+   "t": "DevOps Engineer",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Unknown",
+   "loc": "",
+   "at": "2026-10-07T15:08:35.358076+00:00"
+  },
+  {
+   "t": "Sr Java Developer",
+   "skills": [],
+   "exp": 12,
+   "visa": "",
+   "work": "Remote",
+   "loc": "",
+   "at": "2026-10-07T15:00:18.0389+00:00"
+  },
+  {
+   "t": "Sr DevOps Engineer",
+   "skills": [],
+   "exp": 10,
+   "visa": "",
+   "work": "Remote",
+   "loc": "",
+   "at": "2026-10-07T15:00:18.0389+00:00"
+  },
+  {
+   "t": "Sr Data Engineer",
+   "skills": [],
+   "exp": 12,
+   "visa": "",
+   "work": "Remote",
+   "loc": "",
+   "at": "2026-10-07T15:00:18.0389+00:00"
+  },
+  {
+   "t": "Sr AI/ML Engineer",
+   "skills": [],
+   "exp": 12,
+   "visa": "",
+   "work": "Remote",
+   "loc": "",
+   "at": "2026-10-07T15:00:18.0389+00:00"
+  },
+  {
+   "t": "Sr Service Now",
+   "skills": [],
+   "exp": 10,
+   "visa": "",
+   "work": "Remote",
+   "loc": "",
+   "at": "2026-10-07T15:00:18.0389+00:00"
+  },
+  {
+   "t": "Sr Python Developer",
+   "skills": [],
+   "exp": 13,
+   "visa": "",
+   "work": "Remote",
+   "loc": "",
+   "at": "2026-10-07T15:00:18.0389+00:00"
+  },
+  {
+   "t": "Senior Cloud DevOps Engineer",
+   "skills": [
+    "Model Deployment",
+    "Microservices Architectu",
+    "Cloud Migration",
+    "Software Testing"
+   ],
+   "exp": 10,
+   "visa": "",
+   "work": "",
+   "loc": "",
+   "at": "2026-10-07T14:58:07.138806+00:00"
+  },
+  {
+   "t": "SAP Data Migration Architect",
+   "skills": [
+    "SAP Data Migration"
+   ],
+   "exp": 20,
+   "visa": "H1B",
+   "work": "Remote",
+   "loc": "Chicago, IL",
+   "at": "2026-10-07T14:34:41.573302+00:00"
+  },
+  {
+   "t": "SAP S/4 HANA FICO Architect",
+   "skills": [
+    "SAP S/4 HANA FICO"
+   ],
+   "exp": 16,
+   "visa": "H1B",
+   "work": "Remote",
+   "loc": "Dallas,TX",
+   "at": "2026-10-07T14:34:41.573302+00:00"
+  },
+  {
+   "t": "Pega PRPC Architect",
+   "skills": [
+    "Pega PRPC"
+   ],
+   "exp": 14,
+   "visa": "H1B",
+   "work": "Remote",
+   "loc": "Edison, NJ",
+   "at": "2026-10-07T14:34:41.573302+00:00"
+  },
+  {
+   "t": "SAP Security Lead",
+   "skills": [
+    "SAP Security"
+   ],
+   "exp": 16,
+   "visa": "GC",
+   "work": "Remote",
+   "loc": "Columbus, OH",
+   "at": "2026-10-07T14:34:41.573302+00:00"
+  },
+  {
+   "t": "CyberArk Engineer",
+   "skills": [
+    "CyberArk"
+   ],
+   "exp": 15,
+   "visa": "H1B",
+   "work": "Remote",
+   "loc": "Plano, Texas",
+   "at": "2026-10-07T14:34:41.573302+00:00"
+  },
+  {
+   "t": "JAVA FULLSTACK DEVELOPER",
+   "skills": [],
+   "exp": 10,
+   "visa": "H1B",
+   "work": "Unknown",
+   "loc": "Open to Relocate",
+   "at": "2026-10-07T14:17:41.72505+00:00"
+  },
+  {
+   "t": "SAP SD FUNCTIONAL CONSULTANT",
+   "skills": [],
+   "exp": 12,
+   "visa": "H1B",
+   "work": "Unknown",
+   "loc": "Open to Relocate",
+   "at": "2026-10-07T14:17:41.72505+00:00"
+  },
+  {
+   "t": "SENIOR AWS DATA ENGINEER",
+   "skills": [],
+   "exp": 10,
+   "visa": "H1B",
+   "work": "Unknown",
+   "loc": "Open to Relocate",
+   "at": "2026-10-07T14:17:41.72505+00:00"
+  },
+  {
+   "t": "AWS DEVOPS ENGINEER",
+   "skills": [],
+   "exp": 13,
+   "visa": "H1B",
+   "work": "Unknown",
+   "loc": "Open to Relocate",
+   "at": "2026-10-07T14:17:41.72505+00:00"
+  },
+  {
+   "t": "SR. ORACLE DBA",
+   "skills": [],
+   "exp": 13,
+   "visa": "H1B",
+   "work": "Unknown",
+   "loc": "Open to Relocate",
+   "at": "2026-10-07T14:17:41.72505+00:00"
+  },
+  {
+   "t": "BUSINESS ANALYST",
+   "skills": [],
+   "exp": 14,
+   "visa": "H1B",
+   "work": "Unknown",
+   "loc": "Open to Relocate",
+   "at": "2026-10-07T14:17:41.72505+00:00"
+  },
+  {
+   "t": "DEVOPS ENGINEER",
+   "skills": [],
+   "exp": 13,
+   "visa": "H4-EAD",
+   "work": "Unknown",
+   "loc": "Open to Relocate",
+   "at": "2026-10-07T14:17:41.72505+00:00"
+  },
+  {
+   "t": "Data Engineers",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "",
+   "loc": "",
+   "at": "2026-10-07T14:14:21.453803+00:00"
+  },
+  {
+   "t": "ServiceNow Developers",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "",
+   "loc": "",
+   "at": "2026-10-07T14:14:21.453803+00:00"
+  },
+  {
+   "t": "AI/ML Engineers",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "",
+   "loc": "",
+   "at": "2026-10-07T14:14:21.453803+00:00"
+  },
+  {
+   "t": ".NET Developers",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "",
+   "loc": "",
+   "at": "2026-10-07T14:14:21.453803+00:00"
+  },
+  {
+   "t": "DevOps Engineers",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "",
+   "loc": "",
+   "at": "2026-10-07T14:14:21.453803+00:00"
+  },
+  {
+   "t": "Python Developers",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "",
+   "loc": "",
+   "at": "2026-10-07T14:14:21.453803+00:00"
+  },
+  {
+   "t": "Data Scientists",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "",
+   "loc": "",
+   "at": "2026-10-07T14:14:21.453803+00:00"
+  },
+  {
+   "t": "Java Developers",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "",
+   "loc": "",
+   "at": "2026-10-07T14:14:21.453803+00:00"
+  },
+  {
+   "t": "Senior AI/ML Engineer",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Onsite",
+   "loc": "Yes",
+   "at": "2026-10-07T13:38:59.267225+00:00"
+  },
+  {
+   "t": "Senior Java Developer",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Onsite",
+   "loc": "Yes",
+   "at": "2026-10-07T13:38:59.267225+00:00"
+  },
+  {
+   "t": "Senior Python Developer",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Onsite",
+   "loc": "Yes",
+   "at": "2026-10-07T13:38:59.267225+00:00"
+  },
+  {
+   "t": "Senior Devops Engineer",
+   "skills": [],
+   "exp": null,
+   "visa": "",
+   "work": "Onsite",
+   "loc": "Yes",
+   "at": "2026-10-07T13:38:59.267225+00:00"
+  }
+ ],
+ "stats": {
+  "jobs24h": 772,
+  "jobs7d": 4178,
+  "jobs30d": 19795,
+  "jobsAll": 45565,
+  "hot24h": 185,
+  "hot7d": 1255,
+  "hot30d": 6214,
+  "hotAll": 12749,
+  "websites": 118
+ },
+ "asOf": "2026-10-07"
+}
