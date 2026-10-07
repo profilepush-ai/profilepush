@@ -21,7 +21,7 @@ const DESCRIPTION = 'ProfilePush is the AI copilot for vendor teams. Paste a req
 const CANONICAL = 'https://profilepush.ai/vendors';
 
 const FAQS = [
-  { q: "How do matching consultants reach me?", a: "Add a requirement and the copilot matches it against bench consultants every day. Strong matches land in your Tracker, and you get a notification." },
+  { q: "How do matching consultants reach me?", a: "Add a requirement and the AI Copilot matches it against bench consultants every day. Strong matches land in your Tracker, and you get a notification." },
   { q: "What is an AI Request?", a: "An email to the bench recruiter asking for the consultant’s resume, rate, visa status and availability. The draft is free, and it sends from your own Gmail." },
   { q: "Is video screening available?", a: "Yes, as an option. Tick “include a video screening link” on any request. The consultant records a short adaptive interview, and you get a recording, a score and a summary." },
   { q: "What costs credits?", a: "A post costs 1 credit. AI Request drafts and editing are free. Sending from your Gmail costs 1 credit, refunded if the send fails. A finished screening costs 10 credits. Credit packs start at ₹249." },
@@ -91,18 +91,18 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
               <div className="wrap hero-in">
                 <span className="live intro">
                   <span className="pulse"></span>
-                  <span>{"For vendors · live bench, "}<span data-asof="">{date}</span></span>
+                  <span>{"AI Copilot for vendors · "}<span data-asof="">{date}</span></span>
                 </span>
                 <h1 id="h1" className="intro d1">
                   <span className="num grad" id="hnum" data-stat="hot30d" data-n={st.hot30d}>
                     {fmt(st.hot30d)}
                   </span>
                   <span className="rest">
-                    {"bench consultants in the last 30 days"}
+                    {"bench consultants in 30 days."}<br />Your AI Copilot finds the fits.
                   </span>
                 </h1>
                 <p className="sub intro d2">
-                  Post your requirement. Your copilot pushes the ones who fit into its column.
+                  Post your requirement. Your AI Copilot pushes the ones who fit into its column.
                 </p>
                 <div className="ctas intro d3">
                   <Link className="btn btn-p" to="/signup" data-path="vendor">
@@ -815,7 +815,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                   </span>
                 </h2>
                 <p className="fsub">
-                  Let the copilot bring you the consultants.
+                  Let the AI Copilot bring you the consultants.
                 </p>
                 <div className="ctas">
                   <Link className="btn btn-p" to="/signup" data-path="vendor">
