@@ -5,6 +5,7 @@ import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
 import RatingBlock from '../components/landing/RatingBlock';
 import LandingHeader from './landing/LandingHeader';
+import AndroidApp from './landing/AndroidApp';
 import { useLandingEngine } from './landing/useLandingEngine';
 import { startHome } from './landing/homeEngine';
 import { fmt, fmtDate } from './landing/engine';
@@ -19,34 +20,56 @@ import './landing/home.css';
 // the phone ticker, the emails and the live Tracker) runs from homeEngine on
 // the root element and stops on unmount.
 
+const TITLE = 'ProfilePush — AI Copilot for US IT Staffing';
+const DESCRIPTION = 'AI Copilot for US IT staffing. Vendors get matching bench consultants; bench sales get matching C2C requirements, live all day. Free to start. On Android.';
+const CANONICAL = 'https://profilepush.ai/';
+
+// Every answer here is checked against the app (credit costs: BillingPage
+// CREDIT_COST_ITEMS and the migrations/functions it cites). The FAQPage
+// JSON-LD below is built from this same list, so the two cannot drift.
 const FAQS = [
+  { q: "What is ProfilePush?", a: "ProfilePush is an AI Copilot for US IT staffing. It reads the live flow of requirements and hotlist consultants, matches them to what you post, and pushes the fits into a live Tracker. AI Request and AI Submit write the email, sent from your own Gmail." },
   { q: "Who is ProfilePush for?", a: "US IT staffing, both sides. Vendors post requirements and get matching bench consultants. Bench sales paste a hotlist and get matching requirements for every consultant." },
+  { q: "How do bench sales recruiters find C2C requirements?", a: "Paste your hotlist. Every consultant gets a live column of matching requirements from the thousands posted each month, with an alert when a strong match lands. One tap submits, resume attached." },
+  { q: "How do vendors find bench consultants?", a: "Post your requirement, or paste it as text. It is matched against the hotlist consultants posted every day, and the fits land in your Tracker. One tap sends an AI Request for the resume, rate, visa and availability." },
   { q: "Whose email does it send from?", a: "Yours. AI Request and AI Submit drafts go out from your own Gmail, after you review them." },
   { q: "Will my consultant be contacted?", a: "Never. Your data is encrypted and never sold." },
-  { q: "What does it cost?", a: "You start with 100 free credits that never expire. Submissions are always free. Credit packs start at ₹249, with no subscription." },
+  { q: "What does it cost?", a: "You start with 100 free credits that never expire. Posting and submissions are free. Each new Tracker match costs 1 credit, as do an AI Submit draft and a Gmail send (refunded if it fails). Credit packs start at ₹249, with no subscription." },
+  { q: "Is there a ProfilePush app?", a: "Yes. ProfilePush is on Google Play for Android, with match alerts on your phone. It also runs in any web browser." },
   { q: "Can my whole team use it?", a: "Yes. Team accounts have unlimited members." },
 ];
 
-const LANDING_FAQ_JSONLD = {
+const PAGE_JSONLD = {
   '@context': 'https://schema.org',
-  '@type': 'FAQPage',
-  mainEntity: FAQS.map((f) => ({
-    '@type': 'Question',
-    name: f.q,
-    acceptedAnswer: { '@type': 'Answer', text: f.a },
-  })),
+  '@graph': [
+    {
+      '@type': 'WebPage',
+      '@id': `${CANONICAL}#webpage`,
+      url: CANONICAL,
+      name: TITLE,
+      description: DESCRIPTION,
+      isPartOf: { '@id': 'https://profilepush.ai/#website' },
+      about: { '@id': 'https://profilepush.ai/#organization' },
+      mainEntity: { '@id': 'https://profilepush.ai/#software' },
+    },
+    {
+      '@type': 'FAQPage',
+      '@id': `${CANONICAL}#faq`,
+      isPartOf: { '@id': `${CANONICAL}#webpage` },
+      mainEntity: FAQS.map((f) => ({
+        '@type': 'Question',
+        name: f.q,
+        acceptedAnswer: { '@type': 'Answer', text: f.a },
+      })),
+    },
+  ],
 };
 
 export default function LandingPage() {
   const [data] = useState(() => composeStoryData(initialSnapshot()));
   return (
     <>
-      <SEO
-        title="ProfilePush — AI Copilot for US IT Staffing (Vendors & Bench Sales)"
-        description="ProfilePush is the AI copilot for both sides of US IT staffing. Vendors post a requirement and matching bench consultants land in a live Tracker. Bench sales paste a hotlist and every consultant gets a live column of matching requirements. The email writes itself, sent from your own Gmail. Submissions are always free."
-        canonical="https://profilepush.ai/"
-        jsonLd={LANDING_FAQ_JSONLD}
-      />
+      <SEO title={TITLE} description={DESCRIPTION} canonical={CANONICAL} jsonLd={PAGE_JSONLD} />
       <HomeBody data={data} />
     </>
   );
@@ -212,6 +235,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                     </Link>
                   </div>
                 </div>
+                <AndroidApp source="home-hero" className="intro d3" />
                 <a className="cue intro d4" href="#filter">
                   <span className="x-both">
                     Watch both sides filter
@@ -756,7 +780,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                 </svg>
               </span>
             </div>
-            <section className="sec" aria-labelledby="priceh">
+            <section className="sec" id="pricing" aria-labelledby="priceh">
               <div className="wrap">
                 <span className="eyebrow">
                   Pricing
@@ -813,10 +837,22 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                           Free
                         </span>
                       </li>
-                      <li className="side-v">
+                      <li>
                         <span className="w">
-                          <i className="v"></i>
-                          Match a requirement
+                          <i></i>
+                          Posting
+                        </span>
+                        <span className="c f">
+                          Free
+                          <small>
+                            3 open on the free plan
+                          </small>
+                        </span>
+                      </li>
+                      <li>
+                        <span className="w">
+                          <i></i>
+                          Each new Tracker match
                         </span>
                         <span className="c">
                           1 credit
@@ -959,6 +995,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                   </svg>
                 </div>
               </div>
+              <AndroidApp source="home-final" label="Match alerts on your phone" className="fin-app" lazy />
             </section>
           </main>
           <div className="mbar away" id="mbar">

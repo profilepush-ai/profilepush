@@ -2,7 +2,7 @@
   "id": "/",
   "name": "ProfilePush",
   "short_name": "ProfilePush",
-  "description": "AI Copilot for US IT Staffing Teams \u2014 Bench Sales Recruiters & Vendor Teams",
+  "description": "AI Copilot for US IT Staffing \u2014 vendors and bench sales recruiters, matched on the live market",
   "start_url": "/feed",
   "scope": "/",
   "display": "standalone",
@@ -31,6 +31,14 @@
   "launch_handler": {
     "client_mode": "focus-existing"
   },
+  "related_applications": [
+    {
+      "platform": "play",
+      "id": "com.profilepush.app",
+      "url": "https://play.google.com/store/apps/details?id=com.profilepush.app"
+    }
+  ],
+  "prefer_related_applications": false,
   "categories": [
     "business",
     "productivity"

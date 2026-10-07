@@ -183,50 +183,50 @@ export default function WhyAICopilot() {
               {
                 icon: <FileText size={16} />,
                 num: '1',
-                title: 'Centralizing the Talent (The Bench)',
-                old: "Your candidates' resumes are scattered across local folders, shared Google Drives, and messy email threads.",
-                newWay: 'Drop a raw PDF. In 30 seconds, the AI parses every skill, role, education history, and visa detail into a structured, searchable database.',
-                ai: 'Auto-generates "Priority Skills" based on work history, giving you an instant marketing angle.',
+                title: 'Posting the Bench',
+                old: "Your consultants are scattered across spreadsheets, shared drives and old hotlist emails, retyped every time you market them.",
+                newWay: 'Paste the hotlist table as it is, up to 50 consultants at a time. Every consultant is read and posted together.',
+                ai: 'Skills, visa, rate and experience are pulled out for you, and each consultant gets a live column of their own.',
               },
               {
                 icon: <Search size={16} />,
                 num: '2',
-                title: 'Sourcing Requirements (Omni-Board)',
-                old: 'Log into Dice, run a search. Log into Monster, run the same search. Check LinkedIn. Constantly fighting session timeouts.',
-                newWay: 'Type your search once. ProfilePush simultaneously sweeps LinkedIn, Dice, Indeed, and Monster in real-time.',
-                ai: '"AI Search Ideas" reads your candidate profile and suggests the best job titles and boolean strings.',
+                title: 'Finding the Requirements',
+                old: 'Scroll requirement emails and job boards all day, copying the same search into tab after tab.',
+                newWay: 'The AI Copilot reads every new requirement on ProfilePush as it arrives and matches it against each consultant you posted.',
+                ai: 'Only what fits is pushed into the consultant’s column. Reposts merge into one card, and “Not a match” never comes back.',
               },
               {
                 icon: <Target size={16} />,
                 num: '3',
-                title: 'Qualifying the Fit (AI Match Scoring)',
+                title: 'Qualifying the Fit (AI Match)',
                 old: 'Spend 10 minutes reading the JD, trying to figure out if your candidate can pass for the role.',
-                newWay: 'Click "Get Match Score." AI reads the live JD and cross-references it against your parsed candidate profile instantly.',
-                ai: 'A definitive percentage match with exact strengths and skill gaps highlighted.',
+                newWay: 'Paste any requirement or consultant into AI Match and get ranked matches in seconds.',
+                ai: 'A ranked fit with the skill gaps called out, so you know who to submit first.',
               },
               {
                 icon: <Zap size={16} />,
                 num: '4',
-                title: 'Bypassing MS Word (Resume AI)',
-                old: 'Spend 20 minutes copying, pasting, bolding, and formatting a resume to align keywords with the JD.',
-                newWay: 'AI offers to rewrite the resume based on identified skill gaps. Instantly aligns keywords and structures bullet points.',
-                ai: 'A perfectly tailored, ATS-optimized resume generated in 10 seconds. Never open Word again.',
+                title: 'Never Missing the Window (Alerts)',
+                old: 'Refresh your inbox and the boards all day, afraid the hot requirement went out while you were on a call.',
+                newWay: 'Get a notification on your phone (Android app) or browser when a strong match lands, and an email if matches are waiting.',
+                ai: 'You hear about the match first, so you can submit first, not fiftieth.',
               },
               {
                 icon: <Mail size={16} />,
                 num: '5',
-                title: 'Executing the Pitch (Submission Queue)',
+                title: 'Executing the Pitch (AI Submit)',
                 old: 'Open Outlook. Write a generic "Please find attached..." email. Attach the PDF. Hit send.',
-                newWay: 'Push the matched job into your Submission Queue. One click drafts a tailored pitch email with the AI-rewritten resume attached.',
-                ai: 'The JD and resume context are inherently understood, making the pitch bespoke and relevant.',
+                newWay: 'From the match, AI Submit writes the submission with the resume attached, and it sends from your own Gmail.',
+                ai: 'The requirement and the consultant are both understood, so the pitch is specific to the role. Submissions are free and unlimited.',
               },
               {
                 icon: <BarChart2 size={16} />,
                 num: '6',
-                title: 'Securing the Pipeline (Tracker & Desk)',
+                title: 'Securing the Pipeline (The Tracker)',
                 old: 'Manually type every submission, rate, and vendor contact into a shared Excel sheet. Mistakes lead to double-submissions.',
-                newWay: 'Every search, match score, and submission is logged and timestamped automatically. Live CRM builds on autopilot.',
-                ai: 'Total visibility. Your Desk shows exactly which job boards are converting and where your pipeline is bottlenecked.',
+                newWay: 'Every match, request and submission lives in the Tracker, one live column per consultant, shared with your whole team.',
+                ai: 'Inbound resume requests from vendors land in one list with a clear status, so nothing is asked twice.',
               },
             ].map((item) => (
               <div key={item.num} className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
@@ -304,7 +304,7 @@ export default function WhyAICopilot() {
             Ready to see the Co-pilot in action?
           </h3>
           <p className="text-sm text-slate-300 mb-6 max-w-md mx-auto leading-relaxed">
-            Create a free account, claim your $5 in free AI credits, load up your bench, and watch how fast you can clear it.
+            Create a free account with 100 free credits that never expire, paste your hotlist, and watch the matching requirements land.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link

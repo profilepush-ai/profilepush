@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import SEO from '../components/SEO';
 import SiteFooter from '../components/SiteFooter';
 import LandingHeader from './landing/LandingHeader';
+import AndroidApp from './landing/AndroidApp';
 import { useLandingEngine } from './landing/useLandingEngine';
 import { startBench } from './landing/benchEngine';
 import { fmt, fmtDate } from './landing/engine';
@@ -15,15 +16,20 @@ import './landing/bench.css';
 // The markup is static JSX; the motion runs from benchEngine on the root
 // element and stops on unmount.
 
-const TITLE = 'ProfilePush for Bench Sales — Live Requirements Matched to Every Consultant';
-const DESCRIPTION = 'ProfilePush is the AI copilot for bench sales recruiters. Paste your hotlist and every consultant gets a live column of matching requirements. AI Submit writes the email, attaches the resume and sends it from your Gmail. Submissions are free and unlimited.';
+const TITLE = 'ProfilePush for Bench Sales — C2C Requirements, Matched';
+const DESCRIPTION = 'Paste your hotlist and every consultant gets a live column of matching C2C requirements. AI Submit sends from your own Gmail. Submissions are free.';
 const CANONICAL = 'https://profilepush.ai/bench-sales';
 
+// Checked against the app: submissions and posting are free (3 open on the
+// free plan, up to 50 per paste), each Tracker match is 1 credit, screening is
+// billed to the vendor. The FAQPage JSON-LD is built from this list.
 const FAQS = [
+  { q: "How do bench sales recruiters find C2C requirements?", a: "Paste your hotlist. Every new requirement is matched against each consultant, and the fits land in that consultant’s live column, with an alert when a strong one arrives." },
   { q: "How do I find the prime vendors?", a: "Every new requirement is matched against your consultants. The vendors posting what your bench fits show up first, in each consultant’s column." },
   { q: "Do I need to keep checking?", a: "No. You get a notification when strong matches land, and an email if new matches are waiting and you haven’t been back." },
-  { q: "Can I post the whole bench at once?", a: "Yes. Paste the hotlist table. Every consultant on it is read and posted together." },
-  { q: "What does submitting cost?", a: "Nothing. Submissions are free and unlimited. Optional screening credits are charged to the vendor who owns the requirement." },
+  { q: "Can I post the whole bench at once?", a: "Yes. Paste the hotlist table, up to 50 consultants at a time, and every one is read and posted together. The free plan keeps 3 consultants open at once; buying any credit pack removes that limit." },
+  { q: "What does submitting cost?", a: "Nothing. Submissions are free and unlimited, and so is posting. Each new Tracker match costs 1 credit, and an AI Submit draft or a Gmail send costs 1 credit (the send is refunded if it fails). Optional screening credits are charged to the vendor who owns the requirement." },
+  { q: "Is there a mobile app?", a: "Yes. ProfilePush is on Google Play for Android, so match alerts reach your phone. It also runs in any web browser." },
   { q: "Does my consultant need an account?", a: "No, and we never contact them. The screening link goes to you only." },
   { q: "Can I see which skills are in demand?", a: "Yes. Filter every live requirement by skill, rate, visa and location, with a live count on each." },
   { q: "Is my data safe?", a: "Yes. It is encrypted, and never sold or shared. Vendors get no way to contact the consultants on your hotlist." },
@@ -39,7 +45,9 @@ const PAGE_JSONLD = {
       name: TITLE,
       description: DESCRIPTION,
       isPartOf: { '@id': 'https://profilepush.ai/#website' },
-      about: { '@id': 'https://profilepush.ai/#organization' },
+      about: { '@id': 'https://profilepush.ai/#software' },
+      publisher: { '@id': 'https://profilepush.ai/#organization' },
+      audience: { '@type': 'BusinessAudience', audienceType: 'Bench sales recruiters' },
     },
     {
       '@type': 'BreadcrumbList',
@@ -50,6 +58,8 @@ const PAGE_JSONLD = {
     },
     {
       '@type': 'FAQPage',
+      '@id': `${CANONICAL}#faq`,
+      isPartOf: { '@id': `${CANONICAL}#webpage` },
       mainEntity: FAQS.map((f) => ({
         '@type': 'Question',
         name: f.q,
@@ -127,6 +137,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                     </svg>
                   </Link>
                 </div>
+                <AndroidApp source="bench-hero" className="intro d3" />
                 <a className="cue intro d4" href="#paste">
                   {"See how it works "}
                   <span className="ddc" aria-hidden="true">
@@ -787,7 +798,16 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                         </span>
                       </li>
                       <li>
-                        A post
+                        Posting consultants
+                        <span className="c f">
+                          Free
+                          <small>
+                            3 open on the free plan
+                          </small>
+                        </span>
+                      </li>
+                      <li>
+                        Each new Tracker match
                         <span className="c">
                           1 credit
                         </span>
@@ -897,6 +917,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                     </svg>
                   </Link>
                 </div>
+                <AndroidApp source="bench-final" label="Match alerts on your phone" className="fin-app" lazy />
               </div>
             </section>
           </main>

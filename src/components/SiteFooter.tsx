@@ -1,5 +1,8 @@
 import { Link } from 'react-router-dom';
 import Logo from './Logo';
+import { inAndroidApp } from '../lib/android-shell';
+
+const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.profilepush.app';
 
 export default function SiteFooter() {
   return (
@@ -10,19 +13,22 @@ export default function SiteFooter() {
           <div className="col-span-2 sm:col-span-3 md:col-span-1">
             <Logo size="sm" />
             <p className="mt-3 text-xs text-gray-500 leading-relaxed max-w-[220px]">
-              AI copilot for US IT staffing teams — bench sales recruiters and vendor teams — built to 10X placements.
+              AI Copilot for US IT Staffing. Vendors and bench sales, matched on the live market.
             </p>
           </div>
 
-          {/* Product */}
+          {/* Product. The old /#pulse, /#jobs, /#hotlist and /#inbox anchors
+              no longer exist on the homepage; these all resolve. */}
           <div>
             <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-4">Product</p>
             <ul className="space-y-2.5">
-              <li><a href="/#pulse" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Pulse</a></li>
-              <li><a href="/#jobs" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Jobs</a></li>
-              <li><a href="/#hotlist" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Hotlist</a></li>
-              <li><a href="/#inbox" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Inbox</a></li>
+              <li><Link to="/vendors" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">For Vendors</Link></li>
+              <li><Link to="/bench-sales" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">For Bench Sales</Link></li>
               <li><a href="/#tracker" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Tracker</a></li>
+              <li><Link to="/how-it-works" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">How it works</Link></li>
+              {!inAndroidApp() && (
+                <li><a href={PLAY_URL} target="_blank" rel="noopener" data-path="android" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Android app</a></li>
+              )}
             </ul>
           </div>
 
