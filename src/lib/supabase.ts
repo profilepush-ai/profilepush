@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, navigatorLock, NavigatorLockAcquireTimeoutError } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
 const DEFAULT_SUPABASE_URL = 'https://nhwqcqzvotgdngtxulwi.supabase.co';
@@ -43,11 +43,44 @@ async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit): Pro
   return lastResponse!;
 }
 
+// supabase-js guards the stored session with a cross-tab lock and, for
+// loading the session on start-up, waits for it with no timeout at all. Chrome
+// on Android freezes background tabs, and a frozen ProfilePush tab that was
+// holding the lock never releases it — so every new tab sat on the auth
+// spinner forever (seen on /signup for a signed-in phone). Waits that were
+// meant to be unbounded now give up after a few seconds and run anyway; the
+// short "only if free" waits the auto-refresh uses are left exactly as they
+// were, so tabs still don't refresh the token all at once.
+// Once a wait has timed out the holder is almost certainly frozen, so for a
+// while after that the unbounded waits skip the lock instead of each paying
+// the full wait again (start-up makes several in a row).
+const AUTH_LOCK_MAX_WAIT_MS = 3000;
+const AUTH_LOCK_SKIP_MS = 60_000;
+let skipAuthLockUntil = 0;
+
+async function authLock<R>(name: string, acquireTimeout: number, fn: () => Promise<R>): Promise<R> {
+  if (acquireTimeout >= 0) return navigatorLock(name, acquireTimeout, fn);
+  if (Date.now() < skipAuthLockUntil) return fn();
+  try {
+    return await navigatorLock(name, AUTH_LOCK_MAX_WAIT_MS, fn);
+  } catch (error) {
+    // An aborted wait surfaces as the browser's AbortError, not supabase's own
+    // timeout error, so both count as "gave up waiting".
+    const timedOut = error instanceof NavigatorLockAcquireTimeoutError || (error as { name?: string } | null)?.name === 'AbortError';
+    if (timedOut) {
+      skipAuthLockUntil = Date.now() + AUTH_LOCK_SKIP_MS;
+      return fn();
+    }
+    throw error;
+  }
+}
+
 export const supabase = createClient<Database>(
   supabaseUrl,
   supabaseAnonKey,
   {
   global: { fetch: fetchWithRetry },
+  auth: { lock: authLock },
   }
 );
 export async function buildSupabaseFunctionHeaders(getSession: () => Promise<{ data: { session: { access_token?: string | null } | null } }>) {
