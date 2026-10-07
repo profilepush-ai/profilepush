@@ -104,7 +104,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                     AI Copilot for
                     <br />
                     <span className="gv">
-                      US IT Staffing.
+                      Vendors.
                     </span>
                   </span>
                   {' '}
@@ -112,7 +112,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                     AI Copilot for
                     <br />
                     <span className="gb">
-                      US IT Staffing.
+                      Bench Sales.
                     </span>
                   </span>
                   {' '}
