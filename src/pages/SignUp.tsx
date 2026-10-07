@@ -96,6 +96,9 @@ const DEFAULT_COUNTRY = COUNTRIES[0];
 // A new account lands on AI Match: paste a consultant or a job and the first
 // thing that happens is matches, which is also what posts their first post.
 const DEFAULT_SIGNUP_REDIRECT = '/match';
+// Where an existing account goes when it signs in from this page (as on /signin).
+const EXISTING_USER_REDIRECT = '/home';
+const NEW_USER_WINDOW_MS = 10 * 60 * 1000;
 const DEFAULT_GOOGLE_CLIENT_ID = '643376526329-3dtoi5no98bdopoe7pj1bqeeefcfbi65.apps.googleusercontent.com';
 
 type GoogleCredentialResponse = {
@@ -297,20 +300,24 @@ export default function SignUp() {
     }
 
     const user = (await supabase.auth.getUser()).data.user;
+    // Google signs in an existing account from this button just as it creates
+    // a new one. Only a login created moments ago is a sign-up: anyone else
+    // gets no welcome email or signup event, and lands where sign-in sends them.
+    const isNewUser = Boolean(user?.created_at && Date.now() - new Date(user.created_at).getTime() < NEW_USER_WINDOW_MS);
     if (user) {
       await ensureAccountForUser(user);
 
       void sendSignupWebhook(buildSignupWebhookPayload({
-        action: 'google oauth signup',
+        action: isNewUser ? 'google oauth signup' : 'google oauth sign in',
         userId: user.id,
         email: user.email ?? '',
         fullName: user.user_metadata?.full_name ?? user.user_metadata?.name ?? '',
         provider: 'google',
       }));
-      void sendWelcomeEmail();
+      if (isNewUser) void sendWelcomeEmail();
     }
 
-    navigate(DEFAULT_SIGNUP_REDIRECT, { replace: true });
+    navigate(isNewUser ? DEFAULT_SIGNUP_REDIRECT : EXISTING_USER_REDIRECT, { replace: true });
   }, [navigate]);
 
   useEffect(() => {

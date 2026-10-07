@@ -107,6 +107,14 @@ Deno.serve(async (request: Request) => {
     const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
     if (userError || !user || !user.email) return respond({ error: "Unauthorized" }, 401);
 
+    // Welcome only a login created in the last day. The sign-up page's Google
+    // button also signs existing users in, and an account that has been around
+    // for months should never be greeted as new.
+    const createdAt = user.created_at ? new Date(user.created_at).getTime() : 0;
+    if (!createdAt || Date.now() - createdAt > 24 * 60 * 60 * 1000) {
+      return respond({ skipped: "existing user" });
+    }
+
     const fullName = typeof user.user_metadata?.full_name === "string"
       ? user.user_metadata.full_name
       : typeof user.user_metadata?.name === "string"
