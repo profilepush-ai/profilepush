@@ -5,6 +5,10 @@
 //   SUPABASE_SERVICE_ROLE_KEY=... node scripts/website-build-list.mjs \
 //     [--csv vendors.csv --csv bench-sales.csv] [--checks results.jsonl]
 //
+//   SUPABASE_SERVICE_ROLE_KEY=... node scripts/website-build-list.mjs --fix-names
+//     re-derives every row's company name from its stored name and site title
+//     (no sites are fetched) and saves the ones that change.
+//
 // --csv     extra contact lists (columns include "email" and "company")
 // --checks  reuse website-check results (JSON lines from a previous run)
 //           instead of fetching every site again; missing domains are checked.
@@ -21,6 +25,53 @@ const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'applic
 
 const FREE = new Set(['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'aol.com', 'live.com', 'protonmail.com', 'proton.me', 'ymail.com', 'rediffmail.com', 'msn.com', 'me.com', 'zoho.com', 'mail.com', 'gmx.com', 'yahoo.co.in', 'googlemail.com', 'zohomail.in', 'zohomail.com', 'yandex.com', 'qq.com', '163.com']);
 const DOMAIN = /^[a-z0-9.-]+\.[a-z]{2,}$/;
+
+// A firm's display name. Contact lists often hold the client a person works
+// at (Genpact, "Direct Client"), and titles can be "Home" or a Cloudflare
+// page, so only a candidate that resembles the domain is trusted; otherwise
+// the name comes from the domain itself (adaminfotech.com → Adaminfotech).
+const JUNK = /^(home|homepage|welcome|index|about( us)?|our story|contact( us)?|coming soon|under construction|just a moment\.*|attention required!?|access denied|you are being redirected\.*|not specified|confidential|direct client|consultant|n\/?a|none|web app|site not found|page not found|404.*|403.*|default.*|parked.*|domain.*|account suspended|loading\.*)$/i;
+const squash = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+function resembles(name, domain) {
+  const k = squash(domain.split('.')[0]).replace(/(inc|llc|corp|usa|group|tech|global)$/, '') || squash(domain.split('.')[0]);
+  const n = squash(name);
+  if (n.length < 2 || k.length < 2) return false;
+  const p = Math.min(4, k.length);
+  return n.includes(k.slice(0, p)) || k.includes(n.slice(0, Math.min(4, n.length)));
+}
+export function nameFor(domain, candidates) {
+  const parts = candidates.flatMap(c => (c || '').replace(/&#?[a-z0-9]+;/gi, ' ').split(/\s+[|–—-]\s+|\s*[|:]\s+|\s*\|\s*/))
+    .map(c => c.replace(/\s+/g, ' ').trim().slice(0, 120))
+    .filter(c => c && !JUNK.test(c) && c.split(' ').length <= 8);
+  const hit = parts.find(c => resembles(c, domain));
+  if (hit) return hit;
+  const base = domain.split('.')[0].replace(/[-_]+/g, ' ');
+  return base.replace(/\b\w/g, ch => ch.toUpperCase());
+}
+
+if (argv.includes('--fix-names')) {
+  const all = [];
+  for (let offset = 0; ; offset += 1000) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/website_build_list?select=domain,company,title&order=domain&limit=1000&offset=${offset}`, { headers: H });
+    const page = await r.json();
+    all.push(...page);
+    if (page.length < 1000) break;
+  }
+  const changes = all.map(r => ({ domain: r.domain, from: r.company, to: nameFor(r.domain, [r.company, r.title]) })).filter(c => c.to !== c.from);
+  let k = 0, failed = 0;
+  await Promise.all(Array.from({ length: 16 }, async () => {
+    while (k < changes.length) {
+      const c = changes[k++];
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/website_build_list?domain=eq.${encodeURIComponent(c.domain)}`, {
+        method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify({ company: c.to }),
+      });
+      if (!r.ok) failed++;
+    }
+  }));
+  console.log(`rows ${all.length}, names changed ${changes.length}, failed ${failed}`);
+  for (const c of changes.slice(0, 15)) console.log(`  ${c.domain}: ${JSON.stringify(c.from)} → ${JSON.stringify(c.to)}`);
+  process.exit(0);
+}
 
 // 1. Domains from the database, with activity. The API returns at most
 // 1,000 rows per request, so page through them.
@@ -106,7 +157,7 @@ for (const r of rows.values()) {
   const title = (c.title || '').replace(/&#?[a-z0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
   entries.push({
     domain: r.domain,
-    company: r.company || (title ? title.split(/\s[|–—-]\s/)[0].slice(0, 120) : null),
+    company: nameFor(r.domain, [r.company, title]),
     side, is_user: !!r.is_user, user_persona: r.user_persona ?? null,
     hotlist_posts: Number(r.hotlist_posts) || 0, job_posts: Number(r.job_posts) || 0, sources: r.sources,
     site_status, http_status: c.status || null, final_host: c.final_host || null, words: c.words || 0,
