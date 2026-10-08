@@ -134,6 +134,64 @@ function asBoolean(value: unknown): boolean {
   return value === true || (typeof value === "string" && value.toLowerCase() === "true");
 }
 
+// Market fields from the parser. Each is normalised to a small, known shape and
+// anything else becomes null, so an odd model answer is stored as "unknown"
+// rather than failing the insert.
+const COUNTRY_ALIASES: Record<string, string> = { UK: "GB", USA: "US", UAE: "AE", KSA: "SA" };
+function normalizeCountry(value: unknown): string | null {
+  const raw = asString(value).trim().toUpperCase().replace(/\./g, "");
+  const code = COUNTRY_ALIASES[raw] ?? raw;
+  return /^[A-Z]{2}$/.test(code) ? code : null;
+}
+
+function normalizeJobCategory(value: unknown): string | null {
+  const raw = asString(value).trim().toLowerCase().replace(/[\s_]+/g, "-");
+  if (raw === "it") return "IT";
+  if (raw === "non-it" || raw === "nonit") return "Non-IT";
+  return null;
+}
+
+function normalizeCurrency(value: unknown): string | null {
+  const raw = asString(value).trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(raw) ? raw : null;
+}
+
+const PAY_PERIODS: Record<string, string> = {
+  hour: "hour", hourly: "hour", hr: "hour",
+  day: "day", daily: "day",
+  week: "week", weekly: "week",
+  month: "month", monthly: "month",
+  year: "year", yearly: "year", annual: "year", annually: "year", annum: "year",
+};
+function normalizePayPeriod(value: unknown): string | null {
+  return PAY_PERIODS[asString(value).trim().toLowerCase().replace(/^(per|a|an)\s+/, "")] ?? null;
+}
+
+function normalizePayAmount(value: unknown): number | null {
+  const amount = asNumberOrNull(value);
+  return amount != null && amount > 0 && amount < 10_000_000 ? amount : null;
+}
+
+// hourly_rate_* mean a US-dollar hourly rate everywhere they are shown (the
+// "$/hr" chips and median rates). When the post states its pay in another
+// currency or per day/week/month/year, the hourly fields are cleared so a
+// "£600/day" never displays as "$600/hr"; the stated pay is kept in pay_*.
+function marketFieldsForJob(result: Record<string, unknown>) {
+  const payCurrency = normalizeCurrency(result.pay_currency);
+  const payPeriod = normalizePayPeriod(result.pay_period);
+  const notUsdHourly = (payCurrency != null && payCurrency !== "USD") || (payPeriod != null && payPeriod !== "hour");
+  return {
+    country: normalizeCountry(result.country),
+    job_category: normalizeJobCategory(result.job_category),
+    pay_min: normalizePayAmount(result.pay_min),
+    pay_max: normalizePayAmount(result.pay_max),
+    pay_currency: payCurrency,
+    pay_period: payPeriod,
+    extracted_hourly_rate_min: notUsdHourly ? null : asNumberOrNull(result.hourly_rate_min),
+    extracted_hourly_rate_max: notUsdHourly ? null : asNumberOrNull(result.hourly_rate_max),
+  };
+}
+
 function isExplicitDemandSideJobPost(content: string): boolean {
   const text = content.toLowerCase().replace(/\s+/g, " ");
   const supplySignals = [
@@ -280,8 +338,7 @@ async function classifySocialJobs(
         extracted_skills: coreSkills,
         extracted_experience_years: asNumberOrNull(result.years_experience),
         extracted_visa_types: asStringArray(result.visa_types),
-        extracted_hourly_rate_min: asNumberOrNull(result.hourly_rate_min),
-        extracted_hourly_rate_max: asNumberOrNull(result.hourly_rate_max),
+        ...marketFieldsForJob(result),
       });
     }
 
@@ -327,6 +384,8 @@ async function persistSocialHotlists(
       bench_sales_company_name: asString(result.bench_sales_company_name).trim(),
       recruiter_profile_link: asString(source.profile_link),
       bench_sales_recruiter_avatar_url: asString(source.avatar_url),
+      country: normalizeCountry(result.country),
+      job_category: normalizeJobCategory(result.job_category),
     };
     sourceCandidateCounts.push({ platform, sourcePostId, candidateCount: consultantCount });
     const sourceImageUrls = asStringArray(result.source_image_urls);
