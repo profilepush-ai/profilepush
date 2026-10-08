@@ -267,7 +267,12 @@ const DEFAULT_JOB_EXTRACT_INSTRUCTIONS = `Classify each input as a genuine job p
 Return one result per input job and preserve job_id from input. If a field is unknown, use null (or [] for arrays).
 Set is_job_posting=true only when the text advertises a specific open role with enough actionable details to apply. Reject resumes, candidate marketing, generic staffing promotions, discussions, event posts, news, and vague hiring claims.`;
 
-const JOB_EXTRACT_FIELDS = "For each job include: job_id, is_job_posting (boolean), confidence (0 to 1), rejection_reason (string or null), role_title, company_name, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null).";
+// The market fields (country, job_category, pay_*) let posts from outside US
+// IT be told apart. hourly_rate_* keep their original meaning; pay_* carry the
+// rate exactly as stated (a UK day rate in GBP, a Gulf monthly salary in AED).
+const JOB_EXTRACT_FIELDS = "For each job include: job_id, is_job_posting (boolean), confidence (0 to 1), rejection_reason (string or null), role_title, company_name, core_skills (array max 12), years_experience (number or null), visa_types (array), employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null), " +
+  "country (two-letter ISO code of the country where the role is based, e.g. US, CA, GB, AU, AE, SA, QA, IN; null if not clear), job_category (IT or Non-IT: IT covers every technology role, including business analysts, project and program managers, QA, data, ERP/CRM and IT support; Non-IT covers healthcare, engineering outside software, finance and accounting, sales, admin and other roles), " +
+  "pay_min (number or null), pay_max (number or null), pay_currency (three-letter code such as USD, GBP, CAD, AUD, EUR, AED, SAR, INR; null if not stated), pay_period (hour/day/week/month/year or null).";
 
 function buildJobPrompt(jobs: JobInput[], instructions: string) {
   const blocks = jobs
@@ -301,13 +306,17 @@ Strict rules:
 6. Ignore incidental or promotional hashtags such as #Hiring, #Recruitment, #Jobs, #Hotlist, and #C2C when the prose clearly establishes the opposite direction.
 7. If a post genuinely contains both open requirements and available consultants, classify it as job unless the primary body is clearly an inventory list of represented, currently available consultants.
 8. Never classify a post as hotlist merely because it accepts C2C candidates or mentions visa types.
+9. These rules apply in every country and to IT and non-IT roles alike. Local terms such as day rate, IR35, umbrella, ABN, visa transfer, Iqama, immediate joiner, travel nurse, or per diem do not change the category by themselves.
 
 Examples:
 - "Urgent Java Developer requirement. 8+ years, H1B okay, Dallas. Send resumes" => job.
 - "Hiring multiple consultants: Java, QA, BA. Please submit suitable candidates" => job.
 - "I have Java and QA consultants on my bench, immediately available. Please share C2C requirements" => hotlist.
 - "Updated hotlist: Salesforce Developer - 6 years - OPT - TX; .NET Developer - 10 years - H1B - TX" => hotlist, even if it ends with #Hiring.
-- "Senior Java developer open to work; contact me" describing one person's own resume => other, not hotlist.`;
+- "Senior Java developer open to work; contact me" describing one person's own resume => other, not hotlist.
+- "Contract Data Engineer, London, 6 months, £600/day outside IR35. Send your CV" => job.
+- "Available candidates in UAE for immediate deployment: SAP FICO - 8 yrs - visa transfer; Network Engineer - 6 yrs - visit visa" => hotlist.
+- "Travel RN, ICU, 13 weeks, Dallas TX, $2,400/week. Email your resume" => job.`;
 
 const CLASSIFY_FIELDS = "Preserve post_id exactly. Include: post_id, post_type (job/hotlist/other), confidence (0 to 1), reason.";
 
@@ -334,9 +343,10 @@ Determine whether the post advertises one consultant or multiple consultants bef
 - Multiple advertised consultants => consultant_count equals the number of distinct advertised consultant entries, post_scope="multiple", and exactly one candidates item per entry.
 - Never combine separate list entries into one candidate. If two consultants have the same role title but different experience, visa, location, name, or other attributes, preserve them as separate candidates.
 - Do not split one consultant into multiple candidates merely because multiple skills or preferred locations are listed.
-- Recruiter name, email, phone, and company describe the post owner and must be returned once at the result level, never guessed separately per candidate.`;
+- Recruiter name, email, phone, and company describe the post owner and must be returned once at the result level, never guessed separately per candidate.
+- country and job_category describe the post as a whole and are returned once at the result level.`;
 
-const HOTLIST_EXTRACT_FIELDS = `For each result include: post_id, is_hotlist (boolean), confidence (0 to 1), rejection_reason (string or null), consultant_count (integer), post_scope (single/multiple), bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_company_name, and candidates.
+const HOTLIST_EXTRACT_FIELDS = `For each result include: post_id, is_hotlist (boolean), confidence (0 to 1), rejection_reason (string or null), consultant_count (integer), post_scope (single/multiple), bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_company_name, country (two-letter ISO code of the country where the consultants are located or being marketed, e.g. US, CA, GB, AU, AE, SA, IN; null if not clear), job_category (IT or Non-IT, with business analysts and project managers counted as IT), and candidates.
 Each candidates item must include: candidate_index (zero-based), candidate_name, role_title, core_skills (array max 12), years_experience (number or null), visa_type, employment_type (C2C/W2/Full-time/Contract/Any), work_type (Remote/Hybrid/Onsite/Unknown), locations (array), hourly_rate_min (number or null), hourly_rate_max (number or null), availability, and candidate_summary.
 Use null for unknown scalar values and [] for unknown arrays. Candidate summary must only restate facts explicitly present in the post.`;
 
