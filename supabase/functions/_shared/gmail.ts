@@ -88,16 +88,25 @@ export function isSafeReturnPath(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 500 && /^\/(?!\/)[A-Za-z0-9\-._~/?=&%]*$/.test(value);
 }
 
+/** Where the app may be running: the site, its preview builds, and local development. */
+export function isAllowedAppOrigin(value: unknown): value is string {
+  return typeof value === "string" && (
+    /^https:\/\/(www\.)?profilepush\.ai$/.test(value)
+    || /^https:\/\/[a-z0-9-]+\.profilepush\.pages\.dev$/.test(value)
+    || /^http:\/\/(localhost|127\.0\.0\.1):\d{2,5}$/.test(value)
+  );
+}
+
 /** Signed, short-lived state param carrying who initiated the OAuth flow and where to send them back — verified on callback since Google redirects the browser there with no Supabase session header. */
-export async function signOAuthState(userId: string, accountId: string, returnTo?: string | null): Promise<string> {
+export async function signOAuthState(userId: string, accountId: string, returnTo?: string | null, returnOrigin?: string | null): Promise<string> {
   const secret = Deno.env.get("GMAIL_STATE_SIGNING_SECRET")!;
-  const payload = JSON.stringify({ userId, accountId, returnTo: returnTo ?? null, nonce: crypto.randomUUID(), issuedAt: Date.now() });
+  const payload = JSON.stringify({ userId, accountId, returnTo: returnTo ?? null, returnOrigin: returnOrigin ?? null, nonce: crypto.randomUUID(), issuedAt: Date.now() });
   const encodedPayload = base64UrlEncode(new TextEncoder().encode(payload));
   const signature = await hmacHex(secret, encodedPayload);
   return `${encodedPayload}.${signature}`;
 }
 
-export async function verifyOAuthState(state: string): Promise<{ userId: string; accountId: string; returnTo: string | null } | null> {
+export async function verifyOAuthState(state: string): Promise<{ userId: string; accountId: string; returnTo: string | null; returnOrigin: string | null } | null> {
   const [encodedPayload, signature] = state.split(".");
   if (!encodedPayload || !signature) return null;
   const secret = Deno.env.get("GMAIL_STATE_SIGNING_SECRET")!;
@@ -105,10 +114,15 @@ export async function verifyOAuthState(state: string): Promise<{ userId: string;
   if (!timingSafeEqual(expected, signature)) return null;
   try {
     const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(encodedPayload))) as
-      { userId: string; accountId: string; returnTo?: string | null; issuedAt: number };
+      { userId: string; accountId: string; returnTo?: string | null; returnOrigin?: string | null; issuedAt: number };
     if (Date.now() - payload.issuedAt > OAUTH_STATE_MAX_AGE_MS) return null;
     if (!payload.userId || !payload.accountId) return null;
-    return { userId: payload.userId, accountId: payload.accountId, returnTo: isSafeReturnPath(payload.returnTo) ? payload.returnTo : null };
+    return {
+      userId: payload.userId,
+      accountId: payload.accountId,
+      returnTo: isSafeReturnPath(payload.returnTo) ? payload.returnTo : null,
+      returnOrigin: isAllowedAppOrigin(payload.returnOrigin) ? payload.returnOrigin : null,
+    };
   } catch {
     return null;
   }

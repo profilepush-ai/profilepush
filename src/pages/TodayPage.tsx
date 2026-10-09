@@ -179,7 +179,7 @@ export default function TodayPage() {
   const connectGmail = async () => {
     if (!accountId) return;
     setConnecting(true);
-    const { data, error: e } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: accountId, return_to: '/today' } });
+    const { data, error: e } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: accountId, return_to: '/today', return_origin: window.location.origin } });
     if (e || !data?.url) { setError(data?.error || 'Could not start Gmail connection'); setConnecting(false); return; }
     window.location.href = data.url;
   };
