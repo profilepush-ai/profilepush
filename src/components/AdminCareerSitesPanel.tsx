@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, ExternalLink, Pencil, Play, Plus, RefreshCcw, Trash2, X } from 'lucide-react';
+import { Briefcase, Building2, ExternalLink, Pencil, Play, Plus, RefreshCcw, Trash2, X } from 'lucide-react';
 import LogoSpinner from './LogoSpinner';
 import { supabase } from '../lib/supabase';
 
@@ -85,7 +85,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-export default function AdminCareerSitesPanel() {
+export default function AdminCareerSitesPanel({ onViewJobs }: { onViewJobs?: (slug: string) => void }) {
   const [sites, setSites] = useState<Site[]>([]);
   const [overview, setOverview] = useState<Record<string, Overview>>({});
   const [runs, setRuns] = useState<Run[]>([]);
@@ -294,6 +294,9 @@ export default function AdminCareerSitesPanel() {
                           >
                             {busySlug === site.slug ? <LogoSpinner size={11} /> : <Play size={12} />}
                           </button>
+                          {onViewJobs && (
+                            <button onClick={() => onViewJobs(site.slug)} title="View jobs" className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-600 hover:bg-gray-100"><Briefcase size={12} /></button>
+                          )}
                           <button onClick={() => openEdit(site)} title="Edit" className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-600 hover:bg-gray-100"><Pencil size={12} /></button>
                           {site.kind !== 'builtin' && (
                             <button
