@@ -447,7 +447,7 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/gmail-oauth-callback/index.ts"
 
-# Called by the career-sites-scraper Cloudflare worker with SOCIAL_WEBHOOK_SECRET.
+# Called by the career-sites-scraper Cloudflare worker with CAREER_SITES_SECRET.
 [functions.receive-career-jobs]
 enabled = true
 verify_jwt = false

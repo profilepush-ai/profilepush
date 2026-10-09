@@ -1,11 +1,17 @@
 import { Budget } from "./http";
-import type { Adapter, CareerJob } from "./types";
+import type { Adapter, CareerJob, ListingItem } from "./types";
 import { teksystems } from "./adapters/teksystems";
 import { judge } from "./adapters/judge";
+import { apex } from "./adapters/apex";
+import { kforce } from "./adapters/kforce";
+import { randstad } from "./adapters/randstad";
+import { insightglobal } from "./adapters/insightglobal";
+import { pyramid } from "./adapters/pyramid";
+import { diverselynx, mindlance } from "./adapters/jobdiva";
 
 interface Env {
   SUPABASE_URL: string;
-  SOCIAL_WEBHOOK_SECRET: string;
+  CAREER_SITES_SECRET: string;
   RUN_TOKEN?: string;
   ENABLED_PRIMES: string;
   FULL_SYNC_HOUR_UTC: string;
@@ -15,14 +21,16 @@ interface Env {
 
 type ScrapeMessage = { prime: string; full: boolean };
 
-const ADAPTERS: Record<string, Adapter> = { teksystems, judge };
-const SUBREQUEST_BUDGET = 850; // per invocation (one prime per invocation)
+const ADAPTERS: Record<string, Adapter> = { teksystems, judge, apex, kforce, randstad, insightglobal, pyramid, diverselynx, mindlance };
+// Outbound fetches to job sites per invocation (one prime per invocation);
+// the calls to Supabase come on top, inside the platform limit of 1,000.
+const SUBREQUEST_BUDGET = 650;
 const UPSERT_BATCH = 4;
 
 async function callReceiver(env: Env, body: unknown) {
   const res = await fetch(`${env.SUPABASE_URL}/functions/v1/receive-career-jobs`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.SOCIAL_WEBHOOK_SECRET}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.CAREER_SITES_SECRET}` },
     body: JSON.stringify(body),
   });
   const payload = await res.json().catch(() => ({})) as Record<string, unknown>;
@@ -38,8 +46,9 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
   const wantsFull = full || adapter.alwaysComplete;
 
   const allIds: string[] = [];
-  const pending: Array<{ id: string; url: string; job?: CareerJob }> = [];
+  const pending: ListingItem[] = [];
   let listingFinished = false;
+  let partial = false;
   let closed = 0;
 
   try {
@@ -48,6 +57,7 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
       const next = await pages.next();
       if (next.done) { listingFinished = true; break; }
       const items = next.value.items;
+      partial ||= Boolean(next.value.partial);
       allIds.push(...items.map((i) => i.id));
       if (adapter.alwaysComplete) { pending.push(...items); continue; }
       const { unknown } = await callReceiver(env, { action: "sync", prime: slug, ids: items.map((i) => i.id), complete: false }) as { unknown: string[] };
@@ -62,12 +72,27 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
 
   let toProcess = pending;
   if (adapter.alwaysComplete || (wantsFull && listingFinished)) {
-    const res = await callReceiver(env, { action: "sync", prime: slug, ids: allIds, complete: listingFinished }) as { unknown: string[]; closed: number };
+    const res = await callReceiver(env, { action: "sync", prime: slug, ids: allIds, complete: listingFinished && !partial }) as { unknown: string[]; closed: number };
     closed = res.closed ?? 0;
     if (adapter.alwaysComplete) {
       const isNew = new Set(res.unknown);
       toProcess = pending.filter((i) => isNew.has(i.id));
     }
+  }
+
+  // Titles that are clearly not IT are recorded by the receiver and never
+  // fetched; only the rest get a detail-page fetch.
+  const needDetail = toProcess.filter((i) => !i.job && i.title);
+  let skippedByTitle = 0;
+  if (needDetail.length > 0) {
+    const keep = new Set<string>();
+    for (let i = 0; i < needDetail.length; i += 300) {
+      const chunk = needDetail.slice(i, i + 300);
+      const r = await callReceiver(env, { action: "triage", prime: slug, items: chunk.map((x) => ({ id: x.id, url: x.url, title: x.title })) }) as { keep: string[] };
+      for (const id of r.keep ?? []) keep.add(id);
+    }
+    skippedByTitle = needDetail.length - keep.size;
+    toProcess = toProcess.filter((i) => i.job || !i.title || keep.has(i.id));
   }
 
   const batch: CareerJob[] = [];
@@ -98,7 +123,7 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
   }
   await flush();
 
-  const summary = { prime: slug, full: wantsFull, listed: allIds.length, listingFinished, newFound: toProcess.length, processed: Math.min(toProcess.length, maxNew), fetched, failed, accepted, rejected, closed, budgetLeft: budget.remaining };
+  const summary = { prime: slug, full: wantsFull, listed: allIds.length, listingFinished, newFound: toProcess.length + skippedByTitle, skippedByTitle, processed: Math.min(toProcess.length, maxNew), fetched, failed, accepted, rejected, closed, budgetLeft: budget.remaining };
   console.log(JSON.stringify(summary));
   return summary;
 }

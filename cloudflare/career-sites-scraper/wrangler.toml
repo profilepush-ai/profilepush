@@ -11,13 +11,13 @@ crons = ["5 * * * *"]
 [vars]
 SUPABASE_URL = "https://nhwqcqzvotgdngtxulwi.supabase.co"
 # Comma-separated adapter slugs to run.
-ENABLED_PRIMES = "teksystems,judge"
+ENABLED_PRIMES = "teksystems,judge,apex,kforce,randstad,insightglobal,pyramid,diverselynx,mindlance"
 FULL_SYNC_HOUR_UTC = "6"
 # New listings fetched/parsed per prime per run (spreads the first backfill).
 MAX_NEW_PER_RUN = "60"
 
 # Secrets (wrangler secret put):
-#   SOCIAL_WEBHOOK_SECRET  same value as the Supabase function secret
+#   CAREER_SITES_SECRET  same value as the Supabase function secret
 #   RUN_TOKEN              bearer token for manual runs via POST /run
 
 # One message per prime so each prime runs in its own invocation.

@@ -17,10 +17,23 @@ export type CareerJob = {
   description?: string | null;
 };
 
+export type ListingItem = {
+  id: string;
+  url: string;
+  // Listing title, when known before the detail fetch: lets clearly non-IT
+  // jobs be skipped without fetching their pages.
+  title?: string;
+  job?: CareerJob;
+  // Adapter-specific data carried from the listing to detail().
+  extra?: unknown;
+};
+
 export type ListingPage = {
   // Listings on this page. `job` is present when the listing already carries
   // the full record (API sources); otherwise `detail` is called for new ones.
-  items: Array<{ id: string; url: string; job?: CareerJob }>;
+  items: Array<ListingItem>;
+  // Some listings could not be read: the run must not close missing jobs.
+  partial?: boolean;
 };
 
 export interface Adapter {
@@ -29,5 +42,5 @@ export interface Adapter {
   // it pages newest-first and can stop early on an incremental run.
   alwaysComplete: boolean;
   list(budget: Budget, full: boolean): AsyncGenerator<ListingPage>;
-  detail?(item: { id: string; url: string }, budget: Budget): Promise<CareerJob | null>;
+  detail?(item: ListingItem, budget: Budget): Promise<CareerJob | null>;
 }

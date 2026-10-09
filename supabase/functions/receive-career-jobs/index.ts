@@ -75,17 +75,24 @@ function stateCode(job: CareerJob): string | null {
   return STATES[s.toLowerCase()] ?? null;
 }
 
+function titleReason(rawTitle: unknown): string | null {
+  const title = str(rawTitle);
+  if (!title) return "no title";
+  if (NON_IT_TITLE.test(title) && !STRONG_IT.test(title)) return "not IT";
+  if (!IT_TITLE.test(title)) return "not IT";
+  return null;
+}
+
 function rejectionReason(job: CareerJob): string | null {
   const country = str(job.country).toLowerCase();
   if (country && !["us", "usa", "united states", "united states of america"].includes(country)) return "not US";
   if (!country && !stateCode(job) && !job.remote) return "not US";
+  const byTitle = titleReason(job.title);
+  if (byTitle) return byTitle;
   const title = str(job.title);
-  if (!title) return "no title";
-  if (NON_IT_TITLE.test(title) && !STRONG_IT.test(title)) return "not IT";
-  if (!IT_TITLE.test(title)) return "not IT";
   const et = str(job.employment_type).toUpperCase();
   const contractType = /CONTRACT|TEMPORARY|TEMP/.test(et);
-  const permanentType = /FULL[_ -]?TIME|PERMANENT|DIRECT/.test(et) && !contractType;
+  const permanentType = /FULL[_ -]?TIME|PERMANENT|\bPERM\b|DIRECT/.test(et) && !contractType;
   if (permanentType) return "not contract";
   if (!contractType && !CONTRACT_TEXT.test(`${title} ${str(job.description).slice(0, 1500)}`)) return "not contract";
   return null;
@@ -137,7 +144,7 @@ async function extract(jobs: Array<{ id: string; title: string; description: str
 }
 
 Deno.serve(async (req: Request) => {
-  const expected = Deno.env.get("SOCIAL_WEBHOOK_SECRET") ?? "";
+  const expected = Deno.env.get("CAREER_SITES_SECRET") ?? "";
   if (req.method !== "POST" || !expected || getBearerToken(req) !== expected) return respond({ error: "Unauthorized" }, 401);
 
   const body = await req.json().catch(() => ({}));
@@ -180,6 +187,26 @@ Deno.serve(async (req: Request) => {
       closed = gone.length;
     }
     return respond({ unknown, closed, reopened: reopen.length });
+  }
+
+  // Before fetching job pages: which listing titles are worth a fetch. Clearly
+  // non-IT titles are recorded as rejected so they are never fetched again.
+  if (body.action === "triage") {
+    const items = (Array.isArray(body.items) ? body.items : []) as Array<{ id: string; url: string; title: string }>;
+    const now = new Date().toISOString();
+    const keep: string[] = [];
+    const ledger: Array<Record<string, unknown>> = [];
+    for (const item of items.slice(0, 500)) {
+      if (!str(item.id) || !str(item.url)) continue;
+      const reason = titleReason(item.title);
+      if (reason) ledger.push({ prime: slug, source_id: item.id, url: item.url, status: "rejected", reason, last_seen_at: now });
+      else keep.push(item.id);
+    }
+    if (ledger.length > 0) {
+      const { error } = await supabase.from("career_site_jobs").upsert(ledger, { onConflict: "prime,source_id" });
+      if (error) return respond({ error: error.message }, 500);
+    }
+    return respond({ keep });
   }
 
   if (body.action === "upsert") {
