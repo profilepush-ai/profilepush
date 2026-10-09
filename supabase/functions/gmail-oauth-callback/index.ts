@@ -6,8 +6,8 @@ import { encryptToken, verifyOAuthState } from "../_shared/gmail.ts";
 // Supabase session/Authorization header available. Identity is instead recovered from
 // the signed `state` param minted by gmail-oauth-start.
 
-function redirectToApp(status: "connected" | "error", returnTo?: string | null, detail?: string) {
-  const appUrl = Deno.env.get("GMAIL_OAUTH_APP_URL")!;
+function redirectToApp(status: "connected" | "error", returnTo?: string | null, detail?: string, returnOrigin?: string | null) {
+  const appUrl = returnOrigin || Deno.env.get("GMAIL_OAUTH_APP_URL")!;
   const url = new URL(returnTo || "/account", appUrl);
   if (!returnTo) url.searchParams.set("section", "integrations");
   url.searchParams.set("gmail", status);
@@ -30,11 +30,13 @@ Deno.serve(async (request) => {
   // user back to where they started even if a later step throws — state
   // verification is the only step that can recover this value.
   let returnTo: string | null = null;
+  let returnOrigin: string | null = null;
 
   try {
     const verified = await verifyOAuthState(state);
     if (!verified) return redirectToApp("error", null, "invalid_state");
     returnTo = verified.returnTo;
+    returnOrigin = verified.returnOrigin;
 
     const clientId = Deno.env.get("GMAIL_OAUTH_CLIENT_ID")!;
     const clientSecret = Deno.env.get("GMAIL_OAUTH_CLIENT_SECRET")!;
@@ -63,7 +65,7 @@ Deno.serve(async (request) => {
       // A user re-connecting without Google prompting for consent again won't receive
       // a refresh_token; access_type=offline + prompt=consent on the start side avoids
       // this in the normal flow, but surface a clear error if it happens anyway.
-      return redirectToApp("error", returnTo, tokenPayload.error ?? "token_exchange_failed");
+      return redirectToApp("error", returnTo, tokenPayload.error ?? "token_exchange_failed", returnOrigin);
     }
 
     // Google's consent screen lets a user expand "Show all services" and
@@ -77,7 +79,7 @@ Deno.serve(async (request) => {
     // finished connecting).
     const grantedScopes = new Set((tokenPayload.scope ?? "").split(/\s+/).filter(Boolean));
     if (!grantedScopes.has("https://www.googleapis.com/auth/gmail.send")) {
-      return redirectToApp("error", returnTo, "gmail_send_scope_not_granted");
+      return redirectToApp("error", returnTo, "gmail_send_scope_not_granted", returnOrigin);
     }
 
     const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -86,7 +88,7 @@ Deno.serve(async (request) => {
     });
     const userInfo = await userInfoResponse.json().catch(() => ({})) as { email?: string };
     const gmailAddress = (userInfo.email ?? "").trim().toLowerCase();
-    if (!userInfoResponse.ok || !gmailAddress) return redirectToApp("error", returnTo, "could_not_read_gmail_address");
+    if (!userInfoResponse.ok || !gmailAddress) return redirectToApp("error", returnTo, "could_not_read_gmail_address", returnOrigin);
 
     const encryptionKey = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY")!;
     const [encryptedAccess, encryptedRefresh] = await Promise.all([
@@ -113,12 +115,12 @@ Deno.serve(async (request) => {
       }, { onConflict: "user_id" });
     if (upsertError) {
       console.error("gmail-oauth-callback upsert failed", upsertError);
-      return redirectToApp("error", returnTo, "could_not_save_connection");
+      return redirectToApp("error", returnTo, "could_not_save_connection", returnOrigin);
     }
 
-    return redirectToApp("connected", returnTo);
+    return redirectToApp("connected", returnTo, undefined, returnOrigin);
   } catch (error) {
     console.error("gmail-oauth-callback error", error);
-    return redirectToApp("error", returnTo, "internal_error");
+    return redirectToApp("error", returnTo, "internal_error", returnOrigin);
   }
 });

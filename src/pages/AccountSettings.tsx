@@ -213,7 +213,7 @@ export default function AccountSettings() {
     if (!account?.id || connectingGmail) return;
     setConnectingGmail(true);
     try {
-      const { data, error } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: account.id } });
+      const { data, error } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: account.id, return_origin: window.location.origin } });
       if (error || !data?.url) throw new Error(data?.error || 'Could not start Gmail connection');
       window.location.href = data.url;
     } catch (error) {

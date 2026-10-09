@@ -253,7 +253,7 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
     setConnectingGmail(true);
     try {
       const { data, error } = await supabase.functions.invoke('gmail-oauth-start', {
-        body: { account_id: accountId, return_to: window.location.pathname },
+        body: { account_id: accountId, return_to: window.location.pathname, return_origin: window.location.origin },
       });
       if (error || !data?.url) throw new Error(data?.error || 'Could not start Gmail connection');
       window.location.href = data.url;
@@ -268,7 +268,7 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
     setConnectingGmail(true);
     try {
       const returnTo = `${window.location.pathname}?gmail_reopen_lead=${encodeURIComponent(askAIPreview.leadId)}&gmail_reopen_type=${askAIPreview.leadType}`;
-      const { data, error } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: accountId, return_to: returnTo } });
+      const { data, error } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: accountId, return_to: returnTo, return_origin: window.location.origin } });
       if (error || !data?.url) throw new Error(data?.error || 'Could not start Gmail connection');
       window.location.href = data.url;
     } catch (error) {
