@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, Check, Copy, ExternalLink, FileText, Mail, Paperclip, RefreshCw, Send, Target, Upload, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
-import LeadCard, { loadLeadsByIds, type LeadCardProps, type SocialLead } from '../components/LeadCard';
+import LeadCard, { hideEmails, loadLeadsByIds, type LeadCardProps, type SocialLead } from '../components/LeadCard';
 import ApplyOnSiteButton from '../components/ApplyOnSite';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -26,7 +26,7 @@ type QueueSubject = {
   resume_file_name: string | null; submitted_today: number; waiting: number; items: QueueItem[];
 };
 type Queue = { target: number; daily_cap: number; used_today: number; submitted_today: number; subjects: QueueSubject[] };
-type Draft = { jobId: string; to: string; subject: string; body: string; duplicate: string | null };
+type Draft = { jobId: string; toName: string; subject: string; body: string; duplicate: string | null };
 type ItemState = 'sending' | 'sent' | 'skipped' | { error: string };
 
 const PACE_MS = 4000;
@@ -133,7 +133,8 @@ export default function TodayPage() {
     let alive = true;
     void supabase.from('social_jobs').select('post_content, job_description').eq('id', selectedJob).maybeSingle()
       .then(({ data }: { data: { post_content?: string; job_description?: string } | null }) => {
-        if (alive) setDescription({ jobId: selectedJob, text: (data?.post_content || data?.job_description || '').trim() });
+        // Addresses stay hidden, as everywhere else: Send is the way to reach them.
+        if (alive) setDescription({ jobId: selectedJob, text: hideEmails((data?.post_content || data?.job_description || '').trim()).split('[email hidden · use AI Submit]').join('[email hidden]') });
       });
     return () => { alive = false; };
   }, [selectedJob]);
@@ -154,7 +155,7 @@ export default function TodayPage() {
     setDraftLoading(true);
     void invoke({ action: 'preview', account_id: accountId, subject_id: subject.subject_id, job_id: item.job_id }).then((r) => {
       setDraftLoading(false);
-      if (r.ok) setDraft({ jobId: item.job_id, to: r.data.to, subject: r.data.subject, body: r.data.body, duplicate: r.data.duplicate });
+      if (r.ok) setDraft({ jobId: item.job_id, toName: r.data.to_name, subject: r.data.subject, body: r.data.body, duplicate: r.data.duplicate });
       else setError(r.message);
     });
   }, [item?.job_id, subject?.subject_id, accountId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -462,7 +463,7 @@ export default function TodayPage() {
                   <>
                     <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-300">Submission email</p>
                     <p className="mb-1.5 text-[11px] text-gray-500">
-                      To {draft.to} · from your Gmail · {resumes[subject.subject_id] ? `${resumes[subject.subject_id].name} attached` : 'no resume on file'} · 1 credit
+                      To {draft.toName} · from your Gmail · {resumes[subject.subject_id] ? `${resumes[subject.subject_id].name} attached` : 'no resume on file'} · 1 credit
                     </p>
                     {(item.duplicate || draft.duplicate) && <p className="mb-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-700">{item.duplicate || draft.duplicate}</p>}
                     <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} className="mb-1.5 h-8 w-full shrink-0 rounded-md border border-purple-200 bg-white px-2.5 text-[13px] outline-none focus:border-purple-400 dark:border-purple-400/20 dark:bg-[#1E2126]" />

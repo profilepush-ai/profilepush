@@ -142,7 +142,8 @@ Deno.serve(async (req: Request) => {
     const { data: resume } = await admin.from("hotlist_resumes").select("url, file_name").eq("hotlist_id", subjectId).maybeSingle();
     const draft = buildEmail(hotlist as Hotlist, job as Job, senderName, Boolean(resume?.url));
 
-    if (action === "preview") return respond({ ...draft, to: vendorEmail, duplicate: duplicate ?? null });
+    // The vendor's address never reaches the browser: the send happens here.
+    if (action === "preview") return respond({ ...draft, to_name: str(job.posted_by_name, 200) || str(job.company_name, 200) || "the vendor", duplicate: duplicate ?? null });
 
     const requestId = str(body.request_id, 100);
     if (!UUID.test(requestId)) return respond({ error: "A valid request ID is required" }, 400);
@@ -243,7 +244,7 @@ Deno.serve(async (req: Request) => {
     }
 
     await admin.from("pulse_ask_ai_requests").update({ status: "completed", delivered_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("request_id", requestId);
-    return respond({ ok: true, conversation_id: conversation.id, to: vendorEmail, resume_attached: Boolean(attachment) });
+    return respond({ ok: true, conversation_id: conversation.id, resume_attached: Boolean(attachment) });
   } catch (error) {
     console.error("submit-consultant error", error);
     return respond({ error: "Internal server error" }, 500);
