@@ -902,14 +902,14 @@
   }
  ],
  "stats": {
-  "jobs24h": 772,
-  "jobs7d": 4178,
-  "jobs30d": 19795,
-  "jobsAll": 45565,
-  "hot24h": 185,
-  "hot7d": 1255,
-  "hot30d": 6214,
-  "hotAll": 12749,
+  "jobs24h": 612,
+  "jobs7d": 2682,
+  "jobs30d": 12407,
+  "jobsAll": 27146,
+  "hot24h": 149,
+  "hot7d": 860,
+  "hot30d": 3799,
+  "hotAll": 7188,
   "websites": 118
  },
  "asOf": "2026-10-07"
