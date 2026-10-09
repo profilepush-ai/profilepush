@@ -593,7 +593,8 @@ export default function AppNav() {
           </Link>
         </nav>
       )}
-      <GooglePlayBanner />
+      {/* Not on Today: it would cover the Send button in the bottom corner. */}
+      {!location.pathname.startsWith('/today') && <GooglePlayBanner />}
       {shouldShowCreditsUi() && <FirstPurchaseOfferModal />}
       <FeedbackPrompt />
     </>
