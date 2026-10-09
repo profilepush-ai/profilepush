@@ -148,15 +148,19 @@ function AppEntry() {
   return <Navigate to={user ? '/home' : '/signup'} replace />;
 }
 
-// Where a signed-in user lands: AI Match the first time, the Tracker once
-// they have tried AI Match (my_landing_path decides).
+// Where a signed-in user lands (my_landing_path decides): Today when they
+// have posted consultants, else the Tracker once they have tried AI Match,
+// else AI Match.
 function HomeRedirect() {
   const [path, setPath] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     void supabase.rpc('my_landing_path' as never).then(({ data, error }) => {
       if (cancelled) return;
-      setPath(!error && (data === '/tracker' || data === '/match') ? (data as string) : '/match');
+      // Today is desktop-only for now: phones (and the app) go to the Tracker.
+      const wide = !Capacitor.isNativePlatform() && window.matchMedia('(min-width: 1024px)').matches;
+      const landing = !error && (data === '/today' || data === '/tracker' || data === '/match') ? (data as string) : '/match';
+      setPath(landing === '/today' && !wide ? '/tracker' : landing);
     });
     return () => { cancelled = true; };
   }, []);
