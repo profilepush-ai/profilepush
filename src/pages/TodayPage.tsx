@@ -458,12 +458,11 @@ export default function TodayPage() {
                 )}
               </div>
 
-              {/* Bottom half: tinted in the hotlist (consultant) purple, since
-                  it is the consultant's submission. */}
-              <div className="flex min-h-0 flex-1 basis-1/2 flex-col overflow-y-auto bg-purple-100/60 px-4 py-3 dark:bg-purple-500/15">
+              {/* Bottom half: the submission, on a light yellow. */}
+              <div className="flex min-h-0 flex-1 basis-1/2 flex-col overflow-y-auto bg-amber-50 px-4 py-3 dark:bg-amber-500/10">
                 {item.source === 'career_site' ? (
                   <>
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-300">Application details</p>
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Application details</p>
                     <CopyRow label="Name" value={subject.candidate_name} />
                     <CopyRow label="Role" value={consultantTitle(subject.role_title)} />
                     <CopyRow label="Experience" value={subject.years_experience ? `${Math.round(subject.years_experience)} years` : null} />
@@ -480,13 +479,13 @@ export default function TodayPage() {
                   <div className="m-auto"><LogoSpinner size={16} /></div>
                 ) : (
                   <>
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-300">Submission email</p>
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Submission email</p>
                     <p className="mb-1.5 text-[11px] text-gray-500">
                       To {draft.toName} · from your Gmail · {resumes[subject.subject_id] ? `${resumes[subject.subject_id].name} attached` : 'no resume on file'} · 1 credit
                     </p>
                     {(item.duplicate || draft.duplicate) && <p className="mb-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-700">{item.duplicate || draft.duplicate}</p>}
-                    <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} className="mb-1.5 h-8 w-full shrink-0 rounded-md border border-purple-200 bg-white px-2.5 text-[13px] outline-none focus:border-purple-400 dark:border-purple-400/20 dark:bg-[#1E2126]" />
-                    <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} className="min-h-[140px] w-full flex-1 resize-none rounded-md border border-purple-200 bg-white p-2.5 text-[13px] leading-relaxed outline-none focus:border-purple-400 dark:border-purple-400/20 dark:bg-[#1E2126]" />
+                    <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} className="mb-1.5 h-8 w-full shrink-0 rounded-md border border-amber-200 bg-white px-2.5 text-[13px] outline-none focus:border-amber-400 dark:border-amber-400/20 dark:bg-[#1E2126]" />
+                    <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} className="min-h-[140px] w-full flex-1 resize-none rounded-md border border-amber-200 bg-white p-2.5 text-[13px] leading-relaxed outline-none focus:border-amber-400 dark:border-amber-400/20 dark:bg-[#1E2126]" />
                   </>
                 )}
               </div>
