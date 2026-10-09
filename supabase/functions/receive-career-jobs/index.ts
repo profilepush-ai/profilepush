@@ -25,18 +25,6 @@ type CareerJob = {
   description?: string | null;
 };
 
-const PRIMES: Record<string, string> = {
-  teksystems: "TEKsystems",
-  judge: "Judge Group",
-  kforce: "Kforce",
-  pyramid: "Pyramid Consulting",
-  ampcus: "Ampcus",
-  insightglobal: "Insight Global",
-  apex: "Apex Systems",
-  randstad: "Randstad",
-  diverselynx: "Diverse Lynx",
-  mindlance: "Mindlance",
-};
 
 const STATES: Record<string, string> = {
   alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA", colorado: "CO", connecticut: "CT",
@@ -150,10 +138,34 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST" || !expected || getBearerToken(req) !== expected) return respond({ error: "Unauthorized" }, 401);
 
   const body = await req.json().catch(() => ({}));
-  const slug = str(body.prime);
-  const primeName = PRIMES[slug];
-  if (!primeName) return respond({ error: "unknown prime" }, 400);
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+  // The sites to scrape (career_sites, managed in /admin).
+  if (body.action === "sites") {
+    let q = supabase.from("career_sites").select("slug, name, kind, config, max_new_per_run, enabled").order("slug");
+    if (!body.includeDisabled) q = q.eq("enabled", true);
+    const { data, error } = await q;
+    if (error) return respond({ error: error.message }, 500);
+    return respond({ sites: data ?? [] });
+  }
+
+  const slug = str(body.prime);
+  const { data: site } = await supabase.from("career_sites").select("name").eq("slug", slug).maybeSingle();
+  if (!site) return respond({ error: "unknown site" }, 400);
+  const primeName = site.name as string;
+
+  if (body.action === "run_log") {
+    const r = (body.run ?? {}) as Record<string, unknown>;
+    const n = (k: string) => Math.max(0, Math.round(Number(r[k]) || 0));
+    const { error } = await supabase.from("career_site_runs").insert({
+      slug, started_at: str(r.started_at) || new Date().toISOString(), full_sync: Boolean(r.full_sync),
+      listed: n("listed"), new_found: n("new_found"), non_it_found: n("non_it_found"), processed: n("processed"),
+      fetched: n("fetched"), failed: n("failed"), accepted: n("accepted"), rejected: n("rejected"), closed: n("closed"),
+      error: str(r.error).slice(0, 1000) || null,
+    });
+    if (error) return respond({ error: error.message }, 500);
+    return respond({ ok: true });
+  }
 
   if (body.action === "sync") {
     const ids: string[] = [...new Set<string>((Array.isArray(body.ids) ? body.ids : []).map(String).filter(Boolean))];

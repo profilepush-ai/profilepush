@@ -452,3 +452,9 @@ entrypoint = "./functions/gmail-oauth-callback/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/receive-career-jobs/index.ts"
+
+# /admin -> Career Sites. Auth is the admin password in the request body.
+[functions.admin-career-sites]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/admin-career-sites/index.ts"
