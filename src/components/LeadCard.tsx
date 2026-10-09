@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
-import { AtSign, Briefcase, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap, Eye, X } from 'lucide-react';
+import { AtSign, Briefcase, Building2, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap, Eye, X } from 'lucide-react';
 import { PosterProfileLink, SubscribeTextLink } from './publishers/PublisherBits';
 import LogoSpinner from './LogoSpinner';
 import { supabase } from '../lib/supabase';
@@ -55,6 +55,19 @@ export async function shareLead(lead: SocialLead, accountId: string | null | und
   } catch {
     return false;
   }
+}
+
+// Marks a requirement taken straight from the firm's own careers site.
+function CareerSitePill() {
+  return (
+    <span
+      title="Posted on the firm's own careers site"
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-[1px] text-[10px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+    >
+      <Building2 size={10} strokeWidth={2} />
+      Career site
+    </span>
+  );
 }
 
 export type SocialLead = {
@@ -257,7 +270,9 @@ export function getLeadBreakdownFieldValues(lead: SocialLead, isHotlistFeed: boo
   const rawWorkTypeValue = getBreakdownValue(['work_type', 'work type'], lead.workType || undefined);
   const workTypeValue = isHotlistFeed ? normalizeHotlistWorkType(rawWorkTypeValue) : rawWorkTypeValue;
   const employmentTypeValue = getBreakdownValue(['employment_type', 'employment type'], lead.employmentType || undefined);
-  const rateValue = getBreakdownValue(['rate', 'hourly'], lead.hourlyRate || undefined);
+  // "$65–$65/hr" reads as a range; a single figure is shown once.
+  const rateValue = getBreakdownValue(['rate', 'hourly'], lead.hourlyRate || undefined)
+    .replace(/^\$([\d.,]+)\s*[–-]\s*\$?\1(\/\w+)?$/, '$$$1$2');
   const visaValue = getBreakdownValue(['visa'], lead.visaTypes.length > 0 ? lead.visaTypes.join(', ') : undefined);
   const locationValue = getBreakdownValue(['location'], lead.location && lead.location !== 'Location not specified' ? lead.location : undefined);
   const skillsValue = getBreakdownValue(['skill'], lead.skills.length > 0 ? lead.skills.join(', ') : undefined);
@@ -508,6 +523,7 @@ export const LeadCard = memo(function LeadCard({
     locationValue,
     skillsValue,
   } = getLeadBreakdownFieldValues(lead, isHotlistFeed);
+  const compactCompany = (lead.company || lead.posterName || '').trim();
   const skillsValueClass = isDark ? 'text-[#CBD5E1]' : 'text-slate-700';
   const linkClassName = isDark ? 'text-blue-300' : 'text-blue-600';
 
@@ -821,21 +837,33 @@ export const LeadCard = memo(function LeadCard({
         </div>
         );
       })()}
-      {/* Collapsed: just when it was posted; the poster line comes back with the full card. */}
+      {/* Collapsed: the vendor company and when it was posted; the full poster line comes back with the full card. */}
       {compact && (
         <div className="mt-1.5 flex items-center gap-1">
-          <p className="min-w-0 flex-1 truncate text-[11px] text-[#94A3B8]">
-            {feedTimeBasis === 'created' ? 'Added ' : 'Posted '}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}
+          <p className="flex min-w-0 flex-1 items-center gap-1 truncate text-[11px] text-[#94A3B8]">
+            {compactCompany && <span className="max-w-[55%] shrink-0 truncate font-medium text-slate-600 dark:text-slate-300">{compactCompany}</span>}
+            {isCareerSiteLead(lead) && <CareerSitePill />}
+            {compactCompany && !isCareerSiteLead(lead) && <span>·</span>}
+            <span className="min-w-0 truncate">{feedTimeBasis === 'created' ? 'Added ' : compactCompany ? '' : 'Posted '}{formatAgo(feedTimeBasis === 'created' ? lead.createdAt : lead.postedAt)}</span>
           </p>
           {!hideActions && compactActions}
         </div>
       )}
       {!compact && (
       <div className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
-        <PosterProfileLink kind={lead.kind === 'hotlist' ? 'hotlist' : 'job'} leadId={lead.id}>
-          <LeadAvatar avatarUrl={lead.avatarUrl} name={lead.posterName} size={14} />
-          {lead.posterName}
-        </PosterProfileLink>
+        {isCareerSiteLead(lead) ? (
+          // The firm itself, not a person with a ProfilePush profile page.
+          <span className="inline-flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
+            <LeadAvatar avatarUrl={lead.avatarUrl} name={lead.posterName} size={14} />
+            {lead.posterName}
+            <CareerSitePill />
+          </span>
+        ) : (
+          <PosterProfileLink kind={lead.kind === 'hotlist' ? 'hotlist' : 'job'} leadId={lead.id}>
+            <LeadAvatar avatarUrl={lead.avatarUrl} name={lead.posterName} size={14} />
+            {lead.posterName}
+          </PosterProfileLink>
+        )}
         {lead.posterEmail && (
           <>
             <span className="whitespace-nowrap">•</span>
