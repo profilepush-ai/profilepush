@@ -60,11 +60,17 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
       partial ||= Boolean(next.value.partial);
       allIds.push(...items.map((i) => i.id));
       if (adapter.alwaysComplete) { pending.push(...items); continue; }
-      const { unknown } = await callReceiver(env, { action: "sync", prime: slug, ids: items.map((i) => i.id), complete: false }) as { unknown: string[] };
+      const { unknown, known } = await callReceiver(env, { action: "sync", prime: slug, ids: items.map((i) => i.id), complete: false }) as { unknown: string[]; known: number };
       const isNew = new Set(unknown);
       pending.push(...items.filter((i) => isNew.has(i.id)));
-      // Newest first: a page with nothing new means the rest is known.
-      if (!wantsFull && unknown.length === 0) break;
+      if (wantsFull) continue;
+      // Newest first: once the backlog is loaded, a page with nothing new means
+      // the rest is known. While it is still loading (we know well under the
+      // site's total), keep paging until there are enough new candidates.
+      const total = next.value.total ?? 0;
+      const backfilling = total > 0 && known < 0.9 * total;
+      if (!backfilling && unknown.length === 0) break;
+      if (backfilling && pending.length >= maxNew * 4) break;
     }
   } catch (error) {
     console.error(`[${slug}] listing stopped: ${(error as Error).message}`);

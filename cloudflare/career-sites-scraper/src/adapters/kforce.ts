@@ -51,7 +51,7 @@ export const kforce: Adapter = {
       const items = docs
         .filter((j) => US_STATES.has(String(j.State ?? "").toUpperCase()))
         .map((j) => { const job = toJob(j); return { id: job.source_id, url: job.url, job }; });
-      yield { items };
+      yield { items, total: d["@odata.count"] };
       if (skip + docs.length >= (d["@odata.count"] ?? 0)) return;
     }
   },

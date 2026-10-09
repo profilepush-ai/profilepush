@@ -26,7 +26,7 @@ export const insightglobal: Adapter = {
   async *list(budget: Budget) {
     for (let page = 1; page <= 200; page++) {
       const res = await politeFetch(`${BASE}?page=${page}&size=50&sort=postedDate,desc`, budget, { headers: HEADERS });
-      const d = await res.json() as { jobs?: Listing[]; pageMetadata?: { totalPages?: number } };
+      const d = await res.json() as { jobs?: Listing[]; pageMetadata?: { totalPages?: number; totalElements?: number } };
       const jobs = d.jobs ?? [];
       if (jobs.length === 0) return;
       const items: ListingItem[] = jobs.filter(isUs).map((j) => ({
@@ -35,7 +35,7 @@ export const insightglobal: Adapter = {
         title: String(j.jobTitle ?? "").trim(),
         extra: j,
       }));
-      yield { items };
+      yield { items, total: d.pageMetadata?.totalElements };
       if (page >= (d.pageMetadata?.totalPages ?? 0)) return;
     }
   },

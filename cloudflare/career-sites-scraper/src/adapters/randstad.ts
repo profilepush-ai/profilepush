@@ -62,7 +62,7 @@ export const randstad: Adapter = {
       const items = hits.map(toJob)
         .filter((j) => j.country === "US" && j.url)
         .map((job) => ({ id: job.source_id, url: job.url, job }));
-      yield { items };
+      yield { items, total: first.totalSize };
     }
   },
 };

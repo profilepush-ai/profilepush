@@ -155,38 +155,56 @@ Deno.serve(async (req: Request) => {
 
   if (body.action === "sync") {
     const ids: string[] = [...new Set<string>((Array.isArray(body.ids) ? body.ids : []).map(String).filter(Boolean))];
-    const { data: known, error } = await supabase
-      .from("career_site_jobs").select("source_id, status, social_job_id").eq("prime", slug);
-    if (error) return respond({ error: error.message }, 500);
-    const byId = new Map((known ?? []).map((r) => [r.source_id as string, r]));
-    const live = new Set(ids);
-    const unknown = ids.filter((id) => !byId.has(id));
+    type Row = { source_id: string; status: string; social_job_id: string | null };
+    // Look up only the listed ids (PostgREST returns at most 1,000 rows a query).
+    const listed: Row[] = [];
+    for (let i = 0; i < ids.length; i += 300) {
+      const { data, error } = await supabase.from("career_site_jobs")
+        .select("source_id, status, social_job_id").eq("prime", slug).in("source_id", ids.slice(i, i + 300));
+      if (error) return respond({ error: error.message }, 500);
+      listed.push(...((data ?? []) as Row[]));
+    }
+    const seen = new Set(listed.map((r) => r.source_id));
+    const unknown = ids.filter((id) => !seen.has(id));
     const now = new Date().toISOString();
 
     // Listed again after being closed: reopen.
-    const reopen = (known ?? []).filter((r) => r.status === "closed" && live.has(r.source_id));
+    const reopen = listed.filter((r) => r.status === "closed");
     if (reopen.length > 0) {
       await supabase.from("career_site_jobs").update({ status: "accepted", last_seen_at: now })
         .eq("prime", slug).in("source_id", reopen.map((r) => r.source_id));
-      const jobIds = reopen.map((r) => r.social_job_id).filter(Boolean);
+      const jobIds = reopen.map((r) => r.social_job_id).filter((x): x is string => Boolean(x));
       if (jobIds.length > 0) await supabase.from("social_jobs").update({ post_status: "open" }).in("id", jobIds);
     }
 
+    const { count: knownCount } = await supabase.from("career_site_jobs")
+      .select("source_id", { count: "exact", head: true }).eq("prime", slug).neq("status", "closed");
+
     // Gone from the site: close. Only on a complete listing, and never when the
-    // listing shrank by more than half (a partial fetch must not close jobs).
+    // listing is less than half of what we hold (a partial fetch must not close jobs).
     let closed = 0;
-    const accepted = (known ?? []).filter((r) => r.status === "accepted");
-    if (body.complete === true && ids.length > 0 && ids.length >= 0.5 * (known ?? []).filter((r) => r.status !== "closed").length) {
-      const gone = accepted.filter((r) => !live.has(r.source_id));
+    if (body.complete === true && ids.length > 0 && ids.length >= 0.5 * (knownCount ?? 0)) {
+      const live = new Set(ids);
+      const gone: Row[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase.from("career_site_jobs")
+          .select("source_id, status, social_job_id").eq("prime", slug).eq("status", "accepted")
+          .order("source_id").range(from, from + 999);
+        if (error) return respond({ error: error.message }, 500);
+        gone.push(...((data ?? []) as Row[]).filter((r) => !live.has(r.source_id)));
+        if (!data || data.length < 1000) break;
+      }
       for (let i = 0; i < gone.length; i += 200) {
         const chunk = gone.slice(i, i + 200);
         await supabase.from("career_site_jobs").update({ status: "closed" }).eq("prime", slug).in("source_id", chunk.map((r) => r.source_id));
-        const jobIds = chunk.map((r) => r.social_job_id).filter(Boolean);
+        const jobIds = chunk.map((r) => r.social_job_id).filter((x): x is string => Boolean(x));
         if (jobIds.length > 0) await supabase.from("social_jobs").update({ post_status: "closed" }).in("id", jobIds);
       }
       closed = gone.length;
     }
-    return respond({ unknown, closed, reopened: reopen.length });
+    // Listings already recorded: while this is well below the site's total,
+    // the worker is still loading the backlog.
+    return respond({ unknown, closed, reopened: reopen.length, known: knownCount ?? 0 });
   }
 
   // Before fetching job pages: which listing titles are worth a fetch. Clearly

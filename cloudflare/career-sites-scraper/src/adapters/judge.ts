@@ -65,7 +65,7 @@ export const judge: Adapter = {
     for (let n = 0; n < 300; n++) {
       const { hits, total } = await page(n, budget);
       if (hits.length === 0) return;
-      yield { items: hits.map((h) => { const job = toJob(h); return { id: job.source_id, url: job.url, job }; }) };
+      yield { items: hits.map((h) => { const job = toJob(h); return { id: job.source_id, url: job.url, job }; }), total };
       seen += hits.length;
       if (seen >= total) return;
     }
