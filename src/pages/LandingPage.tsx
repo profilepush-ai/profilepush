@@ -822,10 +822,10 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                       <li className="side-b">
                         <span className="w">
                           <i className="b"></i>
-                          Submissions
+                          In-app submissions
                         </span>
                         <span className="c f">
-                          Free, unlimited
+                          Free
                         </span>
                       </li>
                       <li className="side-v">

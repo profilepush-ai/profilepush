@@ -25,10 +25,10 @@ const CANONICAL = 'https://profilepush.ai/bench-sales';
 // billed to the vendor. The FAQPage JSON-LD is built from this list.
 const FAQS = [
   { q: "How do bench sales recruiters find C2C requirements?", a: "Paste your hotlist. Every new requirement is matched against each consultant, and the fits land in that consultant’s live column, with an alert when a strong one arrives." },
-  { q: "How do I find the prime vendors?", a: "Every new requirement is matched against your consultants. The vendors posting what your bench fits show up first, in each consultant’s column." },
+  { q: "How do I find vendors who need my consultants?", a: "Every new requirement is matched against your consultants. The ones that fit show up in each consultant’s column, with the vendor who posted them." },
   { q: "Do I need to keep checking?", a: "No. You get a notification when strong matches land, and an email if new matches are waiting and you haven’t been back." },
   { q: "Can I post the whole bench at once?", a: "Yes. Paste the hotlist table, up to 50 consultants at a time, and every one is read and posted together. The free plan keeps 3 consultants open at once; buying any credit pack removes that limit." },
-  { q: "What does submitting cost?", a: "Nothing. Submissions are free and unlimited, and so is posting. Each new Tracker match costs 1 credit, and an AI Submit draft or a Gmail send costs 1 credit (the send is refunded if it fails). Optional screening credits are charged to the vendor who owns the requirement." },
+  { q: "What does submitting cost?", a: "Submitting in the app is free, and so is posting. An AI Submit email costs 1 credit to draft and 1 credit to send from your Gmail (the send is refunded if it fails). Each new Tracker match costs 1 credit. Optional screening credits are charged to the vendor who owns the requirement." },
   { q: "Is there a mobile app?", a: "Yes. ProfilePush is on Google Play for Android, so match alerts reach your phone. It also runs in any web browser." },
   { q: "Does my consultant need an account?", a: "No, and we never contact them. The screening link goes to you only." },
   { q: "Can I see which skills are in demand?", a: "Yes. Filter every live requirement by skill, rate, visa and location, with a live count on each." },
@@ -370,7 +370,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                   </div>
                   <div className="facts">
                     <span className="fact">
-                      Submissions: free, unlimited
+                      In-app submissions: free
                     </span>
                     <span className="fact">
                       Attach the resume once
@@ -786,9 +786,9 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                   <div className="rv">
                     <ul className="plist">
                       <li>
-                        Submissions
+                        In-app submissions
                         <span className="c f">
-                          Free, unlimited
+                          Free
                         </span>
                       </li>
                       <li>
@@ -897,7 +897,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                     Get the bench in front of
                   </span>
                   <span className="grad">
-                    prime vendors.
+                    vendors who are hiring.
                   </span>
                 </h2>
                 <p className="sub2">

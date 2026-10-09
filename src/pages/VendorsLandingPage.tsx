@@ -784,7 +784,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                       Have consultants instead?
                     </h3>
                     <p>
-                      Paste your hotlist and every consultant gets a live column of matching requirements. Submissions are free and unlimited.
+                      Paste your hotlist and every consultant gets a live column of matching requirements. Submitting in the app is free.
                     </p>
                     <Link className="btn btn-o" to="/bench-sales">
                       {"Bench sales "}

@@ -39,7 +39,7 @@ Each page states the count for the last 30 days, how many arrived in the last 7,
 - **Optional video screening**: a vendor can add a video screening link to a request, or a bench recruiter to a submission. The consultant records a short adaptive interview (each question follows the last answer), and the vendor gets the recording, a score and a summary. The link goes only to the recruiter, never straight to the consultant.
 - **Filters**: live requirements can be filtered by skill, rate, visa and location, with a live count on each.
 - **Teams**: team accounts with unlimited members sharing one credit balance.
-- **Inbox and Pulse**: replies and in-app messages in one place, and an activity dashboard for the account's own pipeline.
+- **Inbox and Pulse**: in-app messages and resume requests in one place, and an activity dashboard for the account's own pipeline.
 
 ## Pricing
 
@@ -47,7 +47,7 @@ ProfilePush is free to start and runs on credits, with no subscription.
 
 - 100 free credits at signup. Credits never expire.
 - Bonus: +10 credits for the first post and +10 for the first submission.
-- Free: posting, editing, submissions (unlimited), AI Request drafts, replying to resume requests.
+- Free: posting, editing, in-app submissions, AI Request drafts, replying to resume requests.
 - 1 credit: each new match added to the Tracker (up to 10 a day on the free plan, 30 once the account has bought credits); each AI Match result (up to 10 per run, undelivered results refunded); an AI Submit draft; a send from Gmail (refunded if the send fails).
 - 10 credits: a finished video screening, charged to the vendor who owns the requirement.
 - Free plan: up to 3 open consultants or requirements at a time. Buying any credit pack makes this unlimited.
