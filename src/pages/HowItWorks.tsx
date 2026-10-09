@@ -56,7 +56,7 @@ const phases = [
     tagline: 'The pitch writes itself, resume attached.',
     points: [
       { label: 'Submit from the match', text: 'From a matched requirement, AI Submit writes the submission email with the resume attached. The draft costs 1 credit.' },
-      { label: 'Free submissions', text: 'Submissions are free and unlimited. Sending from your Gmail costs 1 credit, refunded if it fails.' },
+      { label: 'Submissions', text: 'Submitting in the app is free. An AI Submit email costs 1 credit to draft and 1 credit to send from your Gmail, refunded if the send fails.' },
       { label: 'Inbound requests', text: 'When a vendor asks for a resume from your hotlist, it lands in one list with a clear status. Upload the resume, add a note, done. Replying never costs a credit.' },
     ],
   },
