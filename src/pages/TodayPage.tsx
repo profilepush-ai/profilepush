@@ -42,6 +42,22 @@ async function invoke(body: Record<string, unknown>) {
   return { ok: true as const, data };
 }
 
+// The post as a recruiter needs to read it: addresses hidden (Send is the way
+// to reach them) and the trailing #hashtag blocks removed.
+function cleanDescription(raw: string) {
+  let text = hideEmails(raw).split('[email hidden · use AI Submit]').join('[email hidden]');
+  // Repeated until stable: tags are often glued together ("#Ajobs;#ITJobs").
+  for (let prev = ''; prev !== text;) {
+    prev = text;
+    text = text.replace(/(^|[\s(;,])#[\p{L}\p{N}_][\p{L}\p{N}_&.-]*;?/gu, '$1');
+  }
+  return text
+    .split('\n').map((line) => line.replace(/[ \t]+/g, ' ').trimEnd())
+    .filter((line, i, all) => line.trim() !== '' || (i > 0 && all[i - 1].trim() !== ''))
+    .join('\n')
+    .trim();
+}
+
 function CopyRow({ label, value }: { label: string; value: string | null | undefined }) {
   const [copied, setCopied] = useState(false);
   if (!value) return null;
@@ -134,7 +150,7 @@ export default function TodayPage() {
     void supabase.from('social_jobs').select('post_content, job_description').eq('id', selectedJob).maybeSingle()
       .then(({ data }: { data: { post_content?: string; job_description?: string } | null }) => {
         // Addresses stay hidden, as everywhere else: Send is the way to reach them.
-        if (alive) setDescription({ jobId: selectedJob, text: hideEmails((data?.post_content || data?.job_description || '').trim()).split('[email hidden · use AI Submit]').join('[email hidden]') });
+        if (alive) setDescription({ jobId: selectedJob, text: cleanDescription(data?.post_content || data?.job_description || '') });
       });
     return () => { alive = false; };
   }, [selectedJob]);
