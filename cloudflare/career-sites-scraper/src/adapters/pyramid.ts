@@ -60,7 +60,7 @@ export const pyramid: Adapter = {
       const p = d.data?.jobBoardPostingPaginated;
       const nodes = p?.nodes ?? [];
       if (nodes.length === 0) return;
-      yield { items: nodes.map(toJob).filter((j) => j.country === "US").map((job) => ({ id: job.source_id, url: job.url, job })) };
+      yield { items: nodes.map(toJob).filter((j) => j.country === "US").map((job) => ({ id: job.source_id, url: job.url, job })), total: p?.totalCount };
       if (page * per >= (p?.totalCount ?? 0)) return;
     }
   },

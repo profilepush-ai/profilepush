@@ -34,6 +34,8 @@ export type ListingPage = {
   items: Array<ListingItem>;
   // Some listings could not be read: the run must not close missing jobs.
   partial?: boolean;
+  // How many open jobs the site lists in all, when it says.
+  total?: number;
 };
 
 export interface Adapter {

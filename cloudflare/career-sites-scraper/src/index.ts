@@ -46,6 +46,24 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
   const wantsFull = full || adapter.alwaysComplete;
 
   const allIds: string[] = [];
+  let nonItFound = 0;
+  const titleOf = (i: ListingItem) => i.title || i.job?.title;
+  // IT roles are loaded first; Non-IT roles (also kept) fill the rest of the
+  // per-run cap, so the IT backlog is never held up by them.
+  const nonItQueue: ListingItem[] = [];
+  const triage = async (items: ListingItem[]): Promise<ListingItem[]> => {
+    const titled = items.filter(titleOf);
+    if (titled.length === 0) return items;
+    const nonIt = new Set<string>();
+    for (let i = 0; i < titled.length; i += 300) {
+      const chunk = titled.slice(i, i + 300);
+      const r = await callReceiver(env, { action: "triage", prime: slug, items: chunk.map((x) => ({ id: x.id, url: x.url, title: titleOf(x) })) }) as { nonIt?: string[] };
+      for (const id of r.nonIt ?? []) nonIt.add(id);
+    }
+    nonItFound += nonIt.size;
+    nonItQueue.push(...items.filter((i) => nonIt.has(i.id)));
+    return items.filter((i) => !nonIt.has(i.id));
+  };
   const pending: ListingItem[] = [];
   let listingFinished = false;
   let partial = false;
@@ -60,11 +78,17 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
       partial ||= Boolean(next.value.partial);
       allIds.push(...items.map((i) => i.id));
       if (adapter.alwaysComplete) { pending.push(...items); continue; }
-      const { unknown } = await callReceiver(env, { action: "sync", prime: slug, ids: items.map((i) => i.id), complete: false }) as { unknown: string[] };
+      const { unknown, known } = await callReceiver(env, { action: "sync", prime: slug, ids: items.map((i) => i.id), complete: false }) as { unknown: string[]; known: number };
       const isNew = new Set(unknown);
-      pending.push(...items.filter((i) => isNew.has(i.id)));
-      // Newest first: a page with nothing new means the rest is known.
-      if (!wantsFull && unknown.length === 0) break;
+      pending.push(...await triage(items.filter((i) => isNew.has(i.id))));
+      if (wantsFull) continue;
+      // Newest first: once the backlog is loaded, a page with nothing new means
+      // the rest is known. While it is still loading (we know well under the
+      // site's total), keep paging until there are enough new candidates.
+      const total = next.value.total ?? 0;
+      const backfilling = total > 0 && known < 0.9 * total;
+      if (!backfilling && unknown.length === 0) break;
+      if (backfilling && pending.length + nonItQueue.length >= maxNew) break;
     }
   } catch (error) {
     console.error(`[${slug}] listing stopped: ${(error as Error).message}`);
@@ -76,24 +100,11 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
     closed = res.closed ?? 0;
     if (adapter.alwaysComplete) {
       const isNew = new Set(res.unknown);
-      toProcess = pending.filter((i) => isNew.has(i.id));
+      toProcess = await triage(pending.filter((i) => isNew.has(i.id)));
     }
   }
 
-  // Titles that are clearly not IT are recorded by the receiver and never
-  // fetched; only the rest get a detail-page fetch.
-  const needDetail = toProcess.filter((i) => !i.job && i.title);
-  let skippedByTitle = 0;
-  if (needDetail.length > 0) {
-    const keep = new Set<string>();
-    for (let i = 0; i < needDetail.length; i += 300) {
-      const chunk = needDetail.slice(i, i + 300);
-      const r = await callReceiver(env, { action: "triage", prime: slug, items: chunk.map((x) => ({ id: x.id, url: x.url, title: x.title })) }) as { keep: string[] };
-      for (const id of r.keep ?? []) keep.add(id);
-    }
-    skippedByTitle = needDetail.length - keep.size;
-    toProcess = toProcess.filter((i) => i.job || !i.title || keep.has(i.id));
-  }
+  toProcess = [...toProcess, ...nonItQueue];
 
   const batch: CareerJob[] = [];
   let accepted = 0, rejected = 0, fetched = 0, failed = 0;
@@ -123,7 +134,7 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
   }
   await flush();
 
-  const summary = { prime: slug, full: wantsFull, listed: allIds.length, listingFinished, newFound: toProcess.length + skippedByTitle, skippedByTitle, processed: Math.min(toProcess.length, maxNew), fetched, failed, accepted, rejected, closed, budgetLeft: budget.remaining };
+  const summary = { prime: slug, full: wantsFull, listed: allIds.length, listingFinished, newFound: toProcess.length, nonItFound, processed: Math.min(toProcess.length, maxNew), fetched, failed, accepted, rejected, closed, budgetLeft: budget.remaining };
   console.log(JSON.stringify(summary));
   return summary;
 }

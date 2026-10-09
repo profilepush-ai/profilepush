@@ -18,9 +18,10 @@ function mdy(s: string): string | null {
 
 export const apex: Adapter = {
   slug: "apex",
-  alwaysComplete: false,
-  async *list(budget: Budget, full: boolean) {
-    const rows = full ? 5000 : 300;
+  // The whole list is one request, so every run reads all of it.
+  alwaysComplete: true,
+  async *list(budget: Budget) {
+    const rows = 5000;
     const url = `${HOST}/search-results-usa?keyword=&location=&remote=&sort=lastposteddesc&rows=${rows}&page=1`;
     const html = await (await politeFetch(url, budget)).text();
     const items: ListingItem[] = [];
