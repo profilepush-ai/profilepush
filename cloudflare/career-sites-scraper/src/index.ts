@@ -46,6 +46,22 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
   const wantsFull = full || adapter.alwaysComplete;
 
   const allIds: string[] = [];
+  let skippedByTitle = 0;
+  const titleOf = (i: ListingItem) => i.title || i.job?.title;
+  // Titles that are clearly not IT are recorded by the receiver and never
+  // fetched or parsed, so the per-run cap is spent on IT roles only.
+  const triage = async (items: ListingItem[]): Promise<ListingItem[]> => {
+    const titled = items.filter(titleOf);
+    if (titled.length === 0) return items;
+    const keep = new Set<string>();
+    for (let i = 0; i < titled.length; i += 300) {
+      const chunk = titled.slice(i, i + 300);
+      const r = await callReceiver(env, { action: "triage", prime: slug, items: chunk.map((x) => ({ id: x.id, url: x.url, title: titleOf(x) })) }) as { keep: string[] };
+      for (const id of r.keep ?? []) keep.add(id);
+    }
+    skippedByTitle += titled.length - keep.size;
+    return items.filter((i) => !titleOf(i) || keep.has(i.id));
+  };
   const pending: ListingItem[] = [];
   let listingFinished = false;
   let partial = false;
@@ -62,7 +78,7 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
       if (adapter.alwaysComplete) { pending.push(...items); continue; }
       const { unknown, known } = await callReceiver(env, { action: "sync", prime: slug, ids: items.map((i) => i.id), complete: false }) as { unknown: string[]; known: number };
       const isNew = new Set(unknown);
-      pending.push(...items.filter((i) => isNew.has(i.id)));
+      pending.push(...await triage(items.filter((i) => isNew.has(i.id))));
       if (wantsFull) continue;
       // Newest first: once the backlog is loaded, a page with nothing new means
       // the rest is known. While it is still loading (we know well under the
@@ -70,7 +86,7 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
       const total = next.value.total ?? 0;
       const backfilling = total > 0 && known < 0.9 * total;
       if (!backfilling && unknown.length === 0) break;
-      if (backfilling && pending.length >= maxNew * 4) break;
+      if (backfilling && pending.length >= maxNew) break;
     }
   } catch (error) {
     console.error(`[${slug}] listing stopped: ${(error as Error).message}`);
@@ -82,23 +98,8 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
     closed = res.closed ?? 0;
     if (adapter.alwaysComplete) {
       const isNew = new Set(res.unknown);
-      toProcess = pending.filter((i) => isNew.has(i.id));
+      toProcess = await triage(pending.filter((i) => isNew.has(i.id)));
     }
-  }
-
-  // Titles that are clearly not IT are recorded by the receiver and never
-  // fetched or parsed, so the per-run cap is spent on IT roles only.
-  const titled = toProcess.filter((i) => i.title || i.job?.title);
-  let skippedByTitle = 0;
-  if (titled.length > 0) {
-    const keep = new Set<string>();
-    for (let i = 0; i < titled.length; i += 300) {
-      const chunk = titled.slice(i, i + 300);
-      const r = await callReceiver(env, { action: "triage", prime: slug, items: chunk.map((x) => ({ id: x.id, url: x.url, title: x.title ?? x.job?.title })) }) as { keep: string[] };
-      for (const id of r.keep ?? []) keep.add(id);
-    }
-    skippedByTitle = titled.length - keep.size;
-    toProcess = toProcess.filter((i) => !(i.title || i.job?.title) || keep.has(i.id));
   }
 
   const batch: CareerJob[] = [];
