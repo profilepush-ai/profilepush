@@ -283,7 +283,6 @@ export default function TodayPage() {
     hideActions: true, isSelected: selected, onSelect: () => onSelect(),
   });
 
-  const progress = queue ? Math.min(100, Math.round((queue.submitted_today / Math.max(1, queue.target)) * 100)) : 0;
   const stateOf = (i: QueueItem) => itemState[i.card_id];
   const panel = 'flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]';
 
@@ -299,14 +298,11 @@ export default function TodayPage() {
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-500/10"><Target size={18} /></span>
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] text-gray-500">Today's submissions</p>
-                <p className="text-xl font-bold tabular-nums leading-tight">{queue?.submitted_today ?? 0}<span className="text-sm font-medium text-gray-400"> / {queue?.target ?? 100}</span></p>
+                <p className="text-xl font-bold tabular-nums leading-tight">{queue?.submitted_today ?? 0}</p>
               </div>
               <button onClick={() => void load()} disabled={loading} title="Refresh" className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5">
                 <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
               </button>
-            </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
-              <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${progress}%` }} />
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
               {capLeft} sends left today
