@@ -8,6 +8,7 @@ import { randstad } from "./adapters/randstad";
 import { insightglobal } from "./adapters/insightglobal";
 import { pyramid } from "./adapters/pyramid";
 import { diverselynx, mindlance } from "./adapters/jobdiva";
+import { buildAdapter, type SiteConfig } from "./adapters/generic";
 
 interface Env {
   SUPABASE_URL: string;
@@ -19,7 +20,8 @@ interface Env {
   SCRAPE_QUEUE: Queue<ScrapeMessage>;
 }
 
-type ScrapeMessage = { prime: string; full: boolean };
+type Site = SiteConfig & { name?: string; max_new_per_run?: number; enabled?: boolean };
+type ScrapeMessage = { prime: string; full: boolean; site?: Site };
 
 const ADAPTERS: Record<string, Adapter> = { teksystems, judge, apex, kforce, randstad, insightglobal, pyramid, diverselynx, mindlance };
 // Outbound fetches to job sites per invocation (one prime per invocation);
@@ -38,11 +40,24 @@ async function callReceiver(env: Env, body: unknown) {
   return payload;
 }
 
-export async function runPrime(env: Env, slug: string, full: boolean) {
-  const adapter = ADAPTERS[slug];
-  if (!adapter) throw new Error(`unknown prime ${slug}`);
+// The sites to scrape come from career_sites (managed in /admin). If that
+// lookup fails, the built-in list keeps the hourly run going.
+async function loadSites(env: Env, includeDisabled = false): Promise<Site[]> {
+  try {
+    const r = await callReceiver(env, { action: "sites", includeDisabled }) as { sites?: Site[] };
+    if (Array.isArray(r.sites)) return r.sites;
+  } catch (error) {
+    console.error(`sites lookup failed: ${(error as Error).message}`);
+  }
+  return env.ENABLED_PRIMES.split(",").map((s) => s.trim()).filter((s) => ADAPTERS[s])
+    .map((slug) => ({ slug, kind: "builtin", config: {} }));
+}
+
+export async function runPrime(env: Env, site: Site, full: boolean) {
+  const slug = site.slug;
+  const adapter = buildAdapter(site, ADAPTERS);
   const budget = new Budget(SUBREQUEST_BUDGET);
-  const maxNew = Number(env.MAX_NEW_PER_RUN) || 60;
+  const maxNew = site.max_new_per_run || Number(env.MAX_NEW_PER_RUN) || 60;
   const wantsFull = full || adapter.alwaysComplete;
 
   const allIds: string[] = [];
@@ -68,6 +83,7 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
   let listingFinished = false;
   let partial = false;
   let closed = 0;
+  let listingError: string | null = null;
 
   try {
     const pages = adapter.list(budget, wantsFull);
@@ -91,7 +107,8 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
       if (backfilling && pending.length + nonItQueue.length >= maxNew) break;
     }
   } catch (error) {
-    console.error(`[${slug}] listing stopped: ${(error as Error).message}`);
+    listingError = (error as Error).message;
+    console.error(`[${slug}] listing stopped: ${listingError}`);
   }
 
   let toProcess = pending;
@@ -136,40 +153,82 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
 
   const summary = { prime: slug, full: wantsFull, listed: allIds.length, listingFinished, newFound: toProcess.length, nonItFound, processed: Math.min(toProcess.length, maxNew), fetched, failed, accepted, rejected, closed, budgetLeft: budget.remaining };
   console.log(JSON.stringify(summary));
-  return summary;
+  return { ...summary, error: listingError };
 }
 
-function enabled(env: Env) {
-  return env.ENABLED_PRIMES.split(",").map((s) => s.trim()).filter((s) => ADAPTERS[s]);
+async function logRun(env: Env, slug: string, startedAt: string, full: boolean, s: Partial<Awaited<ReturnType<typeof runPrime>>>, error: string | null) {
+  try {
+    await callReceiver(env, {
+      action: "run_log", prime: slug, run: {
+        started_at: startedAt, full_sync: full, listed: s.listed ?? 0, new_found: s.newFound ?? 0, non_it_found: s.nonItFound ?? 0,
+        processed: s.processed ?? 0, fetched: s.fetched ?? 0, failed: s.failed ?? 0, accepted: s.accepted ?? 0,
+        rejected: s.rejected ?? 0, closed: s.closed ?? 0, error,
+      },
+    });
+  } catch (e) {
+    console.error(`[${slug}] run log failed: ${(e as Error).message}`);
+  }
+}
+
+// Reads the first page of a site's listing and up to three jobs, without
+// storing anything: lets /admin check a site before it is saved.
+async function testSite(site: Site) {
+  const adapter = buildAdapter(site, ADAPTERS);
+  const budget = new Budget(30);
+  const first = await adapter.list(budget, false).next();
+  const items = first.done ? [] : first.value.items;
+  const samples: CareerJob[] = [];
+  for (const item of items.slice(0, 3)) {
+    const job = item.job ?? (adapter.detail ? await adapter.detail(item, budget).catch(() => null) : null);
+    if (job) samples.push({ ...job, description: (job.description ?? "").slice(0, 300) });
+  }
+  return { listed: items.length, total: first.done ? 0 : first.value.total ?? null, samples };
 }
 
 export default {
   async scheduled(event: ScheduledEvent, env: Env) {
     const full = new Date(event.scheduledTime).getUTCHours() === Number(env.FULL_SYNC_HOUR_UTC);
-    await env.SCRAPE_QUEUE.sendBatch(enabled(env).map((prime) => ({ body: { prime, full } })));
+    const sites = await loadSites(env);
+    if (sites.length > 0) await env.SCRAPE_QUEUE.sendBatch(sites.map((site) => ({ body: { prime: site.slug, full, site } })));
   },
 
   async queue(batch: MessageBatch<ScrapeMessage>, env: Env) {
     for (const message of batch.messages) {
+      const startedAt = new Date().toISOString();
+      const site = message.body.site ?? { slug: message.body.prime, kind: "builtin", config: {} };
       try {
-        await runPrime(env, message.body.prime, message.body.full);
+        const summary = await runPrime(env, site, message.body.full);
+        await logRun(env, site.slug, startedAt, summary.full, summary, summary.error);
         message.ack();
       } catch (error) {
-        console.error(`[${message.body.prime}] failed: ${(error as Error).message}`);
+        const msg = (error as Error).message;
+        console.error(`[${site.slug}] failed: ${msg}`);
+        await logRun(env, site.slug, startedAt, message.body.full, {}, msg);
         message.retry();
       }
     }
   },
 
-  // Manual run for testing: POST /run?prime=teksystems&full=1 with Bearer RUN_TOKEN.
+  // POST /run?prime=<slug>[&full=1]   queue a run now
+  // POST /test  {kind, config}          read a site without storing anything
+  // Both need Bearer RUN_TOKEN.
   async fetch(req: Request, env: Env) {
     const url = new URL(req.url);
-    if (url.pathname === "/health") return Response.json({ ok: true, primes: enabled(env) });
-    if (url.pathname !== "/run" || req.method !== "POST") return new Response("Not found", { status: 404 });
+    if (url.pathname === "/health") return Response.json({ ok: true });
+    if (req.method !== "POST" || !["/run", "/test"].includes(url.pathname)) return new Response("Not found", { status: 404 });
     if (!env.RUN_TOKEN || req.headers.get("Authorization") !== `Bearer ${env.RUN_TOKEN}`) return new Response("Unauthorized", { status: 401 });
+    if (url.pathname === "/test") {
+      const body = await req.json().catch(() => ({})) as Partial<Site>;
+      try {
+        return Response.json(await testSite({ slug: body.slug || "test", kind: String(body.kind), config: body.config ?? {} }));
+      } catch (error) {
+        return Response.json({ error: (error as Error).message }, { status: 400 });
+      }
+    }
     const prime = url.searchParams.get("prime") ?? "";
-    if (!enabled(env).includes(prime)) return Response.json({ error: "prime not enabled" }, { status: 400 });
-    await env.SCRAPE_QUEUE.send({ prime, full: url.searchParams.get("full") === "1" });
+    const site = (await loadSites(env, true)).find((s) => s.slug === prime);
+    if (!site) return Response.json({ error: "unknown site" }, { status: 400 });
+    await env.SCRAPE_QUEUE.send({ prime, full: url.searchParams.get("full") === "1", site });
     return Response.json({ queued: prime });
   },
 };
