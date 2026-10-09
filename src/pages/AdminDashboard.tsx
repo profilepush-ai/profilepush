@@ -1,10 +1,11 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bell, Filter, Lock, Menu, RefreshCcw, Target, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Rss, Users, Smartphone, List as ListIcon, Table as TableIcon, Star, Globe, Building2 } from 'lucide-react';
+import { Bell, Filter, Lock, Menu, RefreshCcw, Target, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Rss, Users, Smartphone, List as ListIcon, Table as TableIcon, Star, Globe, Building2, Briefcase } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
 import AdminCareerSitesPanel from '../components/AdminCareerSitesPanel';
+import AdminCareerJobsPanel from '../components/AdminCareerJobsPanel';
 import AdminAiPromptsPanel from '../components/AdminAiPromptsPanel';
 import AdminChannelsPanel from '../components/AdminChannelsPanel';
 import AdminListsPanel from '../components/AdminListsPanel';
@@ -104,7 +105,7 @@ interface LinkedinScraperConfig {
   updated_at: string;
 }
 
-type AdminView = 'stats' | 'websites' | 'lists' | 'emails' | 'feedback' | 'scraper' | 'scraper-logs' | 'career-sites' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social' | 'notifications';
+type AdminView = 'stats' | 'websites' | 'lists' | 'emails' | 'feedback' | 'scraper' | 'scraper-logs' | 'career-sites' | 'career-jobs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social' | 'notifications';
 
 // The sidebar renders from this rather than from nine hand-written buttons,
 // which is what the top nav had become — adding a section meant editing the
@@ -118,6 +119,7 @@ const ADMIN_NAV: Array<{ id: AdminView; label: string; Icon: typeof TrendingUp }
   { id: 'scraper', label: 'Scraper Config', Icon: Database },
   { id: 'scraper-logs', label: 'Scraper Logs', Icon: FileSearch },
   { id: 'career-sites', label: 'Career Sites', Icon: Building2 },
+  { id: 'career-jobs', label: 'Career Jobs', Icon: Briefcase },
   { id: 'ai-prompts', label: 'AI Prompts', Icon: Sparkles },
   { id: 'channels', label: 'Channels', Icon: MessageSquare },
   { id: 'market', label: 'Market', Icon: TrendingUp },
@@ -1332,7 +1334,15 @@ export default function AdminDashboard() {
         )}
 
   {adminView === 'scraper-logs' && <AdminScraperLogsPanel />}
-  {adminView === 'career-sites' && <AdminCareerSitesPanel />}
+  {adminView === 'career-sites' && (
+    <AdminCareerSitesPanel
+      onViewJobs={(slug) => {
+        setSearchParams((current) => { const next = new URLSearchParams(current); next.set('site', slug); return next; });
+        setAdminView('career-jobs');
+      }}
+    />
+  )}
+  {adminView === 'career-jobs' && <AdminCareerJobsPanel />}
 
         {adminView === 'ai-prompts' && <AdminAiPromptsPanel />}
         {adminView === 'websites' && <AdminWebsitesPanel />}

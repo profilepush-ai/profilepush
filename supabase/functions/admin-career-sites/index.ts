@@ -8,6 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   delete  { slug }             remove a site added from /admin (its jobs close)
 //   run     { slug, full? }      queue a run now
 //   test    { kind, config }     read a site's first page without storing anything
+//   jobs    { slug?, category?, status?, days?, q?, offset?, limit? }  career-site jobs
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -144,6 +145,27 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await supabase.from("career_sites").upsert(row, { onConflict: "slug" }).select().single();
         if (error) return respond({ error: error.message }, 500);
         return respond({ site: data });
+      }
+
+      // Career-site jobs for the Career Jobs tab, newest first.
+      case "jobs": {
+        const limit = Math.min(200, Math.max(1, Math.round(Number(body.limit) || 100)));
+        const offset = Math.max(0, Math.round(Number(body.offset) || 0));
+        let q = supabase.from("social_jobs")
+          .select("id, post_id, posted_by_name, job_title, location, employment_type, salary_range, job_category, post_status, posted_at, created_at, post_url, extracted_skills, extracted_visa_types", { count: "exact" })
+          .eq("post_source", "career_site");
+        const slug = str(body.slug);
+        if (slug) q = q.like("post_id", `${slug}:%`);
+        if (body.category === "IT") q = q.or("job_category.is.null,job_category.neq.Non-IT");
+        if (body.category === "Non-IT") q = q.eq("job_category", "Non-IT");
+        if (body.status === "open" || body.status === "closed") q = q.eq("post_status", body.status);
+        const days = Number(body.days);
+        if (days > 0) q = q.gte("posted_at", new Date(Date.now() - days * 86_400_000).toISOString());
+        const term = str(body.q).replace(/[%,()"\\]/g, " ").trim();
+        if (term) q = q.or(`job_title.ilike."%${term}%",location.ilike."%${term}%"`);
+        const { data, count, error } = await q.order("posted_at", { ascending: false, nullsFirst: false }).range(offset, offset + limit - 1);
+        if (error) return respond({ error: error.message }, 500);
+        return respond({ jobs: data, total: count ?? 0 });
       }
 
       case "toggle": {
