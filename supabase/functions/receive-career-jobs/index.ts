@@ -83,13 +83,14 @@ function titleReason(rawTitle: unknown): string | null {
   return null;
 }
 
+// Non-IT jobs are kept too (tagged Non-IT): they are the Non-IT data set.
+// The Feed and the Tracker matchers leave Non-IT out through pp_job_lead_ok.
 function rejectionReason(job: CareerJob): string | null {
   const country = str(job.country).toLowerCase();
   if (country && !["us", "usa", "united states", "united states of america"].includes(country)) return "not US";
   if (!country && !stateCode(job) && !job.remote) return "not US";
-  const byTitle = titleReason(job.title);
-  if (byTitle) return byTitle;
   const title = str(job.title);
+  if (!title) return "no title";
   const et = str(job.employment_type).toUpperCase();
   const contractType = /CONTRACT|TEMPORARY|TEMP/.test(et);
   const permanentType = /FULL[_ -]?TIME|PERMANENT|\bPERM\b|DIRECT/.test(et) && !contractType;
@@ -207,24 +208,17 @@ Deno.serve(async (req: Request) => {
     return respond({ unknown, closed, reopened: reopen.length, known: knownCount ?? 0 });
   }
 
-  // Before fetching job pages: which listing titles are worth a fetch. Clearly
-  // non-IT titles are recorded as rejected so they are never fetched again.
+  // Before fetching job pages: sorts listing titles into IT and Non-IT, so the
+  // worker loads IT roles first. Both are kept.
   if (body.action === "triage") {
     const items = (Array.isArray(body.items) ? body.items : []) as Array<{ id: string; url: string; title: string }>;
-    const now = new Date().toISOString();
     const keep: string[] = [];
-    const ledger: Array<Record<string, unknown>> = [];
+    const nonIt: string[] = [];
     for (const item of items.slice(0, 500)) {
       if (!str(item.id) || !str(item.url)) continue;
-      const reason = titleReason(item.title);
-      if (reason) ledger.push({ prime: slug, source_id: item.id, url: item.url, status: "rejected", reason, last_seen_at: now });
-      else keep.push(item.id);
+      (titleReason(item.title) ? nonIt : keep).push(item.id);
     }
-    if (ledger.length > 0) {
-      const { error } = await supabase.from("career_site_jobs").upsert(ledger, { onConflict: "prime,source_id" });
-      if (error) return respond({ error: error.message }, 500);
-    }
-    return respond({ keep });
+    return respond({ keep, nonIt });
   }
 
   if (body.action === "upsert") {
@@ -251,10 +245,7 @@ Deno.serve(async (req: Request) => {
     for (const job of candidates) {
       const postId = `${slug}:${job.source_id}`;
       const result = parsed.get(postId) ?? {};
-      if (str(result.job_category) === "Non-IT") {
-        ledger.push({ prime: slug, source_id: job.source_id, url: job.url, status: "rejected", reason: "not IT (parser)", last_seen_at: now });
-        continue;
-      }
+      const category = titleReason(job.title) || str(result.job_category) === "Non-IT" ? "Non-IT" : "IT";
       const state = stateCode(job);
       const location = [str(job.city), state ?? str(job.state)].filter(Boolean).join(", ") || (job.remote ? "Remote" : "");
       const period = PAY_PERIODS[str(job.pay_unit).toUpperCase()] ?? null;
@@ -282,7 +273,7 @@ Deno.serve(async (req: Request) => {
         post_content: `${str(job.title)}\n${header}\n\n${str(job.description).slice(0, 6000)}`,
         posted_at: postedAt(job.date_posted),
         country: "US",
-        job_category: "IT",
+        job_category: category,
         pay_min: payMin,
         pay_max: payMax,
         pay_currency: payMin != null || payMax != null ? currency : null,

@@ -46,21 +46,23 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
   const wantsFull = full || adapter.alwaysComplete;
 
   const allIds: string[] = [];
-  let skippedByTitle = 0;
+  let nonItFound = 0;
   const titleOf = (i: ListingItem) => i.title || i.job?.title;
-  // Titles that are clearly not IT are recorded by the receiver and never
-  // fetched or parsed, so the per-run cap is spent on IT roles only.
+  // IT roles are loaded first; Non-IT roles (also kept) fill the rest of the
+  // per-run cap, so the IT backlog is never held up by them.
+  const nonItQueue: ListingItem[] = [];
   const triage = async (items: ListingItem[]): Promise<ListingItem[]> => {
     const titled = items.filter(titleOf);
     if (titled.length === 0) return items;
-    const keep = new Set<string>();
+    const nonIt = new Set<string>();
     for (let i = 0; i < titled.length; i += 300) {
       const chunk = titled.slice(i, i + 300);
-      const r = await callReceiver(env, { action: "triage", prime: slug, items: chunk.map((x) => ({ id: x.id, url: x.url, title: titleOf(x) })) }) as { keep: string[] };
-      for (const id of r.keep ?? []) keep.add(id);
+      const r = await callReceiver(env, { action: "triage", prime: slug, items: chunk.map((x) => ({ id: x.id, url: x.url, title: titleOf(x) })) }) as { nonIt?: string[] };
+      for (const id of r.nonIt ?? []) nonIt.add(id);
     }
-    skippedByTitle += titled.length - keep.size;
-    return items.filter((i) => !titleOf(i) || keep.has(i.id));
+    nonItFound += nonIt.size;
+    nonItQueue.push(...items.filter((i) => nonIt.has(i.id)));
+    return items.filter((i) => !nonIt.has(i.id));
   };
   const pending: ListingItem[] = [];
   let listingFinished = false;
@@ -86,7 +88,7 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
       const total = next.value.total ?? 0;
       const backfilling = total > 0 && known < 0.9 * total;
       if (!backfilling && unknown.length === 0) break;
-      if (backfilling && pending.length >= maxNew) break;
+      if (backfilling && pending.length + nonItQueue.length >= maxNew) break;
     }
   } catch (error) {
     console.error(`[${slug}] listing stopped: ${(error as Error).message}`);
@@ -101,6 +103,8 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
       toProcess = await triage(pending.filter((i) => isNew.has(i.id)));
     }
   }
+
+  toProcess = [...toProcess, ...nonItQueue];
 
   const batch: CareerJob[] = [];
   let accepted = 0, rejected = 0, fetched = 0, failed = 0;
@@ -130,7 +134,7 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
   }
   await flush();
 
-  const summary = { prime: slug, full: wantsFull, listed: allIds.length, listingFinished, newFound: toProcess.length + skippedByTitle, skippedByTitle, processed: Math.min(toProcess.length, maxNew), fetched, failed, accepted, rejected, closed, budgetLeft: budget.remaining };
+  const summary = { prime: slug, full: wantsFull, listed: allIds.length, listingFinished, newFound: toProcess.length, nonItFound, processed: Math.min(toProcess.length, maxNew), fetched, failed, accepted, rejected, closed, budgetLeft: budget.remaining };
   console.log(JSON.stringify(summary));
   return summary;
 }
