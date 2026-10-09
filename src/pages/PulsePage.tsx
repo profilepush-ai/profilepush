@@ -4825,7 +4825,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
       .filter((row) => {
         const postedTs = getPostedTimestamp(row);
         return newestMatchByJobId.has(row.id)
-          && ((row.poster_email ?? '').trim() || row.post_source === 'user_post')
+          // Career-site jobs have no email: Apply happens on the firm's site.
+          && ((row.poster_email ?? '').trim() || row.post_source === 'user_post' || row.post_source === 'career_site')
           && Number.isFinite(postedTs)
           && postedTs >= rangeCutoffMs;
       })
