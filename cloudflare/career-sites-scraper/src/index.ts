@@ -81,18 +81,18 @@ export async function runPrime(env: Env, slug: string, full: boolean) {
   }
 
   // Titles that are clearly not IT are recorded by the receiver and never
-  // fetched; only the rest get a detail-page fetch.
-  const needDetail = toProcess.filter((i) => !i.job && i.title);
+  // fetched or parsed, so the per-run cap is spent on IT roles only.
+  const titled = toProcess.filter((i) => i.title || i.job?.title);
   let skippedByTitle = 0;
-  if (needDetail.length > 0) {
+  if (titled.length > 0) {
     const keep = new Set<string>();
-    for (let i = 0; i < needDetail.length; i += 300) {
-      const chunk = needDetail.slice(i, i + 300);
-      const r = await callReceiver(env, { action: "triage", prime: slug, items: chunk.map((x) => ({ id: x.id, url: x.url, title: x.title })) }) as { keep: string[] };
+    for (let i = 0; i < titled.length; i += 300) {
+      const chunk = titled.slice(i, i + 300);
+      const r = await callReceiver(env, { action: "triage", prime: slug, items: chunk.map((x) => ({ id: x.id, url: x.url, title: x.title ?? x.job?.title })) }) as { keep: string[] };
       for (const id of r.keep ?? []) keep.add(id);
     }
-    skippedByTitle = needDetail.length - keep.size;
-    toProcess = toProcess.filter((i) => i.job || !i.title || keep.has(i.id));
+    skippedByTitle = titled.length - keep.size;
+    toProcess = toProcess.filter((i) => !(i.title || i.job?.title) || keep.has(i.id));
   }
 
   const batch: CareerJob[] = [];

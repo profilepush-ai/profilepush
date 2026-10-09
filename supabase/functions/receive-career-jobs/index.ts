@@ -259,7 +259,7 @@ Deno.serve(async (req: Request) => {
         job_title: str(job.title),
         location,
         employment_type: employment,
-        salary_range: pay,
+        salary_range: pay ?? "",
         job_description: str(job.description).slice(0, 8000),
         post_content: `${str(job.title)}\n${header}\n\n${str(job.description).slice(0, 6000)}`,
         posted_at: postedAt(job.date_posted),
