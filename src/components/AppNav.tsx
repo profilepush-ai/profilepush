@@ -5,7 +5,7 @@ import {
   Building2, CreditCard, AlertTriangle,
   Bell, BellRing, Check, X,
   Briefcase, Mail, UserRound, Rss, CircleUser,
-  Kanban, Globe
+  Kanban, Globe, Target,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -59,6 +59,9 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   const followingLabel = followingLabelForPersona(persona);
   return [
     { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },
+    // Today: each consultant's matches to submit to, against the daily target.
+    // Desktop only for now: the phone's bottom bar is the first five items.
+    ...(isBenchSales ? [{ path: '/today', label: 'Today', mobileLabel: 'Today', icon: Target, hideOnMobile: true }] : []),
     // Tracker: a column per consultant (or requirement), matches arriving
     // live as cards, with what was sent to each. It replaced the separate
     // Submissions / Invites list.
