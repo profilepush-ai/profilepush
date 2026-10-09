@@ -90,6 +90,28 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json() as Record<string, unknown>;
     const action = str(body.action, 20);
+
+    // Can this career-site job page be shown inside our page? Only jobs we
+    // hold are checked (their stored URL), never an arbitrary address.
+    if (action === "frame_check") {
+      const jobIdToCheck = str(body.job_id, 100);
+      if (!UUID.test(jobIdToCheck)) return respond({ error: "job_id is required" }, 400);
+      const { data: j } = await admin.from("social_jobs").select("post_url, post_source").eq("id", jobIdToCheck).maybeSingle();
+      const target = str(j?.post_url, 2000);
+      if (!target || j?.post_source !== "career_site" || !/^https:\/\//.test(target)) return respond({ embeddable: false });
+      try {
+        const res = await fetch(target, { redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 (compatible; ProfilePushJobsBot/1.0)" }, signal: AbortSignal.timeout(8000) });
+        await res.body?.cancel();
+        const xfo = (res.headers.get("x-frame-options") ?? "").toLowerCase();
+        const csp = (res.headers.get("content-security-policy") ?? "").toLowerCase();
+        const ancestors = csp.match(/frame-ancestors([^;]*)/)?.[1]?.trim() ?? "";
+        const blocked = /deny|sameorigin/.test(xfo) || (ancestors !== "" && !/(^|\s)\*(\s|$)/.test(ancestors));
+        return respond({ embeddable: res.ok && !blocked, url: res.url });
+      } catch {
+        return respond({ embeddable: false });
+      }
+    }
+
     const accountId = str(body.account_id, 100);
     const subjectId = str(body.subject_id, 100);
     const jobId = str(body.job_id, 100);

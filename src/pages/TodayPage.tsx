@@ -1,68 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Check, ChevronDown, ChevronRight, FileText, Mail, RefreshCw, Send, Target, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, ExternalLink, FileText, Mail, RefreshCw, Send, Target, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
+import LeadCard, { loadLeadsByIds, type LeadCardProps, type SocialLead } from '../components/LeadCard';
 import ApplyOnSiteButton from '../components/ApplyOnSite';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { consultantTitle } from '../lib/consultant-title';
 
+// Today: column 1 the day's count and the consultants, column 2 the selected
+// consultant's matches, column 3 the submission (email) or the application
+// (filled details + the firm's page) for the selected match.
+
 type QueueItem = {
-  card_id: string;
-  job_id: string;
-  title: string | null;
-  poster: string | null;
-  company: string | null;
-  location: string | null;
-  pay: string | null;
-  rate_min: number | null;
-  rate_max: number | null;
-  source: string;
-  apply_url: string | null;
-  posted_at: string;
-  similarity: number;
-  has_email: boolean;
-  duplicate: string | null;
+  card_id: string; job_id: string; title: string | null; poster: string | null; company: string | null;
+  location: string | null; pay: string | null; source: string; apply_url: string | null; posted_at: string;
+  similarity: number; has_email: boolean; duplicate: string | null;
 };
-
 type QueueSubject = {
-  subject_id: string;
-  role_title: string | null;
-  candidate_name: string | null;
-  visa_type: string | null;
-  location: string | null;
-  years_experience: number | null;
-  skills: string[] | null;
-  resume_url: string | null;
-  resume_file_name: string | null;
-  submitted_today: number;
-  waiting: number;
-  items: QueueItem[];
+  subject_id: string; role_title: string | null; candidate_name: string | null; visa_type: string | null;
+  location: string | null; years_experience: number | null; skills: string[] | null; resume_url: string | null;
+  resume_file_name: string | null; submitted_today: number; waiting: number; items: QueueItem[];
 };
-
 type Queue = { target: number; daily_cap: number; used_today: number; submitted_today: number; subjects: QueueSubject[] };
-
-type Draft = { subjectId: string; item: QueueItem; subject: string; body: string; to: string; duplicate: string | null };
+type Draft = { jobId: string; to: string; subject: string; body: string; duplicate: string | null };
+type ItemState = 'sending' | 'sent' | 'skipped' | { error: string };
 
 const PACE_MS = 4000;
-
-function ago(iso: string) {
-  const h = Math.round((Date.now() - new Date(iso).getTime()) / 3_600_000);
-  if (h < 1) return 'just now';
-  if (h < 48) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
-}
-
-function payOf(i: QueueItem) {
-  if (i.pay) return i.pay;
-  if (i.rate_min || i.rate_max) {
-    const lo = i.rate_min ?? i.rate_max;
-    const hi = i.rate_max ?? i.rate_min;
-    return lo === hi ? `$${lo}/hr` : `$${lo}–${hi}/hr`;
-  }
-  return '';
-}
+const noop = () => {};
 
 async function invoke(body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke('submit-consultant', { body });
@@ -74,33 +41,61 @@ async function invoke(body: Record<string, unknown>) {
   return { ok: true as const, data };
 }
 
+function CopyRow({ label, value }: { label: string; value: string | null | undefined }) {
+  const [copied, setCopied] = useState(false);
+  if (!value) return null;
+  return (
+    <div className="flex items-center gap-2 border-b border-gray-100 py-1.5 last:border-0 dark:border-white/5">
+      <span className="w-24 shrink-0 text-[11px] text-gray-400">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-[12px] text-gray-800 dark:text-slate-200">{value}</span>
+      <button
+        type="button"
+        onClick={() => { void navigator.clipboard.writeText(value).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); }); }}
+        className="flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/5"
+        title="Copy"
+      >
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+      </button>
+    </div>
+  );
+}
+
 export default function TodayPage() {
-  const { account } = useAuth();
+  const { account, user } = useAuth();
+  const { isDark } = useTheme();
   const accountId = account?.id;
   const [queue, setQueue] = useState<Queue | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [open, setOpen] = useState<Record<string, boolean>>({});
-  const [busy, setBusy] = useState<Record<string, 'sending' | 'sent' | 'skipped' | string>>({});
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [bulk, setBulk] = useState<{ subjectId: string; done: number; total: number } | null>(null);
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [subjectLeads, setSubjectLeads] = useState<Record<string, SocialLead>>({});
+  const [jobLeads, setJobLeads] = useState<Record<string, SocialLead>>({});
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [selectedJob, setSelectedJob] = useState<string | null>(null);
+  const [itemState, setItemState] = useState<Record<string, ItemState>>({});
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [frame, setFrame] = useState<{ jobId: string; embeddable: boolean } | null>(null);
+  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
   const stopBulk = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error: rpcError } = await supabase.rpc('get_submission_queue' as never, { p_per_subject: 25 } as never);
-    if (rpcError) setError(rpcError.message);
-    else {
-      const q = data as unknown as Queue | null;
-      setQueue(q);
-      setOpen((prev) => {
-        if (Object.keys(prev).length > 0 || !q) return prev;
-        const first = q.subjects.find((s) => s.items.length > 0);
-        return first ? { [first.subject_id]: true } : prev;
-      });
+    const { data, error: rpcError } = await supabase.rpc('get_submission_queue' as never, { p_per_subject: 40 } as never);
+    if (rpcError) { setError(rpcError.message); setLoading(false); return; }
+    const q = data as unknown as Queue | null;
+    setQueue(q);
+    if (q) {
+      const [subs, jobs] = await Promise.all([
+        loadLeadsByIds('hotlist', q.subjects.map((s) => s.subject_id)),
+        loadLeadsByIds('job', [...new Set(q.subjects.flatMap((s) => s.items.map((i) => i.job_id)))]),
+      ]);
+      setSubjectLeads(subs);
+      setJobLeads(jobs);
+      setSelectedSubject((cur) => cur && q.subjects.some((s) => s.subject_id === cur)
+        ? cur
+        : (q.subjects.find((s) => s.items.length > 0) ?? q.subjects[0])?.subject_id ?? null);
     }
     setLoading(false);
   }, []);
@@ -111,6 +106,40 @@ export default function TodayPage() {
       .then(({ data }: { data: { status?: string } | null }) => setGmailConnected(data?.status === 'connected'));
   }, []);
 
+  const subject = queue?.subjects.find((s) => s.subject_id === selectedSubject) ?? null;
+  const items = useMemo(() => subject?.items ?? [], [subject]);
+  const item = items.find((i) => i.job_id === selectedJob) ?? null;
+  const capLeft = queue ? Math.max(0, queue.daily_cap - queue.used_today) : 0;
+
+  // Selecting a consultant opens their first match that still needs action.
+  useEffect(() => {
+    if (!subject) { setSelectedJob(null); return; }
+    setSelectedJob((cur) => (cur && subject.items.some((i) => i.job_id === cur) ? cur
+      : subject.items.find((i) => !itemState[i.card_id] && !i.duplicate)?.job_id ?? subject.items[0]?.job_id ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSubject, subject?.items.length]);
+
+  // Column 3 content for the selected match: the email draft, or whether the
+  // firm's page can be shown here.
+  useEffect(() => {
+    setDraft(null);
+    setFrame(null);
+    if (!item || !subject || !accountId) return;
+    if (item.source === 'career_site') {
+      void invoke({ action: 'frame_check', job_id: item.job_id }).then((r) => {
+        setFrame({ jobId: item.job_id, embeddable: Boolean(r.ok && r.data?.embeddable) });
+      });
+      return;
+    }
+    if (!item.has_email) return;
+    setDraftLoading(true);
+    void invoke({ action: 'preview', account_id: accountId, subject_id: subject.subject_id, job_id: item.job_id }).then((r) => {
+      setDraftLoading(false);
+      if (r.ok) setDraft({ jobId: item.job_id, to: r.data.to, subject: r.data.subject, body: r.data.body, duplicate: r.data.duplicate });
+      else setError(r.message);
+    });
+  }, [item?.job_id, subject?.subject_id, accountId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const connectGmail = async () => {
     if (!accountId) return;
     setConnecting(true);
@@ -119,237 +148,278 @@ export default function TodayPage() {
     window.location.href = data.url;
   };
 
-  const markItem = (cardId: string, state: string) => setBusy((b) => ({ ...b, [cardId]: state }));
-
-  const handleFailure = (cardId: string, code: string | undefined, message: string) => {
-    if (code === 'daily_limit_reached') setError(`Daily send limit reached (${queue?.daily_cap ?? ''}). Buy credits to raise it to 100 a day.`);
-    else if (code === 'insufficient_credits') setError('Out of credits. Buy credits to keep sending.');
-    else if (code === 'gmail_not_connected') { setGmailConnected(false); setError('Connect Gmail to send submissions.'); }
-    markItem(cardId, message || 'Failed');
-    return code === 'daily_limit_reached' || code === 'insufficient_credits' || code === 'gmail_not_connected';
+  const nextAfter = (jobId: string) => {
+    const idx = items.findIndex((i) => i.job_id === jobId);
+    return items.slice(idx + 1).find((i) => !itemState[i.card_id] && !i.duplicate)?.job_id ?? null;
   };
 
-  const openDraft = async (subjectId: string, item: QueueItem) => {
-    if (!accountId) return;
-    markItem(item.card_id, 'sending');
-    const r = await invoke({ action: 'preview', account_id: accountId, subject_id: subjectId, job_id: item.job_id });
-    if (!r.ok) { handleFailure(item.card_id, r.code, r.message); return; }
-    markItem(item.card_id, '');
-    setDraft({ subjectId, item, subject: r.data.subject, body: r.data.body, to: r.data.to, duplicate: r.data.duplicate });
-  };
+  const bumpCounts = (subjectId: string) => setQueue((q) => q && {
+    ...q, submitted_today: q.submitted_today + 1, used_today: q.used_today + 1,
+    subjects: q.subjects.map((s) => (s.subject_id === subjectId ? { ...s, submitted_today: s.submitted_today + 1 } : s)),
+  });
 
-  const send = async (subjectId: string, item: QueueItem, edited?: { subject: string; body: string }) => {
+  // Returns false when sending should stop (limit, credits, Gmail).
+  const send = async (s: QueueSubject, i: QueueItem, edited?: { subject: string; body: string }) => {
     if (!accountId) return false;
-    markItem(item.card_id, 'sending');
-    const r = await invoke({ action: 'send', account_id: accountId, subject_id: subjectId, job_id: item.job_id, request_id: crypto.randomUUID(), ...edited });
-    if (!r.ok) return !handleFailure(item.card_id, r.code, r.message);
-    markItem(item.card_id, 'sent');
-    setQueue((q) => q && { ...q, submitted_today: q.submitted_today + 1, used_today: q.used_today + 1,
-      subjects: q.subjects.map((s) => s.subject_id === subjectId ? { ...s, submitted_today: s.submitted_today + 1 } : s) });
+    setItemState((m) => ({ ...m, [i.card_id]: 'sending' }));
+    const r = await invoke({ action: 'send', account_id: accountId, subject_id: s.subject_id, job_id: i.job_id, request_id: crypto.randomUUID(), ...edited });
+    if (!r.ok) {
+      setItemState((m) => ({ ...m, [i.card_id]: { error: r.message } }));
+      if (r.code === 'daily_limit_reached') setError(`Daily send limit reached (${queue?.daily_cap}). Buy credits to raise it to 100 a day.`);
+      else if (r.code === 'insufficient_credits') setError('Out of credits. Buy credits to keep sending.');
+      else if (r.code === 'gmail_not_connected') { setGmailConnected(false); setError('Connect Gmail to send submissions.'); }
+      return !['daily_limit_reached', 'insufficient_credits', 'gmail_not_connected'].includes(r.code ?? '');
+    }
+    setItemState((m) => ({ ...m, [i.card_id]: 'sent' }));
+    bumpCounts(s.subject_id);
     return true;
   };
 
-  const skip = async (item: QueueItem) => {
-    markItem(item.card_id, 'skipped');
-    await supabase.rpc('move_pipeline_card' as never, { p_id: item.card_id, p_stage: 'closed', p_reason: 'not_a_match' } as never);
+  const sendSelected = async () => {
+    if (!subject || !item || !draft) return;
+    const next = nextAfter(item.job_id);
+    const ok = await send(subject, item, { subject: draft.subject, body: draft.body });
+    if (ok && next) setSelectedJob(next);
   };
 
-  const sendTop = async (s: QueueSubject, n: number) => {
-    const targets = s.items.filter((i) => i.has_email && !i.duplicate && i.source !== 'career_site' && !busy[i.card_id]).slice(0, n);
+  const skip = async () => {
+    if (!item) return;
+    const next = nextAfter(item.job_id);
+    setItemState((m) => ({ ...m, [item.card_id]: 'skipped' }));
+    await supabase.rpc('move_pipeline_card' as never, { p_id: item.card_id, p_stage: 'closed', p_reason: 'not_a_match' } as never);
+    if (next) setSelectedJob(next);
+  };
+
+  const sendTop = async () => {
+    if (!subject) return;
+    const targets = items.filter((i) => i.has_email && !i.duplicate && i.source !== 'career_site' && !itemState[i.card_id]).slice(0, Math.min(10, capLeft));
     if (targets.length === 0) return;
     stopBulk.current = false;
-    setBulk({ subjectId: s.subject_id, done: 0, total: targets.length });
+    setBulk({ done: 0, total: targets.length });
     for (let k = 0; k < targets.length; k++) {
       if (stopBulk.current) break;
-      const keepGoing = await send(s.subject_id, targets[k]);
-      setBulk({ subjectId: s.subject_id, done: k + 1, total: targets.length });
+      const keepGoing = await send(subject, targets[k]);
+      setBulk({ done: k + 1, total: targets.length });
       if (!keepGoing) break;
       // Paced so the user's own mailbox isn't flagged for bursts.
       if (k < targets.length - 1) await new Promise((res) => setTimeout(res, PACE_MS + Math.random() * 1500));
     }
     setBulk(null);
-    setNotice('Done. Sent submissions are in your Inbox and the Tracker.');
-    void load();
   };
 
-  const totals = useMemo(() => {
-    if (!queue) return { waiting: 0, consultants: 0 };
-    return { waiting: queue.subjects.reduce((n, s) => n + s.waiting, 0), consultants: queue.subjects.length };
-  }, [queue]);
+  const cardProps = (lead: SocialLead, idx: number, selected: boolean, onSelect: () => void): LeadCardProps => ({
+    lead, accountId, userId: user?.id, paletteIndex: idx, isDark, isHotlistFeed: lead.kind === 'hotlist', feedTimeBasis: 'posted',
+    isLeadRevealed: false, globalAskedJobState: undefined, predictResult: undefined, askedRequestedAt: undefined, askedFulfilledAt: undefined,
+    revealedAt: undefined, isInlineBreakdownExpanded: false, isSkillsExpanded: false, isExpFieldExpanded: false,
+    isWorkTypeFieldExpanded: false, isEmpTypeFieldExpanded: false, isRateFieldExpanded: false, isVisaFieldExpanded: false,
+    isLocationFieldExpanded: false, isLoadingPreview: false, isProcessingAskAI: false, onPreview: noop, onAskAI: noop,
+    onToggleInlineBreakdown: noop, onExpandSkills: noop, onCollapseSkills: noop, onToggleField: noop,
+    hideActions: true, isSelected: selected, onSelect: () => onSelect(),
+  });
 
   const progress = queue ? Math.min(100, Math.round((queue.submitted_today / Math.max(1, queue.target)) * 100)) : 0;
-  const capLeft = queue ? Math.max(0, queue.daily_cap - queue.used_today) : 0;
+  const stateOf = (i: QueueItem) => itemState[i.card_id];
+  const panel = 'flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]';
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#f3f2ee] pb-[calc(4.25rem+env(safe-area-inset-bottom))] text-gray-900 dark:bg-[#1B1D21] dark:text-slate-100 sm:pb-0">
       <AppNav />
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6">
-        <div className="mx-auto max-w-5xl space-y-3">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#20242a]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-500/10"><Target size={20} /></span>
-                <div>
-                  <p className="text-[13px] font-semibold">Today's submissions</p>
-                  <p className="text-2xl font-bold tabular-nums">
-                    {queue?.submitted_today ?? 0}<span className="text-base font-medium text-gray-400"> / {queue?.target ?? 100}</span>
-                  </p>
-                </div>
-              </div>
-              <div className="text-right text-[12px] text-gray-500 dark:text-slate-400">
-                <p>{totals.waiting.toLocaleString()} matches waiting across {totals.consultants} consultants</p>
-                <p>{capLeft} sends left today{queue && queue.daily_cap < 100 ? ' (trial limit 10 — ' : ''}{queue && queue.daily_cap < 100 && <Link to="/billing" className="font-semibold text-blue-600">buy credits for 100/day</Link>}{queue && queue.daily_cap < 100 ? ')' : ''}</p>
-              </div>
-            </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
-              <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${progress}%` }} />
-            </div>
-            {gmailConnected === false && (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
-                <span>Submissions are sent from your own Gmail. Connect it to start.</span>
-                <button onClick={() => void connectGmail()} disabled={connecting} className="rounded-md bg-amber-600 px-3 py-1 font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
-                  {connecting ? 'Opening Google…' : 'Connect Gmail'}
-                </button>
-              </div>
-            )}
-            {error && (
-              <div className="mt-3 flex items-start justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:bg-red-500/10 dark:text-red-300">
-                <span>{error}</span><button onClick={() => setError('')}><X size={13} /></button>
-              </div>
-            )}
-            {notice && (
-              <div className="mt-3 flex items-start justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-[12px] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-                <span>{notice}</span><button onClick={() => setNotice('')}><X size={13} /></button>
-              </div>
-            )}
-          </div>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-2 sm:p-3 lg:grid-cols-[minmax(0,300px)_minmax(0,400px)_minmax(0,1fr)]">
 
-          <div className="flex items-center justify-between px-1">
-            <p className="text-[12px] text-gray-500 dark:text-slate-400">Best matches first. A consultant is never sent to the same requirement twice, even when another vendor reposts it.</p>
-            <button onClick={() => void load()} disabled={loading} title="Refresh" className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-white dark:hover:bg-white/5">
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            </button>
-          </div>
-
-          {loading && !queue ? (
-            <div className="flex justify-center py-16"><LogoSpinner size={22} /></div>
-          ) : queue && queue.subjects.length === 0 ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-[13px] text-gray-500 dark:border-white/10 dark:bg-[#20242a]">
-              Add your consultants (hotlist) to get matched requirements here every day. <Link to="/tracker" className="font-semibold text-blue-600">Go to Tracker</Link>
-            </div>
-          ) : queue?.subjects.map((s) => {
-            const isOpen = Boolean(open[s.subject_id]);
-            const sendable = s.items.filter((i) => i.has_email && !i.duplicate && i.source !== 'career_site' && !busy[i.card_id]).length;
-            const running = bulk?.subjectId === s.subject_id;
-            return (
-              <div key={s.subject_id} className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
-                <button onClick={() => setOpen((o) => ({ ...o, [s.subject_id]: !isOpen }))} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-white/5">
-                  {isOpen ? <ChevronDown size={15} className="text-gray-400" /> : <ChevronRight size={15} className="text-gray-400" />}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-semibold">{consultantTitle(s.role_title)}</p>
-                    <p className="truncate text-[11px] text-gray-500 dark:text-slate-400">
-                      {[s.years_experience ? `${Math.round(s.years_experience)} yrs` : '', s.visa_type, s.location].filter(Boolean).join(' · ')}
-                    </p>
-                  </div>
-                  {s.resume_url ? (
-                    <span className="hidden items-center gap-1 text-[11px] text-emerald-600 sm:inline-flex"><FileText size={12} />Resume</span>
-                  ) : (
-                    <span className="hidden items-center gap-1 text-[11px] text-amber-600 sm:inline-flex" title="Upload a resume on the Tracker so it's attached"><AlertTriangle size={12} />No resume</span>
-                  )}
-                  <span className="text-[12px] tabular-nums text-gray-500"><b className="text-gray-900 dark:text-white">{s.submitted_today}</b> today</span>
-                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">{s.waiting} waiting</span>
-                </button>
-
-                {isOpen && (
-                  <div className="border-t border-gray-100 dark:border-white/10">
-                    <div className="flex flex-wrap items-center justify-between gap-2 bg-gray-50 px-4 py-2 dark:bg-white/[0.03]">
-                      <span className="text-[11px] text-gray-500">{sendable} ready to send by email{s.items.some((i) => i.source === 'career_site') ? ' · career-site jobs: Apply on the firm\'s site' : ''}</span>
-                      {running ? (
-                        <button onClick={() => { stopBulk.current = true; }} className="rounded-md border border-gray-300 px-3 py-1 text-[12px] font-semibold text-gray-700 hover:bg-white">
-                          Stop ({bulk!.done}/{bulk!.total})
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => void sendTop(s, Math.min(10, capLeft))}
-                          disabled={sendable === 0 || capLeft === 0 || Boolean(bulk) || gmailConnected === false}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
-                        >
-                          <Send size={12} />Send top {Math.min(10, sendable, capLeft)}
-                        </button>
-                      )}
-                    </div>
-                    {s.items.length === 0 && <p className="px-4 py-6 text-center text-[12px] text-gray-400">No new matches right now. New requirements are matched every 10 minutes.</p>}
-                    <ul className="divide-y divide-gray-100 dark:divide-white/5">
-                      {s.items.map((i) => {
-                        const state = busy[i.card_id];
-                        const isCareer = i.source === 'career_site';
-                        return (
-                          <li key={i.card_id} className={`flex flex-wrap items-center gap-3 px-4 py-2.5 ${state === 'sent' || state === 'skipped' ? 'opacity-50' : ''}`}>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-[13px] font-semibold">{i.title}</p>
-                              <p className="truncate text-[11px] text-gray-500 dark:text-slate-400">
-                                {[i.poster || i.company, i.location, payOf(i), ago(i.posted_at)].filter(Boolean).join(' · ')}
-                                {isCareer && <span className="ml-1.5 rounded-full bg-emerald-50 px-1.5 text-[10px] font-medium text-emerald-700">Career site</span>}
-                              </p>
-                              {i.duplicate && <p className="text-[11px] text-amber-600">{i.duplicate}</p>}
-                              {state && !['sending', 'sent', 'skipped'].includes(state) && <p className="text-[11px] text-red-600">{state}</p>}
-                            </div>
-                            <span className="text-[11px] tabular-nums text-gray-400" title="Match strength">{Math.round(i.similarity * 100)}%</span>
-                            <div className="flex items-center gap-1.5">
-                              {state === 'sent' ? (
-                                <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-600"><Check size={13} />Sent</span>
-                              ) : state === 'skipped' ? (
-                                <span className="text-[12px] text-gray-400">Skipped</span>
-                              ) : isCareer ? (
-                                <div className="w-28"><ApplyOnSiteButton lead={{ id: i.job_id, postSource: 'career_site', kind: 'job', applyUrl: i.apply_url, posterName: i.poster ?? '' }} variant="panel" subjectId={s.subject_id} onApplied={() => void load()} /></div>
-                              ) : (
-                                <button
-                                  onClick={() => void openDraft(s.subject_id, i)}
-                                  disabled={!i.has_email || Boolean(i.duplicate) || state === 'sending' || gmailConnected === false}
-                                  title={!i.has_email ? 'No email on this post' : undefined}
-                                  className="inline-flex h-8 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
-                                >
-                                  {state === 'sending' ? <LogoSpinner size={12} /> : <Mail size={13} />}Submit
-                                </button>
-                              )}
-                              {state !== 'sent' && state !== 'skipped' && (
-                                <button onClick={() => void skip(i)} title="Not a match" className="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-red-600 dark:hover:bg-white/5"><X size={14} /></button>
-                              )}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
+        {/* Column 1: the day and the consultants */}
+        <div className="flex min-h-0 flex-col gap-2">
+          <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-[#20242a]">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-500/10"><Target size={18} /></span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] text-gray-500">Today's submissions</p>
+                <p className="text-xl font-bold tabular-nums leading-tight">{queue?.submitted_today ?? 0}<span className="text-sm font-medium text-gray-400"> / {queue?.target ?? 100}</span></p>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {draft && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={() => setDraft(null)}>
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl dark:bg-[#20242a] sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-[14px] font-semibold">Submit to {draft.item.poster || draft.to}</p>
-              <button onClick={() => setDraft(null)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
-            </div>
-            <p className="mb-2 text-[11px] text-gray-500">To {draft.to} · sent from your Gmail{queue?.subjects.find((s) => s.subject_id === draft.subjectId)?.resume_url ? ', resume attached' : ' (no resume on file)'} · 1 credit</p>
-            <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} className="mb-2 h-9 w-full rounded-md border border-gray-300 px-2.5 text-[13px] outline-none focus:border-blue-500 dark:border-white/10 dark:bg-transparent" />
-            <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} rows={13} className="w-full rounded-md border border-gray-300 p-2.5 text-[13px] leading-relaxed outline-none focus:border-blue-500 dark:border-white/10 dark:bg-transparent" />
-            <div className="mt-3 flex justify-end gap-2">
-              <button onClick={() => setDraft(null)} className="h-9 rounded-md border border-gray-300 px-4 text-[12px] font-semibold hover:bg-gray-50 dark:border-white/10">Cancel</button>
-              <button
-                onClick={() => { const d = draft; setDraft(null); void send(d.subjectId, d.item, { subject: d.subject, body: d.body }).then(() => void load()); }}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-blue-600 px-4 text-[12px] font-semibold text-white hover:bg-blue-700"
-              >
-                <Send size={13} />Send
+              <button onClick={() => void load()} disabled={loading} title="Refresh" className="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5">
+                <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
               </button>
             </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+              <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${progress}%` }} />
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500">
+              {capLeft} sends left today
+              {queue && queue.daily_cap < 100 && <> · trial limit 10, <Link to="/billing" className="font-semibold text-blue-600">buy credits</Link> for 100/day</>}
+            </p>
+            {gmailConnected === false ? (
+              <button onClick={() => void connectGmail()} disabled={connecting} className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-amber-600 text-[12px] font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
+                <Mail size={13} />{connecting ? 'Opening Google…' : 'Connect Gmail to send'}
+              </button>
+            ) : gmailConnected && (
+              <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-emerald-600"><Check size={12} />Gmail connected</p>
+            )}
+            {error && (
+              <div className="mt-2 flex items-start justify-between gap-2 rounded-md bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                <span>{error}</span><button onClick={() => setError('')}><X size={12} /></button>
+              </div>
+            )}
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
+            {loading && !queue && <div className="flex justify-center py-10"><LogoSpinner size={20} /></div>}
+            {queue && queue.subjects.length === 0 && (
+              <p className="rounded-lg bg-white p-4 text-center text-[12px] text-gray-500 dark:bg-[#20242a]">
+                Post your consultants (hotlist) to get matched requirements here every day. <Link to="/tracker" className="font-semibold text-blue-600">Tracker</Link>
+              </p>
+            )}
+            {queue?.subjects.map((s, idx) => {
+              const lead = subjectLeads[s.subject_id];
+              return (
+                <div key={s.subject_id}>
+                  {lead ? (
+                    <LeadCard {...cardProps(lead, idx, s.subject_id === selectedSubject, () => setSelectedSubject(s.subject_id))} />
+                  ) : (
+                    <button onClick={() => setSelectedSubject(s.subject_id)} className={`w-full rounded-lg border bg-white px-3 py-2 text-left text-[13px] font-semibold dark:bg-[#20242a] ${s.subject_id === selectedSubject ? 'border-blue-500' : 'border-gray-200 dark:border-white/10'}`}>
+                      {consultantTitle(s.role_title)}
+                    </button>
+                  )}
+                  <div className="flex items-center gap-2 px-1.5 pt-1 text-[10px] text-gray-500">
+                    <span className="font-semibold text-blue-700 dark:text-blue-300">{s.waiting} matches</span>
+                    <span>· {s.submitted_today} sent today</span>
+                    {s.resume_url
+                      ? <span className="inline-flex items-center gap-0.5 text-emerald-600"><FileText size={10} />Resume</span>
+                      : <span className="inline-flex items-center gap-0.5 text-amber-600" title="Upload a resume on the Tracker"><AlertTriangle size={10} />No resume</span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-      )}
+
+        {/* Column 2: the selected consultant's matches */}
+        <div className={panel}>
+          <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 dark:border-white/10">
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold">{subject ? consultantTitle(subject.role_title) : 'Matches'}</p>
+              <p className="text-[11px] text-gray-500">{items.length} fresh matches · last 3 days first</p>
+            </div>
+            {bulk ? (
+              <button onClick={() => { stopBulk.current = true; }} className="h-8 shrink-0 rounded-md border border-gray-300 px-3 text-[12px] font-semibold">Stop ({bulk.done}/{bulk.total})</button>
+            ) : (
+              <button
+                onClick={() => void sendTop()}
+                disabled={!subject || capLeft === 0 || gmailConnected === false || !items.some((i) => i.has_email && !i.duplicate && i.source !== 'career_site' && !itemState[i.card_id])}
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
+              >
+                <Send size={12} />Send top 10
+              </button>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
+            {subject && items.length === 0 && <p className="py-10 text-center text-[12px] text-gray-400">No fresh matches. New requirements are matched every 10 minutes.</p>}
+            {items.map((i, idx) => {
+              const lead = jobLeads[i.job_id];
+              const st = stateOf(i);
+              return (
+                <div key={i.card_id} className={st === 'sent' || st === 'skipped' ? 'opacity-50' : ''}>
+                  {lead && <LeadCard {...cardProps(lead, idx, i.job_id === selectedJob, () => setSelectedJob(i.job_id))} />}
+                  <div className="flex items-center gap-2 px-1.5 pt-1 text-[10px]">
+                    <span className="text-gray-400">{Math.round(i.similarity * 100)}% match</span>
+                    {st === 'sent' && <span className="font-semibold text-emerald-600">Sent</span>}
+                    {st === 'skipped' && <span className="text-gray-400">Skipped</span>}
+                    {st === 'sending' && <span className="text-blue-600">Sending…</span>}
+                    {typeof st === 'object' && <span className="truncate text-red-600">{st.error}</span>}
+                    {i.duplicate && <span className="truncate text-amber-600">{i.duplicate}</span>}
+                    {!i.has_email && i.source !== 'career_site' && <span className="text-gray-400">no email</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Column 3: submit (email) or apply (details + the firm's page) */}
+        <aside className={panel}>
+          {!item || !subject ? (
+            <div className="flex flex-1 items-center justify-center p-6 text-center text-[13px] text-gray-400">Select a match to submit</div>
+          ) : (
+            <>
+              <div className="flex items-start gap-2 border-b border-gray-100 px-4 py-3 dark:border-white/10">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15px] font-semibold">{item.title}</p>
+                  <p className="truncate text-[12px] text-gray-500">{[item.poster || item.company, item.location, item.pay].filter(Boolean).join(' · ')}</p>
+                </div>
+                <button onClick={() => void skip()} disabled={Boolean(stateOf(item))} className="h-8 shrink-0 rounded-md border border-gray-200 px-3 text-[12px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 dark:border-white/10">Skip</button>
+              </div>
+
+              {item.source === 'career_site' ? (
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="border-b border-gray-100 px-4 py-2.5 dark:border-white/10">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Application details</p>
+                    <CopyRow label="Name" value={subject.candidate_name} />
+                    <CopyRow label="Role" value={consultantTitle(subject.role_title)} />
+                    <CopyRow label="Experience" value={subject.years_experience ? `${Math.round(subject.years_experience)} years` : null} />
+                    <CopyRow label="Skills" value={(subject.skills ?? []).join(', ')} />
+                    <CopyRow label="Work auth" value={subject.visa_type} />
+                    <CopyRow label="Location" value={subject.location} />
+                    {subject.resume_url
+                      ? <a href={subject.resume_url} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-blue-600"><FileText size={12} />{subject.resume_file_name || 'Resume'}</a>
+                      : <p className="mt-1 text-[11px] text-amber-600">No resume on file. Upload one on the Tracker.</p>}
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <div className="flex w-40">
+                        <ApplyOnSiteButton
+                          lead={{ id: item.job_id, postSource: 'career_site', kind: 'job', applyUrl: item.apply_url, posterName: item.poster ?? '' }}
+                          variant="panel"
+                          subjectId={subject.subject_id}
+                          onApplied={() => { setItemState((m) => ({ ...m, [item.card_id]: 'sent' })); bumpCounts(subject.subject_id); }}
+                        />
+                      </div>
+                      <span className="text-[11px] text-gray-500">Apply on {item.poster || 'the firm'}'s site, then mark it applied.</span>
+                    </div>
+                  </div>
+                  {frame?.jobId === item.job_id && frame.embeddable && item.apply_url ? (
+                    <iframe title="Job application" src={item.apply_url} className="min-h-0 w-full flex-1 border-0" sandbox="allow-forms allow-scripts allow-same-origin allow-popups" />
+                  ) : (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+                      {frame?.jobId !== item.job_id ? <LogoSpinner size={16} /> : (
+                        <>
+                          <p className="text-[12px] text-gray-500">{item.poster || 'This firm'} doesn't allow its site to be shown inside other pages.</p>
+                          {item.apply_url && <a href={item.apply_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-[12px] font-semibold hover:bg-gray-50 dark:border-white/10"><ExternalLink size={12} />Open the application in a new tab</a>}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : !item.has_email ? (
+                <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] text-gray-400">This post has no email to submit to.</div>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col p-4">
+                  {draftLoading || draft?.jobId !== item.job_id ? (
+                    <div className="flex flex-1 items-center justify-center"><LogoSpinner size={18} /></div>
+                  ) : (
+                    <>
+                      <p className="mb-2 text-[11px] text-gray-500">
+                        To {draft.to} · from your Gmail · {subject.resume_url ? 'resume attached' : 'no resume on file'} · 1 credit
+                      </p>
+                      {(item.duplicate || draft.duplicate) && <p className="mb-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">{item.duplicate || draft.duplicate}</p>}
+                      <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} className="mb-2 h-9 w-full rounded-md border border-gray-300 px-2.5 text-[13px] outline-none focus:border-blue-500 dark:border-white/10 dark:bg-transparent" />
+                      <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} className="min-h-[220px] w-full flex-1 resize-none rounded-md border border-gray-300 p-2.5 text-[13px] leading-relaxed outline-none focus:border-blue-500 dark:border-white/10 dark:bg-transparent" />
+                      <div className="mt-3 flex items-center justify-end gap-2">
+                        {stateOf(item) === 'sent' ? (
+                          <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-emerald-600"><Check size={14} />Sent</span>
+                        ) : (
+                          <button
+                            onClick={() => void sendSelected()}
+                            disabled={Boolean(item.duplicate || draft.duplicate) || stateOf(item) === 'sending' || gmailConnected === false || capLeft === 0}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
+                          >
+                            {stateOf(item) === 'sending' ? <LogoSpinner size={13} /> : <Send size={13} />}Send submission
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }
