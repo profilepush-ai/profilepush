@@ -22,6 +22,13 @@ function withTextFields(job: CareerJob): CareerJob {
   return job;
 }
 
+// Short, fixed-length id for a job page path (long paths in lookups made the
+// request URL too long, and commas in them broke it).
+async function pathId(path: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(path));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 24);
+}
+
 // Job sitemap (or sitemap index) -> pages whose URL contains `url_contains`
 // -> schema.org JobPosting on each page. The last path segment is used as the
 // title for triage when it reads like one.
@@ -45,7 +52,7 @@ export function sitemapJsonld(slug: string, cfg: Record<string, unknown>): Adapt
       for (const url of urls) {
         if (!url.includes(contains)) continue;
         const path = new URL(url).pathname.replace(/\/+$/, "");
-        const id = path.slice(-120);
+        const id = await pathId(path.slice(-120));
         if (seen.has(id)) continue;
         seen.add(id);
         const last = decodeURIComponent(path.split("/").pop() ?? "");
