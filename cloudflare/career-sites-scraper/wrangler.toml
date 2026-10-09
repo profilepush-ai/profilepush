@@ -30,3 +30,5 @@ queue = "career-sites-scrape"
 max_batch_size = 1
 max_batch_timeout = 5
 max_retries = 2
+# Sites run side by side; one run spends most of its time waiting on the parser.
+max_concurrency = 10

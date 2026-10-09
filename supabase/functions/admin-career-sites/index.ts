@@ -14,7 +14,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
-const KINDS = ["sitemap_jsonld", "jobdiva", "greenhouse", "lever", "workday"];
+const KINDS = ["sitemap_jsonld", "jobdiva", "greenhouse", "lever", "workday", "none"];
 
 function respond(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -120,7 +120,7 @@ Deno.serve(async (req: Request) => {
           : null;
         const kind = existing?.kind === "builtin" ? "builtin" : str(s.kind);
         let config: Record<string, unknown> = {};
-        if (kind !== "builtin") {
+        if (kind !== "builtin" && kind !== "none") {
           if (!KINDS.includes(kind)) return respond({ error: "Choose a site type" }, 400);
           const normalized = normalizeConfig(kind, (s.config ?? {}) as Record<string, unknown>);
           if (normalized.error) return respond({ error: normalized.error }, 400);
@@ -139,6 +139,8 @@ Deno.serve(async (req: Request) => {
           enabled: s.enabled !== false, max_new_per_run: maxNew, notes: str(s.notes) || null, updated_at: new Date().toISOString(),
         };
         if (kind !== "builtin") row.config = config;
+        // A site with no supported feed can be listed but never runs.
+        if (kind === "none") row.enabled = false;
         const { data, error } = await supabase.from("career_sites").upsert(row, { onConflict: "slug" }).select().single();
         if (error) return respond({ error: error.message }, 500);
         return respond({ site: data });
@@ -166,12 +168,14 @@ Deno.serve(async (req: Request) => {
 
       case "run": {
         const slug = str(body.slug);
+        const { data: site } = await supabase.from("career_sites").select("kind").eq("slug", slug).maybeSingle();
+        if (site?.kind === "none") return respond({ error: "This site needs an adapter before it can run" }, 400);
         return respond(await callWorker(`/run?prime=${encodeURIComponent(slug)}${body.full ? "&full=1" : ""}`));
       }
 
       case "test": {
         const kind = str(body.kind);
-        if (kind === "builtin") return respond({ error: "Built-in sites are tested with Run now" }, 400);
+        if (kind === "builtin" || kind === "none") return respond({ error: "This site type can't be tested" }, 400);
         const normalized = normalizeConfig(kind, (body.config ?? {}) as Record<string, unknown>);
         if (normalized.error) return respond({ error: normalized.error }, 400);
         return respond(await callWorker("/test", { kind, config: normalized.config }));

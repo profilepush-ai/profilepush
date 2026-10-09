@@ -39,7 +39,7 @@ function toJob(slug: string, a: string, j: Job, d: Record<string, unknown> | nul
   return {
     source_id: String(j.id),
     url: `https://www2.jobdiva.com/portal/?a=${a}&compid=0#/jobs/${j.id}`,
-    title: String(j.title ?? "").trim(),
+    title: String(j.title ?? "").replace(/^[\s\-–]+/, "").trim(),
     city: loc.city,
     state: loc.state,
     country: loc.country ?? (loc.state ? "US" : null),

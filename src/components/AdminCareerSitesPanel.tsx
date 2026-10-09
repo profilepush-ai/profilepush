@@ -3,7 +3,7 @@ import { Building2, ExternalLink, Pencil, Play, Plus, RefreshCcw, Trash2, X } fr
 import LogoSpinner from './LogoSpinner';
 import { supabase } from '../lib/supabase';
 
-type SiteKind = 'builtin' | 'sitemap_jsonld' | 'jobdiva' | 'greenhouse' | 'lever' | 'workday';
+type SiteKind = 'builtin' | 'sitemap_jsonld' | 'jobdiva' | 'greenhouse' | 'lever' | 'workday' | 'none';
 
 type Site = {
   slug: string;
@@ -40,10 +40,12 @@ const KIND_LABEL: Record<SiteKind, string> = {
   greenhouse: 'Greenhouse',
   lever: 'Lever',
   workday: 'Workday',
+  none: 'Needs adapter',
 };
 
 // What to paste for each type, and which config key it fills.
 const KIND_FIELDS: Record<Exclude<SiteKind, 'builtin'>, Array<{ key: string; label: string; placeholder: string }>> = {
+  none: [],
   sitemap_jsonld: [
     { key: 'sitemap_url', label: 'Sitemap URL', placeholder: 'https://jobs.example.com/sitemap.xml' },
     { key: 'url_contains', label: 'Job URLs contain', placeholder: '/job' },
@@ -261,7 +263,8 @@ export default function AdminCareerSitesPanel() {
                           type="button"
                           role="switch"
                           aria-checked={site.enabled}
-                          disabled={busySlug === site.slug}
+                          disabled={busySlug === site.slug || site.kind === 'none'}
+                          title={site.kind === 'none' ? 'Needs an adapter before it can run' : undefined}
                           onClick={() => void act(site.slug, () => callAdmin('toggle', { slug: site.slug, enabled: !site.enabled }), `${site.name} switched ${site.enabled ? 'off' : 'on'}.`)}
                           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${site.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
                         >
@@ -285,8 +288,8 @@ export default function AdminCareerSitesPanel() {
                         <div className="flex justify-end gap-1">
                           <button
                             onClick={() => void act(site.slug, () => callAdmin('run', { slug: site.slug }), `Queued a run for ${site.name}. Results appear below in a few minutes.`)}
-                            disabled={busySlug === site.slug}
-                            title="Run now"
+                            disabled={busySlug === site.slug || site.kind === 'none'}
+                            title={site.kind === 'none' ? 'Needs an adapter before it can run' : 'Run now'}
                             className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50"
                           >
                             {busySlug === site.slug ? <LogoSpinner size={11} /> : <Play size={12} />}
@@ -451,7 +454,7 @@ export default function AdminCareerSitesPanel() {
             )}
 
             <div className="mt-4 flex justify-end gap-2">
-              {form.kind !== 'builtin' && (
+              {form.kind !== 'builtin' && form.kind !== 'none' && (
                 <button onClick={() => void runTest()} disabled={testing} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                   {testing ? <LogoSpinner size={12} /> : <Play size={12} />}Test
                 </button>

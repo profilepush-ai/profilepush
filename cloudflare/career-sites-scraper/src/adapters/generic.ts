@@ -9,7 +9,8 @@ import { jobdivaAdapter } from "./jobdiva";
 export type SiteConfig = { slug: string; kind: string; config: Record<string, unknown> };
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-const locs = (xml: string) => [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1].replace(/&amp;/g, "&"));
+// <loc> values, plain or wrapped in CDATA (Hays).
+const locs = (xml: string) => [...xml.matchAll(/<loc>\s*(?:<!\[CDATA\[)?\s*([^<\s\]]+)\s*(?:\]\]>)?\s*<\/loc>/g)].map((m) => m[1].replace(/&amp;/g, "&"));
 
 function withTextFields(job: CareerJob): CareerJob {
   const desc = job.description ?? "";
@@ -19,6 +20,13 @@ function withTextFields(job: CareerJob): CareerJob {
   }
   job.employment_type ||= guessEmploymentType(desc);
   return job;
+}
+
+// Short, fixed-length id for a job page path (long paths in lookups made the
+// request URL too long, and commas in them broke it).
+async function pathId(path: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(path));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 24);
 }
 
 // Job sitemap (or sitemap index) -> pages whose URL contains `url_contains`
@@ -44,7 +52,7 @@ export function sitemapJsonld(slug: string, cfg: Record<string, unknown>): Adapt
       for (const url of urls) {
         if (!url.includes(contains)) continue;
         const path = new URL(url).pathname.replace(/\/+$/, "");
-        const id = path.slice(-120);
+        const id = await pathId(path.slice(-120));
         if (seen.has(id)) continue;
         seen.add(id);
         const last = decodeURIComponent(path.split("/").pop() ?? "");

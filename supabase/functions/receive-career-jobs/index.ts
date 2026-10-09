@@ -142,7 +142,7 @@ Deno.serve(async (req: Request) => {
 
   // The sites to scrape (career_sites, managed in /admin).
   if (body.action === "sites") {
-    let q = supabase.from("career_sites").select("slug, name, kind, config, max_new_per_run, enabled").order("slug");
+    let q = supabase.from("career_sites").select("slug, name, kind, config, max_new_per_run, enabled").neq("kind", "none").order("slug");
     if (!body.includeDisabled) q = q.eq("enabled", true);
     const { data, error } = await q;
     if (error) return respond({ error: error.message }, 500);
@@ -235,7 +235,9 @@ Deno.serve(async (req: Request) => {
   }
 
   if (body.action === "upsert") {
-    const jobs: CareerJob[] = (Array.isArray(body.jobs) ? body.jobs : []).slice(0, 10);
+    // One row per job: a duplicate in one upsert fails the whole batch.
+    const jobs: CareerJob[] = [...new Map(((Array.isArray(body.jobs) ? body.jobs : []) as CareerJob[])
+      .map((j) => [str(j.source_id), j] as const)).values()].slice(0, 10);
     const now = new Date().toISOString();
     const ledger: Array<Record<string, unknown>> = [];
     const candidates: CareerJob[] = [];

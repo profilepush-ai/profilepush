@@ -3,9 +3,28 @@ import type { CareerJob } from "./types";
 
 type Obj = Record<string, unknown>;
 
-// First schema.org JobPosting embedded as JSON-LD in a page, or null.
+const isJobPosting = (x: unknown) => {
+  const t = (x as Obj | null)?.["@type"];
+  return t === "JobPosting" || (Array.isArray(t) && t.includes("JobPosting"));
+};
+
+// A JobPosting anywhere in a JSON-LD value: top level, in @graph or arrays,
+// or nested under another object (Robert Half: WebPage.mainEntity).
+function findJobPosting(x: unknown, depth = 0): Obj | null {
+  if (!x || typeof x !== "object" || depth > 4) return null;
+  if (isJobPosting(x)) return x as Obj;
+  for (const v of Array.isArray(x) ? x : Object.values(x as Obj)) {
+    const found = findJobPosting(v, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+// The schema.org JobPosting embedded as JSON-LD in a page, or null. When a page
+// has several, the one with a location wins (Deloitte's first is internal).
 export function jobPostingFromHtml(html: string): Obj | null {
   const re = /<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi;
+  let fallback: Obj | null = null;
   for (const m of html.matchAll(re)) {
     let data: unknown;
     try {
@@ -13,13 +32,12 @@ export function jobPostingFromHtml(html: string): Obj | null {
     } catch {
       continue;
     }
-    const items = Array.isArray(data) ? data : (data as Obj)?.["@graph"] ?? [data];
-    for (const x of items as Obj[]) {
-      const t = x?.["@type"];
-      if (t === "JobPosting" || (Array.isArray(t) && t.includes("JobPosting"))) return x;
-    }
+    const found = findJobPosting(data);
+    if (!found) continue;
+    if (found.jobLocation) return found;
+    fallback ??= found;
   }
-  return null;
+  return fallback;
 }
 
 const first = <T>(v: T | T[] | undefined): T | undefined => (Array.isArray(v) ? v[0] : v);
