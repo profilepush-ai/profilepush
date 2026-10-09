@@ -110,10 +110,11 @@ function payLabel(min: number | null, max: number | null, period: string | null)
 function postedAt(datePosted: string | null | undefined): string | null {
   const d = str(datePosted).slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
-  const ageMs = Date.now() - Date.parse(`${d}T00:00:00Z`);
-  // Sites give a date, not a time: a job dated today or yesterday sorts as
-  // "just now" (we see it within the hour), older ones at midday of that date.
-  return ageMs < 2 * 86_400_000 ? new Date().toISOString() : `${d}T12:00:00Z`;
+  // Sites give a date, not a time: midday of that date, or now when midday
+  // hasn't come yet. Never "now" for older jobs: a backlog stamped "just now"
+  // pushed every new LinkedIn post off the first Feed page.
+  const midday = Date.parse(`${d}T12:00:00Z`);
+  return new Date(Math.min(midday, Date.now())).toISOString();
 }
 
 function getBearerToken(req: Request): string {
