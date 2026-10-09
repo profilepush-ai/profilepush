@@ -121,15 +121,25 @@ export async function runPrime(env: Env, site: Site, full: boolean) {
     }
   }
 
-  toProcess = [...toProcess, ...nonItQueue];
+  // A listing can show the same job twice while it is being paged.
+  const seenIds = new Set<string>();
+  toProcess = [...toProcess, ...nonItQueue].filter((i) => !seenIds.has(i.id) && Boolean(seenIds.add(i.id)));
 
   const batch: CareerJob[] = [];
   let accepted = 0, rejected = 0, fetched = 0, failed = 0;
+  // Up to three batches are parsed at once: parsing is most of a run's time.
+  const inFlight: Promise<void>[] = [];
   const flush = async () => {
     if (batch.length === 0) return;
-    const r = await callReceiver(env, { action: "upsert", prime: slug, jobs: batch.splice(0) }) as { accepted: number; rejected: number };
-    accepted += r.accepted ?? 0;
-    rejected += r.rejected ?? 0;
+    const jobs = batch.splice(0);
+    const p = (async () => {
+      const r = await callReceiver(env, { action: "upsert", prime: slug, jobs }) as { accepted: number; rejected: number };
+      accepted += r.accepted ?? 0;
+      rejected += r.rejected ?? 0;
+    })();
+    inFlight.push(p);
+    p.finally(() => inFlight.splice(inFlight.indexOf(p), 1)).catch(() => {});
+    if (inFlight.length >= 3) await Promise.race(inFlight);
   };
   for (const item of toProcess.slice(0, maxNew)) {
     let job = item.job ?? null;
@@ -150,6 +160,7 @@ export async function runPrime(env: Env, site: Site, full: boolean) {
     if (batch.length >= UPSERT_BATCH) await flush();
   }
   await flush();
+  await Promise.all(inFlight);
 
   const summary = { prime: slug, full: wantsFull, listed: allIds.length, listingFinished, newFound: toProcess.length, nonItFound, processed: Math.min(toProcess.length, maxNew), fetched, failed, accepted, rejected, closed, budgetLeft: budget.remaining };
   console.log(JSON.stringify(summary));

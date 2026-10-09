@@ -9,7 +9,8 @@ import { jobdivaAdapter } from "./jobdiva";
 export type SiteConfig = { slug: string; kind: string; config: Record<string, unknown> };
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-const locs = (xml: string) => [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1].replace(/&amp;/g, "&"));
+// <loc> values, plain or wrapped in CDATA (Hays).
+const locs = (xml: string) => [...xml.matchAll(/<loc>\s*(?:<!\[CDATA\[)?\s*([^<\s\]]+)\s*(?:\]\]>)?\s*<\/loc>/g)].map((m) => m[1].replace(/&amp;/g, "&"));
 
 function withTextFields(job: CareerJob): CareerJob {
   const desc = job.description ?? "";
