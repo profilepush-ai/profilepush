@@ -322,7 +322,7 @@ export default function TodayPage() {
             )}
           </div>
 
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pt-1">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pl-2.5 pr-1 pt-3">
             {loading && !queue && <div className="flex justify-center py-10"><LogoSpinner size={20} /></div>}
             {queue && queue.subjects.length === 0 && (
               <p className="rounded-lg bg-white p-4 text-center text-[12px] text-gray-500 dark:bg-[#20242a]">
@@ -331,8 +331,15 @@ export default function TodayPage() {
             )}
             {queue?.subjects.map((s, idx) => {
               const lead = subjectLeads[s.subject_id];
+              const resume = resumes[s.subject_id];
               return (
-                <div key={s.subject_id}>
+                <div key={s.subject_id} className="relative">
+                  {/* Matches waiting on this consultant, as a notification count. */}
+                  {s.waiting > 0 && (
+                    <span className="pointer-events-none absolute -left-2 -top-2 z-20 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[12px] font-bold tabular-nums text-white shadow ring-2 ring-[#f3f2ee] dark:ring-[#1B1D21]">
+                      {s.waiting > 99 ? '99+' : s.waiting}
+                    </span>
+                  )}
                   {lead ? (
                     <LeadCard {...cardProps(lead, idx, s.subject_id === selectedSubject, () => setSelectedSubject(s.subject_id))} />
                   ) : (
@@ -340,20 +347,20 @@ export default function TodayPage() {
                       {consultantTitle(s.role_title)}
                     </button>
                   )}
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-1.5 pt-1.5 text-[10px] text-gray-500">
-                    <span className="font-semibold text-blue-700 dark:text-blue-300">{s.waiting} matches</span>
-                    <span>· {s.submitted_today} sent today</span>
-                    <span className="ml-auto inline-flex items-center gap-1.5">
-                      {resumes[s.subject_id] ? (
-                        <a href={resumes[s.subject_id].url} target="_blank" rel="noreferrer" title={resumes[s.subject_id].name} className="inline-flex max-w-[140px] items-center gap-0.5 font-semibold text-emerald-700 hover:underline">
-                          <Paperclip size={10} className="shrink-0" /><span className="truncate">{resumes[s.subject_id].name}</span>
+                  <div className="flex items-center gap-2 px-1.5 pt-1.5 text-[10px] text-gray-500">
+                    <span>{s.submitted_today} sent today</span>
+                    <span className="ml-auto inline-flex items-center gap-1">
+                      {resume ? (
+                        <a href={resume.url} target="_blank" rel="noreferrer" title={`Resume: ${resume.name}`} aria-label="Open resume"
+                          className="flex h-6 w-6 items-center justify-center rounded-full text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10">
+                          <Paperclip size={13} />
                         </a>
                       ) : (
-                        <span className="inline-flex items-center gap-0.5 text-amber-600"><AlertTriangle size={10} />No resume</span>
+                        <span title="No resume on file" className="flex h-6 w-6 items-center justify-center text-amber-500"><AlertTriangle size={12} /></span>
                       )}
-                      <label className="inline-flex cursor-pointer items-center gap-0.5 font-semibold text-blue-600 hover:underline">
-                        {uploadingFor === s.subject_id ? <LogoSpinner size={10} /> : <Upload size={10} />}
-                        {resumes[s.subject_id] ? 'Replace' : 'Upload'}
+                      <label title={resume ? 'Replace resume' : 'Upload resume'} aria-label={resume ? 'Replace resume' : 'Upload resume'}
+                        className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10">
+                        {uploadingFor === s.subject_id ? <LogoSpinner size={11} /> : <Upload size={13} />}
                         <input type="file" accept=".pdf,.doc,.docx" className="hidden" disabled={Boolean(uploadingFor)}
                           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadResume(s.subject_id, f); }} />
                       </label>
