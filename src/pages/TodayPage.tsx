@@ -309,7 +309,7 @@ export default function TodayPage() {
             )}
           </div>
 
-          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pt-1">
             {loading && !queue && <div className="flex justify-center py-10"><LogoSpinner size={20} /></div>}
             {queue && queue.subjects.length === 0 && (
               <p className="rounded-lg bg-white p-4 text-center text-[12px] text-gray-500 dark:bg-[#20242a]">
@@ -327,7 +327,7 @@ export default function TodayPage() {
                       {consultantTitle(s.role_title)}
                     </button>
                   )}
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-1.5 pt-1 text-[10px] text-gray-500">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-1.5 pt-1.5 text-[10px] text-gray-500">
                     <span className="font-semibold text-blue-700 dark:text-blue-300">{s.waiting} matches</span>
                     <span>· {s.submitted_today} sent today</span>
                     <span className="ml-auto inline-flex items-center gap-1.5">
@@ -377,7 +377,7 @@ export default function TodayPage() {
               </button>
             )}
           </div>
-          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
             {subject && items.length === 0 && <p className="py-10 text-center text-[12px] text-gray-400">No fresh matches. New requirements are matched every 10 minutes.</p>}
             {items.map((i, idx) => {
               const lead = jobLeads[i.job_id];
@@ -392,7 +392,7 @@ export default function TodayPage() {
                       onToggleBulkSelect={() => setChecked((c) => { const n = new Set(c); if (n.has(i.card_id)) n.delete(i.card_id); else n.add(i.card_id); return n; })}
                     />
                   )}
-                  <div className="flex items-center gap-2 px-1.5 pt-1 text-[10px]">
+                  <div className="flex items-center gap-2 px-1.5 pt-1.5 text-[10px]">
                     <span className="text-gray-400">{Math.round(i.similarity * 100)}% match</span>
                     {st === 'sent' && <span className="font-semibold text-emerald-600">Sent</span>}
                     {st === 'skipped' && <span className="text-gray-400">Skipped</span>}
@@ -440,7 +440,7 @@ export default function TodayPage() {
 
               {/* Bottom half: tinted in the hotlist (consultant) purple, since
                   it is the consultant's submission. */}
-              <div className="flex min-h-0 flex-1 basis-1/2 flex-col overflow-y-auto bg-purple-50 px-4 py-3 dark:bg-purple-500/10">
+              <div className="flex min-h-0 flex-1 basis-1/2 flex-col overflow-y-auto bg-purple-100/60 px-4 py-3 dark:bg-purple-500/15">
                 {item.source === 'career_site' ? (
                   <>
                     <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-300">Application details</p>
