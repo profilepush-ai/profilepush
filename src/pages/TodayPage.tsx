@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Check, Copy, ExternalLink, FileText, Mail, RefreshCw, Send, Target, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, ExternalLink, FileText, Mail, Paperclip, RefreshCw, Send, Target, Upload, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import LeadCard, { loadLeadsByIds, type LeadCardProps, type SocialLead } from '../components/LeadCard';
@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { consultantTitle } from '../lib/consultant-title';
+import { trackEvent } from '../lib/track';
 
 // Today: column 1 the day's count and the consultants, column 2 the selected
 // consultant's matches, column 3 the submission (email) or the application
@@ -78,6 +79,10 @@ export default function TodayPage() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [frame, setFrame] = useState<{ jobId: string; embeddable: boolean } | null>(null);
   const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [resumes, setResumes] = useState<Record<string, { url: string; name: string }>>({});
+  const [uploadingFor, setUploadingFor] = useState('');
+  const [description, setDescription] = useState<{ jobId: string; text: string } | null>(null);
   const stopBulk = useRef(false);
 
   const load = useCallback(async () => {
@@ -87,6 +92,7 @@ export default function TodayPage() {
     const q = data as unknown as Queue | null;
     setQueue(q);
     if (q) {
+      setResumes(Object.fromEntries(q.subjects.filter((s) => s.resume_url).map((s) => [s.subject_id, { url: s.resume_url!, name: s.resume_file_name || 'Resume' }])));
       const [subs, jobs] = await Promise.all([
         loadLeadsByIds('hotlist', q.subjects.map((s) => s.subject_id)),
         loadLeadsByIds('job', [...new Set(q.subjects.flatMap((s) => s.items.map((i) => i.job_id)))]),
@@ -119,8 +125,21 @@ export default function TodayPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSubject, subject?.items.length]);
 
-  // Column 3 content for the selected match: the email draft, or whether the
-  // firm's page can be shown here.
+  useEffect(() => { setChecked(new Set()); }, [selectedSubject]);
+
+  // Column 3, top half: the full post.
+  useEffect(() => {
+    if (!selectedJob) { setDescription(null); return; }
+    let alive = true;
+    void supabase.from('social_jobs').select('post_content, job_description').eq('id', selectedJob).maybeSingle()
+      .then(({ data }: { data: { post_content?: string; job_description?: string } | null }) => {
+        if (alive) setDescription({ jobId: selectedJob, text: (data?.post_content || data?.job_description || '').trim() });
+      });
+    return () => { alive = false; };
+  }, [selectedJob]);
+
+  // Column 3, bottom half: the email draft, or whether the firm's page can be
+  // shown here.
   useEffect(() => {
     setDraft(null);
     setFrame(null);
@@ -182,17 +201,46 @@ export default function TodayPage() {
     if (ok && next) setSelectedJob(next);
   };
 
+  async function uploadResume(subjectId: string, file: File) {
+    if (!accountId) return;
+    if (!/\.(pdf|docx?)$/i.test(file.name)) { setError('Attach a PDF or Word resume.'); return; }
+    if (file.size > 4 * 1024 * 1024) { setError('Resume must be under 4 MB.'); return; }
+    setUploadingFor(subjectId);
+    try {
+      const safeName = file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80);
+      const storagePath = `consultant-resumes/${accountId}/${crypto.randomUUID()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage.from('resumes').upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
+      if (uploadError) throw new Error(uploadError.message);
+      const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(storagePath);
+      const { error: rpcError } = await supabase.rpc('set_hotlist_resume' as never, { p_hotlist_id: subjectId, p_url: urlData.publicUrl, p_file_name: file.name } as never);
+      if (rpcError) throw new Error(rpcError.message);
+      setResumes((prev) => ({ ...prev, [subjectId]: { url: urlData.publicUrl, name: file.name } }));
+      trackEvent('consultant_resume_attached', { type: file.name.split('.').pop()?.toLowerCase() ?? '' });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not attach the resume.');
+    } finally {
+      setUploadingFor('');
+    }
+  }
+
+  // Skip: not a match. It leaves the list (and the Tracker) for good.
   const skip = async () => {
-    if (!item) return;
+    if (!item || !subject) return;
     const next = nextAfter(item.job_id);
-    setItemState((m) => ({ ...m, [item.card_id]: 'skipped' }));
-    await supabase.rpc('move_pipeline_card' as never, { p_id: item.card_id, p_stage: 'closed', p_reason: 'not_a_match' } as never);
-    if (next) setSelectedJob(next);
+    const cardId = item.card_id;
+    setQueue((q) => q && { ...q, subjects: q.subjects.map((s) => (s.subject_id === subject.subject_id
+      ? { ...s, waiting: Math.max(0, s.waiting - 1), items: s.items.filter((i) => i.card_id !== cardId) } : s)) });
+    setChecked((c) => { const n = new Set(c); n.delete(cardId); return n; });
+    setSelectedJob(next);
+    await supabase.rpc('move_pipeline_card' as never, { p_id: cardId, p_stage: 'closed', p_reason: 'not_a_match' } as never);
   };
+
+  const sendable = (i: QueueItem) => i.has_email && !i.duplicate && i.source !== 'career_site' && !itemState[i.card_id];
 
   const sendTop = async () => {
     if (!subject) return;
-    const targets = items.filter((i) => i.has_email && !i.duplicate && i.source !== 'career_site' && !itemState[i.card_id]).slice(0, Math.min(10, capLeft));
+    const pool = checked.size > 0 ? items.filter((i) => checked.has(i.card_id)) : items;
+    const targets = pool.filter(sendable).slice(0, checked.size > 0 ? capLeft : Math.min(10, capLeft));
     if (targets.length === 0) return;
     stopBulk.current = false;
     setBulk({ done: 0, total: targets.length });
@@ -205,6 +253,7 @@ export default function TodayPage() {
       if (k < targets.length - 1) await new Promise((res) => setTimeout(res, PACE_MS + Math.random() * 1500));
     }
     setBulk(null);
+    setChecked(new Set());
   };
 
   const cardProps = (lead: SocialLead, idx: number, selected: boolean, onSelect: () => void): LeadCardProps => ({
@@ -278,12 +327,24 @@ export default function TodayPage() {
                       {consultantTitle(s.role_title)}
                     </button>
                   )}
-                  <div className="flex items-center gap-2 px-1.5 pt-1 text-[10px] text-gray-500">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-1.5 pt-1 text-[10px] text-gray-500">
                     <span className="font-semibold text-blue-700 dark:text-blue-300">{s.waiting} matches</span>
                     <span>· {s.submitted_today} sent today</span>
-                    {s.resume_url
-                      ? <span className="inline-flex items-center gap-0.5 text-emerald-600"><FileText size={10} />Resume</span>
-                      : <span className="inline-flex items-center gap-0.5 text-amber-600" title="Upload a resume on the Tracker"><AlertTriangle size={10} />No resume</span>}
+                    <span className="ml-auto inline-flex items-center gap-1.5">
+                      {resumes[s.subject_id] ? (
+                        <a href={resumes[s.subject_id].url} target="_blank" rel="noreferrer" title={resumes[s.subject_id].name} className="inline-flex max-w-[140px] items-center gap-0.5 font-semibold text-emerald-700 hover:underline">
+                          <Paperclip size={10} className="shrink-0" /><span className="truncate">{resumes[s.subject_id].name}</span>
+                        </a>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 text-amber-600"><AlertTriangle size={10} />No resume</span>
+                      )}
+                      <label className="inline-flex cursor-pointer items-center gap-0.5 font-semibold text-blue-600 hover:underline">
+                        {uploadingFor === s.subject_id ? <LogoSpinner size={10} /> : <Upload size={10} />}
+                        {resumes[s.subject_id] ? 'Replace' : 'Upload'}
+                        <input type="file" accept=".pdf,.doc,.docx" className="hidden" disabled={Boolean(uploadingFor)}
+                          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadResume(s.subject_id, f); }} />
+                      </label>
+                    </span>
                   </div>
                 </div>
               );
@@ -296,17 +357,23 @@ export default function TodayPage() {
           <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 dark:border-white/10">
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold">{subject ? consultantTitle(subject.role_title) : 'Matches'}</p>
-              <p className="text-[11px] text-gray-500">{items.length} fresh matches · last 3 days first</p>
+              <p className="text-[11px] text-gray-500">
+                {items.length} fresh matches ·{' '}
+                <button type="button" className="font-semibold text-blue-600 hover:underline"
+                  onClick={() => setChecked(checked.size > 0 ? new Set() : new Set(items.filter(sendable).map((i) => i.card_id)))}>
+                  {checked.size > 0 ? `Clear (${checked.size})` : 'Select all'}
+                </button>
+              </p>
             </div>
             {bulk ? (
               <button onClick={() => { stopBulk.current = true; }} className="h-8 shrink-0 rounded-md border border-gray-300 px-3 text-[12px] font-semibold">Stop ({bulk.done}/{bulk.total})</button>
             ) : (
               <button
                 onClick={() => void sendTop()}
-                disabled={!subject || capLeft === 0 || gmailConnected === false || !items.some((i) => i.has_email && !i.duplicate && i.source !== 'career_site' && !itemState[i.card_id])}
+                disabled={!subject || capLeft === 0 || gmailConnected === false || !(checked.size > 0 ? items.some((i) => checked.has(i.card_id) && sendable(i)) : items.some(sendable))}
                 className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
               >
-                <Send size={12} />Send top 10
+                <Send size={12} />{checked.size > 0 ? `Send selected (${items.filter((i) => checked.has(i.card_id) && sendable(i)).length})` : 'Send top 10'}
               </button>
             )}
           </div>
@@ -317,7 +384,14 @@ export default function TodayPage() {
               const st = stateOf(i);
               return (
                 <div key={i.card_id} className={st === 'sent' || st === 'skipped' ? 'opacity-50' : ''}>
-                  {lead && <LeadCard {...cardProps(lead, idx, i.job_id === selectedJob, () => setSelectedJob(i.job_id))} />}
+                  {lead && (
+                    <LeadCard
+                      {...cardProps(lead, idx, i.job_id === selectedJob, () => setSelectedJob(i.job_id))}
+                      bulkSelectable={sendable(i) || checked.has(i.card_id)}
+                      isBulkSelected={checked.has(i.card_id)}
+                      onToggleBulkSelect={() => setChecked((c) => { const n = new Set(c); if (n.has(i.card_id)) n.delete(i.card_id); else n.add(i.card_id); return n; })}
+                    />
+                  )}
                   <div className="flex items-center gap-2 px-1.5 pt-1 text-[10px]">
                     <span className="text-gray-400">{Math.round(i.similarity * 100)}% match</span>
                     {st === 'sent' && <span className="font-semibold text-emerald-600">Sent</span>}
@@ -333,23 +407,41 @@ export default function TodayPage() {
           </div>
         </div>
 
-        {/* Column 3: submit (email) or apply (details + the firm's page) */}
+        {/* Column 3: the full post on top; the email (or the application) below;
+            Skip and Send (or Apply) at the bottom. */}
         <aside className={panel}>
           {!item || !subject ? (
             <div className="flex flex-1 items-center justify-center p-6 text-center text-[13px] text-gray-400">Select a match to submit</div>
           ) : (
             <>
-              <div className="flex items-start gap-2 border-b border-gray-100 px-4 py-3 dark:border-white/10">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-semibold">{item.title}</p>
-                  <p className="truncate text-[12px] text-gray-500">{[item.poster || item.company, item.location, item.pay].filter(Boolean).join(' · ')}</p>
-                </div>
-                <button onClick={() => void skip()} disabled={Boolean(stateOf(item))} className="h-8 shrink-0 rounded-md border border-gray-200 px-3 text-[12px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 dark:border-white/10">Skip</button>
+              <div className="border-b border-gray-100 px-4 py-2.5 dark:border-white/10">
+                <p className="truncate text-[15px] font-semibold">{item.title}</p>
+                <p className="truncate text-[12px] text-gray-500">{[item.poster || item.company, item.location, item.pay].filter(Boolean).join(' · ')}</p>
               </div>
 
-              {item.source === 'career_site' ? (
-                <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="border-b border-gray-100 px-4 py-2.5 dark:border-white/10">
+              {/* Top half */}
+              <div className="min-h-0 flex-1 basis-1/2 overflow-y-auto border-b border-gray-100 dark:border-white/10">
+                {item.source === 'career_site' && frame?.jobId === item.job_id && frame.embeddable && item.apply_url ? (
+                  <iframe title="Job application" src={item.apply_url} className="h-full min-h-[260px] w-full border-0" sandbox="allow-forms allow-scripts allow-same-origin allow-popups" />
+                ) : description?.jobId !== item.job_id ? (
+                  <div className="flex h-full items-center justify-center py-8"><LogoSpinner size={16} /></div>
+                ) : (
+                  <div className="px-4 py-3">
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Job description</p>
+                    <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-gray-700 dark:text-slate-300">{description.text || 'No description in this post.'}</p>
+                    {item.source === 'career_site' && item.apply_url && frame?.jobId === item.job_id && !frame.embeddable && (
+                      <a href={item.apply_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-[12px] font-semibold hover:bg-gray-50 dark:border-white/10">
+                        <ExternalLink size={12} />Open on {item.poster || 'the firm'}'s site
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom half */}
+              <div className="flex min-h-0 flex-1 basis-1/2 flex-col overflow-y-auto px-4 py-3">
+                {item.source === 'career_site' ? (
+                  <>
                     <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Application details</p>
                     <CopyRow label="Name" value={subject.candidate_name} />
                     <CopyRow label="Role" value={consultantTitle(subject.role_title)} />
@@ -357,65 +449,52 @@ export default function TodayPage() {
                     <CopyRow label="Skills" value={(subject.skills ?? []).join(', ')} />
                     <CopyRow label="Work auth" value={subject.visa_type} />
                     <CopyRow label="Location" value={subject.location} />
-                    {subject.resume_url
-                      ? <a href={subject.resume_url} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-blue-600"><FileText size={12} />{subject.resume_file_name || 'Resume'}</a>
-                      : <p className="mt-1 text-[11px] text-amber-600">No resume on file. Upload one on the Tracker.</p>}
-                    <div className="mt-2.5 flex items-center gap-2">
-                      <div className="flex w-40">
-                        <ApplyOnSiteButton
-                          lead={{ id: item.job_id, postSource: 'career_site', kind: 'job', applyUrl: item.apply_url, posterName: item.poster ?? '' }}
-                          variant="panel"
-                          subjectId={subject.subject_id}
-                          onApplied={() => { setItemState((m) => ({ ...m, [item.card_id]: 'sent' })); bumpCounts(subject.subject_id); }}
-                        />
-                      </div>
-                      <span className="text-[11px] text-gray-500">Apply on {item.poster || 'the firm'}'s site, then mark it applied.</span>
-                    </div>
+                    {resumes[subject.subject_id]
+                      ? <a href={resumes[subject.subject_id].url} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-blue-600"><FileText size={12} />{resumes[subject.subject_id].name}</a>
+                      : <p className="mt-1 text-[11px] text-amber-600">No resume on file. Upload one on the consultant's card.</p>}
+                  </>
+                ) : !item.has_email ? (
+                  <p className="m-auto text-[12px] text-gray-400">This post has no email to submit to.</p>
+                ) : draftLoading || draft?.jobId !== item.job_id ? (
+                  <div className="m-auto"><LogoSpinner size={16} /></div>
+                ) : (
+                  <>
+                    <p className="mb-1.5 text-[11px] text-gray-500">
+                      To {draft.to} · from your Gmail · {resumes[subject.subject_id] ? `${resumes[subject.subject_id].name} attached` : 'no resume on file'} · 1 credit
+                    </p>
+                    {(item.duplicate || draft.duplicate) && <p className="mb-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-700">{item.duplicate || draft.duplicate}</p>}
+                    <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} className="mb-1.5 h-8 w-full shrink-0 rounded-md border border-gray-300 px-2.5 text-[13px] outline-none focus:border-blue-500 dark:border-white/10 dark:bg-transparent" />
+                    <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} className="min-h-[140px] w-full flex-1 resize-none rounded-md border border-gray-300 p-2.5 text-[13px] leading-relaxed outline-none focus:border-blue-500 dark:border-white/10 dark:bg-transparent" />
+                  </>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex shrink-0 items-center gap-2 border-t border-gray-100 px-4 py-2.5 dark:border-white/10">
+                <button onClick={() => void skip()} disabled={stateOf(item) === 'sending' || stateOf(item) === 'sent'} className="h-9 flex-1 rounded-md border border-gray-300 text-[13px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-white/10 dark:text-slate-200">
+                  Skip
+                </button>
+                {item.source === 'career_site' ? (
+                  <div className="flex flex-1">
+                    <ApplyOnSiteButton
+                      lead={{ id: item.job_id, postSource: 'career_site', kind: 'job', applyUrl: item.apply_url, posterName: item.poster ?? '' }}
+                      variant="panel"
+                      subjectId={subject.subject_id}
+                      onApplied={() => { setItemState((m) => ({ ...m, [item.card_id]: 'sent' })); bumpCounts(subject.subject_id); }}
+                    />
                   </div>
-                  {frame?.jobId === item.job_id && frame.embeddable && item.apply_url ? (
-                    <iframe title="Job application" src={item.apply_url} className="min-h-0 w-full flex-1 border-0" sandbox="allow-forms allow-scripts allow-same-origin allow-popups" />
-                  ) : (
-                    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-                      {frame?.jobId !== item.job_id ? <LogoSpinner size={16} /> : (
-                        <>
-                          <p className="text-[12px] text-gray-500">{item.poster || 'This firm'} doesn't allow its site to be shown inside other pages.</p>
-                          {item.apply_url && <a href={item.apply_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-[12px] font-semibold hover:bg-gray-50 dark:border-white/10"><ExternalLink size={12} />Open the application in a new tab</a>}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : !item.has_email ? (
-                <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] text-gray-400">This post has no email to submit to.</div>
-              ) : (
-                <div className="flex min-h-0 flex-1 flex-col p-4">
-                  {draftLoading || draft?.jobId !== item.job_id ? (
-                    <div className="flex flex-1 items-center justify-center"><LogoSpinner size={18} /></div>
-                  ) : (
-                    <>
-                      <p className="mb-2 text-[11px] text-gray-500">
-                        To {draft.to} · from your Gmail · {subject.resume_url ? 'resume attached' : 'no resume on file'} · 1 credit
-                      </p>
-                      {(item.duplicate || draft.duplicate) && <p className="mb-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">{item.duplicate || draft.duplicate}</p>}
-                      <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} className="mb-2 h-9 w-full rounded-md border border-gray-300 px-2.5 text-[13px] outline-none focus:border-blue-500 dark:border-white/10 dark:bg-transparent" />
-                      <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} className="min-h-[220px] w-full flex-1 resize-none rounded-md border border-gray-300 p-2.5 text-[13px] leading-relaxed outline-none focus:border-blue-500 dark:border-white/10 dark:bg-transparent" />
-                      <div className="mt-3 flex items-center justify-end gap-2">
-                        {stateOf(item) === 'sent' ? (
-                          <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-emerald-600"><Check size={14} />Sent</span>
-                        ) : (
-                          <button
-                            onClick={() => void sendSelected()}
-                            disabled={Boolean(item.duplicate || draft.duplicate) || stateOf(item) === 'sending' || gmailConnected === false || capLeft === 0}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
-                          >
-                            {stateOf(item) === 'sending' ? <LogoSpinner size={13} /> : <Send size={13} />}Send submission
-                          </button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
+                ) : stateOf(item) === 'sent' ? (
+                  <span className="inline-flex h-9 flex-1 items-center justify-center gap-1 text-[13px] font-semibold text-emerald-600"><Check size={14} />Sent</span>
+                ) : (
+                  <button
+                    onClick={() => void sendSelected()}
+                    disabled={!draft || draft.jobId !== item.job_id || Boolean(item.duplicate || draft?.duplicate) || stateOf(item) === 'sending' || gmailConnected === false || capLeft === 0 || !item.has_email}
+                    className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-blue-600 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
+                  >
+                    {stateOf(item) === 'sending' ? <LogoSpinner size={13} /> : <Send size={13} />}Send
+                  </button>
+                )}
+              </div>
             </>
           )}
         </aside>
