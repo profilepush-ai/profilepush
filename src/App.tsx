@@ -35,6 +35,7 @@ const PublicHotlistPage = lazy(() => import('./pages/PublicHotlistPage'));
 const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'));
 const MyProfilePage = lazy(() => import('./pages/MyProfilePage'));
 const BoardPage = lazy(() => import('./pages/BoardPage'));
+const TodayPage = lazy(() => import('./pages/TodayPage'));
 const PostApplicationsPage = lazy(() => import('./pages/PostApplicationsPage'));
 const HotlistRequestsPage = lazy(() => import('./pages/HotlistRequestsPage'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -305,6 +306,7 @@ export default function App() {
             <Route path="/me" element={<ProtectedRoute><ErrorBoundary><MyProfilePage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/home" element={<ProtectedRoute><ErrorBoundary><HomeRedirect /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><BoardPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/today" element={<ProtectedRoute><ErrorBoundary><TodayPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/board" element={<Navigate to="/tracker" replace />} />
             <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
             <Route path="/terms" element={<ErrorBoundary><TermsAndConditions /></ErrorBoundary>} />
