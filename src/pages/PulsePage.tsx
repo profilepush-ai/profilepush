@@ -22,6 +22,7 @@ import SubmitApplicationModal from '../components/SubmitApplicationModal';
 import { consultantTitle } from '../lib/consultant-title';
 import { useAiSubmit, AiSubmitDialog, getFunctionErrorMessage } from '../components/AiSubmit';
 import { trackEvent } from '../lib/track';
+import ApplyOnSiteButton, { isCareerSiteLead, openApplyPage } from '../components/ApplyOnSite';
 import LeadCard, { extractPrimaryEmail, CARD_PALETTE, getLeadBreakdownFieldValues, formatAgo, formatAgoCompact, type SocialLead, type FeedTimeBasis, type GlobalAskedJobState, type PredictCategory, type PredictResult, PersonaMissingTag, type LeadCardProps, shareLead, jobRowToLead, hotlistRowToLead, JOB_LEAD_COLUMNS, HOTLIST_LEAD_COLUMNS, safeNumber, type SocialJobRow, type HotlistLeadRow, getMissingJobDetails, hideEmails, fetchLeadPostContent, PostPreviewModal } from '../components/LeadCard';
 
 type PulsePersona = {
@@ -3531,7 +3532,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                     >
                       <Share2 size={12} strokeWidth={2} />
                     </button>
-                    {lead.kind === 'job' && lead.postSource === 'user_post' ? (
+                    {isCareerSiteLead(lead) ? (
+                      <ApplyOnSiteButton lead={lead} variant="table" />
+                    ) : lead.kind === 'job' && lead.postSource === 'user_post' ? (
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setApplyModalLead(lead); }}
@@ -3736,7 +3739,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                   <Share2 size={14} />
                   Share
                 </button>
-                {selectedLead.kind === 'job' && selectedLead.postSource === 'user_post' ? (
+                {isCareerSiteLead(selectedLead) ? (
+                  <ApplyOnSiteButton lead={selectedLead} variant="panel" />
+                ) : selectedLead.kind === 'job' && selectedLead.postSource === 'user_post' ? (
                   <button
                     type="button"
                     onClick={() => setApplyModalLead(selectedLead)}
@@ -6389,7 +6394,10 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   }, [persistLeadAction]);
 
   const handleSwipePitch = useCallback((lead: SocialLead) => {
-    if (lead.postSource === 'user_post') {
+    // Career-site jobs have no email to pitch to; Apply happens on the firm's site.
+    if (isCareerSiteLead(lead)) {
+      void openApplyPage(lead);
+    } else if (lead.postSource === 'user_post') {
       void handleOpenPostChat(lead);
     } else {
       void handleAskAI(lead);

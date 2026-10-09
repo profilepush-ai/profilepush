@@ -315,6 +315,8 @@ export default function BoardPage() {
       collapsible
       defaultCollapsed
       onDismiss={onDismiss ? () => onDismiss() : undefined}
+      applySubjectId={subjectKind === 'hotlist' ? subjectId ?? null : null}
+      onExternalApplied={() => void loadAll()}
     />
   );
 

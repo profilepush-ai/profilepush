@@ -446,3 +446,9 @@ entrypoint = "./functions/backfill-social-hotlists/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/gmail-oauth-callback/index.ts"
+
+# Called by the career-sites-scraper Cloudflare worker with SOCIAL_WEBHOOK_SECRET.
+[functions.receive-career-jobs]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/receive-career-jobs/index.ts"

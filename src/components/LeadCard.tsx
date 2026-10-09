@@ -8,6 +8,7 @@ import { buildScoreBreakdownDisplayItems } from '../lib/radar-match-ui';
 import { normalizePostSource, type PostSource } from '../lib/post-source';
 import LeadKindPill from './LeadKindPill';
 import LeadAvatar from './LeadAvatar';
+import ApplyOnSiteButton, { isCareerSiteLead } from './ApplyOnSite';
 
 // The lead card used everywhere a job or hotlist post is shown (Feed, AI Match,
 // profile panels, Tracker). Moved here from PulsePage unchanged so every page
@@ -85,6 +86,8 @@ export type SocialLead = {
   consultantCount?: number;
   candidateIndex?: number;
   postSource: PostSource;
+  /** Career-site jobs: the job page on the firm's site, where Apply happens. */
+  applyUrl?: string | null;
   authorAccountId: string | null;
   authorUserId: string | null;
   authorName: string | null;
@@ -433,6 +436,9 @@ export interface LeadCardProps {
   onAskAI: (lead: SocialLead) => void;
   /** No longer used by the card (AI Submit is always the email); kept for callers. */
   onApply?: (lead: SocialLead) => void;
+  /** Tracker: the consultant a career-site Apply is for, so only that card moves. */
+  applySubjectId?: string | null;
+  onExternalApplied?: () => void;
   onToggleInlineBreakdown: (leadId: string) => void;
   onExpandSkills: (leadId: string) => void;
   onCollapseSkills: (leadId: string) => void;
@@ -479,7 +485,7 @@ export const LeadCard = memo(function LeadCard({
   onPreview, onAskAI, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
   hideActions, isSelected, onSelect,
   bulkSelectable, isBulkSelected, onToggleBulkSelect, matchRank, isFocused, onFocus,
-  onChat, isProcessingChat, collapsible = false, defaultCollapsed = true, onDismiss,
+  onChat, isProcessingChat, collapsible = false, defaultCollapsed = true, onDismiss, applySubjectId, onExternalApplied,
 }: LeadCardProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const compact = collapsible && collapsed;
@@ -531,7 +537,9 @@ export const LeadCard = memo(function LeadCard({
       {/* AI Submit is always the email (with the resume when attached), for
           jobs posted on ProfilePush too; the old application form is no
           longer offered from the card. */}
-      {isAskPending || isVerified ? (
+      {isCareerSiteLead(lead) ? (
+        <ApplyOnSiteButton lead={lead} variant="bar" compact={compact} subjectId={applySubjectId} onApplied={onExternalApplied} />
+      ) : isAskPending || isVerified ? (
         <span
           title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')}
           className={`inline-flex h-9 flex-1 items-center justify-center ${isVerified ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'}`}
@@ -586,7 +594,9 @@ export const LeadCard = memo(function LeadCard({
       >
         {justCopiedShare ? <Check size={16} strokeWidth={1.75} /> : <Share2 size={16} strokeWidth={1.75} />}
       </button>
-      {isAskPending || isVerified ? (
+      {isCareerSiteLead(lead) ? (
+        <ApplyOnSiteButton lead={lead} variant="icon" subjectId={applySubjectId} onApplied={onExternalApplied} />
+      ) : isAskPending || isVerified ? (
         <span title={isVerified ? 'Verified' : (isHotlistFeed ? 'Requested' : 'Submitted')} className={`${iconButtonClass} ${isVerified ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}`}>
           {isVerified ? <BadgeCheck size={16} strokeWidth={1.75} /> : <Check size={16} strokeWidth={1.75} />}
         </span>
@@ -908,6 +918,7 @@ export type SocialJobRow = {
   created_by_user_id?: string | null;
   author_display_name?: string | null;
   avatar_url?: string | null;
+  post_url?: string | null;
 };
 
 // AI-populated fields (radar_match_results job_details, extracted_* columns)
@@ -932,7 +943,7 @@ export type HotlistLeadRow = {
   posted_at: string | null; created_at: string; post_source: string | null; created_by_account_id: string | null; created_by_user_id: string | null;
 };
 
-export const JOB_LEAD_COLUMNS = 'id, platform, posted_by_name, poster_email, poster_phone, avatar_url, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, post_source, created_by_account_id, created_by_user_id';
+export const JOB_LEAD_COLUMNS = 'id, platform, posted_by_name, poster_email, poster_phone, avatar_url, created_at, posted_at, job_title, company_name, location, post_content, extracted_role_normalized, employment_type, seniority_level, salary_range, extracted_skills, extracted_experience_years, extracted_visa_types, extracted_hourly_rate_min, extracted_hourly_rate_max, post_source, post_url, created_by_account_id, created_by_user_id';
 export const HOTLIST_LEAD_COLUMNS = 'id, platform, bench_sales_recruiter_name, bench_sales_recruiter_email, bench_sales_recruiter_phone, bench_sales_recruiter_avatar_url, bench_sales_company_name, role_title, core_skills, years_experience, visa_type, employment_type, work_type, locations, hourly_rate_min, hourly_rate_max, raw_post_content, posted_at, created_at, post_source, created_by_account_id, created_by_user_id';
 
 export function jobRowToLead(row: SocialJobRow): SocialLead {
@@ -966,6 +977,7 @@ export function jobRowToLead(row: SocialJobRow): SocialLead {
       : '',
     workType: '',
     postSource: normalizePostSource(row.post_source),
+    applyUrl: row.post_source === 'career_site' ? row.post_url ?? null : null,
     authorAccountId: row.created_by_account_id ?? null,
     authorUserId: row.created_by_user_id ?? null,
     authorName: null,
