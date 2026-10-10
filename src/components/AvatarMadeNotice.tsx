@@ -34,7 +34,7 @@ export default function AvatarMadeNotice() {
   };
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[85] flex justify-center p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:inset-x-auto sm:bottom-6 sm:right-6 sm:p-0" role="dialog" aria-label="Your AI avatar">
+    <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-[85] flex justify-center p-3 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:p-0" role="dialog" aria-label="Your AI avatar">
       <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5" style={{ animation: 'ppFadeUp .4s ease-out both' }}>
         <div className="flex items-center gap-3.5 bg-gradient-to-br from-[#eef3ff] to-white p-4">
           <img src={url} alt="Your AI avatar" className="h-20 w-16 shrink-0 rounded-2xl object-cover object-top shadow-md" />
