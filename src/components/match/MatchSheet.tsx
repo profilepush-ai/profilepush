@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { leadOrg, leadTitle, STATUS_OPTIONS, statusOf, subjectName, type CardItem, type Kind } from '../../lib/today';
+import { leadOrg, leadTitle, pictureFor, STATUS_OPTIONS, statusOf, subjectName, type CardItem, type Kind } from '../../lib/today';
 import { dayOf, fitOf, postUrl, rateOf, type SheetMode } from '../../lib/sheet';
 
 // Tracker and History as a sheet: thin grid lines, a sticky header, row
@@ -23,10 +23,12 @@ function NotesCell({ item, onSave }: { item: CardItem; onSave: (notes: string) =
   );
 }
 
-export default function MatchSheet({ items, kind, mode, dateLabel, dateOf, onOpen, onStatus, onNotes }: {
-  items: CardItem[]; kind: Kind; mode: SheetMode; dateLabel: string; dateOf: (i: CardItem) => string | null;
+export default function MatchSheet({ items, kind, mode, dateLabel, dateOf, onOpen, onStatus, onNotes, viewerId }: {
+  items: CardItem[]; kind: Kind; mode: SheetMode; dateLabel: string; dateOf: (i: CardItem) => string | null; viewerId?: string;
   onOpen: (item: CardItem) => void; onStatus?: (item: CardItem, status: string) => void; onNotes?: (item: CardItem, notes: string) => void;
 }) {
+  // The picture, bigger, beside the row being hovered (outside the scroll box).
+  const [peek, setPeek] = useState<{ url: string; x: number; y: number } | null>(null);
   const head = 'sticky top-0 z-10 h-8 border-b border-r border-gray-200 bg-[#f8f9fa] px-2 text-left text-[12px] font-semibold text-gray-600 dark:border-white/10 dark:bg-[#26292f] dark:text-slate-300';
   const cell = 'h-9 max-w-[220px] truncate border-b border-r border-gray-100 px-2 text-[13px] dark:border-white/5';
   const num = 'sticky left-0 z-[5] w-10 border-b border-r border-gray-200 bg-[#f8f9fa] text-center text-[11.5px] tabular-nums text-gray-400 dark:border-white/10 dark:bg-[#26292f]';
@@ -59,7 +61,18 @@ export default function MatchSheet({ items, kind, mode, dateLabel, dateOf, onOpe
               <tr key={item.card_id} className={`hover:bg-blue-50/40 dark:hover:bg-white/[0.03] ${closed ? 'text-gray-400 dark:text-slate-500' : ''}`}>
                 <td className={num}>{n + 1}</td>
                 <td className={`${cell} ${first}`}>
-                  <button type="button" onClick={() => onOpen(item)} className="max-w-full truncate text-left font-semibold text-blue-700 hover:underline dark:text-blue-300" title={leadTitle(lead)}>{leadTitle(lead)}</button>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {/* The post's AI picture; hover for a bigger look. */}
+                    {(() => {
+                      const pic = pictureFor(lead, viewerId);
+                      return pic ? (
+                        <img src={pic} alt="" loading="lazy" className="h-7 w-7 shrink-0 cursor-zoom-in rounded-md object-cover object-[50%_25%]"
+                          onMouseEnter={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPeek({ url: pic, x: r.right + 10, y: Math.max(8, Math.min(window.innerHeight - 248, r.top - 104)) }); }}
+                          onMouseLeave={() => setPeek(null)} />
+                      ) : <span className="h-7 w-7 shrink-0 rounded-md bg-gray-100 dark:bg-white/5" />;
+                    })()}
+                    <button type="button" onClick={() => onOpen(item)} className="min-w-0 truncate text-left font-semibold text-blue-700 hover:underline dark:text-blue-300" title={leadTitle(lead)}>{leadTitle(lead)}</button>
+                  </span>
                 </td>
                 <td className={cell} title={leadOrg(lead)}>{leadOrg(lead)}</td>
                 <td className={cell}>{subjectName(kind, item.subject)}</td>
@@ -88,6 +101,7 @@ export default function MatchSheet({ items, kind, mode, dateLabel, dateOf, onOpe
           })}
         </tbody>
       </table>
+      {peek && <img src={peek.url} alt="" aria-hidden="true" className="pointer-events-none fixed z-50 h-[240px] w-[160px] rounded-xl object-cover shadow-2xl ring-1 ring-black/10" style={{ left: peek.x, top: peek.y }} />}
     </div>
   );
 }

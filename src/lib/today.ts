@@ -28,6 +28,8 @@ export type CardItem = {
   my_visual?: string | null;
   /** Their own note (the Tracker sheet's Notes cell). */
   notes?: string | null;
+  /** When they shared it (History > Shared). */
+  shared_at?: string | null;
   /** Across ProfilePush: accounts that viewed, applied to, saved and shared the post. */
   eng?: { views: number; applies: number; saves: number; shares: number };
 };
@@ -127,10 +129,10 @@ export async function loadToday(kind: Kind): Promise<TodayData | null> {
   return data as unknown as TodayData | null;
 }
 
-export async function loadHistory(kind: Kind, tab: 'viewed' | 'saved' | 'applied') {
+export async function loadHistory(kind: Kind, tab: 'viewed' | 'saved' | 'applied' | 'shared') {
   const { data, error } = await supabase.rpc('get_history' as never, { p_kind: kind, p_tab: tab, p_tz: timeZone() } as never);
   if (error) throw new Error(error.message);
-  return data as unknown as { tab: string; counts: { viewed: number; saved: number; applied: number }; items: CardItem[] } | null;
+  return data as unknown as { tab: string; counts: { viewed: number; saved: number; applied: number; shared: number }; items: CardItem[] } | null;
 }
 
 export async function loadTracker(kind: Kind) {

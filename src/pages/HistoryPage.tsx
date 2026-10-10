@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Bookmark, Check, Copy, Download, Eye, Send } from 'lucide-react';
+import { Bookmark, Check, Copy, Download, Eye, Send, Share2 } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import { AiSubmitDialog } from '../components/AiSubmit';
@@ -14,17 +14,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { loadHistory, setNotes, setStatus, subjectsOf, type CardItem, type Kind } from '../lib/today';
 import { copyRows, downloadCsv, sheetRows } from '../lib/sheet';
 
-type Tab = 'viewed' | 'saved' | 'applied';
+type Tab = 'viewed' | 'saved' | 'applied' | 'shared';
 const TABS: Array<{ key: Tab; label: string; icon: typeof Eye }> = [
   { key: 'viewed', label: 'Viewed', icon: Eye },
   { key: 'saved', label: 'Saved', icon: Bookmark },
   { key: 'applied', label: 'Applied', icon: Send },
+  { key: 'shared', label: 'Shared', icon: Share2 },
 ];
-const DATE: Record<Tab, string> = { viewed: 'Viewed', saved: 'Saved', applied: 'Applied' };
+const DATE: Record<Tab, string> = { viewed: 'Viewed', saved: 'Saved', applied: 'Applied', shared: 'Shared' };
 const EMPTY: Record<Tab, [string, string]> = {
   viewed: ['Nothing viewed yet', 'Matches you open move here when their 24 hours in Today are up.'],
   saved: ['Nothing saved', 'Tap the bookmark on any match. Saving is free and saved matches never expire.'],
   applied: ['No applications yet', 'Everything you apply to is listed here.'],
+  shared: ['Nothing shared yet', 'Matches you share (the Share button) are listed here.'],
 };
 
 // History: matches you opened and left (Viewed), kept (Saved), and every
@@ -35,7 +37,7 @@ export default function HistoryPage() {
   const navigate = useNavigate();
   const kind: Kind = account?.active_persona === 'vendor' ? 'job' : 'hotlist';
   const [params, setParams] = useSearchParams();
-  const tab = (['viewed', 'saved', 'applied'].includes(params.get('tab') ?? '') ? params.get('tab') : 'viewed') as Tab;
+  const tab = (['viewed', 'saved', 'applied', 'shared'].includes(params.get('tab') ?? '') ? params.get('tab') : 'viewed') as Tab;
   const [items, setItems] = useState<CardItem[] | null>(null);
   const [counts, setCounts] = useState<Record<Tab, number> | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export default function HistoryPage() {
     setItems((list) => list && list.map((i) => (i.card_id === item.card_id ? { ...i, notes } : i)));
     try { await setNotes(item.card_id, notes); } catch { /* the cell keeps what they typed */ }
   };
-  const dateOf = (i: CardItem) => (tab === 'viewed' ? i.viewed_at : tab === 'saved' ? i.saved_at : i.applied_at);
+  const dateOf = (i: CardItem) => (tab === 'viewed' ? i.viewed_at : tab === 'saved' ? i.saved_at : tab === 'shared' ? i.shared_at ?? null : i.applied_at);
   const [copied, setCopied] = useState(false);
   const exportRows = () => sheetRows(items ?? [], kind, tab === 'applied' ? 'tracker' : 'history', DATE[tab], dateOf);
   const copy = () => { void copyRows(exportRows()).then(() => { setCopied(true); setTimeout(() => setCopied(false), 4000); }); };
@@ -131,11 +133,11 @@ export default function HistoryPage() {
             <p className="max-w-[34ch] text-[13.5px] text-gray-600 dark:text-slate-400">{EMPTY[tab][1]}</p>
           </div>
         ) : tab === 'applied' ? (
-          <MatchSheet items={items!} kind={kind} mode="tracker" dateLabel={DATE[tab]} dateOf={dateOf}
+          <MatchSheet items={items!} kind={kind} mode="tracker" dateLabel={DATE[tab]} dateOf={dateOf} viewerId={user?.id}
             onOpen={(i) => i.lead && navigate(`/${i.lead.kind === 'job' ? 'job' : 'hotlist'}/${i.lead.id}`)}
             onStatus={(i, st) => void changeStatus(i, st)} onNotes={(i, n) => void changeNotes(i, n)} />
         ) : (
-          <MatchSheet items={items!} kind={kind} mode="history" dateLabel={DATE[tab]} dateOf={dateOf} onOpen={open} />
+          <MatchSheet items={items!} kind={kind} mode="history" dateLabel={DATE[tab]} dateOf={dateOf} onOpen={open} viewerId={user?.id} />
         )}
       </main>
 

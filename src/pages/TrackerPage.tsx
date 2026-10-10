@@ -14,7 +14,7 @@ import { trackEvent } from '../lib/track';
 // in the Status cell; Notes is theirs to type in. Copy rows pastes straight
 // into their own Google Sheet or Excel; CSV downloads it.
 export default function TrackerPage() {
-  const { account } = useAuth();
+  const { account, user } = useAuth();
   const kind: Kind = account?.active_persona === 'vendor' ? 'job' : 'hotlist';
   const [items, setItems] = useState<CardItem[] | null>(null);
   const [error, setError] = useState('');
@@ -114,7 +114,7 @@ export default function TrackerPage() {
               {all.length} applied · {reached(['replied', 'interview', 'placed'])} replied · {reached(['interview', 'placed'])} interviews · {reached(['placed'])} placed · statuses update themselves
             </p>
             {rows.length ? (
-              <MatchSheet items={rows} kind={kind} mode="tracker" dateLabel="Applied" dateOf={(i) => i.applied_at}
+              <MatchSheet items={rows} kind={kind} mode="tracker" dateLabel="Applied" dateOf={(i) => i.applied_at} viewerId={user?.id}
                 onOpen={(i) => i.lead && navigate(`/${i.lead.kind === 'job' ? 'job' : 'hotlist'}/${i.lead.id}`)}
                 onStatus={(i, st) => void changeStatus(i, st)} onNotes={(i, n) => void changeNotes(i, n)} />
             ) : <p className="rounded-xl border border-gray-200 bg-white p-6 text-center text-[13px] text-gray-400 dark:border-white/10 dark:bg-[#20242a]">Nothing here.</p>}
