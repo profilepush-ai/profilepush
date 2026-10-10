@@ -24,7 +24,9 @@ type QueueSubject = {
   subject_id: string; role_title: string | null; candidate_name: string | null; visa_type: string | null;
   location: string | null; years_experience: number | null; skills: string[] | null; resume_url: string | null;
   resume_file_name: string | null; submitted_today: number; waiting: number; locked?: number; items: QueueItem[];
+  resumes?: ResumeFile[];
 };
+type ResumeFile = { id: string; url: string; file_name: string; is_default: boolean };
 type Queue = { target: number; daily_cap: number; used_today: number; submitted_today: number; subjects: QueueSubject[] };
 type Draft = { jobId: string; toName: string; subject: string; body: string; duplicate: string | null };
 type ItemState = 'sending' | 'sent' | 'skipped' | { error: string };
@@ -97,6 +99,9 @@ export default function TodayPage() {
   const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [resumes, setResumes] = useState<Record<string, { url: string; name: string }>>({});
+  // Every resume on file per consultant, and the one picked for the next send.
+  const [resumeFiles, setResumeFiles] = useState<Record<string, ResumeFile[]>>({});
+  const [chosenResume, setChosenResume] = useState<Record<string, string>>({});
   const [uploadingFor, setUploadingFor] = useState('');
   // The account's minimum match % for new matches: 70 on free accounts, 50-80
   // of their choosing on paid ones.
@@ -126,6 +131,18 @@ export default function TodayPage() {
     setQueue(q);
     if (q) {
       setResumes(Object.fromEntries(q.subjects.filter((s) => s.resume_url).map((s) => [s.subject_id, { url: s.resume_url!, name: s.resume_file_name || 'Resume' }])));
+      setResumeFiles(Object.fromEntries(q.subjects.map((s) => [s.subject_id, s.resumes ?? []])));
+      setChosenResume((prev) => {
+        const next = { ...prev };
+        for (const s of q.subjects) {
+          const files = s.resumes ?? [];
+          if (!files.some((f) => f.id === next[s.subject_id])) {
+            const def = files.find((f) => f.is_default) ?? files[0];
+            if (def) next[s.subject_id] = def.id; else delete next[s.subject_id];
+          }
+        }
+        return next;
+      });
       const [subs, jobs] = await Promise.all([
         loadLeadsByIds('hotlist', q.subjects.map((s) => s.subject_id)),
         loadLeadsByIds('job', [...new Set(q.subjects.flatMap((s) => s.items.map((i) => i.job_id)))]),
@@ -220,7 +237,8 @@ export default function TodayPage() {
   const send = async (s: QueueSubject, i: QueueItem, edited?: { subject: string; body: string }) => {
     if (!accountId) return false;
     setItemState((m) => ({ ...m, [i.card_id]: 'sending' }));
-    const r = await invoke({ action: 'send', account_id: accountId, subject_id: s.subject_id, job_id: i.job_id, request_id: crypto.randomUUID(), ...edited });
+    const resumeId = chosenResume[s.subject_id];
+    const r = await invoke({ action: 'send', account_id: accountId, subject_id: s.subject_id, job_id: i.job_id, request_id: crypto.randomUUID(), ...(resumeId ? { resume_id: resumeId } : {}), ...edited });
     if (!r.ok) {
       setItemState((m) => ({ ...m, [i.card_id]: { error: r.message } }));
       if (r.code === 'daily_limit_reached') setError(`Daily send limit reached (${queue?.daily_cap}). Buy credits to raise it to 100 a day.`);
@@ -251,9 +269,14 @@ export default function TodayPage() {
       const { error: uploadError } = await supabase.storage.from('resumes').upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
       if (uploadError) throw new Error(uploadError.message);
       const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(storagePath);
-      const { error: rpcError } = await supabase.rpc('set_hotlist_resume' as never, { p_hotlist_id: subjectId, p_url: urlData.publicUrl, p_file_name: file.name } as never);
+      const { data: newId, error: rpcError } = await supabase.rpc('set_hotlist_resume' as never, { p_hotlist_id: subjectId, p_url: urlData.publicUrl, p_file_name: file.name } as never);
       if (rpcError) throw new Error(rpcError.message);
-      setResumes((prev) => ({ ...prev, [subjectId]: { url: urlData.publicUrl, name: file.name } }));
+      // Uploading adds a resume; the first one is the default.
+      const isFirst = !(resumeFiles[subjectId]?.length);
+      const added: ResumeFile = { id: String(newId), url: urlData.publicUrl, file_name: file.name, is_default: isFirst };
+      setResumeFiles((prev) => ({ ...prev, [subjectId]: [added, ...(prev[subjectId] ?? [])] }));
+      setChosenResume((prev) => ({ ...prev, [subjectId]: added.id }));
+      if (isFirst) setResumes((prev) => ({ ...prev, [subjectId]: { url: urlData.publicUrl, name: file.name } }));
       trackEvent('consultant_resume_attached', { type: file.name.split('.').pop()?.toLowerCase() ?? '' });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not attach the resume.');
@@ -404,14 +427,14 @@ export default function TodayPage() {
                     <span>{s.submitted_today} sent today</span>
                     <span className="ml-auto inline-flex items-center gap-1">
                       {resume ? (
-                        <a href={resume.url} target="_blank" rel="noreferrer" title={`Resume: ${resume.name}`} aria-label="Open resume"
+                        <a href={resume.url} target="_blank" rel="noreferrer" title={(resumeFiles[s.subject_id]?.length ?? 0) > 1 ? `${resumeFiles[s.subject_id].length} resumes · default: ${resume.name}` : `Resume: ${resume.name}`} aria-label="Open resume"
                           className="flex h-6 w-6 items-center justify-center rounded-full text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10">
                           <Paperclip size={13} />
                         </a>
                       ) : (
                         <span title="No resume on file" className="flex h-6 w-6 items-center justify-center text-amber-500"><AlertTriangle size={12} /></span>
                       )}
-                      <label title={resume ? 'Replace resume' : 'Upload resume'} aria-label={resume ? 'Replace resume' : 'Upload resume'}
+                      <label title={resume ? 'Add another resume' : 'Upload resume'} aria-label={resume ? 'Add another resume' : 'Upload resume'}
                         className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10">
                         {uploadingFor === s.subject_id ? <LogoSpinner size={11} /> : <Upload size={13} />}
                         <input type="file" accept=".pdf,.doc,.docx" className="hidden" disabled={Boolean(uploadingFor)}
@@ -542,7 +565,16 @@ export default function TodayPage() {
                   <>
                     <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Submission email</p>
                     <p className="mb-1.5 text-[11px] text-gray-500">
-                      To {draft.toName} · from your Gmail · {resumes[subject.subject_id] ? `${resumes[subject.subject_id].name} attached` : 'no resume on file'} · free
+                      To {draft.toName} · from your Gmail · {(resumeFiles[subject.subject_id]?.length ?? 0) > 1 ? (
+                        <select
+                          value={chosenResume[subject.subject_id] ?? ''}
+                          onChange={(e) => setChosenResume((prev) => ({ ...prev, [subject.subject_id]: e.target.value }))}
+                          aria-label="Resume to attach"
+                          className="max-w-[220px] rounded border border-amber-200 bg-white px-1 py-0.5 text-[11px] font-semibold text-gray-800 dark:border-amber-400/20 dark:bg-[#1E2126] dark:text-slate-100"
+                        >
+                          {resumeFiles[subject.subject_id].map((f) => <option key={f.id} value={f.id}>{f.file_name}{f.is_default ? ' (default)' : ''}</option>)}
+                        </select>
+                      ) : resumes[subject.subject_id] ? `${resumes[subject.subject_id].name}` : 'no resume on file'}{resumes[subject.subject_id] ? ' attached' : ''} · free
                     </p>
                     {(item.duplicate || draft.duplicate) && <p className="mb-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-700">{item.duplicate || draft.duplicate}</p>}
                     <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} className="mb-1.5 h-8 w-full shrink-0 rounded-md border border-amber-200 bg-white px-2.5 text-[13px] outline-none focus:border-amber-400 dark:border-amber-400/20 dark:bg-[#1E2126]" />
