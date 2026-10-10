@@ -18,6 +18,10 @@ interface Env {
   FULL_SYNC_HOUR_UTC: string;
   MAX_NEW_PER_RUN: string;
   SCRAPE_QUEUE: Queue<ScrapeMessage>;
+  // Job board API keys (wrangler secret put); a board without its key fails its run.
+  ADZUNA_APP_ID?: string;
+  ADZUNA_APP_KEY?: string;
+  JOOBLE_API_KEY?: string;
 }
 
 type Site = SiteConfig & { name?: string; max_new_per_run?: number; enabled?: boolean };
@@ -55,7 +59,7 @@ async function loadSites(env: Env, includeDisabled = false): Promise<Site[]> {
 
 export async function runPrime(env: Env, site: Site, full: boolean) {
   const slug = site.slug;
-  const adapter = buildAdapter(site, ADAPTERS);
+  const adapter = buildAdapter(site, ADAPTERS, env);
   const budget = new Budget(SUBREQUEST_BUDGET);
   const maxNew = site.max_new_per_run || Number(env.MAX_NEW_PER_RUN) || 60;
   const wantsFull = full || adapter.alwaysComplete;
@@ -183,8 +187,8 @@ async function logRun(env: Env, slug: string, startedAt: string, full: boolean, 
 
 // Reads the first page of a site's listing and up to three jobs, without
 // storing anything: lets /admin check a site before it is saved.
-async function testSite(site: Site) {
-  const adapter = buildAdapter(site, ADAPTERS);
+async function testSite(env: Env, site: Site) {
+  const adapter = buildAdapter(site, ADAPTERS, env);
   const budget = new Budget(30);
   const first = await adapter.list(budget, false).next();
   const items = first.done ? [] : first.value.items;
@@ -231,7 +235,7 @@ export default {
     if (url.pathname === "/test") {
       const body = await req.json().catch(() => ({})) as Partial<Site>;
       try {
-        return Response.json(await testSite({ slug: body.slug || "test", kind: String(body.kind), config: body.config ?? {} }));
+        return Response.json(await testSite(env, { slug: body.slug || "test", kind: String(body.kind), config: body.config ?? {} }));
       } catch (error) {
         return Response.json({ error: (error as Error).message }, { status: 400 });
       }
