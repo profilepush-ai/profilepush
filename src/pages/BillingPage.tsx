@@ -61,13 +61,11 @@ const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: st
     short: '1 credit per AI Match result, up to 10 a run',
     note: 'Up to 10 per run, and only for matches you have not already been charged for: a rematch on the same text re-shows the previous results free and bills only the new ones. A run that finds nothing is refunded in full, though it needs 10 credits free to start.',
   },
-  // charge_tracker_match (pipeline_cards trigger): every match card the
-  // matcher or a Rematch adds, capped per day by plan.
   {
-    label: 'Tracker matches — per match added',
-    cost: '1 credit',
-    short: '1 credit per new Tracker match, up to 10 a day (30 on a paid plan)',
-    note: 'New matches are added to your Tracker automatically as requirements and consultants are posted. Up to 10 a day on the free plan and 30 once you have bought credits. They stop for the day at the cap, or when your balance runs out.',
+    label: 'Tracker and Today matches',
+    cost: 'Free',
+    short: 'New matches for your consultants and requirements are free and unlimited',
+    note: 'Matches are added automatically all day as requirements and consultants are posted. You only spend credits when you act on one, such as sending a submission.',
   },
   { label: 'AI Submit — generate draft', cost: '1 credit', short: '1 credit to generate an AI Submit draft', note: 'Only the first generation per post; reopening an already-generated draft is free. AI Request drafts (resume requests to a bench recruiter) are free.' },
   { label: 'Inbox AI chat draft', cost: '1 credit', short: '1 credit per Inbox AI chat draft' },

@@ -48,7 +48,8 @@ ProfilePush is free to start and runs on credits, with no subscription.
 - 100 free credits at signup. Credits never expire.
 - Bonus: +10 credits for the first post and +10 for the first submission.
 - Free: posting, editing, in-app submissions, AI Request drafts, replying to resume requests.
-- 1 credit: each new match added to the Tracker (up to 10 a day on the free plan, 30 once the account has bought credits); each AI Match result (up to 10 per run, undelivered results refunded); an AI Submit draft; a send from Gmail (refunded if the send fails).
+- Free: new matches added to the Tracker and Today (unlimited).
+- 1 credit: each AI Match result (up to 10 per run, undelivered results refunded); an AI Submit draft; a send from Gmail (refunded if the send fails).
 - 10 credits: a finished video screening, charged to the vendor who owns the requirement.
 - Free plan: up to 3 open consultants or requirements at a time. Buying any credit pack makes this unlimited.
 - Credit packs: one-time, in Indian rupees: ₹249, then ₹500 to ₹5,000 in ₹500 steps, at ₹1 per credit.
