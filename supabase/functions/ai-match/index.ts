@@ -36,7 +36,7 @@ const FEATURE_KEY = "ai_match_run";
 const WINDOW_DAYS = 30;
 // Scored pool vs. what is returned. The model still judges 60 candidates so
 // the top of the list is genuinely the best of the window; only the top
-// RESULT_LIMIT are returned, and each returned match costs a credit.
+// RESULT_LIMIT are returned.
 const CANDIDATE_LIMIT = 60;
 const RESULT_LIMIT = 10;
 // A match below this is not worth a credit or a click. Ten results padded out
@@ -45,7 +45,10 @@ const RESULT_LIMIT = 10;
 // "workable" in the bands the cards already use, so nothing that reaches a card
 // is something the product itself calls a weak fit.
 const MIN_DELIVERABLE_SCORE = 5;
-const CREDITS_PER_RESULT = 1;
+// AI Match is free: credits pay for opening job posts and sending AI Submits.
+// Set above 0 to charge per returned match again (held up front, refunded for
+// whatever is not delivered).
+const CREDITS_PER_RESULT = 0;
 const MIN_DESCRIPTION_CHARS = 40;
 const MAX_DESCRIPTION_CHARS = 8000;
 // Hotlists aren't embedded on insert (they arrive through several different
@@ -175,7 +178,9 @@ Deno.serve(async (req: Request) => {
 
   let resultLimit = RESULT_LIMIT;
   let maxCharge = RESULT_LIMIT * CREDITS_PER_RESULT;
-  let { row: charge, error: chargeError } = await holdCredits(maxCharge, resultLimit);
+  let { row: charge, error: chargeError } = maxCharge > 0
+    ? await holdCredits(maxCharge, resultLimit)
+    : { row: { success: true, message: 'free' }, error: null };
 
   if (!charge?.success) {
     const { data: accountRow } = await supabaseAdmin

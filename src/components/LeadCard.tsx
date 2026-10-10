@@ -1119,18 +1119,31 @@ export function hideEmails(text: string | null | undefined): string {
   return (text ?? '').replace(EMAIL_IN_TEXT, '[email hidden · use AI Submit]');
 }
 
-// A post's full text, for the preview popup and the detail panel.
-export async function fetchLeadPostContent(leadId: string, kind: 'job' | 'hotlist'): Promise<string> {
-  const previewIsHotlist = kind === 'hotlist';
-  const { data, error } = await supabase
-    .from(previewIsHotlist ? 'social_hotlist' : 'social_jobs')
-    .select(previewIsHotlist ? 'raw_post_content' : 'post_content')
-    .eq('id', leadId)
-    .maybeSingle();
-  if (error || !data) throw new Error(error?.message || 'Could not load the post');
+/** Thrown when opening a job's post needs a credit and the account has none. */
+export class OutOfCreditsError extends Error {
+  balance: number;
+  constructor(balance: number) {
+    super('Out of credits');
+    this.name = 'OutOfCreditsError';
+    this.balance = balance;
+  }
+}
 
-  const content = String((previewIsHotlist ? (data as { raw_post_content: string | null }).raw_post_content : (data as { post_content: string | null }).post_content) ?? '').trim();
-  return content || 'No post content available.';
+// A post's full text, for the preview popup, the detail panel, Today and the
+// Tracker. Opening a job costs 1 credit the first time this account opens it
+// (open_post_content); consultant posts and the account's own posts are free.
+export async function openLeadPostContent(leadId: string, kind: 'job' | 'hotlist'): Promise<{ content: string; charged: boolean }> {
+  const { data, error } = await supabase.rpc('open_post_content' as never, { p_kind: kind, p_lead_id: leadId } as never);
+  if (error) throw new Error(error.message || 'Could not load the post');
+  const row = (data ?? {}) as { content?: string; charged?: boolean; error?: string; balance?: number };
+  if (row.error === 'insufficient_credits') throw new OutOfCreditsError(Number(row.balance ?? 0));
+  if (row.error) throw new Error('Could not load the post');
+  const content = String(row.content ?? '').trim();
+  return { content: content || 'No post content available.', charged: Boolean(row.charged) };
+}
+
+export async function fetchLeadPostContent(leadId: string, kind: 'job' | 'hotlist'): Promise<string> {
+  return (await openLeadPostContent(leadId, kind)).content;
 }
 
 // The post preview popup (the card's title / Preview), with emails hidden.

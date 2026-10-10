@@ -24,7 +24,7 @@ import { useAiSubmit, AiSubmitDialog, getFunctionErrorMessage } from '../compone
 import { trackEvent } from '../lib/track';
 import ApplyOnSiteButton, { isCareerSiteLead, openApplyPage } from '../components/ApplyOnSite';
 import AiMatchProcessing from '../components/AiMatchProcessing';
-import LeadCard, { extractPrimaryEmail, CARD_PALETTE, getLeadBreakdownFieldValues, formatAgo, formatAgoCompact, type SocialLead, type FeedTimeBasis, type GlobalAskedJobState, type PredictCategory, type PredictResult, PersonaMissingTag, type LeadCardProps, shareLead, jobRowToLead, hotlistRowToLead, JOB_LEAD_COLUMNS, HOTLIST_LEAD_COLUMNS, safeNumber, type SocialJobRow, type HotlistLeadRow, getMissingJobDetails, hideEmails, fetchLeadPostContent, PostPreviewModal, LeadPreviewModal } from '../components/LeadCard';
+import LeadCard, { extractPrimaryEmail, CARD_PALETTE, getLeadBreakdownFieldValues, formatAgo, formatAgoCompact, type SocialLead, type FeedTimeBasis, type GlobalAskedJobState, type PredictCategory, type PredictResult, PersonaMissingTag, type LeadCardProps, shareLead, jobRowToLead, hotlistRowToLead, JOB_LEAD_COLUMNS, HOTLIST_LEAD_COLUMNS, safeNumber, type SocialJobRow, type HotlistLeadRow, getMissingJobDetails, hideEmails, openLeadPostContent, OutOfCreditsError, PostPreviewModal, LeadPreviewModal } from '../components/LeadCard';
 
 type PulsePersona = {
   target_role: string;
@@ -88,9 +88,6 @@ const AI_MATCH_RECENTS_LIMIT = 8;
 // How many matches a rematch keeps on screen across runs.
 const AI_MATCH_MAX_KEPT_MATCHES = 50;
 const AI_MATCH_MIN_DESCRIPTION_CHARS = 40;
-// Mirrors RESULT_LIMIT in the ai-match function: each match returned costs a
-// credit, so a full run costs this many.
-const AI_MATCH_MAX_CREDITS_PER_RUN = 10;
 
 type AiMatchSession = {
   description: string;
@@ -6419,6 +6416,21 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   // its own UI for that, e.g. an out-of-credits prompt), so callers should
   // treat null as "silently stop", not as an error to surface.
   const fetchLeadRawContent = useCallback(async (lead: SocialLead): Promise<string | null> => {
+    // Opening a job costs 1 credit the first time; out of credits stops here
+    // with the buy-credits prompt instead of an error.
+    let opened: { content: string; charged: boolean };
+    try {
+      opened = await openLeadPostContent(lead.id, leadIsHotlist(lead) ? 'hotlist' : 'job');
+    } catch (error) {
+      if (error instanceof OutOfCreditsError) {
+        setOutOfCreditsAction('open this job post');
+        setShowOutOfCreditsModal(true);
+        return null;
+      }
+      throw error;
+    }
+    if (opened.charged) void refreshAccount();
+
     const alreadyViewed = postContentViewedLeadIds.has(lead.id);
     if (!alreadyViewed) {
       setPostContentViewedLeadIds((prev) => {
@@ -6429,9 +6441,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
       setPostContentViewedAtByLeadId((prev) => ({ ...prev, [lead.id]: new Date().toISOString() }));
       void persistLeadAction(lead.id, 'post_content_viewed');
     }
-
-    return fetchLeadPostContent(lead.id, leadIsHotlist(lead) ? 'hotlist' : 'job');
-  }, [leadIsHotlist, persistLeadAction, postContentViewedLeadIds]);
+    return opened.content;
+  }, [leadIsHotlist, persistLeadAction, postContentViewedLeadIds, refreshAccount]);
 
   const handlePreviewPost = useCallback(async (lead: SocialLead) => {
     if (!user || loadingPostContentLeadId) return;
@@ -6458,7 +6469,11 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     setOpenedLead({ lead, paletteIndex, content: null });
     if (leadIsHotlist(lead)) return;
     void fetchLeadRawContent(lead)
-      .then((content) => setOpenedLead((cur) => (cur && cur.lead.id === lead.id ? { ...cur, content: content ?? '' } : cur)))
+      .then((content) => setOpenedLead((cur) => {
+        if (!cur || cur.lead.id !== lead.id) return cur;
+        // Out of credits: the buy-credits prompt replaces the popup.
+        return content == null ? null : { ...cur, content };
+      }))
       .catch((error) => {
         setOpenedLead((cur) => (cur && cur.lead.id === lead.id ? { ...cur, content: '' } : cur));
         showToast(error instanceof Error ? error.message : 'Could not load the post', 'error');
@@ -6651,7 +6666,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                             type="button"
                             onClick={(e) => { e.stopPropagation(); void runAiMatch(post.description, post.title, post.id); }}
                             disabled={aiMatchRunning}
-                            title={lastRun ? `Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits \u00b7 1 per new match` : `Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits \u00b7 1 per match`}
+                            title={lastRun ? 'Find new matches (free)' : 'Find matches (free)'}
                             className="inline-flex h-6 shrink-0 items-center gap-1 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2 text-[10px] font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <Sparkles size={10} />
@@ -6695,7 +6710,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                             type="button"
                             onClick={(e) => { e.stopPropagation(); void runAiMatch(item.description, item.title, item.postId); }}
                             disabled={aiMatchRunning}
-                            title={`Up to ${AI_MATCH_MAX_CREDITS_PER_RUN} credits \u00b7 1 per new match`}
+                            title="Find new matches (free)"
                             className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2 py-1 text-[10px] font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <Sparkles size={10} />
