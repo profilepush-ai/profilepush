@@ -30,6 +30,8 @@ export type CardItem = {
   notes?: string | null;
   /** When they shared it (History > Shared). */
   shared_at?: string | null;
+  /** A free account's preview: only the title and match score come down; a top-up reveals it. */
+  teaser?: boolean;
   /** Across ProfilePush: accounts that viewed, applied to, saved and shared the post. */
   eng?: { views: number; applies: number; saves: number; shares: number };
 };
@@ -82,6 +84,8 @@ export type TodayData = {
   subjects: Subject[]; items: CardItem[]; reel?: Reel;
   /** Their avatar shows in pictures (credits or an active plan). */
   avatar_on?: boolean;
+  /** A free account out of credits: previews since, and when matches paused. */
+  teasers?: { since: string | null; paused: string | null } | null;
 };
 
 export const timeZone = () => {

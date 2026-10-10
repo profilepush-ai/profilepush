@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
+import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Lock, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
+import { priceLabels, useCurrency } from '../../lib/currency';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, pictureFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
 import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitLine, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
@@ -35,7 +36,7 @@ function TimeLeft({ item }: { item: CardItem }) {
 
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, teaserSince = null, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails, onReportPicture,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
@@ -46,6 +47,8 @@ export default function SwipeDeck({
   viewerId?: string;
   /** Show the viewer's own avatar pictures (they have credits or a plan). */
   avatarOn?: boolean;
+  /** A free account's previews began (for the days left on a teaser). */
+  teaserSince?: string | null;
   /** Plays like a reel: each card moves on after this long (hold to pause). */
   reelMs?: number;
   /** Shown after the last card, instead of the plain "All caught up". */
@@ -76,6 +79,8 @@ export default function SwipeDeck({
   const [held, setHeld] = useState(false);
   // The AI picture note, open for this card.
   const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [currencyNow] = useCurrency();
+  const price = priceLabels(currencyNow);
   const running = Boolean(reelMs) && playing && !held && !paused && !noteFor;
   const togglePlay = () => setPlaying((p) => { try { localStorage.setItem('reel_autoplay', p ? '0' : '1'); } catch { /* fine */ } return !p; });
   const stampTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -283,6 +288,7 @@ export default function SwipeDeck({
   const fit = fitFor(kind, subject, lead);
   const site = kind === 'hotlist' && lead.source === 'career_site';
   const picture = (avatarOn ? item.my_visual : null) || pictureFor(lead, viewerId);
+  const previewDays = teaserSince ? Math.max(0, 7 - Math.floor((Date.now() - new Date(teaserSince).getTime()) / 86_400_000)) : null;
   const color = hashColor(item.subject_id);
   const name = subjectName(kind, subject);
   const saved = Boolean(item.saved_at);
@@ -362,6 +368,21 @@ export default function SwipeDeck({
       <button type="button" aria-label="Next match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(1); }} className="absolute bottom-[70px] right-0 top-[70px] z-10 w-[30%]" />
 
       <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'safe flex-end' : 'safe center' }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20 ${picture ? '[text-shadow:0_1px_10px_rgba(0,0,0,.75)]' : ''} ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+        {item.teaser ? (
+          // A free preview: the title and match score; the rest unlocks with a top-up.
+          <>
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-400/20 px-2.5 py-1 text-[12px] font-bold text-amber-200" style={section(0)}><Lock size={13} />Free preview</span>
+            <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
+            <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} onDark animate at={T.ring + 150} /></div>
+            <div className="space-y-2.5 rounded-2xl border border-white/10 bg-white/[0.06] p-3.5" style={section(T.skills)}>
+              <div aria-hidden="true" className="space-y-2">{[78, 62, 88, 50].map((w) => <i key={w} className="block h-2.5 rounded-full bg-white/15" style={{ width: `${w}%` }} />)}</div>
+              <p className="text-[13px] font-semibold text-white/85">The company, rate, skills and how to apply are in this match.{previewDays != null ? ` ${previewDays} ${previewDays === 1 ? 'day' : 'days'} of free previews left.` : ''}</p>
+              <Link to="/billing" data-rail className="pointer-events-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[14.5px] font-extrabold">
+                <Lock size={15} />Top up to see it · from {price.minTopup}
+              </Link>
+            </div>
+          </>
+        ) : (<>
         <div className="flex items-center gap-2.5" style={section(0)}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
           <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-white/75">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
@@ -388,9 +409,15 @@ export default function SwipeDeck({
           </div>
         </div>}
         <div style={section(boxes && !picture ? T.eng : T.map)}><EngagementRow eng={item.eng} onDark /></div>
+        </>)}
       </div>
 
       <div data-rail className="absolute bottom-[76px] right-2 z-30 flex flex-col items-center gap-3.5">
+        {item.teaser ? (
+          <Link to="/billing" className={rail} title="Top up to see this match">
+            <span className="grid h-[58px] w-[58px] place-items-center rounded-full bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]"><Lock size={22} /></span>Unlock
+          </Link>
+        ) : (<>
         <button type="button" className={rail} onClick={() => { if (kind === 'hotlist') flash('APPLIED', '#34d399'); onApply(item); }} title={kind === 'job' ? 'Ask for the resume' : site ? 'Apply on their site' : 'Apply by email'}>
           <span className={`grid h-[58px] w-[58px] place-items-center rounded-full ${site ? 'bg-emerald-600 shadow-[0_6px_18px_rgba(5,150,105,.5)]' : 'bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]'}`}>
             {kind === 'job' ? <FileText size={24} /> : site ? <ExternalLink size={22} /> : <Send size={24} />}
@@ -399,11 +426,14 @@ export default function SwipeDeck({
         </button>
         <button type="button" className={rail} onClick={() => { flash('SAVED', '#60a5fa'); onSave(item); }}><span className={railIcon}><Bookmark size={20} fill={saved ? 'currentColor' : 'none'} /></span>Save</button>
         <button type="button" className={rail} onClick={() => onShare(item)}><span className={railIcon}><Share2 size={20} /></span>Share</button>
+        </>)}
         <button type="button" className={rail} onClick={() => { flash('PASS', '#f87171'); onDismiss(item); }}><span className={railIcon}><X size={20} /></span>Pass</button>
       </div>
 
       <div data-rail className={`relative z-30 flex items-center gap-2 px-4 pt-2.5 text-[13px] font-bold ${inline ? 'pb-4' : onSwipeUp ? 'pb-[calc(1.4rem+env(safe-area-inset-bottom))]' : 'pb-[calc(1rem+env(safe-area-inset-bottom))]'}`}>
-        {hideDetails ? <span className="text-white/60">Swipe or use ← →</span> : (
+        {item.teaser ? (
+          <Link to="/billing" className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-2"><Lock size={15} />Top up to see it</Link>
+        ) : hideDetails ? <span className="text-white/60">Swipe or use ← →</span> : (
           <button type="button" onClick={() => onDetails(item)} className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-2"><ChevronUp size={16} />{kind === 'job' ? 'Details' : 'Details and email'}</button>
         )}
         <span className="min-w-0 flex-1 truncate text-center text-[11px] font-semibold text-white/55">{menuHint ? 'Swipe up for menu' : ''}</span>

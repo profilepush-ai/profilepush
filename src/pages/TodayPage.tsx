@@ -163,6 +163,8 @@ export default function TodayPage() {
   }
 
   const open = (item: CardItem) => {
+    // A free preview opens Billing: its details come with a top-up.
+    if (item.teaser) { navigate('/billing'); return; }
     see(item);
     if (!wide) setOpenId(item.card_id);
   };
@@ -229,7 +231,7 @@ export default function TodayPage() {
     : undefined;
 
   const deckProps = {
-    items, kind, subjects, appliedToday, emptyMessage, expiring: true, viewerId: user?.id, avatarOn: Boolean(data?.avatar_on),
+    items, kind, subjects, appliedToday, emptyMessage, expiring: true, viewerId: user?.id, avatarOn: Boolean(data?.avatar_on), teaserSince: data?.teasers?.since ?? null,
     onSeen: see, onApply: applyQuick, onSave: save, onShare: (i: CardItem) => void share(i), onDismiss: dismiss,
     onDetails: (i: CardItem) => open(i),
     asked: actions.asked, onAsk: (i: CardItem, q: Question) => void actions.ask(i, q),
@@ -370,7 +372,11 @@ export default function TodayPage() {
         </div>
       ) : free ? (
         <div className="w-full max-w-sm space-y-2 rounded-3xl bg-white/[0.06] p-4 ring-1 ring-white/10" style={{ animation: 'ppFadeUp 450ms ease-out 450ms both' }}>
-          <p className="text-[14px] font-bold">Free plan: 10 new matches a day. Next 10 in {countdown}.</p>
+          <p className="text-[14px] font-bold">{data?.teasers?.paused
+            ? 'Your free matches are paused. Top up to start them again.'
+            : data?.teasers?.since
+              ? `Your free credits are used: 10 previews a day, title and match score only. Next 10 in ${countdown}.`
+              : `Free plan: 10 new matches a day. Next 10 in ${countdown}.`}</p>
           <Link to="/billing" className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[14px] font-extrabold"><Sparkles size={16} />Get up to 100 a day</Link>
         </div>
       ) : (
