@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Bookmark, Check, ChevronRight, Copy, DollarSign, ExternalLink, Gift, Mail, MapPin, MousePointerClick, Send, Share2, ShieldCheck, Sparkles, Timer, X } from 'lucide-react';
 import Logo from '../components/Logo';
 import SiteFooter from '../components/SiteFooter';
+import SEO from '../components/SEO';
 import { FitLine } from '../components/match/Visuals';
 import { fetchMarketSnapshot, initialSnapshot, type MarketSnapshot } from '../lib/marketSnapshot';
 import { priceLabels, useCurrency } from '../lib/currency';
@@ -80,7 +81,6 @@ export default function LandingNew() {
   const [currency] = useCurrency();
   const price = priceLabels(currency);
   useEffect(() => { void fetchMarketSnapshot().then((s) => { if (s) setSnap(s); }); }, []);
-  useEffect(() => { document.title = 'ProfilePush: the AI Copilot for recruiters, vendors and job seekers'; }, []);
   // People who've signed up (landing_user_count), live.
   const [users, setUsers] = useState<number | null>(null);
   useEffect(() => { void supabase.rpc('landing_user_count' as never).then(({ data }) => { const v = Number(data); if (Number.isFinite(v)) setUsers(v); }); }, []);
@@ -88,6 +88,8 @@ export default function LandingNew() {
 
   return (
     <div className="min-h-screen bg-[#f6f7fb] text-[#0f172a] dark:bg-[#1B1D21] dark:text-slate-100">
+      <SEO title="ProfilePush: the AI Copilot for recruiters, vendors and job seekers" canonical="https://profilepush.ai/"
+        description="AI Copilot for US IT staffing. Daily AI job matches for your consultants or yourself, with the resume sent in a tap. Vendors get matching bench profiles. Pay only for matches." />
       <header className="sticky top-0 z-40 border-b border-gray-200/70 bg-white/85 backdrop-blur dark:border-white/10 dark:bg-[#1B1D21]/85">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4">
           <Link to="/" aria-label="ProfilePush"><Logo /></Link>
@@ -163,7 +165,7 @@ export default function LandingNew() {
           <Step n={2} title="Matches arrive all day" text="Each one plays for 15 seconds with its own picture and stays for 24 hours. Save the ones you want to keep.">
             <div className="flex gap-2">{['java', 'data', 'cloud'].map((p) => <img key={p} src={`/landing-v2/${p}.webp`} alt="" className="h-24 w-16 rounded-xl object-cover object-[50%_20%]" />)}</div>
           </Step>
-          <Step n={3} title="Apply in a tap" text="By email from your own Gmail, or on the career site with ProfilePush Apply filling in the form. You press Apply.">
+          <Step n={3} title="Send the resume in a tap" text="Pick a resume and AI writes the email, sent from your own Gmail. On career sites, ProfilePush Apply fills in the form. You press Apply.">
             <span className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#2563EB] px-4 text-[14px] font-bold text-white"><Send size={16} />Apply</span>
           </Step>
         </div>

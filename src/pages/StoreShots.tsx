@@ -3,18 +3,19 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import SwipeDeck from '../components/match/SwipeDeck';
 import MatchDetail from '../components/match/MatchDetail';
 import MatchSheet from '../components/match/MatchSheet';
+import SendResumeSheet from '../components/match/SendResumeSheet';
 import { Initials } from '../components/match/Visuals';
 import type { CardItem, Subject } from '../lib/today';
 
 // Store listing screenshots: the real Today, detail and Tracker components
 // with example data (IT jobs, sample names), so no customer's data or a real
 // company's logo ends up in a public listing. Development only.
-//   /store-shots?shot=today | avatar | detail | tracker | done
+//   /store-shots?shot=today | avatar | detail | send | tracker | done
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
 
 const PROFILES: Record<string, Subject> = {
-  ravi: { id: 'p-ravi', title: 'Java Full Stack Developer', name: 'Ravi K.', visa: 'H1B', locations: ['Dallas, TX'], years: 9, skills: ['Java', 'Spring Boot', 'React', 'AWS', 'Microservices', 'Kafka'], rate_min: 65, rate_max: 70, posted_at: hoursAgo(200), locked: 0, applied_today: 3, resumes: [{ id: 'r1', url: '#', file_name: 'Ravi_K_Java.pdf', is_default: true }] },
+  ravi: { id: 'p-ravi', title: 'Java Full Stack Developer', name: 'Ravi K.', visa: 'H1B', locations: ['Dallas, TX'], years: 9, skills: ['Java', 'Spring Boot', 'React', 'AWS', 'Microservices', 'Kafka'], rate_min: 65, rate_max: 70, posted_at: hoursAgo(200), locked: 0, applied_today: 3, resumes: [{ id: 'r1', url: '#', file_name: 'Ravi_K_Java_Full_Stack.pdf', is_default: true }, { id: 'r2', url: '#', file_name: 'Ravi_K_Java_AWS.docx', is_default: false }] },
   anitha: { id: 'p-anitha', title: 'Senior Data Engineer', name: 'Anitha R.', visa: 'GC', locations: ['Plano, TX'], years: 11, skills: ['SQL', 'Python', 'Snowflake', 'Airflow', 'AWS'], rate_min: 70, posted_at: hoursAgo(300), locked: 0, applied_today: 1 },
   suresh: { id: 'p-suresh', title: 'DevOps Engineer', name: 'Suresh P.', visa: 'USC', locations: ['Reston, VA'], years: 8, skills: ['AWS', 'Terraform', 'Kubernetes', 'Docker'], rate_min: 80, posted_at: hoursAgo(400), locked: 0, applied_today: 0 },
 };
@@ -77,13 +78,18 @@ export default function StoreShots() {
 
   if (shot === 'today') return deck(ITEMS);
   if (shot === 'avatar') return deck([{ ...ITEMS[0], my_visual: '/landing-v2/avatar-job.webp' }], true);
-  if (shot === 'detail') {
+  if (shot === 'detail' || shot === 'send') {
     return (
       <div className="h-[100dvh] bg-[#f3f2ee]">
-        <MatchDetail item={{ ...ITEMS[1], lead: { ...ITEMS[1].lead!, rate_min: null, rate_max: null } }} kind="hotlist" subject={PROFILES.anitha} mode="sheet"
-          position={{ index: 1, total: 24, label: 'Match' }} accountId="demo" gmailConnected busy={false}
+        <MatchDetail item={ITEMS[0]} kind="hotlist" subject={PROFILES.ravi} mode="sheet"
+          position={{ index: 0, total: 24, label: 'Match' }} accountId="demo" gmailConnected busy={false}
           onBack={noop} onPrev={noop} onNext={noop} onApplyEmail={noop} onApplySite={noop} onAskResume={noop} onSave={noop} onShare={noop}
           onDismiss={noop} onSubject={noop} onConnectGmail={noop} asked={[]} onAsk={noop} />
+        {shot === 'send' && (
+          <SendResumeSheet item={ITEMS[0]} subject={PROFILES.ravi} name="Ravi K." accountId="demo" gmailConnected onConnectGmail={noop} onClose={noop} onSend={noop}
+            initialDraft={{ toName: 'Priya Shah', duplicate: null, subject: 'Ravi K. for Senior Java Developer (Dallas, TX)',
+              body: 'Hi Priya,\n\nI have a strong fit for your Senior Java Developer role in Dallas, TX.\n\n- 9 years in Java, Spring Boot, React and AWS\n- Microservices and Kafka in production\n- H1B, local to Dallas, $68/hr on C2C\n\nResume attached. Happy to set up a call this week.\n\nThanks,' }} />
+        )}
       </div>
     );
   }

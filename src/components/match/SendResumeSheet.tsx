@@ -15,9 +15,11 @@ const written: Record<string, Draft> = {};
 
 // Send resume: pick one of the profile's resumes or drop in a new one, while
 // AI writes the email to the poster. Edit anything, then Send.
-export default function SendResumeSheet({ item, subject, name, accountId, gmailConnected, onConnectGmail, onClose, onSend }: {
+export default function SendResumeSheet({ item, subject, name, accountId, gmailConnected, onConnectGmail, onClose, onSend, initialDraft }: {
   item: CardItem; subject: Subject | undefined; name: string; accountId: string | undefined; gmailConnected: boolean | null;
   onConnectGmail: () => void; onClose: () => void; onSend: (draft: Draft, resumeId: string) => void;
+  /** An email already written (store screenshots); skips the AI. */
+  initialDraft?: Draft;
 }) {
   const lead = item.lead!;
   const key = `${item.subject_id}:${lead.id}`;
@@ -27,7 +29,7 @@ export default function SendResumeSheet({ item, subject, name, accountId, gmailC
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [dragging, setDragging] = useState(false);
-  const [draft, setDraft] = useState<Draft | null>(written[key] ?? null);
+  const [draft, setDraft] = useState<Draft | null>(initialDraft ?? written[key] ?? null);
   const [draftError, setDraftError] = useState('');
   const [drafting, setDrafting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);

@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
-import LandingPage from './pages/LandingPage';
+import LandingNew from './pages/LandingNew';
 import LogoSpinner from './components/LogoSpinner';
 import StartupSplash from './components/StartupSplash';
 import UserActivityTracker from './components/UserActivityTracker';
@@ -42,8 +42,8 @@ const TrackerPage = lazy(() => import('./pages/TrackerPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const TodayPage = lazy(() => import('./pages/TodayPage'));
 const ExtensionConnectPage = lazy(() => import('./pages/ExtensionConnectPage'));
-// The rebuilt landing page, at /new until it replaces the current one.
-const LandingNew = lazy(() => import('./pages/LandingNew'));
+// The previous landing page, kept at /old.
+const LandingPage = lazy(() => import('./pages/LandingPage'));
 // Store listing screenshots with example data (development only).
 const StoreShots = lazy(() => import('./pages/StoreShots'));
 const PostApplicationsPage = lazy(() => import('./pages/PostApplicationsPage'));
@@ -139,12 +139,12 @@ function OneSignalIdentitySync() {
 
 // The marketing landing page has no place in the installed app — a native
 // user has already "installed", so app launch skips straight to account
-// creation (or, once signed in, straight past auth entirely). Web keeps the
-// landing page unchanged.
+// creation (or, once signed in, straight past auth entirely). Web shows the
+// landing page.
 function AppEntry() {
   const { user, loading } = useAuth();
 
-  if (!Capacitor.isNativePlatform()) return <LandingPage />;
+  if (!Capacitor.isNativePlatform()) return <LandingNew />;
 
   if (loading) {
     return (
@@ -310,7 +310,8 @@ export default function App() {
             <Route path="/signup" element={<ErrorBoundary><SignUp /></ErrorBoundary>} />
             <Route path="/signin" element={<ErrorBoundary><SignIn /></ErrorBoundary>} />
             <Route path="/r/:code" element={<ReferralLanding />} />
-            <Route path="/new" element={<ErrorBoundary><LandingNew /></ErrorBoundary>} />
+            <Route path="/new" element={<Navigate to="/" replace />} />
+            <Route path="/old" element={<ErrorBoundary><LandingPage /></ErrorBoundary>} />
             <Route path="/store-shots" element={<StoreShots />} />
             <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
             <Route path="/onboard/:token" element={<ErrorBoundary><CandidateOnboarding /></ErrorBoundary>} />
