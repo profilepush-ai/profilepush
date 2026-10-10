@@ -26,6 +26,8 @@ export type CardItem = {
   lead: Lead | null; duplicate?: string | null;
   /** The viewer's own picture of this post, drawn with their avatar (when their avatar is on). */
   my_visual?: string | null;
+  /** Their own note (the Tracker sheet's Notes cell). */
+  notes?: string | null;
   /** Across ProfilePush: accounts that viewed, applied to, saved and shared the post. */
   eng?: { views: number; applies: number; saves: number; shares: number };
 };
@@ -190,6 +192,10 @@ export const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 export function statusOf(item: Pick<CardItem, 'stage' | 'closed_reason'>): string {
   if (item.stage === 'closed') return ['not_selected', 'no_response', 'job_closed'].includes(item.closed_reason ?? '') ? item.closed_reason! : 'job_closed';
   return item.stage === 'submitted' ? 'applied' : item.stage;
+}
+export async function setNotes(cardId: string, notes: string) {
+  const { error } = await supabase.rpc('set_card_notes' as never, { p_id: cardId, p_notes: notes } as never);
+  if (error) throw new Error(error.message);
 }
 export async function setStatus(cardId: string, status: string) {
   const { error } = await supabase.rpc('set_card_status' as never, { p_id: cardId, p_status: status } as never);

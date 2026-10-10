@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Bookmark, Eye, Send } from 'lucide-react';
+import { Bookmark, Check, Copy, Download, Eye, Send } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import { AiSubmitDialog } from '../components/AiSubmit';
-import MatchCard from '../components/match/MatchCard';
 import MatchDetail from '../components/match/MatchDetail';
-import TrackerRow from '../components/match/TrackerRow';
+import MatchSheet from '../components/match/MatchSheet';
 import ToastBar from '../components/match/ToastBar';
 import ApplyFrame from '../components/match/ApplyFrame';
 import { useMatchActions } from '../components/match/useMatchActions';
 import { useSwipe } from '../components/match/useSwipe';
 import { useAuth } from '../contexts/AuthContext';
-import { loadHistory, setStatus, subjectsOf, type CardItem, type Kind } from '../lib/today';
+import { loadHistory, setNotes, setStatus, subjectsOf, type CardItem, type Kind } from '../lib/today';
+import { copyRows, downloadCsv, sheetRows } from '../lib/sheet';
 
 type Tab = 'viewed' | 'saved' | 'applied';
 const TABS: Array<{ key: Tab; label: string; icon: typeof Eye }> = [
@@ -20,6 +20,7 @@ const TABS: Array<{ key: Tab; label: string; icon: typeof Eye }> = [
   { key: 'saved', label: 'Saved', icon: Bookmark },
   { key: 'applied', label: 'Applied', icon: Send },
 ];
+const DATE: Record<Tab, string> = { viewed: 'Viewed', saved: 'Saved', applied: 'Applied' };
 const EMPTY: Record<Tab, [string, string]> = {
   viewed: ['Nothing viewed yet', 'Matches you open move here when their 24 hours in Today are up.'],
   saved: ['Nothing saved', 'Tap the bookmark on any match. Saving is free and saved matches never expire.'],
@@ -27,7 +28,8 @@ const EMPTY: Record<Tab, [string, string]> = {
 };
 
 // History: matches you opened and left (Viewed), kept (Saved), and every
-// application (Applied). Viewed and Saved can still be applied to from here.
+// application (Applied), each as a sheet. Click a Viewed or Saved row to open
+// it (and still apply); Copy rows / CSV take it to their own tracker.
 export default function HistoryPage() {
   const { account, user } = useAuth();
   const navigate = useNavigate();
@@ -86,23 +88,38 @@ export default function HistoryPage() {
   };
 
   const toProfile = (id: string) => navigate(`/today?profile=${id}`);
+  const changeNotes = async (item: CardItem, notes: string) => {
+    setItems((list) => list && list.map((i) => (i.card_id === item.card_id ? { ...i, notes } : i)));
+    try { await setNotes(item.card_id, notes); } catch { /* the cell keeps what they typed */ }
+  };
+  const dateOf = (i: CardItem) => (tab === 'viewed' ? i.viewed_at : tab === 'saved' ? i.saved_at : i.applied_at);
+  const [copied, setCopied] = useState(false);
+  const exportRows = () => sheetRows(items ?? [], kind, tab === 'applied' ? 'tracker' : 'history', DATE[tab], dateOf);
+  const copy = () => { void copyRows(exportRows()).then(() => { setCopied(true); setTimeout(() => setCopied(false), 4000); }); };
+  const control = 'h-9 rounded-lg border border-gray-200 bg-white px-2.5 text-[13px] font-semibold text-gray-700 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200';
 
   return (
     <div className="min-h-[100dvh] bg-[#f3f2ee] pb-[calc(5.5rem+env(safe-area-inset-bottom))] text-gray-900 dark:bg-[#1B1D21] dark:text-slate-100 sm:pb-10">
       <AppNav />
-      <main className="mx-auto w-full max-w-3xl space-y-3 px-3 pt-4 sm:px-4">
-        <div>
-          <h1 className="text-[24px] font-extrabold tracking-tight">History</h1>
-          <p className="text-[13px] text-gray-600 dark:text-slate-400">Matches you viewed, saved or applied to</p>
-        </div>
-        <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-[#20242a]" role="tablist">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => { setParams({ tab: key }, { replace: true }); setOpenId(null); }}
-              className={`flex items-center justify-center gap-1.5 rounded-[10px] px-1 py-2 text-[13px] font-bold ${tab === key ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300' : 'text-gray-600 dark:text-slate-300'}`}>
-              <Icon size={15} />{label}
-              {counts && <span className="rounded-full bg-gray-100 px-1.5 text-[11px] font-extrabold tabular-nums text-gray-500 dark:bg-white/10 dark:text-slate-400">{counts[key]}</span>}
-            </button>
-          ))}
+      <main className="mx-auto w-full max-w-[1400px] space-y-2 px-2 pt-2 sm:px-4 sm:pt-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex h-9 rounded-lg border border-gray-200 bg-white p-[3px] dark:border-white/10 dark:bg-[#20242a]" role="tablist">
+            {TABS.map(({ key, label, icon: Icon }) => (
+              <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => { setParams({ tab: key }, { replace: true }); setOpenId(null); }}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-semibold tabular-nums ${tab === key ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'text-gray-600 dark:text-slate-300'}`}>
+                <Icon size={14} />{label}{counts ? ` ${counts[key]}` : ''}
+              </button>
+            ))}
+          </div>
+          {(items ?? []).length > 0 && (
+            <span className="ml-auto flex items-center gap-2">
+              <button type="button" onClick={copy} title="Copy these rows, then paste them into Google Sheets or Excel" className={`${control} inline-flex items-center gap-1.5`}>
+                {copied ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}{copied ? 'Copied' : 'Copy rows'}
+              </button>
+              {copied && <a href="https://sheets.new" target="_blank" rel="noreferrer" className="text-[12.5px] font-semibold text-blue-600 hover:underline">Paste in Google Sheets</a>}
+              <button type="button" onClick={() => downloadCsv(exportRows(), `profilepush-${tab}`)} title="Download as CSV" className={`${control} inline-flex items-center gap-1.5`}><Download size={15} />CSV</button>
+            </span>
+          )}
         </div>
 
         {items == null && !error ? <div className="flex justify-center py-16"><LogoSpinner size={20} /></div> : error ? (
@@ -114,20 +131,11 @@ export default function HistoryPage() {
             <p className="max-w-[34ch] text-[13.5px] text-gray-600 dark:text-slate-400">{EMPTY[tab][1]}</p>
           </div>
         ) : tab === 'applied' ? (
-          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
-            {items!.map((i) => <TrackerRow key={i.card_id} item={i} kind={kind} onStatus={(s) => void changeStatus(i, s)} />)}
-          </div>
+          <MatchSheet items={items!} kind={kind} mode="tracker" dateLabel={DATE[tab]} dateOf={dateOf}
+            onOpen={(i) => i.lead && navigate(`/${i.lead.kind === 'job' ? 'job' : 'hotlist'}/${i.lead.id}`)}
+            onStatus={(i, st) => void changeStatus(i, st)} onNotes={(i, n) => void changeNotes(i, n)} />
         ) : (
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 md:grid-cols-2">
-            {items!.map((i) => (
-              <MatchCard key={i.card_id} item={i} kind={kind} subject={subjects[i.subject_id]} showFor
-                onOpen={() => open(i)}
-                onApply={() => { if (kind === 'hotlist' && i.lead?.source !== 'career_site') open(i); else actions.applyQuick(i); }}
-                onSave={() => actions.save(i)}
-                onShare={() => void actions.share(i)}
-                onSubject={() => toProfile(i.subject_id)} />
-            ))}
-          </div>
+          <MatchSheet items={items!} kind={kind} mode="history" dateLabel={DATE[tab]} dateOf={dateOf} onOpen={open} />
         )}
       </main>
 

@@ -19,7 +19,7 @@ type Subject = { subject_id: string; kind: 'hotlist' | 'job'; title: string; cap
 
 function Section({ title, detail, children, badge }: { title: string; detail: string; children: React.ReactNode; badge?: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-[#20242a]">
+    <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#20242a]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white">{title}</h2>
@@ -27,7 +27,7 @@ function Section({ title, detail, children, badge }: { title: string; detail: st
         </div>
         {badge}
       </div>
-      <div className="mt-4">{children}</div>
+      <div className="mt-3">{children}</div>
     </section>
   );
 }
@@ -114,14 +114,12 @@ export default function MatchingSettingsPage() {
   return (
     <div className="min-h-[100dvh] bg-[#f3f2ee] pb-[calc(5rem+env(safe-area-inset-bottom))] text-gray-900 dark:bg-[#1B1D21] dark:text-slate-100 sm:pb-10">
       <AppNav />
-      <main className="mx-auto w-full max-w-2xl space-y-3 px-4 pt-5">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <h1 className="text-[24px] font-extrabold tracking-tight">Settings</h1>
-            <p className="mt-0.5 text-[13px] text-gray-500 dark:text-slate-400">How many matches you get, how strong they are, and how you hear about them.</p>
-          </div>
-          {saved && <span className="inline-flex shrink-0 items-center gap-1 text-[12.5px] font-semibold text-emerald-600"><Check size={14} />{saved}</span>}
-        </div>
+      <main className="mx-auto w-full max-w-2xl space-y-2.5 px-3 pt-3 sm:px-4">
+        {saved && (
+          <span role="status" className="fixed left-1/2 top-16 z-40 inline-flex -translate-x-1/2 items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-[12.5px] font-semibold text-white shadow-lg">
+            <Check size={14} />{saved}
+          </span>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-16"><LogoSpinner size={20} /></div>
