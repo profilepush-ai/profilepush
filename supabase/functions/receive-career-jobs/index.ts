@@ -23,6 +23,8 @@ type CareerJob = {
   pay_unit?: string | null;
   currency?: string | null;
   description?: string | null;
+  company?: string | null;
+  via?: string | null;
 };
 
 
@@ -153,6 +155,9 @@ Deno.serve(async (req: Request) => {
   const { data: site } = await supabase.from("career_sites").select("name").eq("slug", slug).maybeSingle();
   if (!site) return respond({ error: "unknown site" }, 400);
   const primeName = site.name as string;
+  // Job boards: a job from a firm whose own site we already read is skipped,
+  // so the same requirement doesn't show twice.
+  const firmKey = (name: string) => name.toLowerCase().replace(/\b(inc|llc|corp|corporation|ltd|co|group)\b/g, "").replace(/[^a-z0-9]/g, "");
 
   if (body.action === "run_log") {
     const r = (body.run ?? {}) as Record<string, unknown>;
@@ -241,9 +246,15 @@ Deno.serve(async (req: Request) => {
     const now = new Date().toISOString();
     const ledger: Array<Record<string, unknown>> = [];
     const candidates: CareerJob[] = [];
+    let firms: string[] = [];
+    if (jobs.some((j) => str(j.company))) {
+      const { data } = await supabase.from("career_sites").select("name").neq("kind", "none");
+      firms = ((data ?? []) as Array<{ name: string | null }>).map((r) => firmKey(str(r.name))).filter((k) => k.length >= 4);
+    }
     for (const job of jobs) {
       if (!str(job.source_id) || !str(job.url)) continue;
-      const reason = rejectionReason(job);
+      const companyKey = firmKey(str(job.company));
+      const reason = companyKey && firms.some((f) => companyKey.startsWith(f)) ? "on the firm's own site" : rejectionReason(job);
       if (reason) ledger.push({ prime: slug, source_id: job.source_id, url: job.url, status: "rejected", reason, last_seen_at: now });
       else candidates.push(job);
     }
@@ -270,14 +281,15 @@ Deno.serve(async (req: Request) => {
       const usdHourly = currency === "USD" && period === "hour";
       const pay = payLabel(payMin, payMax, period);
       const employment = /CONTRACT|TEMP/i.test(str(job.employment_type)) ? "Contract" : str(job.employment_type) || "Contract";
-      const header = [location || null, job.remote ? "Remote" : null, employment, pay].filter(Boolean).join(" · ");
+      const header = [location || null, job.remote ? "Remote" : null, employment, pay, str(job.via) ? `via ${str(job.via)}` : null].filter(Boolean).join(" · ");
+      const poster = str(job.company).slice(0, 200) || primeName;
       rows.push({
         post_id: postId,
         platform: "career_site",
         post_source: "career_site",
         post_status: "open",
-        posted_by_name: primeName,
-        company_name: primeName,
+        posted_by_name: poster,
+        company_name: poster,
         poster_email: "",
         post_url: job.url,
         job_title: str(job.title),

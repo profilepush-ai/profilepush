@@ -3,6 +3,7 @@ import { jobPostingFromHtml, normalizeJobPosting } from "../jsonld";
 import type { Adapter, CareerJob, ListingItem } from "../types";
 import { guessEmploymentType, parsePay, parseUsLocation, positive } from "../util";
 import { jobdivaAdapter } from "./jobdiva";
+import { adzuna, jooble, type BoardKeys } from "./jobboards";
 
 // Adapters configured from /admin (career_sites.kind + config), no code needed.
 
@@ -184,7 +185,7 @@ export function workday(slug: string, cfg: Record<string, unknown>): Adapter {
   };
 }
 
-export function buildAdapter(site: SiteConfig, builtins: Record<string, Adapter>): Adapter {
+export function buildAdapter(site: SiteConfig, builtins: Record<string, Adapter>, keys: BoardKeys = {}): Adapter {
   const cfg = site.config ?? {};
   switch (site.kind) {
     case "builtin": {
@@ -197,6 +198,8 @@ export function buildAdapter(site: SiteConfig, builtins: Record<string, Adapter>
     case "greenhouse": return greenhouse(site.slug, cfg);
     case "lever": return lever(site.slug, cfg);
     case "workday": return workday(site.slug, cfg);
+    case "adzuna": return adzuna(site.slug, cfg, keys);
+    case "jooble": return jooble(site.slug, cfg, keys);
     default: throw new Error(`unknown kind ${site.kind}`);
   }
 }

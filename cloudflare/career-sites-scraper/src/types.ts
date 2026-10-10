@@ -15,6 +15,10 @@ export type CareerJob = {
   pay_unit?: string | null;
   currency?: string | null;
   description?: string | null;
+  // Job boards: the employer behind this job (a firm's own site leaves it
+  // empty: the firm is the poster) and the board it came through.
+  company?: string | null;
+  via?: string | null;
 };
 
 export type ListingItem = {

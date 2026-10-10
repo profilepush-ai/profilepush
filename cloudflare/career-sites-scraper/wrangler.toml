@@ -19,6 +19,8 @@ MAX_NEW_PER_RUN = "60"
 # Secrets (wrangler secret put):
 #   CAREER_SITES_SECRET  same value as the Supabase function secret
 #   RUN_TOKEN              bearer token for manual runs via POST /run
+#   ADZUNA_APP_ID, ADZUNA_APP_KEY   job board "adzuna" sites (developer.adzuna.com)
+#   JOOBLE_API_KEY                  job board "jooble" sites (jooble.org/api/about)
 
 # One message per prime so each prime runs in its own invocation.
 [[queues.producers]]

@@ -15,7 +15,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
-const KINDS = ["sitemap_jsonld", "jobdiva", "greenhouse", "lever", "workday", "none"];
+const KINDS = ["sitemap_jsonld", "jobdiva", "greenhouse", "lever", "workday", "adzuna", "jooble", "none"];
 
 function respond(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -63,6 +63,15 @@ function normalizeConfig(kind: string, raw: Record<string, unknown>): { config?:
       return { error: "Paste the Workday careers link (https://<company>.wd5.myworkdayjobs.com/<site>)" };
     }
     return { config: { url: `${u.origin}${u.pathname.replace(/\/+$/, "")}` } };
+  }
+  // Job boards: a search, read with our API key (a worker secret).
+  if (kind === "adzuna") {
+    const category = str(raw.category) || "it-jobs";
+    if (!/^[a-z-]+$/.test(category)) return { error: "Adzuna category looks like it-jobs or healthcare-nursing-jobs" };
+    return { config: { category, ...(str(raw.what) ? { what: str(raw.what).slice(0, 200) } : {}) } };
+  }
+  if (kind === "jooble") {
+    return { config: { keywords: str(raw.keywords).slice(0, 200) || "contract", location: str(raw.location).slice(0, 100) || "USA" } };
   }
   return { error: "Unknown site type" };
 }

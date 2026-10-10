@@ -3,7 +3,7 @@ import { Briefcase, Building2, ExternalLink, Pencil, Play, Plus, RefreshCcw, Tra
 import LogoSpinner from './LogoSpinner';
 import { supabase } from '../lib/supabase';
 
-type SiteKind = 'builtin' | 'sitemap_jsonld' | 'jobdiva' | 'greenhouse' | 'lever' | 'workday' | 'none';
+type SiteKind = 'builtin' | 'sitemap_jsonld' | 'jobdiva' | 'greenhouse' | 'lever' | 'workday' | 'adzuna' | 'jooble' | 'none';
 
 type Site = {
   slug: string;
@@ -40,6 +40,8 @@ const KIND_LABEL: Record<SiteKind, string> = {
   greenhouse: 'Greenhouse',
   lever: 'Lever',
   workday: 'Workday',
+  adzuna: 'Adzuna job board',
+  jooble: 'Jooble job board',
   none: 'Needs adapter',
 };
 
@@ -54,6 +56,14 @@ const KIND_FIELDS: Record<Exclude<SiteKind, 'builtin'>, Array<{ key: string; lab
   greenhouse: [{ key: 'url', label: 'Greenhouse board link', placeholder: 'https://boards.greenhouse.io/company' }],
   lever: [{ key: 'url', label: 'Lever link', placeholder: 'https://jobs.lever.co/company' }],
   workday: [{ key: 'url', label: 'Workday careers link', placeholder: 'https://company.wd5.myworkdayjobs.com/External' }],
+  adzuna: [
+    { key: 'category', label: 'Adzuna category', placeholder: 'it-jobs (or healthcare-nursing-jobs)' },
+    { key: 'what', label: 'Keywords (optional)', placeholder: 'developer' },
+  ],
+  jooble: [
+    { key: 'keywords', label: 'Keywords', placeholder: 'contract developer' },
+    { key: 'location', label: 'Location', placeholder: 'USA' },
+  ],
 };
 
 const EMPTY_FORM = { slug: '', name: '', kind: 'greenhouse' as SiteKind, config: {} as Record<string, string>, careers_url: '', max_new_per_run: 60, notes: '', enabled: true };
