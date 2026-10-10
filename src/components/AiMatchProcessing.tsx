@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Link } from 'react-router-dom';
 import { enableWebPush } from '../lib/onesignal';
+import { supabase } from '../lib/supabase';
 
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.profilepush.app';
 const DISPLAY_FONT_URL = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap';
@@ -62,35 +63,63 @@ function AppIcon() {
   );
 }
 
-function GmailVisual() {
+// Free vs paid, side by side: what the free plan gives and what paying adds.
+function PlansVisual({ paid }: { paid: boolean }) {
+  const row = (label: string, free: string, pro: string) => (
+    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-t border-slate-100 py-2.5 text-[13.5px]">
+      <span className="text-slate-500">{label}</span>
+      <span className="w-[86px] text-right font-semibold text-slate-700">{free}</span>
+      <span className="w-[96px] text-right font-extrabold text-blue-700">{pro}</span>
+    </div>
+  );
   return (
     <div className="amw-visual" aria-hidden="true">
-      <div className="amw-card amw-mail back" />
-      <div className="amw-card amw-mail front">
-        <div className="flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-blue-600 text-[15px] font-extrabold text-white">Y</span>
-          <div>
-            <span className="block text-[11.5px] font-semibold text-slate-500">From</span>
-            <span className="text-[14px] font-bold">you@youragency.com</span>
-          </div>
+      <div className="amw-card absolute left-1/2 top-4 w-[360px] max-w-[88vw] -translate-x-1/2 -rotate-1 rounded-[22px] px-5 pb-3 pt-4 text-left">
+        <div className="grid grid-cols-[1fr_auto_auto] items-end gap-3 pb-2">
+          <span />
+          <span className={`w-[86px] text-right text-[12px] font-bold uppercase tracking-wide ${paid ? 'text-slate-400' : 'text-slate-700'}`}>Free</span>
+          <span className="w-[96px] text-right text-[12px] font-bold uppercase tracking-wide text-blue-700">Paid</span>
         </div>
-        <p className="mt-3.5 text-[16px] font-extrabold tracking-tight">Java Developer · 10 yrs · H1B</p>
-        <div className="amw-ln" style={{ width: '94%' }} /><div className="amw-ln" style={{ width: '80%' }} /><div className="amw-ln" style={{ width: '58%' }} />
-        <span className="mt-3.5 inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-[13px] font-bold text-red-700">📄 Resume.pdf</span>
+        {row('Matches a day', '10', 'Up to 100')}
+        {row('Per consultant', 'Fixed', 'You choose')}
+        {row('Minimum match', '50–80%', '50–80%')}
+        {row('Price', '100 free', '₹0.25 each')}
       </div>
-      <span className="amw-badge" style={{ right: '2%', bottom: 18 }}>↩ Replies hit your inbox</span>
+      <span className="amw-badge" style={{ left: '50%', bottom: 18, transform: 'translateX(-50%)' }}>₹250 = 1,000 matches</span>
     </div>
   );
 }
 
-function BulkVisual() {
-  const angles: Array<[number, number]> = [[-26, 10], [-13, 0], [0, -6], [13, 0], [26, 10]];
+// The two settings that shape every match: the minimum match % (real
+// buttons, saved as tapped) and the daily match count.
+function SettingsVisual({ minMatch, onMinMatch, paid, dailyCap }: { minMatch: number; onMinMatch: (v: number) => void; paid: boolean; dailyCap: number }) {
   return (
-    <div className="amw-visual" aria-hidden="true">
-      <div className="amw-fan">
-        {angles.map(([deg, y]) => <div key={deg} className="amw-card amw-env" style={{ transform: `rotate(${deg}deg) translateY(${y}px)` }} />)}
+    <div className="amw-visual">
+      <div className="amw-card absolute left-1/2 top-4 w-[360px] max-w-[88vw] -translate-x-1/2 rounded-[22px] p-5 text-left">
+        <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400">Minimum match</p>
+        <div className="mt-2 grid grid-cols-7 gap-1" role="radiogroup" aria-label="Minimum match">
+          {[50, 55, 60, 65, 70, 75, 80].map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={minMatch === v}
+              onClick={() => onMinMatch(v)}
+              className={`h-9 rounded-lg text-[12.5px] font-extrabold tabular-nums transition-colors ${minMatch === v ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-[12px] text-slate-500">Higher means fewer, stronger matches.</p>
+        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+          <span>
+            <span className="block text-[12px] font-bold uppercase tracking-wide text-slate-400">Daily matches</span>
+            <span className="text-[13px] text-slate-500">{paid ? 'Per consultant, on the Tracker' : 'Per consultant, free plan'}</span>
+          </span>
+          <span className="text-[28px] font-extrabold tabular-nums text-slate-900">{dailyCap}</span>
+        </div>
       </div>
-      <span className="amw-badge" style={{ left: '50%', bottom: 34, transform: 'translateX(-50%)', fontSize: 16, padding: '12px 18px' }}>25 recruiters · 1 click</span>
     </div>
   );
 }
@@ -120,16 +149,41 @@ function PhoneVisual() {
 
 // Full screen while AI Match runs: a thin progress strip for this match, then
 // one marketing slide at a time: a headline, a picture and one button.
-export default function AiMatchProcessing({ kind, phase, pct, gmailConnected, onConnectGmail }: {
+export default function AiMatchProcessing({ kind, phase, pct }: {
   kind: 'jobs' | 'hotlist';
   subject?: string;
   phase: string | null;
   pct: number | null;
-  gmailConnected: boolean;
-  onConnectGmail: () => void;
+  gmailConnected?: boolean;
+  onConnectGmail?: () => void;
 }) {
   const native = Capacitor.isNativePlatform();
-  const wide = typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
+  // The account's plan and settings, for the plans and settings slides.
+  const [plan, setPlan] = useState<{ paid: boolean; dailyCap: number }>({ paid: false, dailyCap: 10 });
+  const [minMatch, setMinMatch] = useState(70);
+  const [savedMin, setSavedMin] = useState(false);
+  useEffect(() => {
+    void supabase.rpc('get_match_caps' as never).then(({ data }: { data: { paid?: boolean; default_cap?: number } | null }) => {
+      if (data) setPlan({ paid: Boolean(data.paid), dailyCap: Number(data.default_cap ?? 10) });
+    });
+    void supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      const { data: member } = await supabase.from('account_members').select('account_id').eq('user_id', data.user.id).eq('status', 'active').limit(1).maybeSingle();
+      const accountId = (member as { account_id?: string } | null)?.account_id;
+      if (!accountId) return;
+      const { data: acct } = await supabase.from('accounts').select('match_min_score' as never).eq('id', accountId).maybeSingle();
+      const v = (acct as { match_min_score?: number } | null)?.match_min_score;
+      if (v) setMinMatch(v);
+    });
+  }, []);
+  const changeMinMatch = (v: number) => {
+    setMinMatch(v);
+    setSavedMin(false);
+    // Keep the settings slide up while they choose.
+    slideFrom.current = Date.now();
+    setSlideBase(2);
+    void supabase.rpc('set_match_min_score' as never, { p_score: v } as never).then(({ error }) => { if (!error) setSavedMin(true); });
+  };
   const [pushState, setPushState] = useState<NotificationPermission | 'unsupported'>(() => (
     typeof window !== 'undefined' && 'Notification' in window && !native ? Notification.permission : 'unsupported'
   ));
@@ -179,16 +233,10 @@ export default function AiMatchProcessing({ kind, phase, pct, gmailConnected, on
   const done = (label: string) => <span className="amw-done">✓ {label}</span>;
   const slides: Array<{ key: string; title: ReactNode; visual: ReactNode; action: ReactNode }> = [
     {
-      key: 'gmail',
-      title: <>Submit from<br />your own Gmail.</>,
-      visual: <GmailVisual />,
-      action: gmailConnected ? done('Gmail connected') : <button type="button" onClick={onConnectGmail} className="amw-cta">Connect Gmail</button>,
-    },
-    {
-      key: 'bulk',
-      title: <>Every match.<br />One click.</>,
-      visual: <BulkVisual />,
-      action: <Link to={wide ? '/today' : '/tracker'} className="amw-cta">Try bulk submit</Link>,
+      key: 'plans',
+      title: plan.paid ? <>Up to 100<br />matches a day.</> : <>10 free matches<br />a day.</>,
+      visual: <PlansVisual paid={plan.paid} />,
+      action: plan.paid ? done('You’re on paid') : <Link to="/billing" className="amw-cta">Upgrade from ₹100</Link>,
     },
     {
       key: 'app',
@@ -198,6 +246,12 @@ export default function AiMatchProcessing({ kind, phase, pct, gmailConnected, on
         ? <a href={PLAY_URL} target="_blank" rel="noreferrer" className="amw-cta">Get the Android app</a>
         : pushState === 'granted' ? done('Alerts on')
         : <button type="button" onClick={() => { void enableWebPush().then(setPushState); }} className="amw-cta">Turn on alerts</button>,
+    },
+    {
+      key: 'settings',
+      title: <>You set<br />the bar.</>,
+      visual: <SettingsVisual minMatch={minMatch} onMinMatch={changeMinMatch} paid={plan.paid} dailyCap={plan.dailyCap} />,
+      action: savedMin ? done(`Saved · ${minMatch}% minimum`) : null,
     },
   ];
   const index = (Math.floor((now - slideFrom.current) / SLIDE_MS) + slideBase) % slides.length;
