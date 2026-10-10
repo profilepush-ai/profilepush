@@ -136,7 +136,8 @@ export type FitSummary = {
 };
 
 // Skills, visa, location and rate as four coloured badges.
-export function FitBadges({ fit, onDark = false, animate = false, at = 250, gap = 80 }: { fit: FitSummary; onDark?: boolean; animate?: boolean; at?: number; gap?: number }) {
+// hide: values the card already offers to ask the poster for (no empty badge beside the Ask).
+export function FitBadges({ fit, onDark = false, animate = false, at = 250, gap = 80, hide = [] }: { fit: FitSummary; onDark?: boolean; animate?: boolean; at?: number; gap?: number; hide?: string[] }) {
   const tones = onDark ? TONE_DARK : TONE;
   const okSkills = fit.skills.filter((s) => s.ok).length;
   const skillTone: Tone = fit.skills.length === 0 ? 'na' : okSkills / fit.skills.length >= 0.6 ? 'good' : 'warn';
@@ -148,16 +149,22 @@ export function FitBadges({ fit, onDark = false, animate = false, at = 250, gap 
       <span className={`${badge} ${tones[skillTone]}`} style={anim(animate, 'ppPop', 320, at)} title={`${okSkills} of ${fit.skills.length} skills`}>
         <Code2 size={13} strokeWidth={2.4} />{fit.skills.length ? `${okSkills}/${fit.skills.length}` : 'Skills?'}
       </span>
-      <span className={`${badge} ${tones[visaTone]}`} style={anim(animate, 'ppPop', 320, at + gap)} title={fit.visa.accepted.length ? `Accepts ${fit.visa.accepted.join(', ')}` : 'Visa not listed'}>
-        <ShieldCheck size={13} strokeWidth={2.4} />{fit.visa.mine ?? (fit.visa.accepted[0] || 'Visa?')}
-      </span>
-      <span className={`${badge} ${tones[locTone]}`} style={anim(animate, 'ppPop', 320, at + gap * 2)} title={fit.location.label}>
-        {fit.location.kind === 'remote' ? <Globe size={13} strokeWidth={2.4} /> : <MapPin size={13} strokeWidth={2.4} />}
-        <span className="max-w-[9rem] truncate">{fit.location.kind === 'city' ? 'Same city' : fit.location.kind === 'state' ? fit.location.jobState : fit.location.kind === 'remote' ? 'Remote' : fit.location.jobState ?? '–'}</span>
-      </span>
-      <span className={`${badge} ${tones[fit.rate.kind]}`} style={anim(animate, 'ppPop', 320, at + gap * 3)} title={fit.rate.job ? `$${fit.rate.job}/hr` : 'Rate not listed'}>
-        <DollarSign size={13} strokeWidth={2.4} />{fit.rate.job ? Math.round(fit.rate.job) : '–'}
-      </span>
+      {!hide.includes('visa') && (
+        <span className={`${badge} ${tones[visaTone]}`} style={anim(animate, 'ppPop', 320, at + gap)} title={fit.visa.accepted.length ? `Accepts ${fit.visa.accepted.join(', ')}` : 'Visa not listed'}>
+          <ShieldCheck size={13} strokeWidth={2.4} />{fit.visa.mine ?? (fit.visa.accepted[0] || 'Visa?')}
+        </span>
+      )}
+      {!hide.includes('location') && (
+        <span className={`${badge} ${tones[locTone]}`} style={anim(animate, 'ppPop', 320, at + gap * 2)} title={fit.location.label}>
+          {fit.location.kind === 'remote' ? <Globe size={13} strokeWidth={2.4} /> : <MapPin size={13} strokeWidth={2.4} />}
+          <span className="max-w-[9rem] truncate">{fit.location.kind === 'city' ? 'Same city' : fit.location.kind === 'state' ? fit.location.jobState : fit.location.kind === 'remote' ? 'Remote' : fit.location.jobState ?? '–'}</span>
+        </span>
+      )}
+      {!hide.includes('rate') && (
+        <span className={`${badge} ${tones[fit.rate.kind]}`} style={anim(animate, 'ppPop', 320, at + gap * 3)} title={fit.rate.job ? `$${fit.rate.job}/hr` : 'Rate not listed'}>
+          <DollarSign size={13} strokeWidth={2.4} />{fit.rate.job ? Math.round(fit.rate.job) : '–'}
+        </span>
+      )}
     </div>
   );
 }

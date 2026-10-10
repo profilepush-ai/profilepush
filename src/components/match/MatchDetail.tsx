@@ -97,6 +97,8 @@ export default function MatchDetail({
   const duplicate = item.duplicate || draft?.duplicate || null;
   const iconBtn = 'grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5';
 
+  // Values offered as an Ask in the bottom bar aren't also shown empty here.
+  const asking = onAsk && lead.has_email ? missingFor(kind, fit) : [];
   const hero = (
     <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 p-3.5 dark:border-white/10"
       style={{ background: `linear-gradient(165deg, color-mix(in srgb, ${hashColor(leadOrg(lead))} 22%, var(--pp-surface)), var(--pp-surface) 72%)` }}>
@@ -107,8 +109,8 @@ export default function MatchDetail({
           <p className="mt-0.5 text-[13px] text-gray-600 dark:text-slate-400">{leadOrg(lead)}{lead.poster && lead.company && lead.poster !== lead.company ? ` · ${lead.poster}` : ''}</p>
           {mode === 'pane' && (
             <p className="mt-1.5 flex flex-wrap gap-1.5 text-[12.5px] font-semibold text-gray-700 dark:text-slate-200">
-              <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-0.5 ring-1 ring-gray-200 dark:bg-white/5 dark:ring-white/10">{fit.location.kind === 'remote' ? <Globe size={13} /> : <MapPin size={13} />}{fit.location.label}</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-0.5 ring-1 ring-gray-200 dark:bg-white/5 dark:ring-white/10"><DollarSign size={13} />{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr${fit.rate.mine ? `, asks $${Math.round(fit.rate.mine)}` : ''}` : (lead.pay || 'Rate not in the post')}</span>
+              {!(asking.includes('location')) && <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-0.5 ring-1 ring-gray-200 dark:bg-white/5 dark:ring-white/10">{fit.location.kind === 'remote' ? <Globe size={13} /> : <MapPin size={13} />}{fit.location.label}</span>}
+              {!(asking.includes('rate')) && <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-0.5 ring-1 ring-gray-200 dark:bg-white/5 dark:ring-white/10"><DollarSign size={13} />{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr${fit.rate.mine ? `, asks $${Math.round(fit.rate.mine)}` : ''}` : (lead.pay || 'Rate not in the post')}</span>}
             </p>
           )}
         </div>

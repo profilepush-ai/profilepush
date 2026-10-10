@@ -19,6 +19,20 @@ const section = (at: number) => ({ animation: `ppSection 450ms cubic-bezier(.2,.
 // Today itself, full screen, with the search and chips in `top`; swiping up or
 // down there is passed on (Today uses it to show its menus). On desktop it
 // sits in the page beside the detail.
+// The time a Today match has left, ticking each second (its own component,
+// so only it redraws).
+function TimeLeft({ item }: { item: CardItem }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  const left = timeLeft(item, now);
+  if (!left) return null;
+  return (
+    <span title="Today's matches leave after 24 hours. Save it to keep it." className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-bold tabular-nums ${left.urgent ? 'bg-rose-500/90 text-white' : 'bg-white/15 text-white/85'}`}>
+      <Timer size={12} />{left.label}
+    </span>
+  );
+}
+
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
   top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
@@ -268,7 +282,6 @@ export default function SwipeDeck({
   const subject = subjects[item.subject_id];
   const fit = fitFor(kind, subject, lead);
   const site = kind === 'hotlist' && lead.source === 'career_site';
-  const left = expiring ? timeLeft(item) : null;
   const picture = (avatarOn ? item.my_visual : null) || pictureFor(lead, viewerId);
   const color = hashColor(item.subject_id);
   const name = subjectName(kind, subject);
@@ -352,15 +365,11 @@ export default function SwipeDeck({
         <div className="flex items-center gap-2.5" style={section(0)}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
           <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-white/75">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
-          {left && (
-            <span title="Today's matches leave after 24 hours. Save it to keep it." className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-bold ${left.urgent ? 'bg-rose-500/90 text-white' : 'bg-white/15 text-white/85'}`}>
-              <Timer size={12} />{left.label}
-            </span>
-          )}
+          {expiring && <TimeLeft item={item} />}
         </div>
         <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
         <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} onDark animate at={T.ring + 150} /></div>
-        <div style={section(T.ring)}><FitBadges fit={fit} onDark /></div>
+        <div style={section(T.ring)}><FitBadges fit={fit} onDark hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} /></div>
         {onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
           <div data-rail className="pointer-events-auto" style={section(T.ask)}>
             <AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} onDark />

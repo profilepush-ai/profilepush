@@ -55,12 +55,13 @@ export async function cardRoute(card: string | null, lead: string | null): Promi
 /** Today's matches leave 24 hours after they arrive (get_today, expire_unopened_matches). */
 export const TODAY_HOURS = 24;
 
-/** "5h left" on a Today card, urgent in its last 3 hours; null once it's gone. */
+/** "23:41:07 left" on a Today card (it ticks), urgent in its last 3 hours; null once it's gone. */
 export function timeLeft(item: Pick<CardItem, 'added_at'>, now = Date.now()): { label: string; urgent: boolean } | null {
   const ms = new Date(item.added_at).getTime() + TODAY_HOURS * 3_600_000 - now;
   if (!(ms > 0)) return null;
-  const mins = Math.ceil(ms / 60_000);
-  return { label: mins < 60 ? `${mins}m left` : `${Math.floor(mins / 60)}h left`, urgent: mins < 180 };
+  const secs = Math.floor(ms / 1000);
+  const two = (n: number) => String(n).padStart(2, '0');
+  return { label: `${Math.floor(secs / 3600)}:${two(Math.floor(secs / 60) % 60)}:${two(secs % 60)} left`, urgent: secs < 3 * 3600 };
 }
 
 export type ResumeFile = { id: string; url: string; file_name: string; is_default: boolean };
