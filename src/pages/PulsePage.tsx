@@ -5232,7 +5232,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         topBlockers: data?.top_blockers ?? [],
       });
       if (post?.status === 'created') {
-        const where = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
+        const where = aiMatchTarget === 'jobs' ? 'My profiles' : 'My jobs';
         showToast(post.count && post.count > 1 ? `${post.count} posts added to ${where}` : `Posted to ${where}`, 'success');
         // The rail is loaded once; without this the posts just created aren't
         // there to match the rest of the batch from.
@@ -5516,7 +5516,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     });
   }, [aiMatchOwnPosts, aiMatchRecents, aiMatchTarget]);
 
-  const aiMatchOwnPostsLabel = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
+  const aiMatchOwnPostsLabel = aiMatchTarget === 'jobs' ? 'My profiles' : 'My jobs';
   const aiMatchOwnPostsPath = aiMatchTarget === 'jobs' ? '/posts/hotlist' : '/posts/jobs';
 
   // Back to a clean page: the results, the summary and the restored session all
@@ -7941,7 +7941,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                           className="text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
                         >
                           · {aiMatchSummary.posted > 1 ? `${aiMatchSummary.posted} posted to ` : 'posted to '}
-                          {aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs'}
+                          {aiMatchTarget === 'jobs' ? 'My profiles' : 'My jobs'}
                         </button>
                       )}
                         </>
