@@ -90,8 +90,11 @@ export default function StoreShots() {
       </div>
     );
   }
-  if (shot === 'today') return deck(ITEMS);
-  if (shot === 'avatar') return deck([{ ...ITEMS[0], my_visual: '/landing-v2/avatar-job.webp' }], true);
+  // The store's small screens: without the engagement row, so the picture shows.
+  const bare = ITEMS.map((i) => ({ ...i, eng: undefined }));
+  // Screenshot 1 leads with a different match than the avatar one.
+  if (shot === 'today') return deck([bare[1], bare[0], bare[2]]);
+  if (shot === 'avatar') return deck([{ ...bare[0], my_visual: '/landing-v2/avatar-job.webp' }], true);
   if (shot === 'detail' || shot === 'send') {
     return (
       <div className="h-[100dvh] bg-[#f3f2ee]">
