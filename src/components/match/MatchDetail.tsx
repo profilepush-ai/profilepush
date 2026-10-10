@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bookmark, Briefcase, Check, ChevronLeft, Clock, Code2, Copy, DollarSign, ExternalLink, FileText, Globe, Mail, MapPin, Send, Share2, ShieldCheck } from 'lucide-react';
+import { Bookmark, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code2, Copy, DollarSign, ExternalLink, FileText, Globe, Mail, MapPin, Send, Share2, ShieldCheck } from 'lucide-react';
 import LogoSpinner from '../LogoSpinner';
 import { hideEmails, openLeadPostContent } from '../LeadCard';
 import { supabase } from '../../lib/supabase';
@@ -41,11 +41,11 @@ const boxTitle = 'mb-2 flex items-center gap-1.5 text-[11.5px] font-bold upperca
 
 export default function MatchDetail({
   item, kind, subject, mode, position, accountId, gmailConnected, busy,
-  onBack, onApplyEmail, onApplySite, onAskResume, onSave, onShare, onDismiss, onSubject, onConnectGmail,
+  onBack, onPrev, onNext, onApplyEmail, onApplySite, onAskResume, onSave, onShare, onDismiss, onSubject, onConnectGmail,
 }: {
   item: CardItem; kind: Kind; subject: Subject | undefined; mode: 'sheet' | 'pane'; position?: { index: number; total: number; label: string };
   accountId: string | undefined; gmailConnected: boolean | null; busy?: boolean;
-  onBack?: () => void; onApplyEmail: (draft: Draft, resumeId: string | null) => void; onApplySite: () => void; onAskResume: () => void;
+  onBack?: () => void; onPrev?: () => void; onNext?: () => void; onApplyEmail: (draft: Draft, resumeId: string | null) => void; onApplySite: () => void; onAskResume: () => void;
   onSave: () => void; onShare: () => void; onDismiss?: () => void; onSubject: () => void; onConnectGmail: () => void;
 }) {
   const lead = item.lead!;
@@ -241,12 +241,16 @@ export default function MatchDetail({
       {mode === 'sheet' && (
         <div className="flex h-14 shrink-0 items-center gap-0.5 border-b border-gray-200 bg-white px-1.5 dark:border-white/10 dark:bg-[#20242a]">
           <button type="button" onClick={onBack} className={iconBtn} aria-label="Back"><ChevronLeft size={22} /></button>
-          <span className="flex-1 text-[13px] font-semibold tabular-nums text-gray-400">{position ? `${position.label} ${position.index + 1} of ${position.total}` : ''}</span>
+          <span className="flex flex-1 items-center justify-center gap-0.5 text-[13px] font-semibold tabular-nums text-gray-400">
+            {onPrev && <button type="button" onClick={onPrev} disabled={!position || position.index <= 0} aria-label="Previous match" className="grid h-8 w-8 place-items-center rounded-lg hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-white/5"><ChevronLeft size={18} /></button>}
+            <span>{position ? `${position.label} ${position.index + 1} of ${position.total}` : ''}</span>
+            {onNext && <button type="button" onClick={onNext} disabled={!position || position.index >= position.total - 1} aria-label="Next match" className="grid h-8 w-8 place-items-center rounded-lg hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-white/5"><ChevronRight size={18} /></button>}
+          </span>
           <button type="button" className={iconBtn} onClick={onShare} aria-label="Share"><Share2 size={19} /></button>
           <button type="button" className={`${iconBtn} ${saved ? '!text-blue-600' : ''}`} onClick={onSave} aria-label="Save for later" aria-pressed={saved}><Bookmark size={19} fill={saved ? 'currentColor' : 'none'} /></button>
         </div>
       )}
-      <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto bg-[#f3f2ee] p-4 dark:bg-[#1B1D21]">
+      <div className="min-h-0 flex-1 touch-pan-y space-y-3.5 overflow-y-auto bg-[#f3f2ee] p-4 dark:bg-[#1B1D21]">
         {hero}
         {mode === 'pane' ? (
           <div className="grid grid-cols-2 items-start gap-3.5">
