@@ -330,3 +330,28 @@ export function EngagementRow({ eng, onDark = false, animate = false, at = 0, ga
     </div>
   );
 }
+
+const ASK_LABEL: Record<string, string> = { rate: 'Ask rate', visa: 'Ask visa', location: 'Ask location' };
+// Ask the poster for what the post leaves out. Once asked, it says so.
+export function AskChips({ missing, asked, onAsk, onDark = false }: {
+  missing: Array<'rate' | 'visa' | 'location'>; asked: string[]; onAsk: (q: 'rate' | 'visa' | 'location') => void; onDark?: boolean;
+}) {
+  if (missing.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className={`text-[12px] font-semibold ${onDark ? 'text-white/60' : 'text-gray-500 dark:text-slate-400'}`}>Not in the post:</span>
+      {missing.map((q) => {
+        const done = asked.includes(q);
+        return (
+          <button key={q} type="button" disabled={done} onClick={(e) => { e.stopPropagation(); onAsk(q); }}
+            title={done ? 'Asked. The reply comes to your email.' : 'We email the poster that you asked, with your email so they can reply'}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-bold ${done
+              ? (onDark ? 'bg-white/10 text-white/60' : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-slate-400')
+              : (onDark ? 'bg-white text-gray-900 hover:bg-white/90' : 'bg-blue-600 text-white hover:bg-blue-700')}`}>
+            {done ? <Check size={12} strokeWidth={3} /> : null}{done ? `Asked ${q}` : ASK_LABEL[q]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
