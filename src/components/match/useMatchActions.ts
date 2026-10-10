@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { useAiSubmit } from '../AiSubmit';
 import { loadLeadsByIds, recordLeadShare } from '../LeadCard';
 import { supabase } from '../../lib/supabase';
 import { trackEvent } from '../../lib/track';
-import { dismissCard, leadOrg, restoreCard, setSaved, shareLink, type CardItem, type Kind, type Subject } from '../../lib/today';
+import { dismissCard, leadOrg, restoreCard, setSaved, shareLink, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
 import type { Draft } from './MatchDetail';
 
 const UNDO_MS = 5000;
@@ -32,6 +34,31 @@ export function useMatchActions({ kind, accountId, userId, subjects, take, onCha
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [appliedNow, setAppliedNow] = useState(0);
+  // Career sites that let their page show inside ours (checked ahead, so the
+  // tap opens it straight away), and the one open now.
+  const [frameOk, setFrameOk] = useState<Record<string, boolean>>({});
+  const [frame, setFrame] = useState<{ item: CardItem; url: string } | null>(null);
+  const checking = useRef(new Set<string>());
+  const checkFrame = useCallback((item: CardItem | null | undefined) => {
+    if (!item?.lead || item.lead.source !== 'career_site' || Capacitor.isNativePlatform()) return;
+    const id = item.lead_id;
+    if (checking.current.has(id)) return;
+    checking.current.add(id);
+    void supabase.functions.invoke('submit-consultant', { body: { action: 'frame_check', job_id: id } })
+      .then(({ data }) => setFrameOk((m) => ({ ...m, [id]: Boolean(data?.embeddable) })));
+  }, []);
+
+  // Questions this account already asked posters, by post.
+  const [asked, setAsked] = useState<Record<string, Question[]>>({});
+  useEffect(() => {
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    void supabase.from('post_questions' as never).select('lead_id, question').gte('created_at', since).limit(2000)
+      .then(({ data }: { data: Array<{ lead_id: string; question: Question }> | null }) => {
+        const map: Record<string, Question[]> = {};
+        for (const r of data ?? []) (map[r.lead_id] ??= []).push(r.question);
+        setAsked(map);
+      });
+  }, []);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<Record<string, { timer: ReturnType<typeof setTimeout>; run: () => Promise<void> }>>({});
 
@@ -98,7 +125,11 @@ export function useMatchActions({ kind, accountId, userId, subjects, take, onCha
   const applySite = (item: CardItem) => {
     if (!item.lead) return;
     const url = item.lead.apply_url || item.lead.post_url;
-    if (url) window.open(url, '_blank', 'noopener');
+    // Inside ProfilePush where we can: the app's in-app browser, or on the web
+    // our own window for sites that allow it; otherwise a new tab.
+    if (url && Capacitor.isNativePlatform()) void Browser.open({ url, presentationStyle: 'popover' });
+    else if (url && frameOk[item.lead_id]) setFrame({ item, url });
+    else if (url) window.open(url, '_blank', 'noopener');
     const restore = take(item);
     setAppliedNow((n) => n + 1);
     void supabase.rpc('mark_external_applied' as never, { p_job_id: item.lead_id, p_subject_id: item.subject_id } as never).then(() => onChanged());
@@ -155,6 +186,24 @@ export function useMatchActions({ kind, accountId, userId, subjects, take, onCha
     showToast("Removed. It won't show again.", () => { restore(); void restoreCard(item.card_id); });
   };
 
+  // Ask the poster for what the post leaves out (rate, visa, location). They
+  // get an email with this user's name and email, so they can reply directly.
+  const ask = async (item: CardItem, question: Question) => {
+    if (!item.lead) return;
+    setAsked((m) => ({ ...m, [item.lead_id]: [...(m[item.lead_id] ?? []), question] }));
+    const { data, error } = await supabase.functions.invoke('ask-poster', { body: { lead_id: item.lead_id, question } });
+    if (error) {
+      const ctx = (error as { context?: Response }).context;
+      const payload = ctx ? await ctx.json().catch(() => null) : null;
+      setAsked((m) => ({ ...m, [item.lead_id]: (m[item.lead_id] ?? []).filter((q) => q !== question) }));
+      showToast(payload?.error === 'no_email' ? 'This post has no email to ask.' : payload?.error === 'daily_limit' ? 'That is a lot of questions for today. Try again tomorrow.' : 'Could not ask right now.', undefined, 'error');
+      return;
+    }
+    trackEvent('poster_asked', { question });
+    const who = item.lead.poster?.split(' ')[0] || 'the poster';
+    showToast(data?.emailed ? `Asked ${who}. They'll reply to your email.` : `Asked. ${who} already has this question; you're counted in.`);
+  };
+
   const share = async (item: CardItem) => {
     if (!item.lead) return;
     const r = await shareLink(item.lead);
@@ -162,5 +211,5 @@ export function useMatchActions({ kind, accountId, userId, subjects, take, onCha
     if (r === 'copied') showToast('Link copied');
   };
 
-  return { toast, setToast, showToast, gmailConnected, connectGmail, busy, appliedNow, applyEmail, applySite, askResume, applyQuick, save, dismiss, share, ai };
+  return { toast, setToast, showToast, gmailConnected, connectGmail, busy, appliedNow, applyEmail, applySite, askResume, applyQuick, save, dismiss, share, ask, asked, checkFrame, frame, setFrame, ai };
 }

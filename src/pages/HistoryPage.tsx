@@ -8,6 +8,7 @@ import MatchCard from '../components/match/MatchCard';
 import MatchDetail from '../components/match/MatchDetail';
 import TrackerRow from '../components/match/TrackerRow';
 import ToastBar from '../components/match/ToastBar';
+import ApplyFrame from '../components/match/ApplyFrame';
 import { useMatchActions } from '../components/match/useMatchActions';
 import { useSwipe } from '../components/match/useSwipe';
 import { useAuth } from '../contexts/AuthContext';
@@ -49,7 +50,7 @@ export default function HistoryPage() {
   useEffect(() => { setItems(null); void load(); }, [load]);
 
   const subjects = useMemo(() => subjectsOf(items ?? []), [items]);
-  const open = (item: CardItem) => setOpenId(item.card_id);
+  const open = (item: CardItem) => { setOpenId(item.card_id); actions.checkFrame(item); };
   const take = (item: CardItem) => {
     let position = -1;
     setItems((list) => {
@@ -149,10 +150,15 @@ export default function HistoryPage() {
               onShare={() => void actions.share(openItem)}
               onSubject={() => toProfile(openItem.subject_id)}
               onConnectGmail={() => void actions.connectGmail()}
+              asked={actions.asked[openItem.lead_id]}
+              onAsk={(q) => void actions.ask(openItem, q)}
             />
             </div>
           </div>
         </>
+      )}
+      {actions.frame && (
+        <ApplyFrame item={actions.frame.item} url={actions.frame.url} kind={kind} subject={subjects[actions.frame.item.subject_id]} onClose={() => actions.setFrame(null)} />
       )}
       <ToastBar toast={actions.toast} onClose={() => actions.setToast(null)} />
       <AiSubmitDialog ai={actions.ai} />

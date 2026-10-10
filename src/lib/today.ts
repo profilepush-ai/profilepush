@@ -160,3 +160,20 @@ export async function setStatus(cardId: string, status: string) {
   const { error } = await supabase.rpc('set_card_status' as never, { p_id: cardId, p_status: status } as never);
   if (error) throw new Error(error.message);
 }
+
+export type Question = 'rate' | 'visa' | 'location';
+// What the post leaves out that its poster can be asked for. For a job post:
+// its rate, visas, location. For a profile post (vendors): the profile's.
+export function missingFor(kind: Kind, fit: FitSummary): Question[] {
+  const out: Question[] = [];
+  if (kind === 'hotlist') {
+    if (fit.rate.job == null) out.push('rate');
+    if (fit.visa.accepted.length === 0) out.push('visa');
+    if (fit.location.kind === 'unknown') out.push('location');
+  } else {
+    if (fit.rate.mine == null) out.push('rate');
+    if (!fit.visa.mine) out.push('visa');
+    if (!fit.location.profileState && fit.location.kind !== 'remote') out.push('location');
+  }
+  return out;
+}

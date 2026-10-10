@@ -2,15 +2,15 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { Link } from 'react-router-dom';
 import { Bookmark, Check, ChevronUp, ExternalLink, FileText, History, Pause, Play, Send, Share2, Sparkles, X } from 'lucide-react';
 import { agoLabel, hashColor } from '../../lib/match-fit';
-import { fitFor, leadOrg, leadTitle, subjectName, type CardItem, type Kind, type Subject } from '../../lib/today';
-import { CompanyLogo, EngagementRow, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
+import { fitFor, leadOrg, leadTitle, missingFor, subjectName, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
+import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
 
 // When each section of a card arrives (ms). Sections move as one block (many
 // small animations at once stutter on phones); inside, only the match ring
 // counts, the route draws and the rate marker slides. In the reel sections
 // arrive one to three seconds apart, about 15 seconds a card; elsewhere fast.
-const SLOW = { title: 250, ring: 1500, skills: 4000, map: 6500, rate: 8500, eng: 10500 };
-const FAST = { title: 60, ring: 150, skills: 300, map: 420, rate: 520, eng: 650 };
+const SLOW = { title: 250, ring: 1500, ask: 2800, skills: 4000, map: 6500, rate: 8500, eng: 10500 };
+const FAST = { title: 60, ring: 150, ask: 220, skills: 300, map: 420, rate: 520, eng: 650 };
 const section = (at: number) => ({ animation: `ppSection 450ms cubic-bezier(.2,.8,.2,1) ${at}ms both`, willChange: 'transform, opacity' });
 
 // Swipe mode: one match per screen, stories style. Swipe or tap the sides to
@@ -20,7 +20,7 @@ const section = (at: number) => ({ animation: `ppSection 450ms cubic-bezier(.2,.
 // sits in the page beside the detail.
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, onClose, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, asked, onAsk, onClose, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
@@ -30,6 +30,8 @@ export default function SwipeDeck({
   reelMs?: number;
   /** Shown after the last card, instead of the plain "All caught up". */
   endScreen?: ReactNode;
+  /** Ask the poster for what the post leaves out. */
+  asked?: Record<string, Question[]>; onAsk?: (item: CardItem, q: Question) => void;
   onClose?: () => void; onCurrent?: (item: CardItem | null) => void; onStep?: (d: 1 | -1, toId: string | null) => void;
   onSwipeUp?: () => void; onSwipeDown?: () => void; onTouch?: () => void;
   onSeen: (item: CardItem) => void; onApply: (item: CardItem) => void; onSave: (item: CardItem) => void;
@@ -265,6 +267,11 @@ export default function SwipeDeck({
           <FitRing value={item.fit ?? Math.round(item.similarity * 100)} size={72} onDark animate at={T.ring + 150} />
           <FitBadges fit={fit} onDark />
         </div>
+        {onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
+          <div data-rail className="pointer-events-auto" style={section(T.ask)}>
+            <AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} onDark />
+          </div>
+        )}
         <div style={section(T.skills)}><SkillTiles skills={fit.skills.slice(0, 6)} onDark /></div>
         {/* Where there's no room, the badges above say the same. */}
         {boxes && <div className="grid grid-cols-2 gap-2.5">

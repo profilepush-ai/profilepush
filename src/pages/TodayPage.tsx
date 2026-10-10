@@ -10,11 +10,12 @@ import SwipeDeck from '../components/match/SwipeDeck';
 import ProfileSheet from '../components/match/ProfileSheet';
 import { CompanyLogo, FitRing, Initials } from '../components/match/Visuals';
 import ToastBar from '../components/match/ToastBar';
+import ApplyFrame from '../components/match/ApplyFrame';
 import { useMatchActions } from '../components/match/useMatchActions';
 import { useSwipe } from '../components/match/useSwipe';
 import { useAuth } from '../contexts/AuthContext';
 import { trackEvent } from '../lib/track';
-import { loadToday, markViewed, strings, subjectName, type CardItem, type Kind, type Subject, type TodayData } from '../lib/today';
+import { loadToday, markViewed, strings, subjectName, type CardItem, type Kind, type Question, type Subject, type TodayData } from '../lib/today';
 
 // Today: every new match, one at a time, as a swipe card. On a phone it is
 // full screen, with the search and the profile chips on the card itself; the
@@ -208,6 +209,7 @@ export default function TodayPage() {
     items, kind, subjects, appliedToday, emptyMessage,
     onSeen: see, onApply: applyQuick, onSave: save, onShare: (i: CardItem) => void share(i), onDismiss: dismiss,
     onDetails: (i: CardItem) => open(i),
+    asked: actions.asked, onAsk: (i: CardItem, q: Question) => void actions.ask(i, q),
   };
 
   const detailFor = (item: CardItem, mode: 'sheet' | 'pane') => {
@@ -234,6 +236,8 @@ export default function TodayPage() {
         onDismiss={() => dismiss(item)}
         onSubject={() => setProfileId(item.subject_id)}
         onConnectGmail={() => void connectGmail()}
+        asked={actions.asked[item.lead_id]}
+        onAsk={(q) => void actions.ask(item, q)}
       />
     );
   };
@@ -386,7 +390,7 @@ export default function TodayPage() {
             paused={Boolean(openId || profileId || adding || chrome || searchFocused || actions.ai.preview)}
             startId={null}
             focusId={deckFocus}
-            onCurrent={(i) => setDeckId(i?.card_id ?? null)}
+            onCurrent={(i) => { setDeckId(i?.card_id ?? null); actions.checkFrame(i); }}
             onSwipeUp={showChrome}
             onSwipeDown={() => setChrome(false)}
             onTouch={() => { if (chrome) setChrome(false); }}
@@ -410,7 +414,7 @@ export default function TodayPage() {
                   endScreen={endScreen}
                   startId={null}
                   focusId={deckFocus}
-                  onCurrent={(i) => setDeckId(i?.card_id ?? null)}
+                  onCurrent={(i) => { setDeckId(i?.card_id ?? null); actions.checkFrame(i); }}
                 />
               </div>
             )}
@@ -452,6 +456,9 @@ export default function TodayPage() {
         </div>
       ))}
 
+      {actions.frame && (
+        <ApplyFrame item={actions.frame.item} url={actions.frame.url} kind={kind} subject={subjects[actions.frame.item.subject_id]} onClose={() => actions.setFrame(null)} />
+      )}
       <ToastBar toast={actions.toast} onClose={() => actions.setToast(null)} />
 
       {adding && (

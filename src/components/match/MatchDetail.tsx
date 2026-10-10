@@ -4,8 +4,8 @@ import LogoSpinner from '../LogoSpinner';
 import { hideEmails, openLeadPostContent } from '../LeadCard';
 import { supabase } from '../../lib/supabase';
 import { agoLabel, hashColor } from '../../lib/match-fit';
-import { fitFor, leadOrg, leadTitle, strings, subjectName, type CardItem, type Kind, type Subject } from '../../lib/today';
-import { CompanyLogo, EngagementRow, FitRing, Initials, RateBar, SkillTiles, UsMap, VisaRow } from './Visuals';
+import { fitFor, leadOrg, leadTitle, missingFor, strings, subjectName, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
+import { AskChips, CompanyLogo, EngagementRow, FitRing, Initials, RateBar, SkillTiles, UsMap, VisaRow } from './Visuals';
 
 export type Draft = { subject: string; body: string; toName: string; duplicate: string | null };
 
@@ -41,10 +41,11 @@ const boxTitle = 'mb-2 flex items-center gap-1.5 text-[11.5px] font-bold upperca
 
 export default function MatchDetail({
   item, kind, subject, mode, position, accountId, gmailConnected, busy,
-  onBack, onPrev, onNext, onApplyEmail, onApplySite, onAskResume, onSave, onShare, onDismiss, onSubject, onConnectGmail,
+  onBack, onPrev, onNext, onApplyEmail, onApplySite, onAskResume, onSave, onShare, onDismiss, onSubject, onConnectGmail, asked, onAsk,
 }: {
   item: CardItem; kind: Kind; subject: Subject | undefined; mode: 'sheet' | 'pane'; position?: { index: number; total: number; label: string };
   accountId: string | undefined; gmailConnected: boolean | null; busy?: boolean;
+  asked?: Question[]; onAsk?: (q: Question) => void;
   onBack?: () => void; onPrev?: () => void; onNext?: () => void; onApplyEmail: (draft: Draft, resumeId: string | null) => void; onApplySite: () => void; onAskResume: () => void;
   onSave: () => void; onShare: () => void; onDismiss?: () => void; onSubject: () => void; onConnectGmail: () => void;
 }) {
@@ -125,8 +126,12 @@ export default function MatchDetail({
   );
 
   const okSkills = fit.skills.filter((s) => s.ok).length;
+  const missing = missingFor(kind, fit);
   const board = (
     <section className="grid grid-cols-2 gap-2.5">
+      {onAsk && lead.has_email && missing.length > 0 && (
+        <div className={`${box} col-span-2`}><AskChips missing={missing} asked={asked ?? []} onAsk={onAsk} /></div>
+      )}
       <div className={`${box} col-span-2`}>
         <h4 className={boxTitle}><Code2 size={13} />Skills<span className="ml-auto normal-case tracking-normal text-emerald-600 dark:text-emerald-400">{okSkills} of {fit.skills.length}</span></h4>
         <SkillTiles skills={fit.skills} />
