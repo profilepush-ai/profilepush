@@ -5,7 +5,7 @@ import { hideEmails, openLeadPostContent } from '../LeadCard';
 import { supabase } from '../../lib/supabase';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, strings, subjectName, type CardItem, type Kind, type Subject } from '../../lib/today';
-import { CompanyLogo, FitRing, Initials, RateBar, SkillTiles, UsMap, VisaRow } from './Visuals';
+import { CompanyLogo, EngagementRow, FitRing, Initials, RateBar, SkillTiles, UsMap, VisaRow } from './Visuals';
 
 export type Draft = { subject: string; body: string; toName: string; duplicate: string | null };
 
@@ -106,6 +106,7 @@ export default function MatchDetail({
         </div>
         <FitRing value={item.fit ?? Math.round(item.similarity * 100)} size={62} />
       </div>
+      {item.eng && <EngagementRow eng={item.eng} />}
       <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-gray-600 dark:text-slate-300">
         <button type="button" onClick={onSubject} className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 font-bold text-gray-900 hover:border-blue-300 dark:border-white/10 dark:bg-[#20242a] dark:text-white">
           <Initials name={name} id={item.subject_id} size={18} />for {name}

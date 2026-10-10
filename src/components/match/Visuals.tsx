@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { Check, Code2, DollarSign, Globe, MapPin, ShieldCheck } from 'lucide-react';
+import { Bookmark, Check, Code2, DollarSign, Eye, Flame, Globe, MapPin, Send, Share2, ShieldCheck, Sparkles } from 'lucide-react';
 import { hashColor, skillLook, US_TILES, VISA_ORDER, type LocationFit } from '../../lib/match-fit';
 
 // The pieces a match is drawn with: who posted it, how well it fits, and why.
@@ -75,9 +75,9 @@ function useCountUp(target: number, on: boolean, duration = 750, delay = 150) {
 
 // The match %. Animated, the ring sweeps round as the number counts up and
 // changes colour as it passes 75 and 85; a strong match ends with a glow.
-export function FitRing({ value, size = 44, onDark = false, animate = false }: { value: number; size?: number; onDark?: boolean; animate?: boolean }) {
+export function FitRing({ value, size = 44, onDark = false, animate = false, at = 150 }: { value: number; size?: number; onDark?: boolean; animate?: boolean; at?: number }) {
   const v = Math.max(0, Math.min(100, Math.round(value)));
-  const shown = useCountUp(v, animate);
+  const shown = useCountUp(v, animate, 750, at);
   const color = shown >= 85 ? '#10b981' : shown >= 75 ? '#3b82f6' : '#94a3b8';
   return (
     <span
@@ -86,7 +86,7 @@ export function FitRing({ value, size = 44, onDark = false, animate = false }: {
       className={`grid shrink-0 place-items-center rounded-full ${onDark ? '' : 'pp-ring'}`}
       style={{
         width: size, height: size, background: `conic-gradient(${color} ${shown}%, ${onDark ? 'rgba(255,255,255,.18)' : 'var(--pp-ring-track)'} 0)`,
-        ...(animate && v >= 85 ? { animation: 'ppGlow 1.1s ease-out 950ms 1' } : {}),
+        ...(animate && v >= 85 ? { animation: `ppGlow 1.1s ease-out ${at + 800}ms 1` } : {}),
       }}
     >
       <span
@@ -119,7 +119,7 @@ export type FitSummary = {
 };
 
 // Skills, visa, location and rate as four coloured badges.
-export function FitBadges({ fit, onDark = false, animate = false }: { fit: FitSummary; onDark?: boolean; animate?: boolean }) {
+export function FitBadges({ fit, onDark = false, animate = false, at = 250, gap = 80 }: { fit: FitSummary; onDark?: boolean; animate?: boolean; at?: number; gap?: number }) {
   const tones = onDark ? TONE_DARK : TONE;
   const okSkills = fit.skills.filter((s) => s.ok).length;
   const skillTone: Tone = fit.skills.length === 0 ? 'na' : okSkills / fit.skills.length >= 0.6 ? 'good' : 'warn';
@@ -128,17 +128,17 @@ export function FitBadges({ fit, onDark = false, animate = false }: { fit: FitSu
   const badge = 'inline-flex items-center gap-1 rounded-lg px-2 py-[3px] text-[12px] font-bold tabular-nums';
   return (
     <div className="flex flex-wrap gap-1.5">
-      <span className={`${badge} ${tones[skillTone]}`} style={anim(animate, 'ppPop', 320, 250)} title={`${okSkills} of ${fit.skills.length} skills`}>
+      <span className={`${badge} ${tones[skillTone]}`} style={anim(animate, 'ppPop', 320, at)} title={`${okSkills} of ${fit.skills.length} skills`}>
         <Code2 size={13} strokeWidth={2.4} />{fit.skills.length ? `${okSkills}/${fit.skills.length}` : 'Skills?'}
       </span>
-      <span className={`${badge} ${tones[visaTone]}`} style={anim(animate, 'ppPop', 320, 330)} title={fit.visa.accepted.length ? `Accepts ${fit.visa.accepted.join(', ')}` : 'Visa not listed'}>
+      <span className={`${badge} ${tones[visaTone]}`} style={anim(animate, 'ppPop', 320, at + gap)} title={fit.visa.accepted.length ? `Accepts ${fit.visa.accepted.join(', ')}` : 'Visa not listed'}>
         <ShieldCheck size={13} strokeWidth={2.4} />{fit.visa.mine ?? (fit.visa.accepted[0] || 'Visa?')}
       </span>
-      <span className={`${badge} ${tones[locTone]}`} style={anim(animate, 'ppPop', 320, 410)} title={fit.location.label}>
+      <span className={`${badge} ${tones[locTone]}`} style={anim(animate, 'ppPop', 320, at + gap * 2)} title={fit.location.label}>
         {fit.location.kind === 'remote' ? <Globe size={13} strokeWidth={2.4} /> : <MapPin size={13} strokeWidth={2.4} />}
         <span className="max-w-[9rem] truncate">{fit.location.kind === 'city' ? 'Same city' : fit.location.kind === 'state' ? fit.location.jobState : fit.location.kind === 'remote' ? 'Remote' : fit.location.jobState ?? '–'}</span>
       </span>
-      <span className={`${badge} ${tones[fit.rate.kind]}`} style={anim(animate, 'ppPop', 320, 490)} title={fit.rate.job ? `$${fit.rate.job}/hr` : 'Rate not listed'}>
+      <span className={`${badge} ${tones[fit.rate.kind]}`} style={anim(animate, 'ppPop', 320, at + gap * 3)} title={fit.rate.job ? `$${fit.rate.job}/hr` : 'Rate not listed'}>
         <DollarSign size={13} strokeWidth={2.4} />{fit.rate.job ? Math.round(fit.rate.job) : '–'}
       </span>
     </div>
@@ -148,7 +148,7 @@ export function FitBadges({ fit, onDark = false, animate = false }: { fit: FitSu
 // The job's skills as tiles: lit when the profile has it, dashed when not.
 // Animated, the profile's skills light up one by one and get their check,
 // then the missing ones fade in.
-export function SkillTiles({ skills, onDark = false, animate = false }: { skills: Array<{ name: string; ok: boolean }>; onDark?: boolean; animate?: boolean }) {
+export function SkillTiles({ skills, onDark = false, animate = false, at: start = 120, gap = 70 }: { skills: Array<{ name: string; ok: boolean }>; onDark?: boolean; animate?: boolean; at?: number; gap?: number }) {
   if (skills.length === 0) return <p className={`text-[12.5px] ${onDark ? 'text-white/70' : 'text-gray-500'}`}>No skills listed in the post.</p>;
   const lit = skills.filter((s) => s.ok).length;
   let missing = 0;
@@ -156,7 +156,7 @@ export function SkillTiles({ skills, onDark = false, animate = false }: { skills
     <div className="flex flex-wrap gap-[7px]">
       {skills.map((s, i) => {
         const look = skillLook(s.name);
-        const at = 120 + i * 70;
+        const at = start + i * gap;
         return s.ok ? (
           <span key={s.name} title={s.name} className="relative flex h-16 w-[60px] flex-col justify-between rounded-[13px] px-[7px] py-1.5 text-white"
             style={{ background: `linear-gradient(150deg, ${look.color}, color-mix(in srgb, ${look.color} 70%, #000))`, boxShadow: `0 2px 6px color-mix(in srgb, ${look.color} 30%, transparent)`, ...anim(animate, 'ppTileIn', 420, at) }}>
@@ -165,7 +165,7 @@ export function SkillTiles({ skills, onDark = false, animate = false }: { skills
             <i className="absolute right-[5px] top-[5px] grid h-[15px] w-[15px] place-items-center rounded-full bg-white not-italic" style={{ color: look.color, ...anim(animate, 'ppStamp', 320, at + 260, 'ease-out') }}><Check size={9} strokeWidth={4} /></i>
           </span>
         ) : (
-          <span key={s.name} title={`${s.name}: not on the profile`} style={anim(animate, 'ppFadeIn', 300, 120 + lit * 70 + 120 + (missing++) * 50, 'ease-out')} className={`flex h-16 w-[60px] flex-col justify-between rounded-[13px] border-[1.5px] border-dashed px-[7px] py-1.5 opacity-80 ${onDark ? 'border-white/45 text-white/65' : 'border-gray-400 text-gray-500 dark:border-slate-500 dark:text-slate-400'}`}>
+          <span key={s.name} title={`${s.name}: not on the profile`} style={anim(animate, 'ppFadeIn', 300, start + lit * gap + 120 + (missing++) * 50, 'ease-out')} className={`flex h-16 w-[60px] flex-col justify-between rounded-[13px] border-[1.5px] border-dashed px-[7px] py-1.5 opacity-80 ${onDark ? 'border-white/45 text-white/65' : 'border-gray-400 text-gray-500 dark:border-slate-500 dark:text-slate-400'}`}>
             <b className="text-[21px] font-extrabold leading-none tracking-tight">{look.symbol}</b>
             <small className="truncate text-[9.5px] font-bold">{s.name}</small>
           </span>
@@ -179,11 +179,11 @@ export function SkillTiles({ skills, onDark = false, animate = false }: { skills
 // Animated: the map ripples in, the profile's state lights up, a line draws
 // to the job's state, which lights up and pings. Same state pulses; remote
 // washes the whole map green.
-export function UsMap({ jobState, profileState, remote, profileColor, onDark = false, animate = false }: {
-  jobState: string | null; profileState: string | null; remote?: boolean; profileColor: string; onDark?: boolean; animate?: boolean;
+export function UsMap({ jobState, profileState, remote, profileColor, onDark = false, animate = false, at = 0 }: {
+  jobState: string | null; profileState: string | null; remote?: boolean; profileColor: string; onDark?: boolean; animate?: boolean; at?: number;
 }) {
   const base = onDark ? 'rgba(255,255,255,.13)' : 'var(--pp-map-tile)';
-  const waveEnd = 520;
+  const waveEnd = at + 520;
   const route = !remote && jobState && profileState && jobState !== profileState && US_TILES[jobState] && US_TILES[profileState]
     ? { from: US_TILES[profileState], to: US_TILES[jobState] } : null;
   const jobAt = route ? waveEnd + 560 : waveEnd + 120;
@@ -206,7 +206,7 @@ export function UsMap({ jobState, profileState, remote, profileColor, onDark = f
           else if (st === jobState && st === profileState) { bg = '#10b981'; label = st; lightAt = waveEnd - 40; }
           else if (st === jobState) { bg = '#2563eb'; label = st; lightAt = jobAt; }
           else if (st === profileState) { bg = profileColor; label = st; lightAt = waveEnd - 80; }
-          const wave = `ppWave 350ms ease-out ${(r + c) * (remote ? 22 : 14)}ms both`;
+          const wave = `ppWave 350ms ease-out ${at + (r + c) * (remote ? 22 : 14)}ms both`;
           const style: CSSProperties = { gridRow: r + 1, gridColumn: c + 1, background: bg };
           if (animate) {
             style.animation = lightAt != null ? `${wave}, ppLightUp 500ms ease-out ${lightAt}ms both` : wave;
@@ -235,8 +235,8 @@ export function UsMap({ jobState, profileState, remote, profileColor, onDark = f
 // What the job pays against what the profile asks, on one slider.
 // Animated: the profile's rate drops in, then the job's rate slides over
 // from it to where it really is, so the gap is the movement.
-export function RateBar({ job, mine, mineLabel, mineColor, onDark = false, animate = false }: {
-  job: number | null; mine: number | null; mineLabel: string; mineColor: string; onDark?: boolean; animate?: boolean;
+export function RateBar({ job, mine, mineLabel, mineColor, onDark = false, animate = false, at = 0 }: {
+  job: number | null; mine: number | null; mineLabel: string; mineColor: string; onDark?: boolean; animate?: boolean; at?: number;
 }) {
   const track = onDark ? 'rgba(255,255,255,.18)' : 'var(--pp-map-tile)';
   if (job == null) return <div className="px-2 py-5"><div className="h-2 rounded-full" style={{ background: `repeating-linear-gradient(90deg, ${track} 0 8px, transparent 8px 14px)` }} /></div>;
@@ -248,13 +248,13 @@ export function RateBar({ job, mine, mineLabel, mineColor, onDark = false, anima
   return (
     <div className="px-2 pb-[18px] pt-5" role="img" aria-label={`Pays $${job}${mine ? `, asks $${mine}` : ''}`}>
       <div className="relative h-2 rounded-full" style={{ background: track }}>
-        {mine != null && <span className="absolute inset-y-0 rounded-full" style={{ left: pos(mine - 5), width: `calc(${pos(mine + 5)} - ${pos(mine - 5)})`, background: 'color-mix(in srgb, #10b981 45%, transparent)', ...anim(animate, 'ppFadeIn', 400, 150, 'ease-out') }} />}
+        {mine != null && <span className="absolute inset-y-0 rounded-full" style={{ left: pos(mine - 5), width: `calc(${pos(mine + 5)} - ${pos(mine - 5)})`, background: 'color-mix(in srgb, #10b981 45%, transparent)', ...anim(animate, 'ppFadeIn', 400, at + 150, 'ease-out') }} />}
         <span className="absolute top-1/2 z-10 h-[18px] w-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600"
-          style={{ left: pos(job), border: `3px solid ${ring}`, ...(animate ? { '--pp-from': pos(mine ?? job), '--pp-to': pos(job), animation: 'ppSlideLeft 750ms cubic-bezier(.2,.8,.2,1) 450ms both' } as CSSProperties : {}) }}>
-          <em className={`absolute bottom-[17px] left-1/2 -translate-x-1/2 whitespace-nowrap text-[11.5px] font-extrabold not-italic ${onDark ? 'text-blue-300' : 'text-blue-700 dark:text-blue-300'}`} style={anim(animate, 'ppFadeIn', 300, 950, 'ease-out')}>${Math.round(job)}</em>
+          style={{ left: pos(job), border: `3px solid ${ring}`, ...(animate ? { '--pp-from': pos(mine ?? job), '--pp-to': pos(job), animation: `ppSlideLeft 750ms cubic-bezier(.2,.8,.2,1) ${at + 450}ms both` } as CSSProperties : {}) }}>
+          <em className={`absolute bottom-[17px] left-1/2 -translate-x-1/2 whitespace-nowrap text-[11.5px] font-extrabold not-italic ${onDark ? 'text-blue-300' : 'text-blue-700 dark:text-blue-300'}`} style={anim(animate, 'ppFadeIn', 300, at + 950, 'ease-out')}>${Math.round(job)}</em>
         </span>
         {mine != null && (
-          <span className="absolute top-1/2 h-[18px] w-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full" style={{ left: pos(mine), background: mineColor, border: `3px solid ${ring}`, ...anim(animate, 'ppFadeIn', 300, 200, 'ease-out') }}>
+          <span className="absolute top-1/2 h-[18px] w-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full" style={{ left: pos(mine), background: mineColor, border: `3px solid ${ring}`, ...anim(animate, 'ppFadeIn', 300, at + 200, 'ease-out') }}>
             <em className={`absolute left-1/2 top-[17px] -translate-x-1/2 whitespace-nowrap text-[11.5px] font-extrabold not-italic ${onDark ? 'text-white/85' : 'text-gray-600 dark:text-slate-300'}`}>{mineLabel} ${Math.round(mine)}</em>
           </span>
         )}
@@ -280,6 +280,50 @@ export function VisaRow({ accepted, mine }: { accepted: string[]; mine: string |
           </span>
         );
       })}
+    </div>
+  );
+}
+
+function EngStat({ icon: Icon, value, label, on, at, tone }: { icon: typeof Eye; value: number; label: string; on: boolean; at: number; tone: string }) {
+  const shown = useCountUp(value, on, 600, at);
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12.5px] font-bold tabular-nums ${tone}`} style={anim(on, 'ppPop', 320, at)}>
+      <Icon size={13} strokeWidth={2.4} />{shown} {label}
+    </span>
+  );
+}
+
+// Who else is on this post: accounts that viewed, applied, saved and shared
+// it. A busy post is flagged Trending; a quiet one invites you to go first.
+export function EngagementRow({ eng, onDark = false, animate = false, at = 0, gap = 350 }: {
+  eng: { views: number; applies: number; saves: number; shares: number } | undefined; onDark?: boolean; animate?: boolean; at?: number; gap?: number;
+}) {
+  const e = eng ?? { views: 0, applies: 0, saves: 0, shares: 0 };
+  const stats = ([
+    [Eye, e.views, 'viewed', onDark ? 'bg-white/10 text-white/90' : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-slate-200'],
+    [Send, e.applies, 'applied', onDark ? 'bg-emerald-500/20 text-emerald-200' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'],
+    [Bookmark, e.saves, 'saved', onDark ? 'bg-blue-500/20 text-blue-200' : 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'],
+    [Share2, e.shares, 'shared', onDark ? 'bg-violet-500/20 text-violet-200' : 'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'],
+  ] as const).filter(([, n]) => n > 0);
+  const hot = e.views >= 5 || e.applies >= 2;
+  if (stats.length === 0) {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12.5px] font-bold ${onDark ? 'bg-amber-400/20 text-amber-200' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'}`} style={anim(animate, 'ppPop', 320, at)}>
+          <Sparkles size={13} />Be the first to apply
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {hot && (
+        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12.5px] font-extrabold ${onDark ? 'bg-orange-500/25 text-orange-200' : 'bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300'}`}
+          style={anim(animate, 'ppPop', 360, at + stats.length * gap)}>
+          <Flame size={13} fill="currentColor" />Trending
+        </span>
+      )}
+      {stats.map(([icon, n, label, tone], i) => <EngStat key={label} icon={icon} value={n} label={label} on={animate} at={at + i * gap} tone={tone} />)}
     </div>
   );
 }

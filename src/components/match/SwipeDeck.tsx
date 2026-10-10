@@ -3,7 +3,12 @@ import { Link } from 'react-router-dom';
 import { Bookmark, Check, ChevronUp, ExternalLink, FileText, History, Pause, Play, Send, Share2, Sparkles, X } from 'lucide-react';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, subjectName, type CardItem, type Kind, type Subject } from '../../lib/today';
-import { CompanyLogo, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
+import { CompanyLogo, EngagementRow, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
+
+// When each part of a card appears (ms). In the reel the details arrive one
+// to three seconds apart, about 15 seconds a card; elsewhere quickly.
+const SLOW = { title: 300, ring: 1500, badges: 2800, badgeGap: 260, skills: 4300, skillGap: 350, map: 7000, rate: 9300, eng: 11300, engGap: 400 };
+const FAST = { title: 90, ring: 150, badges: 250, badgeGap: 80, skills: 120, skillGap: 70, map: 0, rate: 0, eng: 600, engGap: 120 };
 
 // Swipe mode: one match per screen, stories style. Swipe or tap the sides to
 // move; the rail on the right is Apply, Save, Share and Pass. On a phone it is
@@ -199,6 +204,7 @@ export default function SwipeDeck({
   const color = hashColor(item.subject_id);
   const name = subjectName(kind, subject);
   const saved = Boolean(item.saved_at);
+  const T = reelMs ? SLOW : FAST;
   const rail = 'flex flex-col items-center gap-1 text-[11px] font-bold';
   const railIcon = 'grid h-[46px] w-[46px] place-items-center rounded-full bg-white/15';
 
@@ -251,20 +257,24 @@ export default function SwipeDeck({
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
           <div className="min-w-0"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-white/75">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
         </div>
-        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={{ animation: 'ppFadeUp 400ms cubic-bezier(.2,.8,.2,1) 90ms both' }}>{leadTitle(lead)}</h2>
-        <div className="flex items-center gap-3"><FitRing value={item.fit ?? Math.round(item.similarity * 100)} size={72} onDark animate /><FitBadges fit={fit} onDark animate /></div>
-        <SkillTiles skills={fit.skills.slice(0, 6)} onDark animate />
+        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={{ animation: `ppFadeUp 400ms cubic-bezier(.2,.8,.2,1) ${T.title}ms both` }}>{leadTitle(lead)}</h2>
+        <div className="flex items-center gap-3" style={{ animation: `ppFadeUp 350ms ease-out ${T.ring - 120}ms both` }}>
+          <FitRing value={item.fit ?? Math.round(item.similarity * 100)} size={72} onDark animate at={T.ring} />
+          <FitBadges fit={fit} onDark animate at={T.badges} gap={T.badgeGap} />
+        </div>
+        <SkillTiles skills={fit.skills.slice(0, 6)} onDark animate at={T.skills} gap={T.skillGap} />
         {/* Where there's no room, the badges above say the same. */}
         {boxes && <div className="grid grid-cols-2 gap-2.5">
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5">
-            <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} onDark animate />
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5" style={{ animation: `ppFadeUp 350ms ease-out ${T.map - 250}ms both` }}>
+            <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} onDark animate at={T.map} />
             <p className="truncate text-[12px] font-semibold text-white/85">{fit.location.label}</p>
           </div>
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5">
-            <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} onDark animate />
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5" style={{ animation: `ppFadeUp 350ms ease-out ${T.rate - 250}ms both` }}>
+            <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} onDark animate at={T.rate} />
             <p className="truncate text-[12px] font-semibold text-white/85">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr` : 'Rate not listed'}</p>
           </div>
         </div>}
+        <EngagementRow eng={item.eng} onDark animate at={boxes ? T.eng : Math.min(T.eng, T.map)} gap={T.engGap} />
       </div>
 
       <div data-rail className="absolute bottom-[76px] right-2 z-30 flex flex-col items-center gap-3.5">
