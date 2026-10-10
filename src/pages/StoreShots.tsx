@@ -3,6 +3,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import SwipeDeck from '../components/match/SwipeDeck';
 import MatchDetail from '../components/match/MatchDetail';
 import MatchSheet from '../components/match/MatchSheet';
+import TrackerStats from '../components/match/TrackerStats';
 import SendResumeSheet from '../components/match/SendResumeSheet';
 import StartupSplash from '../components/StartupSplash';
 import PersonaGateScreen from '../components/PersonaGateScreen';
@@ -115,7 +116,10 @@ export default function StoreShots() {
     const rows: CardItem[] = [...ITEMS, ...ITEMS, ...ITEMS, ...ITEMS].map((it, i) => ({ ...it, card_id: `t-${i}`, stage: statuses[i % 6][0], closed_reason: statuses[i % 6][1], notes: statuses[i % 6][2], applied_at: hoursAgo(10 + i * 30) }));
     return (
       <div className="min-h-[100dvh] space-y-2 bg-[#f3f2ee] p-2">
-        <p className="px-1 pt-1 text-[12px] tabular-nums text-gray-500">12 applied · 6 replied · 4 interviews · 2 placed</p>
+        <TrackerStats kind="hotlist" items={rows} stats={{
+          days: Array.from({ length: 14 }, (_, k) => ({ day: `d${k}`, matches: [12, 9, 14, 10, 0, 11, 13, 15, 12, 10, 16, 14, 11, 18][k], watched: [3, 2, 0, 4, 0, 5, 3, 6, 7, 4, 8, 6, 5, 9][k], applied: [1, 0, 2, 1, 0, 2, 1, 3, 2, 1, 4, 2, 3, 3][k] })),
+          week: { matches: 96, watched: 45, applied: 18, saved: 7, passed: 9, asked: 5 }, all: { matches: 410, watched: 160, applied: 52, saved: 21, asked: 14 }, streak: 6,
+        }} />
         <MatchSheet items={rows} kind="hotlist" mode="tracker" dateLabel="Applied" dateOf={(i) => i.applied_at} viewerId="demo" onOpen={noop} onStatus={noop} onNotes={noop} />
       </div>
     );

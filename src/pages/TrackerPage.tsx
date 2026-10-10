@@ -4,6 +4,8 @@ import { Check, Copy, Download, Search, Target } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import MatchSheet from '../components/match/MatchSheet';
+import TrackerStats, { type ActivityStats } from '../components/match/TrackerStats';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { leadOrg, leadTitle, loadTracker, setNotes, setStatus, subjectName, type CardItem, type Kind } from '../lib/today';
 import { maybeAskForPlayReview } from '../lib/rate';
@@ -39,6 +41,12 @@ export default function TrackerPage() {
   const past = shown.filter((i) => i.stage === 'closed');
 
   const [view, setView] = useState<'live' | 'past' | 'all'>('live');
+  // What they've done this week, for the cards on top.
+  const [stats, setStats] = useState<ActivityStats | null>(null);
+  useEffect(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    void supabase.rpc('my_activity_stats' as never, { p_tz: tz } as never).then(({ data }) => setStats((data as ActivityStats | null) ?? null));
+  }, []);
   const [query, setQuery] = useState('');
   const [copied, setCopied] = useState(false);
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -47,7 +55,6 @@ export default function TrackerPage() {
     const hay = [leadTitle(i.lead), leadOrg(i.lead), i.lead.location, subjectName(kind, i.subject), i.notes].filter(Boolean).join(' ').toLowerCase();
     return words.every((w) => hay.includes(w));
   });
-  const reached = (list: string[]) => all.filter((i) => list.includes(i.stage)).length;
 
   const changeStatus = async (item: CardItem, status: string) => {
     const before = items;
@@ -77,14 +84,18 @@ export default function TrackerPage() {
         {items == null && !error ? <div className="flex justify-center py-16"><LogoSpinner size={20} /></div> : error ? (
           <p className="rounded-2xl bg-white p-6 text-center text-[13px] text-red-600 dark:bg-[#20242a]">{error}</p>
         ) : all.length === 0 ? (
+          <>
+          <TrackerStats stats={stats} items={[]} kind={kind} />
           <div className="flex flex-col items-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 py-10 text-center dark:border-white/10 dark:bg-[#20242a]">
             <span className="grid h-14 w-14 place-items-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-500/15"><Target size={26} /></span>
             <h3 className="text-[18px] font-extrabold">No applications yet</h3>
             <p className="max-w-[32ch] text-[13.5px] text-gray-600 dark:text-slate-400">{kind === 'hotlist' ? 'Apply to a match in Today and it shows up here.' : 'Ask for a resume in Today and it shows up here.'}</p>
             <Link to="/today" className="mt-1 inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-blue-600 px-4 text-[14px] font-bold text-white"><Target size={16} />Go to Today</Link>
           </div>
+          </>
         ) : (
           <>
+            <TrackerStats stats={stats} items={shown} kind={kind} />
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex h-9 min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 dark:border-white/10 dark:bg-[#20242a] sm:max-w-[280px]">
                 <Search size={15} className="shrink-0 text-gray-400" />
@@ -115,9 +126,6 @@ export default function TrackerPage() {
                 <button type="button" onClick={() => downloadCsv(exportRows(), 'profilepush-tracker')} title="Download as CSV" className={`${control} inline-flex items-center gap-1.5`}><Download size={15} />CSV</button>
               </span>
             </div>
-            <p className="px-0.5 text-[12px] tabular-nums text-gray-500 dark:text-slate-400">
-              {all.length} applied · {reached(['replied', 'interview', 'placed'])} replied · {reached(['interview', 'placed'])} interviews · {reached(['placed'])} placed · statuses update themselves
-            </p>
             {rows.length ? (
               <MatchSheet items={rows} kind={kind} mode="tracker" dateLabel="Applied" dateOf={(i) => i.applied_at} viewerId={user?.id}
                 onOpen={(i) => i.lead && navigate(`/${i.lead.kind === 'job' ? 'job' : 'hotlist'}/${i.lead.id}`)}
