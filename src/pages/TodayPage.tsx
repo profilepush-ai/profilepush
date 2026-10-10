@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, ChevronRight, Eye, Flame, History, Lock, Plus, Search, Send, Sparkles, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
@@ -106,10 +106,15 @@ export default function TodayPage() {
   const [hasAvatar, setHasAvatar] = useState(true);
   useEffect(() => { loadAvatar().then((a) => setHasAvatar(Boolean(a.avatar?.url))).catch(() => {}); }, []);
 
+  // What they'd already seen when this visit began: those cards go after the
+  // rest, so Today opens on the first match not seen yet and anything new
+  // comes first. Fixed for the visit, so the deck never reshuffles mid-swipe.
+  const [seenAtStart, setSeenAtStart] = useState<Set<string> | null>(null);
   const load = useCallback(async () => {
     try {
       const d = await loadToday(kind);
       setData(d);
+      if (d) setSeenAtStart((prev) => prev ?? new Set(d.items.filter((i) => i.viewed_at).map((i) => i.card_id)));
       setLoadError('');
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Could not load your matches.');
@@ -121,10 +126,22 @@ export default function TodayPage() {
 
   const words = useMemo(() => query.toLowerCase().split(/\s+/).filter(Boolean), [query]);
   const subjects = useMemo(() => Object.fromEntries((data?.subjects ?? []).map((s) => [s.id, s])) as Record<string, Subject>, [data?.subjects]);
-  const items = useMemo(
-    () => (data?.items ?? []).filter((i) => i.lead && (filter === 'all' || i.subject_id === filter) && matchesSearch(i, words)),
-    [data?.items, filter, words],
-  );
+  const items = useMemo(() => {
+    const list = (data?.items ?? []).filter((i) => i.lead && (filter === 'all' || i.subject_id === filter) && matchesSearch(i, words));
+    if (!seenAtStart) return list;
+    return [...list.filter((i) => !seenAtStart.has(i.card_id)), ...list.filter((i) => seenAtStart.has(i.card_id))];
+  }, [data?.items, filter, words, seenAtStart]);
+  // Where to open: the first match not seen yet, else the last one they were on.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current || !seenAtStart || !data) return;
+    opened.current = true;
+    let last: string | null = null;
+    try { last = sessionStorage.getItem(`pp_today_at_${kind}`); } catch { /* fine */ }
+    const first = items.find((i) => !seenAtStart.has(i.card_id)) ?? items.find((i) => i.card_id === last) ?? null;
+    if (first && first.card_id !== items[0]?.card_id) { setDeckId(first.card_id); setDeckFocus(first.card_id); }
+  }, [seenAtStart, data, items, kind]);
+  useEffect(() => { if (deckId) try { sessionStorage.setItem(`pp_today_at_${kind}`, deckId); } catch { /* fine */ } }, [deckId, kind]);
   const countFor = (id: string) => (data?.items ?? []).filter((i) => i.subject_id === id).length;
   const totalNew = data?.items.length ?? 0;
   const locked = (data?.subjects ?? []).reduce((n, s) => n + (s.locked || 0), 0);
