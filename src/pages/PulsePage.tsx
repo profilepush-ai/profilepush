@@ -23,6 +23,7 @@ import { consultantTitle } from '../lib/consultant-title';
 import { useAiSubmit, AiSubmitDialog, getFunctionErrorMessage } from '../components/AiSubmit';
 import { trackEvent } from '../lib/track';
 import ApplyOnSiteButton, { isCareerSiteLead, openApplyPage } from '../components/ApplyOnSite';
+import AiMatchProcessing from '../components/AiMatchProcessing';
 import LeadCard, { extractPrimaryEmail, CARD_PALETTE, getLeadBreakdownFieldValues, formatAgo, formatAgoCompact, type SocialLead, type FeedTimeBasis, type GlobalAskedJobState, type PredictCategory, type PredictResult, PersonaMissingTag, type LeadCardProps, shareLead, jobRowToLead, hotlistRowToLead, JOB_LEAD_COLUMNS, HOTLIST_LEAD_COLUMNS, safeNumber, type SocialJobRow, type HotlistLeadRow, getMissingJobDetails, hideEmails, fetchLeadPostContent, PostPreviewModal, LeadPreviewModal } from '../components/LeadCard';
 
 type PulsePersona = {
@@ -1745,6 +1746,8 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   // an invented percentage moving at a guessed rate is what makes a wait feel
   // stuck when it stalls.
   const [aiMatchProgressPct, setAiMatchProgressPct] = useState<number | null>(null);
+  // The full-screen processing view, until they choose to keep browsing.
+  const [aiMatchOverlayHidden, setAiMatchOverlayHidden] = useState(false);
   const [aiMatchElapsed, setAiMatchElapsed] = useState(0);
   // What the last run did, shown above the results: without it people see a
   // list of cards with no idea what was searched or how many came back.
@@ -5281,6 +5284,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   // scoring pass looks identical to a hung request.
   useEffect(() => {
     if (!aiMatchRunning) return;
+    setAiMatchOverlayHidden(false);
     const startedAt = Date.now();
     const id = setInterval(() => setAiMatchElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000);
     return () => clearInterval(id);
@@ -8251,6 +8255,16 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         </div>
       )}
 
+      {aiMatch && aiMatchRunning && !aiMatchOverlayHidden && (
+        <AiMatchProcessing
+          kind={aiMatchTarget === 'hotlist' ? 'hotlist' : 'jobs'}
+          phase={aiMatchProgress}
+          pct={aiMatchProgressPct}
+          gmailConnected={gmailIntegrationStatus === 'connected'}
+          onConnectGmail={() => { void handleConnectGmailStandalone(); }}
+          onHide={() => setAiMatchOverlayHidden(true)}
+        />
+      )}
       {openedLead && (
         <LeadPreviewModal
           cardProps={buildLeadCardProps(openedLead.lead, openedLead.paletteIndex)}
