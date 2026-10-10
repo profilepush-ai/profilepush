@@ -35,7 +35,6 @@ function useMedia(query: string) {
   return match;
 }
 
-const HINT_KEY = 'today_menu_hint';
 // About 15 seconds a card: long enough for every detail to land.
 const REEL_MS = 15000;
 
@@ -89,22 +88,9 @@ export default function TodayPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [deckId, setDeckId] = useState<string | null>(null);
-  // Phones: the header and bottom bar are hidden until a swipe up.
-  const [chrome, setChrome] = useState(false);
-  const [hint, setHint] = useState(() => { try { return Number(localStorage.getItem(HINT_KEY) ?? 0) < 3; } catch { return true; } });
-  useEffect(() => {
-    try { localStorage.setItem(HINT_KEY, String(Number(localStorage.getItem(HINT_KEY) ?? 0) + 1)); } catch { /* fine */ }
-  }, []);
-  useEffect(() => {
-    if (!chrome) return;
-    const t = setTimeout(() => setChrome(false), 4500);
-    return () => clearTimeout(t);
-  }, [chrome]);
-  const showChrome = () => {
-    setChrome(true);
-    if (hint) { setHint(false); try { localStorage.setItem(HINT_KEY, '9'); } catch { /* fine */ } }
-    trackEvent('today_menu_swiped');
-  };
+  // Phones: Today opens full screen. The ⌄ button goes back to the normal
+  // page (header and bottom bar); a swipe there goes full screen again.
+  const [full, setFull] = useState(true);
   // The detail view swipes too: left/right moves to the next/previous match.
   const [sheetDir, setSheetDir] = useState<'n' | 'p' | null>(null);
   const [deckFocus, setDeckFocus] = useState<string | null>(null);
@@ -170,7 +156,7 @@ export default function TodayPage() {
 
   const open = (item: CardItem) => {
     see(item);
-    if (!wide) { setChrome(false); setOpenId(item.card_id); }
+    if (!wide) setOpenId(item.card_id);
   };
 
   const stepSheet = (d: 1 | -1) => {
@@ -245,7 +231,7 @@ export default function TodayPage() {
   const hasSubjects = (data?.subjects.length ?? 0) > 0;
   // Phones: Today is the swipe card, full screen. Not for a first-time
   // account (nothing posted yet) or an error, which get the plain page.
-  const immersive = !wide && !loadError && (hasSubjects || (loading && !data));
+  const immersive = !wide && full && !loadError && (hasSubjects || (loading && !data));
 
   // The search, applied count and profile chips, drawn on the dark card.
   const glassChip = (on: boolean) => `inline-flex shrink-0 items-center gap-1.5 rounded-full text-[13px] font-semibold ring-1 ${on
@@ -372,7 +358,7 @@ export default function TodayPage() {
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#f3f2ee] pb-[calc(4.25rem+env(safe-area-inset-bottom))] text-gray-900 dark:bg-[#1B1D21] dark:text-slate-100 sm:pb-0">
-      <AppNav immersive={immersive} chromeVisible={chrome} />
+      <AppNav immersive={immersive} chromeVisible={false} />
 
       {immersive ? (
         loading && !data ? (
@@ -384,16 +370,13 @@ export default function TodayPage() {
             top={topBar}
             layer="z-[60]"
             boxes={tall}
-            menuHint={hint}
             reelMs={REEL_MS}
             endScreen={endScreen}
-            paused={Boolean(openId || profileId || adding || chrome || searchFocused || actions.ai.preview)}
-            startId={null}
+            paused={Boolean(openId || profileId || adding || searchFocused || actions.ai.preview)}
+            startId={deckId}
             focusId={deckFocus}
             onCurrent={(i) => { setDeckId(i?.card_id ?? null); actions.checkFrame(i); }}
-            onSwipeUp={showChrome}
-            onSwipeDown={() => setChrome(false)}
-            onTouch={() => { if (chrome) setChrome(false); }}
+            onCollapse={() => { setFull(false); trackEvent('today_full_screen_closed'); }}
           />
         )
       ) : (
@@ -409,12 +392,17 @@ export default function TodayPage() {
                   key={deckKey}
                   {...deckProps}
                   inline
-                  hideDetails
+                  hideDetails={wide}
+                  boxes={wide}
                   top={topBar}
                   endScreen={endScreen}
-                  startId={null}
+                  reelMs={wide ? undefined : REEL_MS}
+                  paused={Boolean(openId || profileId || adding || searchFocused || actions.ai.preview)}
+                  startId={deckId}
                   focusId={deckFocus}
                   onCurrent={(i) => { setDeckId(i?.card_id ?? null); actions.checkFrame(i); }}
+                  onExpand={wide ? undefined : () => { setFull(true); trackEvent('today_full_screen'); }}
+                  onStep={wide ? undefined : (_d, toId) => { setDeckId(toId); setFull(true); }}
                 />
               </div>
             )}

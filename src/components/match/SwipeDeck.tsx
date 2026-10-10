@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, Check, ChevronUp, ExternalLink, FileText, History, Pause, Play, Send, Share2, Sparkles, X } from 'lucide-react';
+import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Send, Share2, Sparkles, X } from 'lucide-react';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, subjectName, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
 import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
@@ -20,7 +20,7 @@ const section = (at: number) => ({ animation: `ppSection 450ms cubic-bezier(.2,.
 // sits in the page beside the detail.
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, asked, onAsk, onClose, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
@@ -33,6 +33,8 @@ export default function SwipeDeck({
   /** Ask the poster for what the post leaves out. */
   asked?: Record<string, Question[]>; onAsk?: (item: CardItem, q: Question) => void;
   onClose?: () => void; onCurrent?: (item: CardItem | null) => void; onStep?: (d: 1 | -1, toId: string | null) => void;
+  /** Full screen: back to the normal page. In the page: go full screen. */
+  onCollapse?: () => void; onExpand?: () => void;
   onSwipeUp?: () => void; onSwipeDown?: () => void; onTouch?: () => void;
   onSeen: (item: CardItem) => void; onApply: (item: CardItem) => void; onSave: (item: CardItem) => void;
   onShare: (item: CardItem) => void; onDismiss: (item: CardItem) => void; onDetails: (item: CardItem) => void;
@@ -118,6 +120,14 @@ export default function SwipeDeck({
     ? null
     : <button type="button" onClick={onClose} aria-label="Close" className="grid h-10 w-10 place-items-center rounded-full hover:bg-white/10"><X size={22} /></button>;
   const topSlot = top ? <div data-rail className="relative z-30 px-3 pt-2.5">{top}</div> : null;
+  const sizeButton = onCollapse || onExpand ? (
+    <span data-rail>
+      <button type="button" onClick={onCollapse ?? onExpand} aria-label={onCollapse ? 'Close full screen' : 'Full screen'} title={onCollapse ? 'Close full screen' : 'Full screen'}
+        className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20">
+        {onCollapse ? <ChevronDown size={20} /> : <Maximize2 size={16} />}
+      </button>
+    </span>
+  ) : null;
   // Vertical swipes go to the page (menus); sideways ones move the deck.
   const gestures = {
     style: { touchAction: inline ? 'pan-y' : 'none' } as const,
@@ -181,6 +191,7 @@ export default function SwipeDeck({
         <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: 'radial-gradient(closest-side, #10b981, transparent)' }} />
         {topSlot}
         {corner && <div className="relative z-10 flex justify-end p-2">{corner}</div>}
+        {sizeButton && <div className="relative z-30 flex justify-end px-3 pt-2">{sizeButton}</div>}
         {endScreen && !emptyMessage ? <div className="relative z-10 flex min-h-0 flex-1 flex-col">{endScreen}</div> : (
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
           <span className="grid h-[72px] w-[72px] place-items-center rounded-full bg-emerald-600"><Check size={36} strokeWidth={3} /></span>
@@ -251,6 +262,7 @@ export default function SwipeDeck({
             </button>
           </span>
         )}
+        {sizeButton}
         {corner}
       </div>
 
