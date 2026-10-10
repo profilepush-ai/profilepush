@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Bell, Briefcase, Building2, Check, Copy, DollarSign, ExternalLink, GraduationCap, Mail, MapPin, Paperclip, Send, type LucideIcon } from 'lucide-react';
+import { Bell, Briefcase, Building2, Check, DollarSign, Mail, MapPin, Send, Smartphone, Target, type LucideIcon } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
+import { Link } from 'react-router-dom';
 import { enableWebPush } from '../lib/onesignal';
 import { supabase } from '../lib/supabase';
 
@@ -52,19 +53,6 @@ function CareerPill() {
   );
 }
 
-function ConsultantHead({ submitted, fresh }: { submitted: number; fresh: number }) {
-  return (
-    <div className="bg-orange-100 px-4 pb-3 pt-3.5">
-      <p className="flex items-center gap-2 text-[15px] font-bold text-gray-900"><span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />Java Fullstack Developer</p>
-      <p className="mt-0.5 text-[12px] text-gray-600">10 yrs · H1B · Open to relocate</p>
-      <div className="mt-2.5 flex gap-1.5 text-[12px]">
-        <span className="rounded-full bg-white px-3 py-1 font-semibold text-gray-800 shadow-sm">New <b className="text-emerald-600 tabular-nums">{fresh}</b></span>
-        <span className="rounded-full bg-white px-3 py-1 font-semibold text-gray-500 shadow-sm">Submitted <b className="tabular-nums text-gray-800">{submitted}</b></span>
-      </div>
-    </div>
-  );
-}
-
 const REQS = [
   { title: 'Java Full Stack Developer', exp: '12', type: 'C2C', where: 'Wilmington, DE' },
   { title: 'Senior Full Stack Java Developer', exp: '10', type: 'C2C', where: 'Chicago, IL' },
@@ -73,38 +61,39 @@ const REQS = [
   { title: 'Java Microservices Engineer', exp: '9', type: 'C2C', where: 'Remote' },
 ];
 
-function ReqCard({ r, fresh, ago }: { r: (typeof REQS)[number]; fresh?: boolean; ago: string }) {
+function GmailScene({ t }: { t: number }) {
+  // Today's Gmail card: not connected → pick the account → connected.
+  const picking = t >= 3 && t < 6;
+  const connected = t >= 6;
   return (
-    <div className={`rounded-lg border-2 bg-white px-3 py-2.5 transition-colors ${fresh ? 'animate-drop-in border-emerald-400' : 'border-emerald-300/70'}`}>
-      <p className="text-[14px] font-semibold text-blue-600">{r.title}</p>
-      <div className="mt-1.5 flex flex-wrap gap-1">
-        <Chip icon={GraduationCap}>{r.exp}</Chip><Chip icon={Briefcase}>{r.type}</Chip><Chip icon={MapPin}>{r.where}</Chip>
+    <div className="relative w-[min(88vw,400px)] text-left">
+      <div className="rounded-2xl bg-white p-5 shadow-2xl shadow-black/30">
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600"><Target size={22} /></span>
+          <div>
+            <p className="text-[12.5px] text-gray-500">Today&apos;s submissions</p>
+            <p className="text-[28px] font-bold leading-tight tabular-nums text-gray-900">{connected && t >= 8 ? 1 : 0}</p>
+          </div>
+        </div>
+        <p className="mt-2 text-[12.5px] text-gray-500">100 sends left today</p>
+        {connected ? (
+          <p className="animate-fade-in-up mt-3 inline-flex items-center gap-1.5 text-[14px] font-semibold text-emerald-600"><Check size={16} strokeWidth={3} />Gmail connected · sends go from your inbox</p>
+        ) : (
+          <span className={`mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg text-[13.5px] font-semibold text-white transition-all duration-300 ${t === 2 ? 'scale-95 bg-amber-700 ring-4 ring-amber-200' : 'bg-amber-600'}`}>
+            <Mail size={15} />Connect Gmail to send
+          </span>
+        )}
       </div>
-      <p className="mt-1.5 flex items-center justify-between text-[11.5px] text-gray-400">
-        <span>Posted {ago}</span>
-        <span className="inline-flex items-center gap-1 font-semibold uppercase tracking-wide text-gray-500"><span className="h-1.5 w-1.5 rounded-full bg-orange-500" />Requirement</span>
-      </p>
-    </div>
-  );
-}
-
-function TrackerScene({ t }: { t: number }) {
-  // A new requirement lands every two ticks, newest on top.
-  const landed = Math.min(3, Math.floor(t / 2));
-  const list = REQS.slice(3 - landed, 5);
-  const toast = t >= 2 && t % 2 === 0 ? REQS[3 - landed] : null;
-  return (
-    <div className="relative w-[min(88vw,420px)] overflow-hidden rounded-2xl bg-orange-50 text-left shadow-2xl shadow-black/30">
-      <ConsultantHead fresh={2 + landed} submitted={0} />
-      <div className="h-[300px] space-y-2 overflow-hidden p-2.5">
-        {list.map((r, i) => <ReqCard key={r.title} r={r} fresh={i === 0 && landed > 0} ago={i === 0 && landed > 0 ? 'just now' : `${(i + 1) * 7} mins ago`} />)}
-      </div>
-      {toast && (
-        <div key={toast.title} className="animate-fade-in-up absolute inset-x-3 top-[112px] flex items-center gap-3 rounded-xl bg-gray-900 px-3.5 py-2.5 shadow-2xl">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white"><Bell size={15} /></span>
-          <div className="min-w-0">
-            <p className="text-[12.5px] font-bold text-emerald-300">Strong match landed</p>
-            <p className="truncate text-[13px] text-white">{toast.title}</p>
+      {picking && (
+        <div className="animate-fade-in-up absolute inset-x-6 top-1/2 -translate-y-1/2 rounded-xl bg-white p-4 shadow-2xl ring-1 ring-black/10">
+          <p className="text-[13px] font-bold text-gray-900">Choose an account</p>
+          <p className="text-[11.5px] text-gray-500">to continue to ProfilePush</p>
+          <div className={`mt-3 flex items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors ${t >= 5 ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-[13px] font-bold text-white">A</span>
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-semibold text-gray-900">Alex Recruiter</p>
+              <p className="truncate text-[11.5px] text-gray-500">alex@youragency.com</p>
+            </div>
           </div>
         </div>
       )}
@@ -112,76 +101,78 @@ function TrackerScene({ t }: { t: number }) {
   );
 }
 
-const EMAIL_LINES = [
-  'Hi,',
-  'I have a Java Fullstack Developer with 10 years of experience, on H1B and open to relocate, for your Java Full Stack Developer role in Wilmington, DE.',
-  '• Spring Boot, React, Microservices, AWS',
-  '• Available immediately · $65/hr C2C',
-  'Resume attached. Can we set up a call?',
+const BULK_JOBS = [
+  { title: 'Java Full Stack Developer', type: 'C2C', rate: '$65/hr', where: 'Wilmington, DE', by: 'Prime vendor' },
+  { title: 'Senior Java Engineer', type: 'C2C', rate: '$70/hr', where: 'Remote', by: 'Implementation partner' },
+  { title: 'Spring Boot Developer', type: 'W2', rate: '$62/hr', where: 'Austin, TX', by: 'Direct client' },
 ];
 
-function SubmitScene({ t }: { t: number }) {
-  const lines = Math.max(0, Math.min(EMAIL_LINES.length, t - 1));
-  const pressing = t === 7;
-  const sent = t >= 8;
+function BulkScene({ t }: { t: number }) {
+  // Tick three matches, send them together, watch each go.
+  const ticked = Math.min(3, Math.max(0, t));
+  const pressing = t === 4;
+  const sentCount = Math.max(0, Math.min(3, t - 4));
   return (
-    <div className="w-[min(88vw,460px)] overflow-hidden rounded-2xl bg-white text-left shadow-2xl shadow-black/30">
-      <div className="h-1.5 bg-gradient-to-r from-orange-400 to-orange-600" />
-      <div className="px-4 pt-3">
-        <div className="flex items-center gap-3 border-b border-gray-100 py-1.5 text-[12.5px]"><span className="w-14 text-gray-400">To</span><span className="text-gray-700">The recruiter on this requirement</span></div>
-        <div className="flex items-center gap-3 border-b border-gray-100 py-1.5 text-[12.5px]"><span className="w-14 text-gray-400">Subject</span><span className="font-medium text-gray-900">Java Fullstack Developer: 10 yrs, H1B</span></div>
-      </div>
-      <div className="h-[196px] space-y-2 px-4 py-3 text-[13px] leading-relaxed text-gray-800">
-        {EMAIL_LINES.slice(0, lines).map((l) => <p key={l} className="animate-fade-in-up">{l}</p>)}
-        {lines < EMAIL_LINES.length && <span className="inline-block h-4 w-0.5 animate-pulse bg-blue-600 align-middle" />}
-      </div>
-      <div className="flex items-center gap-2 border-t border-gray-100 px-4 py-3">
-        <span className={`inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11.5px] text-slate-700 transition-opacity ${t >= 6 ? 'opacity-100' : 'opacity-0'}`}><Paperclip size={12} />Java_Fullstack_Resume.pdf</span>
-        <span className={`ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[13px] font-semibold text-white transition-all duration-300 ${sent ? 'bg-emerald-600' : pressing ? 'scale-95 bg-blue-700 ring-4 ring-blue-300' : 'bg-blue-600'}`}>
-          {sent ? <><Check size={15} strokeWidth={3} />Sent from your Gmail</> : <><Send size={14} />Send</>}
+    <div className="w-[min(88vw,440px)] overflow-hidden rounded-2xl bg-white text-left shadow-2xl shadow-black/30">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-[14px] font-bold text-gray-900">Java Fullstack Developer</p>
+          <p className="text-[12px] text-gray-500">26 fresh matches</p>
+        </div>
+        <span className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-semibold text-white transition-all duration-300 ${sentCount === 3 ? 'bg-emerald-600' : pressing ? 'scale-95 bg-blue-700 ring-4 ring-blue-300' : 'bg-blue-600'}`}>
+          {sentCount === 3 ? <><Check size={14} strokeWidth={3} />3 sent</> : <><Send size={13} />Send {ticked || ''} selected</>}
         </span>
+      </div>
+      <div className="space-y-2 p-3">
+        {BULK_JOBS.map((j, i) => {
+          const on = i < ticked;
+          const sent = i < sentCount;
+          return (
+            <div key={j.title} className={`rounded-lg border px-3 py-2.5 transition-colors duration-300 ${on ? 'border-blue-400 bg-blue-50/50' : 'border-gray-200'}`}>
+              <div className="flex items-start gap-2.5">
+                <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${on ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white'}`}>{on && <Check size={13} strokeWidth={3.5} />}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-semibold text-blue-600">{j.title}</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1"><Chip icon={Briefcase}>{j.type}</Chip><Chip icon={DollarSign}>{j.rate}</Chip><Chip icon={MapPin}>{j.where}</Chip></div>
+                  <p className="mt-1.5 text-[12px] text-gray-500">{j.by}</p>
+                </div>
+                {sent && <span className="animate-fade-in-up shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11.5px] font-semibold text-emerald-700">Sent</span>}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-const APPLY_ROWS: Array<[string, string]> = [
-  ['Role', 'Senior Java Full Stack Developer'],
-  ['Experience', '10 years'],
-  ['Skills', 'Spring Boot, React, AWS'],
-  ['Work auth', 'H1B'],
-  ['Location', 'Dallas, TX'],
-];
-
-function ApplyScene({ t }: { t: number }) {
-  const rows = Math.max(0, Math.min(APPLY_ROWS.length, t - 1));
-  const pressing = t === 7;
-  const applied = t >= 8;
+function AppScene({ t }: { t: number }) {
+  // The Android app with a match alert landing on top of the Feed.
+  const alert = t >= 2;
   return (
-    <div className="w-[min(88vw,440px)] space-y-2.5 text-left">
-      <div className="rounded-2xl bg-white px-4 py-3 shadow-2xl shadow-black/30">
-        <p className="text-[15px] font-semibold text-blue-600">Java Full Stack Developer</p>
-        <div className="mt-1.5 flex flex-wrap gap-1"><Chip icon={Briefcase}>Contract</Chip><Chip icon={DollarSign}>$40–$45/hr</Chip><Chip icon={MapPin}>Weehawken, NJ</Chip></div>
-        <p className="mt-2 flex items-center gap-1.5 text-[12.5px]"><span className="font-medium text-slate-700">Diverse Lynx</span><CareerPill /><span className="text-gray-400">2 days ago</span></p>
+    <div className="relative h-[400px] w-[220px] overflow-hidden rounded-[2.4rem] border-[7px] border-gray-900 bg-[#f3f2ee] shadow-2xl shadow-black/40">
+      <div className="flex items-center justify-between bg-white px-3 pb-2 pt-5">
+        <span className="text-[13px] font-extrabold text-gray-900">ProfilePush</span>
+        <Bell size={14} className="text-blue-600" />
       </div>
-      <div className="overflow-hidden rounded-2xl bg-amber-50 shadow-2xl shadow-black/30">
-        <p className="px-4 pt-3 text-[11px] font-bold uppercase tracking-wide text-amber-700">Application details</p>
-        <div className="h-[178px] px-4 pb-1 pt-1">
-          {APPLY_ROWS.slice(0, rows).map(([k, v], i) => (
-            <div key={k} className="animate-fade-in-up flex items-center gap-3 border-b border-amber-100 py-1.5 text-[13px]">
-              <span className="w-20 shrink-0 text-gray-400">{k}</span>
-              <span className="flex-1 text-gray-800">{v}</span>
-              {t === 6 && i === 2 ? <span className="text-[11px] font-semibold text-emerald-600">Copied</span> : <Copy size={13} className="text-gray-300" />}
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-2 bg-white px-4 py-3">
-          <span className="inline-flex h-9 flex-1 items-center justify-center rounded-lg border border-gray-200 text-[13px] font-semibold text-gray-600">Skip</span>
-          <span className={`inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-[13px] font-semibold text-white transition-all duration-300 ${applied ? 'bg-emerald-600' : pressing ? 'scale-95 bg-blue-700 ring-4 ring-blue-300' : 'bg-blue-600'}`}>
-            {applied ? <><Check size={15} strokeWidth={3} />Applied · tracked</> : <><ExternalLink size={14} />Apply</>}
-          </span>
-        </div>
+      <div className="space-y-1.5 p-2">
+        {REQS.slice(0, 4).map((r) => (
+          <div key={r.title} className="rounded-lg bg-white px-2.5 py-2 text-left shadow-sm">
+            <p className="truncate text-[11.5px] font-semibold text-blue-600">{r.title}</p>
+            <p className="mt-0.5 text-[10px] text-gray-500">{r.type} · {r.where}</p>
+            <p className="mt-1 flex items-center gap-1 text-[9.5px]"><CareerPill /></p>
+          </div>
+        ))}
       </div>
+      {alert && (
+        <div className="animate-drop-in absolute inset-x-2 top-3 rounded-2xl bg-white/95 p-2.5 text-left shadow-xl ring-1 ring-black/5 backdrop-blur">
+          <p className="flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-wide text-gray-500">
+            <span className="flex h-4 w-4 items-center justify-center rounded bg-blue-600 text-white"><Bell size={9} /></span>ProfilePush · now
+          </p>
+          <p className="mt-1 text-[12px] font-bold text-gray-900">New match for your Java consultant</p>
+          <p className="text-[11px] text-gray-600">Java Full Stack Developer · $65/hr</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -189,9 +180,9 @@ function ApplyScene({ t }: { t: number }) {
 type Feature = { key: string; title: string; scene: (t: number) => ReactNode };
 
 const FEATURES: Feature[] = [
-  { key: 'gmail', title: 'AI Submit, resume attached', scene: (t) => <SubmitScene t={t} /> },
-  { key: 'career', title: 'Apply on 40+ career sites', scene: (t) => <ApplyScene t={t} /> },
-  { key: 'tracker', title: 'Matches land all day', scene: (t) => <TrackerScene t={t} /> },
+  { key: 'gmail', title: 'Connect your Gmail', scene: (t) => <GmailScene t={t} /> },
+  { key: 'bulk', title: 'Submit in bulk, one click', scene: (t) => <BulkScene t={t} /> },
+  { key: 'app', title: 'Get matches on your phone', scene: (t) => <AppScene t={t} /> },
 ];
 
 // Full screen while AI Match runs: a progress ring over a colour field, and
@@ -204,6 +195,7 @@ export default function AiMatchProcessing({ kind, phase, pct, gmailConnected, on
   onConnectGmail: () => void;
 }) {
   const native = Capacitor.isNativePlatform();
+  const wide = typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
   const [tick, setTick] = useState(0);
   const [pushState, setPushState] = useState<NotificationPermission | 'unsupported'>(() => (
     typeof window !== 'undefined' && 'Notification' in window && !native ? Notification.permission : 'unsupported'
@@ -272,10 +264,14 @@ export default function AiMatchProcessing({ kind, phase, pct, gmailConnected, on
       return gmailConnected ? done('Gmail connected')
         : <button type="button" onClick={onConnectGmail} className={`${pill} bg-white text-gray-900`}><Mail size={17} />Connect Gmail</button>;
     }
-    if (feature.key === 'tracker') {
+    if (feature.key === 'bulk') {
+      return <Link to={wide ? '/today' : '/tracker'} className={`${pill} bg-white text-gray-900`}><Send size={16} />Try bulk submit</Link>;
+    }
+    if (feature.key === 'app') {
+      // In the app already: offer alerts instead.
+      if (!native) return <a href={PLAY_URL} target="_blank" rel="noreferrer" className={`${pill} bg-white text-gray-900`}><Smartphone size={17} />Install the Android app</a>;
       if (pushState === 'granted') return done('Alerts on');
-      if (pushState === 'default') return <button type="button" onClick={() => { void enableWebPush().then(setPushState); }} className={`${pill} bg-white text-gray-900`}><Bell size={17} />Turn on alerts</button>;
-      return native ? null : <a href={PLAY_URL} target="_blank" rel="noreferrer" className={`${pill} bg-white text-gray-900`}>Get the app</a>;
+      return <button type="button" onClick={() => { void enableWebPush().then(setPushState); }} className={`${pill} bg-white text-gray-900`}><Bell size={17} />Turn on alerts</button>;
     }
     return null;
   })();
