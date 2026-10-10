@@ -23,14 +23,27 @@ export default {
     // Sizes in multiples of 16, as the model wants.
     const size = (v: unknown, d: number) => (typeof v === "number" && v >= 256 && v <= 1536 ? Math.round(v / 16) * 16 : d);
 
-    try {
-      // FLUX.2 takes its input as a multipart form.
+    // FLUX.2 takes its input as a multipart form.
+    const draw = () => {
       const form = new FormData();
       form.append("prompt", prompt);
       form.append("width", String(size(body.width, 704)));
       form.append("height", String(size(body.height, 1056)));
       const packed = new Response(form);
-      const out = (await env.AI.run(MODEL, { multipart: { body: packed.body, contentType: packed.headers.get("content-type") } })) as { image?: string };
+      return env.AI.run(MODEL, { multipart: { body: packed.body, contentType: packed.headers.get("content-type") } }) as Promise<{ image?: string }>;
+    };
+    try {
+      // The safety filter now and then flags a harmless picture (3030); a
+      // fresh draw usually passes, so try up to three times.
+      let out: { image?: string } | undefined;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          out = await draw();
+          break;
+        } catch (error) {
+          if (attempt >= 2 || !/3030|flagged/i.test(error instanceof Error ? error.message : String(error))) throw error;
+        }
+      }
       if (!out?.image) return Response.json({ error: "The model returned no picture." }, { status: 502 });
       const jpeg = Uint8Array.from(atob(out.image), (c) => c.charCodeAt(0));
       if (env.IMAGES) {
