@@ -9,6 +9,9 @@
 //     -> { vectors: number[][] }  768 numbers each, for matching
 //   POST /chat  { system?, prompt, max_tokens?, json? }
 //     -> { text }
+//   POST /see  { image, question, max_tokens? }
+//     -> { text }  a vision model's answer about one image (our storage or
+//     Google's avatars only), e.g. whether a profile photo shows a face.
 //   429 when Workers AI is busy (callers retry or queue).
 
 type Env = {
@@ -22,6 +25,8 @@ const MODEL = "@cf/black-forest-labs/flux-2-klein-4b";
 // post has to be embedded again.
 const EMBED_MODEL = "@cf/google/embeddinggemma-300m";
 const CHAT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const SEE_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
+const allowedImage = (url: string) => { try { return /(\.supabase\.co|\.googleusercontent\.com)$/.test(new URL(url).hostname); } catch { return false; } };
 
 const busy = (message: string) => /rate limit|capacity|too many|429|3040/i.test(message);
 const fail = (error: unknown) => {
@@ -65,6 +70,32 @@ async function chat(env: Env, body: { system?: unknown; prompt?: unknown; max_to
   }
 }
 
+async function see(env: Env, body: { image?: unknown; question?: unknown; max_tokens?: unknown }): Promise<Response> {
+  const url = typeof body.image === "string" ? body.image : "";
+  const question = typeof body.question === "string" ? body.question.slice(0, 1000) : "";
+  if (!url || !question) return Response.json({ error: "An image and a question are needed." }, { status: 400 });
+  if (!allowedImage(url)) return Response.json({ error: "Image not allowed." }, { status: 400 });
+  const img = await fetch(url);
+  if (!img.ok || !(img.headers.get("Content-Type") ?? "").startsWith("image/")) return Response.json({ error: "Image unavailable." }, { status: 400 });
+  const image = [...new Uint8Array(await img.arrayBuffer())];
+  const run = () => env.AI.run(SEE_MODEL, {
+    prompt: question, image,
+    max_tokens: typeof body.max_tokens === "number" ? Math.min(body.max_tokens, 512) : 16,
+  }) as Promise<{ response?: unknown }>;
+  try {
+    let out: { response?: unknown };
+    try { out = await run(); } catch (error) {
+      // Meta's license is accepted once per account, then it answers.
+      if (!/agree|licen/i.test(String(error))) throw error;
+      await env.AI.run(SEE_MODEL, { prompt: "agree" });
+      out = await run();
+    }
+    return Response.json({ text: typeof out?.response === "string" ? out.response : "", model: SEE_MODEL });
+  } catch (error) {
+    return fail(error);
+  }
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
@@ -73,6 +104,7 @@ export default {
     const raw = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     if (path === "/embed") return embed(env, raw);
     if (path === "/chat") return chat(env, raw);
+    if (path === "/see") return see(env, raw);
     const body = raw as { prompt?: unknown; width?: unknown; height?: unknown; reference?: unknown };
     const prompt = typeof body.prompt === "string" ? body.prompt.slice(0, 2048) : "";
     if (prompt.length < 20) return Response.json({ error: "A prompt is needed." }, { status: 400 });

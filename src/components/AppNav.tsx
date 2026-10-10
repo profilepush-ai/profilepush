@@ -13,6 +13,7 @@ import Logo from './Logo';
 import GooglePlayBanner from './GooglePlayBanner';
 import FirstPurchaseOfferModal from './FirstPurchaseOfferModal';
 import FeedbackPrompt from './FeedbackPrompt';
+import AvatarMadeNotice from './AvatarMadeNotice';
 import { supabase } from '../lib/supabase';
 import { useMyAvatar } from '../lib/avatar';
 import { trackEvent } from '../lib/track';
@@ -612,6 +613,7 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
       {!location.pathname.startsWith('/today') && <GooglePlayBanner />}
       {shouldShowCreditsUi() && <FirstPurchaseOfferModal />}
       <FeedbackPrompt />
+      <AvatarMadeNotice />
     </>
   );
 }
