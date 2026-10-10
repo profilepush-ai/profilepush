@@ -4,12 +4,12 @@ import SwipeDeck from '../components/match/SwipeDeck';
 import MatchDetail from '../components/match/MatchDetail';
 import MatchSheet from '../components/match/MatchSheet';
 import TrackerStats from '../components/match/TrackerStats';
+import ProfileStories from '../components/match/ProfileStories';
 import SendResumeSheet from '../components/match/SendResumeSheet';
 import StartupSplash from '../components/StartupSplash';
 import PersonaGateScreen from '../components/PersonaGateScreen';
 import BrandLoader from '../components/brand/BrandLoader';
 import LogoSpinner from '../components/LogoSpinner';
-import { Initials } from '../components/match/Visuals';
 import type { CardItem, Subject } from '../lib/today';
 
 // Store listing screenshots: the real Today, detail and Tracker components
@@ -48,9 +48,8 @@ const ITEMS: CardItem[] = [
 const SUBJECTS = Object.fromEntries(Object.values(PROFILES).map((p) => [p.id, p]));
 const noop = () => {};
 
-// The search row and profile chips, as Today draws them over the card.
+// The search row and profile stories, as Today draws them over the card.
 function TopBar() {
-  const chip = (on: boolean) => `inline-flex shrink-0 items-center gap-1.5 rounded-full text-[13px] font-semibold ring-1 ${on ? 'bg-gray-900 text-white ring-gray-900' : 'bg-white/85 text-gray-700 ring-gray-200 backdrop-blur'}`;
   return (controls: React.ReactNode) => (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -61,12 +60,8 @@ function TopBar() {
         <span className="inline-flex h-10 shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-3 text-[13px] font-extrabold text-emerald-700 ring-1 ring-emerald-200"><Check size={14} strokeWidth={3} />4</span>
         {controls}
       </div>
-      <div className="-mx-3 flex gap-2 overflow-hidden px-3">
-        <span className={`${chip(true)} px-3 py-1`}>All <span className="font-bold opacity-70">24</span></span>
-        {Object.values(PROFILES).map((p) => (
-          <span key={p.id} className={`${chip(false)} py-1 pl-1 pr-3`}><Initials name={p.name!} id={p.id} size={22} />{p.name}<span className="font-bold opacity-70">8</span></span>
-        ))}
-      </div>
+      <ProfileStories kind="hotlist" subjects={Object.values(PROFILES)} filter="all" onFilter={noop} onAdd={noop}
+        countsFor={(id) => (id === 'all' ? { total: 24, unseen: 17 } : { total: 8, unseen: id === 'p-suresh' ? 0 : 6 })} />
     </div>
   );
 }

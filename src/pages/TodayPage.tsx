@@ -8,7 +8,7 @@ import { AiSubmitDialog } from '../components/AiSubmit';
 import MatchDetail from '../components/match/MatchDetail';
 import SwipeDeck from '../components/match/SwipeDeck';
 import ProfileSheet from '../components/match/ProfileSheet';
-import { CompanyLogo, FitRing, Initials } from '../components/match/Visuals';
+import { CompanyLogo, FitRing } from '../components/match/Visuals';
 import ToastBar from '../components/match/ToastBar';
 import ApplyFrame from '../components/match/ApplyFrame';
 import { loadAvatar } from '../lib/avatar';
@@ -20,6 +20,7 @@ import { trackEvent } from '../lib/track';
 import { cardRoute, loadToday, markViewed, strings, subjectName, type CardItem, type Kind, type Question, type Subject, type TodayData } from '../lib/today';
 import { priceLabels, useCurrency } from '../lib/currency';
 import { maybeAskForPlayReview } from '../lib/rate';
+import ProfileStories from '../components/match/ProfileStories';
 
 // Today: every new match, one at a time, as a swipe card. On a phone it is
 // full screen, with the search and the profile chips on the card itself; the
@@ -150,7 +151,11 @@ export default function TodayPage() {
     if (first && first.card_id !== items[0]?.card_id) { setDeckId(first.card_id); setDeckFocus(first.card_id); }
   }, [seenAtStart, data, items, kind]);
   useEffect(() => { if (deckId) try { sessionStorage.setItem(`pp_today_at_${kind}`, deckId); } catch { /* fine */ } }, [deckId, kind]);
-  const countFor = (id: string) => (data?.items ?? []).filter((i) => i.subject_id === id).length;
+  // Each profile's matches today, and how many aren't watched yet (story rings).
+  const storyCounts = (id: string) => {
+    const list = (data?.items ?? []).filter((i) => i.lead && (id === 'all' || i.subject_id === id));
+    return { total: list.length, unseen: list.filter((i) => !i.viewed_at).length };
+  };
   const totalNew = data?.items.length ?? 0;
   const locked = (data?.subjects ?? []).reduce((n, s) => n + (s.locked || 0), 0);
 
@@ -298,10 +303,7 @@ export default function TodayPage() {
   // account (nothing posted yet) or an error, which get the plain page.
   const immersive = !wide && full && !loadError && (hasSubjects || (loading && !data));
 
-  // The search, applied count and profile chips, drawn on the dark card.
-  const glassChip = (on: boolean) => `inline-flex shrink-0 items-center gap-1.5 rounded-full text-[13px] font-semibold ring-1 ${on
-    ? 'bg-gray-900 text-white ring-gray-900'
-    : 'bg-white/85 text-gray-700 ring-gray-200 backdrop-blur'}`;
+  // The search, the streak and applied counts, and the profile stories.
   const topBar = (controls: ReactNode) => (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -337,21 +339,7 @@ export default function TodayPage() {
         </Link>
       )}
       {hasSubjects && (
-        <div className="-mx-3 flex gap-2 overflow-x-auto px-3 [scrollbar-width:none]" style={{ touchAction: 'pan-x' }} role="group" aria-label={kind === 'hotlist' ? 'Profile' : 'Job'}>
-          <button type="button" onClick={() => setFilter('all')} aria-pressed={filter === 'all'} className={`${glassChip(filter === 'all')} px-3 py-1`}>
-            All <span className="font-bold tabular-nums opacity-70">{totalNew}</span>
-          </button>
-          {data!.subjects.map((sub) => (
-            <button key={sub.id} type="button" onClick={() => setFilter(sub.id)} aria-pressed={filter === sub.id} className={`${glassChip(filter === sub.id)} max-w-[220px] py-1 pl-1 pr-3`}>
-              <Initials name={subjectName(kind, sub)} id={sub.id} size={22} />
-              <span className="truncate">{subjectName(kind, sub)}</span>
-              <span className="font-bold tabular-nums opacity-70">{countFor(sub.id)}</span>
-            </button>
-          ))}
-          <button type="button" onClick={() => setAdding(true)} className="inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-[13px] font-semibold text-gray-600 border border-dashed border-gray-300">
-            <Plus size={14} />Add
-          </button>
-        </div>
+        <ProfileStories kind={kind} subjects={data!.subjects} filter={filter} onFilter={setFilter} countsFor={storyCounts} onAdd={() => setAdding(true)} />
       )}
     </div>
   );
@@ -511,13 +499,13 @@ export default function TodayPage() {
         <>
           <div className="fixed inset-0 z-[74] bg-slate-900/35" onClick={() => setProfileId(null)} aria-hidden="true" />
           <div className="fixed bottom-0 right-0 top-0 z-[75] w-[560px] max-w-full shadow-2xl animate-[ppSheetIn_.22s_ease-out]" role="dialog" aria-label="Profile">
-            <ProfileSheet subject={profileSubject} kind={kind} newCount={countFor(profileSubject.id)} accountId={accountId} mode="drawer"
+            <ProfileSheet subject={profileSubject} kind={kind} newCount={storyCounts(profileSubject.id).total} accountId={accountId} mode="drawer"
               onClose={() => setProfileId(null)} onSeeMatches={() => { setFilter(profileSubject.id); setProfileId(null); }} onChanged={() => void load()} showToast={(m) => showToast(m)} />
           </div>
         </>
       ) : (
         <div className="fixed inset-0 z-[85] pt-[env(safe-area-inset-top)] animate-[ppSheetIn_.22s_ease-out]" role="dialog" aria-label="Profile">
-          <ProfileSheet subject={profileSubject} kind={kind} newCount={countFor(profileSubject.id)} accountId={accountId} mode="sheet"
+          <ProfileSheet subject={profileSubject} kind={kind} newCount={storyCounts(profileSubject.id).total} accountId={accountId} mode="sheet"
             onClose={() => setProfileId(null)} onSeeMatches={() => { setFilter(profileSubject.id); setProfileId(null); setOpenId(null); }} onChanged={() => void load()} showToast={(m) => showToast(m)} />
         </div>
       ))}
