@@ -122,7 +122,7 @@ export default function AiMatchInvitePane({
             {isSending ? 'Sending…' : isGenerating ? 'Writing…' : 'Generate & send'}
           </button>
           {/* Said before the click, because after it the email has gone. */}
-          <p className="text-[10px] text-indigo-400 dark:text-indigo-300/60">1 credit · sends without another check</p>
+          <p className="text-[10px] text-indigo-400 dark:text-indigo-300/60">Free · sends without another check</p>
         </div>
       ) : (
       <div className={`min-h-0 overflow-y-auto p-2.5 ${inline ? 'max-h-72' : 'flex-1'}`}>
@@ -164,7 +164,7 @@ export default function AiMatchInvitePane({
             {/* Said before the click, not after: the draft above is free, the
                 one that gets sent is not. */}
             <p className="mt-1.5 text-center text-[10px] text-indigo-400 dark:text-indigo-300/70">
-              {isInvite ? 'Free to draft · 1 credit to send · you review it first' : 'Costs 1 credit · you review it before it sends'}
+              {isInvite ? 'Free · you review it first' : 'Free · you review it before it sends'}
             </p>
           </>
         )}

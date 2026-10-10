@@ -27,15 +27,15 @@ export const DEFAULT_FREE_BULLETS = [
   'Unlimited team members',
   '3 open consultants or requirements on the Tracker',
   'Subscribe to 5 new people a day, up to 10',
-  '1 credit per AI Match result, AI draft or Gmail send',
+  '100 free matches; only matches cost credits',
 ];
 
 const PACK_BULLETS = [
-  'Pay once, credits never expire',
+  '₹0.25 a match: ₹250 buys 1,000',
   'Unlimited open consultants or requirements',
   'Subscribe to 10 new people a day, no cap',
-  '249, 500, 1,000 … up to 5,000 credits',
-  '₹1 per credit, no subscription',
+  'Pay any amount from ₹100, no subscription',
+  'Opening jobs, AI Submit, bulk send and Apply are free',
   'First top-up? Look for the 2× offer in the app',
 ];
 

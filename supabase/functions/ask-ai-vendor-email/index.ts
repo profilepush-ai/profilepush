@@ -381,18 +381,19 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Sending through the user's own Gmail costs 1 credit, taken before
-    // anything is recorded and given back if the send doesn't happen.
+    // Sending is free: credits pay for matches only. Set GMAIL_SEND_COST above
+    // 0 to charge per send again (taken first, given back if the send fails).
+    const GMAIL_SEND_COST = 0;
     let gmailSendCharged = false;
     const refundGmailSend = async () => {
       if (!gmailSendCharged) return;
       gmailSendCharged = false;
-      await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: 1, p_feature: "gmail_send" });
+      await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: GMAIL_SEND_COST, p_feature: "gmail_send" });
     };
-    if (channel === "gmail") {
+    if (channel === "gmail" && GMAIL_SEND_COST > 0) {
       const { data: sendChargeRows, error: sendChargeError } = await supabaseUser.rpc("consume_feature_credit", {
         p_account_id: accountId,
-        p_amount: 1,
+        p_amount: GMAIL_SEND_COST,
         p_feature: "gmail_send",
         p_metadata: { lead_type: leadType, job_id: leadType === "job" ? jobId : null, hotlist_id: leadType === "hotlist" ? jobId : null, source: "ai_submit" },
       });

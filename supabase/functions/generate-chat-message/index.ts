@@ -79,15 +79,20 @@ Deno.serve(async (req: Request) => {
   const workerToken = (Deno.env.get("CLOUDFLARE_WORKER_TOKEN") ?? "").trim();
   if (!workerUrl) return jsonError("Message drafting service is not configured", 500);
 
-  const { data: chargeRows, error: chargeError } = await userClient.rpc("consume_feature_credit", {
-    p_account_id: accountId,
-    p_amount: 1,
-    p_feature: "inbox_ai_chat_draft",
-    p_metadata: { is_hotlist: isHotlist, title },
-  });
-  const charge = Array.isArray(chargeRows) ? chargeRows[0] as { success: boolean; new_balance: number; message: string } : null;
-  if (chargeError || !charge?.success) {
-    return jsonError(charge?.message ?? chargeError?.message ?? "Insufficient credits", 402, "insufficient_credits");
+  // Drafts are free: credits pay for matches only. Set DRAFT_COST above 0 to
+  // charge again (refunded if drafting fails).
+  const DRAFT_COST = 0;
+  if (DRAFT_COST > 0) {
+    const { data: chargeRows, error: chargeError } = await userClient.rpc("consume_feature_credit", {
+      p_account_id: accountId,
+      p_amount: DRAFT_COST,
+      p_feature: "inbox_ai_chat_draft",
+      p_metadata: { is_hotlist: isHotlist, title },
+    });
+    const charge = Array.isArray(chargeRows) ? chargeRows[0] as { success: boolean; new_balance: number; message: string } : null;
+    if (chargeError || !charge?.success) {
+      return jsonError(charge?.message ?? chargeError?.message ?? "Insufficient credits", 402, "insufficient_credits");
+    }
   }
 
   let workerResponse: Response;
@@ -102,13 +107,13 @@ Deno.serve(async (req: Request) => {
       signal: AbortSignal.timeout(30_000),
     });
   } catch (error) {
-    await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: 1, p_feature: "inbox_ai_chat_draft" });
+    if (DRAFT_COST > 0) await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: DRAFT_COST, p_feature: "inbox_ai_chat_draft" });
     return jsonError(`Could not reach the drafting service: ${(error as Error).message}`, 503);
   }
 
   const payload = await workerResponse.json().catch(() => ({} as Record<string, unknown>));
   if (!workerResponse.ok || !payload?.message) {
-    await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: 1, p_feature: "inbox_ai_chat_draft" });
+    if (DRAFT_COST > 0) await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: DRAFT_COST, p_feature: "inbox_ai_chat_draft" });
     return jsonError(String(payload?.error ?? `Drafting service HTTP ${workerResponse.status}`), 502);
   }
 

@@ -34,7 +34,7 @@ const FAQS = [
   { q: "How do vendors find bench consultants?", a: "Post your requirement, or paste it as text. It is matched against the hotlist consultants posted every day, and the fits land in your Tracker. One tap sends an AI Request for the resume, rate, visa and availability." },
   { q: "Whose email does it send from?", a: "Yours. AI Request and AI Submit drafts go out from your own Gmail, after you review them." },
   { q: "Will my consultant be contacted?", a: "Never. Your data is encrypted and never sold." },
-  { q: "What does it cost?", a: "You start with 100 free credits that never expire. Posting and submissions are free. Each new Tracker match costs 1 credit, as do an AI Submit draft and a Gmail send (refunded if it fails). Credit packs start at ₹249, with no subscription." },
+  { q: "What does it cost?", a: "You pay for one thing: matches. Each new match costs ₹0.25, so ₹250 buys 1,000, and you start with 100 free. Opening jobs, AI Submit, bulk send from your Gmail and Apply are free. No subscription." },
   { q: "Is there a ProfilePush app?", a: "Yes. ProfilePush is on Google Play for Android, with match alerts on your phone. It also runs in any web browser." },
   { q: "Can my whole team use it?", a: "Yes. Team accounts have unlimited members." },
 ];
@@ -855,7 +855,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                           Each new Tracker match
                         </span>
                         <span className="c">
-                          1 credit
+                          ₹0.25
                         </span>
                       </li>
                       <li className="side-b">
@@ -864,7 +864,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                           AI Submit draft
                         </span>
                         <span className="c">
-                          1 credit
+                          Free
                         </span>
                       </li>
                       <li>
@@ -873,7 +873,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                           Send from Gmail
                         </span>
                         <span className="c">
-                          1 credit
+                          Free
                           <small>
                             refunded if it fails
                           </small>

@@ -338,14 +338,14 @@ export function startHome(root: HTMLElement, data: StoryData, opts: EngineOption
       to: 'The recruiter on this requirement', sub: `${ct0}: ${c0.exp} yrs, ${c0.visa}`,
       body: `Hi,\n\nI have a ${ct0} with ${c0.exp} years of experience, on ${c0.visa} and open to relocate, for your ${j0.t} role in ${j0.loc} (${j0.type}).\n\nResume attached. Happy to share rate and availability.`,
       extra: '<span class="att"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>Resume.pdf</span>',
-      facts: ['In-app submissions: free', 'AI Submit draft: 1 credit', 'Gmail send: 1 credit, refunded if it fails'],
+      facts: ['In-app submissions: free', 'AI Submit: free', 'Gmail send: free'],
       pair: [[c0.exp + ' yrs · ' + c0.visa + ' · Open to relocate', ct0, ''], [jobSub(j0), j0.t, ' o']],
     },
     vendor: {
       to: 'The recruiter on this consultant', sub: `${ct0}: resume and rate?`,
       body: `Hi,\n\nI have a ${j0.t} requirement (${j0.loc}, ${j0.type}) that fits your ${ct0} consultant.\n\nCould you share their resume, rate, visa status and availability?`,
       extra: '<div class="chk"><span class="ddc" aria-hidden="true"><i></i><i></i></span>Optional: add a video screening link</div>',
-      facts: ['AI Request drafts: free', 'Gmail send: 1 credit, refunded if it fails', 'Optional video screening'],
+      facts: ['AI Request drafts: free', 'Gmail send: free', 'Optional video screening'],
       pair: [[jobSub(j0), j0.t, ' o'], [c0.exp + ' yrs · ' + c0.visa + ' · Open to relocate', ct0, '']],
     },
   };

@@ -35,7 +35,7 @@ const phases = [
     title: 'Matches land in your Tracker',
     tagline: 'A live column for every consultant and every requirement.',
     points: [
-      { label: 'A column each', text: 'Each thing you posted gets its own column, and new matches land in it all day, newest first. New matches are free and unlimited. Opening a job’s full post costs 1 credit the first time.' },
+      { label: 'A column each', text: 'Each thing you posted gets its own column, and new matches land in it all day, newest first. Each new match costs 1 credit (₹0.25); a job you already paid for is never charged again, and “Not a match” gives the credit back.' },
       { label: 'No noise twice', text: 'Reposts are merged into one card, and anything you mark "Not a match" never comes back.' },
       { label: 'Alerts', text: 'A notification on your phone (Android app) or browser when strong matches land, and an email if matches are waiting while you are away.' },
     ],
@@ -46,8 +46,8 @@ const phases = [
     tagline: 'One tap asks for the resume.',
     points: [
       { label: 'The ask writes itself', text: 'From a matched consultant, AI Request drafts an email to the bench recruiter asking for the resume, rate, visa and availability. The draft is free.' },
-      { label: 'From your own Gmail', text: 'You review it and it sends from your connected Gmail. A send costs 1 credit, refunded if it fails.' },
-      { label: 'Optional screening', text: 'Tick one box to include a short video screening link. You get a recording, a score and a summary; a finished screening costs 10 credits.' },
+      { label: 'From your own Gmail', text: 'You review it and it sends from your connected Gmail. Sending is free.' },
+      { label: 'Optional screening', text: 'Tick one box to include a short video screening link. You get a recording, a score and a summary; screenings are free.' },
     ],
   },
   {
@@ -56,7 +56,7 @@ const phases = [
     tagline: 'The pitch writes itself, resume attached.',
     points: [
       { label: 'Submit from the match', text: 'From a matched requirement, AI Submit writes the submission email with the resume attached. The draft is free.' },
-      { label: 'Submissions', text: 'Submitting in the app is free. An AI Submit email costs 1 credit when it sends from your Gmail, refunded if the send fails. Applying on a career site is free.' },
+      { label: 'Submissions', text: 'Submitting in the app is free. AI Submit emails from your Gmail and applying on a career site are free too.' },
       { label: 'Inbound requests', text: 'When a vendor asks for a resume from your hotlist, it lands in one list with a clear status. Upload the resume, add a note, done. Replying never costs a credit.' },
     ],
   },
@@ -66,8 +66,8 @@ const phases = [
     tagline: 'No seats, no subscription.',
     points: [
       { label: 'Unlimited members', text: 'Add your whole team to one account. Everyone shares one credit balance.' },
-      { label: 'Start free', text: '100 free credits at signup that never expire, plus 10 on your first post and 10 on your first submission.' },
-      { label: 'Credit packs', text: 'One-time packs from ₹249, at ₹1 a credit. No subscription. Every credit spent is listed in Billing.' },
+      { label: 'Start free', text: '100 free matches at signup that never expire, plus 10 on your first post and 10 on your first submission.' },
+      { label: 'Pay per match', text: 'Only matches cost credits: 1 credit = 1 match = ₹0.25, so ₹250 buys 1,000. Pay any amount from ₹100. No subscription. Everything else is free.' },
     ],
   },
 ];
@@ -180,7 +180,7 @@ export default function HowItWorks() {
             Start Free <ArrowRight size={13} />
           </Link>
           <p className="mt-4 text-sm text-gray-500">
-            100 free credits that never expire. No credit card required.
+            100 free matches that never expire. No credit card required.
           </p>
         </div>
       </section>

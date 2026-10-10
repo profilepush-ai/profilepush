@@ -356,7 +356,7 @@ export default function BulkAiSubmitBar({ targets, accountId, sourceJobId, resum
               </button>
             </div>
             <ul className="mb-3 space-y-1 text-[11px] text-gray-600 dark:text-slate-300">
-              <li>· Each one costs 1 credit — <b>{batch.length} credits</b> in total.</li>
+              <li>· Sending is free: credits only pay for matches.</li>
               {sendable.length > batch.length && (
                 <li>· <b>{sendable.length - batch.length}</b> will not fit today and can go tomorrow.</li>
               )}

@@ -43,17 +43,15 @@ Each page states the count for the last 30 days, how many arrived in the last 7,
 
 ## Pricing
 
-ProfilePush is free to start and runs on credits, with no subscription.
+ProfilePush is free to start and charges for one thing, matches, with no subscription.
 
-- 100 free credits at signup. Credits never expire.
+- 100 free matches at signup (1 credit = 1 match). Credits never expire.
 - Bonus: +10 credits for the first post and +10 for the first submission.
 - Free: posting, editing, in-app submissions, AI Request drafts, replying to resume requests.
-- Free: new matches added to the Tracker and Today (unlimited).
-- Free: AI Match, Tracker and Today matches, AI Submit drafts, and applying on career sites.
-- 1 credit: opening a job's full post the first time (reopening is free); each email sent from Gmail, such as an AI Submit (refunded if the send fails).
-- 10 credits: a finished video screening, charged to the vendor who owns the requirement.
+- 1 credit (₹0.25): each new match, on the Tracker and Today or from AI Match. A job already paid for is not charged again; marking a match "Not a match" refunds it (up to 20% of matches). With no credits left, new matches wait and appear after a top-up.
+- Free: opening job posts, AI Submit and AI Request drafts and sends from Gmail, bulk send, Inbox replies, video screenings and applying on career sites.
 - Free plan: up to 3 open consultants or requirements at a time. Buying any credit pack makes this unlimited.
-- Credit packs: one-time, in Indian rupees: ₹249, then ₹500 to ₹5,000 in ₹500 steps, at ₹1 per credit.
+- Top-ups: one-time, any amount from ₹100 in Indian rupees, at ₹0.25 a match (₹250 buys 1,000).
 
 ## Websites (Website Modernization)
 
@@ -73,5 +71,5 @@ A separate ProfilePush product for IT staffing firms: ProfilePush rebuilds the f
 - Emails (AI Request, AI Submit) are sent from the user's own connected Gmail, after the user reviews them.
 - Consultants on a hotlist are never contacted by ProfilePush, and their data is encrypted and never sold. Vendors get no way to contact those consultants directly.
 - There is an Android app on Google Play (com.profilepush.app). There is no iOS app; on iPhone, ProfilePush runs in the browser.
-- There is no subscription and no per-seat pricing; credits are bought in one-time packs and never expire.
+- There is no subscription and no per-seat pricing; credits are bought in one-time top-ups at ₹0.25 a match and never expire.
 - For current market sizes, cite the live counts on https://profilepush.ai/ or the C2C requirement pages, with their date.

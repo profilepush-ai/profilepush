@@ -130,18 +130,21 @@ Deno.serve(async (request) => {
     if (messageError || !message) throw messageError ?? new Error("Could not create message");
 
     if (conversation.channel === "gmail") {
-      // Sending through the user's own Gmail costs 1 credit; refunded if
-      // Gmail rejects the send.
-      const { data: sendChargeRows, error: sendChargeError } = await supabaseUser.rpc("consume_feature_credit", {
-        p_account_id: conversation.account_id,
-        p_amount: 1,
-        p_feature: "gmail_send",
-        p_metadata: { conversation_id: conversation.id, source: "inbox_reply" },
-      });
-      const sendCharge = Array.isArray(sendChargeRows) ? sendChargeRows[0] as { success: boolean; message: string } : null;
-      if (sendChargeError || !sendCharge?.success) {
-        await supabaseAdmin.from("vendor_messages").update({ status: "failed", error_message: "Insufficient credits" }).eq("id", message.id);
-        return respond({ error: sendCharge?.message ?? sendChargeError?.message ?? "Insufficient credits", code: "insufficient_credits" }, 402);
+      // Sending is free: credits pay for matches only. Set GMAIL_SEND_COST
+      // above 0 to charge per send again (refunded if Gmail rejects it).
+      const GMAIL_SEND_COST = 0;
+      if (GMAIL_SEND_COST > 0) {
+        const { data: sendChargeRows, error: sendChargeError } = await supabaseUser.rpc("consume_feature_credit", {
+          p_account_id: conversation.account_id,
+          p_amount: GMAIL_SEND_COST,
+          p_feature: "gmail_send",
+          p_metadata: { conversation_id: conversation.id, source: "inbox_reply" },
+        });
+        const sendCharge = Array.isArray(sendChargeRows) ? sendChargeRows[0] as { success: boolean; message: string } : null;
+        if (sendChargeError || !sendCharge?.success) {
+          await supabaseAdmin.from("vendor_messages").update({ status: "failed", error_message: "Insufficient credits" }).eq("id", message.id);
+          return respond({ error: sendCharge?.message ?? sendChargeError?.message ?? "Insufficient credits", code: "insufficient_credits" }, 402);
+        }
       }
       try {
         const sendResult = await sendViaGmail({
@@ -164,7 +167,7 @@ Deno.serve(async (request) => {
       } catch (error) {
         const errorDetail = (error as Error).message.slice(0, 500);
         await supabaseAdmin.from("vendor_messages").update({ status: "failed", error_message: errorDetail }).eq("id", message.id);
-        await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: conversation.account_id, p_amount: 1, p_feature: "gmail_send" });
+        if (GMAIL_SEND_COST > 0) await supabaseAdmin.rpc("refund_feature_credit", { p_account_id: conversation.account_id, p_amount: GMAIL_SEND_COST, p_feature: "gmail_send" });
         return respond({ error: "Could not send message" }, 502);
       }
       return respond({ ok: true, message_id: message.id });
