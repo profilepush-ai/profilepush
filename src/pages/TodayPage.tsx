@@ -35,7 +35,8 @@ function useMedia(query: string) {
 }
 
 const HINT_KEY = 'today_menu_hint';
-const REEL_MS = 8000;
+// About 15 seconds a card: long enough for every detail to land.
+const REEL_MS = 15000;
 
 // Time left until `iso`, as "7h 12m", ticking every 30 seconds.
 function useCountdown(iso: string | undefined) {

@@ -22,6 +22,8 @@ export type CardItem = {
   stage: string; closed_reason: string | null; viewed_at: string | null; saved_at: string | null; applied_at: string | null;
   added_at: string; reply_in_inbox: boolean; how: 'email' | 'site'; subject: Subject | null;
   lead: Lead | null; duplicate?: string | null;
+  /** Across ProfilePush: accounts that viewed, applied to, saved and shared the post. */
+  eng?: { views: number; applies: number; saves: number; shares: number };
 };
 
 export type ResumeFile = { id: string; url: string; file_name: string; is_default: boolean };
@@ -133,7 +135,10 @@ export async function shareLink(lead: Lead): Promise<'shared' | 'copied' | 'fail
   const title = leadTitle(lead);
   try {
     if (navigator.share) { await navigator.share({ title, url }); return 'shared'; }
-  } catch { /* fall back to copying */ }
+  } catch (e) {
+    // Closing the share sheet is not a share.
+    if ((e as Error)?.name === 'AbortError') return 'failed';
+  }
   try { await navigator.clipboard.writeText(url); return 'copied'; } catch { return 'failed'; }
 }
 

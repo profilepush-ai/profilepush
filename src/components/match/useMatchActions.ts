@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAiSubmit } from '../AiSubmit';
-import { loadLeadsByIds } from '../LeadCard';
+import { loadLeadsByIds, recordLeadShare } from '../LeadCard';
 import { supabase } from '../../lib/supabase';
 import { trackEvent } from '../../lib/track';
 import { dismissCard, leadOrg, restoreCard, setSaved, shareLink, type CardItem, type Kind, type Subject } from '../../lib/today';
@@ -158,6 +158,7 @@ export function useMatchActions({ kind, accountId, userId, subjects, take, onCha
   const share = async (item: CardItem) => {
     if (!item.lead) return;
     const r = await shareLink(item.lead);
+    if (r !== 'failed') recordLeadShare(item.lead_id, accountId, userId);
     if (r === 'copied') showToast('Link copied');
   };
 
