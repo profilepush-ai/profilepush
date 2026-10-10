@@ -28,7 +28,7 @@ const FAQS = [
   { q: "How do I find vendors who need my consultants?", a: "Every new requirement is matched against your consultants. The ones that fit show up in each consultant’s column, with the vendor who posted them." },
   { q: "Do I need to keep checking?", a: "No. You get a notification when strong matches land, and an email if new matches are waiting and you haven’t been back." },
   { q: "Can I post the whole bench at once?", a: "Yes. Paste the hotlist table, up to 50 consultants at a time, and every one is read and posted together. The free plan keeps 3 consultants open at once; buying any credit pack removes that limit." },
-  { q: "What does submitting cost?", a: "Submitting in the app is free, and so is posting. An AI Submit email costs 1 credit to draft and 1 credit to send from your Gmail (the send is refunded if it fails). Each new Tracker match costs 1 credit. Optional screening credits are charged to the vendor who owns the requirement." },
+  { q: "What does submitting cost?", a: "Nothing. Submitting, AI Submit from your Gmail, bulk send and Apply are all free. You pay only for matches: ₹0.25 each, so ₹250 buys 1,000, and you start with 100 free." },
   { q: "Is there a mobile app?", a: "Yes. ProfilePush is on Google Play for Android, so match alerts reach your phone. It also runs in any web browser." },
   { q: "Does my consultant need an account?", a: "No, and we never contact them. The screening link goes to you only." },
   { q: "Can I see which skills are in demand?", a: "Yes. Filter every live requirement by skill, rate, visa and location, with a live count on each." },
@@ -376,7 +376,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                       Attach the resume once
                     </span>
                     <span className="fact">
-                      AI Submit draft: 1 credit
+                      AI Submit: free
                     </span>
                   </div>
                 </div>
@@ -412,7 +412,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                       </svg>
                     </span>
                     <span>
-                      Sends from your Gmail · 1 credit, refunded if it fails
+                      Sends from your Gmail · free
                     </span>
                   </div>
                 </figure>
@@ -809,19 +809,19 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                       <li>
                         Each new Tracker match
                         <span className="c">
-                          1 credit
+                          ₹0.25
                         </span>
                       </li>
                       <li>
                         AI Submit draft
                         <span className="c">
-                          1 credit
+                          Free
                         </span>
                       </li>
                       <li>
                         Send from Gmail
                         <span className="c">
-                          1 credit
+                          Free
                           <small>
                             refunded if it fails
                           </small>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Archive, Clock3, Eye, EyeOff, ExternalLink, FileText, MessageSquare, Paperclip, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2, Video, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
@@ -216,7 +216,15 @@ export default function BoardPage() {
   const viewsRef = useRef<Record<string, ColumnView>>({});
   viewsRef.current = views;
 
+  // Matches found while the account was out of credits, per column.
+  const [waiting, setWaiting] = useState<Record<string, number>>({});
+
   const loadSubjects = useCallback(async () => {
+    void supabase.rpc('get_waiting_match_counts' as never).then(({ data }: { data: Array<{ subject_id: string; waiting: number }> | null }) => {
+      const next: Record<string, number> = {};
+      for (const row of data ?? []) next[row.subject_id] = Number(row.waiting);
+      setWaiting(next);
+    });
     const [subj, cnt] = await Promise.all([
       supabase.rpc('get_pipeline_subjects' as never, { p_kind: subjectKind } as never),
       supabase.rpc('get_pipeline_column_counts' as never, {
@@ -1039,6 +1047,12 @@ export default function BoardPage() {
 
                 <div {...pullHandlers(sid)} className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-2 pb-2">
                   {pullIndicator(sid)}
+                  {(waiting[sid] ?? 0) > 0 && (
+                    <Link to="/billing" className="flex items-center justify-between gap-2 rounded-md bg-amber-50 px-2.5 py-2 text-[12px] font-semibold text-amber-800 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-300">
+                      <span>{waiting[sid]} new {waiting[sid] === 1 ? 'match' : 'matches'} waiting</span>
+                      <span className="underline underline-offset-2">Top up</span>
+                    </Link>
+                  )}
                   {!loaded && <p className="px-2 py-6 text-center text-[11px] text-gray-400">Loading…</p>}
                   {loaded && list.length === 0 && <p className="px-2 py-6 text-center text-[11px] text-gray-400">{emptyText(view)}</p>}
                   {view.stage === 'new' && list.some((c) => c.has_email) && (

@@ -1,10 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { FIRST_PURCHASE_OFFER_PACKS, INR_PAISE_PER_CREDIT, isValidCreditPack } from "../_shared/credit-tiers.ts";
+import { CREDITS_PER_RUPEE, FIRST_PURCHASE_OFFER_PACKS, isValidTopupAmount, MAX_TOPUP_INR, MIN_TOPUP_INR } from "../_shared/credit-tiers.ts";
 
 // Creates a plain one-time Razorpay Order (not a Subscription) for a credit
-// top-up: a 249 starter pack or 500-5000 credits in 500 increments, flat
-// ₹1/credit. Separate from
+// top-up: any whole-rupee amount at ₹0.25 a match (4 credits a rupee). Separate from
 // razorpay-create-subscription/razorpay-change-plan, which bill the same
 // tiers/rate on a recurring monthly cadence instead of one time.
 // razorpay-webhook credits the purchase on payment.captured via the
@@ -45,9 +44,12 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
-    const { credits } = await req.json();
-    if (!isValidCreditPack(credits)) {
-      return new Response(JSON.stringify({ error: "credits must be 249, or a multiple of 500 up to 5000" }), { status: 400, headers: corsHeaders });
+    // amount_inr is what the buyer pays; an older client sent the same rupee
+    // figure as `credits` when a credit was ₹1.
+    const body = await req.json();
+    const amountInr = Number(body?.amount_inr ?? body?.credits);
+    if (!isValidTopupAmount(amountInr)) {
+      return new Response(JSON.stringify({ error: `Choose an amount from ₹${MIN_TOPUP_INR} to ₹${MAX_TOPUP_INR.toLocaleString("en-IN")}` }), { status: 400, headers: corsHeaders });
     }
 
     const { data: member } = await supabaseAdmin
@@ -58,13 +60,14 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (!member) return new Response(JSON.stringify({ error: "Account not found" }), { status: 404, headers: corsHeaders });
 
-    const amountInrPaise = credits * INR_PAISE_PER_CREDIT;
+    const amountInrPaise = amountInr * 100;
+    const credits = amountInr * CREDITS_PER_RUPEE;
 
     // First-purchase offer: while it's live, the 249 and 500 packs come with
     // as many bonus credits again (other packs are unchanged).
     // apply_credit_topup adds the bonus once, on the first paid order.
     let bonusCredits = 0;
-    if (FIRST_PURCHASE_OFFER_PACKS.includes(credits)) {
+    if (FIRST_PURCHASE_OFFER_PACKS.includes(amountInr)) {
       const { data: offerActive } = await supabaseAdmin.rpc("first_purchase_offer_active", { p_account_id: member.account_id });
       if (offerActive === true) bonusCredits = credits;
     }

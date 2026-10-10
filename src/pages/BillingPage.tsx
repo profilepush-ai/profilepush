@@ -24,25 +24,21 @@ declare global {
 
 const MARKUP = 4;
 const PAGE_SIZE = 15;
-// One-time credit-pack purchases: 500-credit increments up to 5000, flat ₹1/credit.
-// One-time packs: a ₹249 starter, then 500-5000. The dialog opens on 500.
-const CREDIT_TIERS = [249, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
-const DEFAULT_CREDIT_PACK = 500;
+// Top-ups are any whole-rupee amount at ₹0.25 a match: 1 credit = 1 match,
+// 4 to the rupee (razorpay-create-credit-order). The dialog offers a few
+// amounts and takes any other from ₹100.
+const CREDITS_PER_RUPEE = 4;
+const QUICK_AMOUNTS = [250, 500, 1000, 2500, 5000];
+const MIN_TOPUP_INR = 100;
+const MAX_TOPUP_INR = 100000;
+const DEFAULT_CREDIT_PACK = 250;
 
-// What actually deducts credits today. Credits pay for two things: opening a
-// job's full post (open_post_content RPC, 1 credit the first time an account
-// opens a job) and sending email through the user's Gmail (gmail_send in
-// ask-ai-vendor-email, send-vendor-message and submit-consultant). Drafts,
-// AI Match runs (ai-match, CREDITS_PER_RESULT = 0), Tracker and Today matches
-// and Apply are free. Inbox AI chat drafts (generate-chat-message) still cost
-// 1 credit. Predict Match % has a per-use cost in code too (PulsePage.tsx's
-// consumeCredits()), but charges nothing while BILLING_GATES_ENABLED
-// (feature-gates.ts) is off site-wide.
-//
-// Video screening completion charges the JOB OWNER's account 10 credits
-// (charge_screening_completion_credit RPC, called from the
-// job-application-screening Worker) — not the account taking an action
-// here, so it's listed as a note rather than a per-action row.
+// What deducts credits: one thing, a match. A new match on the Tracker or
+// Today costs 1 credit (charge_tracker_match trigger), and so does each new
+// AI Match result (ai-match). Everything else is free: opening posts,
+// drafts, sends from Gmail (the *_COST constants in ask-ai-vendor-email,
+// send-vendor-message, submit-consultant, generate-chat-message are 0),
+// video screenings and Apply. "Not a match" refunds a paid match, up to 20%.
 // Milestone grants (grant_milestone_credits, awarded by trigger). Listed here
 // so the app can show what is still unearned — an incentive nobody is told
 // about changes nobody's behaviour.
@@ -53,35 +49,29 @@ const CREDIT_MILESTONES: { key: string; label: string; amount: number; hint: str
 
 const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: string }[] = [
   {
-    label: 'Opening a job post',
+    label: 'A match',
     cost: '1 credit',
-    short: '1 credit to open a job’s full post, the first time',
-    note: 'In the Feed, Today, the Tracker and AI Match. Reopening a job you have already opened is free, and so are your own posts and consultant hotlists.',
+    short: '1 credit = 1 match, ₹0.25',
+    note: 'Each new match for your consultants or requirements on the Tracker and Today, and each new AI Match result. A job you already paid for is never charged again, and reposts of the same requirement are merged.',
   },
   {
-    label: 'AI Submit — email sent from your Gmail',
-    cost: '1 credit',
-    short: '1 credit per AI Submit sent from your Gmail',
-    note: 'One credit per email, so a bulk send to 25 recruiters is 25 credits. Writing and editing the draft is free, and a send Gmail rejects is refunded. AI Requests and Inbox replies sent from your Gmail cost the same.',
+    label: '“Not a match”',
+    cost: 'Refunded',
+    short: 'Mark a match “Not a match” and get the credit back',
+    note: 'Up to 20% of your matches in the last 30 days.',
   },
   {
-    label: 'AI Match',
+    label: 'Everything else',
     cost: 'Free',
-    short: 'AI Match is free',
+    short: 'Everything else is free: opening jobs, AI Submit, bulk send, Apply',
+    note: 'Opening job posts, AI Submit and AI Request drafts and sends from your Gmail, bulk send, Inbox replies, video screenings and applying on career sites.',
   },
   {
-    label: 'Tracker and Today matches',
-    cost: 'Free',
-    short: 'New matches for your consultants and requirements are free and unlimited',
-    note: 'Matches are added automatically all day as requirements and consultants are posted.',
+    label: 'Out of credits',
+    cost: 'Matches wait',
+    short: 'Out of credits? New matches wait until you top up',
+    note: 'They are still found and saved, best first, and appear as soon as you add credits.',
   },
-  {
-    label: 'Apply on career sites',
-    cost: 'Free',
-    short: 'Applying on a firm’s career site is free',
-  },
-  { label: 'Inbox AI chat draft', cost: '1 credit', short: '1 credit per Inbox AI chat draft' },
-  { label: 'Video screening completed', cost: '10 credits', short: '10 credits when a candidate completes a video screening', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
 ];
 
 interface UsageRow {
@@ -437,7 +427,7 @@ export default function BillingPage() {
     try {
       const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-create-credit-order', {
-        body: { credits: selectedCreditTier },
+        body: { amount_inr: selectedCreditTier },
         headers,
       });
       if (error) {
@@ -451,11 +441,12 @@ export default function BillingPage() {
       await openRazorpayCheckout({
         key: data.key_id, order_id: data.order_id, amount: data.amount_inr_paise, currency: 'INR',
         name: 'ProfilePush',
-        description: `${selectedCreditTier} credits`,
+        description: `${(selectedCreditTier * CREDITS_PER_RUPEE).toLocaleString('en-IN')} matches`,
         image: '/favicon.svg',
         handler: async (response: Record<string, unknown>) => {
           fireCrmEvent('credits.topup_payment_success', {
-            credits: selectedCreditTier,
+            credits: selectedCreditTier * CREDITS_PER_RUPEE,
+            amount_inr: selectedCreditTier,
             razorpay_order_id: data.order_id,
             razorpay_payment_id: response.razorpay_payment_id ?? null,
           });
@@ -484,7 +475,7 @@ export default function BillingPage() {
             // Falls back to the webhook; the result screen says so.
           }
           // The order knows whether the first-purchase bonus applied.
-          const added = selectedCreditTier + Number(data.bonus_credits ?? 0);
+          const added = selectedCreditTier * CREDITS_PER_RUPEE + Number(data.bonus_credits ?? 0);
           setPurchaseResult({ credits: added, balance, paymentId, confirmed });
           if (Number(data.bonus_credits ?? 0) > 0 && account?.id) {
             setOfferExpiresAt(null);
@@ -554,9 +545,9 @@ export default function BillingPage() {
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 flex flex-col">
                   <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-yellow-100 text-yellow-700 w-fit">Free</span>
                   <p className="text-2xl font-extrabold text-gray-900">₹0<span className="text-[15px] font-semibold text-gray-500">/mo</span></p>
-                  <p className="text-[13px] text-gray-500 mt-0.5 mb-4">100 credits, one time · never expire · no card required</p>
+                  <p className="text-[13px] text-gray-500 mt-0.5 mb-4">100 free matches · never expire · no card required</p>
                   <ul className="space-y-2 text-[13px] text-gray-600 flex-1 mb-4">
-                    {['Pulse, Jobs, Hotlist, Posts, Inbox & Tracker', 'Unlimited team members', '3 open consultants or requirements on the Tracker (unlimited once you buy credits)', 'Network: subscribe to 5 new people a day, up to 10', 'Credit costs vary by feature — see breakdown below'].map(item => (
+                    {['Feed, Today, Tracker, AI Match and Inbox', 'Opening jobs, AI Submit, bulk send and Apply are free', 'Unlimited team members', '3 open consultants or requirements on the Tracker (unlimited once you buy credits)'].map(item => (
                       <li key={item} className="flex items-start gap-2">
                         <Check size={12} className="mt-0.5 shrink-0 text-emerald-600" />
                         {item}
@@ -569,11 +560,11 @@ export default function BillingPage() {
                 </div>
 
                 <div className="rounded-2xl p-5 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
-                  <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-white/15 text-white w-fit">Credit packs</span>
-                  <p className="text-2xl font-extrabold text-white"><span className="text-[15px] font-semibold text-blue-200">from </span>₹249</p>
-                  <p className="text-[13px] text-blue-200 mt-0.5 mb-4">Pay once · credits never expire · no subscription</p>
+                  <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-white/15 text-white w-fit">Pay per match</span>
+                  <p className="text-2xl font-extrabold text-white">₹0.25<span className="text-[15px] font-semibold text-blue-200"> a match</span></p>
+                  <p className="text-[13px] text-blue-200 mt-0.5 mb-4">Any amount from ₹100 · never expire · no subscription</p>
                   <ul className="space-y-2 text-[13px] text-white flex-1 mb-4">
-                    {['Unlimited open consultants or requirements', 'Network: subscribe to 10 new people a day, no cap', '249, 500, 1,000 … up to 5,000 credits at ₹1 each', 'First top-up? 2× credits on the ₹249 and ₹500 packs when the offer shows'].map(item => (
+                    {['₹250 = 1,000 matches', 'Only matches cost credits; everything else is free', 'Unlimited open consultants or requirements', 'First top-up? 2× matches on ₹250 and ₹500 when the offer shows'].map(item => (
                       <li key={item} className="flex items-start gap-2">
                         <Check size={12} className="mt-0.5 shrink-0 text-white" />
                         {item}
@@ -585,6 +576,9 @@ export default function BillingPage() {
                   </button>
                 </div>
               </div>
+
+              {/* The one setting that controls spend: how strong a match must be. */}
+              <MinMatchSetting accountId={account?.id ?? null} />
 
               {/* Purchase history: every paid top-up, newest first. */}
               {purchases.length > 0 && (
@@ -1179,70 +1173,124 @@ function TierComparison({ currentUsd }: { currentUsd: number }) {
 
 // ── Buy credits modal ────────────────────────────────────────────────────────
 // The first-purchase offer doubles these packs only.
-const OFFER_TIERS = [249, 500];
+const OFFER_TIERS = [249, 250, 500];
+
+// New matches must reach this match % (50-80, default 70). Higher means fewer,
+// stronger matches and less spent.
+function MinMatchSetting({ accountId }: { accountId: string | null }) {
+  const [value, setValue] = useState<number | null>(null);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (!accountId) return;
+    void supabase.from('accounts').select('match_min_score' as never).eq('id', accountId).maybeSingle()
+      .then(({ data }: { data: { match_min_score?: number } | null }) => setValue(data?.match_min_score ?? 70));
+  }, [accountId]);
+  const change = async (next: number) => {
+    setValue(next);
+    setSaved(false);
+    const { error } = await supabase.rpc('set_match_min_score' as never, { p_score: next } as never);
+    if (!error) setSaved(true);
+  };
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[13px] font-bold text-gray-800">Minimum match</p>
+          <p className="mt-0.5 text-[12px] text-gray-500">New matches must reach this score. Higher means fewer, stronger matches.</p>
+        </div>
+        <div className="flex items-center gap-1" role="radiogroup" aria-label="Minimum match">
+          {[50, 55, 60, 65, 70, 75, 80].map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={value === v}
+              onClick={() => void change(v)}
+              disabled={value == null}
+              className={`h-8 rounded-lg px-2.5 text-[12.5px] font-bold tabular-nums transition-colors ${value === v ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              {v}%
+            </button>
+          ))}
+        </div>
+      </div>
+      {saved && <p className="mt-2 text-[11.5px] font-semibold text-emerald-600">Saved. New matches use {value}%.</p>}
+    </div>
+  );
+}
 
 function BuyCreditsModal({
   offerSecondsLeft, selectedCreditTier, setSelectedCreditTier, buyingCredits, onClose, onSubmit,
 }: {
-  // Seconds left on the first-purchase offer (249 and 500 packs); 0 when there's no offer.
+  // Seconds left on the first-purchase offer (₹250 and ₹500); 0 when there's no offer.
   offerSecondsLeft: number;
+  /** The amount in rupees. */
   selectedCreditTier: number;
   setSelectedCreditTier: (v: number) => void;
   buyingCredits: boolean;
   onClose: () => void;
   onSubmit: () => void;
 }) {
-  // The offer doubles the 249 and 500 packs only.
-  const offerOnSelected = offerSecondsLeft > 0 && OFFER_TIERS.includes(selectedCreditTier);
+  const amount = selectedCreditTier;
+  const valid = Number.isInteger(amount) && amount >= MIN_TOPUP_INR && amount <= MAX_TOPUP_INR;
+  const offerOnSelected = offerSecondsLeft > 0 && OFFER_TIERS.includes(amount);
+  const matches = (valid ? amount : 0) * CREDITS_PER_RUPEE * (offerOnSelected ? 2 : 1);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
         <button onClick={onClose} className="absolute top-3 right-3 z-10 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
           <X size={15} />
         </button>
         <div className="px-6 pt-6 pb-5">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-blue-600 mb-3">Buy credits</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-blue-600 mb-3">Buy matches</p>
           {offerSecondsLeft > 0 && (
             <div className="mb-4 flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800">
-              <span>2× credits on ₹249 and ₹500, first top-up</span>
+              <span>2× matches on ₹250 and ₹500, first top-up</span>
               <span className="tabular-nums">{formatCountdown(offerSecondsLeft)}</span>
             </div>
           )}
-          <div className="mb-5">
-            {offerOnSelected ? (
-              <>
-                <span className="text-3xl font-extrabold text-gray-900">{(selectedCreditTier * 2).toLocaleString('en-IN')} credits</span>
-                <p className="text-[13px] text-gray-400 mt-0.5">
-                  <span className="line-through">{selectedCreditTier.toLocaleString('en-IN')}</span> · ₹{selectedCreditTier.toLocaleString('en-IN')} · one-time, no expiry
-                </p>
-              </>
-            ) : (
-              <>
-                <span className="text-3xl font-extrabold text-gray-900">{selectedCreditTier.toLocaleString('en-IN')} credits</span>
-                <p className="text-[13px] text-gray-400 mt-0.5">₹{selectedCreditTier.toLocaleString('en-IN')} · ₹1 per credit · one-time, no expiry</p>
-              </>
-            )}
+          <div className="mb-4">
+            <span className="text-3xl font-extrabold tabular-nums text-gray-900">{matches.toLocaleString('en-IN')} matches</span>
+            <p className="text-[13px] text-gray-400 mt-0.5">
+              {offerOnSelected && <><span className="line-through">{(amount * CREDITS_PER_RUPEE).toLocaleString('en-IN')}</span> · </>}
+              ₹0.25 a match · one-time, never expire
+            </p>
           </div>
-          <div className="relative mb-5">
-            <select value={selectedCreditTier} onChange={e => setSelectedCreditTier(Number(e.target.value))}
-              className="w-full appearance-none border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-[15px] font-semibold text-gray-800 bg-gray-50 focus:outline-none focus:border-blue-400 cursor-pointer">
-              {CREDIT_TIERS.map(tier => (
-                <option key={tier} value={tier}>
-                  {(offerSecondsLeft > 0 && OFFER_TIERS.includes(tier) ? tier * 2 : tier).toLocaleString('en-IN')} credits — ₹{tier.toLocaleString('en-IN')}{offerSecondsLeft > 0 && OFFER_TIERS.includes(tier) ? ' (2× offer)' : ''}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <div className="mb-3 grid grid-cols-5 gap-1.5">
+            {QUICK_AMOUNTS.map((a) => (
+              <button
+                key={a}
+                type="button"
+                onClick={() => setSelectedCreditTier(a)}
+                className={`rounded-lg border py-2 text-[12.5px] font-bold tabular-nums transition-colors ${a === amount ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+              >
+                ₹{a >= 1000 ? `${a / 1000}k` : a}
+              </button>
+            ))}
           </div>
+          <label htmlFor="topup-amount" className="mb-1 block text-[12px] font-semibold text-gray-500">Or enter an amount</label>
+          <div className="relative mb-1">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-semibold text-gray-400">₹</span>
+            <input
+              id="topup-amount"
+              type="number"
+              inputMode="numeric"
+              min={MIN_TOPUP_INR}
+              max={MAX_TOPUP_INR}
+              step={1}
+              value={Number.isFinite(amount) && amount > 0 ? amount : ''}
+              onChange={(e) => setSelectedCreditTier(Math.floor(Number(e.target.value) || 0))}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-8 pr-4 text-[15px] font-semibold tabular-nums text-gray-800 focus:border-blue-400 focus:outline-none"
+            />
+          </div>
+          <p className={`mb-5 text-[12px] ${valid ? 'text-gray-400' : 'text-red-600'}`}>
+            {valid ? 'Pay any amount; every ₹1 buys 4 matches.' : `Enter ₹${MIN_TOPUP_INR} to ₹${MAX_TOPUP_INR.toLocaleString('en-IN')}.`}
+          </p>
           <ul className="space-y-2.5 mb-5">
-            {/* Read from CREDIT_COST_ITEMS, never hand-written: this list had
-                drifted into charging 0.05 to send a draft, a credit per new
-                post and 0.25 per Active List download — none of which exist in
-                any consume_feature_credit call site — while omitting AI Match,
-                which is the one people actually spend on. */}
-            {[...CREDIT_COST_ITEMS.map(item => item.short), 'Credits never expire'].map(f => (
-              <li key={f} className="flex items-start gap-2.5 text-[15px] text-gray-700">
+            {/* Read from CREDIT_COST_ITEMS, never hand-written. */}
+            {CREDIT_COST_ITEMS.map(item => item.short).map(f => (
+              <li key={f} className="flex items-start gap-2.5 text-[14px] text-gray-700">
                 <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                   <Check size={9} className="text-white" strokeWidth={3} />
                 </div>
@@ -1250,12 +1298,10 @@ function BuyCreditsModal({
               </li>
             ))}
           </ul>
-          <button onClick={onSubmit} disabled={buyingCredits}
+          <button onClick={onSubmit} disabled={buyingCredits || !valid}
             className="w-full py-3 rounded-xl text-[15px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 shadow-sm">
             {buyingCredits && <LogoSpinner size={14} />}
-            {offerOnSelected
-              ? `Pay ₹${selectedCreditTier.toLocaleString('en-IN')} · get ${(selectedCreditTier * 2).toLocaleString('en-IN')}`
-              : `Pay ₹${selectedCreditTier.toLocaleString('en-IN')}`}
+            {valid ? `Pay ₹${amount.toLocaleString('en-IN')} · get ${matches.toLocaleString('en-IN')} matches` : 'Enter an amount'}
           </button>
         </div>
       </div>

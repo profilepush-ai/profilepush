@@ -18,12 +18,12 @@ import { trackEvent } from '../lib/track';
 type QueueItem = {
   card_id: string; job_id: string; title: string | null; poster: string | null; company: string | null;
   location: string | null; pay: string | null; source: string; apply_url: string | null; posted_at: string;
-  similarity: number; has_email: boolean; duplicate: string | null;
+  similarity: number; fit?: number; has_email: boolean; duplicate: string | null;
 };
 type QueueSubject = {
   subject_id: string; role_title: string | null; candidate_name: string | null; visa_type: string | null;
   location: string | null; years_experience: number | null; skills: string[] | null; resume_url: string | null;
-  resume_file_name: string | null; submitted_today: number; waiting: number; items: QueueItem[];
+  resume_file_name: string | null; submitted_today: number; waiting: number; locked?: number; items: QueueItem[];
 };
 type Queue = { target: number; daily_cap: number; used_today: number; submitted_today: number; subjects: QueueSubject[] };
 type Draft = { jobId: string; toName: string; subject: string; body: string; duplicate: string | null };
@@ -98,6 +98,19 @@ export default function TodayPage() {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [resumes, setResumes] = useState<Record<string, { url: string; name: string }>>({});
   const [uploadingFor, setUploadingFor] = useState('');
+  // The account's minimum match % (50-80, default 70) for new matches.
+  const [minMatch, setMinMatch] = useState(70);
+  useEffect(() => {
+    if (!accountId) return;
+    void supabase.from('accounts').select('match_min_score' as never).eq('id', accountId).maybeSingle()
+      .then(({ data }: { data: { match_min_score?: number } | null }) => { if (data?.match_min_score) setMinMatch(data.match_min_score); });
+  }, [accountId]);
+  const changeMinMatch = async (value: number) => {
+    setMinMatch(value);
+    trackEvent('min_match_changed', { value, from: 'today' });
+    await supabase.rpc('set_match_min_score' as never, { p_score: value } as never);
+  };
+
   const [description, setDescription] = useState<{ jobId: string; text: string; outOfCredits?: boolean } | null>(null);
   const stopBulk = useRef(false);
 
@@ -311,8 +324,26 @@ export default function TodayPage() {
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
               {capLeft} sends left today
-              {queue && queue.daily_cap < 100 && <> · trial limit 10, <Link to="/billing" className="font-semibold text-blue-600">buy credits</Link> for 100/day</>}
+              {queue && queue.daily_cap < 100 && <> · trial limit 10, <Link to="/billing" className="font-semibold text-blue-600">buy matches</Link> for 100/day</>}
             </p>
+            {/* Matches are the one thing credits pay for: what's left, and the
+                minimum match % new ones must reach. */}
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-gray-100 pt-2 text-[12px] dark:border-white/10">
+              <Link to="/billing" className="text-gray-600 hover:text-blue-600 dark:text-slate-300">
+                <b className="tabular-nums text-gray-900 dark:text-white">{Math.floor(Number(account?.credits_balance ?? 0)).toLocaleString('en-IN')}</b> matches left
+              </Link>
+              <label className="inline-flex items-center gap-1 text-gray-500">
+                Min match
+                <select
+                  value={minMatch}
+                  onChange={(e) => void changeMinMatch(Number(e.target.value))}
+                  className="rounded border border-gray-200 bg-white px-1 py-0.5 text-[12px] font-semibold text-gray-800 dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
+                  title="New matches must reach this match %"
+                >
+                  {[50, 55, 60, 65, 70, 75, 80].map((v) => <option key={v} value={v}>{v}%</option>)}
+                </select>
+              </label>
+            </div>
             {gmailConnected === false ? (
               <button onClick={() => void connectGmail()} disabled={connecting} className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-amber-600 text-[12px] font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
                 <Mail size={13} />{connecting ? 'Opening Google…' : 'Connect Gmail to send'}
@@ -351,6 +382,12 @@ export default function TodayPage() {
                     <button onClick={() => setSelectedSubject(s.subject_id)} className={`w-full rounded-lg border bg-white px-3 py-2 text-left text-[13px] font-semibold dark:bg-[#20242a] ${s.subject_id === selectedSubject ? 'border-blue-500' : 'border-gray-200 dark:border-white/10'}`}>
                       {consultantTitle(s.role_title)}
                     </button>
+                  )}
+                  {(s.locked ?? 0) > 0 && (
+                    <Link to="/billing" className="mx-1.5 mt-1.5 flex items-center justify-between gap-2 rounded-md bg-amber-50 px-2 py-1.5 text-[12px] font-semibold text-amber-800 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-300">
+                      <span>{s.locked} new {s.locked === 1 ? 'match' : 'matches'} waiting</span>
+                      <span className="text-amber-700 underline underline-offset-2 dark:text-amber-200">Top up</span>
+                    </Link>
                   )}
                   <div className="flex items-center gap-2 px-1.5 pt-1.5 text-[12px] text-gray-500">
                     <span>{s.submitted_today} sent today</span>
@@ -418,7 +455,7 @@ export default function TodayPage() {
                     />
                   )}
                   <div className="flex items-center gap-2 px-1.5 pt-1.5 text-[12px]">
-                    <span className="text-gray-400">{Math.round(i.similarity * 100)}% match</span>
+                    <span className="text-gray-400">{i.fit ?? Math.round(i.similarity * 100)}% match</span>
                     {st === 'sent' && <span className="font-semibold text-emerald-600">Sent</span>}
                     {st === 'skipped' && <span className="text-gray-400">Skipped</span>}
                     {st === 'sending' && <span className="text-blue-600">Sending…</span>}
@@ -494,7 +531,7 @@ export default function TodayPage() {
                   <>
                     <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Submission email</p>
                     <p className="mb-1.5 text-[11px] text-gray-500">
-                      To {draft.toName} · from your Gmail · {resumes[subject.subject_id] ? `${resumes[subject.subject_id].name} attached` : 'no resume on file'} · 1 credit
+                      To {draft.toName} · from your Gmail · {resumes[subject.subject_id] ? `${resumes[subject.subject_id].name} attached` : 'no resume on file'} · free
                     </p>
                     {(item.duplicate || draft.duplicate) && <p className="mb-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-700">{item.duplicate || draft.duplicate}</p>}
                     <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} className="mb-1.5 h-8 w-full shrink-0 rounded-md border border-amber-200 bg-white px-2.5 text-[13px] outline-none focus:border-amber-400 dark:border-amber-400/20 dark:bg-[#1E2126]" />

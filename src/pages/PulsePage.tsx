@@ -5139,7 +5139,13 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         body: JSON.stringify({ target: aiMatchTarget, description, stream: true, seen_ids: previousRows.map((row) => row.lead_id), sample: isSampleRun }),
       });
       if (!response.ok || !response.body) {
-        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        const payload = await response.json().catch(() => null) as { error?: string; code?: string } | null;
+        if (response.status === 402 || payload?.code === 'insufficient_credits') {
+          // Matches are what credits pay for: offer the top-up, not an error.
+          setOutOfCreditsAction('see these matches');
+          setShowOutOfCreditsModal(true);
+          return;
+        }
         setAiMatchError(payload?.error ?? 'AI Match failed. You have not been charged.');
         return;
       }
@@ -6670,7 +6676,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                             type="button"
                             onClick={(e) => { e.stopPropagation(); void runAiMatch(post.description, post.title, post.id); }}
                             disabled={aiMatchRunning}
-                            title={lastRun ? 'Find new matches (free)' : 'Find matches (free)'}
+                            title={lastRun ? 'Find new matches · 1 credit (₹0.25) per new match' : 'Find matches · 1 credit (₹0.25) per match'}
                             className="inline-flex h-6 shrink-0 items-center gap-1 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2 text-[10px] font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <Sparkles size={10} />
@@ -6714,7 +6720,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                             type="button"
                             onClick={(e) => { e.stopPropagation(); void runAiMatch(item.description, item.title, item.postId); }}
                             disabled={aiMatchRunning}
-                            title="Find new matches (free)"
+                            title="Find new matches · 1 credit (₹0.25) per new match"
                             className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2 py-1 text-[10px] font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <Sparkles size={10} />

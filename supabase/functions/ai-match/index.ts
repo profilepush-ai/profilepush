@@ -45,10 +45,9 @@ const RESULT_LIMIT = 10;
 // "workable" in the bands the cards already use, so nothing that reaches a card
 // is something the product itself calls a weak fit.
 const MIN_DELIVERABLE_SCORE = 5;
-// AI Match is free: credits pay for opening job posts and sending AI Submits.
-// Set above 0 to charge per returned match again (held up front, refunded for
-// whatever is not delivered).
-const CREDITS_PER_RESULT = 0;
+// A match is the one thing credits pay for: 1 per match returned, held up
+// front and refunded for whatever is not delivered.
+const CREDITS_PER_RESULT = 1;
 const MIN_DESCRIPTION_CHARS = 40;
 const MAX_DESCRIPTION_CHARS = 8000;
 // Hotlists aren't embedded on insert (they arrive through several different
@@ -138,6 +137,10 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
   if (!membership) return jsonError("Account not found", 404);
   const accountId = membership.account_id as string;
+  // The account's minimum match % (50-80, default 70) is the floor on the
+  // 1-10 score: 70% means 7 or better.
+  const { data: prefRow } = await supabaseAdmin.from("accounts").select("match_min_score").eq("id", accountId).maybeSingle();
+  const minScore = Math.max(MIN_DELIVERABLE_SCORE, Math.min(8, Math.ceil(Number(prefRow?.match_min_score ?? 70) / 10)));
 
   const target: Target | null = body?.target === "jobs" || body?.target === "hotlist" ? body.target : null;
   if (!target) return jsonError("target must be 'jobs' or 'hotlist'");
@@ -318,7 +321,7 @@ Deno.serve(async (req: Request) => {
     // is something you can act on; "try widening the brief" is not.
     const blockerCounts = new Map<string, number>();
     for (const row of ranked) {
-      if (row.ai_score >= MIN_DELIVERABLE_SCORE) continue;
+      if (row.ai_score >= minScore) continue;
       for (const blocker of new Set(row.ai_blockers)) {
         blockerCounts.set(blocker, (blockerCounts.get(blocker) ?? 0) + 1);
       }
@@ -328,7 +331,7 @@ Deno.serve(async (req: Request) => {
       .slice(0, 3)
       .map(([reason, count]) => ({ reason, count }));
     const results = ranked
-      .filter((row) => row.ai_score >= MIN_DELIVERABLE_SCORE)
+      .filter((row) => row.ai_score >= minScore)
       .slice(0, resultLimit);
 
     if (results.length === 0) {
@@ -345,7 +348,7 @@ Deno.serve(async (req: Request) => {
         // supply, it just does not fit.
         scored_count: scoredCount,
         below_floor: scoredCount,
-        min_score: MIN_DELIVERABLE_SCORE,
+        min_score: minScore,
         top_blockers: topBlockers,
       };
     }
@@ -355,8 +358,23 @@ Deno.serve(async (req: Request) => {
     // delivered and new to them. The hold is still RESULT_LIMIT because how
     // many are new isn't known until scoring ends — the rest goes back here.
     const freshResults = results.filter((row) => !seenIds.has(String(row.lead_id)));
-    const creditsCharged = freshResults.length * CREDITS_PER_RESULT;
+    // A match this account already paid for (here or on the Tracker, in the
+    // last 30 days) is not charged again; the rest are recorded so the Tracker
+    // doesn't charge for them either.
+    const freshIds = freshResults.map((row) => String(row.lead_id));
+    const { data: paidRows } = freshIds.length
+      ? await supabaseAdmin.from("match_charges").select("lead_id").eq("account_id", accountId).in("lead_id", freshIds)
+        .gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
+      : { data: [] as Array<{ lead_id: string }> };
+    const paid = new Set((paidRows ?? []).map((r: { lead_id: string }) => String(r.lead_id)));
+    const chargeable = freshIds.filter((id) => !paid.has(id));
+    const creditsCharged = chargeable.length * CREDITS_PER_RESULT;
     await refund(maxCharge - creditsCharged);
+    if (chargeable.length) {
+      await supabaseAdmin.from("match_charges")
+        .insert(chargeable.map((leadId) => ({ account_id: accountId, subject_id: null, lead_id: leadId, source: "ai_match" })))
+        .then(() => {}, () => {});
+    }
 
     return {
       ok: true,
@@ -370,7 +388,7 @@ Deno.serve(async (req: Request) => {
       // "3 matches" can be explained rather than looking like a thin window.
       scored_count: scoredCount,
       below_floor: scoredCount - results.length,
-      min_score: MIN_DELIVERABLE_SCORE,
+      min_score: minScore,
       top_blockers: topBlockers,
       new_count: freshResults.length,
       matched_for: matchedFor,

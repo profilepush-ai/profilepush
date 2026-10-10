@@ -169,19 +169,25 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "gmail_not_connected" }, 400);
     }
 
-    const { data: chargeRows, error: chargeError } = await asUser.rpc("consume_feature_credit", {
-      p_account_id: accountId, p_amount: 1, p_feature: "gmail_send",
-      p_metadata: { job_id: jobId, subject_hotlist_id: subjectId, source: "submission_queue" },
-    });
-    const charge = Array.isArray(chargeRows) ? chargeRows[0] as { success: boolean; message: string } : null;
-    if (chargeError || !charge?.success) {
-      return respond({ error: "insufficient_credits", message: charge?.message ?? chargeError?.message ?? "Insufficient credits" }, 402);
+    // Sending is free: credits pay for matches only. Set SEND_COST above 0 to
+    // charge per send again (refunded if the send fails).
+    const SEND_COST = 0;
+    let charged = false;
+    if (SEND_COST > 0) {
+      const { data: chargeRows, error: chargeError } = await asUser.rpc("consume_feature_credit", {
+        p_account_id: accountId, p_amount: SEND_COST, p_feature: "gmail_send",
+        p_metadata: { job_id: jobId, subject_hotlist_id: subjectId, source: "submission_queue" },
+      });
+      const charge = Array.isArray(chargeRows) ? chargeRows[0] as { success: boolean; message: string } : null;
+      if (chargeError || !charge?.success) {
+        return respond({ error: "insufficient_credits", message: charge?.message ?? chargeError?.message ?? "Insufficient credits" }, 402);
+      }
+      charged = true;
     }
-    let charged = true;
     const refund = async () => {
       if (!charged) return;
       charged = false;
-      await admin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: 1, p_feature: "gmail_send" });
+      await admin.rpc("refund_feature_credit", { p_account_id: accountId, p_amount: SEND_COST, p_feature: "gmail_send" });
     };
 
     const { error: insertError } = await admin.from("pulse_ask_ai_requests").insert({
