@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toExtension } from '../../lib/extension';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
@@ -133,6 +134,9 @@ export function useMatchActions({ kind, accountId, userId, subjects, take, onCha
   const applySite = (item: CardItem) => {
     if (!item.lead) return;
     const url = item.lead.apply_url || item.lead.post_url;
+    // ProfilePush Apply (the Chrome extension), if installed, fills that site's
+    // form for this profile.
+    if (url) void toExtension({ type: 'pp-apply-context', url, subject_id: item.subject_id, card_id: item.card_id });
     // Inside ProfilePush: the app's in-app browser; on the web our apply
     // popup, with their site inside it where the site allows that, or beside
     // it in a small window where it doesn't (most career sites block being

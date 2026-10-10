@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "ProfilePush Apply",
+  "version": "0.1.0",
+  "description": "Fill job applications for your profiles in one click. You review and press Apply.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAreA2hSEOvUb19lTI0I7+RmQUsLOuAZVVW6/+bCeopGiTkuv5y55F6kWC3tJt8uSToOEVyxeWQJAg7nXOmECnXK35vonCmIWt9NrRnj6Ypf35Hy/cMCMy7s1gNyzgtTCOgCHwOL6oiKi6AbZLkReJV13814507KvL6TGz3qp9WNC3yHf1fnWp+LPfZ+/3vsw/anLoVDbiYJt73hv29Z/W6E++P8fKw9aNi1RGq0kc5insexz/6whb6/piRMwBjSIfcR8RuMMuWRtgfzyO1LgiHF4eFnVontPD0iJh3i6NiHa8dPG8YzQkAUifO5buS000vYi32IVzmjBgvF+fpTpGcQIDAQAB",
+  "permissions": ["storage", "sidePanel", "scripting", "activeTab", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": { "default_title": "ProfilePush Apply" },
+  "externally_connectable": { "matches": ["https://profilepush.ai/*", "https://*.profilepush.pages.dev/*", "http://localhost:5173/*"] },
+  "icons": { "128": "icon-128.png" }
+}

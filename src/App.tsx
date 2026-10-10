@@ -40,6 +40,7 @@ const BoardPage = lazy(() => import('./pages/BoardPage'));
 const TrackerPage = lazy(() => import('./pages/TrackerPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const TodayPage = lazy(() => import('./pages/TodayPage'));
+const ExtensionConnectPage = lazy(() => import('./pages/ExtensionConnectPage'));
 const PostApplicationsPage = lazy(() => import('./pages/PostApplicationsPage'));
 const HotlistRequestsPage = lazy(() => import('./pages/HotlistRequestsPage'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -315,6 +316,7 @@ export default function App() {
             <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/history" element={<ProtectedRoute><ErrorBoundary><HistoryPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/today" element={<ProtectedRoute><ErrorBoundary><TodayPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/extension" element={<ProtectedRoute><ErrorBoundary><ExtensionConnectPage /></ErrorBoundary></ProtectedRoute>} />
             {/* The earlier column board, kept for anyone who still wants it. */}
             <Route path="/board" element={<ProtectedRoute><ErrorBoundary><BoardPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
