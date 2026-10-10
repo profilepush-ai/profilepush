@@ -62,9 +62,9 @@ function CareerSitePill() {
   return (
     <span
       title="Posted on the firm's own careers site"
-      className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-[1px] text-[10px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-[1px] text-[11.5px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
     >
-      <Building2 size={10} strokeWidth={2} />
+      <Building2 size={11} strokeWidth={2} />
       Career site
     </span>
   );
@@ -712,7 +712,7 @@ export const LeadCard = memo(function LeadCard({
           {hideActions || onOpen ? (
             // Detail layout: the whole card selects the lead and the post opens
             // in the pane beside it, so the title stays plain text there.
-            <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
+            <p className="text-[15px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
           ) : (
             // The title is the way to open the original post; it replaced the
             // separate Preview button and calls the same handler, so the
@@ -720,7 +720,7 @@ export const LeadCard = memo(function LeadCard({
             lead.kind === 'hotlist' ? (
               // A consultant's original post is a bulk hotlist of ten people;
               // the card's own parsed fields are the useful view.
-              <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>
+              <p className="text-[15px] font-semibold leading-snug" style={titleToneStyle}>
                 {lead.title || 'Available Consultant'}
               </p>
             ) : (
@@ -729,7 +729,7 @@ export const LeadCard = memo(function LeadCard({
               onClick={(e) => { e.stopPropagation(); onPreview(lead); }}
               disabled={isLoadingPreview}
               title={isViewed ? 'Open post (viewed)' : 'Open post'}
-              className="text-left text-[13px] font-semibold leading-snug underline-offset-2 hover:underline disabled:cursor-wait"
+              className="text-left text-[15px] font-semibold leading-snug underline-offset-2 hover:underline disabled:cursor-wait"
               style={titleToneStyle}
             >
               {lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}
@@ -816,9 +816,9 @@ export const LeadCard = memo(function LeadCard({
                   <span
                     key={field.key}
                     title={field.title}
-                    className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] leading-tight ${compact ? (isDark ? 'bg-white/5 text-[#CBD5E1]' : 'bg-slate-100 text-slate-700') : `border ${isDark ? 'border-white/10 bg-white/5 text-[#CBD5E1]' : 'border-gray-200 bg-gray-50 text-slate-700'}`}`}
+                    className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[12px] leading-tight ${compact ? (isDark ? 'bg-white/5 text-[#CBD5E1]' : 'bg-slate-100 text-slate-700') : `border ${isDark ? 'border-white/10 bg-white/5 text-[#CBD5E1]' : 'border-gray-200 bg-gray-50 text-slate-700'}`}`}
                   >
-                    <field.icon size={10} className={isDark ? 'shrink-0 text-[#94A3B8]' : 'shrink-0 text-gray-400'} />
+                    <field.icon size={12} className={isDark ? 'shrink-0 text-[#94A3B8]' : 'shrink-0 text-gray-400'} />
                     <ClampedField value={field.value} linkClassName={linkClassName} isExpanded={field.isExpanded} onToggle={() => onToggleField(`${lead.id}:${field.key}`)} />
                   </span>
                 ))}
@@ -850,7 +850,7 @@ export const LeadCard = memo(function LeadCard({
       {/* Collapsed: the vendor company and when it was posted; the full poster line comes back with the full card. */}
       {compact && (
         <div className={`flex items-center gap-1 ${hideActions ? 'mt-2' : 'mt-1'}`}>
-          <p className="flex min-w-0 flex-1 items-center gap-1 truncate text-[11px] text-[#94A3B8]">
+          <p className="flex min-w-0 flex-1 items-center gap-1 truncate text-[12.5px] text-[#94A3B8]">
             {compactCompany && <span className="max-w-[55%] shrink-0 truncate font-medium text-slate-600 dark:text-slate-300">{compactCompany}</span>}
             {isCareerSiteLead(lead) && <CareerSitePill />}
             {compactCompany && !isCareerSiteLead(lead) && <span>·</span>}
@@ -860,7 +860,7 @@ export const LeadCard = memo(function LeadCard({
         </div>
       )}
       {!compact && (
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[#94A3B8]">
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[12.5px] text-[#94A3B8]">
         {isCareerSiteLead(lead) ? (
           // The firm itself, not a person with a ProfilePush profile page.
           <span className="inline-flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
