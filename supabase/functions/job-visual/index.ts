@@ -4,7 +4,7 @@ import Anthropic from "npm:@anthropic-ai/sdk@0.131.0";
 
 // Pictures for every match, made once per post and shared by all of its
 // matches (see the match_visuals migration). Claude writes the art direction
-// from the post's own details and the image model draws it.
+// from the post's own details and FLUX.2 on Cloudflare draws it.
 //   A job: two versions of one scene, the same direction drawn with a woman
 //   (a) and with a man (b), who never depend on the job's details.
 //   A consultant profile: one picture with no person in it.
@@ -20,7 +20,8 @@ const corsHeaders = {
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PROMPT_MODEL = "claude-sonnet-5-5";
-const IMAGE_MODEL = "gpt-image-1";
+// Drawn on Cloudflare Workers AI through our pp-image-worker (cloudflare/pp-image-worker).
+const IMAGE_MODEL = "flux-2-klein-4b";
 const BATCH = Number(Deno.env.get("JOB_VISUAL_BATCH") ?? "10") || 10;
 // A ceiling on pictures a day, against a runaway loop (not a budget).
 const DAILY_MAX = Number(Deno.env.get("JOB_VISUAL_DAILY_MAX") ?? "4000") || 0;
@@ -238,22 +239,21 @@ async function askClaude(lead: Lead): Promise<string> {
 
 class RateLimited extends Error {}
 
-async function drawImage(prompt: string): Promise<Uint8Array> {
-  const res = await fetch("https://api.openai.com/v1/images/generations", {
+async function drawImage(prompt: string): Promise<{ bytes: Uint8Array; type: string }> {
+  const res = await fetch(Deno.env.get("IMAGE_WORKER_URL") ?? "", {
     method: "POST",
-    headers: { Authorization: `Bearer ${Deno.env.get("OPENAI_API_KEY") ?? ""}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${Deno.env.get("IMAGE_WORKER_SECRET") ?? ""}`,
+      "Content-Type": "application/json",
+      "User-Agent": "ProfilePush-job-visual/1.0",
+    },
     signal: AbortSignal.timeout(120_000),
-    body: JSON.stringify({
-      model: IMAGE_MODEL, prompt, n: 1, size: "1024x1536",
-      quality: Deno.env.get("JOB_VISUAL_QUALITY") || "medium",
-      output_format: "webp", output_compression: 80,
-    }),
+    body: JSON.stringify({ prompt, width: 704, height: 1056 }),
   });
-  const json = await res.json().catch(() => ({}));
-  if (res.status === 429) throw new RateLimited(`Image model: 429 ${JSON.stringify(json?.error ?? json).slice(0, 200)}`);
-  const b64 = json?.data?.[0]?.b64_json;
-  if (!b64) throw new Error(`Image model: ${res.status} ${JSON.stringify(json?.error ?? json).slice(0, 200)}`);
-  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  if (res.status === 429) throw new RateLimited(`Image model busy: ${(await res.text()).slice(0, 200)}`);
+  const type = res.headers.get("Content-Type") ?? "";
+  if (!res.ok || !type.startsWith("image/")) throw new Error(`Image model: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  return { bytes: new Uint8Array(await res.arrayBuffer()), type };
 }
 
 type Row = { lead_id: string; variant: "a" | "b"; lead_kind: "job" | "hotlist"; attempts: number };
@@ -301,9 +301,9 @@ async function draw(admin: SupabaseClient, rows: Row[]) {
         const persona = r.lead_kind === "job" ? pairs[i][r.variant].who : null;
         const prompt = persona ? template.replaceAll("[PERSONA]", persona) : template;
         await admin.from("match_visuals").update({ persona, updated_at: now() }).eq("lead_id", r.lead_id).eq("variant", r.variant);
-        const bytes = await drawImage(prompt);
-        const path = `${leadId}-${r.variant}.webp`;
-        const { error: upErr } = await admin.storage.from("job-visuals").upload(path, bytes, { contentType: "image/webp", upsert: true });
+        const { bytes, type } = await drawImage(prompt);
+        const path = `${leadId}-${r.variant}.${type.includes("webp") ? "webp" : "jpg"}`;
+        const { error: upErr } = await admin.storage.from("job-visuals").upload(path, bytes, { contentType: type, upsert: true });
         if (upErr) throw new Error(upErr.message);
         const url = `${admin.storage.from("job-visuals").getPublicUrl(path).data.publicUrl}?v=${Date.now()}`;
         await admin.from("match_visuals").update({ status: "done", url, prompt, error: null, model: `${by} + ${IMAGE_MODEL}`, updated_at: now() })

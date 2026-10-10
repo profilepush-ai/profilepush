@@ -260,12 +260,14 @@ export default function SwipeDeck({
       {...gestures}
     >
       {picture ? (
-        // The post's AI picture fills the card behind everything, slowly
-        // zooming, darkened toward the bottom where the details sit.
+        // The post's AI picture: sharp in the top half; the same picture,
+        // blurred and darkened, behind the details in the bottom half.
         <div key={picture} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ animation: 'ppPicture .5s ease-out both' }}>
-          <img src={picture} alt="" decoding="async" className="h-full w-full object-cover"
-            style={{ animation: `ppKenBurns ${reelMs ? reelMs + 3000 : 18000}ms ease-out both`, animationPlayState: !reelMs || running ? 'running' : 'paused', transformOrigin: '60% 35%' }} />
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(11,15,26,.55) 0%, rgba(11,15,26,.05) 18%, rgba(11,15,26,.1) 38%, rgba(11,15,26,.82) 62%, #0b0f1a 88%)' }} />
+          <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full scale-125 object-cover blur-2xl" />
+          <div className="absolute inset-0 bg-[#0b0f1a]/60" />
+          <img src={picture} alt="" decoding="async" className="absolute inset-x-0 top-0 h-1/2 w-full object-cover object-[50%_22%]"
+            style={{ maskImage: 'linear-gradient(180deg, #000 70%, transparent)', WebkitMaskImage: 'linear-gradient(180deg, #000 70%, transparent)' }} />
+          <div className="absolute inset-x-0 top-0 h-[22%]" style={{ background: 'linear-gradient(180deg, rgba(11,15,26,.6), transparent)' }} />
         </div>
       ) : (
         <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)` }} />
@@ -321,8 +323,8 @@ export default function SwipeDeck({
           </div>
         )}
         <div style={section(T.skills)}><SkillTiles skills={fit.skills.slice(0, 6)} onDark /></div>
-        {/* Where there's no room, the badges above say the same. */}
-        {boxes && <div className="grid grid-cols-2 gap-2.5">
+        {/* Where there's no room (short phones, or a picture), the badges above say the same. */}
+        {boxes && !picture && <div className="grid grid-cols-2 gap-2.5">
           <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5" style={section(T.map)}>
             <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} onDark animate wave={false} at={T.map - 300} />
             <p className="truncate text-[12px] font-semibold text-white/85">{fit.location.label}</p>
@@ -332,7 +334,7 @@ export default function SwipeDeck({
             <p className="truncate text-[12px] font-semibold text-white/85">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr` : 'Rate not listed'}</p>
           </div>
         </div>}
-        <div style={section(boxes ? T.eng : T.map)}><EngagementRow eng={item.eng} onDark /></div>
+        <div style={section(boxes && !picture ? T.eng : T.map)}><EngagementRow eng={item.eng} onDark /></div>
       </div>
 
       <div data-rail className="absolute bottom-[76px] right-2 z-30 flex flex-col items-center gap-3.5">
