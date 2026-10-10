@@ -7,6 +7,7 @@ import { FitLine } from '../components/match/Visuals';
 import { fetchMarketSnapshot, initialSnapshot, type MarketSnapshot } from '../lib/marketSnapshot';
 import { priceLabels, useCurrency } from '../lib/currency';
 import { trackEvent } from '../lib/track';
+import { supabase } from '../lib/supabase';
 
 // The landing page, rebuilt around what ProfilePush is now: daily matches
 // as a reel with a picture each, apply in a tap (email or ProfilePush Apply
@@ -79,6 +80,9 @@ export default function LandingNew() {
   const [currency] = useCurrency();
   const price = priceLabels(currency);
   useEffect(() => { void fetchMarketSnapshot().then((s) => { if (s) setSnap(s); }); }, []);
+  // People who've signed up (landing_user_count), live.
+  const [users, setUsers] = useState<number | null>(null);
+  useEffect(() => { void supabase.rpc('landing_user_count' as never).then(({ data }) => { const v = Number(data); if (Number.isFinite(v)) setUsers(v); }); }, []);
   const start = (where: string) => () => trackEvent('landing_v2_start', { where });
 
   return (
@@ -117,7 +121,15 @@ export default function LandingNew() {
               <Link to="/signup" onClick={start('hero')} className="inline-flex h-12 items-center gap-2 rounded-full bg-[#2563EB] px-6 text-[16px] font-bold text-white shadow-[0_10px_30px_rgba(37,99,235,.35)] hover:bg-blue-700">Start free: 100 matches<ArrowRight size={18} /></Link>
               <a href="#how" className="inline-flex h-12 items-center rounded-full px-5 text-[16px] font-bold text-gray-700 ring-1 ring-gray-300 hover:bg-white dark:text-slate-200 dark:ring-white/15 dark:hover:bg-white/5">See how it works</a>
             </div>
-            <p className="mt-4 text-[13px] text-gray-500 dark:text-slate-400">For bench sales, vendors and job seekers · No card needed</p>
+            {users != null && users > 0 && (
+              <p className="mt-6 inline-flex items-center gap-2.5 text-[14.5px] font-semibold text-gray-700 dark:text-slate-200">
+                <span className="flex -space-x-2" aria-hidden="true">
+                  {['#2563EB', '#F97316', '#10b981', '#7c3aed'].map((c) => <span key={c} className="h-7 w-7 rounded-full border-2 border-[#f6f7fb] dark:border-[#1B1D21]" style={{ background: c }} />)}
+                </span>
+                Trusted by <b className="tabular-nums">{n(users)}</b> job posters and job seekers
+              </p>
+            )}
+            <p className="mt-2 text-[13px] text-gray-500 dark:text-slate-400">No card needed</p>
           </div>
           <div className="relative mx-auto h-[560px] w-[330px] sm:w-[360px]">
             <img src="/landing-v2/data.webp" alt="" className="absolute left-6 top-6 h-[480px] w-[300px] rotate-[-7deg] rounded-[26px] object-cover opacity-70 shadow-xl" />
