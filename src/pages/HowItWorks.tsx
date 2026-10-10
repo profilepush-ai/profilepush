@@ -6,9 +6,9 @@ import MarketingNav from '../components/MarketingNav';
 
 const phases = [
   // The current product, checked against the app (posting free with 3 open on
-  // the free plan, 1 credit per Tracker match, AI Request draft free, AI Submit
-  // draft 1 credit, Gmail send 1 credit refunded on failure, screening 10
-  // credits to the vendor). The old phases described retired tools (multi-
+  // the free plan, matches and AI Match free, drafts free, 1 credit to open a
+  // job post the first time, Gmail send 1 credit refunded on failure,
+  // screening 10 credits to the vendor). The old phases described retired tools (multi-
   // board search, Resume AI, Submission Queue, JD AI) that now redirect to /feed.
   {
     number: '1',
@@ -27,7 +27,7 @@ const phases = [
     points: [
       { label: 'The live market', text: 'New requirements and hotlist consultants arrive all day, thousands a month. Each one is read as it arrives.' },
       { label: 'Only what fits', text: 'Every arrival is matched against each consultant or requirement you posted. What does not fit falls away.' },
-      { label: 'AI Match on demand', text: 'Paste any consultant or requirement for ranked matches with fit and skill gaps: 1 credit per result, up to 10 a run.' },
+      { label: 'AI Match on demand', text: 'Paste any consultant or requirement for ranked matches with fit and skill gaps. AI Match is free.' },
     ],
   },
   {
@@ -35,7 +35,7 @@ const phases = [
     title: 'Matches land in your Tracker',
     tagline: 'A live column for every consultant and every requirement.',
     points: [
-      { label: 'A column each', text: 'Each thing you posted gets its own column, and new matches land in it all day, newest first. New matches are free and unlimited; credits are spent only when you send.' },
+      { label: 'A column each', text: 'Each thing you posted gets its own column, and new matches land in it all day, newest first. New matches are free and unlimited. Opening a job’s full post costs 1 credit the first time.' },
       { label: 'No noise twice', text: 'Reposts are merged into one card, and anything you mark "Not a match" never comes back.' },
       { label: 'Alerts', text: 'A notification on your phone (Android app) or browser when strong matches land, and an email if matches are waiting while you are away.' },
     ],
@@ -55,8 +55,8 @@ const phases = [
     title: 'Bench sales: AI Submit',
     tagline: 'The pitch writes itself, resume attached.',
     points: [
-      { label: 'Submit from the match', text: 'From a matched requirement, AI Submit writes the submission email with the resume attached. The draft costs 1 credit.' },
-      { label: 'Submissions', text: 'Submitting in the app is free. An AI Submit email costs 1 credit to draft and 1 credit to send from your Gmail, refunded if the send fails.' },
+      { label: 'Submit from the match', text: 'From a matched requirement, AI Submit writes the submission email with the resume attached. The draft is free.' },
+      { label: 'Submissions', text: 'Submitting in the app is free. An AI Submit email costs 1 credit when it sends from your Gmail, refunded if the send fails. Applying on a career site is free.' },
       { label: 'Inbound requests', text: 'When a vendor asks for a resume from your hotlist, it lands in one list with a clear status. Upload the resume, add a note, done. Replying never costs a credit.' },
     ],
   },

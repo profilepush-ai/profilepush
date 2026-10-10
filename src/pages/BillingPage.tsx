@@ -29,15 +29,15 @@ const PAGE_SIZE = 15;
 const CREDIT_TIERS = [249, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
 const DEFAULT_CREDIT_PACK = 500;
 
-// What actually deducts credits today — credits are charged only for
-// genuine AI-generation calls, not for previews, exports, or post creation.
-// Sourced directly from the remaining consume_feature_credit call sites:
-// ai-match/index.ts (ai_match_run), ask-ai-vendor-email/index.ts
-// (pulse_ask_ai_preview_generate) and generate-chat-message/index.ts
-// (inbox_ai_chat_draft). Predict Match % has
-// a real per-use cost in code too (PulsePage.tsx's consumeCredits()), but
-// currently charges nothing — gated behind BILLING_GATES_ENABLED
-// (feature-gates.ts), which is off site-wide.
+// What actually deducts credits today. Credits pay for two things: opening a
+// job's full post (open_post_content RPC, 1 credit the first time an account
+// opens a job) and sending email through the user's Gmail (gmail_send in
+// ask-ai-vendor-email, send-vendor-message and submit-consultant). Drafts,
+// AI Match runs (ai-match, CREDITS_PER_RESULT = 0), Tracker and Today matches
+// and Apply are free. Inbox AI chat drafts (generate-chat-message) still cost
+// 1 credit. Predict Match % has a per-use cost in code too (PulsePage.tsx's
+// consumeCredits()), but charges nothing while BILLING_GATES_ENABLED
+// (feature-gates.ts) is off site-wide.
 //
 // Video screening completion charges the JOB OWNER's account 10 credits
 // (charge_screening_completion_credit RPC, called from the
@@ -52,24 +52,35 @@ const CREDIT_MILESTONES: { key: string; label: string; amount: number; hint: str
 ];
 
 const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: string }[] = [
-  // ai-match/index.ts holds RESULT_LIMIT credits up front and refunds
-  // everything it does not deliver, so a thin window or a rematch that finds
-  // nothing new costs nothing — but the hold still needs the headroom.
   {
-    label: 'AI Match — per match returned',
+    label: 'Opening a job post',
     cost: '1 credit',
-    short: '1 credit per AI Match result, up to 10 a run',
-    note: 'Up to 10 per run, and only for matches you have not already been charged for: a rematch on the same text re-shows the previous results free and bills only the new ones. A run that finds nothing is refunded in full, though it needs 10 credits free to start.',
+    short: '1 credit to open a job’s full post, the first time',
+    note: 'In the Feed, Today, the Tracker and AI Match. Reopening a job you have already opened is free, and so are your own posts and consultant hotlists.',
+  },
+  {
+    label: 'AI Submit — email sent from your Gmail',
+    cost: '1 credit',
+    short: '1 credit per AI Submit sent from your Gmail',
+    note: 'One credit per email, so a bulk send to 25 recruiters is 25 credits. Writing and editing the draft is free, and a send Gmail rejects is refunded. AI Requests and Inbox replies sent from your Gmail cost the same.',
+  },
+  {
+    label: 'AI Match',
+    cost: 'Free',
+    short: 'AI Match is free',
   },
   {
     label: 'Tracker and Today matches',
     cost: 'Free',
     short: 'New matches for your consultants and requirements are free and unlimited',
-    note: 'Matches are added automatically all day as requirements and consultants are posted. You only spend credits when you act on one, such as sending a submission.',
+    note: 'Matches are added automatically all day as requirements and consultants are posted.',
   },
-  { label: 'AI Submit — generate draft', cost: '1 credit', short: '1 credit to generate an AI Submit draft', note: 'Only the first generation per post; reopening an already-generated draft is free. AI Request drafts (resume requests to a bench recruiter) are free.' },
+  {
+    label: 'Apply on career sites',
+    cost: 'Free',
+    short: 'Applying on a firm’s career site is free',
+  },
   { label: 'Inbox AI chat draft', cost: '1 credit', short: '1 credit per Inbox AI chat draft' },
-  { label: 'Email sent through your Gmail', cost: '1 credit', short: '1 credit per email sent through your connected Gmail', note: 'AI Submit, AI Request and Inbox replies sent from your Gmail. Refunded if Gmail rejects the send.' },
   { label: 'Video screening completed', cost: '10 credits', short: '10 credits when a candidate completes a video screening', note: 'Charged to the job post’s account when a candidate finishes their AI interview' },
 ];
 

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, Check, Copy, ExternalLink, FileText, Mail, Paperclip, RefreshCw, Send, Target, Upload, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
-import LeadCard, { hideEmails, loadLeadsByIds, type LeadCardProps, type SocialLead } from '../components/LeadCard';
+import LeadCard, { hideEmails, loadLeadsByIds, openLeadPostContent, OutOfCreditsError, type LeadCardProps, type SocialLead } from '../components/LeadCard';
 import ApplyOnSiteButton from '../components/ApplyOnSite';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -78,7 +78,7 @@ function CopyRow({ label, value }: { label: string; value: string | null | undef
 }
 
 export default function TodayPage() {
-  const { account, user } = useAuth();
+  const { account, user, refreshAccount } = useAuth();
   const { isDark } = useTheme();
   const accountId = account?.id;
   const [queue, setQueue] = useState<Queue | null>(null);
@@ -98,7 +98,7 @@ export default function TodayPage() {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [resumes, setResumes] = useState<Record<string, { url: string; name: string }>>({});
   const [uploadingFor, setUploadingFor] = useState('');
-  const [description, setDescription] = useState<{ jobId: string; text: string } | null>(null);
+  const [description, setDescription] = useState<{ jobId: string; text: string; outOfCredits?: boolean } | null>(null);
   const stopBulk = useRef(false);
 
   const load = useCallback(async () => {
@@ -143,17 +143,22 @@ export default function TodayPage() {
 
   useEffect(() => { setChecked(new Set()); }, [selectedSubject]);
 
-  // Column 3, top half: the full post.
+  // Column 3, top half: the full post. 1 credit the first time this account
+  // opens the job, as everywhere else.
   useEffect(() => {
     if (!selectedJob) { setDescription(null); return; }
     let alive = true;
-    void supabase.from('social_jobs').select('post_content, job_description').eq('id', selectedJob).maybeSingle()
-      .then(({ data }: { data: { post_content?: string; job_description?: string } | null }) => {
+    openLeadPostContent(selectedJob, 'job')
+      .then(({ content, charged }) => {
+        if (charged) void refreshAccount();
         // Addresses stay hidden, as everywhere else: Send is the way to reach them.
-        if (alive) setDescription({ jobId: selectedJob, text: cleanDescription(data?.post_content || data?.job_description || '') });
+        if (alive) setDescription({ jobId: selectedJob, text: cleanDescription(content === 'No post content available.' ? '' : content) });
+      })
+      .catch((e) => {
+        if (alive) setDescription({ jobId: selectedJob, text: '', outOfCredits: e instanceof OutOfCreditsError });
       });
     return () => { alive = false; };
-  }, [selectedJob]);
+  }, [selectedJob, refreshAccount]);
 
   // Column 3, bottom half: the email draft, or whether the firm's page can be
   // shown here.
@@ -448,7 +453,15 @@ export default function TodayPage() {
                 ) : (
                   <div className="px-4 py-3">
                     <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Job description</p>
-                    <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-gray-700 dark:text-slate-300">{description.text || 'No description in this post.'}</p>
+                    {description.outOfCredits ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-[12.5px] text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                        <p className="font-semibold">You&apos;re out of credits</p>
+                        <p className="mt-0.5">Opening a job&apos;s full post costs 1 credit the first time.</p>
+                        <Link to="/billing" className="mt-2 inline-flex h-8 items-center rounded-md bg-amber-600 px-3 text-[12px] font-semibold text-white hover:bg-amber-700">Buy credits</Link>
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-gray-700 dark:text-slate-300">{description.text || 'No description in this post.'}</p>
+                    )}
                     {item.source === 'career_site' && item.apply_url && frame?.jobId === item.job_id && !frame.embeddable && (
                       <a href={item.apply_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-[12px] font-semibold hover:bg-gray-50 dark:border-white/10">
                         <ExternalLink size={12} />Open on {item.poster || 'the firm'}'s site

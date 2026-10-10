@@ -6,7 +6,7 @@ import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
 import ScreeningSubmissionModal from '../components/ScreeningSubmissionModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import LeadCard, { fetchLeadPostContent, loadLeadsByIds, PostPreviewModal, type SocialLead } from '../components/LeadCard';
+import LeadCard, { fetchLeadPostContent, loadLeadsByIds, openLeadPostContent, OutOfCreditsError, PostPreviewModal, type SocialLead } from '../components/LeadCard';
 import { AiSubmitDialog, useAiSubmit } from '../components/AiSubmit';
 import SubmitApplicationModal from '../components/SubmitApplicationModal';
 import PostFormModal, { type UserPost } from '../components/posts/PostFormModal';
@@ -132,7 +132,7 @@ const isDefaultView = (v: ColumnView) => v.stage === 'new' && v.range.preset ===
 
 export default function BoardPage() {
   const navigate = useNavigate();
-  const { account, user } = useAuth();
+  const { account, user, refreshAccount } = useAuth();
   const { isDark } = useTheme();
   const isVendor = account?.active_persona === 'vendor';
   // Bench sales: a column per consultant (a hotlist row) holding requirements.
@@ -484,7 +484,9 @@ export default function BoardPage() {
     // Same rule as the Feed: consultants have no post worth opening.
     if (lead.kind === 'hotlist') return;
     try {
-      const content = await fetchLeadPostContent(lead.id, lead.kind);
+      // 1 credit the first time this account opens the job.
+      const { content, charged } = await openLeadPostContent(lead.id, lead.kind);
+      if (charged) void refreshAccount();
       if (account?.id) {
         void supabase.from('pulse_lead_actions' as never).upsert(
           { account_id: account.id, user_id: user?.id ?? null, lead_id: lead.id, action_type: 'post_content_viewed' } as never,
@@ -494,9 +496,10 @@ export default function BoardPage() {
       setPostPreview({ title: lead.title || 'Job Opportunity', content });
       setViewedAt((prev) => (prev[lead.id] ? prev : { ...prev, [lead.id]: new Date().toISOString() }));
     } catch (e) {
+      if (e instanceof OutOfCreditsError) { setOutOfCredits({ open: true, action: 'open this job post' }); return; }
       setError(e instanceof Error ? e.message : 'Could not load the post');
     }
-  }, [account?.id, user?.id]);
+  }, [account?.id, user?.id, refreshAccount]);
 
   function toggleSelect(card: Card) {
     setSelected((prev) => {
