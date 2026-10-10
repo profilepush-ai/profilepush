@@ -49,10 +49,10 @@ export default function CancellationRefundPolicy() {
           <Section title="2. Free Plan">
             <p>
               Every new account is free forever, with no payment or credit card required. New accounts receive
-              100 AI credits at signup, granted once, which never expire — there is no trial period and no point
-              at which the Free plan stops working. Every feature of the Platform is available on the Free plan,
-              which can keep up to 3 consultants or requirements open at a time; a one-time credit purchase adds
-              credits and removes that limit.
+              100 credits (100 matches) at signup, granted once, which never expire — there is no trial period and
+              no point at which the Free plan stops working. Every feature of the Platform is available on the Free
+              plan, with up to 10 new matches a day per consultant or requirement; a one-time credit purchase adds
+              credits and raises that to up to 100 a day.
             </p>
           </Section>
 

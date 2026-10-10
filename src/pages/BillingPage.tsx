@@ -547,7 +547,7 @@ export default function BillingPage() {
                   <p className="text-2xl font-extrabold text-gray-900">₹0<span className="text-[15px] font-semibold text-gray-500">/mo</span></p>
                   <p className="text-[13px] text-gray-500 mt-0.5 mb-4">100 free matches · never expire · no card required</p>
                   <ul className="space-y-2 text-[13px] text-gray-600 flex-1 mb-4">
-                    {['Feed, Today, Tracker, AI Match and Inbox', 'Opening jobs, AI Submit, bulk send and Apply are free', 'Unlimited team members', '3 open consultants or requirements on the Tracker (unlimited once you buy credits)'].map(item => (
+                    {['Feed, Today, Tracker, AI Match and Inbox', 'Opening jobs, AI Submit, bulk send and Apply are free', 'Unlimited team members', '10 new matches a day per consultant, 70% minimum match'].map(item => (
                       <li key={item} className="flex items-start gap-2">
                         <Check size={12} className="mt-0.5 shrink-0 text-emerald-600" />
                         {item}
@@ -689,7 +689,7 @@ export default function BillingPage() {
               <div className="rounded-2xl border border-gray-200 bg-white p-4">
                 <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Credits</p>
                 <p className="mt-1 text-2xl font-extrabold text-emerald-600">{fmtBalance(balance)}</p>
-                <p className="mt-1 text-[12px] text-gray-500">Cost varies by feature — see the breakdown below. Credits never expire.</p>
+                <p className="mt-1 text-[12px] text-gray-500">1 credit = 1 match (₹0.25). Everything else is free. Credits never expire.</p>
                 <button onClick={openBuyCreditsModal}
                   className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-[13px] font-bold text-white shadow-sm transition hover:bg-blue-700">
                   Buy more credits
@@ -1130,47 +1130,6 @@ function UsageLog({
 }
 
 // ── Tier comparison widget (currently unused, kept for potential future use) ──
-function TierComparison({ currentUsd }: { currentUsd: number }) {
-  const [open, setOpen] = useState(false);
-  const TIER_INFO = [
-    { credits: 500, label: '500 credits' },
-    { credits: 1000, label: '1,000 credits' },
-    { credits: 2000, label: '2,000 credits' },
-    { credits: 3000, label: '3,000 credits' },
-    { credits: 5000, label: '5,000 credits' },
-  ];
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-      <button className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 transition-colors"
-        onClick={() => setOpen(v => !v)}>
-        <div className="flex items-center gap-2">
-          <Layers size={13} className="text-gray-400" />
-          <span className="text-[13px] font-semibold text-gray-700">Credit Packs</span>
-        </div>
-        <ChevronDown size={12} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        <div className="px-3 pb-3 space-y-1">
-          {TIER_INFO.map(t => (
-            <div key={t.credits} className={`flex items-center justify-between rounded-lg px-3 py-2 text-[12px] transition-colors ${
-              t.credits === currentUsd ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
-            }`}>
-              <div className="flex items-center gap-2">
-                {t.credits === currentUsd && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
-                <span className={`font-semibold ${t.credits === currentUsd ? 'text-blue-700' : 'text-gray-700'}`}>{t.label}</span>
-
-              </div>
-              <span className={`font-bold ${t.credits === currentUsd ? 'text-blue-600' : 'text-gray-500'}`}>
-                ₹{t.credits.toLocaleString('en-IN')}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Buy credits modal ────────────────────────────────────────────────────────
 // The first-purchase offer doubles these packs only.
 const OFFER_TIERS = [249, 250, 500];

@@ -10,13 +10,11 @@ import {
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import LogoSpinner from '../components/LogoSpinner';
-import { PlanModal } from '../components/PlanModal';
 import LocationAutosuggestInput from '../components/LocationAutosuggestInput';
 import { firstPreferredLocation } from '../lib/location-normalization';
-import { loadRazorpay, TIERS, fmtINR, getBillingErrorMessage } from '../lib/billing-plan';
 import { buildScoreBreakdownDisplayItems, type RadarScoreBreakdownEntry } from '../lib/radar-match-ui';
 import { DEFAULT_AI_SCORING_MAX_ATTEMPTS, DEFAULT_AI_SCORING_POLL_MS, getAiScoringQueueState } from '../lib/ai-scoring-queue';
-import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { throttled, throttledAll } from '../lib/query-throttle';
 import { buildProfileBoardStats } from '../lib/job-finder-stats';
 import { useAuth } from '../contexts/AuthContext';
@@ -1058,7 +1056,7 @@ function JobPreviewModal({
 export default function JobFinder() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { account, user, subscription, refreshAccount } = useAuth();
+  const { account, user, subscription } = useAuth();
 
   const paramProfileId = searchParams.get('profileId');
   const paramRole = searchParams.get('role') ?? '';
@@ -1097,10 +1095,6 @@ export default function JobFinder() {
   const [maxResults, setMaxResults] = useState(25);
   const [, setFiltersFromProfile] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
-  const [showPlanModal, setShowPlanModal] = useState(false);
-  const [selectedNewTier, setSelectedNewTier] = useState<number>(500);
-  const [changingPlan, setChangingPlan] = useState(false);
-  const [subscribing, setSubscribing] = useState(false);
 
   // Mock jobs state (Dice / Indeed / CareerBuilder)
   const [allJobs, setAllJobs] = useState<MockJob[]>([]);
@@ -1231,97 +1225,10 @@ export default function JobFinder() {
     setToast({ message, type });
   }, []);
 
-  const hasActiveSub = subscription?.status === 'active' && (subscription.plan_credits ?? 0) > 0;
-  const pendingPeriodEnd = subscription?.current_period_end ?? null;
 
+  // Credits are bought on the Billing page; there is no subscription.
   function openUpgradeModal() {
-    const idx = hasActiveSub ? TIERS.indexOf(subscription?.plan_credits ?? 0) : -1;
-    setSelectedNewTier(idx >= 0 && idx < TIERS.length - 1 ? TIERS[idx + 1] : 500);
-    setShowPlanModal(true);
-  }
-
-  async function handleSubscribe() {
-    setSubscribing(true);
-    try {
-      await loadRazorpay();
-      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
-      const { data, error } = await supabase.functions.invoke('razorpay-create-subscription', {
-        body: { plan_credits: selectedNewTier },
-        headers,
-      });
-      if (error || !data?.subscription_id) {
-        throw new Error(getBillingErrorMessage(error, 'Failed to create subscription'));
-      }
-      const rzp = new window.Razorpay({
-        key: data.key_id,
-        subscription_id: data.subscription_id,
-        name: 'ProfilePush',
-        description: `Pro Plan – ${fmtINR(selectedNewTier)}/month (${selectedNewTier} credits)`,
-        image: '/favicon.svg',
-        handler: async () => {
-          showToast('Subscription activated! Credits will be added shortly.', 'success');
-          await refreshAccount();
-          setShowPlanModal(false);
-        },
-        prefill: { name: user?.user_metadata?.full_name ?? '', email: user?.email ?? '' },
-        theme: { color: '#2563eb' },
-        modal: { ondismiss: () => setSubscribing(false) },
-      });
-      rzp.open();
-    } catch (err) {
-      const msg = getBillingErrorMessage(err, 'Failed to start subscription');
-      showToast(msg, 'error');
-      setSubscribing(false);
-    }
-  }
-
-  async function handleChangePlan() {
-    if (!subscription || selectedNewTier === subscription.plan_credits) return;
-    setChangingPlan(true);
-    try {
-      const isUpgrade = selectedNewTier > subscription.plan_credits;
-      const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
-      const { data, error } = await supabase.functions.invoke('razorpay-change-plan', {
-        body: { new_plan_credits: selectedNewTier },
-        headers,
-      });
-      if (error || !data) {
-        throw new Error(getBillingErrorMessage(error, 'Failed to change plan'));
-      }
-      if (isUpgrade && data.order_id) {
-        await loadRazorpay();
-        const rzp = new window.Razorpay({
-          key: data.key_id, order_id: data.order_id, amount: data.amount_inr_paise, currency: 'INR',
-          name: 'ProfilePush',
-          description: `Upgrade ₹${data.old_plan_credits} → ₹${data.new_plan_credits}`,
-          image: '/favicon.svg',
-          handler: async () => {
-            showToast(`Upgraded to ${fmtINR(selectedNewTier)}/mo! Extra credits added.`, 'success');
-            await refreshAccount();
-            setShowPlanModal(false);
-          },
-          prefill: { email: user?.email ?? '' },
-          theme: { color: '#2563eb' },
-        });
-        rzp.open();
-      } else {
-        showToast(`Downgrade to ${fmtINR(selectedNewTier)}/mo scheduled for next renewal.`, 'success');
-        await refreshAccount();
-        setShowPlanModal(false);
-      }
-    } catch (err) {
-      const msg = getBillingErrorMessage(err, 'Failed to change plan');
-      showToast(msg, 'error');
-      setChangingPlan(false);
-    }
-  }
-
-  async function handlePlanSubmit() {
-    if (hasActiveSub) {
-      await handleChangePlan();
-    } else {
-      await handleSubscribe();
-    }
+    navigate('/billing');
   }
 
   const isPaidPlan = isPaidPlanEffective(subscription);
@@ -4799,21 +4706,6 @@ export default function JobFinder() {
             </div>
           </div>
         </div>
-      )}
-
-      {showPlanModal && (
-        <PlanModal
-          hasActiveSub={hasActiveSub}
-          subscription={subscription}
-          selectedNewTier={selectedNewTier}
-          setSelectedNewTier={setSelectedNewTier}
-          pendingPeriodEnd={pendingPeriodEnd}
-          changingPlan={changingPlan}
-          subscribing={subscribing}
-          onClose={() => setShowPlanModal(false)}
-          onSubmit={handlePlanSubmit}
-          user={user}
-        />
       )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}

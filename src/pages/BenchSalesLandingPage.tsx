@@ -20,14 +20,14 @@ const TITLE = 'ProfilePush for Bench Sales — C2C Requirements, Matched';
 const DESCRIPTION = 'Paste your hotlist and every consultant gets a live column of matching C2C requirements. AI Submit sends from your own Gmail. Submissions are free.';
 const CANONICAL = 'https://profilepush.ai/bench-sales';
 
-// Checked against the app: submissions and posting are free (3 open on the
+// Checked against the app: submissions and posting are free (no open-post limit on the
 // free plan, up to 50 per paste), each Tracker match is 1 credit, screening is
 // billed to the vendor. The FAQPage JSON-LD is built from this list.
 const FAQS = [
   { q: "How do bench sales recruiters find C2C requirements?", a: "Paste your hotlist. Every new requirement is matched against each consultant, and the fits land in that consultant’s live column, with an alert when a strong one arrives." },
   { q: "How do I find vendors who need my consultants?", a: "Every new requirement is matched against your consultants. The ones that fit show up in each consultant’s column, with the vendor who posted them." },
   { q: "Do I need to keep checking?", a: "No. You get a notification when strong matches land, and an email if new matches are waiting and you haven’t been back." },
-  { q: "Can I post the whole bench at once?", a: "Yes. Paste the hotlist table, up to 50 consultants at a time, and every one is read and posted together. The free plan keeps 3 consultants open at once; buying any credit pack removes that limit." },
+  { q: "Can I post the whole bench at once?", a: "Yes. Paste the hotlist table, up to 50 consultants at a time, and every one is read and posted together. Each consultant gets up to 10 new matches a day on the free plan, or up to 100 on a paid one." },
   { q: "What does submitting cost?", a: "Nothing. Submitting, AI Submit from your Gmail, bulk send and Apply are all free. You pay only for matches: ₹0.25 each, so ₹250 buys 1,000, and you start with 100 free." },
   { q: "Is there a mobile app?", a: "Yes. ProfilePush is on Google Play for Android, so match alerts reach your phone. It also runs in any web browser." },
   { q: "Does my consultant need an account?", a: "No, and we never contact them. The screening link goes to you only." },
@@ -802,7 +802,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                         <span className="c f">
                           Free
                           <small>
-                            3 open on the free plan
+                            10 matches a day per post
                           </small>
                         </span>
                       </li>
@@ -837,9 +837,9 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                         </span>
                       </li>
                       <li>
-                        Credit packs
+                        Pay per match
                         <span className="c">
-                          from ₹249
+                          ₹0.25 a match
                           <small>
                             no subscription
                           </small>

@@ -1000,8 +1000,8 @@ function renderWeeklyResults(r: WeeklyResult, unsubscribeUrl: string, appBaseUrl
           <tr>
             <td style="padding-bottom: 8px;">
               <div style="background: ${lowCredits ? "#fff7ed" : "#f8fafc"}; border-radius: 8px; padding: 14px 16px; font-size: 14px; color: #1e293b;">
-                <b>${credits.toLocaleString("en-US")} credits left.</b>
-                ${lowCredits ? ` Top up from ₹249 to keep matching and sending next week. <a href="${base}/billing?openPlan=1" style="color: #2563eb; font-weight: 700;">Top up</a>` : ""}
+                <b>${credits.toLocaleString("en-US")} matches left.</b>
+                ${lowCredits ? ` New matches wait until you top up: ₹250 buys 1,000. <a href="${base}/billing?openPlan=1" style="color: #2563eb; font-weight: 700;">Top up</a>` : ""}
               </div>
             </td>
           </tr>
@@ -1024,7 +1024,7 @@ ${stats.map(([label, value]) => `- ${label}: ${value}`).join("\n")}
 ${matchLine ? `\n${matchLine}\n` : ""}
 ${matchCta}: ${matchUrl}
 
-${credits} credits left.${lowCredits ? ` Top up from ₹249: ${base}/billing?openPlan=1` : ""}
+${credits} matches left.${lowCredits ? ` New matches wait until you top up (₹250 buys 1,000): ${base}/billing?openPlan=1` : ""}
 
 ---
 Your ProfilePush week, every Friday. Unsubscribe: ${unsubscribeUrl}`;

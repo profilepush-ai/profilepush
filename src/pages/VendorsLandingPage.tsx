@@ -21,14 +21,14 @@ const TITLE = 'ProfilePush for Vendors — Find Bench Consultants with AI';
 const DESCRIPTION = 'Post a requirement and ProfilePush matches it to bench consultants posted daily. Fits land in your Tracker; AI Request asks for the resume from your Gmail.';
 const CANONICAL = 'https://profilepush.ai/vendors';
 
-// Checked against the app: posting is free (3 open on the free plan), each
-// Tracker match is 1 credit, a finished screening is 10. The FAQPage JSON-LD
+// Checked against the app: posting is free, each Tracker match is 1 credit
+// (₹0.25), sending and screenings are free. The FAQPage JSON-LD
 // is built from this list, so it always matches what is on the page.
 const FAQS = [
   { q: "How do vendors find bench consultants?", a: "Post your requirement, or paste it as text. The AI Copilot matches it against the bench consultants posted every day. Strong matches land in your Tracker, and you get a notification." },
   { q: "What is an AI Request?", a: "An email to the bench recruiter asking for the consultant’s resume, rate, visa status and availability. The draft is free, and it sends from your own Gmail." },
   { q: "Is video screening available?", a: "Yes, as an option. Tick “include a video screening link” on any request. The consultant records a short adaptive interview, and you get a recording, a score and a summary." },
-  { q: "What costs credits?", a: "Only matches: each new consultant matched to your requirement costs ₹0.25, so ₹250 buys 1,000, and you start with 100 free. Posting, AI Requests sent from your Gmail and video screenings are free. The free plan keeps 3 requirements open; buying any amount removes that limit." },
+  { q: "What costs credits?", a: "Only matches: each new consultant matched to your requirement costs ₹0.25, so ₹250 buys 1,000, and you start with 100 free. Posting, AI Requests sent from your Gmail and video screenings are free. Free accounts get up to 10 new matches a day per requirement; paid accounts up to 100." },
   { q: "Is there a mobile app?", a: "Yes. ProfilePush is on Google Play for Android, so match alerts reach your phone. It also runs in any web browser." },
   { q: "Is my data safe?", a: "Yes. All data is encrypted, and it is never sold or shared. Emails send from your connected Gmail address." },
 ];
@@ -696,7 +696,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                         <span className="c f">
                           Free
                           <small>
-                            3 open on the free plan
+                            10 matches a day per post
                           </small>
                         </span>
                       </li>
@@ -737,9 +737,9 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                         </span>
                       </li>
                       <li>
-                        Credit packs
+                        Pay per match
                         <span className="c">
-                          from ₹249
+                          ₹0.25 a match
                           <small>
                             no subscription
                           </small>

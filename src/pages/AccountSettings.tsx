@@ -772,8 +772,8 @@ export default function AccountSettings() {
                       </div>
                       <p className="text-[13px] text-gray-400 mt-1">
                         {hasPaid
-                          ? 'Unlimited open consultants or requirements. Top up credits any time.'
-                          : 'Up to 3 open consultants or requirements. Buy credits once to unlock unlimited.'}
+                          ? 'Up to 100 new matches a day per consultant, and you choose the minimum match. Top up any time.'
+                          : '10 new matches a day per consultant at a 70% minimum. Any top-up from ₹100 raises it to 100 a day and lets you choose the minimum.'}
                       </p>
                     </div>
                     {isOwner && (
