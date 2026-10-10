@@ -258,7 +258,7 @@ export default function AiMatchProcessing({ kind, phase, pct }: {
       visual: <SettingsVisual minMatch={minMatch} onMinMatch={changeMinMatch} paid={plan.paid} dailyCap={plan.dailyCap} />,
       action: !plan.paid
         ? <Link to="/billing" className="amw-cta">Unlock from ₹100</Link>
-        : savedMin ? done(`Saved · ${minMatch}% minimum`) : null,
+        : savedMin ? done(`Saved · ${minMatch}% minimum`) : <Link to="/settings/matching" className="amw-cta">All matching settings</Link>,
     },
   ];
   const index = (Math.floor((now - slideFrom.current) / SLIDE_MS) + slideBase) % slides.length;

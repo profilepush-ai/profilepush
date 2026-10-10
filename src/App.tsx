@@ -24,6 +24,7 @@ const ProfileDetails = lazy(() => import('./pages/ProfileDetails'));
 const JobFinder = lazy(() => import('./pages/JobFinder'));
 const WishlistPage = lazy(() => import('./pages/WishlistPage'));
 const AccountSettings = lazy(() => import('./pages/AccountSettings'));
+const MatchingSettingsPage = lazy(() => import('./pages/MatchingSettingsPage'));
 const SupportPage = lazy(() => import('./pages/SupportPage'));
 const RoadmapPage = lazy(() => import('./pages/RoadmapPage'));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
@@ -345,6 +346,7 @@ export default function App() {
             <Route path="/support" element={<ProtectedRoute><ErrorBoundary><SupportPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/roadmap" element={<ProtectedRoute><ErrorBoundary><RoadmapPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/settings/matching" element={<ProtectedRoute><ErrorBoundary><MatchingSettingsPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/website" element={<ProtectedRoute><ErrorBoundary><WebsitePage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker/requests" element={<Navigate to="/tracker" replace />} />
             <Route path="/tracker/submissions" element={<Navigate to="/tracker" replace />} />
