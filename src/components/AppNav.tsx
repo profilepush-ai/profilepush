@@ -5,7 +5,7 @@ import {
   Building2, CreditCard, AlertTriangle,
   Bell, BellRing, Check, X,
   Briefcase, Mail, UserRound, Rss,
-  Kanban, Globe, Target, SlidersHorizontal, UsersRound, History, Gift
+  Kanban, Globe, Target, SlidersHorizontal, UsersRound, History, Gift, Search
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -119,8 +119,9 @@ function CreditsChip({ balance }: { balance: number }) {
 // everywhere else: Vendor works the Jobs side (blue), Bench Sales the
 // hotlist side (orange).
 const PERSONA_OPTIONS = [
-  { id: 'vendor', label: 'Vendor', icon: Briefcase, iconClass: 'text-blue-600' },
-  { id: 'bench_sales', label: 'Bench Sales', icon: UserRound, iconClass: 'text-orange-500' },
+  { id: 'job_seeker', label: 'Job seeker', icon: Search, iconClass: 'text-emerald-600' },
+  { id: 'bench_sales', label: 'Recruiter (bench sales)', icon: UserRound, iconClass: 'text-orange-500' },
+  { id: 'vendor', label: 'Job poster (vendor)', icon: Briefcase, iconClass: 'text-blue-600' },
 ] as const;
 
 // Persona choice, shown as a section of the avatar menu. Choosing writes
@@ -131,10 +132,12 @@ function PersonaMenuSection({ onChosen }: { onChosen: () => void }) {
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
 
   if (!account?.active_persona) return null;
+  // A job seeker is the profile side with accounts.job_seeker on.
+  const current = account.job_seeker ? 'job_seeker' : account.active_persona;
 
   async function choose(persona: string) {
     if (switchingTo) return;
-    if (persona === account?.active_persona) { onChosen(); return; }
+    if (persona === current) { onChosen(); return; }
     setSwitchingTo(persona);
     try {
       const { error } = await supabase.rpc('set_active_persona' as never, { p_persona: persona } as never);
@@ -149,7 +152,7 @@ function PersonaMenuSection({ onChosen }: { onChosen: () => void }) {
     <div role="group" aria-label="Working as" className="border-b border-gray-100 pb-1 mb-1">
       <p className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Working as</p>
       {PERSONA_OPTIONS.map((option) => {
-        const selected = account.active_persona === option.id;
+        const selected = current === option.id;
         return (
           <button
             key={option.id}

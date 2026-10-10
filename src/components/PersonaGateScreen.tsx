@@ -1,24 +1,31 @@
 import { useState } from 'react';
-import { Briefcase, UserRound } from 'lucide-react';
+import { Briefcase, Search, UserRound } from 'lucide-react';
 import Logo from './Logo';
 import LogoSpinner from './LogoSpinner';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
-type Persona = 'vendor' | 'bench_sales';
+// job_seeker works the profile side like bench sales (accounts.job_seeker).
+type Persona = 'job_seeker' | 'bench_sales' | 'vendor';
 
 const OPTIONS: Array<{ id: Persona; icon: typeof Briefcase; title: string; description: string }> = [
   {
-    id: 'vendor',
-    icon: Briefcase,
-    title: 'Vendor',
-    description: 'I post Job requirements and request resumes off Hotlist listings.',
+    id: 'job_seeker',
+    icon: Search,
+    title: 'Job seeker',
+    description: "I'm looking for a job. Add my profile and get matched to jobs every day.",
   },
   {
     id: 'bench_sales',
     icon: UserRound,
-    title: 'Bench Sales',
-    description: 'I post my Hotlist of consultants and apply to Jobs on their behalf.',
+    title: 'Recruiter (bench sales)',
+    description: 'I market profiles and apply to jobs for them.',
+  },
+  {
+    id: 'vendor',
+    icon: Briefcase,
+    title: 'Job poster (vendor)',
+    description: 'I post jobs, get matched profiles and ask for resumes.',
   },
 ];
 
