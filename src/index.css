@@ -424,3 +424,22 @@
 @media (prefers-reduced-motion: reduce) {
   [class*="animate-[pp"] { animation: none !important; }
 }
+
+/* Match animations: each one shows the data (score counting up, matched
+   skills lighting up, the route between two states, the gap between two
+   rates). Short, and off for people who ask for less motion. */
+@keyframes ppPop { from { opacity: 0; transform: scale(.6); } 70% { opacity: 1; transform: scale(1.08); } to { opacity: 1; transform: none; } }
+@keyframes ppFadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes ppFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ppTileIn { from { opacity: 0; transform: translateY(10px) scale(.88); filter: grayscale(1) brightness(.7); } 55% { opacity: 1; filter: grayscale(1) brightness(.7); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes ppStamp { from { opacity: 0; transform: scale(2.2) rotate(-25deg); } 70% { opacity: 1; transform: scale(.9) rotate(0); } to { opacity: 1; transform: none; } }
+@keyframes ppWave { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+@keyframes ppLightUp { from { background: var(--pp-base); transform: scale(.7); } 60% { transform: scale(1.45); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pp-lit) 40%, transparent); } to { background: var(--pp-lit); transform: none; box-shadow: 0 0 0 0 transparent; } }
+@keyframes ppDraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes ppSlideLeft { from { left: var(--pp-from); } to { left: var(--pp-to); } }
+@keyframes ppGlow { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.55); } 100% { box-shadow: 0 0 0 18px rgba(16,185,129,0); } }
+@keyframes ppPing { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(2.4); opacity: 0; } }
+@keyframes ppActionStamp { 0% { opacity: 0; transform: translate(-50%, -50%) scale(2.4) rotate(-18deg); } 25% { opacity: 1; transform: translate(-50%, -50%) scale(.95) rotate(-12deg); } 70% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(-12deg); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.1) rotate(-12deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .pp-anim, .pp-anim * { animation: none !important; transition: none !important; }
+}

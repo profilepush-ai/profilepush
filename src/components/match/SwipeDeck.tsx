@@ -27,6 +27,17 @@ export default function SwipeDeck({
   const [dir, setDir] = useState<'n' | 'p' | null>('n');
   const start = useRef<{ x: number; y: number } | null>(null);
   const swiped = useRef(false);
+  // The card follows the finger while it's dragged sideways, then flies off.
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  // A big stamp after Apply, Save or Pass, so the action is unmistakable.
+  const [stamp, setStamp] = useState<{ text: string; color: string; n: number } | null>(null);
+  const stampTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flash = (text: string, color: string) => {
+    setStamp((p) => ({ text, color, n: (p?.n ?? 0) + 1 }));
+    if (stampTimer.current) clearTimeout(stampTimer.current);
+    stampTimer.current = setTimeout(() => setStamp(null), 900);
+  };
+  useEffect(() => () => { if (stampTimer.current) clearTimeout(stampTimer.current); }, []);
   const index = items.findIndex((i) => i.card_id === currentId);
   // Back from the detail view: show the card it ended on.
   useEffect(() => {
@@ -71,6 +82,12 @@ export default function SwipeDeck({
   const shell = inline
     ? 'relative flex h-full min-h-0 select-none flex-col overflow-hidden rounded-[22px] bg-[#0b0f1a] text-white'
     : `fixed inset-0 ${layer} flex select-none flex-col overflow-hidden bg-[#0b0f1a] pt-[env(safe-area-inset-top)] text-white`;
+  const settle = (el: HTMLDivElement | null) => {
+    if (!el) return;
+    el.style.transition = 'transform .25s cubic-bezier(.2,.8,.2,1), opacity .25s';
+    el.style.transform = '';
+    el.style.opacity = '';
+  };
   const corner = inline || !onClose
     ? null
     : <button type="button" onClick={onClose} aria-label="Close" className="grid h-10 w-10 place-items-center rounded-full hover:bg-white/10"><X size={22} /></button>;
@@ -82,27 +99,57 @@ export default function SwipeDeck({
       onTouch?.();
       start.current = (e.target as HTMLElement).closest('[data-rail]') ? null : { x: e.clientX, y: e.clientY };
     },
+    onPointerMove: (e: ReactPointerEvent) => {
+      const s = start.current;
+      const el = cardRef.current;
+      if (!s || !el) return;
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy)) return;
+      el.style.transition = 'none';
+      el.style.transform = `translateX(${dx}px) rotate(${dx / 22}deg)`;
+      el.style.opacity = String(Math.max(0.35, 1 - Math.abs(dx) / 500));
+    },
     onPointerUp: (e: ReactPointerEvent) => {
       const s = start.current;
       start.current = null;
       if (!s) return;
       const dx = e.clientX - s.x;
       const dy = e.clientY - s.y;
+      const el = cardRef.current;
       if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.5) {
         swiped.current = true;
+        settle(el);
         if (dy < 0) onSwipeUp?.(); else onSwipeDown?.();
         return;
       }
-      if (Math.abs(dx) > 50) { swiped.current = true; step(dx < 0 ? 1 : -1); }
+      const d: 1 | -1 = dx < 0 ? 1 : -1;
+      if (Math.abs(dx) > 50 && !(d === -1 && index <= 0)) {
+        swiped.current = true;
+        if (el) {
+          el.style.transition = 'transform .18s ease-in, opacity .18s ease-in';
+          el.style.transform = `translateX(${dx < 0 ? -130 : 130}%) rotate(${dx < 0 ? -14 : 14}deg)`;
+          el.style.opacity = '0';
+        }
+        setTimeout(() => step(d), 150);
+        return;
+      }
+      settle(el);
     },
-    onPointerCancel: () => { start.current = null; },
+    onPointerCancel: () => { start.current = null; settle(cardRef.current); },
   };
+  const stampEl = stamp ? (
+    <span key={stamp.n} aria-hidden="true" className="pointer-events-none absolute left-1/2 top-[46%] z-40 rounded-2xl border-[5px] px-5 py-1.5 text-[34px] font-black tracking-[0.12em]"
+      style={{ color: stamp.color, borderColor: stamp.color, background: 'rgba(11,15,26,.35)', animation: 'ppActionStamp 900ms ease-out both' }}>
+      {stamp.text}
+    </span>
+  ) : null;
   // The home-bar handle: swipe up from here for the menus.
   const handle = onSwipeUp ? <span aria-hidden="true" className="pointer-events-none absolute bottom-[calc(6px+env(safe-area-inset-bottom))] left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-white/40" /> : null;
 
   if (!item || !item.lead) {
     return (
-      <div className={shell} role={inline || !onClose ? 'region' : 'dialog'} aria-label="All caught up" {...gestures}>
+      <div className={`${shell} pp-anim`} role={inline || !onClose ? 'region' : 'dialog'} aria-label="All caught up" {...gestures}>
         <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: 'radial-gradient(closest-side, #10b981, transparent)' }} />
         {topSlot}
         {corner && <div className="relative z-10 flex justify-end p-2">{corner}</div>}
@@ -119,6 +166,7 @@ export default function SwipeDeck({
             <button type="button" onClick={onClose} className="mt-2 rounded-full bg-white/15 px-5 py-2.5 font-bold">Back to Today</button>
           )}
         </div>
+        {stampEl}
         {handle}
       </div>
     );
@@ -136,7 +184,7 @@ export default function SwipeDeck({
 
   return (
     <div
-      className={shell}
+      className={`${shell} pp-anim`}
       role={inline || !onClose ? 'region' : 'dialog'}
       aria-label="Swipe through matches"
       {...gestures}
@@ -155,37 +203,37 @@ export default function SwipeDeck({
       <button type="button" aria-label="Previous match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(-1); }} className="absolute bottom-[70px] left-0 top-[70px] z-10 w-[30%]" />
       <button type="button" aria-label="Next match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(1); }} className="absolute bottom-[70px] right-0 top-[70px] z-10 w-[30%]" />
 
-      <div key={item.card_id} style={{ justifyContent: 'safe center' }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20 ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
-        <div className="flex items-center gap-2.5">
+      <div key={item.card_id} ref={cardRef} style={{ justifyContent: 'safe center' }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20 ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+        <div className="flex items-center gap-2.5" style={{ animation: 'ppFadeUp 350ms cubic-bezier(.2,.8,.2,1) 40ms both' }}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
           <div className="min-w-0"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-white/75">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
         </div>
-        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight">{leadTitle(lead)}</h2>
-        <div className="flex items-center gap-3"><FitRing value={item.fit ?? Math.round(item.similarity * 100)} size={72} onDark /><FitBadges fit={fit} onDark /></div>
-        <SkillTiles skills={fit.skills.slice(0, 6)} onDark />
+        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={{ animation: 'ppFadeUp 400ms cubic-bezier(.2,.8,.2,1) 90ms both' }}>{leadTitle(lead)}</h2>
+        <div className="flex items-center gap-3"><FitRing value={item.fit ?? Math.round(item.similarity * 100)} size={72} onDark animate /><FitBadges fit={fit} onDark animate /></div>
+        <SkillTiles skills={fit.skills.slice(0, 6)} onDark animate />
         {/* Where there's no room, the badges above say the same. */}
         {boxes && <div className="grid grid-cols-2 gap-2.5">
           <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5">
-            <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} onDark />
+            <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} onDark animate />
             <p className="truncate text-[12px] font-semibold text-white/85">{fit.location.label}</p>
           </div>
           <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5">
-            <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} onDark />
+            <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} onDark animate />
             <p className="truncate text-[12px] font-semibold text-white/85">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr` : 'Rate not listed'}</p>
           </div>
         </div>}
       </div>
 
       <div data-rail className="absolute bottom-[76px] right-2 z-30 flex flex-col items-center gap-3.5">
-        <button type="button" className={rail} onClick={() => onApply(item)} title={kind === 'job' ? 'Ask for the resume' : site ? 'Apply on their site' : 'Apply by email'}>
+        <button type="button" className={rail} onClick={() => { if (kind === 'hotlist') flash('APPLIED', '#34d399'); onApply(item); }} title={kind === 'job' ? 'Ask for the resume' : site ? 'Apply on their site' : 'Apply by email'}>
           <span className={`grid h-[58px] w-[58px] place-items-center rounded-full ${site ? 'bg-emerald-600 shadow-[0_6px_18px_rgba(5,150,105,.5)]' : 'bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]'}`}>
             {kind === 'job' ? <FileText size={24} /> : site ? <ExternalLink size={22} /> : <Send size={24} />}
           </span>
           {kind === 'job' ? 'Ask Resume' : 'Apply'}
         </button>
-        <button type="button" className={rail} onClick={() => onSave(item)}><span className={railIcon}><Bookmark size={20} fill={saved ? 'currentColor' : 'none'} /></span>Save</button>
+        <button type="button" className={rail} onClick={() => { flash('SAVED', '#60a5fa'); onSave(item); }}><span className={railIcon}><Bookmark size={20} fill={saved ? 'currentColor' : 'none'} /></span>Save</button>
         <button type="button" className={rail} onClick={() => onShare(item)}><span className={railIcon}><Share2 size={20} /></span>Share</button>
-        <button type="button" className={rail} onClick={() => onDismiss(item)}><span className={railIcon}><X size={20} /></span>Pass</button>
+        <button type="button" className={rail} onClick={() => { flash('PASS', '#f87171'); onDismiss(item); }}><span className={railIcon}><X size={20} /></span>Pass</button>
       </div>
 
       <div data-rail className={`relative z-30 flex items-center gap-2 px-4 pt-2.5 text-[13px] font-bold ${inline ? 'pb-4' : onSwipeUp ? 'pb-[calc(1.4rem+env(safe-area-inset-bottom))]' : 'pb-[calc(1rem+env(safe-area-inset-bottom))]'}`}>
@@ -195,6 +243,7 @@ export default function SwipeDeck({
         <span className="min-w-0 flex-1 truncate text-center text-[11px] font-semibold text-white/55">{menuHint ? 'Swipe up for menu' : ''}</span>
         <span className="shrink-0 tabular-nums text-white/70">{index + 1} / {items.length}</span>
       </div>
+      {stampEl}
       {handle}
     </div>
   );
