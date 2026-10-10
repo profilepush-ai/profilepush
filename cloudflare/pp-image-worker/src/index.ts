@@ -1,9 +1,13 @@
-// Draws a match's picture on Cloudflare Workers AI, for the job-visual
-// Supabase function (which writes the art direction and stores the result).
+// ProfilePush's door to Cloudflare Workers AI, for our Supabase functions
+// (all calls need Authorization: Bearer <DRAW_SECRET>):
 //
-//   POST { prompt, width?, height? }   Authorization: Bearer <DRAW_SECRET>
-//   -> the picture: image/webp, or image/jpeg when it can't be converted
-//   429 when Workers AI is busy (job-visual puts the picture back in its queue)
+//   POST /  or /draw  { prompt, width?, height? }
+//     -> a match's picture: image/webp, or image/jpeg when it can't be converted
+//   POST /embed  { texts: string[] }  (up to 500)
+//     -> { vectors: number[][] }  768 numbers each, for matching
+//   POST /chat  { system?, prompt, max_tokens?, json? }
+//     -> { text }
+//   429 when Workers AI is busy (callers retry or queue).
 
 type Env = {
   AI: { run(model: string, input: unknown): Promise<unknown> };
@@ -12,12 +16,62 @@ type Env = {
 };
 
 const MODEL = "@cf/black-forest-labs/flux-2-klein-4b";
+// Every stored vector must come from this one model: change it and every
+// post has to be embedded again.
+const EMBED_MODEL = "@cf/google/embeddinggemma-300m";
+const CHAT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
+const busy = (message: string) => /rate limit|capacity|too many|429|3040/i.test(message);
+const fail = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return Response.json({ error: message.slice(0, 300) }, { status: busy(message) ? 429 : 500 });
+};
+
+async function embed(env: Env, body: { texts?: unknown }): Promise<Response> {
+  const texts = Array.isArray(body.texts) ? body.texts.map((t) => String(t ?? "").slice(0, 6000)) : [];
+  if (texts.length === 0 || texts.length > 500) return Response.json({ error: "Send 1 to 500 texts." }, { status: 400 });
+  const vectors: number[][] = [];
+  try {
+    for (let i = 0; i < texts.length; i += 50) {
+      const out = (await env.AI.run(EMBED_MODEL, { text: texts.slice(i, i + 50) })) as { data?: number[][] };
+      if (!out?.data || out.data.length !== Math.min(50, texts.length - i)) return Response.json({ error: "Incomplete embeddings." }, { status: 502 });
+      vectors.push(...out.data);
+    }
+    return Response.json({ vectors, model: EMBED_MODEL });
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+async function chat(env: Env, body: { system?: unknown; prompt?: unknown; max_tokens?: unknown; json?: unknown }): Promise<Response> {
+  const prompt = typeof body.prompt === "string" ? body.prompt : "";
+  if (!prompt) return Response.json({ error: "A prompt is needed." }, { status: 400 });
+  const messages = [
+    ...(typeof body.system === "string" && body.system ? [{ role: "system", content: body.system }] : []),
+    { role: "user", content: prompt },
+  ];
+  try {
+    const out = (await env.AI.run(CHAT_MODEL, {
+      messages,
+      max_tokens: typeof body.max_tokens === "number" ? Math.min(body.max_tokens, 4096) : 1024,
+      ...(body.json === true ? { response_format: { type: "json_object" } } : {}),
+    })) as { response?: unknown };
+    const text = typeof out?.response === "string" ? out.response : JSON.stringify(out?.response ?? "");
+    return Response.json({ text, model: CHAT_MODEL });
+  } catch (error) {
+    return fail(error);
+  }
+}
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
     if (!env.DRAW_SECRET || req.headers.get("Authorization") !== `Bearer ${env.DRAW_SECRET}`) return new Response("Unauthorized", { status: 401 });
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; width?: unknown; height?: unknown };
+    const path = new URL(req.url).pathname;
+    const raw = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    if (path === "/embed") return embed(env, raw);
+    if (path === "/chat") return chat(env, raw);
+    const body = raw as { prompt?: unknown; width?: unknown; height?: unknown };
     const prompt = typeof body.prompt === "string" ? body.prompt.slice(0, 2048) : "";
     if (prompt.length < 20) return Response.json({ error: "A prompt is needed." }, { status: 400 });
     // Sizes in multiples of 16, as the model wants.
@@ -56,9 +110,7 @@ export default {
       }
       return new Response(jpeg, { headers: { "Content-Type": "image/jpeg", "X-Model": MODEL } });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const busy = /rate limit|capacity|too many|429|3040/i.test(message);
-      return Response.json({ error: message.slice(0, 300) }, { status: busy ? 429 : 500 });
+      return fail(error);
     }
   },
 };

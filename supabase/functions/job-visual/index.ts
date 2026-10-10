@@ -1,10 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
-import Anthropic from "npm:@anthropic-ai/sdk@0.131.0";
 
 // Pictures for every match, made once per post and shared by all of its
-// matches (see the match_visuals migration). Claude writes the art direction
-// from the post's own details and FLUX.2 on Cloudflare draws it.
+// matches (see the match_visuals migration). Llama on Cloudflare writes the
+// art direction from the post's own details and FLUX.2 on Cloudflare draws it.
 //   A job: two versions of one scene, the same direction drawn with a woman
 //   (a) and with a man (b), who never depend on the job's details.
 //   A consultant profile: one picture with no person in it.
@@ -19,7 +18,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PROMPT_MODEL = "claude-sonnet-5-5";
+// Everything runs on Cloudflare Workers AI through our pp-image-worker.
+const PROMPT_MODEL = "llama-3.3-70b";
 // Drawn on Cloudflare Workers AI through our pp-image-worker (cloudflare/pp-image-worker).
 const IMAGE_MODEL = "flux-2-klein-4b";
 const BATCH = Number(Deno.env.get("JOB_VISUAL_BATCH") ?? "10") || 10;
@@ -108,11 +108,11 @@ const JOB_DIRECTION = `You are the art director for ProfilePush's Today reel, wh
 
 The picture always has:
 1. One persona: the professional who would do this job, waist-up, face clearly visible, expressive, confident and playful. The same scene is drawn twice with different people, so write the persona as the exact token [PERSONA] once (it is filled in later, as in "A confident [PERSONA], shown waist-up"). Never use he, she, his or her: say "they" or "the persona". Describe no other trait of the person.
-2. The skills, held: three to five objects, each a playful visual stand-in for one of the job's most important skills. The persona really holds them: the most important one in one hand, another balanced on a fingertip or tucked under an arm, the rest orbiting close around them. Pick the skills a recruiter would recognize first. Draw each as an object, never as a logo, letter or brand mark. ${STAND_INS}
+2. The skills, held: three to five objects, each a playful visual stand-in for one of the job's most important skills. The persona really holds them: the most important one in one hand, another balanced on a fingertip or tucked under an arm, the rest orbiting close around them. Pick the skills a recruiter would recognize first, and skip soft skills (communication, empathy, listening, patience, teamwork): use the role's own tools instead (a nurse: a stethoscope and a heart-rate line; pediatrics: a small teddy bear). Draw each as an object, never as a logo, letter or brand mark. Name only the objects: never write a skill, tool or brand name anywhere in the prompt (not even in brackets), or the image model paints it as text. ${STAND_INS}
 3. ${PLACE}
 4. ${STYLE} Calm and uncluttered: the face and the held objects read first, the place right after.
-5. The bottom third calm and darker so text can sit on it.
-6. No text, letters, numbers, logos, watermarks or real people anywhere; screens, notes and signs stay blank of writing.
+5. The bottom third calm, plain and darker.
+6. Nothing written anywhere and no logos, watermarks or real people; screens, notes and signs stay blank. Never use the words text, letters, words, captions or labels in the prompt, not even to forbid them: the image model draws whatever they name.
 
 Reply with the prompt only, 110 to 170 words.`;
 
@@ -121,11 +121,11 @@ const PROFILE_DIRECTION = `You are the art director for ProfilePush's Today reel
 It stands for a real candidate, so it has NO people at all: no faces, figures, silhouettes, hands or body parts.
 
 The picture always has:
-1. The skills, on show: four to six objects, each a playful visual stand-in for one of the profile's most important skills, floating above a soft pedestal in the middle of the frame like a hero display. Pick the skills a recruiter would recognize first. Draw each as an object, never as a logo, letter or brand mark. ${STAND_INS}
+1. The skills, on show: four to six objects, each a playful visual stand-in for one of the profile's most important skills, floating above a soft pedestal in the middle of the frame like a hero display. Pick the skills a recruiter would recognize first, and skip soft skills (communication, empathy, listening, patience, teamwork): use the role's own tools instead (a nurse: a stethoscope and a heart-rate line; pediatrics: a small teddy bear). Draw each as an object, never as a logo, letter or brand mark. Name only the objects: never write a skill, tool or brand name anywhere in the prompt (not even in brackets), or the image model paints it as text. ${STAND_INS}
 2. ${PLACE} The locations are where this consultant is or will work.
 3. ${STYLE} Calm and uncluttered: the objects read first, the place right after.
-4. The bottom third calm and darker so text can sit on it.
-5. No text, letters, numbers, logos, watermarks or people anywhere; screens, notes and signs stay blank of writing.
+4. The bottom third calm, plain and darker.
+5. Nothing written anywhere and no logos, watermarks or people; screens, notes and signs stay blank. Never use the words text, letters, words, captions or labels in the prompt, not even to forbid them: the image model draws whatever they name.
 
 Reply with the prompt only, 90 to 150 words.`;
 
@@ -165,7 +165,7 @@ async function loadLead(admin: SupabaseClient, kind: string, id: string): Promis
   } };
 }
 
-// Skill stand-ins for the template below (the same ones Claude is given).
+// Skill stand-ins for the template below (the same ones the writer is given).
 const OBJECTS: Array<[RegExp, string]> = [
   [/\bjava\b(?!script)/i, "a steaming coffee cup"], [/spring/i, "a green leaf"], [/react/i, "a spinning atom with orbit rings"],
   [/angular/i, "a faceted shield crystal"], [/python/i, "a friendly coiled snake"], [/javascript|typescript|node/i, "a bright lightning bolt"],
@@ -178,7 +178,7 @@ const OBJECTS: Array<[RegExp, string]> = [
   [/logistic|supply/i, "a parcel on a conveyor"], [/servicenow|itsm/i, "a service ticket"],
 ];
 
-// Without Claude (unavailable or out of credits): the same rules, filled in.
+// Without the writer (busy or down): the same rules, filled in.
 function templatePrompt(lead: Lead): string {
   const d = lead.details;
   const skills = (d.skills as string[]).slice(0, 4);
@@ -194,45 +194,55 @@ function templatePrompt(lead: Lead): string {
         : `the most famous, instantly recognizable view of ${place} (its skyline, a landmark or its landscape), at golden hour, a little soft`
       : "a smooth gradient in bold colors";
   const things = objects.length ? objects.join(", ") : "objects that stand for the work";
-  const style = `${STYLE} The bottom third calm and darker. No text, letters, numbers, logos, watermarks or real people anywhere; screens and signs stay blank.`;
+  const style = `${STYLE} The bottom third calm, plain and darker. Nothing written anywhere, no logos or real people; screens and signs stay blank.`;
   return lead.kind === "job"
     ? `Vertical poster for a ${String(d.title || "job")} job. A confident, playful [PERSONA], shown waist-up, face clearly visible and expressive, really holding objects for the job's skills: ${things}; the most important one in one hand, the rest orbiting close. The background is ${background}. ${style}`
     : `Vertical poster for a ${String(d.role || "consultant")} profile, with no people at all. Objects for the profile's skills, ${things}, float above a soft pedestal in the middle like a hero display. The background is ${background}. ${style}`;
 }
 
-// Claude can't answer (out of credits, key or service trouble): not worth retrying.
-const claudeDown = (error: unknown) => {
-  const e = error as { status?: number; message?: string } | null;
-  return Boolean(e && (e.status === 401 || e.status === 403 || (e.status ?? 0) >= 500 || (e.status === 400 && /credit balance|billing/i.test(e.message ?? ""))));
-};
-
 // One art direction per post. One that stops short (no background yet) gets
-// one more try; without Claude, the template.
+// one more try; if the writer can't answer, the template.
 async function writePrompt(lead: Lead): Promise<{ prompt: string; by: string }> {
   try {
-    return { prompt: await askClaude(lead), by: PROMPT_MODEL };
+    return { prompt: await askWriter(lead), by: PROMPT_MODEL };
   } catch (error) {
-    if (!claudeDown(error)) throw error;
-    console.warn("job-visual: Claude unavailable, using the template", (error as Error).message?.slice(0, 120));
+    if (error instanceof RateLimited) throw error;
+    console.warn("job-visual: writer unavailable, using the template", (error as Error).message?.slice(0, 120));
     return { prompt: templatePrompt(lead), by: "template" };
   }
 }
 
-async function askClaude(lead: Lead): Promise<string> {
-  const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "" });
+// The gateway worker: /chat writes text, / draws, both behind one secret.
+function worker(path: string, body: unknown) {
+  return fetch(`${(Deno.env.get("IMAGE_WORKER_URL") ?? "").replace(/\/$/, "")}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${Deno.env.get("IMAGE_WORKER_SECRET") ?? ""}`,
+      "Content-Type": "application/json",
+      "User-Agent": "ProfilePush-job-visual/1.0",
+    },
+    signal: AbortSignal.timeout(120_000),
+    body: JSON.stringify(body),
+  });
+}
+
+async function askWriter(lead: Lead): Promise<string> {
   const job = lead.kind === "job";
   let text = "";
   for (let attempt = 0; attempt < 2; attempt++) {
-    const message = await client.messages.create({
-      model: PROMPT_MODEL,
-      max_tokens: 700,
+    const res = await worker("/chat", {
       system: job ? JOB_DIRECTION : PROFILE_DIRECTION,
-      messages: [{ role: "user", content: `${job ? "Job" : "Profile"} details:\n${JSON.stringify(lead.details, null, 2)}` }],
+      prompt: `${job ? "Job" : "Profile"} details:\n${JSON.stringify(lead.details, null, 2)}`,
+      max_tokens: 700,
     });
-    if (message.stop_reason === "refusal") throw new Error("Claude declined to describe this post.");
-    text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
-    if (message.stop_reason === "end_turn" && text.length >= (job ? 600 : 450) && (!job || text.includes("[PERSONA]"))) return text;
-    console.warn("job-visual short prompt", message.stop_reason, text.length);
+    if (res.status === 429) throw new RateLimited(`Writer busy: ${(await res.text()).slice(0, 200)}`);
+    if (!res.ok) throw new Error(`Writer: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    // The image model paints what a prompt names: words in brackets ("a
+    // coffee cup (Java)") and any sentence about text or labels come out.
+    text = String(((await res.json()) as { text?: unknown }).text ?? "").trim().replace(/^["']|["']$/g, "").replace(/\s*\([^)]*\)/g, "")
+      .split(/(?<=[.!?])\s+/).filter((sentence) => !/\b(text|texts|caption|letters?|words?|labels?|typography|overlay|writing)\b/i.test(sentence)).join(" ");
+    if (text.length >= (job ? 600 : 450) && (!job || text.includes("[PERSONA]"))) return text;
+    console.warn("job-visual short prompt", text.length);
   }
   if (text.length < 40) throw new Error("The art direction came back empty.");
   return job && !text.includes("[PERSONA]") ? `A confident [PERSONA], shown waist-up. ${text}` : text;
@@ -241,16 +251,7 @@ async function askClaude(lead: Lead): Promise<string> {
 class RateLimited extends Error {}
 
 async function drawImage(prompt: string): Promise<{ bytes: Uint8Array; type: string }> {
-  const res = await fetch(Deno.env.get("IMAGE_WORKER_URL") ?? "", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${Deno.env.get("IMAGE_WORKER_SECRET") ?? ""}`,
-      "Content-Type": "application/json",
-      "User-Agent": "ProfilePush-job-visual/1.0",
-    },
-    signal: AbortSignal.timeout(120_000),
-    body: JSON.stringify({ prompt, width: 704, height: 1056 }),
-  });
+  const res = await worker("/draw", { prompt, width: 704, height: 1056 });
   if (res.status === 429) throw new RateLimited(`Image model busy: ${(await res.text()).slice(0, 200)}`);
   const type = res.headers.get("Content-Type") ?? "";
   if (!res.ok || !type.startsWith("image/")) throw new Error(`Image model: ${res.status} ${(await res.text()).slice(0, 200)}`);
