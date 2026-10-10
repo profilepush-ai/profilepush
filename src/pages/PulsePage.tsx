@@ -3277,7 +3277,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     // set rather than restarting inside each score band.
     // Feed cards are the compact Tracker card; a click opens the full preview.
     // AI Match keeps its own click (the draft pane).
-    const openProps: Partial<LeadCardProps> = aiMatch ? {} : { onOpen: (l: SocialLead) => handleOpenLead(l, paletteIndex) };
+    const openProps: Partial<LeadCardProps> = aiMatch ? { compact: true } : { onOpen: (l: SocialLead) => handleOpenLead(l, paletteIndex) };
     const card = <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex, aiMatch && lead.aiMatchScore != null ? idx + 1 : undefined)} {...openProps} {...extraProps?.(lead)} />;
     if (!aiMatch || lead.aiMatchScore == null) return card;
     // Results run newest-first inside each band, so without a heading the
