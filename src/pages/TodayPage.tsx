@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, ChevronRight, Eye, Flame, History, Lock, Plus, Search, Send, Sparkles, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
@@ -15,7 +15,7 @@ import { useMatchActions } from '../components/match/useMatchActions';
 import { useSwipe } from '../components/match/useSwipe';
 import { useAuth } from '../contexts/AuthContext';
 import { trackEvent } from '../lib/track';
-import { loadToday, markViewed, strings, subjectName, type CardItem, type Kind, type Question, type Subject, type TodayData } from '../lib/today';
+import { cardRoute, loadToday, markViewed, strings, subjectName, type CardItem, type Kind, type Question, type Subject, type TodayData } from '../lib/today';
 
 // Today: every new match, one at a time, as a swipe card. On a phone it is
 // full screen, with the search and the profile chips on the card itself; the
@@ -180,6 +180,27 @@ export default function TodayPage() {
     if (id && subjects[id]) { setProfileId(id); params.delete('profile'); setParams(params, { replace: true }); }
   }, [params, subjects, setParams]);
 
+  // Pushes and emails link to /today?card=<card id> (or ?lead=<post id>):
+  // open the reel at that match, or go where it moved to (Tracker, History,
+  // or the post itself) once it has left Today.
+  const navigate = useNavigate();
+  useEffect(() => {
+    const card = params.get('card');
+    const lead = params.get('lead');
+    if ((!card && !lead) || !data) return;
+    params.delete('card'); params.delete('lead');
+    setParams(params, { replace: true });
+    const hit = data.items.find((i) => i.lead && (card ? i.card_id === card : i.lead_id === lead));
+    if (hit) {
+      setFilter('all'); setQuery(''); setFull(true);
+      setDeckId(hit.card_id); setDeckFocus(hit.card_id);
+      trackEvent('today_deep_link', { found: true });
+      return;
+    }
+    trackEvent('today_deep_link', { found: false });
+    void cardRoute(card, lead).then((to) => { if (to !== '/today') navigate(to, { replace: true }); });
+  }, [params, data, setParams, navigate]);
+
   const appliedToday = (data?.applied_today ?? 0) + appliedNow;
   const reel = data?.reel;
   const free = Boolean(reel && !reel.paid);
@@ -192,7 +213,7 @@ export default function TodayPage() {
     : undefined;
 
   const deckProps = {
-    items, kind, subjects, appliedToday, emptyMessage, expiring: true,
+    items, kind, subjects, appliedToday, emptyMessage, expiring: true, viewerId: user?.id,
     onSeen: see, onApply: applyQuick, onSave: save, onShare: (i: CardItem) => void share(i), onDismiss: dismiss,
     onDetails: (i: CardItem) => open(i),
     asked: actions.asked, onAsk: (i: CardItem, q: Question) => void actions.ask(i, q),
@@ -237,7 +258,7 @@ export default function TodayPage() {
   const glassChip = (on: boolean) => `inline-flex shrink-0 items-center gap-1.5 rounded-full text-[13px] font-semibold ring-1 ${on
     ? 'bg-white text-gray-900 ring-white'
     : 'bg-white/10 text-white/85 ring-white/15 backdrop-blur'}`;
-  const topBar = (
+  const topBar = (controls: ReactNode) => (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full bg-white/10 pl-3.5 pr-1.5 ring-1 ring-white/15 backdrop-blur focus-within:ring-white/40">
@@ -264,6 +285,7 @@ export default function TodayPage() {
         <span title={`${appliedToday} applied today`} className="inline-flex h-10 shrink-0 items-center gap-1 rounded-full bg-emerald-500/20 px-3 text-[13px] font-extrabold tabular-nums text-emerald-300 ring-1 ring-emerald-400/25">
           <Check size={14} strokeWidth={3} />{appliedToday}
         </span>
+        {controls}
       </div>
       {locked > 0 && (
         <Link to="/billing" className="flex items-center gap-2 rounded-xl bg-amber-500/15 px-3 py-1.5 text-[12.5px] font-semibold text-amber-200 ring-1 ring-amber-400/25">
@@ -445,7 +467,7 @@ export default function TodayPage() {
       ))}
 
       {actions.frame && (
-        <ApplyFrame item={actions.frame.item} url={actions.frame.url} kind={kind} subject={subjects[actions.frame.item.subject_id]} onClose={() => actions.setFrame(null)} />
+        <ApplyFrame item={actions.frame.item} url={actions.frame.url} embed={actions.frame.embed} kind={kind} subject={subjects[actions.frame.item.subject_id]} onClose={() => actions.setFrame(null)} />
       )}
       <ToastBar toast={actions.toast} onClose={() => actions.setToast(null)} />
 

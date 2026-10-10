@@ -260,6 +260,7 @@ function distinctItems(list: BriefItem[]): BriefItem[] {
   });
 }
 
+// A post's own page; a match opens in Today instead (see renderMorningBrief).
 function itemUrl(base: string, item: BriefItem): string {
   return `${base}/${item.kind === "hotlist" ? "hotlist" : "job"}/${item.id}`;
 }
@@ -287,11 +288,13 @@ function renderMorningBrief(r: BriefRecipient, market: MarketBrief, unsubscribeU
   // The main list: their matches, or else today's newest posts for their side.
   const personal = r.match_total > 0;
   const items = distinctItems(personal ? r.matches : (isVendor ? market.latest_hotlists : market.latest_jobs));
+  // Their matches open in Today's reel, right on that match.
+  const linkFor = (item: BriefItem) => (personal ? `${base}/today?lead=${item.id}` : itemUrl(base, item));
   const listTitle = personal
     ? (r.match_kind === "job" ? "Top matches for your consultants" : "Top matches for your requirements")
     : (isVendor ? "New on the bench today" : "New requirements today");
   const seeAllUrl = personal
-    ? `${base}/tracker`
+    ? `${base}/today`
     : `${base}${isVendor ? "/feed/hotlist" : "/feed/jobs"}`;
   const seeAllLabel = personal && r.match_total > items.length ? `See all ${r.match_total.toLocaleString("en-US")} matches` : "Open ProfilePush";
 
@@ -308,7 +311,7 @@ function renderMorningBrief(r: BriefRecipient, market: MarketBrief, unsubscribeU
   const row = (item: BriefItem, extra = "") => `
           <tr>
             <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
-              <a href="${itemUrl(base, item)}" style="font-size: 15px; font-weight: 700; color: #0f172a; text-decoration: none;">${escapeHtml(item.title || (item.kind === "hotlist" ? "Consultant" : "Requirement"))}</a>
+              <a href="${linkFor(item)}" style="font-size: 15px; font-weight: 700; color: #0f172a; text-decoration: none;">${escapeHtml(item.title || (item.kind === "hotlist" ? "Consultant" : "Requirement"))}</a>
               <div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml([extra, itemDetails(item)].filter(Boolean).join(" · ") || "View details")}</div>
             </td>
           </tr>`;
@@ -396,7 +399,7 @@ function renderMorningBrief(r: BriefRecipient, market: MarketBrief, unsubscribeU
 </html>`;
 
   const lines = (list: BriefItem[], extra?: (i: BriefItem) => string) =>
-    list.map((i) => `- ${i.title ?? ""}${[extra?.(i) ?? "", itemDetails(i)].filter(Boolean).length ? ` (${[extra?.(i) ?? "", itemDetails(i)].filter(Boolean).join(" · ")})` : ""}: ${itemUrl(base, i)}`).join("\n");
+    list.map((i) => `- ${i.title ?? ""}${[extra?.(i) ?? "", itemDetails(i)].filter(Boolean).length ? ` (${[extra?.(i) ?? "", itemDetails(i)].filter(Boolean).join(" · ")})` : ""}: ${linkFor(i)}`).join("\n");
   const text = `${greeting}
 
 ${Number(headline.number).toLocaleString("en-US")} ${headline.label}.
@@ -422,7 +425,7 @@ type TrackerNudge = {
   persona: string | null;
   new_count: number;
   subjects: number;
-  items: Array<{ title: string; detail: string | null }>;
+  items: Array<{ title: string; detail: string | null; card?: string | null }>;
 };
 
 // The Tracker nudge: new strong matches that landed since the morning brief,
@@ -430,7 +433,9 @@ type TrackerNudge = {
 function renderTrackerNudge(n: TrackerNudge, unsubscribeUrl: string, appBaseUrl: string): EmailJob {
   const base = appBaseUrl.replace(/\/$/, "");
   const isVendor = n.persona === "vendor";
-  const trackerUrl = `${base}/tracker`;
+  // Each match opens in Today's reel, right on that match.
+  const todayUrl = `${base}/today`;
+  const cardUrl = (card?: string | null) => (card ? `${todayUrl}?card=${encodeURIComponent(card)}` : todayUrl);
   const greeting = n.first_name ? `Hi ${n.first_name},` : "Hi,";
   const what = isVendor
     ? `new consultant${n.new_count === 1 ? "" : "s"} for ${n.subjects === 1 ? "your requirement" : `${n.subjects} of your requirements`}`
@@ -440,7 +445,7 @@ function renderTrackerNudge(n: TrackerNudge, unsubscribeUrl: string, appBaseUrl:
   const rows = n.items.map((item) => `
           <tr>
             <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
-              <a href="${trackerUrl}" style="font-size: 15px; font-weight: 700; color: #0f172a; text-decoration: none;">${escapeHtml(item.title)}</a>
+              <a href="${cardUrl(item.card)}" style="font-size: 15px; font-weight: 700; color: #0f172a; text-decoration: none;">${escapeHtml(item.title)}</a>
               ${item.detail ? `<div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml(item.detail)}</div>` : ""}
             </td>
           </tr>`).join("");
@@ -474,7 +479,7 @@ function renderTrackerNudge(n: TrackerNudge, unsubscribeUrl: string, appBaseUrl:
           ${rows}
           <tr>
             <td style="padding: 20px 0 0;">
-              <a href="${trackerUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">Open your Tracker</a>
+              <a href="${todayUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; border-radius: 6px;">Open Today</a>
             </td>
           </tr>
           <tr>
@@ -496,9 +501,9 @@ function renderTrackerNudge(n: TrackerNudge, unsubscribeUrl: string, appBaseUrl:
 ${n.new_count} ${what} since you last checked.
 
 ${listTitle}:
-${n.items.map((i) => `- ${i.title}${i.detail ? ` (${i.detail})` : ""}`).join("\n")}
+${n.items.map((i) => `- ${i.title}${i.detail ? ` (${i.detail})` : ""}: ${cardUrl(i.card)}`).join("\n")}
 
-Open your Tracker: ${trackerUrl}
+Open Today: ${todayUrl}
 
 ---
 Sent when new matches land and you haven't been back yet. Unsubscribe: ${unsubscribeUrl}`;
@@ -957,7 +962,7 @@ function renderWeeklyResults(r: WeeklyResult, unsubscribeUrl: string, appBaseUrl
       : "";
   // Their matches when there are some; otherwise AI Match, where pasting a
   // requirement or hotlist posts it and finds its matches.
-  const matchUrl = r.matches > 0 ? `${base}${isVendor ? "/posts/jobs" : "/posts/hotlist"}` : `${base}/match`;
+  const matchUrl = r.matches > 0 ? `${base}/today` : `${base}/match`;
   const matchCta = r.matches > 0 ? "See your matches" : (isVendor ? "Post a requirement" : "Add consultants");
   const lowCredits = credits < 100;
 

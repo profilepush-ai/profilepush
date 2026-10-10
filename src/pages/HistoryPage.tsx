@@ -158,7 +158,7 @@ export default function HistoryPage() {
         </>
       )}
       {actions.frame && (
-        <ApplyFrame item={actions.frame.item} url={actions.frame.url} kind={kind} subject={subjects[actions.frame.item.subject_id]} onClose={() => actions.setFrame(null)} />
+        <ApplyFrame item={actions.frame.item} url={actions.frame.url} embed={actions.frame.embed} kind={kind} subject={subjects[actions.frame.item.subject_id]} onClose={() => actions.setFrame(null)} />
       )}
       <ToastBar toast={actions.toast} onClose={() => actions.setToast(null)} />
       <AiSubmitDialog ai={actions.ai} />

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { Link } from 'react-router-dom';
 import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
 import { agoLabel, hashColor } from '../../lib/match-fit';
-import { fitFor, leadOrg, leadTitle, missingFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
+import { fitFor, leadOrg, leadTitle, missingFor, pictureFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
 import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
 
 // When each section of a card arrives (ms). Sections move as one block (many
@@ -20,12 +20,15 @@ const section = (at: number) => ({ animation: `ppSection 450ms cubic-bezier(.2,.
 // sits in the page beside the detail.
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, viewerId, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
   inline?: boolean; hideDetails?: boolean; paused?: boolean; emptyMessage?: { title: string; text: string };
-  top?: ReactNode; layer?: string; boxes?: boolean; menuHint?: boolean;
+  /** Above the card. As a function it also gets the deck's pause and ⌄ buttons, to place in its own row. */
+  top?: ReactNode | ((controls: ReactNode) => ReactNode); layer?: string; boxes?: boolean; menuHint?: boolean;
+  /** Picks which version of a post's picture this viewer sees. */
+  viewerId?: string;
   /** Plays like a reel: each card moves on after this long (hold to pause). */
   reelMs?: number;
   /** Shown after the last card, instead of the plain "All caught up". */
@@ -109,6 +112,15 @@ export default function SwipeDeck({
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // The next two pictures load ahead, so a swipe never waits for one.
+  useEffect(() => {
+    if (index < 0) return;
+    for (const next of items.slice(index + 1, index + 3)) {
+      const url = next.lead ? pictureFor(next.lead, viewerId) : null;
+      if (url) new Image().src = url;
+    }
+  }, [index, items, viewerId]);
+
   const shell = inline
     ? 'relative flex h-full min-h-0 select-none flex-col overflow-hidden rounded-[22px] bg-[#0b0f1a] text-white'
     : `fixed inset-0 ${layer} flex select-none flex-col overflow-hidden bg-[#0b0f1a] pt-[env(safe-area-inset-top)] text-white`;
@@ -121,7 +133,6 @@ export default function SwipeDeck({
   const corner = inline || !onClose
     ? null
     : <button type="button" onClick={onClose} aria-label="Close" className="grid h-10 w-10 place-items-center rounded-full hover:bg-white/10"><X size={22} /></button>;
-  const topSlot = top ? <div data-rail className="relative z-30 px-3 pt-2.5">{top}</div> : null;
   const sizeButton = onCollapse || onExpand ? (
     <span data-rail>
       <button type="button" onClick={onCollapse ?? onExpand} aria-label={onCollapse ? 'Close full screen' : 'Full screen'} title={onCollapse ? 'Close full screen' : 'Full screen'}
@@ -130,6 +141,19 @@ export default function SwipeDeck({
       </button>
     </span>
   ) : null;
+  const playButton = reelMs && item ? (
+    <span data-rail>
+      <button type="button" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause (or hold the card)' : 'Play'}
+        className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20">
+        {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+      </button>
+    </span>
+  ) : null;
+  // A function top takes the pause and ⌄ buttons into its own row.
+  const ownControls = typeof top !== 'function';
+  const topSlot = top
+    ? <div data-rail className="relative z-30 px-3 pt-2.5">{typeof top === 'function' ? top(<>{playButton}{sizeButton}</>) : top}</div>
+    : null;
   // Vertical swipes go to the page (menus); sideways ones move the deck.
   const gestures = {
     style: { touchAction: inline ? 'pan-y' : 'none' } as const,
@@ -193,7 +217,7 @@ export default function SwipeDeck({
         <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: 'radial-gradient(closest-side, #10b981, transparent)' }} />
         {topSlot}
         {corner && <div className="relative z-10 flex justify-end p-2">{corner}</div>}
-        {sizeButton && <div className="relative z-30 flex justify-end px-3 pt-2">{sizeButton}</div>}
+        {sizeButton && ownControls && <div className="relative z-30 flex justify-end px-3 pt-2">{sizeButton}</div>}
         {endScreen && !emptyMessage ? <div className="relative z-10 flex min-h-0 flex-1 flex-col">{endScreen}</div> : (
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
           <span className="grid h-[72px] w-[72px] place-items-center rounded-full bg-emerald-600"><Check size={36} strokeWidth={3} /></span>
@@ -220,6 +244,7 @@ export default function SwipeDeck({
   const fit = fitFor(kind, subject, lead);
   const site = kind === 'hotlist' && lead.source === 'career_site';
   const left = expiring ? timeLeft(item) : null;
+  const picture = pictureFor(lead, viewerId);
   const color = hashColor(item.subject_id);
   const name = subjectName(kind, subject);
   const saved = Boolean(item.saved_at);
@@ -234,7 +259,17 @@ export default function SwipeDeck({
       aria-label="Swipe through matches"
       {...gestures}
     >
-      <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)` }} />
+      {picture ? (
+        // The post's AI picture fills the card behind everything, slowly
+        // zooming, darkened toward the bottom where the details sit.
+        <div key={picture} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ animation: 'ppPicture .5s ease-out both' }}>
+          <img src={picture} alt="" decoding="async" className="h-full w-full object-cover"
+            style={{ animation: `ppKenBurns ${reelMs ? reelMs + 3000 : 18000}ms ease-out both`, animationPlayState: !reelMs || running ? 'running' : 'paused', transformOrigin: '60% 35%' }} />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(11,15,26,.55) 0%, rgba(11,15,26,.05) 18%, rgba(11,15,26,.1) 38%, rgba(11,15,26,.82) 62%, #0b0f1a 88%)' }} />
+        </div>
+      ) : (
+        <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)` }} />
+      )}
       <div className="relative z-20 flex gap-[3px] px-2.5 pt-2.5" aria-hidden="true">
         {(() => {
           const from = Math.max(0, Math.min(index - 10, items.length - 40));
@@ -257,22 +292,15 @@ export default function SwipeDeck({
       <div className="relative z-20 flex items-center gap-2.5 py-2.5 pl-3 pr-2">
         <Initials name={name} id={item.subject_id} size={32} />
         <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b><small className="block truncate text-[11.5px] text-white/75">{kind === 'hotlist' ? subject?.title : 'Your job'}</small></div>
-        {reelMs && (
-          <span data-rail>
-            <button type="button" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause (or hold the card)' : 'Play'}
-              className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20">
-              {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
-            </button>
-          </span>
-        )}
-        {sizeButton}
+        {ownControls && playButton}
+        {ownControls && sizeButton}
         {corner}
       </div>
 
       <button type="button" aria-label="Previous match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(-1); }} className="absolute bottom-[70px] left-0 top-[70px] z-10 w-[30%]" />
       <button type="button" aria-label="Next match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(1); }} className="absolute bottom-[70px] right-0 top-[70px] z-10 w-[30%]" />
 
-      <div key={item.card_id} ref={cardRef} style={{ justifyContent: 'safe center' }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20 ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'safe flex-end' : 'safe center' }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20 ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
         <div className="flex items-center gap-2.5" style={section(0)}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
           <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-white/75">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>

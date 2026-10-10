@@ -15,6 +15,8 @@ export type Lead = {
   rate_min?: number | null; rate_max?: number | null; skills: unknown; visas: unknown; exp?: number | null;
   type?: string | null; source?: string | null; post_url?: string | null; apply_url?: string | null;
   has_email: boolean; posted_at: string; open: boolean; category?: string | null; logo_domain?: string | null;
+  /** AI pictures of the post (match_visuals): a job has a (a woman) and b (a man), a profile has a (no person). */
+  visuals?: { a?: string; b?: string } | null;
 };
 
 export type CardItem = {
@@ -25,6 +27,24 @@ export type CardItem = {
   /** Across ProfilePush: accounts that viewed, applied to, saved and shared the post. */
   eng?: { views: number; applies: number; saves: number; shares: number };
 };
+
+/** The post's picture for this viewer. Each viewer sees one version of a job,
+ * the same one every time, half the posts with a woman and half with a man. */
+export function pictureFor(lead: Pick<Lead, 'id' | 'visuals'>, viewerId: string | undefined): string | null {
+  const v = lead.visuals;
+  if (!v) return null;
+  let h = 0;
+  for (const c of `${viewerId ?? ''}${lead.id}`) h = (h * 31 + c.charCodeAt(0)) | 0;
+  const first = (h & 1) === 0 ? v.a : v.b;
+  return first ?? v.a ?? v.b ?? null;
+}
+
+/** Where a pushed or emailed match lives now, when it's no longer in Today. */
+export async function cardRoute(card: string | null, lead: string | null): Promise<string> {
+  const { data } = await supabase.rpc('pp_card_route' as never, { p_card: card, p_lead: lead } as never);
+  const path: unknown = data;
+  return typeof path === 'string' && path.startsWith('/') ? path : '/today';
+}
 
 /** Today's matches leave 24 hours after they arrive (get_today, expire_unopened_matches). */
 export const TODAY_HOURS = 24;
