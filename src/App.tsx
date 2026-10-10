@@ -44,6 +44,8 @@ const TodayPage = lazy(() => import('./pages/TodayPage'));
 const ExtensionConnectPage = lazy(() => import('./pages/ExtensionConnectPage'));
 // The rebuilt landing page, at /new until it replaces the current one.
 const LandingNew = lazy(() => import('./pages/LandingNew'));
+// Store listing screenshots with example data (development only).
+const StoreShots = lazy(() => import('./pages/StoreShots'));
 const PostApplicationsPage = lazy(() => import('./pages/PostApplicationsPage'));
 const HotlistRequestsPage = lazy(() => import('./pages/HotlistRequestsPage'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -309,6 +311,7 @@ export default function App() {
             <Route path="/signin" element={<ErrorBoundary><SignIn /></ErrorBoundary>} />
             <Route path="/r/:code" element={<ReferralLanding />} />
             <Route path="/new" element={<ErrorBoundary><LandingNew /></ErrorBoundary>} />
+            <Route path="/store-shots" element={<StoreShots />} />
             <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
             <Route path="/onboard/:token" element={<ErrorBoundary><CandidateOnboarding /></ErrorBoundary>} />
             <Route path="/welcome" element={<ProtectedRoute><ErrorBoundary><OnboardingVideo /></ErrorBoundary></ProtectedRoute>} />
