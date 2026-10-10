@@ -179,8 +179,10 @@ export function SkillTiles({ skills, onDark = false, animate = false, at: start 
 // Animated: the map ripples in, the profile's state lights up, a line draws
 // to the job's state, which lights up and pings. Same state pulses; remote
 // washes the whole map green.
-export function UsMap({ jobState, profileState, remote, profileColor, onDark = false, animate = false, at = 0 }: {
+export function UsMap({ jobState, profileState, remote, profileColor, onDark = false, animate = false, at = 0, wave: waveOn = true }: {
   jobState: string | null; profileState: string | null; remote?: boolean; profileColor: string; onDark?: boolean; animate?: boolean; at?: number;
+  /** Ripple every tile in (heavier); off, only the two states and the route move. */
+  wave?: boolean;
 }) {
   const base = onDark ? 'rgba(255,255,255,.13)' : 'var(--pp-map-tile)';
   const waveEnd = at + 520;
@@ -208,8 +210,9 @@ export function UsMap({ jobState, profileState, remote, profileColor, onDark = f
           else if (st === profileState) { bg = profileColor; label = st; lightAt = waveEnd - 80; }
           const wave = `ppWave 350ms ease-out ${at + (r + c) * (remote ? 22 : 14)}ms both`;
           const style: CSSProperties = { gridRow: r + 1, gridColumn: c + 1, background: bg };
-          if (animate) {
-            style.animation = lightAt != null ? `${wave}, ppLightUp 500ms ease-out ${lightAt}ms both` : wave;
+          if (animate && (waveOn || lightAt != null)) {
+            const light = lightAt != null ? `ppLightUp 500ms ease-out ${lightAt}ms both` : '';
+            style.animation = [waveOn ? wave : '', light].filter(Boolean).join(', ');
             if (lightAt != null) Object.assign(style, { '--pp-base': base, '--pp-lit': bg });
           }
           return (
