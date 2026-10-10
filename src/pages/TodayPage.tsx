@@ -347,7 +347,7 @@ export default function TodayPage() {
                       {consultantTitle(s.role_title)}
                     </button>
                   )}
-                  <div className="flex items-center gap-2 px-1.5 pt-1.5 text-[10px] text-gray-500">
+                  <div className="flex items-center gap-2 px-1.5 pt-1.5 text-[12px] text-gray-500">
                     <span>{s.submitted_today} sent today</span>
                     <span className="ml-auto inline-flex items-center gap-1">
                       {resume ? (
@@ -412,7 +412,7 @@ export default function TodayPage() {
                       onToggleBulkSelect={() => setChecked((c) => { const n = new Set(c); if (n.has(i.card_id)) n.delete(i.card_id); else n.add(i.card_id); return n; })}
                     />
                   )}
-                  <div className="flex items-center gap-2 px-1.5 pt-1.5 text-[10px]">
+                  <div className="flex items-center gap-2 px-1.5 pt-1.5 text-[12px]">
                     <span className="text-gray-400">{Math.round(i.similarity * 100)}% match</span>
                     {st === 'sent' && <span className="font-semibold text-emerald-600">Sent</span>}
                     {st === 'skipped' && <span className="text-gray-400">Skipped</span>}
