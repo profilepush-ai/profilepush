@@ -165,10 +165,20 @@ export default function MatchDetail({
     <section className={box}>
       <h4 className={boxTitle}><FileText size={13} />{kind === 'hotlist' ? 'Job post' : 'Profile post'}</h4>
       {post == null ? <div className="flex justify-center py-4"><LogoSpinner size={16} /></div> : (
-        <>
-          <p className={`whitespace-pre-wrap text-[13px] leading-relaxed text-gray-600 dark:text-slate-300 ${postOpen ? '' : 'line-clamp-4'}`}>{post || 'No text in this post.'}</p>
-          {post && <button type="button" onClick={() => setPostOpen((o) => !o)} className="mt-1.5 text-[13px] font-bold text-blue-600 dark:text-blue-400">{postOpen ? 'Show less' : 'Show full post'}</button>}
-        </>
+        !post ? <p className="text-[13px] text-gray-500">No text in this post.</p> : postOpen ? (
+          <>
+            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-700 dark:text-slate-300">{post}</p>
+            <button type="button" onClick={() => setPostOpen(false)} className="mt-1.5 text-[13px] font-bold text-blue-600 dark:text-blue-400">Show less</button>
+          </>
+        ) : (
+          // Blurred until they choose to read it.
+          <button type="button" onClick={() => setPostOpen(true)} className="relative block w-full text-left" aria-label="Read the job post">
+            <p aria-hidden="true" className="line-clamp-4 select-none whitespace-pre-wrap text-[13px] leading-relaxed text-gray-600 blur-[4px] dark:text-slate-300">{post}</p>
+            <span className="absolute inset-0 grid place-items-center">
+              <span className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white px-4 text-[13px] font-bold text-gray-900 shadow-md ring-1 ring-black/5"><FileText size={14} />Read the {kind === 'hotlist' ? 'job' : 'profile'} post</span>
+            </span>
+          </button>
+        )
       )}
     </section>
   );
@@ -275,12 +285,14 @@ export default function MatchDetail({
       )}
       <div className="min-h-0 flex-1 touch-pan-y space-y-3.5 overflow-y-auto bg-[#f3f2ee] p-4 dark:bg-[#1B1D21]">
         {hero}
+        {/* The post, full width, blurred until opened. */}
+        {postBox}
         {mode === 'pane' ? (
           <div className="grid grid-cols-2 items-start gap-3.5">
-            <div className="min-w-0 space-y-3.5">{board}{postBox}</div>
+            <div className="min-w-0 space-y-3.5">{board}</div>
             <div className="min-w-0 space-y-3.5">{action}</div>
           </div>
-        ) : (<>{board}{action}{postBox}</>)}
+        ) : (<>{board}{action}</>)}
       </div>
       <div className="shrink-0 space-y-2 border-t border-gray-200 bg-white px-3.5 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] dark:border-white/10 dark:bg-[#20242a]">
         <div className="flex gap-2">{secondary}{primary}</div>
