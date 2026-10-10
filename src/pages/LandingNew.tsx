@@ -21,6 +21,22 @@ const n = (v: number) => v.toLocaleString('en-US');
 // What the AI Copilot is for, rotating in the hero's heading.
 const FOR = ['Job Hunting', 'Job Posting', 'Bench Sales'];
 
+// Plain answers, shown on the page and given to search and answer engines
+// as FAQPage data (the two must say the same thing).
+const FAQS: Array<[string, string]> = [
+  ['What is ProfilePush?', 'ProfilePush is an AI Copilot for job hunting, job posting and bench sales in US IT staffing. It matches profiles to new jobs, and jobs to profiles, all day, shows each match with its score, the skills that fit and an AI picture, and sends the resume by email from your own Gmail in one tap.'],
+  ['Who is ProfilePush for?', 'IT job seekers looking for their next role or contract, bench sales recruiters (bench marketers) who market consultants, and job posters such as vendors, prime vendors and staffing firms who need matching profiles.'],
+  ['How does the AI job matching work?', 'ProfilePush reads every new job post for its title, skills, visa, rate and location, compares it with your profile and scores the fit from 0 to 100. Strong matches arrive in Today through the day, newest first, and each one stays for 24 hours.'],
+  ['How much does ProfilePush cost?', 'You start with 100 free matches. After that you pay only for matches: ₹0.25 a match in India or $0.01 a match everywhere else, in any amount from ₹100 or $5. There is no subscription. Viewing jobs, sending resumes and the tracker are free.'],
+  ['How do I send my resume to a job?', 'Tap Send resume on a match, pick a resume already on your profile or upload a new one (PDF or Word, up to 4 MB), and AI writes a short email to the poster. You can edit it, then it goes from your own Gmail.'],
+  ['Does ProfilePush show C2C, H1B and remote jobs?', 'Yes. Every match shows the visas the job accepts (such as USC, GC, H1B, H4 EAD and OPT), whether it is a contract, the rate when the post gives one, and the location or remote. If the post leaves something out, you can ask the poster in one tap.'],
+  ['Is there a ProfilePush app?', 'Yes, ProfilePush is on Google Play for Android. On iPhone and on computers it runs in the browser at profilepush.ai. The ProfilePush Apply Chrome extension fills in career-site application forms for your profile.'],
+];
+const FAQ_LD = {
+  '@context': 'https://schema.org', '@type': 'FAQPage',
+  mainEntity: FAQS.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+};
+
 function Step({ n: num, title, text, children }: { n: number; title: string; text: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-3 rounded-3xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-[#20242a]">
@@ -58,8 +74,9 @@ export default function LandingNew() {
 
   return (
     <div className="min-h-screen bg-[#f6f7fb] text-[#0f172a] dark:bg-[#1B1D21] dark:text-slate-100">
-      <SEO title="ProfilePush: the AI Copilot for recruiters, vendors and job seekers" canonical="https://profilepush.ai/"
-        description="AI Copilot for US IT staffing. Daily AI job matches for your consultants or yourself, with the resume sent in a tap. Vendors get matching bench profiles. Pay only for matches." />
+      <SEO title="ProfilePush: AI Copilot for Job Hunting, Job Posting and Bench Sales" canonical="https://profilepush.ai/"
+        description="AI job matches every day for IT job seekers, bench sales recruiters and job posters. Send your resume in one tap, track every application. 100 free matches."
+        jsonLd={FAQ_LD} />
       <header className="sticky top-0 z-40 border-b border-gray-200/70 bg-white/85 backdrop-blur dark:border-white/10 dark:bg-[#1B1D21]/85">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4">
           <Link to="/" aria-label="ProfilePush"><Logo /></Link>
@@ -210,6 +227,21 @@ export default function LandingNew() {
             <Link to="/signup" onClick={start('pricing')} className="mt-6 flex h-12 items-center justify-center gap-2 rounded-full bg-[#2563EB] text-[16px] font-bold hover:bg-blue-500">Start free<ArrowRight size={18} /></Link>
             <p className="mt-4 flex items-center gap-2 text-[13.5px] text-white/75"><Gift size={16} className="shrink-0 text-[#FACC15]" />Invite a friend: you get 100 credits, they get 50 extra.</p>
           </div>
+        </div>
+      </section>
+
+      {/* Questions, answered plainly. */}
+      <section id="faq" className="mx-auto max-w-3xl scroll-mt-16 px-4 pt-20">
+        <h2 className="text-balance text-center text-[30px] font-extrabold tracking-tight sm:text-[36px]">Questions</h2>
+        <div className="mt-8 divide-y divide-gray-200 rounded-3xl border border-gray-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-[#20242a]">
+          {FAQS.map(([q, a]) => (
+            <details key={q} className="group px-5 py-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-bold">
+                {q}<ChevronRight size={18} className="shrink-0 text-gray-400 transition-transform group-open:rotate-90" />
+              </summary>
+              <p className="mt-2.5 text-[15px] leading-relaxed text-gray-600 dark:text-slate-300">{a}</p>
+            </details>
+          ))}
         </div>
       </section>
 
