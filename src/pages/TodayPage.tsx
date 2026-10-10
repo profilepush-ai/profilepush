@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ChevronRight, Clock, Eye, History, Lock, Mail, Play, Plus, Send, Sparkles, Kanban, X } from 'lucide-react';
+import { ChevronRight, Clock, Eye, History, List, Lock, Mail, Play, Plus, Send, Sparkles, Kanban, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import PostFormModal from '../components/posts/PostFormModal';
@@ -46,7 +46,9 @@ export default function TodayPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
-  const [deckOpen, setDeckOpen] = useState(false);
+  // Swipe is the default view; the list is one tap away.
+  const [view, setView] = useState<'swipe' | 'list'>('swipe');
+  const [deckId, setDeckId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [tip, setTip] = useState(() => { try { return localStorage.getItem('today_tip_hidden') !== '1'; } catch { return true; } });
 
@@ -71,8 +73,11 @@ export default function TodayPage() {
 
 
   // On a wide screen the first match is open beside the list.
-  const current = wide ? items.find((i) => i.card_id === selected) ?? items[0] ?? null : null;
-  useEffect(() => { if (current && !current.viewed_at) see(current); }, [current?.card_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // On desktop the detail of the swipe card (or the picked list card) sits beside it.
+  const listCurrent = wide && view === 'list' ? items.find((i) => i.card_id === selected) ?? items[0] ?? null : null;
+  const current = wide ? (view === 'swipe' ? items.find((i) => i.card_id === deckId) ?? null : listCurrent) : null;
+  useEffect(() => { if (listCurrent && !listCurrent.viewed_at) see(listCurrent); }, [listCurrent?.card_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const switchView = (next: 'swipe' | 'list') => { setView(next); trackEvent('today_view_changed', { view: next }); };
   const sheetItem = !wide && openId ? (data?.items ?? []).find((i) => i.card_id === openId) ?? null : null;
 
   const patch = (cardId: string, change: Partial<CardItem>) =>
@@ -186,11 +191,17 @@ export default function TodayPage() {
                 {loading && !data ? 'Loading your matches…' : totalNew ? `${totalNew} new ${totalNew === 1 ? 'match' : 'matches'} for your ${label}` : 'You are all caught up'}
               </p>
             </div>
-            {!wide && totalNew > 0 && (
-              <button type="button" onClick={() => { setDeckOpen(true); hideTip(); trackEvent('today_swipe_opened'); }}
-                className="inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-3.5 text-[13px] font-extrabold text-white shadow-[0_4px_12px_rgba(99,102,241,.35)]">
-                <Play size={13} fill="currentColor" />Swipe
-              </button>
+            {(data?.subjects.length ?? 0) > 0 && (
+              <div className="inline-flex shrink-0 gap-0.5 rounded-full border border-gray-200 bg-white p-[3px] dark:border-white/10 dark:bg-[#20242a]" role="group" aria-label="View">
+                <button type="button" aria-pressed={view === 'swipe'} onClick={() => switchView('swipe')}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-extrabold ${view === 'swipe' ? 'bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-[0_3px_10px_rgba(99,102,241,.35)]' : 'text-gray-600 dark:text-slate-300'}`}>
+                  <Play size={12} fill="currentColor" />Swipe
+                </button>
+                <button type="button" aria-pressed={view === 'list'} onClick={() => switchView('list')}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-bold ${view === 'list' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'text-gray-600 dark:text-slate-300'}`}>
+                  <List size={14} />List
+                </button>
+              </div>
             )}
             <div className="relative h-[46px] w-[46px] shrink-0" title={`${appliedToday} applied today`}>
               <svg width="46" height="46" viewBox="0 0 46 46" className="-rotate-90">
@@ -201,7 +212,7 @@ export default function TodayPage() {
             </div>
           </div>
 
-          {tip && totalNew > 0 && (
+          {view === 'list' && tip && totalNew > 0 && (
             <div className="flex items-center gap-1.5 rounded-xl border border-dashed border-gray-300 bg-white py-2 pl-2.5 pr-1 dark:border-white/15 dark:bg-[#20242a]">
               {[[Eye, 'Open a match'], [Send, kind === 'hotlist' ? 'Apply' : 'Ask Resume'], [Kanban, 'Track replies']].map(([Icon, text], k) => {
                 const I = Icon as typeof Eye;
@@ -218,7 +229,7 @@ export default function TodayPage() {
             </div>
           )}
 
-          {kind === 'hotlist' && gmailConnected === false && totalNew > 0 && (
+          {view === 'list' && kind === 'hotlist' && gmailConnected === false && totalNew > 0 && (
             <button type="button" onClick={() => void connectGmail()} className="flex items-center gap-2.5 rounded-xl bg-amber-50 px-3 py-2.5 text-left text-[13px] font-semibold text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
               <Mail size={16} className="shrink-0" /><span className="flex-1">Connect Gmail to apply by email. Applications go from your own address.</span><ChevronRight size={16} />
             </button>
@@ -249,7 +260,7 @@ export default function TodayPage() {
             </div>
           )}
 
-          {subjectFilter && (
+          {view === 'list' && subjectFilter && (
             <div className="flex items-center gap-2.5 rounded-2xl border border-gray-200 bg-white py-2.5 pl-3 pr-2.5 dark:border-white/10 dark:bg-[#20242a]">
               <Initials name={subjectName(kind, subjectFilter)} id={subjectFilter.id} size={38} />
               <div className="min-w-0 flex-1">
@@ -264,6 +275,27 @@ export default function TodayPage() {
             </div>
           )}
 
+          {view === 'swipe' && !loadError && (data?.subjects.length ?? 0) > 0 ? (
+            <div className="min-h-0 flex-1 pb-1">
+              <SwipeDeck
+                key={filter}
+                inline
+                hideDetails={wide}
+                items={items}
+                kind={kind}
+                subjects={subjects}
+                startId={null}
+                appliedToday={appliedToday}
+                onCurrent={(i) => setDeckId(i?.card_id ?? null)}
+                onSeen={see}
+                onApply={applyQuick}
+                onSave={save}
+                onShare={(i) => void share(i)}
+                onDismiss={dismiss}
+                onDetails={(i) => open(i)}
+              />
+            </div>
+          ) : (
           <div className="-mx-1 min-h-0 flex-1 space-y-2.5 overflow-y-auto px-1 pb-4">
             {loading && !data ? (
               <div className="flex justify-center py-16"><LogoSpinner size={20} /></div>
@@ -304,13 +336,14 @@ export default function TodayPage() {
               </>
             )}
           </div>
+          )}
         </div>
 
         {wide && (
           <div className="min-h-0 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#20242a]">
             {current ? detailFor(current, 'pane') : (
               <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-gray-400">
-                <Sparkles size={28} /><b className="text-[16px] text-gray-700 dark:text-slate-200">Pick a match</b>
+                <Sparkles size={28} /><b className="text-[16px] text-gray-700 dark:text-slate-200">{view === 'swipe' && items.length === 0 ? 'All caught up' : 'Pick a match'}</b>
                 <p className="max-w-[34ch] text-[13px]">Why it fits, the post, and your application show here.</p>
               </div>
             )}
@@ -338,23 +371,6 @@ export default function TodayPage() {
             onClose={() => setProfileId(null)} onSeeMatches={() => { setFilter(profileSubject.id); setProfileId(null); setOpenId(null); }} onChanged={() => void load()} showToast={(m) => showToast(m)} />
         </div>
       ))}
-
-      {deckOpen && (
-        <SwipeDeck
-          items={items}
-          kind={kind}
-          subjects={subjects}
-          startId={null}
-          appliedToday={appliedToday}
-          onClose={() => setDeckOpen(false)}
-          onSeen={see}
-          onApply={applyQuick}
-          onSave={save}
-          onShare={(i) => void share(i)}
-          onDismiss={dismiss}
-          onDetails={(i) => { setDeckOpen(false); open(i); }}
-        />
-      )}
 
       <ToastBar toast={actions.toast} onClose={() => actions.setToast(null)} />
 
