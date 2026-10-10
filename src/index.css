@@ -447,6 +447,40 @@
 }
 @keyframes ppReel { from { width: 0; } to { width: 100%; } }
 @keyframes ppPicture { from { opacity: 0; } to { opacity: 1; } }
+/* The brand loader: the two dots drop in and click together (a match), then
+   the chevron pushes along the score line in ticks, filling it, the % ticking
+   up with it. Sizes come from --x0 (where the line starts), --len and --drop. */
+@property --pp-pct { syntax: '<integer>'; inherits: false; initial-value: 0; }
+.pp-ld-dot-a { animation: ppLdDotA 2.8s cubic-bezier(.3,.7,.2,1) infinite; }
+.pp-ld-dot-b { animation: ppLdDotB 2.8s cubic-bezier(.3,.7,.2,1) infinite; }
+.pp-ld-ring { transform-box: fill-box; transform-origin: center; animation: ppLdRing 2.8s ease-out infinite; }
+.pp-ld-push { animation: ppLdPush 2.8s cubic-bezier(.3,.7,.2,1) infinite; }
+.pp-ld-fill { animation: ppLdFill 2.8s cubic-bezier(.3,.7,.2,1) infinite; }
+.pp-ld-pct { animation: ppLdPct 2.8s cubic-bezier(.3,.7,.2,1) infinite; counter-reset: pppct var(--pp-pct); }
+.pp-ld-pct::after { content: counter(pppct) '%'; }
+@keyframes ppLdDotA { 0% { transform: translateY(calc(var(--drop) * -1)); opacity: 0; } 10% { transform: translateY(calc(var(--drop) * .15)); opacity: 1; } 14%, 92% { transform: none; opacity: 1; } 100% { transform: none; opacity: 0; } }
+@keyframes ppLdDotB { 0% { transform: translateY(var(--drop)); opacity: 0; } 10% { transform: translateY(calc(var(--drop) * -.15)); opacity: 1; } 14%, 92% { transform: none; opacity: 1; } 100% { transform: none; opacity: 0; } }
+@keyframes ppLdRing { 0%, 12% { transform: scale(.5); opacity: 0; } 15% { opacity: .55; } 28%, 100% { transform: scale(1.4); opacity: 0; } }
+@keyframes ppLdPush {
+  0%, 17% { transform: translateX(var(--x0)); opacity: 0; }
+  22% { transform: translateX(var(--x0)); opacity: 1; }
+  34%, 40% { transform: translateX(calc(var(--x0) + var(--len) * .25)); }
+  52%, 58% { transform: translateX(calc(var(--x0) + var(--len) * .5)); }
+  70%, 76% { transform: translateX(calc(var(--x0) + var(--len) * .75)); }
+  86%, 92% { transform: translateX(calc(var(--x0) + var(--len))); opacity: 1; }
+  100% { transform: translateX(calc(var(--x0) + var(--len))); opacity: 0; }
+}
+@keyframes ppLdFill { 0%, 22% { stroke-dashoffset: 1; opacity: 1; } 34%, 40% { stroke-dashoffset: .75; } 52%, 58% { stroke-dashoffset: .5; } 70%, 76% { stroke-dashoffset: .25; } 86%, 92% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes ppLdPct { 0%, 22% { --pp-pct: 0; } 34%, 40% { --pp-pct: 25; } 52%, 58% { --pp-pct: 50; } 70%, 76% { --pp-pct: 75; } 86%, 100% { --pp-pct: 100; } }
+/* The splash runs it once, quicker: matched and pushed to 100% as it fades. */
+.pp-ld-quick :is(.pp-ld-dot-a, .pp-ld-dot-b, .pp-ld-ring, .pp-ld-push, .pp-ld-fill, .pp-ld-pct) { animation-duration: 1.8s; animation-iteration-count: 1; animation-fill-mode: both; }
+@media (prefers-reduced-motion: reduce) {
+  .pp-ld-dot-a, .pp-ld-dot-b, .pp-ld-ring, .pp-ld-push, .pp-ld-fill, .pp-ld-pct { animation: none !important; }
+  .pp-ld-push { transform: translateX(var(--x0)); }
+}
+
+/* Intro: the AI email's lines writing themselves. */
+@keyframes ppTypeLine { 0% { transform: scaleX(0); } 45%, 100% { transform: scaleX(1); } }
 /* The push: the next card shoves the last one off; the mark rides the seam. */
 @keyframes ppPushInL { from { transform: translateX(100%); } to { transform: none; } }
 @keyframes ppPushInR { from { transform: translateX(-100%); } to { transform: none; } }

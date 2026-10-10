@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bell, Check, ChevronRight, CreditCard, Lock, Mail, Smartphone, UserCog, Users } from 'lucide-react';
+import { Bell, Check, ChevronRight, CreditCard, Lock, Mail, Smartphone, Star, UserCog, Users } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import { Initials } from '../components/match/Visuals';
 import AvatarPanel from '../components/match/AvatarPanel';
 import { PLAIN_SCORE_KEY, plainScore } from '../lib/prefs';
+import { rateOnPlay } from '../lib/rate';
 import ReferPanel from '../components/ReferPanel';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -186,6 +187,16 @@ export default function MatchingSettingsPage() {
                   <ReferPanel />
                 </Section>
               </div>
+              <Section title="Enjoying ProfilePush?" detail="Rate us on Google Play. One tap, and it helps others find us.">
+                <div className="flex items-center gap-1" role="group" aria-label="Rate ProfilePush on Google Play">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button key={n} type="button" onClick={() => rateOnPlay(n)} aria-label={`${n} star${n === 1 ? '' : 's'} on Google Play`}
+                      className="rounded-lg p-1 text-amber-400 transition-transform hover:scale-110 active:scale-95">
+                      <Star size={30} fill="currentColor" />
+                    </button>
+                  ))}
+                </div>
+              </Section>
               <Section title="Match score" detail={plain ? 'Shown as it is.' : 'Swings a moment before it lands on the score. Tap Show score on any card to skip it.'}
                 badge={(
                   <button type="button" role="switch" aria-checked={!plain} onClick={() => { const next = !plain; try { if (next) localStorage.setItem(PLAIN_SCORE_KEY, '1'); else localStorage.removeItem(PLAIN_SCORE_KEY); } catch { /* fine */ } setPlain(next); }}

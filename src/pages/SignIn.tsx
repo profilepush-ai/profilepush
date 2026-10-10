@@ -7,9 +7,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { buildSignupWebhookPayload, sendSignupWebhook } from '../lib/auth-webhook';
 import { startNativeGoogleSignIn } from '../lib/native-auth';
 import { ensureAccountForUser } from '../lib/account-provisioning';
-import Logo from '../components/Logo';
 import LogoSpinner from '../components/LogoSpinner';
 import AuthSidePanel from '../components/AuthSidePanel';
+import AuthMobileHeader from '../components/AuthMobileHeader';
 
 const isNativeApp = Capacitor.isNativePlatform();
 
@@ -275,12 +275,10 @@ export default function SignIn() {
       {/* Right panel — form */}
       <div className="flex-1 flex items-center justify-center px-4 py-6 sm:px-6 sm:py-12">
         <div className="w-full max-w-sm">
-          <Link to="/" className="flex items-center gap-2 text-blue-600 font-bold text-base mb-10 lg:hidden">
-            <Logo size="md" />
-          </Link>
+          <AuthMobileHeader line="Your AI Copilot for job hunting, job posting and bench sales" />
 
-          <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 mb-1">Welcome back</h1>
-          <p className="text-gray-500 text-sm mb-6 sm:mb-8">Start with Google or enter your work email to continue.</p>
+          <h1 className="text-[26px] sm:text-2xl font-extrabold tracking-tight text-gray-900 mb-1">Welcome back</h1>
+          <p className="text-gray-600 text-[15px] mb-6 sm:mb-8">Your new matches are waiting.</p>
 
           {error && (
             <div id="sign-in-error" role="alert" aria-live="assertive" className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-6">
@@ -308,7 +306,7 @@ export default function SignIn() {
               type="button"
               onClick={handleGoogleSignIn}
               disabled={submitting || oauthSubmitting || resettingPassword}
-              className="w-full h-11 bg-white border border-[#dadce0] hover:bg-[#f8f9fa] active:bg-[#f1f3f4] disabled:opacity-60 disabled:cursor-not-allowed text-[#3c4043] text-sm font-medium rounded-full flex items-center justify-center gap-3 transition-colors mb-4 shadow-sm"
+              className="w-full h-12 bg-white border border-[#dadce0] hover:bg-[#f8f9fa] active:bg-[#f1f3f4] disabled:opacity-60 disabled:cursor-not-allowed text-[#3c4043] text-[15px] font-medium rounded-full flex items-center justify-center gap-3 transition-colors mb-4 shadow-sm"
             >
               {oauthSubmitting ? (
                 <><LogoSpinner size={15} /> Redirecting to Google...</>
@@ -334,7 +332,7 @@ export default function SignIn() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-xs font-semibold text-gray-700 mb-1.5">Work Email</label>
+              <label htmlFor="email" className="block text-[13px] font-semibold text-gray-700 mb-1.5">Work Email</label>
               <div className="relative">
                 <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
@@ -343,7 +341,7 @@ export default function SignIn() {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="jane@acmestaffing.com"
-                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-[15px] rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                   autoComplete="email"
                   aria-invalid={!!error}
                   aria-describedby={error ? 'sign-in-error' : undefined}
@@ -355,7 +353,7 @@ export default function SignIn() {
               <>
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label htmlFor="password" className="block text-xs font-semibold text-gray-700">Password</label>
+                    <label htmlFor="password" className="block text-[13px] font-semibold text-gray-700">Password</label>
                     <button
                       type="button"
                       onClick={handleForgotPassword}
@@ -373,7 +371,7 @@ export default function SignIn() {
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       placeholder="Your password"
-                      className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-sm rounded-lg pl-9 pr-10 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                      className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 text-[15px] rounded-xl pl-10 pr-10 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                       autoComplete="current-password"
                       aria-invalid={!!error}
                       aria-describedby={error ? 'sign-in-error' : undefined}
@@ -393,7 +391,7 @@ export default function SignIn() {
                 <button
                   type="submit"
                   disabled={submitting || oauthSubmitting || resettingPassword}
-                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm shadow-blue-200 mt-2"
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[15px] font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-[0_8px_22px_rgba(37,99,235,.3)] mt-2"
                 >
                   {submitting ? (
                     <><LogoSpinner size={15} /> Signing in…</>

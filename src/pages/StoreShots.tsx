@@ -4,13 +4,17 @@ import SwipeDeck from '../components/match/SwipeDeck';
 import MatchDetail from '../components/match/MatchDetail';
 import MatchSheet from '../components/match/MatchSheet';
 import SendResumeSheet from '../components/match/SendResumeSheet';
+import StartupSplash from '../components/StartupSplash';
+import PersonaGateScreen from '../components/PersonaGateScreen';
+import BrandLoader from '../components/brand/BrandLoader';
+import LogoSpinner from '../components/LogoSpinner';
 import { Initials } from '../components/match/Visuals';
 import type { CardItem, Subject } from '../lib/today';
 
 // Store listing screenshots: the real Today, detail and Tracker components
 // with example data (IT jobs, sample names), so no customer's data or a real
 // company's logo ends up in a public listing. Development only.
-//   /store-shots?shot=today | avatar | detail | send | tracker | done
+//   /store-shots?shot=today | avatar | detail | send | tracker | done | splash | role | loader
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
 
@@ -76,6 +80,16 @@ export default function StoreShots() {
       onSeen={noop} onApply={noop} onSave={noop} onShare={noop} onDismiss={noop} onDetails={noop} />
   );
 
+  if (shot === 'splash') return <StartupSplash hide={false} />;
+  if (shot === 'role') return <PersonaGateScreen />;
+  if (shot === 'loader') {
+    return (
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-10 bg-white">
+        <BrandLoader width={260} label="Finding your matches" />
+        <span className="flex items-end gap-6">{[14, 18, 24, 32].map((n) => <LogoSpinner key={n} size={n} />)}</span>
+      </div>
+    );
+  }
   if (shot === 'today') return deck(ITEMS);
   if (shot === 'avatar') return deck([{ ...ITEMS[0], my_visual: '/landing-v2/avatar-job.webp' }], true);
   if (shot === 'detail' || shot === 'send') {

@@ -6,6 +6,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import LandingNew from './pages/LandingNew';
 import LogoSpinner from './components/LogoSpinner';
+import BrandLoader from './components/brand/BrandLoader';
+import { INTRO_SEEN_KEY } from './lib/prefs';
 import StartupSplash from './components/StartupSplash';
 import UserActivityTracker from './components/UserActivityTracker';
 import ReferralClaim, { ReferralLanding } from './components/ReferralClaim';
@@ -42,6 +44,8 @@ const TrackerPage = lazy(() => import('./pages/TrackerPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const TodayPage = lazy(() => import('./pages/TodayPage'));
 const ExtensionConnectPage = lazy(() => import('./pages/ExtensionConnectPage'));
+// The app's first-launch slides, before signup.
+const StartPage = lazy(() => import('./pages/StartPage'));
 // The previous landing page, kept at /old.
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 // Store listing screenshots with example data (development only).
@@ -80,7 +84,7 @@ const AdminWebsitesPage = lazy(() => import('./pages/AdminWebsitesPage'));
 function PageLoader() {
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <LogoSpinner size={32} />
+      <BrandLoader width={180} />
     </div>
   );
 }
@@ -154,8 +158,12 @@ function AppEntry() {
     );
   }
 
-  // Opening the app signed in lands where signing in lands.
-  return <Navigate to={user ? '/home' : '/signup'} replace />;
+  // Opening the app signed in lands where signing in lands; the first time
+  // signed out, the intro slides come before signup.
+  if (user) return <Navigate to="/home" replace />;
+  let seen = false;
+  try { seen = localStorage.getItem(INTRO_SEEN_KEY) === '1'; } catch { /* fine */ }
+  return <Navigate to={seen ? '/signup' : '/start'} replace />;
 }
 
 // Where a signed-in user lands (my_landing_path decides): Today when they
@@ -276,12 +284,14 @@ function SupabaseSetupRequired() {
 }
 
 export default function App() {
-  const [showStartupSplash, setShowStartupSplash] = useState(true);
+  // The opening splash is for the installed app; on the web it would only
+  // hold back the page.
+  const [showStartupSplash, setShowStartupSplash] = useState(() => Capacitor.isNativePlatform());
 
   useEffect(() => {
     initializeOneSignal();
     registerNativeAuthDeepLinkListener();
-    const timer = window.setTimeout(() => setShowStartupSplash(false), 1500);
+    const timer = window.setTimeout(() => setShowStartupSplash(false), 1700);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -309,6 +319,7 @@ export default function App() {
             <Route path="/" element={<ErrorBoundary><AppEntry /></ErrorBoundary>} />
             <Route path="/signup" element={<ErrorBoundary><SignUp /></ErrorBoundary>} />
             <Route path="/signin" element={<ErrorBoundary><SignIn /></ErrorBoundary>} />
+            <Route path="/start" element={<ErrorBoundary><StartPage /></ErrorBoundary>} />
             <Route path="/r/:code" element={<ReferralLanding />} />
             <Route path="/new" element={<Navigate to="/" replace />} />
             <Route path="/old" element={<ErrorBoundary><LandingPage /></ErrorBoundary>} />

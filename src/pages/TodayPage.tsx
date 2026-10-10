@@ -19,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { trackEvent } from '../lib/track';
 import { cardRoute, loadToday, markViewed, strings, subjectName, type CardItem, type Kind, type Question, type Subject, type TodayData } from '../lib/today';
 import { priceLabels, useCurrency } from '../lib/currency';
+import { maybeAskForPlayReview } from '../lib/rate';
 
 // Today: every new match, one at a time, as a swipe card. On a phone it is
 // full screen, with the search and the profile chips on the card itself; the
@@ -52,6 +53,13 @@ function useCountdown(iso: string | undefined) {
 
 // A short burst of confetti for finishing the reel.
 const CONFETTI = ['#34d399', '#60a5fa', '#a78bfa', '#fbbf24', '#f472b6', '#f87171'];
+// The end of a reel they applied from: a good moment for Google Play's own
+// rating dialog (at most every 60 days; Google decides if it shows).
+function AskForRating({ when }: { when: boolean }) {
+  useEffect(() => { if (when) maybeAskForPlayReview('reel_complete'); }, [when]);
+  return null;
+}
+
 function Confetti() {
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -358,6 +366,7 @@ export default function TodayPage() {
   const endScreen = (
     <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-5 py-4 text-center">
       <Confetti />
+      <AskForRating when={appliedToday > 0} />
       <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-emerald-600 shadow-[0_0_0_8px_rgba(16,185,129,.18)]" style={{ animation: 'ppPop 420ms cubic-bezier(.2,.8,.2,1) both' }}><Check size={32} strokeWidth={3} /></span>
       <div style={{ animation: 'ppFadeUp 400ms ease-out 120ms both' }}>
         <h2 className="text-[26px] font-extrabold leading-tight">{free && (reel?.new_today ?? 0) >= (reel?.free_daily ?? 10) ? "That's today's 10" : 'Reel complete'}</h2>

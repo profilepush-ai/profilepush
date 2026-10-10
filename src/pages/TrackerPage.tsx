@@ -6,6 +6,7 @@ import LogoSpinner from '../components/LogoSpinner';
 import MatchSheet from '../components/match/MatchSheet';
 import { useAuth } from '../contexts/AuthContext';
 import { leadOrg, leadTitle, loadTracker, setNotes, setStatus, subjectName, type CardItem, type Kind } from '../lib/today';
+import { maybeAskForPlayReview } from '../lib/rate';
 import { copyRows, downloadCsv, sheetRows } from '../lib/sheet';
 import { trackEvent } from '../lib/track';
 
@@ -52,7 +53,11 @@ export default function TrackerPage() {
     const before = items;
     const stage = status === 'applied' ? 'submitted' : ['not_selected', 'no_response', 'job_closed'].includes(status) ? 'closed' : status;
     setItems((list) => list && list.map((i) => (i.card_id === item.card_id ? { ...i, stage, closed_reason: stage === 'closed' ? status : null } : i)));
-    try { await setStatus(item.card_id, status); } catch { setItems(before); }
+    try {
+      await setStatus(item.card_id, status);
+      // A good moment to ask for a Google Play rating.
+      if (status === 'interview' || status === 'placed') maybeAskForPlayReview(`tracker_${status}`);
+    } catch { setItems(before); }
   };
   const changeNotes = async (item: CardItem, notes: string) => {
     setItems((list) => list && list.map((i) => (i.card_id === item.card_id ? { ...i, notes } : i)));
