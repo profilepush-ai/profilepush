@@ -139,7 +139,14 @@ Deno.serve(async (req: Request) => {
     const { data: duplicate } = await admin.rpc("submission_duplicate", { p_account_id: accountId, p_subject_id: subjectId, p_job_id: jobId });
 
     const senderName = str(member.display_name, 80) || (user.user_metadata?.full_name as string) || user.email?.split("@")[0] || "Recruiter";
-    const { data: resume } = await admin.from("hotlist_resumes").select("url, file_name").eq("hotlist_id", subjectId).maybeSingle();
+    // The resume chosen for this send (one of the consultant's), else the default.
+    const resumeId = str(body.resume_id, 100);
+    const { data: chosen } = resumeId
+      ? await admin.from("hotlist_resume_files").select("url, file_name").eq("id", resumeId).eq("hotlist_id", subjectId).maybeSingle()
+      : { data: null };
+    const { data: resume } = chosen
+      ? { data: chosen }
+      : await admin.from("hotlist_resumes").select("url, file_name").eq("hotlist_id", subjectId).maybeSingle();
     const draft = buildEmail(hotlist as Hotlist, job as Job, senderName, Boolean(resume?.url));
 
     // The vendor's address never reaches the browser: the send happens here.

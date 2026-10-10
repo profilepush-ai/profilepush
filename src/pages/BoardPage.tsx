@@ -171,6 +171,7 @@ export default function BoardPage() {
     try { return new Set(JSON.parse(localStorage.getItem('tracker_resume_preview_hidden') ?? '[]') as string[]); } catch { return new Set(); }
   });
   const aiResumeRef = useRef<{ url: string; name: string } | null>(null);
+  const aiResumeOptionsRef = useRef<Array<{ url: string; name: string }>>([]);
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
   // Browser notifications for new matches: shown until they're on (or the
@@ -337,6 +338,7 @@ export default function BoardPage() {
       onAskAI={(l) => {
         aiSourceJobRef.current = subjectKind === 'job' && subjectId ? subjectId : null;
         aiResumeRef.current = subjectKind === 'hotlist' && subjectId ? resumes[subjectId] ?? null : null;
+        aiResumeOptionsRef.current = subjectKind === 'hotlist' && subjectId ? resumeFiles[subjectId] ?? [] : [];
         void ai.generate(l);
       }}
       onApply={(l) => { setApplyResume(subjectKind === 'hotlist' && subjectId ? resumes[subjectId] ?? null : null); setApplyLead(l); }}
@@ -444,6 +446,7 @@ export default function BoardPage() {
     showToast,
     getSourceJobId: () => aiSourceJobRef.current,
     getResume: () => aiResumeRef.current,
+    getResumeOptions: () => aiResumeOptionsRef.current,
     onOutOfCredits: (action) => setOutOfCredits({ open: true, action }),
     // Stay on the board; the card moves to Submitted / Requested on its own.
     openInboxAfterSend: false,
@@ -468,13 +471,31 @@ export default function BoardPage() {
   // The consultant's attached resume, handed to the submit form so it isn't asked for again.
   const [applyResume, setApplyResume] = useState<{ url: string; name: string } | null>(null);
 
+  // Every resume per consultant; `resumes` is the default one.
+  const [resumeFiles, setResumeFiles] = useState<Record<string, Array<{ id: string; url: string; name: string }>>>({});
   const loadResumes = useCallback(async () => {
     if (subjectKind !== 'hotlist') return;
-    const { data } = await supabase.from('hotlist_resumes' as never).select('hotlist_id, url, file_name');
+    const [def, files] = await Promise.all([
+      supabase.from('hotlist_resumes' as never).select('hotlist_id, url, file_name'),
+      supabase.from('hotlist_resume_files' as never).select('id, hotlist_id, url, file_name').order('uploaded_at', { ascending: false }),
+    ]);
     const next: Record<string, { url: string; name: string }> = {};
-    for (const row of (data as Array<{ hotlist_id: string; url: string; file_name: string }> | null) ?? []) next[row.hotlist_id] = { url: row.url, name: row.file_name };
+    for (const row of (def.data as Array<{ hotlist_id: string; url: string; file_name: string }> | null) ?? []) next[row.hotlist_id] = { url: row.url, name: row.file_name };
     setResumes(next);
+    const lists: Record<string, Array<{ id: string; url: string; name: string }>> = {};
+    for (const row of (files.data as Array<{ id: string; hotlist_id: string; url: string; file_name: string }> | null) ?? []) {
+      (lists[row.hotlist_id] ??= []).push({ id: row.id, url: row.url, name: row.file_name });
+    }
+    setResumeFiles(lists);
   }, [subjectKind]);
+
+  async function makeDefaultResume(subjectId: string, fileId: string) {
+    const file = resumeFiles[subjectId]?.find((f) => f.id === fileId);
+    if (!file) return;
+    setResumes((prev) => ({ ...prev, [subjectId]: { url: file.url, name: file.name } }));
+    const { error: rpcError } = await supabase.rpc('set_default_hotlist_resume' as never, { p_file_id: fileId } as never);
+    if (rpcError) { setError('Could not change the default resume.'); void loadResumes(); }
+  }
   useEffect(() => { if (account?.id) void loadResumes(); }, [account?.id, loadResumes]);
 
   const setPreviewHidden = (subjectId: string, hidden: boolean) => {
@@ -499,7 +520,8 @@ export default function BoardPage() {
       const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(storagePath);
       const { error: rpcError } = await supabase.rpc('set_hotlist_resume' as never, { p_hotlist_id: subjectId, p_url: urlData.publicUrl, p_file_name: file.name } as never);
       if (rpcError) throw new Error(rpcError.message);
-      setResumes((prev) => ({ ...prev, [subjectId]: { url: urlData.publicUrl, name: file.name } }));
+      // Uploading adds a resume; the first one becomes the default.
+      await loadResumes();
       setPreviewHidden(subjectId, false);
       trackEvent('consultant_resume_attached', { type: file.name.split('.').pop()?.toLowerCase() ?? '' });
     } catch (e) {
@@ -510,9 +532,10 @@ export default function BoardPage() {
   }
 
   async function removeResume(subjectId: string) {
+    // Removes the default; the newest other resume takes its place.
     const { error: rpcError } = await supabase.rpc('remove_hotlist_resume' as never, { p_hotlist_id: subjectId } as never);
     if (rpcError) { setError('Could not remove the resume.'); return; }
-    setResumes((prev) => { const next = { ...prev }; delete next[subjectId]; return next; });
+    await loadResumes();
   }
 
   const previewPost = useCallback(async (lead: SocialLead) => {
@@ -993,8 +1016,8 @@ export default function BoardPage() {
                     {subjectKind === 'hotlist' && (
                       <button
                         type="button"
-                        title={resume ? 'Replace resume' : 'Attach resume (sent with AI Submit)'}
-                        aria-label={resume ? 'Replace resume' : 'Attach resume'}
+                        title={resume ? 'Add another resume' : 'Attach resume (sent with AI Submit)'}
+                        aria-label={resume ? 'Add another resume' : 'Attach resume'}
                         disabled={uploadingResumeFor === sid}
                         onClick={() => { resumeTargetRef.current = sid; resumeInputRef.current?.click(); }}
                         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:text-gray-800 disabled:opacity-60 dark:border-white/10 dark:bg-[#171a1f] dark:text-[#94A3B8]"
@@ -1027,7 +1050,19 @@ export default function BoardPage() {
                   {resume && (
                     <div className="mt-1.5 flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-200">
                       <FileText size={11} className="shrink-0 text-gray-500" />
-                      <span className="min-w-0 flex-1 truncate" title={resume.name}>{resume.name}</span>
+                      {(resumeFiles[sid]?.length ?? 0) > 1 ? (
+                        <select
+                          value={resumeFiles[sid].find((f) => f.url === resume.url)?.id ?? ''}
+                          onChange={(e) => void makeDefaultResume(sid, e.target.value)}
+                          aria-label="Default resume"
+                          title="Default resume, attached unless you pick another when sending"
+                          className="min-w-0 flex-1 truncate bg-transparent text-[11px] outline-none"
+                        >
+                          {resumeFiles[sid].map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                        </select>
+                      ) : (
+                        <span className="min-w-0 flex-1 truncate" title={resume.name}>{resume.name}</span>
+                      )}
                       <button type="button" onClick={() => setPreviewHidden(sid, showResumePreview)} title={showResumePreview ? 'Hide preview' : 'Show preview'} aria-label={showResumePreview ? 'Hide resume preview' : 'Show resume preview'} className="shrink-0 text-gray-400 hover:text-gray-700">
                         {showResumePreview ? <EyeOff size={11} /> : <Eye size={11} />}
                       </button>

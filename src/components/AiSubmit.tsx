@@ -36,6 +36,8 @@ export type AskAIPreview = {
   includeScreening?: boolean;
   /** AI Submit: the consultant's resume, sent as an attachment. */
   resume?: { url: string; name: string } | null;
+  /** AI Submit: every resume the consultant has, when there is a choice. */
+  resumeOptions?: Array<{ url: string; name: string }>;
   isGenerating: boolean;
   /** Generated for the AI Match pane, which renders it itself. Keeps the
    *  modal closed: the whole point of the pane is not opening one. */
@@ -81,6 +83,8 @@ export type UseAiSubmitOptions = {
   getSourceJobId?: () => string | null;
   /** AI Submit: the consultant resume to attach, when the page knows one. */
   getResume?: () => { url: string; name: string } | null;
+  /** AI Submit: all of the consultant's resumes, to pick one per send. */
+  getResumeOptions?: () => Array<{ url: string; name: string }>;
   /** Defaults to lead.kind. The Feed passes its own rule for single-kind feeds. */
   isHotlist?: (lead: SocialLead) => boolean;
   /** Out of credits: the page shows its credits prompt for this action. */
@@ -172,6 +176,7 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
       const generatedContent = leadType === 'hotlist' ? (data.email_content || '') : removeNameFromEmail(data.email_content || '', vendorName);
       const screeningJobId = leadType === 'hotlist' ? getSourceJobId() : null;
       const resume = leadType === 'job' ? optionsRef.current.getResume?.() ?? null : null;
+      const resumeOptions = leadType === 'job' ? optionsRef.current.getResumeOptions?.() ?? [] : [];
       // Built as a value rather than a state updater so the caller can send
       // it straight away: "generate and send" cannot wait for a re-render to
       // read the draft back out of state.
@@ -189,6 +194,7 @@ export function useAiSubmit(options: UseAiSubmitOptions) {
         screeningJobId,
         includeScreening: false,
         resume,
+        resumeOptions,
         isGenerating: false,
         inline,
       };
@@ -481,7 +487,21 @@ export function AiSubmitDialog({ ai, screeningExtra }: { ai: AiSubmit; screening
           {askAIPreview.resume && (
             <div className="mt-3 flex items-center gap-2 rounded-md bg-gray-50 px-3 py-2 text-[12px] text-gray-700">
               <Paperclip size={12} className="shrink-0 text-gray-500" />
-              <a href={askAIPreview.resume.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{askAIPreview.resume.name}</a>
+              {(askAIPreview.resumeOptions?.length ?? 0) > 1 ? (
+                <select
+                  value={askAIPreview.resume.url}
+                  onChange={(e) => {
+                    const picked = askAIPreview.resumeOptions?.find((r) => r.url === e.target.value);
+                    if (picked) setAskAIPreview((current) => current ? { ...current, resume: picked } : current);
+                  }}
+                  aria-label="Resume to attach"
+                  className="min-w-0 flex-1 truncate bg-transparent outline-none"
+                >
+                  {askAIPreview.resumeOptions?.map((r) => <option key={r.url} value={r.url}>{r.name}</option>)}
+                </select>
+              ) : (
+                <a href={askAIPreview.resume.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate hover:underline">{askAIPreview.resume.name}</a>
+              )}
               <button
                 type="button"
                 onClick={() => setAskAIPreview((current) => current ? { ...current, resume: null } : current)}
