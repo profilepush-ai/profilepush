@@ -410,7 +410,7 @@ export default function PostFormModal({
       const leftOut = isMultiCandidateMode ? parsedCandidates.length - postedCount : 0;
       showToast(
         isEditing ? 'Post updated'
-          : leftOut > 0 ? `Posted ${postedCount} of ${parsedCandidates.length}. The free plan keeps 3 open — add credits (from ₹249) on Billing to post the other ${leftOut}.`
+          : leftOut > 0 ? `Posted ${postedCount} of ${parsedCandidates.length}. The other ${leftOut} could not be posted; try them again later.`
           : isMultiCandidateMode ? `${parsedCandidates.length} posts created — they will appear in the feed shortly`
           : 'Post created — it will appear in the feed shortly',
         'success',
@@ -564,8 +564,7 @@ export default function PostFormModal({
             </div>
             {pasteOverAllowance && (
               <div className={`rounded-md border p-2.5 text-[12px] ${isDark ? 'border-amber-400/20 bg-amber-500/5 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-                The free plan keeps 3 consultants or requirements open at a time, so {openAllowance === 0 ? 'none of these can be posted yet' : `the first ${openAllowance} will be posted`}.{' '}
-                <a href="/billing" className="font-semibold underline">Add credits (from ₹249)</a> to post all {parsedCandidates.length}.
+                {openAllowance === 0 ? 'None of these can be posted right now.' : `Only the first ${openAllowance} can be posted right now.`}
               </div>
             )}
 

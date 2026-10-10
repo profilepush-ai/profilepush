@@ -5237,7 +5237,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
       } else if (post?.status === 'skipped' && post.reason === 'free_plan_limit') {
         // The matches still run; only the post (and so its Tracker column)
         // waits for a free slot.
-        showToast('Matches ready. Your free plan keeps 3 consultants or requirements open on the Tracker, so this one wasn\'t added. Close one, or buy credits for unlimited.', 'error');
+        showToast('Matches ready. This one wasn\'t added to your Tracker.', 'error');
       } else if (post?.status === 'skipped' && post.reason === 'sample') {
         // A sample run is never posted, on purpose.
       } else if (post?.status === 'failed' || post?.status === 'skipped') {

@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom';
 
-// The two pricing cards on the landing pages: Free and one-time credit packs
-// (from ₹249). There is no subscription. Prices mirror the Billing page:
-// 249, 500, 1,000 … 5,000 credits at ₹1 a credit. Any purchase makes the
-// account paid (unlimited open posts, the bigger Network allowance). The
-// first-purchase offer (2× on the ₹249 and ₹500 packs) only appears in the
-// app, for an hour, so it's mentioned, not promised.
+// The two pricing cards on the landing pages: Free and pay per match. There is
+// no subscription. Prices mirror the Billing page: ₹0.25 a match, any amount
+// from ₹100. Any purchase makes the account paid (up to 100 matches a day per
+// consultant, choose the minimum match). The first-purchase offer (2× on ₹250
+// and ₹500) only appears in the app, for an hour, so it's mentioned, not
+// promised.
 
 const CHECK_DARK = 'M1.5 4L3.5 6L6.5 2';
 
@@ -25,15 +25,15 @@ function Bullet({ children, tone }: { children: string; tone: 'yellow' | 'blue' 
 export const DEFAULT_FREE_BULLETS = [
   'All features included',
   'Unlimited team members',
-  '3 open consultants or requirements on the Tracker',
+  '10 new matches a day per consultant',
   'Subscribe to 5 new people a day, up to 10',
   '100 free matches; only matches cost credits',
 ];
 
 const PACK_BULLETS = [
   '₹0.25 a match: ₹250 buys 1,000',
-  'Unlimited open consultants or requirements',
-  'Subscribe to 10 new people a day, no cap',
+  'Up to 100 matches a day per consultant',
+  'Choose your minimum match, 50–80%',
   'Pay any amount from ₹100, no subscription',
   'Opening jobs, AI Submit, bulk send and Apply are free',
   'First top-up? Look for the 2× offer in the app',
@@ -66,13 +66,13 @@ export default function PricingCards({ freeBullets = DEFAULT_FREE_BULLETS }: {
       <div className="bg-white rounded-2xl border-2 border-blue-600 p-8 flex flex-col relative">
         <span className="absolute -top-3 left-8 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-sm text-white bg-blue-600">One-time</span>
         <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-6 bg-blue-50 text-blue-700 w-fit">
-          Credit packs
+          Pay per match
         </span>
         <div className="flex items-baseline gap-1.5 mb-0.5">
-          <span className="text-sm text-gray-500">from</span>
-          <span className="text-5xl font-extrabold text-gray-900">₹249</span>
+          <span className="text-5xl font-extrabold text-gray-900">₹0.25</span>
+          <span className="text-sm text-gray-500">a match</span>
         </div>
-        <p className="text-xs text-gray-500 mb-8">Top up only when you need more</p>
+        <p className="text-xs text-gray-500 mb-8">Any amount from ₹100, top up when you need more</p>
         <ul className="space-y-3 text-sm text-gray-600 flex-1 mb-8">
           {PACK_BULLETS.map((item) => <Bullet key={item} tone="blue">{item}</Bullet>)}
         </ul>

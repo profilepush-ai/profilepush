@@ -845,7 +845,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                         <span className="c f">
                           Free
                           <small>
-                            3 open on the free plan
+                            10 matches a day per post
                           </small>
                         </span>
                       </li>
@@ -891,10 +891,10 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                       <li>
                         <span className="w">
                           <i></i>
-                          Credit packs
+                          Pay per match
                         </span>
                         <span className="c">
-                          from ₹249
+                          ₹0.25 a match
                           <small>
                             no subscription
                           </small>

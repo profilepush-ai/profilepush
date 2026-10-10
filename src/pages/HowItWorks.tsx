@@ -5,8 +5,8 @@ import SiteFooter from '../components/SiteFooter';
 import MarketingNav from '../components/MarketingNav';
 
 const phases = [
-  // The current product, checked against the app (posting free with 3 open on
-  // the free plan, matches and AI Match free, drafts free, 1 credit to open a
+  // The current product, checked against the app (posting free, no open-post
+  // limit, matches and AI Match free, drafts free, 1 credit to open a
   // job post the first time, Gmail send 1 credit refunded on failure,
   // screening 10 credits to the vendor). The old phases described retired tools (multi-
   // board search, Resume AI, Submission Queue, JD AI) that now redirect to /feed.
@@ -17,7 +17,7 @@ const phases = [
     points: [
       { label: 'A requirement', text: 'Paste the requirement text from an email or a job board. The AI fills in the skills, visa, rate and experience for you.' },
       { label: 'A whole hotlist', text: 'Bench sales can paste the hotlist table, up to 50 consultants at a time. Every consultant is read and posted together.' },
-      { label: 'Free to post', text: 'Posting and editing are free. The free plan keeps 3 consultants or requirements open at a time; any credit pack removes that limit.' },
+      { label: 'Free to post', text: 'Posting and editing are free, with no limit on open consultants or requirements. Each gets up to 10 new matches a day on the free plan, or up to 100 on a paid one.' },
     ],
   },
   {

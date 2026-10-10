@@ -58,13 +58,13 @@ export default function FirstPurchaseOfferModal() {
             <Clock size={12} />
             <span className="tabular-nums">Ends in {formatCountdown(left)}</span>
           </div>
-          <h2 className="text-[18px] font-extrabold leading-snug text-gray-900">Double credits on your first top-up</h2>
+          <h2 className="text-[18px] font-extrabold leading-snug text-gray-900">Double matches on your first top-up</h2>
           <p className="mt-2 text-[14px] leading-relaxed text-gray-600">
-            You have {Math.max(0, Math.floor(balance ?? 0))} credits left. For the next hour, your first top-up is doubled:
+            You have {Math.max(0, Math.floor(balance ?? 0))} matches left. For the next hour, your first top-up is doubled:
           </p>
           <ul className="mt-2 space-y-1 text-[14px] text-gray-700">
-            <li>₹249 → <span className="font-bold text-gray-900">498 credits</span> <span className="text-gray-400 line-through">249</span></li>
-            <li>₹500 → <span className="font-bold text-gray-900">1,000 credits</span> <span className="text-gray-400 line-through">500</span></li>
+            <li>₹250 → <span className="font-bold text-gray-900">2,000 matches</span> <span className="text-gray-400 line-through">1,000</span></li>
+            <li>₹500 → <span className="font-bold text-gray-900">4,000 matches</span> <span className="text-gray-400 line-through">2,000</span></li>
           </ul>
           <button
             onClick={() => { setOpen(false); navigate('/billing?openPlan=1'); }}
