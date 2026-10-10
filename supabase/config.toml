@@ -458,3 +458,8 @@ entrypoint = "./functions/receive-career-jobs/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/admin-career-sites/index.ts"
+
+[functions.admin-revenue]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/admin-revenue/index.ts"
