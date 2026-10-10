@@ -150,7 +150,20 @@ export default function MatchDetail({
     <section className="rounded-2xl border border-gray-200 bg-white px-5 py-4 dark:border-white/10 dark:bg-[#20242a]">
       {post == null ? <div className="flex justify-center py-6"><LogoSpinner size={18} /></div>
         : !post ? <p className="text-[13.5px] text-gray-500">No text in this post.</p>
-          : <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-gray-800 dark:text-slate-200">{post}</p>}
+          : postOpen ? (
+            <>
+              <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-gray-800 dark:text-slate-200">{post}</p>
+              <button type="button" onClick={() => setPostOpen(false)} className="mt-2 text-[13px] font-bold text-blue-600 dark:text-blue-400">Show less</button>
+            </>
+          ) : (
+            // Blurred until they choose to read it.
+            <button type="button" onClick={() => setPostOpen(true)} className="relative block w-full text-left" aria-label="Read the job post">
+              <p aria-hidden="true" className="line-clamp-[10] select-none whitespace-pre-wrap text-[14px] leading-relaxed text-gray-700 blur-[5px] dark:text-slate-300">{post}</p>
+              <span className="absolute inset-0 grid place-items-center">
+                <span className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white px-5 text-[14px] font-bold text-gray-900 shadow-md ring-1 ring-black/5"><FileText size={15} />Read the job post</span>
+              </span>
+            </button>
+          )}
     </section>
   );
 
