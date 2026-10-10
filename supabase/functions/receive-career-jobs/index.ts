@@ -308,7 +308,8 @@ Deno.serve(async (req: Request) => {
         extracted_hourly_rate_min: usdHourly ? payMin : null,
         extracted_hourly_rate_max: usdHourly ? payMax : null,
         extracted_skills: Array.isArray(result.core_skills) ? result.core_skills : [],
-        extracted_experience_years: num(result.years_experience),
+        // A whole number column; the parser sometimes says 0.5 or 1.5 years.
+        extracted_experience_years: num(result.years_experience) == null ? null : Math.round(num(result.years_experience)!),
         extracted_visa_types: Array.isArray(result.visa_types) ? result.visa_types : [],
       });
       rowJob.set(postId, job);
