@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Bell, Check, Lock, Smartphone } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Bell, Check, ChevronRight, CreditCard, Lock, Mail, Smartphone, UserCog, Users } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
+import { Initials } from '../components/match/Visuals';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { enableWebPush } from '../lib/onesignal';
@@ -30,11 +31,22 @@ function Section({ title, detail, children, badge }: { title: string; detail: st
   );
 }
 
-// Every setting that shapes matching, in one place: on/off, the minimum
-// match, the daily limit per consultant or requirement, and alerts.
+// Settings: everything that shapes matching (on/off, minimum match, daily
+// matches per profile or job, alerts), plus Gmail, plan and team.
 export default function MatchingSettingsPage() {
   const { account } = useAuth();
+  const navigate = useNavigate();
   const native = Capacitor.isNativePlatform();
+  const [gmail, setGmail] = useState<string | null>(null);
+  useEffect(() => {
+    void supabase.from('gmail_integration_status' as never).select('status, gmail_address' as never).maybeSingle()
+      .then(({ data }: { data: { status?: string; gmail_address?: string } | null }) => setGmail(data?.status === 'connected' ? (data.gmail_address || 'connected') : ''));
+  }, []);
+  const connectGmail = async () => {
+    if (!account?.id) return;
+    const { data, error } = await supabase.functions.invoke('gmail-oauth-start', { body: { account_id: account.id, return_to: '/settings', return_origin: window.location.origin } });
+    if (!error && data?.url) window.location.href = data.url;
+  };
   const [loading, setLoading] = useState(true);
   const [autoMatch, setAutoMatch] = useState(true);
   const [minMatch, setMinMatch] = useState(70);
@@ -100,7 +112,7 @@ export default function MatchingSettingsPage() {
       <main className="mx-auto w-full max-w-2xl space-y-3 px-4 pt-5">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <h1 className="text-[20px] font-bold">Matching settings</h1>
+            <h1 className="text-[24px] font-extrabold tracking-tight">Settings</h1>
             <p className="mt-0.5 text-[13px] text-gray-500 dark:text-slate-400">How many matches you get, how strong they are, and how you hear about them.</p>
           </div>
           {saved && <span className="inline-flex shrink-0 items-center gap-1 text-[12.5px] font-semibold text-emerald-600"><Check size={14} />{saved}</span>}
@@ -148,17 +160,20 @@ export default function MatchingSettingsPage() {
               badge={lockBadge}
             >
               {subjects.length === 0 ? (
-                <p className="text-[13px] text-gray-500">Nothing posted yet. <Link to="/match" className="font-semibold text-blue-600 hover:underline">Add a consultant or requirement</Link>.</p>
+                <p className="text-[13px] text-gray-500">Nothing posted yet. <Link to="/today" className="font-semibold text-blue-600 hover:underline">Add a profile or job</Link>.</p>
               ) : (
                 <ul className="divide-y divide-gray-100 dark:divide-white/10">
                   {subjects.map((s) => (
                     <li key={s.subject_id} className="flex items-center gap-3 py-2.5">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13.5px] font-semibold">{s.title}</p>
-                        <p className="text-[12px] tabular-nums text-gray-500 dark:text-slate-400">
-                          {s.kind === 'hotlist' ? 'Consultant' : 'Requirement'} · today {Math.min(s.today, s.cap)} of {s.cap}
-                        </p>
-                      </div>
+                      <button type="button" onClick={() => navigate(`/today?profile=${s.subject_id}`)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left" title="Open">
+                        <Initials name={s.title} id={s.subject_id} size={32} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-[13.5px] font-semibold">{s.title}</span>
+                          <span className="block text-[12px] tabular-nums text-gray-500 dark:text-slate-400">
+                            {s.kind === 'hotlist' ? 'Profile' : 'Job'} · today {Math.min(s.today, s.cap)} of {s.cap}
+                          </span>
+                        </span>
+                      </button>
                       {paid ? (
                         <select value={s.cap} onChange={(e) => void changeCap(s.subject_id, Number(e.target.value))} aria-label={`Daily matches for ${s.title}`}
                           className="h-9 rounded-lg border border-gray-200 bg-white px-2 text-[13px] font-semibold dark:border-white/10 dark:bg-white/5">
@@ -171,6 +186,30 @@ export default function MatchingSettingsPage() {
                   ))}
                 </ul>
               )}
+            </Section>
+
+            <Section title="Account" detail="Where applications go from, your plan and your team.">
+              <ul className="divide-y divide-gray-100 dark:divide-white/10">
+                <li className="flex items-center gap-3 py-2.5">
+                  <Mail size={18} className="shrink-0 text-gray-400" />
+                  <div className="min-w-0 flex-1"><p className="text-[13.5px] font-semibold">Gmail</p><p className="truncate text-[12px] text-gray-500 dark:text-slate-400">{gmail ? `Applications go from ${gmail === 'connected' ? 'your Gmail' : gmail}` : 'Connect it to apply by email'}</p></div>
+                  {gmail ? <span className="inline-flex items-center gap-1 text-[13px] font-bold text-emerald-600"><Check size={14} />Connected</span>
+                    : gmail === '' ? <button type="button" onClick={() => void connectGmail()} className="h-9 rounded-lg bg-blue-600 px-3 text-[13px] font-semibold text-white">Connect</button> : null}
+                </li>
+                {[
+                  { to: '/billing', icon: CreditCard, title: `${balance.toLocaleString('en-IN')} matches left`, detail: '₹0.25 a match · top up from ₹100' },
+                  { to: '/team', icon: Users, title: 'Team', detail: 'What each recruiter applied to' },
+                  { to: '/account', icon: UserCog, title: 'Account', detail: 'Profile, company, password' },
+                ].map((row) => (
+                  <li key={row.to}>
+                    <Link to={row.to} className="flex items-center gap-3 py-2.5">
+                      <row.icon size={18} className="shrink-0 text-gray-400" />
+                      <div className="min-w-0 flex-1"><p className="text-[13.5px] font-semibold">{row.title}</p><p className="text-[12px] text-gray-500 dark:text-slate-400">{row.detail}</p></div>
+                      <ChevronRight size={16} className="text-gray-400" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </Section>
 
             <Section title="Match alerts" detail="Hear about a strong match the moment it lands.">

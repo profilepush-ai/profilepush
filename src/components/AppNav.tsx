@@ -4,8 +4,8 @@ import {
   ChevronDown, LogOut, Settings, Sparkles,
   Building2, CreditCard, AlertTriangle,
   Bell, BellRing, Check, X,
-  Briefcase, Mail, UserRound, Rss, CircleUser,
-  Kanban, Globe, Target, SlidersHorizontal, UsersRound } from 'lucide-react';
+  Briefcase, Mail, UserRound, Rss,
+  Kanban, Globe, Target, SlidersHorizontal, UsersRound, History } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
@@ -47,31 +47,22 @@ function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | 
 // label follows the persona; the rest keep one name. My Hotlist / My Jobs moved into
 // AI Match's own tab; Pulse and List are hidden from the nav. Their routes
 // all still work.
-function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
-  const isBenchSales = persona === 'bench_sales';
-  // Feed is called Feed for everyone; its icon still says what it shows:
-  // Vendors browse Hotlist (consultants, UserRound), Bench Sales browse Jobs
-  // (Briefcase).
-  const feedLabel = 'Feed';
-  const feedPath = isBenchSales ? '/feed/jobs' : '/feed/hotlist';
-  const feedIcon = isBenchSales ? Briefcase : UserRound;
-  const followingLabel = followingLabelForPersona(persona);
+// The five places, the same for everyone and on every screen: Today (new
+// matches), Tracker (applications), AI Match, History and Settings. Feed,
+// Network, Inbox and My profile live in the avatar menu.
+function getNavItems() {
   return [
-    { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },
-    // Today: each consultant's matches to submit to, against the daily target.
-    // On a phone it takes the Profile slot in the bottom bar.
-    ...(isBenchSales ? [{ path: '/today', label: 'Today', mobileLabel: 'Today', icon: Target, hideOnMobile: true }] : []),
-    // Tracker: a column per consultant (or requirement), matches arriving
-    // live as cards, with what was sent to each. It replaced the separate
-    // Submissions / Invites list.
-    { path: '/tracker',     label: 'Tracker',     mobileLabel: 'Tracker',     icon: Kanban,      hideOnMobile: false },
-    { path: '/match',       label: 'AI Match',    mobileLabel: 'AI Match',    icon: Sparkles,    hideOnMobile: false },
-    { path: networkPath(persona), label: followingLabel, mobileLabel: followingLabel, icon: Rss,       hideOnMobile: false },
-    { path: '/inbox',       label: 'Inbox',       mobileLabel: 'Inbox',       icon: Mail,        hideOnMobile: false },
-    // All of the account's posts, open or closed, with Open / AI Match / Close.
-    // Desktop nav; on a phone it's in the avatar menu (the bottom bar is full).
-    { path: '/me',          label: 'My Profile',  mobileLabel: 'Profile',     icon: CircleUser,  hideOnMobile: true },
+    { path: '/today',    label: 'Today',    mobileLabel: 'Today',    icon: Target,            hideOnMobile: false },
+    { path: '/tracker',  label: 'Tracker',  mobileLabel: 'Tracker',  icon: Kanban,            hideOnMobile: false },
+    { path: '/match',    label: 'AI Match', mobileLabel: 'AI Match', icon: Sparkles,          hideOnMobile: false },
+    { path: '/history',  label: 'History',  mobileLabel: 'History',  icon: History,           hideOnMobile: false },
+    { path: '/settings', label: 'Settings', mobileLabel: 'Settings', icon: SlidersHorizontal, hideOnMobile: false },
   ];
+}
+
+// Feed shows the other side: jobs for bench sales, profiles for vendors.
+function feedPathFor(persona: 'vendor' | 'bench_sales' | null | undefined) {
+  return persona === 'bench_sales' ? '/feed/jobs' : '/feed/hotlist';
 }
 
 function CreditsChip({ balance }: { balance: number }) {
@@ -325,18 +316,8 @@ export default function AppNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, account, signOut } = useAuth();
-  const navItems = getNavItems(account?.active_persona);
-  // Mobile bottom nav below reuses these same computed items (path, label,
-  // icon) rather than re-deriving persona logic a third time.
-  // Picked by path, not by position. This used to destructure navItems by
-  // index, so adding AI Match to the desktop list shifted every slot after it
-  // and the mobile bar rendered "AI Match" and "Inbox" twice each.
-  const feedItem = navItems.find((item) => item.path.startsWith('/feed'))!;
-  const followingItem = navItems.find((item) => item.path.startsWith('/network'))!;
-  const trackerItem = navItems.find((item) => item.path.startsWith('/tracker'))!;
-  const FeedIcon = feedItem.icon;
-  const FollowingIcon = followingItem.icon;
-  const TrackerIcon = trackerItem.icon;
+  const navItems = getNavItems();
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
   const [menuOpen, setMenuOpen] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
   // The account's claimed public profile, for "My profile" in the menu.
@@ -487,6 +468,22 @@ export default function AppNav() {
 
                 <PersonaMenuSection onChosen={() => setMenuOpen(false)} />
 
+                {[
+                  { to: feedPathFor(account?.active_persona), label: 'Feed', Icon: account?.active_persona === 'bench_sales' ? Briefcase : UserRound },
+                  { to: networkPath(account?.active_persona), label: followingLabelForPersona(account?.active_persona), Icon: Rss },
+                  { to: '/inbox', label: 'Inbox', Icon: Mail },
+                ].map(({ to, label, Icon }) => (
+                  <button
+                    key={to}
+                    onClick={() => { setMenuOpen(false); navigate(to); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                  >
+                    <Icon size={13} className="text-gray-400" />
+                    <span className="flex-1 text-left">{label}</span>
+                    {to === '/inbox' && inboxUnread > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">{inboxUnread > 99 ? '99+' : inboxUnread}</span>}
+                  </button>
+                ))}
+
                 {(
                   <button
                     onClick={() => { setMenuOpen(false); navigate('/me'); }}
@@ -512,14 +509,6 @@ export default function AppNav() {
                 >
                   <CreditCard size={13} className="text-gray-400" />
                   Billing & Credits
-                </button>
-
-                <button
-                  onClick={() => { setMenuOpen(false); navigate('/settings/matching'); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-                >
-                  <SlidersHorizontal size={13} className="text-gray-400" />
-                  Matching settings
                 </button>
 
                 <button
@@ -558,22 +547,22 @@ export default function AppNav() {
       {user && (
         <nav className="app-bottom-nav fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden">
           <Link
-            to={feedItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/feed') ? 'text-blue-600' : 'text-gray-500'}`}
+            to="/today"
+            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${isActive('/today') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <FeedIcon size={24} />
-            <span>{feedItem.label}</span>
+            <Target size={24} />
+            <span>Today</span>
           </Link>
           <Link
-            to={trackerItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
+            to="/tracker"
+            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${isActive('/tracker') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <TrackerIcon size={24} />
-            <span>{trackerItem.label}</span>
+            <Kanban size={24} />
+            <span>Tracker</span>
           </Link>
           {/* AI Match is the centre action, raised above the bar so it reads as
               the primary thing to do. It uses the same py-2 / gap-1 / 24px icon
-              slot as the other four items (Feed, Tracker | Network, Inbox) so every label sits on one baseline;
+              slot as the other four items so every label sits on one baseline;
               the circle is positioned out of that slot upwards and takes no
               layout space, which is what keeps the row aligned. */}
           <Link
@@ -582,9 +571,6 @@ export default function AppNav() {
             className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-semibold ${location.pathname.startsWith('/match') ? 'text-blue-600' : 'text-gray-600'}`}
           >
             <span className="relative h-6 w-full">
-              {/* 48px, not 56: at 56 with a 4px ring it swamped the other icons
-                  and sat on its own label in the installed app. bottom-1 leaves
-                  a clear gap above the label. */}
               <span className="absolute bottom-1 left-1/2 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30 ring-[3px] ring-white transition-transform active:scale-95">
                 <Sparkles size={22} strokeWidth={2.25} />
               </span>
@@ -592,32 +578,19 @@ export default function AppNav() {
             <span>AI Match</span>
           </Link>
           <Link
-            to={followingItem.path}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/network') ? 'text-blue-600' : 'text-gray-500'}`}
+            to="/history"
+            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${isActive('/history') ? 'text-blue-600' : 'text-gray-500'}`}
           >
-            <FollowingIcon size={24} />
-            <span>{followingItem.label}</span>
+            <History size={24} />
+            <span>History</span>
           </Link>
-          {/* Bench sales get Today in the last slot (My profile stays in the
-              avatar menu); everyone else gets My Profile. Inbox stays in the
-              desktop nav. */}
-          {account?.active_persona === 'bench_sales' ? (
-            <Link
-              to="/today"
-              className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/today') ? 'text-blue-600' : 'text-gray-500'}`}
-            >
-              <Target size={24} />
-              <span>Today</span>
-            </Link>
-          ) : (
-            <Link
-              to="/me"
-              className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/me') ? 'text-blue-600' : 'text-gray-500'}`}
-            >
-              <CircleUser size={24} />
-              <span>Profile</span>
-            </Link>
-          )}
+          <Link
+            to="/settings"
+            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${isActive('/settings') ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <SlidersHorizontal size={24} />
+            <span>Settings</span>
+          </Link>
         </nav>
       )}
       {/* Not on Today: it would cover the Send button in the bottom corner. */}

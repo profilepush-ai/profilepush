@@ -838,7 +838,7 @@ export default function BoardPage() {
         </button>
         <button
           type="button"
-          onClick={() => navigate('/settings/matching')}
+          onClick={() => navigate('/settings')}
           title="Matching settings: minimum match, daily matches, alerts"
           aria-label="Matching settings"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-300"

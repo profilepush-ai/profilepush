@@ -1181,7 +1181,7 @@ function MinMatchSetting({ accountId, onUpgrade }: { accountId: string | null; o
         </div>
       </div>
       {saved && <p className="mt-2 text-[11.5px] font-semibold text-emerald-600">Saved. New matches use {value}%.</p>}
-      <a href="/settings/matching" className="mt-2 inline-block text-[12px] font-semibold text-blue-600 hover:underline">All matching settings: daily matches, alerts, on/off</a>
+      <a href="/settings" className="mt-2 inline-block text-[12px] font-semibold text-blue-600 hover:underline">All matching settings: daily matches, alerts, on/off</a>
       {paid === false && (
         <button type="button" onClick={onUpgrade} className="mt-3 inline-flex h-8 items-center rounded-lg bg-blue-600 px-3 text-[12.5px] font-bold text-white hover:bg-blue-700">
           Unlock with any top-up from ₹100

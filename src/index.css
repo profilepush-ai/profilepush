@@ -9,6 +9,18 @@
     min-height: 100%;
   }
 
+  /* Match visuals (rings, map tiles, slider rings) in both themes. */
+  :root {
+    --pp-ring-track: #e5e7eb;
+    --pp-map-tile: #e5e7eb;
+    --pp-surface: #ffffff;
+  }
+  .dark {
+    --pp-ring-track: #353b44;
+    --pp-map-tile: #353b44;
+    --pp-surface: #20242a;
+  }
+
   body {
     background: #f3f2ee;
     color: #0f172a;
@@ -403,4 +415,12 @@
  * so this is a small cushion rather than a fix. */
 .android-shell .app-bottom-nav {
   padding-bottom: max(env(safe-area-inset-bottom), var(--android-nav-bar, 8px));
+}
+
+/* Swipe mode: the next match slides in from the side it came from. */
+@keyframes ppSwipeIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ppSwipeBack { from { transform: translateX(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ppSheetIn { from { transform: translateX(36px); opacity: .3; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-[pp"] { animation: none !important; }
 }
