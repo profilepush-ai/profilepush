@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Archive, Clock3, Eye, EyeOff, ExternalLink, FileText, MessageSquare, Paperclip, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2, Video, X } from 'lucide-react';
+import { Archive, Clock3, Eye, EyeOff, ExternalLink, FileText, MessageSquare, Paperclip, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2, Video, X, SlidersHorizontal } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import BulkAiSubmitBar from '../components/BulkAiSubmitBar';
 import ScreeningSubmissionModal from '../components/ScreeningSubmissionModal';
@@ -812,6 +812,15 @@ export default function BoardPage() {
             <span className={`absolute h-3 w-3 rounded-full bg-white shadow transition-transform ${autoMatch ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
           </span>
           {autoMatch ? 'On' : 'Off'}
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/settings/matching')}
+          title="Matching settings: minimum match, daily matches, alerts"
+          aria-label="Matching settings"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-300"
+        >
+          <SlidersHorizontal size={14} />
         </button>
         {/* New posts start in AI Match, like everywhere else. */}
         <button

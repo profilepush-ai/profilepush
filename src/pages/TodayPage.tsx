@@ -336,6 +336,7 @@ export default function TodayPage() {
               <Link to="/billing" className="text-gray-600 hover:text-blue-600 dark:text-slate-300">
                 <b className="tabular-nums text-gray-900 dark:text-white">{Math.floor(Number(account?.credits_balance ?? 0)).toLocaleString('en-IN')}</b> matches left
               </Link>
+              <Link to="/settings/matching" className="text-gray-400 hover:text-blue-600" title="Matching settings">Settings</Link>
               {paidPlan ? (
                 <label className="inline-flex items-center gap-1 text-gray-500">
                   Min match
