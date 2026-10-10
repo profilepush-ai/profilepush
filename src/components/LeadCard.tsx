@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AtSign, Briefcase, Building2, BadgeCheck, Check, MessageCircle, DollarSign, FileText, Laptop, MapPin, Share2, Shield, Sparkles, Mail, Gauge, GraduationCap, Eye, X } from 'lucide-react';
 import { PosterProfileLink, SubscribeTextLink } from './publishers/PublisherBits';
 import LogoSpinner from './LogoSpinner';
@@ -485,6 +485,9 @@ export interface LeadCardProps {
   defaultCollapsed?: boolean;
   /** Tracker: dismiss this match ("Not a match"), an icon in the action bar. */
   onDismiss?: (lead: SocialLead) => void;
+  /** Always the compact card (no skills); a click opens the lead (the Feed's
+   *  full preview popup) instead of expanding the card. */
+  onOpen?: (lead: SocialLead) => void;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -500,10 +503,12 @@ export const LeadCard = memo(function LeadCard({
   onPreview, onAskAI, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
   hideActions, isSelected, onSelect,
   bulkSelectable, isBulkSelected, onToggleBulkSelect, matchRank, isFocused, onFocus,
-  onChat, isProcessingChat, collapsible = false, defaultCollapsed = true, onDismiss, applySubjectId, onExternalApplied,
+  onChat, isProcessingChat, collapsible = false, defaultCollapsed = true, onDismiss, applySubjectId, onExternalApplied, onOpen,
 }: LeadCardProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const compact = collapsible && collapsed;
+  // The Tracker's collapsed card is the one look for lists: the Feed (onOpen)
+  // and the select-to-view lists on Today and the Feed's detail layout.
+  const compact = (collapsible && collapsed) || Boolean(onOpen) || Boolean(hideActions);
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
   // An opened post reads as visited: grey title (like a visited link).
@@ -646,14 +651,17 @@ export const LeadCard = memo(function LeadCard({
     <div
       role={hideActions ? 'button' : undefined}
       tabIndex={hideActions ? 0 : undefined}
-      onClick={hideActions ? () => onSelect?.(lead) : collapsible ? (event) => {
+      onClick={hideActions ? () => onSelect?.(lead) : onOpen ? (event) => {
+        if ((event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        onOpen(lead);
+      } : collapsible ? (event) => {
         // Collapsible: a click on the card itself expands or collapses it;
         // the title, buttons, links and the tick keep their own actions.
         if ((event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
         setCollapsed((value) => !value);
       } : undefined}
-      aria-expanded={collapsible ? !compact : undefined}
-      title={collapsible ? (compact ? 'Click to see the full card' : 'Click to collapse') : undefined}
+      aria-expanded={collapsible && !onOpen ? !compact : undefined}
+      title={onOpen ? 'Click to open' : collapsible ? (compact ? 'Click to see the full card' : 'Click to collapse') : undefined}
       onKeyDown={hideActions ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect?.(lead); } } : undefined}
       onClickCapture={!hideActions && onFocus ? (event) => {
         // Ignore clicks on anything that already acts: buttons, links, the
@@ -666,7 +674,7 @@ export const LeadCard = memo(function LeadCard({
           : isFocused ? 'border-indigo-400 ring-1 ring-indigo-200'
           : compact ? 'border-transparent shadow-[0_1px_3px_rgba(15,23,42,0.08)] dark:border-white/5'
           : 'border-[#dfdad2] dark:border-white/10'
-      } ${cardFillClass} ${hideActions || onFocus || collapsible ? 'cursor-pointer' : ''}`}
+      } ${cardFillClass} ${hideActions || onFocus || collapsible || onOpen ? 'cursor-pointer' : ''}`}
     >
       {!compact && <LeadKindPill kind={lead.kind} variant="banner" onProfilePush={lead.postSource === 'user_post'} />}
       {matchRank != null && (
@@ -701,7 +709,7 @@ export const LeadCard = memo(function LeadCard({
           </button>
         )}
         <div className="min-w-0 flex-1 pr-14">
-          {hideActions ? (
+          {hideActions || onOpen ? (
             // Detail layout: the whole card selects the lead and the post opens
             // in the pane beside it, so the title stays plain text there.
             <p className="text-[13px] font-semibold leading-snug" style={titleToneStyle}>{lead.title || (isHotlistFeed ? 'Available Consultant' : 'Job Opportunity')}</p>
@@ -745,6 +753,7 @@ export const LeadCard = memo(function LeadCard({
               </span>
             </p>
           )}
+          {(predictResult || isAskPending || isVerified || (isViewed && lead.kind !== 'hotlist') || isLeadRevealed) && (
           <div className="mt-1 flex flex-wrap items-center gap-1">
               {predictResult && (
                 <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${predictToneClass(predictResult.score, isDark)}`}>
@@ -775,6 +784,7 @@ export const LeadCard = memo(function LeadCard({
                 </span>
               )}
             </div>
+          )}
           {lead.aiMatchRuleNote && (
             // The score was capped by a stated fact, not by the model's read of
             // the text, so it is called out rather than folded into the reason.
@@ -797,7 +807,7 @@ export const LeadCard = memo(function LeadCard({
         // Collapsed: the field pills only; skills wait for the full card.
         if (chipFields.length === 0 && (compact || skillsValue === '-')) return null;
         return (
-        <div className="mt-1.5 min-w-0 rounded-md px-2.5 py-2 text-left bg-transparent">
+        <div className={`min-w-0 rounded-md text-left bg-transparent ${compact ? 'mt-2' : 'mt-1.5 px-2.5 py-2'}`}>
           {(() => {
             if (chipFields.length === 0) return null;
             return (
@@ -839,7 +849,7 @@ export const LeadCard = memo(function LeadCard({
       })()}
       {/* Collapsed: the vendor company and when it was posted; the full poster line comes back with the full card. */}
       {compact && (
-        <div className="mt-1.5 flex items-center gap-1">
+        <div className={`flex items-center gap-1 ${hideActions ? 'mt-2' : 'mt-1'}`}>
           <p className="flex min-w-0 flex-1 items-center gap-1 truncate text-[11px] text-[#94A3B8]">
             {compactCompany && <span className="max-w-[55%] shrink-0 truncate font-medium text-slate-600 dark:text-slate-300">{compactCompany}</span>}
             {isCareerSiteLead(lead) && <CareerSitePill />}
@@ -1150,6 +1160,60 @@ export function PostPreviewModal({ title, content, onClose }: { title: string; c
       </div>
     </div>
   </div>
+  );
+}
+
+// A list card's full view: the whole card (skills, poster, actions) and the
+// post itself. A sheet from the bottom on phones, a dialog on desktop.
+export function LeadPreviewModal({ cardProps, content, loading, onClose }: {
+  cardProps: LeadCardProps;
+  content: string | null;
+  loading: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = overflow; };
+  }, [onClose]);
+  const isHotlist = cardProps.lead.kind === 'hotlist';
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={cardProps.lead.title || (isHotlist ? 'Available Consultant' : 'Job Opportunity')}
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-[#f3f2ee] shadow-xl sm:max-h-[85vh] sm:max-w-2xl sm:rounded-lg dark:bg-[#1B1D21]"
+      >
+        <div className="relative flex items-center justify-between px-4 pt-3 pb-2">
+          <span className="mx-auto h-1 w-10 rounded-full bg-gray-300 sm:hidden dark:bg-white/20" aria-hidden />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-black/5 sm:static sm:ml-auto dark:text-gray-300 dark:hover:bg-white/10"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-4 sm:px-4">
+          <LeadCard {...cardProps} onOpen={undefined} collapsible={false} hideActions={false} onPreview={() => {}} />
+          {!isHotlist && (
+            <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#20242a]">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Job description</p>
+              {loading && content == null ? (
+                <div className="flex justify-center py-6"><LogoSpinner size={16} /></div>
+              ) : (
+                <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-700 dark:text-slate-300">{hideEmails(content || 'No post content available.')}</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
