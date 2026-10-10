@@ -28,7 +28,7 @@ function TimeLeft({ item }: { item: CardItem }) {
   const left = timeLeft(item, now);
   if (!left) return null;
   return (
-    <span title="Today's matches leave after 24 hours. Save it to keep it." className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-bold tabular-nums ${left.urgent ? 'bg-rose-500/90 text-white' : 'bg-white/15 text-white/85'}`}>
+    <span title="Today's matches leave after 24 hours. Save it to keep it." className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-bold tabular-nums ${left.urgent ? 'bg-rose-500 text-white' : 'bg-black/5 text-gray-700'}`}>
       <Timer size={12} />{left.label}
     </span>
   );
@@ -166,8 +166,8 @@ export default function SwipeDeck({
   }, [index, items, viewerId, avatarOn]);
 
   const shell = inline
-    ? 'relative flex h-full min-h-0 select-none flex-col overflow-hidden rounded-[22px] bg-[#0b0f1a] text-white'
-    : `fixed inset-0 ${layer} flex select-none flex-col overflow-hidden bg-[#0b0f1a] pt-[env(safe-area-inset-top)] text-white`;
+    ? 'relative flex h-full min-h-0 select-none flex-col overflow-hidden rounded-[22px] bg-white text-gray-900 ring-1 ring-gray-200'
+    : `fixed inset-0 ${layer} flex select-none flex-col overflow-hidden bg-white pt-[env(safe-area-inset-top)] text-gray-900`;
   const settle = (el: HTMLDivElement | null) => {
     if (!el) return;
     el.style.transition = 'transform .25s cubic-bezier(.2,.8,.2,1), opacity .25s';
@@ -176,11 +176,11 @@ export default function SwipeDeck({
   };
   const corner = inline || !onClose
     ? null
-    : <button type="button" onClick={onClose} aria-label="Close" className="grid h-10 w-10 place-items-center rounded-full hover:bg-white/10"><X size={22} /></button>;
+    : <button type="button" onClick={onClose} aria-label="Close" className="grid h-10 w-10 place-items-center rounded-full text-gray-600 hover:bg-black/5"><X size={22} /></button>;
   const sizeButton = onCollapse || onExpand ? (
     <span data-rail>
       <button type="button" onClick={onCollapse ?? onExpand} aria-label={onCollapse ? 'Close full screen' : 'Full screen'} title={onCollapse ? 'Close full screen' : 'Full screen'}
-        className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20">
+        className="grid h-9 w-9 place-items-center rounded-full bg-white/80 text-gray-700 shadow-sm ring-1 ring-black/5 backdrop-blur hover:bg-white">
         {onCollapse ? <ChevronDown size={20} /> : <Maximize2 size={16} />}
       </button>
     </span>
@@ -188,7 +188,7 @@ export default function SwipeDeck({
   const playButton = reelMs && item ? (
     <span data-rail>
       <button type="button" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause (or hold the card)' : 'Play'}
-        className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20">
+        className="grid h-9 w-9 place-items-center rounded-full bg-white/80 text-gray-700 shadow-sm ring-1 ring-black/5 backdrop-blur hover:bg-white">
         {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
       </button>
     </span>
@@ -248,12 +248,12 @@ export default function SwipeDeck({
   };
   const stampEl = stamp ? (
     <span key={stamp.n} aria-hidden="true" className="pointer-events-none absolute left-1/2 top-[46%] z-40 rounded-2xl border-[5px] px-5 py-1.5 text-[34px] font-black tracking-[0.12em]"
-      style={{ color: stamp.color, borderColor: stamp.color, background: 'rgba(11,15,26,.35)', animation: 'ppActionStamp 900ms ease-out both' }}>
+      style={{ color: stamp.color, borderColor: stamp.color, background: 'rgba(255,255,255,.8)', animation: 'ppActionStamp 900ms ease-out both' }}>
       {stamp.text}
     </span>
   ) : null;
   // The home-bar handle: swipe up from here for the menus.
-  const handle = onSwipeUp ? <span aria-hidden="true" className="pointer-events-none absolute bottom-[calc(6px+env(safe-area-inset-bottom))] left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-white/40" /> : null;
+  const handle = onSwipeUp ? <span aria-hidden="true" className="pointer-events-none absolute bottom-[calc(6px+env(safe-area-inset-bottom))] left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-gray-300" /> : null;
 
   if (!item || !item.lead) {
     return (
@@ -266,14 +266,14 @@ export default function SwipeDeck({
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
           <span className="grid h-[72px] w-[72px] place-items-center rounded-full bg-emerald-600"><Check size={36} strokeWidth={3} /></span>
           <h2 className="text-[26px] font-extrabold">{emptyMessage?.title ?? 'All caught up'}</h2>
-          <p className="max-w-[28ch] text-white/80">{emptyMessage?.text ?? `${appliedToday} applied today. New matches arrive every 10 minutes.`}</p>
+          <p className="max-w-[28ch] text-gray-600">{emptyMessage?.text ?? `${appliedToday} applied today. New matches arrive every 10 minutes.`}</p>
           {inline || !onClose ? (
             <div className="mt-2 flex flex-wrap justify-center gap-2">
-              <Link to="/history" className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-4 py-2.5 font-bold"><History size={16} />History</Link>
+              <Link to="/history" className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-4 py-2.5 font-bold text-gray-800"><History size={16} />History</Link>
               <Link to="/match" className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2.5 font-bold"><Sparkles size={16} />Run AI Match</Link>
             </div>
           ) : (
-            <button type="button" onClick={onClose} className="mt-2 rounded-full bg-white/15 px-5 py-2.5 font-bold">Back to Today</button>
+            <button type="button" onClick={onClose} className="mt-2 rounded-full bg-gray-100 px-5 py-2.5 font-bold text-gray-800">Back to Today</button>
           )}
         </div>
         )}
@@ -294,7 +294,7 @@ export default function SwipeDeck({
   const saved = Boolean(item.saved_at);
   const T = reelMs ? SLOW : FAST;
   const rail = 'flex flex-col items-center gap-1 text-[11px] font-bold';
-  const railIcon = 'grid h-[46px] w-[46px] place-items-center rounded-full bg-white/15';
+  const railIcon = 'grid h-[46px] w-[46px] place-items-center rounded-full bg-white text-gray-700 shadow-md ring-1 ring-black/5';
 
   return (
     <div
@@ -310,7 +310,7 @@ export default function SwipeDeck({
         <div key={picture} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ animation: 'ppPicture .5s ease-out both' }}>
           {/* A smooth gradient of the picture's own colors, darkened. */}
           {tones && <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${tones[0]} 0%, ${tones[1]} 45%, ${tones[2]} 100%)` }} />}
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(11,15,26,.55) 0%, rgba(11,15,26,.45) 35%, rgba(11,15,26,.78) 62%, rgba(11,15,26,.93) 100%)' }} />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,.45) 30%, rgba(255,255,255,.9) 56%, #fff 78%)' }} />
           <img src={picture} alt="" decoding="async" className="absolute inset-x-0 w-full object-cover object-[50%_22%]"
             style={{ top: picTop, height: `max(160px, calc(56% - ${picTop}px))`, maskImage: 'linear-gradient(180deg, transparent, #000 16%, #000 60%, transparent)', WebkitMaskImage: 'linear-gradient(180deg, transparent, #000 16%, #000 60%, transparent)' }} />
         </div>
@@ -323,10 +323,10 @@ export default function SwipeDeck({
           return items.slice(from, from + 40).map((x, n) => {
             const k = from + n;
             return (
-              <i key={x.card_id} className="relative h-[3px] flex-1 overflow-hidden rounded-sm bg-white/25">
-                {(k < index || (k === index && !reelMs)) && <b className="absolute inset-0 bg-white" />}
+              <i key={x.card_id} className="relative h-[3px] flex-1 overflow-hidden rounded-sm bg-black/10">
+                {(k < index || (k === index && !reelMs)) && <b className="absolute inset-0 bg-gray-900" />}
                 {k === index && reelMs && (
-                  <b key={item.card_id} className="absolute inset-y-0 left-0 bg-white"
+                  <b key={item.card_id} className="absolute inset-y-0 left-0 bg-gray-900"
                     style={{ animation: `ppReel ${reelMs}ms linear both`, animationPlayState: running ? 'running' : 'paused' }}
                     onAnimationEnd={(e) => { if (e.animationName === 'ppReel') step(1); }} />
                 )}
@@ -338,11 +338,11 @@ export default function SwipeDeck({
       {topSlot}
       <div ref={forRowRef} className="relative z-20 flex items-center gap-2.5 py-2.5 pl-3 pr-2">
         <Initials name={name} id={item.subject_id} size={32} />
-        <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b><small className="block truncate text-[11.5px] text-white/75">{kind === 'hotlist' ? subject?.title : 'Your job'}</small></div>
+        <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b><small className="block truncate text-[11.5px] text-gray-500">{kind === 'hotlist' ? subject?.title : 'Your job'}</small></div>
         {picture && (
           <span data-rail className="relative">
             <button type="button" onClick={() => setNoteFor(noteFor === item.card_id ? null : item.card_id)} aria-expanded={noteFor === item.card_id}
-              className="inline-flex h-7 items-center gap-1 rounded-full bg-black/30 px-2.5 text-[11.5px] font-semibold text-white/90 backdrop-blur hover:bg-black/45">
+              className="inline-flex h-7 items-center gap-1 rounded-full bg-white/85 px-2.5 text-[11.5px] font-semibold text-gray-700 shadow-sm ring-1 ring-black/5 backdrop-blur hover:bg-white">
               <Info size={13} />AI picture
             </button>
             {noteFor === item.card_id && (
@@ -367,17 +367,17 @@ export default function SwipeDeck({
       <button type="button" aria-label="Previous match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(-1); }} className="absolute bottom-[70px] left-0 top-[70px] z-10 w-[30%]" />
       <button type="button" aria-label="Next match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(1); }} className="absolute bottom-[70px] right-0 top-[70px] z-10 w-[30%]" />
 
-      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'safe flex-end' : 'safe center' }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20 ${picture ? '[text-shadow:0_1px_10px_rgba(0,0,0,.75)]' : ''} ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'safe flex-end' : 'safe center' }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
         {item.teaser ? (
           // A free preview: the title and match score; the rest unlocks with a top-up.
           <>
-            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-400/20 px-2.5 py-1 text-[12px] font-bold text-amber-200" style={section(0)}><Lock size={13} />Free preview</span>
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-bold text-amber-700 ring-1 ring-amber-200" style={section(0)}><Lock size={13} />Free preview</span>
             <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
-            <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} onDark animate at={T.ring + 150} /></div>
-            <div className="space-y-2.5 rounded-2xl border border-white/10 bg-white/[0.06] p-3.5" style={section(T.skills)}>
-              <div aria-hidden="true" className="space-y-2">{[78, 62, 88, 50].map((w) => <i key={w} className="block h-2.5 rounded-full bg-white/15" style={{ width: `${w}%` }} />)}</div>
-              <p className="text-[13px] font-semibold text-white/85">The company, rate, skills and how to apply are in this match.{previewDays != null ? ` ${previewDays} ${previewDays === 1 ? 'day' : 'days'} of free previews left.` : ''}</p>
-              <Link to="/billing" data-rail className="pointer-events-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[14.5px] font-extrabold">
+            <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
+            <div className="space-y-2.5 rounded-2xl border border-gray-200 bg-gray-50 p-3.5" style={section(T.skills)}>
+              <div aria-hidden="true" className="space-y-2">{[78, 62, 88, 50].map((w) => <i key={w} className="block h-2.5 rounded-full bg-gray-200" style={{ width: `${w}%` }} />)}</div>
+              <p className="text-[13px] font-semibold text-gray-700">The company, rate, skills and how to apply are in this match.{previewDays != null ? ` ${previewDays} ${previewDays === 1 ? 'day' : 'days'} of free previews left.` : ''}</p>
+              <Link to="/billing" data-rail className="pointer-events-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[14.5px] font-extrabold text-white">
                 <Lock size={15} />Top up to see it · from {price.minTopup}
               </Link>
             </div>
@@ -385,30 +385,30 @@ export default function SwipeDeck({
         ) : (<>
         <div className="flex items-center gap-2.5" style={section(0)}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
-          <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-white/75">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
+          <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-gray-500">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
           {expiring && <TimeLeft item={item} />}
         </div>
         <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
-        <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} onDark animate at={T.ring + 150} /></div>
-        <div style={section(T.ring)}><FitBadges fit={fit} onDark hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} /></div>
+        <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
+        <div style={section(T.ring)}><FitBadges fit={fit} hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} /></div>
         {onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
           <div data-rail className="pointer-events-auto" style={section(T.ask)}>
-            <AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} onDark />
+            <AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} />
           </div>
         )}
-        <div style={section(T.skills)}><SkillTiles skills={fit.skills.slice(0, 6)} onDark /></div>
+        <div style={section(T.skills)}><SkillTiles skills={fit.skills.slice(0, 6)} /></div>
         {/* Where there's no room (short phones, or a picture), the badges above say the same. */}
         {boxes && !picture && <div className="grid grid-cols-2 gap-2.5">
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5" style={section(T.map)}>
-            <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} onDark animate wave={false} at={T.map - 300} />
-            <p className="truncate text-[12px] font-semibold text-white/85">{fit.location.label}</p>
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={section(T.map)}>
+            <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} animate wave={false} at={T.map - 300} />
+            <p className="truncate text-[12px] font-semibold text-gray-700">{fit.location.label}</p>
           </div>
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5" style={section(T.rate)}>
-            <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} onDark animate at={T.rate} />
-            <p className="truncate text-[12px] font-semibold text-white/85">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr` : 'Rate not listed'}</p>
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={section(T.rate)}>
+            <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} animate at={T.rate} />
+            <p className="truncate text-[12px] font-semibold text-gray-700">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr` : 'Rate not listed'}</p>
           </div>
         </div>}
-        <div style={section(boxes && !picture ? T.eng : T.map)}><EngagementRow eng={item.eng} onDark /></div>
+        <div style={section(boxes && !picture ? T.eng : T.map)}><EngagementRow eng={item.eng} /></div>
         </>)}
       </div>
 
@@ -432,12 +432,12 @@ export default function SwipeDeck({
 
       <div data-rail className={`relative z-30 flex items-center gap-2 px-4 pt-2.5 text-[13px] font-bold ${inline ? 'pb-4' : onSwipeUp ? 'pb-[calc(1.4rem+env(safe-area-inset-bottom))]' : 'pb-[calc(1rem+env(safe-area-inset-bottom))]'}`}>
         {item.teaser ? (
-          <Link to="/billing" className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-2"><Lock size={15} />Top up to see it</Link>
-        ) : hideDetails ? <span className="text-white/60">Swipe or use ← →</span> : (
-          <button type="button" onClick={() => onDetails(item)} className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-2"><ChevronUp size={16} />{kind === 'job' ? 'Details' : 'Details and email'}</button>
+          <Link to="/billing" className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-100 px-3.5 py-2 text-gray-800"><Lock size={15} />Top up to see it</Link>
+        ) : hideDetails ? <span className="text-gray-500">Swipe or use ← →</span> : (
+          <button type="button" onClick={() => onDetails(item)} className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-100 px-3.5 py-2 text-gray-800"><ChevronUp size={16} />{kind === 'job' ? 'Details' : 'Details and email'}</button>
         )}
-        <span className="min-w-0 flex-1 truncate text-center text-[11px] font-semibold text-white/55">{menuHint ? 'Swipe up for menu' : ''}</span>
-        <span className="shrink-0 tabular-nums text-white/70">{index + 1} / {items.length}</span>
+        <span className="min-w-0 flex-1 truncate text-center text-[11px] font-semibold text-gray-400">{menuHint ? 'Swipe up for menu' : ''}</span>
+        <span className="shrink-0 tabular-nums text-gray-500">{index + 1} / {items.length}</span>
       </div>
       {stampEl}
       {handle}
