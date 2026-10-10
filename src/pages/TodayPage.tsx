@@ -18,6 +18,7 @@ import { useSwipe } from '../components/match/useSwipe';
 import { useAuth } from '../contexts/AuthContext';
 import { trackEvent } from '../lib/track';
 import { cardRoute, loadToday, markViewed, strings, subjectName, type CardItem, type Kind, type Question, type Subject, type TodayData } from '../lib/today';
+import { priceLabels, useCurrency } from '../lib/currency';
 
 // Today: every new match, one at a time, as a swipe card. On a phone it is
 // full screen, with the search and the profile chips on the card itself; the
@@ -75,6 +76,8 @@ function matchesSearch(item: CardItem, words: string[]): boolean {
 }
 
 export default function TodayPage() {
+  const [currencyNow] = useCurrency();
+  const price = priceLabels(currencyNow);
   const { account, user } = useAuth();
   const accountId = account?.id;
   const kind: Kind = account?.active_persona === 'vendor' ? 'job' : 'hotlist';
@@ -303,7 +306,7 @@ export default function TodayPage() {
       </div>
       {locked > 0 && (
         <Link to="/billing" className="flex items-center gap-2 rounded-xl bg-amber-500/15 px-3 py-1.5 text-[12.5px] font-semibold text-amber-200 ring-1 ring-amber-400/25">
-          <Lock size={14} className="shrink-0" /><span className="flex-1 truncate">{locked} new {locked === 1 ? 'match is' : 'matches are'} waiting. Top up from ₹100.</span><ChevronRight size={15} />
+          <Lock size={14} className="shrink-0" /><span className="flex-1 truncate">{locked} new {locked === 1 ? 'match is' : 'matches are'} waiting. Top up from {price.minTopup}.</span><ChevronRight size={15} />
         </Link>
       )}
       {hasSubjects && (
@@ -361,7 +364,7 @@ export default function TodayPage() {
           </div>
           <Link to="/billing" onClick={() => trackEvent('reel_unlock_clicked', { waiting: reel!.waiting })}
             className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[15px] font-extrabold shadow-[0_8px_24px_rgba(99,102,241,.45)]">
-            <Sparkles size={17} />Unlock them · from ₹100
+            <Sparkles size={17} />Unlock them · from {price.minTopup}
           </Link>
           <p className="text-[12.5px] text-white/60">Or wait {countdown} for tomorrow&apos;s 10</p>
         </div>

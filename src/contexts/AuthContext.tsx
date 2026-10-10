@@ -9,6 +9,7 @@ interface Account {
   credits_balance: number;
   is_trial: boolean;
   active_persona: 'vendor' | 'bench_sales' | null;
+  billing_currency?: 'INR' | 'USD' | null;
   created_at: string;
 }
 

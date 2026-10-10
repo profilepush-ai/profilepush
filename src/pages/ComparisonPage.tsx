@@ -92,7 +92,7 @@ const COMPETITORS: Record<string, Competitor & { featureRows: FeatureRow[] }> = 
     ],
     faqs: [
       { q: 'Can I use ProfilePush alongside Ceipal?', a: 'Yes. ProfilePush handles matching and outreach — AI Match, the Jobs and Hotlist feeds, AI Submit and the Tracker — while you continue managing compliance, payroll, and contracts in Ceipal. They complement each other well.' },
-      { q: 'Is ProfilePush cheaper than Ceipal?', a: 'ProfilePush is free to start with 100 matches, then ₹0.25 a match (any amount from ₹100, no subscription), with unlimited users on every plan. Ceipal is priced as enterprise ATS software and typically costs significantly more per seat.' },
+      { q: 'Is ProfilePush cheaper than Ceipal?', a: 'ProfilePush is free to start with 100 matches, then ₹0.25 a match in India or $0.01 elsewhere (any amount from ₹100 or $5, no subscription), with unlimited users on every plan. Ceipal is priced as enterprise ATS software and typically costs significantly more per seat.' },
       { q: 'Does Ceipal bring new requirements to me?', a: 'Ceipal is built around managing your own postings and pipeline. ProfilePush adds new requirements and consultants every day and matches them to the consultants or requirements you posted, live.' },
     ],
     featureRows: FEATURES_CEIPAL,

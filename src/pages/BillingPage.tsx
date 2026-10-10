@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import AppNav from '../components/AppNav';
 import Toast from '../components/Toast';
 import { buildSupabaseFunctionHeaders, supabase } from '../lib/supabase';
+import { useCurrency, PRICING, priceLabels, money, type Currency } from '../lib/currency';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
 import { getBillingErrorMessage, openRazorpayCheckout } from '../lib/billing-plan';
@@ -24,14 +25,10 @@ declare global {
 
 const MARKUP = 4;
 const PAGE_SIZE = 15;
-// Top-ups are any whole-rupee amount at ₹0.25 a match: 1 credit = 1 match,
-// 4 to the rupee (razorpay-create-credit-order). The dialog offers a few
-// amounts and takes any other from ₹100.
-const CREDITS_PER_RUPEE = 4;
-const QUICK_AMOUNTS = [250, 500, 1000, 2500, 5000];
-const MIN_TOPUP_INR = 100;
-const MAX_TOPUP_INR = 100000;
-const DEFAULT_CREDIT_PACK = 250;
+// Top-ups are any whole amount: in India ₹0.25 a match from ₹100, elsewhere
+// $0.01 a match from $5 (lib/currency PRICING, razorpay-create-credit-order).
+// 1 credit = 1 match everywhere. The dialog offers a few amounts and takes
+// any other.
 
 // What deducts credits: one thing, a match. A new match on the Tracker or
 // Today costs 1 credit (charge_tracker_match trigger), and so does each new
@@ -51,7 +48,7 @@ const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: st
   {
     label: 'A match',
     cost: '1 credit',
-    short: '1 credit = 1 match, ₹0.25',
+    short: '1 credit = 1 match',
     note: 'Each new match for your consultants or requirements on the Tracker and Today, and each new AI Match result. A job you already paid for is never charged again, and reposts of the same requirement are merged. Free accounts get 10 new matches a day in all; the rest wait until you top up. Paid accounts get 30 a day for each profile or job by default, up to 100, set in Settings. Turn AI Matches off in Settings to pause them.',
   },
   {
@@ -251,7 +248,12 @@ export default function BillingPage() {
   const [filterFn, setFilterFn]   = useState<string>('');
 
   const [showBuyCreditsModal, setShowBuyCreditsModal] = useState(false);
-  const [selectedCreditTier, setSelectedCreditTier]   = useState<number>(DEFAULT_CREDIT_PACK);
+  const [currency, setCurrency] = useCurrency();
+  const pricing = PRICING[currency];
+  const labels = priceLabels(currency);
+  const [selectedCreditTier, setSelectedCreditTier]   = useState<number>(PRICING[currency].start);
+  // A new currency starts from its own default amount.
+  useEffect(() => { setSelectedCreditTier(PRICING[currency].start); }, [currency]);
   const [buyingCredits, setBuyingCredits]             = useState(false);
   // Shown after a top-up: confirmed (credits added) or still confirming.
   const [purchaseResult, setPurchaseResult] = useState<{ credits: number; balance: number | null; paymentId: string; confirmed: boolean } | null>(null);
@@ -259,7 +261,7 @@ export default function BillingPage() {
   const [offerExpiresAt, setOfferExpiresAt] = useState<Date | null>(null);
   const offerSecondsLeft = useOfferCountdown(offerExpiresAt);
   const offerLive = offerExpiresAt !== null && offerSecondsLeft > 0;
-  const [purchases, setPurchases] = useState<Array<{ razorpay_order_id: string; razorpay_payment_id: string | null; credits: number; amount_inr_paise: number; created_at: string; paid_at: string | null }>>([]);
+  const [purchases, setPurchases] = useState<Array<{ razorpay_order_id: string; razorpay_payment_id: string | null; credits: number; amount_inr_paise: number; currency?: string; amount_minor?: number | null; created_at: string; paid_at: string | null }>>([]);
 
   const loadPurchases = useCallback(async () => {
     const { data } = await supabase.rpc('get_my_credit_purchases' as never);
@@ -347,7 +349,7 @@ export default function BillingPage() {
   }
 
   function openBuyCreditsModal() {
-    setSelectedCreditTier(DEFAULT_CREDIT_PACK);
+    setSelectedCreditTier(pricing.start);
     fireCrmEvent('billing.buy_credits_button_clicked', { current_balance: balance });
     setShowBuyCreditsModal(true);
   }
@@ -427,7 +429,7 @@ export default function BillingPage() {
     try {
       const headers = await buildSupabaseFunctionHeaders(() => supabase.auth.getSession());
       const { data, error } = await supabase.functions.invoke('razorpay-create-credit-order', {
-        body: { amount_inr: selectedCreditTier },
+        body: currency === 'USD' ? { currency: 'USD', amount: selectedCreditTier } : { amount_inr: selectedCreditTier },
         headers,
       });
       if (error) {
@@ -439,14 +441,15 @@ export default function BillingPage() {
         throw new Error(data?.error ?? 'Failed to start checkout');
       }
       await openRazorpayCheckout({
-        key: data.key_id, order_id: data.order_id, amount: data.amount_inr_paise, currency: 'INR',
+        key: data.key_id, order_id: data.order_id, amount: data.amount ?? data.amount_inr_paise, currency: data.currency ?? 'INR',
         name: 'ProfilePush',
-        description: `${(selectedCreditTier * CREDITS_PER_RUPEE).toLocaleString('en-IN')} matches`,
+        description: `${(selectedCreditTier * pricing.creditsPerUnit).toLocaleString(pricing.locale)} matches`,
         image: '/favicon.svg',
         handler: async (response: Record<string, unknown>) => {
           fireCrmEvent('credits.topup_payment_success', {
-            credits: selectedCreditTier * CREDITS_PER_RUPEE,
-            amount_inr: selectedCreditTier,
+            credits: selectedCreditTier * pricing.creditsPerUnit,
+            amount: selectedCreditTier,
+            currency,
             razorpay_order_id: data.order_id,
             razorpay_payment_id: response.razorpay_payment_id ?? null,
           });
@@ -475,7 +478,7 @@ export default function BillingPage() {
             // Falls back to the webhook; the result screen says so.
           }
           // The order knows whether the first-purchase bonus applied.
-          const added = selectedCreditTier * CREDITS_PER_RUPEE + Number(data.bonus_credits ?? 0);
+          const added = selectedCreditTier * pricing.creditsPerUnit + Number(data.bonus_credits ?? 0);
           setPurchaseResult({ credits: added, balance, paymentId, confirmed });
           if (Number(data.bonus_credits ?? 0) > 0 && account?.id) {
             setOfferExpiresAt(null);
@@ -544,7 +547,7 @@ export default function BillingPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 flex flex-col">
                   <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-yellow-100 text-yellow-700 w-fit">Free</span>
-                  <p className="text-2xl font-extrabold text-gray-900">₹0<span className="text-[15px] font-semibold text-gray-500">/mo</span></p>
+                  <p className="text-2xl font-extrabold text-gray-900">{money(0, currency)}<span className="text-[15px] font-semibold text-gray-500">/mo</span></p>
                   <p className="text-[13px] text-gray-500 mt-0.5 mb-4">100 free matches · never expire · no card required</p>
                   <ul className="space-y-2 text-[13px] text-gray-600 flex-1 mb-4">
                     {['Feed, Today, Tracker, AI Match and Inbox', 'Opening jobs, AI Submit, bulk send and Apply are free', 'Unlimited team members', '10 new matches a day per consultant, 70% minimum match'].map(item => (
@@ -561,10 +564,10 @@ export default function BillingPage() {
 
                 <div className="rounded-2xl p-5 flex flex-col relative" style={{ background: 'linear-gradient(145deg, #1d4ed8 0%, #2563eb 60%, #1e40af 100%)' }}>
                   <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full mb-3 bg-white/15 text-white w-fit">Pay per match</span>
-                  <p className="text-2xl font-extrabold text-white">₹0.25<span className="text-[15px] font-semibold text-blue-200"> a match</span></p>
-                  <p className="text-[13px] text-blue-200 mt-0.5 mb-4">Any amount from ₹100 · never expire · no subscription</p>
+                  <p className="text-2xl font-extrabold text-white">{labels.perMatch}<span className="text-[15px] font-semibold text-blue-200"> a match</span></p>
+                  <p className="text-[13px] text-blue-200 mt-0.5 mb-4">Any amount from {labels.minTopup} · never expire · no subscription</p>
                   <ul className="space-y-2 text-[13px] text-white flex-1 mb-4">
-                    {['₹250 = 1,000 matches', 'Up to 100 matches a day per consultant (free: 10)', 'Choose your minimum match, 50–80% (free: 70%)', 'Unlimited open consultants or requirements', 'Only matches cost credits; everything else is free'].map(item => (
+                    {[`${labels.thousand} = 1,000 matches`, 'Up to 100 matches a day per consultant (free: 10)', 'Choose your minimum match, 50–80% (free: 70%)', 'Unlimited open consultants or requirements', 'Only matches cost credits; everything else is free'].map(item => (
                       <li key={item} className="flex items-start gap-2">
                         <Check size={12} className="mt-0.5 shrink-0 text-white" />
                         {item}
@@ -594,7 +597,7 @@ export default function BillingPage() {
                             {p.razorpay_payment_id ? ` · ${p.razorpay_payment_id}` : ''}
                           </p>
                         </div>
-                        <span className="shrink-0 font-semibold tabular-nums text-gray-800">₹{(p.amount_inr_paise / 100).toLocaleString('en-IN')}</span>
+                        <span className="shrink-0 font-semibold tabular-nums text-gray-800">{p.currency === 'USD' ? money((p.amount_minor ?? 0) / 100, 'USD') : money(p.amount_inr_paise / 100, 'INR')}</span>
                       </div>
                     ))}
                   </div>
@@ -689,7 +692,7 @@ export default function BillingPage() {
               <div className="rounded-2xl border border-gray-200 bg-white p-4">
                 <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Credits</p>
                 <p className="mt-1 text-2xl font-extrabold text-emerald-600">{fmtBalance(balance)}</p>
-                <p className="mt-1 text-[12px] text-gray-500">1 credit = 1 match (₹0.25). Everything else is free. Credits never expire.</p>
+                <p className="mt-1 text-[12px] text-gray-500">1 credit = 1 match ({labels.perMatch}). Everything else is free. Credits never expire.</p>
                 <button onClick={openBuyCreditsModal}
                   className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-[13px] font-bold text-white shadow-sm transition hover:bg-blue-700">
                   Buy more credits
@@ -708,6 +711,8 @@ export default function BillingPage() {
           offerSecondsLeft={offerLive ? offerSecondsLeft : 0}
           selectedCreditTier={selectedCreditTier}
           setSelectedCreditTier={setSelectedCreditTier}
+          currency={currency}
+          setCurrency={setCurrency}
           buyingCredits={buyingCredits}
           onClose={() => setShowBuyCreditsModal(false)}
           onSubmit={handleBuyCredits}
@@ -1132,11 +1137,11 @@ function UsageLog({
 // ── Tier comparison widget (currently unused, kept for potential future use) ──
 // ── Buy credits modal ────────────────────────────────────────────────────────
 // The first-purchase offer doubles these packs only.
-const OFFER_TIERS = [249, 250, 500];
 
 // New matches must reach this match %. Paid accounts choose 50-80%; free
 // accounts match at 70%. Higher means fewer, stronger matches and less spent.
 function MinMatchSetting({ accountId, onUpgrade }: { accountId: string | null; onUpgrade: () => void }) {
+  const [currencyNow] = useCurrency();
   const [value, setValue] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
   const [paid, setPaid] = useState<boolean | null>(null);
@@ -1184,7 +1189,7 @@ function MinMatchSetting({ accountId, onUpgrade }: { accountId: string | null; o
       <a href="/settings" className="mt-2 inline-block text-[12px] font-semibold text-blue-600 hover:underline">All matching settings: daily matches, alerts, on/off</a>
       {paid === false && (
         <button type="button" onClick={onUpgrade} className="mt-3 inline-flex h-8 items-center rounded-lg bg-blue-600 px-3 text-[12.5px] font-bold text-white hover:bg-blue-700">
-          Unlock with any top-up from ₹100
+          Unlock with any top-up from {priceLabels(currencyNow).minTopup}
         </button>
       )}
     </div>
@@ -1192,21 +1197,26 @@ function MinMatchSetting({ accountId, onUpgrade }: { accountId: string | null; o
 }
 
 function BuyCreditsModal({
-  offerSecondsLeft, selectedCreditTier, setSelectedCreditTier, buyingCredits, onClose, onSubmit,
+  offerSecondsLeft, selectedCreditTier, setSelectedCreditTier, buyingCredits, onClose, onSubmit, currency, setCurrency,
 }: {
   // Seconds left on the first-purchase offer (₹250 and ₹500); 0 when there's no offer.
   offerSecondsLeft: number;
-  /** The amount in rupees. */
+  /** The amount, in rupees or dollars. */
   selectedCreditTier: number;
   setSelectedCreditTier: (v: number) => void;
   buyingCredits: boolean;
   onClose: () => void;
   onSubmit: () => void;
+  currency: Currency;
+  setCurrency: (c: Currency) => void;
 }) {
+  const p = PRICING[currency];
+  const labels = priceLabels(currency);
   const amount = selectedCreditTier;
-  const valid = Number.isInteger(amount) && amount >= MIN_TOPUP_INR && amount <= MAX_TOPUP_INR;
-  const offerOnSelected = offerSecondsLeft > 0 && OFFER_TIERS.includes(amount);
-  const matches = (valid ? amount : 0) * CREDITS_PER_RUPEE * (offerOnSelected ? 2 : 1);
+  const valid = Number.isInteger(amount) && amount >= p.min && amount <= p.max;
+  const offerOnSelected = offerSecondsLeft > 0 && (p.offerPacks as readonly number[]).includes(amount);
+  const matches = (valid ? amount : 0) * p.creditsPerUnit * (offerOnSelected ? 2 : 1);
+  const short = (a: number) => (currency === 'INR' && a >= 1000 ? `₹${a / 1000}k` : money(a, currency));
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -1215,41 +1225,49 @@ function BuyCreditsModal({
           <X size={15} />
         </button>
         <div className="px-6 pt-6 pb-5">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-blue-600 mb-3">Buy matches</p>
-          {offerSecondsLeft > 0 && (
+          <div className="mb-3 flex items-center justify-between gap-2 pr-8">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-blue-600">Buy matches</p>
+            <div className="inline-flex rounded-lg border border-gray-200 p-[2px]" role="group" aria-label="Currency">
+              {(['INR', 'USD'] as const).map((c) => (
+                <button key={c} type="button" aria-pressed={currency === c} onClick={() => setCurrency(c)}
+                  className={`rounded-md px-2 py-0.5 text-[11.5px] font-bold ${currency === c ? 'bg-gray-900 text-white' : 'text-gray-500'}`}>{c === 'INR' ? '₹ INR' : '$ USD'}</button>
+              ))}
+            </div>
+          </div>
+          {offerSecondsLeft > 0 && currency === 'INR' && (
             <div className="mb-4 flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800">
               <span>2× matches on ₹250 and ₹500, first top-up</span>
               <span className="tabular-nums">{formatCountdown(offerSecondsLeft)}</span>
             </div>
           )}
           <div className="mb-4">
-            <span className="text-3xl font-extrabold tabular-nums text-gray-900">{matches.toLocaleString('en-IN')} matches</span>
+            <span className="text-3xl font-extrabold tabular-nums text-gray-900">{matches.toLocaleString(p.locale)} matches</span>
             <p className="text-[13px] text-gray-400 mt-0.5">
-              {offerOnSelected && <><span className="line-through">{(amount * CREDITS_PER_RUPEE).toLocaleString('en-IN')}</span> · </>}
-              ₹0.25 a match · one-time, never expire
+              {offerOnSelected && <><span className="line-through">{(amount * p.creditsPerUnit).toLocaleString(p.locale)}</span> · </>}
+              {labels.perMatch} a match · one-time, never expire
             </p>
           </div>
           <div className="mb-3 grid grid-cols-5 gap-1.5">
-            {QUICK_AMOUNTS.map((a) => (
+            {p.quick.map((a) => (
               <button
                 key={a}
                 type="button"
                 onClick={() => setSelectedCreditTier(a)}
                 className={`rounded-lg border py-2 text-[12.5px] font-bold tabular-nums transition-colors ${a === amount ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
               >
-                ₹{a >= 1000 ? `${a / 1000}k` : a}
+                {short(a)}
               </button>
             ))}
           </div>
           <label htmlFor="topup-amount" className="mb-1 block text-[12px] font-semibold text-gray-500">Or enter an amount</label>
           <div className="relative mb-1">
-            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-semibold text-gray-400">₹</span>
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-semibold text-gray-400">{currency === 'INR' ? '₹' : '$'}</span>
             <input
               id="topup-amount"
               type="number"
               inputMode="numeric"
-              min={MIN_TOPUP_INR}
-              max={MAX_TOPUP_INR}
+              min={p.min}
+              max={p.max}
               step={1}
               value={Number.isFinite(amount) && amount > 0 ? amount : ''}
               onChange={(e) => setSelectedCreditTier(Math.floor(Number(e.target.value) || 0))}
@@ -1257,7 +1275,7 @@ function BuyCreditsModal({
             />
           </div>
           <p className={`mb-5 text-[12px] ${valid ? 'text-gray-400' : 'text-red-600'}`}>
-            {valid ? 'Pay any amount; every ₹1 buys 4 matches.' : `Enter ₹${MIN_TOPUP_INR} to ₹${MAX_TOPUP_INR.toLocaleString('en-IN')}.`}
+            {valid ? `Pay any whole amount; every ${money(1, currency)} buys ${p.creditsPerUnit} matches.` : `Enter ${money(p.min, currency)} to ${money(p.max, currency)}.`}
           </p>
           <ul className="space-y-2.5 mb-5">
             {/* Read from CREDIT_COST_ITEMS, never hand-written. */}
@@ -1273,7 +1291,7 @@ function BuyCreditsModal({
           <button onClick={onSubmit} disabled={buyingCredits || !valid}
             className="w-full py-3 rounded-xl text-[15px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 shadow-sm">
             {buyingCredits && <LogoSpinner size={14} />}
-            {valid ? `Pay ₹${amount.toLocaleString('en-IN')} · get ${matches.toLocaleString('en-IN')} matches` : 'Enter an amount'}
+            {valid ? `Pay ${money(amount, currency)} · get ${matches.toLocaleString(p.locale)} matches` : 'Enter an amount'}
           </button>
         </div>
       </div>

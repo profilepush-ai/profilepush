@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { enableWebPush } from '../lib/onesignal';
 import { trackEvent } from '../lib/track';
+import { priceLabels, useCurrency } from '../lib/currency';
 
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.profilepush.app';
 const MIN_OPTIONS = [50, 55, 60, 65, 70, 75, 80];
@@ -35,6 +36,8 @@ function Section({ title, detail, children, badge }: { title: string; detail: st
 // Settings: everything that shapes matching (on/off, minimum match, daily
 // matches per profile or job, alerts), plus Gmail, plan and team.
 export default function MatchingSettingsPage() {
+  const [currencyNow] = useCurrency();
+  const price = priceLabels(currencyNow);
   const { account } = useAuth();
   const navigate = useNavigate();
   const native = Capacitor.isNativePlatform();
@@ -137,7 +140,7 @@ export default function MatchingSettingsPage() {
               )}
             >
               <p className="text-[12.5px] text-gray-500 dark:text-slate-400">
-                <b className="tabular-nums text-gray-900 dark:text-white">{balance.toLocaleString('en-IN')}</b> matches left · 1 match = ₹0.25 ·{' '}
+                <b className="tabular-nums text-gray-900 dark:text-white">{balance.toLocaleString('en-IN')}</b> matches left · 1 match = {price.perMatch} ·{' '}
                 <Link to="/billing" className="font-semibold text-blue-600 hover:underline">Top up</Link>
               </p>
             </Section>
@@ -150,7 +153,7 @@ export default function MatchingSettingsPage() {
 
             <Section
               title="Minimum match"
-              detail={paid ? 'New matches must reach this score. Lower for more matches, higher for fewer, stronger ones.' : 'Free accounts match at 70%. Any top-up from ₹100 lets you choose 50–80%.'}
+              detail={paid ? 'New matches must reach this score. Lower for more matches, higher for fewer, stronger ones.' : `Free accounts match at 70%. Any top-up from ${price.minTopup} lets you choose 50–80%.`}
               badge={lockBadge}
             >
               <div className="grid grid-cols-7 gap-1.5" role="radiogroup" aria-label="Minimum match">
@@ -206,7 +209,7 @@ export default function MatchingSettingsPage() {
                     : gmail === '' ? <button type="button" onClick={() => void connectGmail()} className="h-9 rounded-lg bg-blue-600 px-3 text-[13px] font-semibold text-white">Connect</button> : null}
                 </li>
                 {[
-                  { to: '/billing', icon: CreditCard, title: `${balance.toLocaleString('en-IN')} matches left`, detail: '₹0.25 a match · top up from ₹100' },
+                  { to: '/billing', icon: CreditCard, title: `${balance.toLocaleString('en-IN')} matches left`, detail: `${price.perMatch} a match · top up from ${price.minTopup}` },
                   { to: '/team', icon: Users, title: 'Team', detail: 'What each recruiter applied to' },
                   { to: '/account', icon: UserCog, title: 'Account', detail: 'Profile, company, password' },
                 ].map((row) => (

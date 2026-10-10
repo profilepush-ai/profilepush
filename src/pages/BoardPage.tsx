@@ -18,6 +18,7 @@ import { trackEvent } from '../lib/track';
 import { enableWebPush } from '../lib/onesignal';
 import { Capacitor } from '@capacitor/core';
 import { loadTrackerSends, SEND_TONE_CLASSES, type TrackerSend } from '../lib/tracker-sends';
+import { priceLabels, useCurrency } from '../lib/currency';
 
 // Tracker (named Board in code, at /board): a column per consultant (bench sales) or per requirement
 // (vendors), each with two tabs, New matches and Submitted (Requested for vendors),
@@ -131,6 +132,8 @@ const DEFAULT_VIEW: ColumnView = { stage: 'new', range: { preset: 'all' } };
 const isDefaultView = (v: ColumnView) => v.stage === 'new' && v.range.preset === 'all';
 
 export default function BoardPage() {
+  const [currencyNow] = useCurrency();
+  const price = priceLabels(currencyNow);
   const navigate = useNavigate();
   const { account, user, refreshAccount } = useAuth();
   const { isDark } = useTheme();
@@ -869,7 +872,7 @@ export default function BoardPage() {
       {autoMatch && account && Number(account.credits_balance ?? 0) < 1 && (
         <div className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900 sm:mx-3 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
           <span className="min-w-0 flex-1">
-            You’re out of matches. New ones are waiting for you: top up to see them (₹250 buys 1,000).
+            You’re out of matches. New ones are waiting for you: top up to see them ({price.thousand} buys 1,000).
           </span>
           <button
             type="button"

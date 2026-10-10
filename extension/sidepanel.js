@@ -4,6 +4,7 @@ const app = document.getElementById('app');
 const send = (msg) => chrome.runtime.sendMessage(msg);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let profiles = [];
+let price = '₹1';
 let chosen = null;
 
 async function activeTab() { const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); return tab; }
@@ -23,6 +24,7 @@ async function render() {
   const res = await send({ type: 'api', fn: 'ai-apply', body: { action: 'profiles' } });
   if (res.error) { app.innerHTML = `<div class="result err">${esc(res.error)}</div>`; return; }
   profiles = res.profiles || [];
+  price = res.price_label || price;
   const tab = await activeTab();
   const { contexts = {} } = await chrome.storage.local.get('contexts');
   const ctx = tab?.url ? contexts[new URL(tab.url).origin] : null;
@@ -57,7 +59,7 @@ async function fillForm() {
     const res = await send({ type: 'api', fn: 'ai-apply', body: { action: 'fill', subject_id: chosen, url: tab.url, title: tab.title, fields: open } });
     if (res.error) {
       out.innerHTML = res.status === 402
-        ? `<div class="result err">No credits left. AI Apply is ₹1 an application. <a target="_blank" href="https://profilepush.ai/billing">Top up</a></div>`
+        ? `<div class="result err">No credits left. AI Apply is ${esc(price)} an application. <a target="_blank" href="https://profilepush.ai/billing">Top up</a></div>`
         : `<div class="result err">${esc(res.error)}</div>`;
       return;
     }
@@ -75,7 +77,7 @@ async function fillForm() {
     const left = open.filter((f) => f.required).length - filled;
     out.innerHTML = `<div class="result ${left > 0 ? 'warn' : ''}">Filled ${filled} of ${open.length} fields.${left > 0 ? ` Check the ones outlined in yellow,` : ' Check them,'} then press Apply on the page.</div>
       ${res.unanswered?.length ? `<p class="muted">Left for you:</p><ul class="fields">${res.unanswered.slice(0, 8).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
-      ${res.charged ? `<p class="muted">₹1 used · ${esc(res.balance_label || '')}</p>` : ''}`;
+      ${res.charged ? `<p class="muted">${esc(res.price_label || price)} used · ${esc(res.balance_label || '')}</p>` : ''}`;
   } catch (e) {
     out.innerHTML = `<div class="result err">Could not fill this page: ${esc(e.message || e)}</div>`;
   } finally {

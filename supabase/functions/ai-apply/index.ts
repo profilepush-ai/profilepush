@@ -11,7 +11,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 //   POST { action: "profiles" }  -> { profiles, balance, balance_label }
 //   POST { action: "fill", subject_id, url, title, fields: Field[] }
 //     -> { answers: { key: value }, unanswered: string[], resume, charged, balance_label }
-//   402 when the account has no credits (₹1 = 4 credits per application).
+//   402 when the account has no credits (4 credits per application: ₹1, or
+//   $0.04 for accounts paying in dollars).
 
 type Field = { key: string; type: string; label: string; required?: boolean; options?: string[]; name?: string; autocomplete?: string; accept?: string };
 
@@ -59,6 +60,9 @@ Deno.serve(async (req: Request) => {
   if (!user) return respond({ error: "Please connect ProfilePush again." }, 401);
   const { data: account } = await admin.rpc("publisher_account_for_user", { p_user_id: user.id });
   if (!account) return respond({ error: "No ProfilePush account." }, 403);
+  const { data: acct } = await admin.from("accounts").select("credits_balance, billing_currency").eq("id", account).maybeSingle();
+  // ₹1 in India, $0.04 elsewhere: 4 credits either way.
+  const priceLabel = acct?.billing_currency === "USD" ? "$0.04" : "₹1";
   const balanceOf = async () => Number((await admin.from("accounts").select("credits_balance").eq("id", account).maybeSingle()).data?.credits_balance ?? 0);
   const body = await req.json().catch(() => ({})) as { action?: string; subject_id?: string; url?: string; title?: string; fields?: Field[] };
 
@@ -74,7 +78,7 @@ Deno.serve(async (req: Request) => {
       const balance = await balanceOf();
       return respond({
         profiles: (rows ?? []).map((r) => ({ id: r.id, name: r.candidate_name || r.role_title || "Profile", title: r.role_title, resume: hasResume.has(r.id as string) })),
-        balance, balance_label: left(balance),
+        balance, balance_label: left(balance), price_label: priceLabel,
       });
     }
 
@@ -142,6 +146,7 @@ Deno.serve(async (req: Request) => {
       unanswered: fields.filter((f) => !answers[f.key] && f.required).map((f) => f.label || f.name || "A field"),
       resume: resume?.url ? { url: resume.url, file_name: resume.file_name } : null,
       charged: charge.charged,
+      price_label: priceLabel,
       balance_label: left(Number(charge.balance ?? 0)),
     });
   } catch (error) {

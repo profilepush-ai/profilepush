@@ -34,7 +34,7 @@ export default function ExtensionConnectPage() {
           <>
             <span className="grid h-16 w-16 place-items-center rounded-full bg-emerald-600 text-white"><Check size={32} strokeWidth={3} /></span>
             <h1 className="text-[24px] font-extrabold">ProfilePush Apply is connected</h1>
-            <p className="text-gray-600 dark:text-slate-400">Open a job&apos;s application, click the ProfilePush icon in Chrome&apos;s toolbar, pick the profile and press Fill. You check it and press Apply. ₹1 an application.</p>
+            <p className="text-gray-600 dark:text-slate-400">Open a job&apos;s application, click the ProfilePush icon in Chrome&apos;s toolbar, pick the profile and press Fill. You check it and press Apply. Each application the AI answers costs 4 credits.</p>
             <Link to="/today" className="rounded-full bg-blue-600 px-5 py-2.5 font-bold text-white">Back to Today</Link>
           </>
         ) : (
