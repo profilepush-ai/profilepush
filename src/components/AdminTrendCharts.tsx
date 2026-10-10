@@ -1,20 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import AdminLineChart from './AdminLineChart';
 import AdminDailyBriefing from './AdminDailyBriefing';
 import { buildTargetSeries, SIGNUPS_BASE_TARGET } from '../lib/admin-targets';
 import type { BriefLine, MetricSeries } from '../lib/admin-briefing';
-import {
-  buildMetricSeries,
-  buildSignupSeries,
-  type DailyRow,
-  type PersonaFilter,
-} from '../lib/admin-signups-series';
+import { buildMetricSeries, type DailyRow } from '../lib/admin-signups-series';
+import type { RoleFilter } from '../lib/admin-account-stats';
 
 type Props = {
-  /** Raw daily buckets from admin-stats. */
+  /** Daily buckets from admin-stats, per role. */
   daily: DailyRow[];
-  /** Accounts, for the signups line — created_at is not in the daily payload. */
-  accounts: Array<{ created_at: string }>;
+  role: RoleFilter;
   startDate: string | null;
   endDate: string | null;
   rangeLabel: string;
@@ -22,87 +17,38 @@ type Props = {
   blockers?: BriefLine[];
 };
 
-const PERSONAS: Array<{ key: PersonaFilter; label: string }> = [
-  { key: 'all', label: 'All' },
-  { key: 'vendor', label: 'Vendors' },
-  { key: 'bench_sales', label: 'Bench Sales' },
+// In the order the product runs: people arrive, get matches, watch them,
+// apply, hear back, and pay.
+const METRICS: Array<{ key: string; metric: string | string[]; title: string; base?: number }> = [
+  { key: 'signups', metric: 'signups', title: 'Daily signups', base: SIGNUPS_BASE_TARGET },
+  { key: 'active_users', metric: 'active_users', title: 'Daily active users' },
+  { key: 'matches', metric: 'matches', title: 'Matches sent' },
+  { key: 'watched', metric: 'watched', title: 'Matches watched' },
+  { key: 'applied', metric: ['applied_email', 'applied_site', 'ask_resume'], title: 'Applied (email, site, Ask Resume)' },
+  { key: 'replies', metric: 'replies', title: 'Replies' },
+  { key: 'interviews', metric: 'interviews', title: 'Interviews' },
+  { key: 'placed', metric: 'placed', title: 'Placed' },
+  { key: 'paid_orders', metric: 'paid_orders', title: 'Paid orders' },
+  { key: 'revenue_inr', metric: 'revenue_inr', title: 'Revenue ₹' },
+  { key: 'revenue_usd', metric: 'revenue_usd', title: 'Revenue $' },
+  { key: 'ai_apply_fills', metric: 'ai_apply_fills', title: 'AI Apply fills' },
+  { key: 'referrals', metric: 'referrals', title: 'Referrals' },
 ];
 
-// Ordered by what gets looked at first, not alphabetically. Active users and
-// signups answer "is the platform growing"; the rest answer "what are they
-// doing".
-const METRICS: Array<{ key: string; title: string }> = [
-  { key: 'active_users', title: 'Daily active users' },
-  { key: 'ai_pitches', title: 'AI pitches' },
-  { key: 'ai_requests', title: 'AI requests' },
-  { key: 'ai_matches', title: 'AI matches delivered' },
-  { key: 'job_posts', title: 'Job posts' },
-  { key: 'hotlist_posts', title: 'Hotlist posts' },
-  { key: 'previews', title: 'Post previews' },
-  { key: 'searches', title: 'Searches' },
-  { key: 'chats', title: 'Chats' },
-  { key: 'downloads', title: 'List downloads' },
-];
-
-export default function AdminTrendCharts({ daily, accounts, startDate, endDate, rangeLabel, blockers = [] }: Props) {
-  const [persona, setPersona] = useState<PersonaFilter>('all');
-
-  // Signups come from the accounts array rather than the daily payload, so
-  // that the persona split uses the account's persona as it is now — which is
-  // the only persona a signup can be attributed to anyway.
-  const signupPoints = useMemo(() => {
-    const scoped = persona === 'all'
-      ? accounts
-      : accounts.filter((a) => (a as { active_persona?: string | null }).active_persona === persona);
-    return buildSignupSeries(scoped, startDate, endDate);
-  }, [accounts, persona, startDate, endDate]);
-
-  const series = useMemo(
-    () => METRICS.map((metric) => {
-      const points = buildMetricSeries(daily, metric.key, persona, startDate, endDate);
-      return { ...metric, points, targets: buildTargetSeries(points) };
+export default function AdminTrendCharts({ daily, role, startDate, endDate, rangeLabel, blockers = [] }: Props) {
+  const series: MetricSeries[] = useMemo(
+    () => METRICS.map((m) => {
+      const points = buildMetricSeries(daily, m.metric, role, startDate, endDate);
+      return { key: m.key, title: m.title, points, targets: buildTargetSeries(points, m.base) };
     }),
-    [daily, persona, startDate, endDate],
+    [daily, role, startDate, endDate],
   );
 
-  // Signups carry the stated plan — 10 a day, compounding 5% — rather than
-  // anchoring on their own opening level like the others.
-  const signupTargets = useMemo(() => buildTargetSeries(signupPoints, SIGNUPS_BASE_TARGET), [signupPoints]);
-
-  const briefingMetrics: MetricSeries[] = useMemo(
-    () => [{ key: 'signups', title: 'Signups', points: signupPoints, targets: signupTargets }, ...series],
-    [signupPoints, signupTargets, series],
-  );
-
-  const hasAnything = signupPoints.some((p) => p.count > 0) || series.some((m) => m.points.some((p) => p.count > 0));
+  const hasAnything = series.some((m) => m.points.some((p) => p.count > 0));
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-full border border-gray-300 bg-white p-0.5">
-          {PERSONAS.map((option) => (
-            <button
-              key={option.key}
-              onClick={() => setPersona(option.key)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                persona === option.key ? 'bg-blue-600 text-white' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        <span className="text-[11px] text-gray-400">{rangeLabel}</span>
-        {persona !== 'all' && (
-          // Said plainly because the numbers otherwise look like a bug: the
-          // two splits do not add up to All when accounts have no persona set.
-          <span className="text-[11px] text-gray-400">
-            accounts with no persona set are excluded from this split
-          </span>
-        )}
-      </div>
-
-      <AdminDailyBriefing metrics={briefingMetrics} blockers={blockers} />
+      <AdminDailyBriefing metrics={series} blockers={blockers} />
 
       {!hasAnything ? (
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-400">
@@ -110,9 +56,16 @@ export default function AdminTrendCharts({ daily, accounts, startDate, endDate, 
         </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <AdminLineChart title="Daily signups" points={signupPoints} targetPoints={signupTargets} rangeLabel={rangeLabel} emptyLabel="No signups in this range." dense />
           {series.map((metric) => (
-            <AdminLineChart key={metric.key} title={metric.title} points={metric.points} targetPoints={metric.targets} rangeLabel={rangeLabel} dense />
+            <AdminLineChart
+              key={metric.key}
+              title={metric.title}
+              points={metric.points}
+              targetPoints={metric.targets}
+              rangeLabel={rangeLabel}
+              emptyLabel={metric.key === 'signups' ? 'No signups in this range.' : undefined}
+              dense
+            />
           ))}
         </div>
       )}

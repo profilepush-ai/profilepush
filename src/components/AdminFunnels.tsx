@@ -2,49 +2,44 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import {
-  buildFunnel,
-  creditBands,
+  ACTIVATION_STAGES,
+  MONEY_STAGES,
+  buildStages,
   formatRate,
-  signupsInRange,
   worstStep,
-  type FunnelAccount,
   type FunnelStage,
-  type Persona,
 } from '../lib/admin-funnel';
+import { ROLE_FILTERS, type RoleFilter } from '../lib/admin-account-stats';
 
 type Props = {
-  accounts: FunnelAccount[];
+  /** Per role and 'all': stage key -> accounts, for signups in the range. */
+  funnel: Record<string, Record<string, number>>;
+  role: RoleFilter;
   startDate: string | null;
   endDate: string | null;
   rangeLabel: string;
 };
 
-const PERSONA_LABEL: Record<Persona, string> = {
-  vendor: 'Vendors',
-  bench_sales: 'Bench Sales',
+const ROLE_ACCENT: Record<RoleFilter, string> = {
+  all: 'bg-slate-500',
+  profiles: 'bg-emerald-500',
+  jobs: 'bg-blue-500',
+  job_seeker: 'bg-violet-500',
 };
 
-const PERSONA_ACCENT: Record<Persona, string> = {
-  vendor: 'bg-blue-500',
-  bench_sales: 'bg-emerald-500',
+// Colour values for the SVG fills, which take a value rather than a class.
+const ROLE_HEX: Record<RoleFilter, string> = {
+  all: '#475569',
+  profiles: '#10b981',
+  jobs: '#3b82f6',
+  job_seeker: '#8b5cf6',
 };
 
-// Recharts takes a colour value, not a class.
-const PERSONA_HEX: Record<Persona, string> = {
-  vendor: '#3b82f6',
-  bench_sales: '#10b981',
-};
+const roleLabel = (role: RoleFilter) => ROLE_FILTERS.find((r) => r.key === role)?.label ?? 'All';
 
 // The shared top of the funnel: visits, then the signup page, then an account.
-//
-// Drawn once rather than inside each persona column, because Google Analytics
-// reports a property, not a persona — nobody has chosen vendor or bench sales
-// until after they sign up. Splitting these numbers two ways would be
-// inventing a division the data does not contain. So this is the trunk, and
-// the persona funnels below are what it splits into.
-//
-// Same geometry as FunnelColumn on purpose: two funnels on one screen that
-// taper differently read as two different kinds of thing.
+// Google Analytics reports the site, not a role (nobody has chosen one before
+// signing up), so this trunk is everyone, whichever role is picked below.
 function TopFunnel({ visitors, signupPage, signups, rangeLabel }: {
   visitors: number; signupPage: number; signups: number; rangeLabel: string;
 }) {
@@ -124,7 +119,7 @@ function TopFunnel({ visitors, signupPage, signups, rangeLabel }: {
   );
 }
 
-function FunnelColumn({ persona, stages, rangeLabel }: { persona: Persona; stages: FunnelStage[]; rangeLabel: string }) {
+function FunnelColumn({ role, stages, rangeLabel }: { role: RoleFilter; stages: FunnelStage[]; rangeLabel: string }) {
   const top = stages[0]?.count ?? 0;
   const worst = worstStep(stages);
 
@@ -148,14 +143,14 @@ function FunnelColumn({ persona, stages, rangeLabel }: { persona: Persona; stage
     <div className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white">
       <div className="flex items-baseline justify-between gap-2 border-b border-gray-200 px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${PERSONA_ACCENT[persona]}`} />
-          <h2 className="text-sm font-semibold text-gray-900">{PERSONA_LABEL[persona]}</h2>
+          <span className={`h-2 w-2 rounded-full ${ROLE_ACCENT[role]}`} />
+          <h2 className="text-sm font-semibold text-gray-900">After signup · {roleLabel(role)}</h2>
         </div>
         <span className="text-[10px] text-gray-400">{rangeLabel}</span>
       </div>
 
       {top === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-gray-400">No {PERSONA_LABEL[persona].toLowerCase()} signed up in this range.</p>
+        <p className="px-4 py-10 text-center text-sm text-gray-400">No signups in this range.</p>
       ) : (
         <div className="px-3 py-2">
           {stages.map((stage, index) => {
@@ -176,14 +171,14 @@ function FunnelColumn({ persona, stages, rangeLabel }: { persona: Persona; stage
                     <svg viewBox={`0 0 ${W} ${ROW_H}`} preserveAspectRatio="none" className="h-full w-full" aria-hidden="true">
                       <polygon
                         points={`${(W - wTop) / 2},0 ${(W + wTop) / 2},0 ${(W + wBottom) / 2},${ROW_H} ${(W - wBottom) / 2},${ROW_H}`}
-                        fill={empty ? '#e5e7eb' : PERSONA_HEX[persona]}
+                        fill={empty ? '#e5e7eb' : ROLE_HEX[role]}
                         opacity={empty ? 1 : 1 - index * 0.1}
                       />
                     </svg>
                   </div>
 
                   <div className="flex w-[84px] shrink-0 flex-col items-end justify-center pl-2">
-                    <span className="text-sm font-semibold leading-none tabular-nums text-gray-900">{stage.count}</span>
+                    <span className="text-sm font-semibold leading-none tabular-nums text-gray-900">{stage.count.toLocaleString()}</span>
                     {index > 0 && (
                       <span className="mt-0.5 text-[10px] leading-none text-gray-400">{formatRate(stage.overallRate)} of top</span>
                     )}
@@ -212,10 +207,47 @@ function FunnelColumn({ persona, stages, rangeLabel }: { persona: Persona; stage
   );
 }
 
+// What happens to a free account's credits, and who pays. Bars, not a taper:
+// paying can happen at any point, so Paid is not a step under Second chance.
+function MoneyFunnel({ role, stages, paidAfterOut, rangeLabel }: {
+  role: RoleFilter; stages: FunnelStage[]; paidAfterOut: number; rangeLabel: string;
+}) {
+  const top = stages[0]?.count ?? 0;
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white">
+      <div className="flex items-baseline justify-between gap-2 border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${ROLE_ACCENT[role]}`} />
+          <h2 className="text-sm font-semibold text-gray-900">Credits and paying · {roleLabel(role)}</h2>
+        </div>
+        <span className="text-[10px] text-gray-400">{rangeLabel}</span>
+      </div>
+      <div className="space-y-1.5 px-4 py-3">
+        {stages.map((stage) => (
+          <div key={stage.key} className="flex items-center gap-2">
+            <span className="w-[128px] shrink-0 truncate text-[11px] text-gray-600">{stage.label}</span>
+            <div className="h-3 min-w-0 flex-1 rounded-sm bg-gray-100">
+              <div
+                className="h-3 rounded-sm"
+                style={{ width: `${top === 0 ? 0 : Math.max(stage.count > 0 ? 1.5 : 0, stage.overallRate * 100)}%`, background: ROLE_HEX[role] }}
+              />
+            </div>
+            <span className="w-[44px] shrink-0 text-right text-xs font-semibold tabular-nums text-gray-900">{stage.count.toLocaleString()}</span>
+            <span className="w-[36px] shrink-0 text-right text-[10px] tabular-nums text-gray-400">{stage.key === 'signed_up' ? '' : formatRate(stage.overallRate)}</span>
+          </div>
+        ))}
+        <p className="pt-1 text-[10px] text-gray-400">
+          {paidAfterOut.toLocaleString()} paid after running out. Ran out, teasers, paused and second chance nest; paid can come at any point.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 type Ga4Day = { date: string; sessions: number; visitors: number; signup_page_views: number; signup_page_visitors: number };
 type Ga4State = { connected: boolean; reason?: string; daily: Ga4Day[] };
 
-export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel }: Props) {
+export default function AdminFunnels({ funnel, role, startDate, endDate, rangeLabel }: Props) {
   const [ga4, setGa4] = useState<Ga4State>({ connected: false, daily: [] });
 
   const loadGa4 = useCallback(async () => {
@@ -245,19 +277,15 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
     }),
     { visitors: 0, signupPage: 0 },
   ), [ga4.daily]);
-  const credits = useMemo(() => creditBands(accounts, startDate, endDate), [accounts, startDate, endDate]);
-  const vendor = useMemo(() => buildFunnel(accounts, 'vendor', startDate, endDate), [accounts, startDate, endDate]);
-  const bench = useMemo(() => buildFunnel(accounts, 'bench_sales', startDate, endDate), [accounts, startDate, endDate]);
-  const signups = useMemo(() => signupsInRange(accounts, startDate, endDate), [accounts, startDate, endDate]);
+  const activation = useMemo(() => buildStages(funnel[role], ACTIVATION_STAGES, role), [funnel, role]);
+  const money = useMemo(() => buildStages(funnel[role], MONEY_STAGES, role), [funnel, role]);
+  // Google Analytics reports the whole site, not a role, so the trunk is
+  // always everyone's signups.
+  const signups = funnel.all?.signed_up ?? 0;
 
   return (
-    <div className="space-y-3">
-      {/* Two columns: the before-signup funnel on the left, the counts it
-          produces on the right. They describe the same period, so reading
-          them side by side is the point — the funnel says how people
-          arrive, the cards say what that turned into. */}
-      <div className="grid gap-3 lg:grid-cols-2">
-        <div>
+    <div className="grid gap-3 lg:grid-cols-2">
+      <div className="space-y-3">
         {ga4.connected ? (
           <TopFunnel
             visitors={ga4Totals.visitors}
@@ -280,42 +308,9 @@ export default function AdminFunnels({ accounts, startDate, endDate, rangeLabel 
             </div>
           </div>
         )}
-        </div>
-
-        <div className="space-y-3">
-        {/* Credit usage sits beside the funnel, not in it. As stages these read
-            zero everywhere, because a cumulative funnel makes each step a subset
-            of the one above and the people burning credits are not, yet, the
-            people sending — of the accounts past a tenth of the grant in a
-            recent week, none had sent anything. That is worth seeing, and a
-            stage that can only ever be zero hides it. */}
-        <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase text-gray-500">
-            Credit usage · share of each account's signup grant
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            {credits.map((band) => (
-              <div key={band.pct} className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                <p className="text-[10px] font-semibold uppercase text-gray-500">{band.label}</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{band.count.toLocaleString()}</p>
-                <p className="mt-0.5 text-[10px] text-gray-400">{formatRate(band.share)} of signups</p>
-              </div>
-            ))}
-          </div>
-        </div>
-        </div>
+        <MoneyFunnel role={role} stages={money} paidAfterOut={funnel[role]?.paid_after_out ?? 0} rangeLabel={rangeLabel} />
       </div>
-
-
-      {/* Says out loud that the trunk above splits here, so the two columns
-          are not read as separate funnels that happen to sit together. */}
-      <p className="text-[10px] font-semibold uppercase text-gray-500">
-        After signup · splits by persona
-      </p>
-      <div className="grid gap-3 lg:grid-cols-2">
-        <FunnelColumn persona="vendor" stages={vendor} rangeLabel={rangeLabel} />
-        <FunnelColumn persona="bench_sales" stages={bench} rangeLabel={rangeLabel} />
-      </div>
+      <FunnelColumn role={role} stages={activation} rangeLabel={rangeLabel} />
     </div>
   );
 }

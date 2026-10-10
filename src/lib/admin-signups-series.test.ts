@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMetricSeries, buildSignupSeries } from './admin-signups-series';
+import { buildMetricSeries, buildSignupSeries, type DailyRow } from './admin-signups-series';
 
 const NOW = new Date('2026-09-22T12:00:00.000Z');
 const account = (created_at: string) => ({ created_at });
@@ -90,7 +90,7 @@ describe('buildSignupSeries', () => {
 });
 
 describe('buildMetricSeries', () => {
-  const rows = [
+  const rows: DailyRow[] = [
     { date: '2026-09-20', vendor: { ai_pitches: 3 }, bench_sales: { ai_pitches: 2 }, none: { ai_pitches: 1 } },
     { date: '2026-09-22', vendor: { ai_pitches: 5 }, bench_sales: {}, none: {} },
   ];
@@ -117,6 +117,16 @@ describe('buildMetricSeries', () => {
     const series = buildMetricSeries(rows, 'chats', 'all', '2026-09-20T00:00:00.000Z', null, NOW);
     expect(series).toHaveLength(3);
     expect(series.every((p) => p.count === 0)).toBe(true);
+  });
+
+  it('sums several metrics into one line, inside one role', () => {
+    const roleRows: DailyRow[] = [
+      { date: '2026-09-20', profiles: { applied_email: 2, applied_site: 1 }, jobs: { ask_resume: 4 } },
+    ];
+    const all = buildMetricSeries(roleRows, ['applied_email', 'applied_site', 'ask_resume'], 'all', '2026-09-20T00:00:00.000Z', '2026-09-20T23:59:59.999Z', NOW);
+    const profiles = buildMetricSeries(roleRows, ['applied_email', 'applied_site', 'ask_resume'], 'profiles', '2026-09-20T00:00:00.000Z', '2026-09-20T23:59:59.999Z', NOW);
+    expect(all).toEqual([{ key: '2026-09-20', count: 7 }]);
+    expect(profiles).toEqual([{ key: '2026-09-20', count: 3 }]);
   });
 
   it('honours the end of a custom range', () => {

@@ -1,121 +1,63 @@
-export interface AdminAccountStatsRow {
-  id: string;
-  name: string;
-  created_at: string;
-  user_name: string;
-  user_email: string;
-  active_persona: 'vendor' | 'bench_sales' | null;
-  credits_balance: number;
-  searches_count: number;
-  job_posts_count: number;
-  hotlist_posts_count: number;
-  job_previews_count: number;
-  hotlist_previews_count: number;
-  /** Credits used, summed from the ledger. Not derived from the balance,
-   *  which top-ups and refunds also move. */
-  /** What this account was granted at signup. Read per account because the
-   *  grant changed from 500 to 100 on 2026-09-21. */
-  credits_granted: number;
-  credits_spent: number;
-  ai_drafts_count: number;
-  ai_bulk_sends_count: number;
-  ai_pitches_count: number;
-  ai_requests_count: number;
-  ai_match_runs_count: number;
-  ai_match_matches_count: number;
-  gmail_connected: boolean;
-  gmail_address: string | null;
-  chats_count: number;
-  vendor_downloads_count: number;
-  recruiter_downloads_count: number;
-  subscriptions_count?: number;
-  auto_subscriptions_count?: number;
-  subscribe_taps_count?: number;
-  subscribers_count?: number;
-  play_clicks_count?: number;
-  account_age_days: number;
-  session_count: number;
-  active_seconds: number;
-  active_days: number;
-  last_activity_at: string | null;
-  last_logged_in: string | null;
-  is_trial: boolean;
-  is_paid?: boolean;
-  emails_received_count?: number;
-  emails_received_daily_avg?: number;
-}
+import { ROLE_LABEL, applied, type AccountRow, type RoleFilter } from './admin-account-stats';
 
-export type AdminStatsSortKey = 'name' | 'user_name' | 'user_email' | 'active_persona' | 'is_paid' | 'credits_balance' | 'emails_received_count' | 'emails_received_daily_avg' | 'searches_count' | 'job_posts_count' | 'hotlist_posts_count' | 'job_previews_count' | 'hotlist_previews_count' | 'ai_pitches_count' | 'ai_requests_count' | 'chats_count' | 'vendor_downloads_count' | 'recruiter_downloads_count' | 'subscriptions_count' | 'auto_subscriptions_count' | 'subscribe_taps_count' | 'subscribers_count' | 'play_clicks_count' | 'account_age_days' | 'session_count' | 'active_seconds' | 'active_days' | 'last_activity_at' | 'last_logged_in' | 'created_at';
+/** Columns are AccountRow fields, plus `applied` (email + site + Ask Resume). */
+export type AdminStatsSortKey = keyof AccountRow | 'applied';
 export type AdminStatsSortDirection = 'asc' | 'desc';
 
 export interface AdminStatsFilterState {
   query: string;
-  startDate: string;
-  endDate: string;
+  role: RoleFilter;
   sortKey: AdminStatsSortKey;
   sortDirection: AdminStatsSortDirection;
 }
 
-export function formatUserType(persona: AdminAccountStatsRow['active_persona']) {
-  if (persona === 'vendor') return 'Vendor';
-  if (persona === 'bench_sales') return 'Bench Sales';
-  return '-';
+const DATE_KEYS = new Set<AdminStatsSortKey>(['created_at', 'last_active', 'last_match_at']);
+
+export function formatUserType(role: AccountRow['role'] | null | undefined) {
+  return role ? ROLE_LABEL[role] : '-';
 }
 
-function toDateValue(value: string | null | undefined) {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+function toDateValue(value: unknown) {
+  if (typeof value !== 'string' || !value) return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
-export function filterAndSortAccountStats(
-  rows: AdminAccountStatsRow[],
-  filterState: AdminStatsFilterState
-) {
+export function sortValue(row: AccountRow, key: AdminStatsSortKey): unknown {
+  return key === 'applied' ? applied(row) : row[key];
+}
+
+export function filterAndSortAccountStats(rows: AccountRow[], filterState: AdminStatsFilterState) {
   const query = filterState.query.trim().toLowerCase();
-  const startDate = filterState.startDate ? new Date(`${filterState.startDate}T00:00:00.000Z`).getTime() : null;
-  const endDate = filterState.endDate ? new Date(`${filterState.endDate}T23:59:59.999Z`).getTime() : null;
+  const direction = filterState.sortDirection === 'asc' ? 1 : -1;
+  const key = filterState.sortKey;
 
   const filtered = rows.filter((row) => {
-    const haystack = [row.name, row.user_name, row.user_email, formatUserType(row.active_persona)].filter(Boolean).join(' ').toLowerCase();
-    const matchesQuery = !query || haystack.includes(query);
-
-    const createdAt = toDateValue(row.created_at);
-    const matchesDateRange = (!startDate || (createdAt != null && createdAt >= startDate)) && (!endDate || (createdAt != null && createdAt <= endDate));
-
-    return matchesQuery && matchesDateRange;
+    if (filterState.role !== 'all' && row.role !== filterState.role) return false;
+    if (!query) return true;
+    const haystack = [row.name, row.email, formatUserType(row.role)].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(query);
   });
 
   return filtered.sort((a, b) => {
-    const direction = filterState.sortDirection === 'asc' ? 1 : -1;
+    const aValue = sortValue(a, key);
+    const bValue = sortValue(b, key);
 
-    if (filterState.sortKey === 'last_logged_in' || filterState.sortKey === 'last_activity_at') {
-      const aDate = toDateValue(a[filterState.sortKey]);
-      const bDate = toDateValue(b[filterState.sortKey]);
+    // Dates, with "never" last whichever way the column is sorted.
+    if (DATE_KEYS.has(key)) {
+      const aDate = toDateValue(aValue);
+      const bDate = toDateValue(bValue);
       if (aDate == null && bDate == null) return 0;
       if (aDate == null) return 1;
       if (bDate == null) return -1;
       return (aDate - bDate) * direction;
     }
-
-    if (filterState.sortKey === 'created_at') {
-      const aDate = toDateValue(a.created_at);
-      const bDate = toDateValue(b.created_at);
-      if (aDate == null && bDate == null) return 0;
-      if (aDate == null) return 1;
-      if (bDate == null) return -1;
-      return (aDate - bDate) * direction;
+    if (typeof aValue === 'number' || typeof bValue === 'number') {
+      return ((Number(aValue) || 0) - (Number(bValue) || 0)) * direction;
     }
-
-    const aValue = a[filterState.sortKey] as string | number;
-    const bValue = b[filterState.sortKey] as string | number;
-
-    if (typeof aValue === 'number' && typeof bValue === 'number') {
-      return (aValue - bValue) * direction;
+    if (typeof aValue === 'boolean' || typeof bValue === 'boolean') {
+      return ((aValue ? 1 : 0) - (bValue ? 1 : 0)) * direction;
     }
-
-    const aText = String(aValue ?? '').toLowerCase();
-    const bText = String(bValue ?? '').toLowerCase();
-    return aText.localeCompare(bText) * direction;
+    return String(aValue ?? '').toLowerCase().localeCompare(String(bValue ?? '').toLowerCase()) * direction;
   });
 }

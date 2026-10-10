@@ -1,10 +1,9 @@
 // Goals by department for the admin Progress pane.
 //
-// Each goal declares where its number comes from. Some departments have no
-// source in this database at all — revenue sits in Razorpay, visitor numbers
-// in Google Analytics, and nothing about the team is recorded here. Those
-// goals render as unconnected, naming what would feed them, rather than
-// showing a zero that reads as failure or a guess that reads as fact.
+// Each goal declares where its number comes from. A goal with no source in
+// this database (nothing about the team is recorded here, for one) renders as
+// unconnected, naming what would feed it, rather than showing a zero that
+// reads as failure or a guess that reads as fact.
 //
 // Flow goals (a count per day) are measured against the 5%-a-day plan summed
 // over the range. Rate goals (a share of accounts) are measured against a
@@ -14,9 +13,9 @@
 import type { SignupPoint } from './admin-signups-series';
 import { targetForDate } from './admin-targets';
 
-export type Department = 'Growth' | 'Marketing' | 'Product' | 'Income' | 'HR';
+export type Department = 'Growth' | 'Product' | 'Results' | 'Income' | 'Marketing' | 'HR';
 
-export const DEPARTMENTS: Department[] = ['Growth', 'Marketing', 'Product', 'Income', 'HR'];
+export const DEPARTMENTS: Department[] = ['Growth', 'Product', 'Results', 'Income', 'Marketing', 'HR'];
 
 export type GoalResult = {
   key: string;
