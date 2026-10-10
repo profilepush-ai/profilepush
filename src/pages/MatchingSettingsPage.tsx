@@ -156,7 +156,7 @@ export default function MatchingSettingsPage() {
 
             <Section
               title="Daily matches"
-              detail={paid ? `Most new matches each one can get in a day. ${defaultCap} unless you change it.` : 'Free accounts get up to 10 new matches a day for each. Paid accounts choose up to 100.'}
+              detail={paid ? `Most new matches each one can get in a day. ${defaultCap} unless you change it.` : 'Free accounts get 10 new matches a day in all. Paid accounts choose up to 100 for each.'}
               badge={lockBadge}
             >
               {subjects.length === 0 ? (

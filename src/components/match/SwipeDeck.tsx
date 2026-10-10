@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, Check, ChevronUp, ExternalLink, FileText, History, Send, Share2, Sparkles, X } from 'lucide-react';
+import { Bookmark, Check, ChevronUp, ExternalLink, FileText, History, Pause, Play, Send, Share2, Sparkles, X } from 'lucide-react';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, subjectName, type CardItem, type Kind, type Subject } from '../../lib/today';
 import { CompanyLogo, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
@@ -12,12 +12,16 @@ import { CompanyLogo, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap }
 // sits in the page beside the detail.
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, menuHint = false, onClose, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, onClose, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
   inline?: boolean; hideDetails?: boolean; paused?: boolean; emptyMessage?: { title: string; text: string };
   top?: ReactNode; layer?: string; boxes?: boolean; menuHint?: boolean;
+  /** Plays like a reel: each card moves on after this long (hold to pause). */
+  reelMs?: number;
+  /** Shown after the last card, instead of the plain "All caught up". */
+  endScreen?: ReactNode;
   onClose?: () => void; onCurrent?: (item: CardItem | null) => void; onStep?: (d: 1 | -1, toId: string | null) => void;
   onSwipeUp?: () => void; onSwipeDown?: () => void; onTouch?: () => void;
   onSeen: (item: CardItem) => void; onApply: (item: CardItem) => void; onSave: (item: CardItem) => void;
@@ -31,6 +35,11 @@ export default function SwipeDeck({
   const cardRef = useRef<HTMLDivElement | null>(null);
   // A big stamp after Apply, Save or Pass, so the action is unmistakable.
   const [stamp, setStamp] = useState<{ text: string; color: string; n: number } | null>(null);
+  // Reel playback: on unless turned off; holding a finger down pauses it.
+  const [playing, setPlaying] = useState(() => { try { return localStorage.getItem('reel_autoplay') !== '0'; } catch { return true; } });
+  const [held, setHeld] = useState(false);
+  const running = Boolean(reelMs) && playing && !held && !paused;
+  const togglePlay = () => setPlaying((p) => { try { localStorage.setItem('reel_autoplay', p ? '0' : '1'); } catch { /* fine */ } return !p; });
   const stampTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flash = (text: string, color: string) => {
     setStamp((p) => ({ text, color, n: (p?.n ?? 0) + 1 }));
@@ -38,28 +47,35 @@ export default function SwipeDeck({
     stampTimer.current = setTimeout(() => setStamp(null), 900);
   };
   useEffect(() => () => { if (stampTimer.current) clearTimeout(stampTimer.current); }, []);
-  const index = items.findIndex((i) => i.card_id === currentId);
+  // Past the last card: the end screen stays until the user goes back.
+  const [ended, setEnded] = useState(false);
+  const index = ended ? -1 : items.findIndex((i) => i.card_id === currentId);
   // Back from the detail view: show the card it ended on.
   useEffect(() => {
     if (focusId && focusId !== currentId && items.some((i) => i.card_id === focusId)) { setCurrentId(focusId); setDir(null); }
   }, [focusId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const item = index >= 0 ? items[index] : null;
+  const item = !ended && index >= 0 ? items[index] : null;
 
   // When the current card leaves (applied, saved, passed), show the one after it.
   const lastIndex = useRef(0);
   useEffect(() => {
     if (index >= 0) { lastIndex.current = index; return; }
+    if (ended) return;
     const next = items[Math.min(lastIndex.current, items.length - 1)];
     setCurrentId(next?.card_id ?? null);
     setDir('n');
-  }, [index, items]);
+  }, [index, items, ended]);
 
   useEffect(() => { if (item) onSeen(item); onCurrent?.(item); }, [item?.card_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const step = (d: 1 | -1) => {
+    if (ended) {
+      if (d === -1 && items.length) { setEnded(false); setCurrentId(items[items.length - 1].card_id); setDir('p'); }
+      return;
+    }
     const j = index + d;
     if (index < 0 || j < 0) return;
-    if (j >= items.length) { setCurrentId(null); onStep?.(d, null); return; }
+    if (j >= items.length) { setEnded(true); setCurrentId(null); onStep?.(d, null); return; }
     setCurrentId(items[j].card_id);
     setDir(d > 0 ? 'n' : 'p');
     onStep?.(d, items[j].card_id);
@@ -98,6 +114,7 @@ export default function SwipeDeck({
     onPointerDown: (e: ReactPointerEvent) => {
       onTouch?.();
       start.current = (e.target as HTMLElement).closest('[data-rail]') ? null : { x: e.clientX, y: e.clientY };
+      if (start.current) setHeld(true);
     },
     onPointerMove: (e: ReactPointerEvent) => {
       const s = start.current;
@@ -113,6 +130,7 @@ export default function SwipeDeck({
     onPointerUp: (e: ReactPointerEvent) => {
       const s = start.current;
       start.current = null;
+      setHeld(false);
       if (!s) return;
       const dx = e.clientX - s.x;
       const dy = e.clientY - s.y;
@@ -136,7 +154,7 @@ export default function SwipeDeck({
       }
       settle(el);
     },
-    onPointerCancel: () => { start.current = null; settle(cardRef.current); },
+    onPointerCancel: () => { start.current = null; setHeld(false); settle(cardRef.current); },
   };
   const stampEl = stamp ? (
     <span key={stamp.n} aria-hidden="true" className="pointer-events-none absolute left-1/2 top-[46%] z-40 rounded-2xl border-[5px] px-5 py-1.5 text-[34px] font-black tracking-[0.12em]"
@@ -153,6 +171,7 @@ export default function SwipeDeck({
         <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: 'radial-gradient(closest-side, #10b981, transparent)' }} />
         {topSlot}
         {corner && <div className="relative z-10 flex justify-end p-2">{corner}</div>}
+        {endScreen && !emptyMessage ? <div className="relative z-10 flex min-h-0 flex-1 flex-col">{endScreen}</div> : (
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
           <span className="grid h-[72px] w-[72px] place-items-center rounded-full bg-emerald-600"><Check size={36} strokeWidth={3} /></span>
           <h2 className="text-[26px] font-extrabold">{emptyMessage?.title ?? 'All caught up'}</h2>
@@ -166,6 +185,7 @@ export default function SwipeDeck({
             <button type="button" onClick={onClose} className="mt-2 rounded-full bg-white/15 px-5 py-2.5 font-bold">Back to Today</button>
           )}
         </div>
+        )}
         {stampEl}
         {handle}
       </div>
@@ -191,12 +211,35 @@ export default function SwipeDeck({
     >
       <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)` }} />
       <div className="relative z-20 flex gap-[3px] px-2.5 pt-2.5" aria-hidden="true">
-        {items.slice(0, 40).map((x, k) => <i key={x.card_id} className={`h-[3px] flex-1 rounded-sm ${k <= index ? 'bg-white' : 'bg-white/25'}`} />)}
+        {(() => {
+          const from = Math.max(0, Math.min(index - 10, items.length - 40));
+          return items.slice(from, from + 40).map((x, n) => {
+            const k = from + n;
+            return (
+              <i key={x.card_id} className="relative h-[3px] flex-1 overflow-hidden rounded-sm bg-white/25">
+                {(k < index || (k === index && !reelMs)) && <b className="absolute inset-0 bg-white" />}
+                {k === index && reelMs && (
+                  <b key={item.card_id} className="absolute inset-y-0 left-0 bg-white"
+                    style={{ animation: `ppReel ${reelMs}ms linear both`, animationPlayState: running ? 'running' : 'paused' }}
+                    onAnimationEnd={(e) => { if (e.animationName === 'ppReel') step(1); }} />
+                )}
+              </i>
+            );
+          });
+        })()}
       </div>
       {topSlot}
       <div className="relative z-20 flex items-center gap-2.5 py-2.5 pl-3 pr-2">
         <Initials name={name} id={item.subject_id} size={32} />
         <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b><small className="block truncate text-[11.5px] text-white/75">{kind === 'hotlist' ? subject?.title : 'Your job'}</small></div>
+        {reelMs && (
+          <span data-rail>
+            <button type="button" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause (or hold the card)' : 'Play'}
+              className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20">
+              {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+            </button>
+          </span>
+        )}
         {corner}
       </div>
 

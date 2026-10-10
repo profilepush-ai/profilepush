@@ -25,14 +25,14 @@ function Bullet({ children, tone }: { children: string; tone: 'yellow' | 'blue' 
 export const DEFAULT_FREE_BULLETS = [
   'All features included',
   'Unlimited team members',
-  '10 new matches a day per consultant',
+  '10 new matches a day',
   'Subscribe to 5 new people a day, up to 10',
   '100 free matches; only matches cost credits',
 ];
 
 const PACK_BULLETS = [
   '₹0.25 a match: ₹250 buys 1,000',
-  'Up to 100 matches a day per consultant',
+  'Up to 100 matches a day for each profile or job',
   'Choose your minimum match, 50–80%',
   'Pay any amount from ₹100, no subscription',
   'Opening jobs, AI Submit, bulk send and Apply are free',
