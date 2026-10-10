@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Check, Copy, ExternalLink, FileText, Mail, Paperclip, RefreshCw, Send, Target, Upload, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronLeft, Copy, ExternalLink, FileText, Mail, Paperclip, RefreshCw, Send, Target, Upload, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import LeadCard, { hideEmails, loadLeadsByIds, openLeadPostContent, OutOfCreditsError, type LeadCardProps, type SocialLead } from '../components/LeadCard';
@@ -92,6 +92,9 @@ export default function TodayPage() {
   const [jobLeads, setJobLeads] = useState<Record<string, SocialLead>>({});
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<string | null>(null);
+  // Phones show one column at a time: consultants, then their matches, then
+  // the submission. Desktop shows all three side by side.
+  const [mobileStep, setMobileStep] = useState<'subjects' | 'matches' | 'submit'>('subjects');
   const [itemState, setItemState] = useState<Record<string, ItemState>>({});
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
@@ -337,7 +340,7 @@ export default function TodayPage() {
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-2 sm:p-3 lg:grid-cols-[minmax(0,300px)_minmax(0,400px)_minmax(0,1fr)]">
 
         {/* Column 1: the day and the consultants */}
-        <div className="flex min-h-0 flex-col gap-2">
+        <div className={`${mobileStep === 'subjects' ? 'flex' : 'hidden'} min-h-0 flex-col gap-2 lg:flex`}>
           <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-[#20242a]">
             <div className="flex items-center gap-2.5">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-500/10"><Target size={18} /></span>
@@ -411,9 +414,9 @@ export default function TodayPage() {
                     </span>
                   )}
                   {lead ? (
-                    <LeadCard {...cardProps(lead, idx, s.subject_id === selectedSubject, () => setSelectedSubject(s.subject_id))} />
+                    <LeadCard {...cardProps(lead, idx, s.subject_id === selectedSubject, () => { setSelectedSubject(s.subject_id); setMobileStep('matches'); })} />
                   ) : (
-                    <button onClick={() => setSelectedSubject(s.subject_id)} className={`w-full rounded-lg border bg-white px-3 py-2 text-left text-[13px] font-semibold dark:bg-[#20242a] ${s.subject_id === selectedSubject ? 'border-blue-500' : 'border-gray-200 dark:border-white/10'}`}>
+                    <button onClick={() => { setSelectedSubject(s.subject_id); setMobileStep('matches'); }} className={`w-full rounded-lg border bg-white px-3 py-2 text-left text-[13px] font-semibold dark:bg-[#20242a] ${s.subject_id === selectedSubject ? 'border-blue-500' : 'border-gray-200 dark:border-white/10'}`}>
                       {consultantTitle(s.role_title)}
                     </button>
                   )}
@@ -449,9 +452,13 @@ export default function TodayPage() {
         </div>
 
         {/* Column 2: the selected consultant's matches */}
-        <div className={panel}>
+        <div className={`${panel} ${mobileStep === 'matches' ? '' : 'max-lg:hidden'}`}>
           <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 dark:border-white/10">
-            <div className="min-w-0">
+            <button type="button" onClick={() => setMobileStep('subjects')} aria-label="Back to consultants"
+              className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5 lg:hidden">
+              <ChevronLeft size={18} />
+            </button>
+            <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold">{subject ? consultantTitle(subject.role_title) : 'Matches'}</p>
               <p className="text-[11px] text-gray-500">
                 {items.length} fresh matches ·{' '}
@@ -482,7 +489,7 @@ export default function TodayPage() {
                 <div key={i.card_id} className={st === 'sent' || st === 'skipped' ? 'opacity-50' : ''}>
                   {lead && (
                     <LeadCard
-                      {...cardProps(lead, idx, i.job_id === selectedJob, () => setSelectedJob(i.job_id))}
+                      {...cardProps(lead, idx, i.job_id === selectedJob, () => { setSelectedJob(i.job_id); setMobileStep('submit'); })}
                       bulkSelectable={sendable(i) || checked.has(i.card_id)}
                       isBulkSelected={checked.has(i.card_id)}
                       onToggleBulkSelect={() => setChecked((c) => { const n = new Set(c); if (n.has(i.card_id)) n.delete(i.card_id); else n.add(i.card_id); return n; })}
@@ -505,14 +512,23 @@ export default function TodayPage() {
 
         {/* Column 3: the full post on top; the email (or the application) below;
             Skip and Send (or Apply) at the bottom. */}
-        <aside className={panel}>
+        <aside className={`${panel} ${mobileStep === 'submit' ? '' : 'max-lg:hidden'}`}>
           {!item || !subject ? (
-            <div className="flex flex-1 items-center justify-center p-6 text-center text-[13px] text-gray-400">Select a match to submit</div>
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-[13px] text-gray-400">
+              Select a match to submit
+              <button type="button" onClick={() => setMobileStep('matches')} className="font-semibold text-blue-600 lg:hidden">Back to matches</button>
+            </div>
           ) : (
             <>
-              <div className="border-b border-gray-100 px-4 py-2.5 dark:border-white/10">
-                <p className="truncate text-[15px] font-semibold">{item.title}</p>
-                <p className="truncate text-[12px] text-gray-500">{[item.poster || item.company, item.location, item.pay].filter(Boolean).join(' · ')}</p>
+              <div className="flex items-center gap-1 border-b border-gray-100 px-4 py-2.5 dark:border-white/10 max-lg:pl-2">
+                <button type="button" onClick={() => setMobileStep('matches')} aria-label="Back to matches"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5 lg:hidden">
+                  <ChevronLeft size={18} />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15px] font-semibold">{item.title}</p>
+                  <p className="truncate text-[12px] text-gray-500">{[item.poster || item.company, item.location, item.pay].filter(Boolean).join(' · ')}</p>
+                </div>
               </div>
 
               {/* Top half */}
