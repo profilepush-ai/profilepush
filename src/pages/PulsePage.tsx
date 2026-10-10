@@ -23,7 +23,7 @@ import { consultantTitle } from '../lib/consultant-title';
 import { useAiSubmit, AiSubmitDialog, getFunctionErrorMessage } from '../components/AiSubmit';
 import { trackEvent } from '../lib/track';
 import ApplyOnSiteButton, { isCareerSiteLead, openApplyPage } from '../components/ApplyOnSite';
-import LeadCard, { extractPrimaryEmail, CARD_PALETTE, getLeadBreakdownFieldValues, formatAgo, formatAgoCompact, type SocialLead, type FeedTimeBasis, type GlobalAskedJobState, type PredictCategory, type PredictResult, PersonaMissingTag, type LeadCardProps, shareLead, jobRowToLead, hotlistRowToLead, JOB_LEAD_COLUMNS, HOTLIST_LEAD_COLUMNS, safeNumber, type SocialJobRow, type HotlistLeadRow, getMissingJobDetails, hideEmails, fetchLeadPostContent, PostPreviewModal } from '../components/LeadCard';
+import LeadCard, { extractPrimaryEmail, CARD_PALETTE, getLeadBreakdownFieldValues, formatAgo, formatAgoCompact, type SocialLead, type FeedTimeBasis, type GlobalAskedJobState, type PredictCategory, type PredictResult, PersonaMissingTag, type LeadCardProps, shareLead, jobRowToLead, hotlistRowToLead, JOB_LEAD_COLUMNS, HOTLIST_LEAD_COLUMNS, safeNumber, type SocialJobRow, type HotlistLeadRow, getMissingJobDetails, hideEmails, fetchLeadPostContent, PostPreviewModal, LeadPreviewModal } from '../components/LeadCard';
 
 type PulsePersona = {
   target_role: string;
@@ -2061,6 +2061,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
   const [postContentViewedLeadIds, setPostContentViewedLeadIds] = useState<Set<string>>(new Set());
   const [postContentViewedAtByLeadId, setPostContentViewedAtByLeadId] = useState<Record<string, string>>({});
   const [postContentPreview, setPostContentPreview] = useState<{ leadId: string; title: string; content: string } | null>(null);
+  // A Feed card opened in full (the preview popup): the lead, its palette, and
+  // the post text once loaded.
+  const [openedLead, setOpenedLead] = useState<{ lead: SocialLead; paletteIndex: number; content: string | null } | null>(null);
   const [applyModalLead, setApplyModalLead] = useState<SocialLead | null>(null);
   const [loadingPostContentLeadId, setLoadingPostContentLeadId] = useState<string | null>(null);
   const [detailPanelContent, setDetailPanelContent] = useState<{ leadId: string; content: string } | null>(null);
@@ -3271,7 +3274,10 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     const paletteIndex = (row + (col * 2)) % CARD_PALETTE.length;
     // Rank is position in the run, so it counts across the whole result
     // set rather than restarting inside each score band.
-    const card = <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex, aiMatch && lead.aiMatchScore != null ? idx + 1 : undefined)} {...extraProps?.(lead)} />;
+    // Feed cards are the compact Tracker card; a click opens the full preview.
+    // AI Match keeps its own click (the draft pane).
+    const openProps: Partial<LeadCardProps> = aiMatch ? {} : { onOpen: (l: SocialLead) => handleOpenLead(l, paletteIndex) };
+    const card = <LeadCard key={lead.id} {...buildLeadCardProps(lead, paletteIndex, aiMatch && lead.aiMatchScore != null ? idx + 1 : undefined)} {...openProps} {...extraProps?.(lead)} />;
     if (!aiMatch || lead.aiMatchScore == null) return card;
     // Results run newest-first inside each band, so without a heading the
     // score appearing to drop mid-list looks like a sorting bug.
@@ -6447,6 +6453,17 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     }
   }, [fetchLeadRawContent, leadIsHotlist, loadingPostContentLeadId, showToast, user]);
 
+  const handleOpenLead = useCallback((lead: SocialLead, paletteIndex: number) => {
+    setOpenedLead({ lead, paletteIndex, content: null });
+    if (leadIsHotlist(lead)) return;
+    void fetchLeadRawContent(lead)
+      .then((content) => setOpenedLead((cur) => (cur && cur.lead.id === lead.id ? { ...cur, content: content ?? '' } : cur)))
+      .catch((error) => {
+        setOpenedLead((cur) => (cur && cur.lead.id === lead.id ? { ...cur, content: '' } : cur));
+        showToast(error instanceof Error ? error.message : 'Could not load the post', 'error');
+      });
+  }, [fetchLeadRawContent, leadIsHotlist, showToast]);
+
   // Detail-panel layout: opening a post's panel is the new trigger for the
   // same one-time credit charge the "Preview" button always charged — same
   // cost, same postContentViewedLeadIds tracking, just fired by selecting a
@@ -8234,6 +8251,14 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         </div>
       )}
 
+      {openedLead && (
+        <LeadPreviewModal
+          cardProps={buildLeadCardProps(openedLead.lead, openedLead.paletteIndex)}
+          content={openedLead.content}
+          loading={openedLead.content == null}
+          onClose={() => setOpenedLead(null)}
+        />
+      )}
       {postContentPreview && (
         <PostPreviewModal title={postContentPreview.title} content={postContentPreview.content} onClose={() => setPostContentPreview(null)} />
       )}
