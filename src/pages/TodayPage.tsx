@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Check, ChevronRight, Lock, Plus, Search, X } from 'lucide-react';
+import { Check, ChevronRight, Eye, Flame, History, Lock, Plus, Search, Send, Sparkles, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import PostFormModal from '../components/posts/PostFormModal';
@@ -8,7 +8,7 @@ import { AiSubmitDialog } from '../components/AiSubmit';
 import MatchDetail from '../components/match/MatchDetail';
 import SwipeDeck from '../components/match/SwipeDeck';
 import ProfileSheet from '../components/match/ProfileSheet';
-import { Initials } from '../components/match/Visuals';
+import { CompanyLogo, FitRing, Initials } from '../components/match/Visuals';
 import ToastBar from '../components/match/ToastBar';
 import { useMatchActions } from '../components/match/useMatchActions';
 import { useSwipe } from '../components/match/useSwipe';
@@ -35,6 +35,29 @@ function useMedia(query: string) {
 }
 
 const HINT_KEY = 'today_menu_hint';
+const REEL_MS = 8000;
+
+// Time left until `iso`, as "7h 12m", ticking every 30 seconds.
+function useCountdown(iso: string | undefined) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
+  if (!iso) return '';
+  const mins = Math.max(1, Math.round((new Date(iso).getTime() - now) / 60000));
+  return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+}
+
+// A short burst of confetti for finishing the reel.
+const CONFETTI = ['#34d399', '#60a5fa', '#a78bfa', '#fbbf24', '#f472b6', '#f87171'];
+function Confetti() {
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+      {Array.from({ length: 30 }, (_, i) => (
+        <i key={i} className="absolute top-0 block rounded-[2px]"
+          style={{ left: `${(i * 37) % 100}%`, width: 6 + (i % 3) * 2, height: (6 + (i % 3) * 2) * 1.6, background: CONFETTI[i % CONFETTI.length], animation: `ppConfetti ${1300 + (i % 5) * 220}ms cubic-bezier(.2,.6,.4,1) ${(i % 8) * 70}ms both` }} />
+      ))}
+    </div>
+  );
+}
 
 // Every word of the search appears somewhere on the card: title, company,
 // poster, location, skills or the profile's own name and role.
@@ -84,6 +107,8 @@ export default function TodayPage() {
   const [sheetDir, setSheetDir] = useState<'n' | 'p' | null>(null);
   const [deckFocus, setDeckFocus] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [watchedNow, setWatchedNow] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -118,6 +143,7 @@ export default function TodayPage() {
   function see(item: CardItem) {
     if (item.viewed_at) return;
     markViewed(item.card_id);
+    setWatchedNow((n) => n + 1);
     patch(item.card_id, { viewed_at: new Date().toISOString() });
   }
 
@@ -167,9 +193,13 @@ export default function TodayPage() {
   }, [params, subjects, setParams]);
 
   const appliedToday = (data?.applied_today ?? 0) + appliedNow;
+  const reel = data?.reel;
+  const free = Boolean(reel && !reel.paid);
+  const watchedToday = (reel?.watched_today ?? 0) + watchedNow;
+  const countdown = useCountdown(reel?.next_reset);
   const profileSubject = profileId ? subjects[profileId] : undefined;
   const deckKey = `${filter}|${words.join(' ')}`;
-  const emptyMessage = words.length
+  const emptyMessage = words.length && items.length === 0
     ? { title: 'Nothing matches', text: `No matches for "${query.trim()}". Try another word.` }
     : undefined;
 
@@ -225,6 +255,8 @@ export default function TodayPage() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
             placeholder={totalNew ? `Search ${totalNew} matches` : 'Search matches'}
             aria-label="Search matches by job, company, skill, location or profile"
             className="min-w-0 flex-1 bg-transparent text-[14px] text-white outline-none placeholder:text-white/50 [&::-webkit-search-cancel-button]:hidden"
@@ -233,6 +265,11 @@ export default function TodayPage() {
             <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-white/70 hover:bg-white/10"><X size={15} /></button>
           )}
         </label>
+        {(reel?.streak ?? 0) > 0 && (
+          <span title={`${reel!.streak}-day streak`} className="inline-flex h-10 shrink-0 items-center gap-1 rounded-full bg-orange-500/20 px-3 text-[13px] font-extrabold tabular-nums text-orange-300 ring-1 ring-orange-400/25">
+            <Flame size={14} fill="currentColor" />{reel!.streak}
+          </span>
+        )}
         <span title={`${appliedToday} applied today`} className="inline-flex h-10 shrink-0 items-center gap-1 rounded-full bg-emerald-500/20 px-3 text-[13px] font-extrabold tabular-nums text-emerald-300 ring-1 ring-emerald-400/25">
           <Check size={14} strokeWidth={3} />{appliedToday}
         </span>
@@ -262,6 +299,63 @@ export default function TodayPage() {
     </div>
   );
 
+  // After the last card: what today added up to, and (free accounts) the
+  // matches still waiting, the free days left and when the next 10 come.
+  const stat = (Icon: typeof Eye, value: number, label: string, tone: string) => (
+    <div className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-2.5 ring-1 ${tone}`} style={{ animation: 'ppPop 360ms cubic-bezier(.2,.8,.2,1) 250ms both' }}>
+      <Icon size={16} /><b className="text-[22px] font-extrabold tabular-nums leading-tight">{value}</b><span className="text-[11px] font-semibold opacity-80">{label}</span>
+    </div>
+  );
+  const endScreen = (
+    <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-5 py-4 text-center">
+      <Confetti />
+      <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-emerald-600 shadow-[0_0_0_8px_rgba(16,185,129,.18)]" style={{ animation: 'ppPop 420ms cubic-bezier(.2,.8,.2,1) both' }}><Check size={32} strokeWidth={3} /></span>
+      <div style={{ animation: 'ppFadeUp 400ms ease-out 120ms both' }}>
+        <h2 className="text-[26px] font-extrabold leading-tight">{free && (reel?.new_today ?? 0) >= (reel?.free_daily ?? 10) ? "That's today's 10" : 'Reel complete'}</h2>
+        <p className="mt-0.5 text-[13.5px] text-white/70">{filter !== 'all' && subjects[filter] ? `You watched every match for ${subjectName(kind, subjects[filter])}.` : free ? 'You watched every match for today.' : 'You watched every new match.'}</p>
+      </div>
+      <div className="grid w-full max-w-xs grid-cols-3 gap-2">
+        {stat(Eye, watchedToday, 'watched', 'bg-white/[0.07] text-white ring-white/10')}
+        {stat(Send, appliedToday, 'applied', 'bg-emerald-500/15 text-emerald-200 ring-emerald-400/20')}
+        {stat(Flame, Math.max(1, reel?.streak ?? 1), 'day streak', 'bg-orange-500/15 text-orange-200 ring-orange-400/20')}
+      </div>
+      {free && (reel?.waiting ?? 0) > 0 ? (
+        <div className="w-full max-w-sm space-y-3 rounded-3xl bg-white/[0.06] p-4 ring-1 ring-white/10" style={{ animation: 'ppFadeUp 450ms ease-out 450ms both' }}>
+          <p className="text-[16px] font-extrabold">{reel!.waiting} more {reel!.waiting === 1 ? 'match is' : 'matches are'} waiting</p>
+          <div className="relative space-y-2">
+            {reel!.waiting_preview.map((w, k) => (
+              <div key={k} className="flex items-center gap-2.5 rounded-2xl bg-white/[0.07] p-2.5 text-left">
+                <CompanyLogo name={w.company || w.title} avatar={w.avatar} size={36} round={Boolean(w.avatar)} />
+                <div className="min-w-0 flex-1 select-none blur-[5px]" aria-hidden="true"><b className="block truncate text-[14px]">{w.title}</b><small className="block truncate text-[12px] text-white/70">{w.company}</small></div>
+                <FitRing value={w.fit ?? 80} size={40} onDark />
+              </div>
+            ))}
+            <span className="absolute inset-0 grid place-items-center"><span className="grid h-11 w-11 place-items-center rounded-full bg-black/60 ring-1 ring-white/20"><Lock size={18} /></span></span>
+          </div>
+          <Link to="/billing" onClick={() => trackEvent('reel_unlock_clicked', { waiting: reel!.waiting })}
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[15px] font-extrabold shadow-[0_8px_24px_rgba(99,102,241,.45)]">
+            <Sparkles size={17} />Unlock them · from ₹100
+          </Link>
+          <p className="text-[12.5px] text-white/60">Or wait {countdown} for tomorrow&apos;s 10</p>
+        </div>
+      ) : free ? (
+        <div className="w-full max-w-sm space-y-2 rounded-3xl bg-white/[0.06] p-4 ring-1 ring-white/10" style={{ animation: 'ppFadeUp 450ms ease-out 450ms both' }}>
+          <p className="text-[14px] font-bold">Free plan: 10 new matches a day. Next 10 in {countdown}.</p>
+          <Link to="/billing" className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[14px] font-extrabold"><Sparkles size={16} />Get up to 100 a day</Link>
+        </div>
+      ) : (
+        <p className="text-[13.5px] text-white/70">New matches arrive every 10 minutes.</p>
+      )}
+      {free && reel && (
+        <p className="text-[12px] text-white/50">{Math.floor(reel.credits)} free matches left, about {Math.max(1, Math.ceil(reel.credits / (reel.free_daily || 10)))} {Math.ceil(reel.credits / (reel.free_daily || 10)) === 1 ? 'day' : 'days'}</p>
+      )}
+      <div className="flex flex-wrap justify-center gap-2">
+        <Link to="/history" className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-4 py-2.5 text-[14px] font-bold"><History size={16} />History</Link>
+        <Link to="/match" className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-4 py-2.5 text-[14px] font-bold"><Sparkles size={16} />Run AI Match</Link>
+      </div>
+    </div>
+  );
+
   const emptyFirst = (
     <div className="flex flex-col items-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 py-8 text-center dark:border-white/10 dark:bg-[#20242a]">
       <span className="grid h-14 w-14 place-items-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-500/15"><Plus size={26} /></span>
@@ -286,6 +380,9 @@ export default function TodayPage() {
             layer="z-[60]"
             boxes={tall}
             menuHint={hint}
+            reelMs={REEL_MS}
+            endScreen={endScreen}
+            paused={Boolean(openId || profileId || adding || chrome || searchFocused || actions.ai.preview)}
             startId={null}
             focusId={deckFocus}
             onCurrent={(i) => setDeckId(i?.card_id ?? null)}
@@ -309,6 +406,7 @@ export default function TodayPage() {
                   inline
                   hideDetails
                   top={topBar}
+                  endScreen={endScreen}
                   startId={null}
                   focusId={deckFocus}
                   onCurrent={(i) => setDeckId(i?.card_id ?? null)}

@@ -32,9 +32,14 @@ export type Subject = {
   posted_at: string; resumes?: ResumeFile[]; locked: number; applied_today: number;
 };
 
+export type Reel = {
+  paid: boolean; credits: number; watched_today: number; streak: number; free_daily: number; new_today: number;
+  next_reset: string; waiting: number; waiting_preview: Array<{ title: string; company: string | null; avatar: string | null; fit: number | null }>;
+};
+
 export type TodayData = {
   kind: Kind; day_start: string; target: number; daily_cap: number; used_today: number; applied_today: number;
-  subjects: Subject[]; items: CardItem[];
+  subjects: Subject[]; items: CardItem[]; reel?: Reel;
 };
 
 export const timeZone = () => {

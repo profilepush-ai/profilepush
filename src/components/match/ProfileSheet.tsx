@@ -172,7 +172,7 @@ export default function ProfileSheet({ subject, kind, newCount, accountId, mode,
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <b className="block text-[14px]">Matches a day</b>
-              <small className="block text-[12px] text-gray-500">{cap?.paid ? 'Up to 100 on your plan' : 'Free plan: 10. Paid: up to 100.'}</small>
+              <small className="block text-[12px] text-gray-500">{cap?.paid ? 'Up to 100 on your plan' : 'Free plan: 10 a day in all. Paid: up to 100 each.'}</small>
             </div>
             <div className="flex items-center overflow-hidden rounded-[10px] border border-gray-200 dark:border-white/10">
               <button type="button" onClick={() => void changeCap(-5)} aria-label="Fewer" className="grid h-8 w-9 place-items-center bg-gray-50 dark:bg-white/5"><Minus size={14} /></button>

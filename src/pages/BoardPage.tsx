@@ -1041,7 +1041,7 @@ export default function BoardPage() {
                           {[...new Set([10, 20, 30, 50, 75, 100, caps.bySubject[sid].cap])].sort((a, b) => a - b).map((v) => <option key={v} value={v}>{v} a day</option>)}
                         </select>
                       ) : (
-                        <button type="button" onClick={() => navigate('/billing')} className="ml-auto font-semibold text-blue-600 hover:underline dark:text-blue-400" title="Free accounts get 10 new matches per column a day">
+                        <button type="button" onClick={() => navigate('/billing')} className="ml-auto font-semibold text-blue-600 hover:underline dark:text-blue-400" title="Free accounts get 10 new matches a day in all">
                           Free limit · get up to 100
                         </button>
                       )}

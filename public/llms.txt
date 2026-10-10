@@ -48,7 +48,7 @@ ProfilePush is free to start and charges for one thing, matches, with no subscri
 - 100 free matches at signup (1 credit = 1 match). Credits never expire.
 - Bonus: +10 credits for the first post and +10 for the first submission.
 - Free: posting, editing, in-app submissions, AI Request drafts, replying to resume requests.
-- 1 credit (₹0.25): each new match, on the Tracker and Today or from AI Match. A job already paid for is not charged again; marking a match "Not a match" refunds it (up to 20% of matches). With no credits left, new matches wait and appear after a top-up. Daily limit per consultant or requirement: 10 on free accounts; 30 by default on paid accounts, adjustable up to 100. Minimum match: 70% on free accounts; paid accounts choose 50-80%. AI Matches can be switched off on the Tracker, and matches left unopened for 7 days are cleared.
+- 1 credit (₹0.25): each new match, on the Tracker and Today or from AI Match. A job already paid for is not charged again; marking a match "Not a match" refunds it (up to 20% of matches). With no credits left, new matches wait and appear after a top-up. Daily limit: 10 new matches a day in total on free accounts (more wait until a top-up); on paid accounts 30 a day for each profile or job by default, adjustable up to 100. Minimum match: 70% on free accounts; paid accounts choose 50-80%. AI Matches can be switched off in Settings; matches left unopened for 3 days are cleared, and opened ones move to History.
 - Free: opening job posts, AI Submit and AI Request drafts and sends from Gmail, bulk send, Inbox replies, video screenings and applying on career sites.
 - No limit on open consultants or requirements.
 - Top-ups: one-time, any amount from ₹100 in Indian rupees, at ₹0.25 a match (₹250 buys 1,000).
