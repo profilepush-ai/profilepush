@@ -24,6 +24,8 @@ export type CardItem = {
   stage: string; closed_reason: string | null; viewed_at: string | null; saved_at: string | null; applied_at: string | null;
   added_at: string; reply_in_inbox: boolean; how: 'email' | 'site'; subject: Subject | null;
   lead: Lead | null; duplicate?: string | null;
+  /** The viewer's own picture of this post, drawn with their avatar (when their avatar is on). */
+  my_visual?: string | null;
   /** Across ProfilePush: accounts that viewed, applied to, saved and shared the post. */
   eng?: { views: number; applies: number; saves: number; shares: number };
 };
@@ -73,6 +75,8 @@ export type Reel = {
 export type TodayData = {
   kind: Kind; day_start: string; target: number; daily_cap: number; used_today: number; applied_today: number;
   subjects: Subject[]; items: CardItem[]; reel?: Reel;
+  /** Their avatar shows in pictures (credits or an active plan). */
+  avatar_on?: boolean;
 };
 
 export const timeZone = () => {

@@ -1,8 +1,10 @@
 // ProfilePush's door to Cloudflare Workers AI, for our Supabase functions
 // (all calls need Authorization: Bearer <DRAW_SECRET>):
 //
-//   POST /  or /draw  { prompt, width?, height? }
-//     -> a match's picture: image/webp, or image/jpeg when it can't be converted
+//   POST /  or /draw  { prompt, width?, height?, reference? }
+//     -> a match's picture: image/webp, or image/jpeg when it can't be converted.
+//     reference: an image URL (a user's photo or avatar) the picture keeps
+//     the person from.
 //   POST /embed  { texts: string[] }  (up to 500)
 //     -> { vectors: number[][] }  768 numbers each, for matching
 //   POST /chat  { system?, prompt, max_tokens?, json? }
@@ -71,18 +73,28 @@ export default {
     const raw = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     if (path === "/embed") return embed(env, raw);
     if (path === "/chat") return chat(env, raw);
-    const body = raw as { prompt?: unknown; width?: unknown; height?: unknown };
+    const body = raw as { prompt?: unknown; width?: unknown; height?: unknown; reference?: unknown };
     const prompt = typeof body.prompt === "string" ? body.prompt.slice(0, 2048) : "";
     if (prompt.length < 20) return Response.json({ error: "A prompt is needed." }, { status: 400 });
     // Sizes in multiples of 16, as the model wants.
     const size = (v: unknown, d: number) => (typeof v === "number" && v >= 256 && v <= 1536 ? Math.round(v / 16) * 16 : d);
 
+    // A reference picture (only from our own storage or Google's avatars).
+    let reference: Blob | null = null;
+    if (typeof body.reference === "string" && body.reference) {
+      const host = new URL(body.reference).hostname;
+      if (!/(\.supabase\.co|\.googleusercontent\.com)$/.test(host)) return Response.json({ error: "Reference not allowed." }, { status: 400 });
+      const ref = await fetch(body.reference);
+      if (!ref.ok || !(ref.headers.get("Content-Type") ?? "").startsWith("image/")) return Response.json({ error: "Reference image unavailable." }, { status: 400 });
+      reference = await ref.blob();
+    }
     // FLUX.2 takes its input as a multipart form.
     const draw = () => {
       const form = new FormData();
       form.append("prompt", prompt);
       form.append("width", String(size(body.width, 704)));
       form.append("height", String(size(body.height, 1056)));
+      if (reference) form.append("input_image_0", reference, "reference");
       const packed = new Response(form);
       return env.AI.run(MODEL, { multipart: { body: packed.body, contentType: packed.headers.get("content-type") } }) as Promise<{ image?: string }>;
     };

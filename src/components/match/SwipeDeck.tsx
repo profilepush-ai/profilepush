@@ -20,7 +20,7 @@ const section = (at: number) => ({ animation: `ppSection 450ms cubic-bezier(.2,.
 // sits in the page beside the detail.
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, viewerId, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
@@ -29,6 +29,8 @@ export default function SwipeDeck({
   top?: ReactNode | ((controls: ReactNode) => ReactNode); layer?: string; boxes?: boolean; menuHint?: boolean;
   /** Picks which version of a post's picture this viewer sees. */
   viewerId?: string;
+  /** Show the viewer's own avatar pictures (they have credits or a plan). */
+  avatarOn?: boolean;
   /** Plays like a reel: each card moves on after this long (hold to pause). */
   reelMs?: number;
   /** Shown after the last card, instead of the plain "All caught up". */
@@ -116,10 +118,10 @@ export default function SwipeDeck({
   useEffect(() => {
     if (index < 0) return;
     for (const next of items.slice(index + 1, index + 3)) {
-      const url = next.lead ? pictureFor(next.lead, viewerId) : null;
+      const url = (avatarOn ? next.my_visual : null) || (next.lead ? pictureFor(next.lead, viewerId) : null);
       if (url) new Image().src = url;
     }
-  }, [index, items, viewerId]);
+  }, [index, items, viewerId, avatarOn]);
 
   const shell = inline
     ? 'relative flex h-full min-h-0 select-none flex-col overflow-hidden rounded-[22px] bg-[#0b0f1a] text-white'
@@ -244,7 +246,7 @@ export default function SwipeDeck({
   const fit = fitFor(kind, subject, lead);
   const site = kind === 'hotlist' && lead.source === 'career_site';
   const left = expiring ? timeLeft(item) : null;
-  const picture = pictureFor(lead, viewerId);
+  const picture = (avatarOn ? item.my_visual : null) || pictureFor(lead, viewerId);
   const color = hashColor(item.subject_id);
   const name = subjectName(kind, subject);
   const saved = Boolean(item.saved_at);

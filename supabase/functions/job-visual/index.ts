@@ -250,8 +250,9 @@ async function askWriter(lead: Lead): Promise<string> {
 
 class RateLimited extends Error {}
 
-async function drawImage(prompt: string): Promise<{ bytes: Uint8Array; type: string }> {
-  const res = await worker("/draw", { prompt, width: 704, height: 1056 });
+// reference: a user's avatar, whose person the picture keeps.
+async function drawImage(prompt: string, reference?: string): Promise<{ bytes: Uint8Array; type: string }> {
+  const res = await worker("/draw", { prompt, width: 704, height: 1056, ...(reference ? { reference } : {}) });
   if (res.status === 429) throw new RateLimited(`Image model busy: ${(await res.text()).slice(0, 200)}`);
   const type = res.headers.get("Content-Type") ?? "";
   if (!res.ok || !type.startsWith("image/")) throw new Error(`Image model: ${res.status} ${(await res.text()).slice(0, 200)}`);
@@ -308,13 +309,61 @@ async function draw(admin: SupabaseClient, rows: Row[]) {
         const { error: upErr } = await admin.storage.from("job-visuals").upload(path, bytes, { contentType: type, upsert: true });
         if (upErr) throw new Error(upErr.message);
         const url = `${admin.storage.from("job-visuals").getPublicUrl(path).data.publicUrl}?v=${Date.now()}`;
-        await admin.from("match_visuals").update({ status: "done", url, prompt, error: null, model: `${by} + ${IMAGE_MODEL}`, updated_at: now() })
+        await admin.from("match_visuals").update({ status: "done", url, prompt, template: r.lead_kind === "job" ? template : null, error: null, model: `${by} + ${IMAGE_MODEL}`, updated_at: now() })
           .eq("lead_id", r.lead_id).eq("variant", r.variant);
         tally.done++;
       } catch (error) {
         await fail(r, error);
       }
     }));
+  }));
+  return tally;
+}
+
+// A viewer's own picture of a job: the job's scene with their avatar as the
+// person (match_visuals_me). The scene is the one already written for the
+// job when there is one.
+type MyRow = { lead_id: string; user_id: string; attempts: number };
+const AS_AVATAR = "the character from the reference image, with exactly the same face, hair, skin tone and glasses";
+
+async function drawMine(admin: SupabaseClient, rows: MyRow[]) {
+  const tally = { done: 0, failed: 0, requeued: 0 };
+  const now = () => new Date().toISOString();
+  const users = [...new Set(rows.map((r) => r.user_id))];
+  const { data: avatars } = await admin.from("user_avatars").select("user_id, url").in("user_id", users).eq("status", "active");
+  const avatarOf = new Map((avatars ?? []).map((a) => [a.user_id as string, a.url as string]));
+  const leads = [...new Set(rows.map((r) => r.lead_id))];
+  const { data: scenes } = await admin.from("match_visuals").select("lead_id, template").in("lead_id", leads).not("template", "is", null);
+  const sceneOf = new Map((scenes ?? []).map((v) => [v.lead_id as string, v.template as string]));
+  await Promise.all(rows.map(async (r) => {
+    const set = (patch: Record<string, unknown>) => admin.from("match_visuals_me").update({ ...patch, updated_at: now() }).eq("lead_id", r.lead_id).eq("user_id", r.user_id);
+    try {
+      const avatar = avatarOf.get(r.user_id);
+      if (!avatar) { await set({ status: "failed", attempts: 3, error: "No active avatar." }); tally.failed++; return; }
+      let template = sceneOf.get(r.lead_id);
+      if (!template) {
+        const lead = await loadLead(admin, "job", r.lead_id);
+        if (!lead) { await set({ status: "failed", attempts: 3, error: "Post not found." }); tally.failed++; return; }
+        template = (await writePrompt(lead)).prompt;
+      }
+      const prompt = template.replaceAll("[PERSONA]", AS_AVATAR);
+      const { bytes, type } = await drawImage(prompt, avatar);
+      // An unguessable path: these pictures show a real person's likeness.
+      const path = `me/${crypto.randomUUID()}.${type.includes("webp") ? "webp" : "jpg"}`;
+      const { error: upErr } = await admin.storage.from("job-visuals").upload(path, bytes, { contentType: type });
+      if (upErr) throw new Error(upErr.message);
+      const { data: old } = await admin.from("match_visuals_me").select("url").eq("lead_id", r.lead_id).eq("user_id", r.user_id).maybeSingle();
+      await set({ status: "done", url: admin.storage.from("job-visuals").getPublicUrl(path).data.publicUrl, prompt, error: null });
+      const stale = (old?.url as string | undefined)?.split("/job-visuals/")[1]?.split("?")[0];
+      if (stale) await admin.storage.from("job-visuals").remove([stale]);
+      tally.done++;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (error instanceof RateLimited) { tally.requeued++; await set({ status: "queued", attempts: Math.max(0, r.attempts - 1), error: message.slice(0, 500) }); return; }
+      tally.failed++;
+      console.error("job-visual mine", r.lead_id, message);
+      await set({ status: "failed", error: message.slice(0, 500) });
+    }
   }));
   return tally;
 }
@@ -334,10 +383,17 @@ Deno.serve(async (req: Request) => {
         .eq("status", "done").gte("updated_at", dayStart.toISOString());
       const room = DAILY_MAX > 0 ? Math.min(BATCH, DAILY_MAX - (count ?? 0)) : BATCH;
       if (room <= 0) return respond({ paused: "daily_max", made_today: count });
-      const { data: rows, error } = await admin.rpc("claim_match_visuals", { p_limit: room });
+      // Up to a third of each run goes to people's own avatar pictures.
+      const { data: mine, error: mineErr } = await admin.rpc("claim_my_visuals", { p_limit: Math.max(1, Math.ceil(room / 3)) });
+      if (mineErr) throw mineErr;
+      const { data: rows, error } = await admin.rpc("claim_match_visuals", { p_limit: Math.max(1, room - (mine?.length ?? 0)) });
       if (error) throw error;
-      if (!rows?.length) return respond({ idle: true });
-      return respond({ claimed: rows.length, ...(await draw(admin, rows as Row[])) });
+      if (!rows?.length && !mine?.length) return respond({ idle: true });
+      const [shared, own] = await Promise.all([
+        rows?.length ? draw(admin, rows as Row[]) : null,
+        mine?.length ? drawMine(admin, mine as MyRow[]) : null,
+      ]);
+      return respond({ claimed: (rows?.length ?? 0) + (mine?.length ?? 0), shared, own });
     }
 
     // Internal accounts: draw these posts' pictures again, now.

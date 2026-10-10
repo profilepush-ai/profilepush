@@ -11,6 +11,7 @@ import ProfileSheet from '../components/match/ProfileSheet';
 import { CompanyLogo, FitRing, Initials } from '../components/match/Visuals';
 import ToastBar from '../components/match/ToastBar';
 import ApplyFrame from '../components/match/ApplyFrame';
+import { loadAvatar } from '../lib/avatar';
 import { useMatchActions } from '../components/match/useMatchActions';
 import { useSwipe } from '../components/match/useSwipe';
 import { useAuth } from '../contexts/AuthContext';
@@ -97,6 +98,9 @@ export default function TodayPage() {
   const [adding, setAdding] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [watchedNow, setWatchedNow] = useState(0);
+  // Whether they've made an avatar (the end screen offers it until they do).
+  const [hasAvatar, setHasAvatar] = useState(true);
+  useEffect(() => { loadAvatar().then((a) => setHasAvatar(Boolean(a.avatar?.url))).catch(() => {}); }, []);
 
   const load = useCallback(async () => {
     try {
@@ -213,7 +217,7 @@ export default function TodayPage() {
     : undefined;
 
   const deckProps = {
-    items, kind, subjects, appliedToday, emptyMessage, expiring: true, viewerId: user?.id,
+    items, kind, subjects, appliedToday, emptyMessage, expiring: true, viewerId: user?.id, avatarOn: Boolean(data?.avatar_on),
     onSeen: see, onApply: applyQuick, onSave: save, onShare: (i: CardItem) => void share(i), onDismiss: dismiss,
     onDetails: (i: CardItem) => open(i),
     asked: actions.asked, onAsk: (i: CardItem, q: Question) => void actions.ask(i, q),
@@ -361,6 +365,13 @@ export default function TodayPage() {
       )}
       {free && reel && (
         <p className="text-[12px] text-white/50">{Math.floor(reel.credits)} free matches left, about {Math.max(1, Math.ceil(reel.credits / (reel.free_daily || 10)))} {Math.ceil(reel.credits / (reel.free_daily || 10)) === 1 ? 'day' : 'days'}</p>
+      )}
+      {kind === 'hotlist' && !hasAvatar && (
+        <Link to="/settings#avatar" onClick={() => trackEvent('avatar_nudge_clicked')} className="flex w-full max-w-sm items-center gap-3 rounded-2xl bg-white/[0.06] p-3 text-left ring-1 ring-white/10">
+          <Sparkles size={20} className="shrink-0 text-amber-300" />
+          <span className="min-w-0 flex-1"><b className="block text-[14px]">See yourself in your matches</b><small className="block text-[12px] text-white/70">Make a 3D avatar from your photo. Free.</small></span>
+          <ChevronRight size={16} className="shrink-0" />
+        </Link>
       )}
       <div className="flex flex-wrap justify-center gap-2">
         <Link to="/history" className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-4 py-2.5 text-[14px] font-bold"><History size={16} />History</Link>
