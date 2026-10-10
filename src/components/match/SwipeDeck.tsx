@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, pictureFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
-import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
+import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitLine, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
+import { usePictureColors } from './usePictureColors';
 
 // When each section of a card arrives (ms). Sections move as one block (many
 // small animations at once stutter on phones); inside, only the match ring
@@ -117,6 +118,24 @@ export default function SwipeDeck({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
+
+  // The sharp picture starts below the profile row (search and chips sit on
+  // the blurred one); this is where that row ends, kept up to date.
+  const forRowRef = useRef<HTMLDivElement | null>(null);
+  const currentPicture = item?.lead ? (avatarOn ? item.my_visual : null) || pictureFor(item.lead, viewerId) : null;
+  const [picTop, setPicTop] = useState(0);
+  useLayoutEffect(() => {
+    const row = forRowRef.current;
+    if (!row) return undefined;
+    const measure = () => setPicTop(row.offsetTop + row.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(row);
+    if (row.offsetParent) ro.observe(row.offsetParent);
+    return () => ro.disconnect();
+  });
+
+  const tones = usePictureColors(currentPicture);
 
   // The next two pictures load ahead, so a swipe never waits for one.
   useEffect(() => {
@@ -266,14 +285,15 @@ export default function SwipeDeck({
       {...gestures}
     >
       {picture ? (
-        // The post's AI picture: sharp in the top half; the same picture,
-        // blurred and darkened, behind the details in the bottom half.
+        // The post's AI picture: sharp from below the profile row to about the
+        // middle, on a smooth gradient of its own colors behind everything
+        // else (the search and chips above it, the details below).
         <div key={picture} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ animation: 'ppPicture .5s ease-out both' }}>
-          <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full scale-125 object-cover blur-2xl" />
-          <div className="absolute inset-0 bg-[#0b0f1a]/60" />
-          <img src={picture} alt="" decoding="async" className="absolute inset-x-0 top-0 h-1/2 w-full object-cover object-[50%_22%]"
-            style={{ maskImage: 'linear-gradient(180deg, #000 70%, transparent)', WebkitMaskImage: 'linear-gradient(180deg, #000 70%, transparent)' }} />
-          <div className="absolute inset-x-0 top-0 h-[22%]" style={{ background: 'linear-gradient(180deg, rgba(11,15,26,.6), transparent)' }} />
+          {/* A smooth gradient of the picture's own colors, darkened. */}
+          {tones && <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${tones[0]} 0%, ${tones[1]} 45%, ${tones[2]} 100%)` }} />}
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(11,15,26,.55) 0%, rgba(11,15,26,.45) 35%, rgba(11,15,26,.78) 62%, rgba(11,15,26,.93) 100%)' }} />
+          <img src={picture} alt="" decoding="async" className="absolute inset-x-0 w-full object-cover object-[50%_22%]"
+            style={{ top: picTop, height: `max(160px, calc(56% - ${picTop}px))`, maskImage: 'linear-gradient(180deg, transparent, #000 16%, #000 60%, transparent)', WebkitMaskImage: 'linear-gradient(180deg, transparent, #000 16%, #000 60%, transparent)' }} />
         </div>
       ) : (
         <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)` }} />
@@ -297,7 +317,7 @@ export default function SwipeDeck({
         })()}
       </div>
       {topSlot}
-      <div className="relative z-20 flex items-center gap-2.5 py-2.5 pl-3 pr-2">
+      <div ref={forRowRef} className="relative z-20 flex items-center gap-2.5 py-2.5 pl-3 pr-2">
         <Initials name={name} id={item.subject_id} size={32} />
         <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b><small className="block truncate text-[11.5px] text-white/75">{kind === 'hotlist' ? subject?.title : 'Your job'}</small></div>
         {picture && (
@@ -339,10 +359,8 @@ export default function SwipeDeck({
           )}
         </div>
         <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
-        <div className="flex items-center gap-3" style={section(T.ring)}>
-          <FitRing value={item.fit ?? Math.round(item.similarity * 100)} size={72} onDark animate at={T.ring + 150} />
-          <FitBadges fit={fit} onDark />
-        </div>
+        <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} onDark animate at={T.ring + 150} /></div>
+        <div style={section(T.ring)}><FitBadges fit={fit} onDark /></div>
         {onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
           <div data-rail className="pointer-events-auto" style={section(T.ask)}>
             <AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} onDark />

@@ -75,6 +75,23 @@ function useCountUp(target: number, on: boolean, duration = 750, delay = 150) {
 
 // The match %. Animated, the ring sweeps round as the number counts up and
 // changes colour as it passes 75 and 85; a strong match ends with a glow.
+// The match score as a straight bar under the title, the number at its end.
+export function FitLine({ value, onDark = false, animate = false, at = 150 }: { value: number; onDark?: boolean; animate?: boolean; at?: number }) {
+  const v = Math.max(0, Math.min(100, Math.round(value)));
+  const shown = useCountUp(v, animate, 750, at);
+  const color = shown >= 85 ? '#10b981' : shown >= 75 ? '#3b82f6' : '#94a3b8';
+  return (
+    <div role="img" aria-label={`${v}% match`} className="flex items-center gap-2.5">
+      <div className={`h-2 min-w-0 flex-1 overflow-hidden rounded-full ${onDark ? 'bg-white/15' : 'bg-[var(--pp-ring-track)]'}`}>
+        <i className="block h-full rounded-full" style={{ width: `${shown}%`, background: color }} />
+      </div>
+      <b className={`shrink-0 text-[16px] font-extrabold tabular-nums leading-none ${onDark ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
+        {shown}%<small className={`ml-1 text-[11px] font-semibold ${onDark ? 'text-white/70' : 'text-gray-500 dark:text-slate-400'}`}>match</small>
+      </b>
+    </div>
+  );
+}
+
 export function FitRing({ value, size = 44, onDark = false, animate = false, at = 150 }: { value: number; size?: number; onDark?: boolean; animate?: boolean; at?: number }) {
   const v = Math.max(0, Math.min(100, Math.round(value)));
   const shown = useCountUp(v, animate, 750, at);

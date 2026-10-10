@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Bookmark, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code2, Copy, DollarSign, ExternalLink, FileText, Globe, Mail, MapPin, Send, Share2, ShieldCheck } from 'lucide-react';
+import { Bookmark, Briefcase, Check, ChevronLeft, ChevronRight, Clock, Code2, Copy, DollarSign, ExternalLink, FileText, Globe, Mail, MapPin, Send, Share2, ShieldCheck, Sparkles } from 'lucide-react';
 import LogoSpinner from '../LogoSpinner';
 import { hideEmails, openLeadPostContent } from '../LeadCard';
 import { supabase } from '../../lib/supabase';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, strings, subjectName, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
-import { AskChips, CompanyLogo, EngagementRow, FitRing, Initials, RateBar, SkillTiles, UsMap, VisaRow } from './Visuals';
+import { CompanyLogo, EngagementRow, FitLine, Initials, RateBar, SkillTiles, UsMap, VisaRow } from './Visuals';
 
 export type Draft = { subject: string; body: string; toName: string; duplicate: string | null };
 
@@ -72,24 +72,25 @@ export default function MatchDetail({
     return () => { alive = false; };
   }, [lead.id, lead.kind]);
 
-  // The application email, written by AI, ready to edit.
-  useEffect(() => {
-    setDraft(null); setDraftError('');
-    if (!email || !accountId) return;
-    let alive = true;
-    void supabase.functions.invoke('submit-consultant', { body: { action: 'preview', account_id: accountId, subject_id: item.subject_id, job_id: lead.id } })
-      .then(async ({ data, error }) => {
-        if (!alive) return;
-        if (error) {
-          const ctx = (error as { context?: Response }).context;
-          const payload = ctx ? await ctx.json().catch(() => null) : null;
-          setDraftError(payload?.message || payload?.error || 'Could not write the email.');
-          return;
-        }
-        setDraft({ subject: data.subject, body: data.body, toName: data.to_name, duplicate: data.duplicate ?? null });
-      });
-    return () => { alive = false; };
-  }, [email, accountId, item.subject_id, lead.id]);
+  // The application email: written by AI only when they ask for it, then
+  // theirs to edit.
+  const [drafting, setDrafting] = useState(false);
+  useEffect(() => { setDraft(null); setDraftError(''); setDrafting(false); }, [item.subject_id, lead.id]);
+  const writeDraft = async () => {
+    if (!email || !accountId || drafting) return;
+    setDrafting(true); setDraftError('');
+    const forCard = `${item.subject_id}:${lead.id}`;
+    const { data, error } = await supabase.functions.invoke('submit-consultant', { body: { action: 'preview', account_id: accountId, subject_id: item.subject_id, job_id: lead.id } });
+    if (forCard !== `${item.subject_id}:${lead.id}`) return;
+    setDrafting(false);
+    if (error) {
+      const ctx = (error as { context?: Response }).context;
+      const payload = ctx ? await ctx.json().catch(() => null) : null;
+      setDraftError(payload?.message || payload?.error || 'Could not write the email.');
+      return;
+    }
+    setDraft({ subject: data.subject, body: data.body, toName: data.to_name, duplicate: data.duplicate ?? null });
+  };
 
   useEffect(() => { setResumeId((resumes.find((r) => r.is_default) ?? resumes[0])?.id ?? null); }, [item.subject_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -104,9 +105,15 @@ export default function MatchDetail({
         <div className="min-w-0 flex-1">
           <h2 className="text-balance text-[19px] font-extrabold leading-tight tracking-tight">{leadTitle(lead)}</h2>
           <p className="mt-0.5 text-[13px] text-gray-600 dark:text-slate-400">{leadOrg(lead)}{lead.poster && lead.company && lead.poster !== lead.company ? ` · ${lead.poster}` : ''}</p>
+          {mode === 'pane' && (
+            <p className="mt-1.5 flex flex-wrap gap-1.5 text-[12.5px] font-semibold text-gray-700 dark:text-slate-200">
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-0.5 ring-1 ring-gray-200 dark:bg-white/5 dark:ring-white/10">{fit.location.kind === 'remote' ? <Globe size={13} /> : <MapPin size={13} />}{fit.location.label}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-0.5 ring-1 ring-gray-200 dark:bg-white/5 dark:ring-white/10"><DollarSign size={13} />{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr${fit.rate.mine ? `, asks $${Math.round(fit.rate.mine)}` : ''}` : (lead.pay || 'Rate not in the post')}</span>
+            </p>
+          )}
         </div>
-        <FitRing value={item.fit ?? Math.round(item.similarity * 100)} size={62} />
       </div>
+      <FitLine value={item.fit ?? Math.round(item.similarity * 100)} />
       {item.eng && <EngagementRow eng={item.eng} />}
       <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-gray-600 dark:text-slate-300">
         <button type="button" onClick={onSubject} className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 font-bold text-gray-900 hover:border-blue-300 dark:border-white/10 dark:bg-[#20242a] dark:text-white">
@@ -129,13 +136,11 @@ export default function MatchDetail({
   const missing = missingFor(kind, fit);
   const board = (
     <section className="grid grid-cols-2 gap-2.5">
-      {onAsk && lead.has_email && missing.length > 0 && (
-        <div className={`${box} col-span-2`}><AskChips missing={missing} asked={asked ?? []} onAsk={onAsk} /></div>
-      )}
       <div className={`${box} col-span-2`}>
         <h4 className={boxTitle}><Code2 size={13} />Skills<span className="ml-auto normal-case tracking-normal text-emerald-600 dark:text-emerald-400">{okSkills} of {fit.skills.length}</span></h4>
         <SkillTiles skills={fit.skills} />
       </div>
+      {mode !== 'pane' && <>
       <div className={box}>
         <h4 className={boxTitle}>{fit.location.kind === 'remote' ? <Globe size={13} /> : <MapPin size={13} />}Location</h4>
         <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} />
@@ -146,6 +151,7 @@ export default function MatchDetail({
         <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} />
         <p className="text-[12px] font-semibold text-gray-600 dark:text-slate-300">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr${fit.rate.mine ? `, asks $${Math.round(fit.rate.mine)}` : ''}` : (lead.pay || 'Not in the post')}</p>
       </div>
+      </>}
       <div className={`${box} col-span-2`}>
         <h4 className={boxTitle}><ShieldCheck size={13} />Visa</h4>
         <VisaRow accepted={fit.visa.accepted} mine={fit.visa.mine} />
@@ -208,8 +214,15 @@ export default function MatchDetail({
     action = (
       <section className={`${box} border-amber-200 bg-amber-50/70 dark:border-amber-400/25 dark:bg-amber-500/[0.06]`}>
         <h4 className={`${boxTitle} !text-amber-700 dark:!text-amber-300`}><Mail size={13} />Your application email</h4>
-        {draftError ? <p className="text-[12.5px] text-red-600">{draftError}</p> : !draft ? (
-          <div className="flex items-center gap-2 py-6 text-[12.5px] text-gray-500"><LogoSpinner size={14} />Writing the email…</div>
+        {!draft ? (
+          <div className="flex flex-col items-start gap-2.5 py-1">
+            <p className="text-[13px] text-gray-700 dark:text-slate-300">AI writes a short email to {lead.poster || 'the poster'} for {name}, from your Gmail. You edit it before it goes.</p>
+            {draftError && <p className="text-[12.5px] text-red-600">{draftError}</p>}
+            <button type="button" onClick={() => void writeDraft()} disabled={drafting}
+              className="inline-flex h-10 items-center gap-2 rounded-[10px] bg-amber-600 px-4 text-[13.5px] font-bold text-white hover:bg-amber-700 disabled:opacity-60">
+              {drafting ? <LogoSpinner size={14} /> : <Sparkles size={16} />}{drafting ? 'Writing the email…' : draftError ? 'Try again' : 'Write the email'}
+            </button>
+          </div>
         ) : (
           <>
             <p className="mb-2 text-[12px] text-gray-600 dark:text-slate-400">To {draft.toName} · from your Gmail · written by AI, edit anything</p>
@@ -237,7 +250,9 @@ export default function MatchDetail({
     ? <button type="button" onClick={onAskResume} disabled={busy} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 text-[15px] font-bold text-white hover:bg-blue-700 disabled:opacity-50"><FileText size={17} />Ask Resume</button>
     : site
       ? <button type="button" onClick={onApplySite} disabled={busy} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-[15px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><ExternalLink size={17} />Apply on their site</button>
-      : <button type="button" onClick={() => draft && onApplyEmail(draft, resumeId)} disabled={busy || !draft || Boolean(duplicate) || gmailConnected === false} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 text-[15px] font-bold text-white hover:bg-blue-700 disabled:opacity-50">{busy ? <LogoSpinner size={15} /> : <Send size={17} />}Apply by email</button>;
+      : !draft && email && gmailConnected !== false
+        ? <button type="button" onClick={() => void writeDraft()} disabled={drafting} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 text-[15px] font-bold text-white hover:bg-blue-700 disabled:opacity-50">{drafting ? <LogoSpinner size={15} /> : <Sparkles size={17} />}{drafting ? 'Writing…' : 'Write the email'}</button>
+        : <button type="button" onClick={() => draft && onApplyEmail(draft, resumeId)} disabled={busy || !draft || Boolean(duplicate) || gmailConnected === false} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 text-[15px] font-bold text-white hover:bg-blue-700 disabled:opacity-50">{busy ? <LogoSpinner size={15} /> : <Send size={17} />}Apply by email</button>;
   const secondary = item.stage === 'new' && !saved && onDismiss
     ? <button type="button" onClick={onDismiss} className="h-12 shrink-0 rounded-xl border border-gray-300 px-4 text-[14px] font-bold text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5">Not a match</button>
     : <button type="button" onClick={onSave} className="h-12 shrink-0 rounded-xl border border-gray-300 px-4 text-[14px] font-bold text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5">{saved ? 'Unsave' : 'Save'}</button>;
@@ -265,8 +280,24 @@ export default function MatchDetail({
           </div>
         ) : (<>{board}{action}{postBox}</>)}
       </div>
-      <div className="flex shrink-0 gap-2 border-t border-gray-200 bg-white px-3.5 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] dark:border-white/10 dark:bg-[#20242a]">
-        {secondary}{primary}
+      <div className="shrink-0 space-y-2 border-t border-gray-200 bg-white px-3.5 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] dark:border-white/10 dark:bg-[#20242a]">
+        <div className="flex gap-2">{secondary}{primary}</div>
+        {/* What the post leaves out, asked of its poster (they get an email). */}
+        {onAsk && lead.has_email && missing.length > 0 && (
+          <div className="flex gap-2" role="group" aria-label="Ask the poster">
+            {missing.map((q) => {
+              const done = (asked ?? []).includes(q);
+              const Icon = q === 'rate' ? DollarSign : q === 'visa' ? ShieldCheck : MapPin;
+              const label = q === 'rate' ? 'Rate' : q === 'visa' ? 'Visa' : 'Location';
+              return (
+                <button key={q} type="button" onClick={() => !done && onAsk(q)} disabled={done} title={done ? `Asked the poster for the ${q}` : `Ask the poster for the ${q}`}
+                  className={`inline-flex h-12 flex-1 items-center justify-center gap-1.5 rounded-xl border text-[14px] font-bold ${done ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300' : 'border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5'}`}>
+                  {done ? <Check size={16} strokeWidth={3} /> : <Icon size={16} />}{label}{done ? ' asked' : '?'}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
