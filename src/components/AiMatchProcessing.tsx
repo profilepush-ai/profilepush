@@ -82,7 +82,7 @@ function PlansVisual({ paid }: { paid: boolean }) {
         </div>
         {row('Matches a day', '10', 'Up to 100')}
         {row('Per consultant', 'Fixed', 'You choose')}
-        {row('Minimum match', '50–80%', '50–80%')}
+        {row('Minimum match', '70% fixed', '50–80%')}
         {row('Price', '100 free', '₹0.25 each')}
       </div>
       <span className="amw-badge" style={{ left: '50%', bottom: 18, transform: 'translateX(-50%)' }}>₹250 = 1,000 matches</span>
@@ -96,7 +96,10 @@ function SettingsVisual({ minMatch, onMinMatch, paid, dailyCap }: { minMatch: nu
   return (
     <div className="amw-visual">
       <div className="amw-card absolute left-1/2 top-4 w-[360px] max-w-[88vw] -translate-x-1/2 rounded-[22px] p-5 text-left">
-        <p className="text-[12px] font-bold uppercase tracking-wide text-slate-400">Minimum match</p>
+        <p className="flex items-center justify-between text-[12px] font-bold uppercase tracking-wide text-slate-400">
+          Minimum match
+          {!paid && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] text-amber-800">🔒 Paid</span>}
+        </p>
         <div className="mt-2 grid grid-cols-7 gap-1" role="radiogroup" aria-label="Minimum match">
           {[50, 55, 60, 65, 70, 75, 80].map((v) => (
             <button
@@ -105,13 +108,14 @@ function SettingsVisual({ minMatch, onMinMatch, paid, dailyCap }: { minMatch: nu
               role="radio"
               aria-checked={minMatch === v}
               onClick={() => onMinMatch(v)}
-              className={`h-9 rounded-lg text-[12.5px] font-extrabold tabular-nums transition-colors ${minMatch === v ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+              disabled={!paid}
+              className={`h-9 rounded-lg text-[12.5px] font-extrabold tabular-nums transition-colors disabled:cursor-not-allowed ${minMatch === v ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50 disabled:hover:bg-slate-100'}`}
             >
               {v}
             </button>
           ))}
         </div>
-        <p className="mt-1.5 text-[12px] text-slate-500">Higher means fewer, stronger matches.</p>
+        <p className="mt-1.5 text-[12px] text-slate-500">{paid ? 'Higher means fewer, stronger matches.' : 'Free matches at 70%. Paid plans choose 50–80%.'}</p>
         <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
           <span>
             <span className="block text-[12px] font-bold uppercase tracking-wide text-slate-400">Daily matches</span>
@@ -177,6 +181,7 @@ export default function AiMatchProcessing({ kind, phase, pct }: {
     });
   }, []);
   const changeMinMatch = (v: number) => {
+    if (!plan.paid) return;
     setMinMatch(v);
     setSavedMin(false);
     // Keep the settings slide up while they choose.
@@ -251,7 +256,9 @@ export default function AiMatchProcessing({ kind, phase, pct }: {
       key: 'settings',
       title: <>You set<br />the bar.</>,
       visual: <SettingsVisual minMatch={minMatch} onMinMatch={changeMinMatch} paid={plan.paid} dailyCap={plan.dailyCap} />,
-      action: savedMin ? done(`Saved · ${minMatch}% minimum`) : null,
+      action: !plan.paid
+        ? <Link to="/billing" className="amw-cta">Unlock from ₹100</Link>
+        : savedMin ? done(`Saved · ${minMatch}% minimum`) : null,
     },
   ];
   const index = (Math.floor((now - slideFrom.current) / SLIDE_MS) + slideBase) % slides.length;

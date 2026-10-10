@@ -98,14 +98,18 @@ export default function TodayPage() {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [resumes, setResumes] = useState<Record<string, { url: string; name: string }>>({});
   const [uploadingFor, setUploadingFor] = useState('');
-  // The account's minimum match % (50-80, default 70) for new matches.
+  // The account's minimum match % for new matches: 70 on free accounts, 50-80
+  // of their choosing on paid ones.
   const [minMatch, setMinMatch] = useState(70);
+  const [paidPlan, setPaidPlan] = useState(false);
   useEffect(() => {
     if (!accountId) return;
+    void supabase.rpc('get_match_caps' as never).then(({ data }: { data: { paid?: boolean } | null }) => setPaidPlan(Boolean(data?.paid)));
     void supabase.from('accounts').select('match_min_score' as never).eq('id', accountId).maybeSingle()
       .then(({ data }: { data: { match_min_score?: number } | null }) => { if (data?.match_min_score) setMinMatch(data.match_min_score); });
   }, [accountId]);
   const changeMinMatch = async (value: number) => {
+    if (!paidPlan) return;
     setMinMatch(value);
     trackEvent('min_match_changed', { value, from: 'today' });
     await supabase.rpc('set_match_min_score' as never, { p_score: value } as never);
@@ -332,17 +336,23 @@ export default function TodayPage() {
               <Link to="/billing" className="text-gray-600 hover:text-blue-600 dark:text-slate-300">
                 <b className="tabular-nums text-gray-900 dark:text-white">{Math.floor(Number(account?.credits_balance ?? 0)).toLocaleString('en-IN')}</b> matches left
               </Link>
-              <label className="inline-flex items-center gap-1 text-gray-500">
-                Min match
-                <select
-                  value={minMatch}
-                  onChange={(e) => void changeMinMatch(Number(e.target.value))}
-                  className="rounded border border-gray-200 bg-white px-1 py-0.5 text-[12px] font-semibold text-gray-800 dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
-                  title="New matches must reach this match %"
-                >
-                  {[50, 55, 60, 65, 70, 75, 80].map((v) => <option key={v} value={v}>{v}%</option>)}
-                </select>
-              </label>
+              {paidPlan ? (
+                <label className="inline-flex items-center gap-1 text-gray-500">
+                  Min match
+                  <select
+                    value={minMatch}
+                    onChange={(e) => void changeMinMatch(Number(e.target.value))}
+                    className="rounded border border-gray-200 bg-white px-1 py-0.5 text-[12px] font-semibold text-gray-800 dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
+                    title="New matches must reach this match %"
+                  >
+                    {[50, 55, 60, 65, 70, 75, 80].map((v) => <option key={v} value={v}>{v}%</option>)}
+                  </select>
+                </label>
+              ) : (
+                <Link to="/billing" className="text-gray-500 hover:text-blue-600" title="Paid accounts choose 50-80%">
+                  Min match 70% · <span className="font-semibold text-blue-600">choose on paid</span>
+                </Link>
+              )}
             </div>
             {gmailConnected === false ? (
               <button onClick={() => void connectGmail()} disabled={connecting} className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-amber-600 text-[12px] font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
