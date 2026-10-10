@@ -12,6 +12,7 @@ import ProfileSheet from '../components/match/ProfileSheet';
 import { Initials } from '../components/match/Visuals';
 import ToastBar from '../components/match/ToastBar';
 import { useMatchActions } from '../components/match/useMatchActions';
+import { useSwipe } from '../components/match/useSwipe';
 import { useAuth } from '../contexts/AuthContext';
 import { trackEvent } from '../lib/track';
 import { loadToday, markViewed, strings, subjectName, type CardItem, type Kind, type Subject, type TodayData } from '../lib/today';
@@ -49,6 +50,9 @@ export default function TodayPage() {
   // Swipe is the default view; the list is one tap away.
   const [view, setView] = useState<'swipe' | 'list'>('swipe');
   const [deckId, setDeckId] = useState<string | null>(null);
+  // The detail view swipes too: left/right moves to the next/previous match.
+  const [sheetDir, setSheetDir] = useState<'n' | 'p' | null>(null);
+  const [deckFocus, setDeckFocus] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [tip, setTip] = useState(() => { try { return localStorage.getItem('today_tip_hidden') !== '1'; } catch { return true; } });
 
@@ -79,6 +83,16 @@ export default function TodayPage() {
   useEffect(() => { if (listCurrent && !listCurrent.viewed_at) see(listCurrent); }, [listCurrent?.card_id]); // eslint-disable-line react-hooks/exhaustive-deps
   const switchView = (next: 'swipe' | 'list') => { setView(next); trackEvent('today_view_changed', { view: next }); };
   const sheetItem = !wide && openId ? (data?.items ?? []).find((i) => i.card_id === openId) ?? null : null;
+  const stepSheet = (d: 1 | -1) => {
+    const idx = items.findIndex((i) => i.card_id === openId);
+    const target = idx >= 0 ? items[idx + d] : undefined;
+    if (!target) return;
+    see(target);
+    setSheetDir(d > 0 ? 'n' : 'p');
+    setOpenId(target.card_id);
+  };
+  const closeSheet = () => { setDeckFocus(openId); setOpenId(null); setSheetDir(null); };
+  const sheetSwipe = useSwipe(() => stepSheet(1), () => stepSheet(-1));
 
   const patch = (cardId: string, change: Partial<CardItem>) =>
     setData((d) => d && { ...d, items: d.items.map((i) => (i.card_id === cardId ? { ...i, ...change } : i)) });
@@ -166,7 +180,9 @@ export default function TodayPage() {
         accountId={accountId}
         gmailConnected={gmailConnected}
         busy={busy === item.card_id}
-        onBack={() => setOpenId(null)}
+        onBack={closeSheet}
+        onPrev={mode === 'sheet' ? () => stepSheet(-1) : undefined}
+        onNext={mode === 'sheet' ? () => stepSheet(1) : undefined}
         onApplyEmail={(draft, resumeId) => applyEmail(item, draft, resumeId)}
         onApplySite={() => applySite(item)}
         onAskResume={() => void askResume(item)}
@@ -285,6 +301,7 @@ export default function TodayPage() {
                 kind={kind}
                 subjects={subjects}
                 startId={null}
+                focusId={deckFocus}
                 appliedToday={appliedToday}
                 onCurrent={(i) => setDeckId(i?.card_id ?? null)}
                 onSeen={see}
@@ -352,8 +369,10 @@ export default function TodayPage() {
       </div>
 
       {sheetItem && (
-        <div className="fixed inset-0 z-[70] bg-[#f3f2ee] pt-[env(safe-area-inset-top)] animate-[ppSheetIn_.22s_ease-out] dark:bg-[#1B1D21]" role="dialog" aria-label="Match">
-          {detailFor(sheetItem, 'sheet')}
+        <div className="fixed inset-0 z-[70] overflow-hidden bg-[#f3f2ee] pt-[env(safe-area-inset-top)] animate-[ppSheetIn_.22s_ease-out] dark:bg-[#1B1D21]" role="dialog" aria-label="Match" {...sheetSwipe}>
+          <div key={sheetItem.card_id} className={`h-full ${sheetDir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : sheetDir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+            {detailFor(sheetItem, 'sheet')}
+          </div>
         </div>
       )}
 

@@ -9,6 +9,7 @@ import MatchDetail from '../components/match/MatchDetail';
 import TrackerRow from '../components/match/TrackerRow';
 import ToastBar from '../components/match/ToastBar';
 import { useMatchActions } from '../components/match/useMatchActions';
+import { useSwipe } from '../components/match/useSwipe';
 import { useAuth } from '../contexts/AuthContext';
 import { loadHistory, setStatus, subjectsOf, type CardItem, type Kind } from '../lib/today';
 
@@ -66,6 +67,16 @@ export default function HistoryPage() {
   };
   const actions = useMatchActions({ kind, accountId: account?.id, userId: user?.id, subjects, take, onChanged: () => void loadHistory(kind, tab).then((d) => d && setCounts(d.counts)), onOpen: open });
   const openItem = openId ? (items ?? []).find((i) => i.card_id === openId) ?? null : null;
+  // Swipe left/right in the detail for the next/previous one.
+  const [dir, setDir] = useState<'n' | 'p' | null>(null);
+  const step = (d: 1 | -1) => {
+    const list = items ?? [];
+    const target = list[list.findIndex((i) => i.card_id === openId) + d];
+    if (!target || !openId) return;
+    setDir(d > 0 ? 'n' : 'p');
+    setOpenId(target.card_id);
+  };
+  const swipe = useSwipe(() => step(1), () => step(-1));
 
   const changeStatus = async (item: CardItem, status: string) => {
     const stage = status === 'applied' ? 'submitted' : ['not_selected', 'no_response', 'job_closed'].includes(status) ? 'closed' : status;
@@ -122,12 +133,15 @@ export default function HistoryPage() {
       {openItem && (
         <>
           <div className="fixed inset-0 z-[69] hidden bg-slate-900/35 lg:block" onClick={() => setOpenId(null)} aria-hidden="true" />
-          <div className="fixed inset-0 z-[70] bg-[#f3f2ee] pt-[env(safe-area-inset-top)] animate-[ppSheetIn_.22s_ease-out] dark:bg-[#1B1D21] lg:left-auto lg:w-[760px] lg:shadow-2xl" role="dialog" aria-label="Match">
+          <div className="fixed inset-0 z-[70] overflow-hidden bg-[#f3f2ee] pt-[env(safe-area-inset-top)] animate-[ppSheetIn_.22s_ease-out] dark:bg-[#1B1D21] lg:left-auto lg:w-[760px] lg:shadow-2xl" role="dialog" aria-label="Match" {...swipe}>
+            <div key={openItem.card_id} className={`h-full ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
             <MatchDetail
               item={openItem} kind={kind} subject={subjects[openItem.subject_id]} mode="sheet"
               position={{ index: (items ?? []).findIndex((i) => i.card_id === openItem.card_id), total: (items ?? []).length, label: tab === 'saved' ? 'Saved' : 'Viewed' }}
               accountId={account?.id} gmailConnected={actions.gmailConnected} busy={actions.busy === openItem.card_id}
-              onBack={() => setOpenId(null)}
+              onBack={() => { setOpenId(null); setDir(null); }}
+              onPrev={() => step(-1)}
+              onNext={() => step(1)}
               onApplyEmail={(draft, resumeId) => actions.applyEmail(openItem, draft, resumeId)}
               onApplySite={() => actions.applySite(openItem)}
               onAskResume={() => void actions.askResume(openItem)}
@@ -136,6 +150,7 @@ export default function HistoryPage() {
               onSubject={() => toProfile(openItem.subject_id)}
               onConnectGmail={() => void actions.connectGmail()}
             />
+            </div>
           </div>
         </>
       )}

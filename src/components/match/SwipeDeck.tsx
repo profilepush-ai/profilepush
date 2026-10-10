@@ -8,8 +8,8 @@ import { CompanyLogo, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap }
 // Swipe mode: one match per screen, stories style. Swipe or tap the sides to
 // move; the rail on the right is Apply, Save, Share and Pass. It is Today's
 // default view (inline, inside the page) and can also cover the screen.
-export default function SwipeDeck({ items, kind, subjects, startId, appliedToday, inline = false, hideDetails = false, onClose, onCurrent, onSeen, onApply, onSave, onShare, onDismiss, onDetails }: {
-  items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; appliedToday: number;
+export default function SwipeDeck({ items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, onClose, onCurrent, onSeen, onApply, onSave, onShare, onDismiss, onDetails }: {
+  items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
   inline?: boolean; hideDetails?: boolean; onClose?: () => void; onCurrent?: (item: CardItem | null) => void;
   onSeen: (item: CardItem) => void; onApply: (item: CardItem) => void; onSave: (item: CardItem) => void;
   onShare: (item: CardItem) => void; onDismiss: (item: CardItem) => void; onDetails: (item: CardItem) => void;
@@ -19,6 +19,10 @@ export default function SwipeDeck({ items, kind, subjects, startId, appliedToday
   const startX = useRef<number | null>(null);
   const swiped = useRef(false);
   const index = items.findIndex((i) => i.card_id === currentId);
+  // Back from the detail view: show the card it ended on.
+  useEffect(() => {
+    if (focusId && focusId !== currentId && items.some((i) => i.card_id === focusId)) { setCurrentId(focusId); setDir(null); }
+  }, [focusId]); // eslint-disable-line react-hooks/exhaustive-deps
   const item = index >= 0 ? items[index] : null;
 
   // When the current card leaves (applied, saved, passed), show the one after it.
@@ -63,7 +67,7 @@ export default function SwipeDeck({ items, kind, subjects, startId, appliedToday
 
   if (!item || !item.lead) {
     return (
-      <div className={shell} role="dialog" aria-label="All caught up">
+      <div className={shell} role={inline ? 'region' : 'dialog'} aria-label="All caught up">
         <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: 'radial-gradient(closest-side, #10b981, transparent)' }} />
         <div className="relative z-10 flex justify-end p-2">{corner}</div>
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
@@ -96,7 +100,7 @@ export default function SwipeDeck({ items, kind, subjects, startId, appliedToday
   return (
     <div
       className={shell}
-      role="dialog"
+      role={inline ? 'region' : 'dialog'}
       aria-label="Swipe through matches"
       style={{ touchAction: 'pan-y' }}
       onPointerDown={(e) => { if (!(e.target as HTMLElement).closest('[data-rail]')) startX.current = e.clientX; }}
