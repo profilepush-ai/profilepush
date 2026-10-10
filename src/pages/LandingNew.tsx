@@ -80,6 +80,7 @@ export default function LandingNew() {
   const [currency] = useCurrency();
   const price = priceLabels(currency);
   useEffect(() => { void fetchMarketSnapshot().then((s) => { if (s) setSnap(s); }); }, []);
+  useEffect(() => { document.title = 'ProfilePush: the AI Copilot for recruiters, vendors and job seekers'; }, []);
   // People who've signed up (landing_user_count), live.
   const [users, setUsers] = useState<number | null>(null);
   useEffect(() => { void supabase.rpc('landing_user_count' as never).then(({ data }) => { const v = Number(data); if (Number.isFinite(v)) setUsers(v); }); }, []);
@@ -111,7 +112,8 @@ export default function LandingNew() {
             <p className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[13px] font-semibold text-gray-600 ring-1 ring-gray-200 dark:bg-white/5 dark:text-slate-300 dark:ring-white/10">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />{n(snap.stats.jobs24h)} new jobs in the last 24 hours
             </p>
-            <h1 className="mt-5 text-balance text-[44px] font-extrabold leading-[1.04] tracking-tight sm:text-[60px]">
+            <p className="mt-5 text-[13px] font-extrabold uppercase tracking-[0.14em] text-[#2563EB]">AI Copilot for recruiters, vendors and job seekers</p>
+            <h1 className="mt-2 text-balance text-[44px] font-extrabold leading-[1.04] tracking-tight sm:text-[60px]">
               Your best matches, <span className="text-[#2563EB]">every morning.</span>
             </h1>
             <p className="mt-5 max-w-[34rem] text-[18px] leading-relaxed text-gray-600 dark:text-slate-300">
