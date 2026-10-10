@@ -63,25 +63,23 @@ export function buildSignupSeries(
 
 // ── Daily metric series, from the admin-stats `daily` payload ─────────────
 
-export type PersonaFilter = 'all' | 'vendor' | 'bench_sales';
+/** A role bucket ('profiles', 'jobs', 'job_seeker', 'none'), or 'all'. */
+export type PersonaFilter = string;
 
-export type DailyRow = {
-  date: string;
-  vendor: Record<string, number>;
-  bench_sales: Record<string, number>;
-  none: Record<string, number>;
-};
+/** One day: `date`, then one object of metric counts per role bucket. */
+export type DailyRow = { date: string; [bucket: string]: Record<string, number> | string };
 
 /**
- * One point per day for a single metric, gap-filled across the window.
+ * One point per day for a single metric (or the sum of several), gap-filled
+ * across the window.
  *
- * Accounts with no persona set are counted under 'all' but belong to neither
- * split, so vendor + bench_sales can legitimately total less than all. Folding
- * them into one of the two would invent a persona the account never chose.
+ * 'all' sums every bucket, including accounts with no role yet, so the role
+ * splits can legitimately total less than all. Folding those into one of the
+ * splits would invent a role the account never chose.
  */
 export function buildMetricSeries(
   rows: DailyRow[],
-  metric: string,
+  metric: string | string[],
   persona: PersonaFilter,
   startDate: string | null,
   endDate: string | null,
@@ -89,6 +87,7 @@ export function buildMetricSeries(
 ): SignupPoint[] {
   const counts = new Map<string, number>();
   let earliest: string | null = null;
+  const metrics = Array.isArray(metric) ? metric : [metric];
 
   const fromKey = startDate ? dayKey(new Date(startDate)) : null;
   const toKey = endDate ? dayKey(new Date(endDate)) : null;
@@ -97,9 +96,12 @@ export function buildMetricSeries(
     if (!row?.date) continue;
     if (fromKey && row.date < fromKey) continue;
     if (toKey && row.date > toKey) continue;
-    const value = persona === 'all'
-      ? (row.vendor?.[metric] ?? 0) + (row.bench_sales?.[metric] ?? 0) + (row.none?.[metric] ?? 0)
-      : (row[persona]?.[metric] ?? 0);
+    let value = 0;
+    for (const [bucket, byMetric] of Object.entries(row)) {
+      if (bucket === 'date' || typeof byMetric !== 'object' || byMetric === null) continue;
+      if (persona !== 'all' && bucket !== persona) continue;
+      for (const key of metrics) value += Number(byMetric[key] ?? 0);
+    }
     counts.set(row.date, (counts.get(row.date) ?? 0) + value);
     if (!earliest || row.date < earliest) earliest = row.date;
   }
