@@ -8,6 +8,7 @@ import LandingPage from './pages/LandingPage';
 import LogoSpinner from './components/LogoSpinner';
 import StartupSplash from './components/StartupSplash';
 import UserActivityTracker from './components/UserActivityTracker';
+import ReferralClaim, { ReferralLanding } from './components/ReferralClaim';
 import PostPromptNudge from './components/PostPromptNudge';
 import OnboardingChecklist from './components/OnboardingChecklist';
 import AndroidBackButtonHandler from './components/AndroidBackButtonHandler';
@@ -293,6 +294,7 @@ export default function App() {
           <OneSignalIdentitySync />
           <AndroidBackButtonHandler />
           <UserActivityTracker />
+          <ReferralClaim />
           <PostPromptNudge />
           <OnboardingChecklist />
           <PersistentJobFinder />
@@ -303,6 +305,7 @@ export default function App() {
             <Route path="/" element={<ErrorBoundary><AppEntry /></ErrorBoundary>} />
             <Route path="/signup" element={<ErrorBoundary><SignUp /></ErrorBoundary>} />
             <Route path="/signin" element={<ErrorBoundary><SignIn /></ErrorBoundary>} />
+            <Route path="/r/:code" element={<ReferralLanding />} />
             <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
             <Route path="/onboard/:token" element={<ErrorBoundary><CandidateOnboarding /></ErrorBoundary>} />
             <Route path="/welcome" element={<ProtectedRoute><ErrorBoundary><OnboardingVideo /></ErrorBoundary></ProtectedRoute>} />

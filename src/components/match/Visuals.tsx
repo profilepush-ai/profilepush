@@ -73,12 +73,33 @@ function useCountUp(target: number, on: boolean, duration = 750, delay = 150) {
   return value;
 }
 
-// The match %. Animated, the ring sweeps round as the number counts up and
-// changes colour as it passes 75 and 85; a strong match ends with a glow.
+// The match score "guessing": it swings past the score and back, each swing
+// smaller, for about three seconds, then lands on it. Playful, and it draws
+// the eye to the number.
+function useGuess(target: number, on: boolean, duration = 3200, delay = 150) {
+  const [value, setValue] = useState(on && !reducedMotion() ? 0 : target);
+  useEffect(() => {
+    if (!on || reducedMotion()) { setValue(target); return; }
+    let raf = 0;
+    let t0 = 0;
+    const tick = (t: number) => {
+      if (!t0) t0 = t;
+      const p = Math.min(1, Math.max(0, (t - t0 - delay) / duration));
+      const v = p >= 1 ? target : target * (1 - Math.exp(-3.4 * p) * Math.cos(2 * Math.PI * 2.2 * p));
+      setValue(Math.max(0, Math.min(100, v)));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    setValue(0);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, on, duration, delay]);
+  return value;
+}
+
 // The match score as a straight bar under the title, the number at its end.
 export function FitLine({ value, onDark = false, animate = false, at = 150 }: { value: number; onDark?: boolean; animate?: boolean; at?: number }) {
   const v = Math.max(0, Math.min(100, Math.round(value)));
-  const shown = useCountUp(v, animate, 750, at);
+  const shown = Math.round(useGuess(v, animate, 3200, at));
   const color = shown >= 85 ? '#10b981' : shown >= 75 ? '#3b82f6' : '#94a3b8';
   return (
     <div role="img" aria-label={`${v}% match`} className="flex items-center gap-2.5">
@@ -92,6 +113,8 @@ export function FitLine({ value, onDark = false, animate = false, at = 150 }: { 
   );
 }
 
+// The match %. Animated, the ring sweeps round as the number counts up and
+// changes colour as it passes 75 and 85; a strong match ends with a glow.
 export function FitRing({ value, size = 44, onDark = false, animate = false, at = 150 }: { value: number; size?: number; onDark?: boolean; animate?: boolean; at?: number }) {
   const v = Math.max(0, Math.min(100, Math.round(value)));
   const shown = useCountUp(v, animate, 750, at);

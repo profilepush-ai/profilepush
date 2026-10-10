@@ -5,7 +5,8 @@ import {
   Building2, CreditCard, AlertTriangle,
   Bell, BellRing, Check, X,
   Briefcase, Mail, UserRound, Rss,
-  Kanban, Globe, Target, SlidersHorizontal, UsersRound, History } from 'lucide-react';
+  Kanban, Globe, Target, SlidersHorizontal, UsersRound, History, Gift
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
@@ -480,6 +481,7 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
                   { to: feedPathFor(account?.active_persona), label: 'Feed', Icon: account?.active_persona === 'bench_sales' ? Briefcase : UserRound },
                   { to: networkPath(account?.active_persona), label: followingLabelForPersona(account?.active_persona), Icon: Rss },
                   { to: '/inbox', label: 'Inbox', Icon: Mail },
+                  { to: '/settings#refer', label: 'Refer and earn 100 credits', Icon: Gift },
                 ].map(({ to, label, Icon }) => (
                   <button
                     key={to}

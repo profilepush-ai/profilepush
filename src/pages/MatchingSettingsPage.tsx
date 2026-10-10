@@ -6,6 +6,7 @@ import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import { Initials } from '../components/match/Visuals';
 import AvatarPanel from '../components/match/AvatarPanel';
+import ReferPanel from '../components/ReferPanel';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { enableWebPush } from '../lib/onesignal';
@@ -80,7 +81,8 @@ export default function MatchingSettingsPage() {
   useEffect(() => { void load(); }, [load]);
   // /settings#avatar (from Today) lands on the avatar card.
   useEffect(() => {
-    if (!loading && window.location.hash === '#avatar') document.getElementById('avatar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const hash = window.location.hash.slice(1);
+    if (!loading && (hash === 'avatar' || hash === 'refer')) document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [loading]);
 
   const flash = (msg: string) => { setSaved(msg); window.setTimeout(() => setSaved(''), 2500); };
@@ -144,6 +146,12 @@ export default function MatchingSettingsPage() {
                 <Link to="/billing" className="font-semibold text-blue-600 hover:underline">Top up</Link>
               </p>
             </Section>
+
+            <div id="refer" className="scroll-mt-20">
+              <Section title="Refer and earn" detail="Share your link. When someone signs up with it, you get 100 credits and they get 50 bonus credits on top of their 100.">
+                <ReferPanel />
+              </Section>
+            </div>
 
             <div id="avatar" className="scroll-mt-20">
               <Section title="Your avatar" detail="See yourself in your job matches, holding each job's skills. Free to make. It shows while you have matches left.">
