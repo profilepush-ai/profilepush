@@ -128,6 +128,32 @@ export default function MatchDetail({
     </section>
   );
 
+  // Desktop pane, beside the swipe card that already shows the title, score
+  // and fit: who posted it, then the post itself, open.
+  const postedBy = (
+    <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3.5 dark:border-white/10 dark:bg-[#20242a]">
+      {lead.avatar ? <img src={lead.avatar} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" />
+        : <CompanyLogo name={leadOrg(lead)} avatar={null} domain={lead.logo_domain} size={44} />}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12px] font-semibold text-gray-500 dark:text-slate-400">Posted by</p>
+        <b className="block truncate text-[15.5px] font-extrabold">{lead.poster || leadOrg(lead)}</b>
+        <p className="truncate text-[12.5px] text-gray-500 dark:text-slate-400">{[lead.poster && lead.company && lead.poster !== lead.company ? lead.company : null, `${agoLabel(lead.posted_at)} ago`, site ? 'Apply on their site' : lead.has_email ? 'Apply by email' : null].filter(Boolean).join(' · ')}</p>
+      </div>
+      {(lead.post_url || lead.apply_url) && (
+        <a href={lead.apply_url || lead.post_url || '#'} target="_blank" rel="noreferrer" className={iconBtn} title="Open the original post" aria-label="Open the original post"><ExternalLink size={17} /></a>
+      )}
+      <button type="button" className={iconBtn} onClick={onShare} title="Share" aria-label="Share"><Share2 size={18} /></button>
+      <button type="button" className={`${iconBtn} ${saved ? '!text-blue-600' : ''}`} onClick={onSave} title={saved ? 'Saved' : 'Save for later'} aria-label="Save for later" aria-pressed={saved}><Bookmark size={18} fill={saved ? 'currentColor' : 'none'} /></button>
+    </div>
+  );
+  const postText = (
+    <section className="rounded-2xl border border-gray-200 bg-white px-5 py-4 dark:border-white/10 dark:bg-[#20242a]">
+      {post == null ? <div className="flex justify-center py-6"><LogoSpinner size={18} /></div>
+        : !post ? <p className="text-[13.5px] text-gray-500">No text in this post.</p>
+          : <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-gray-800 dark:text-slate-200">{post}</p>}
+    </section>
+  );
+
   const postBox = (
     <section className={box}>
       <h4 className={boxTitle}><FileText size={13} />{kind === 'hotlist' ? 'Job post' : 'Profile post'}</h4>
@@ -175,10 +201,12 @@ export default function MatchDetail({
         </div>
       )}
       <div className="min-h-0 flex-1 touch-pan-y space-y-3.5 overflow-y-auto bg-[#f3f2ee] p-4 dark:bg-[#1B1D21]">
+        {mode === 'pane' ? <>{postedBy}{postText}</> : <>
         {hero}
         {facts}
         {/* The post, full width, blurred until opened. */}
         {postBox}
+        </>}
       </div>
       <div className="shrink-0 space-y-2 border-t border-gray-200 bg-white px-3.5 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] dark:border-white/10 dark:bg-[#20242a]">
         <div className="flex gap-2">{secondary}{primary}</div>

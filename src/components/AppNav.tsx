@@ -51,14 +51,16 @@ function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | 
 // AI Match's own tab; Pulse and List are hidden from the nav. Their routes
 // all still work.
 // The five places, the same for everyone and on every screen: Today (new
-// matches), Tracker (applications), AI Match, History and Settings. Feed,
-// Network, Inbox and My profile live in the avatar menu.
-function getNavItems() {
+// matches), Tracker (applications), AI Match, History and Settings; on wider
+// screens Network too. Feed, Inbox and My profile (and Network on phones)
+// live in the avatar menu.
+function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   return [
     { path: '/today',    label: 'Today',    mobileLabel: 'Today',    icon: Target,            hideOnMobile: false },
     { path: '/tracker',  label: 'Tracker',  mobileLabel: 'Tracker',  icon: Kanban,            hideOnMobile: false },
     { path: '/match',    label: 'AI Match', mobileLabel: 'AI Match', icon: Sparkles,          hideOnMobile: false },
     { path: '/history',  label: 'History',  mobileLabel: 'History',  icon: History,           hideOnMobile: false },
+    { path: networkPath(persona), label: 'Network', mobileLabel: 'Network', icon: Rss,           hideOnMobile: true },
     { path: '/settings', label: 'Settings', mobileLabel: 'Settings', icon: SlidersHorizontal, hideOnMobile: false },
   ];
 }
@@ -324,7 +326,7 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
   const location = useLocation();
   const navigate = useNavigate();
   const { user, account, signOut } = useAuth();
-  const navItems = getNavItems();
+  const navItems = getNavItems(account?.active_persona);
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
   const [menuOpen, setMenuOpen] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
@@ -411,7 +413,7 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
 
       <nav className="hidden sm:flex items-center gap-1 flex-1">
         {navItems.map(({ path, label, mobileLabel, icon: Icon, hideOnMobile }) => {
-          const active = location.pathname === path || location.pathname.startsWith(path + '/');
+          const active = location.pathname === path || location.pathname.startsWith(path + '/') || (label === 'Network' && location.pathname.startsWith('/network'));
           return (
             <Link
               key={path}
