@@ -52,7 +52,7 @@ const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: st
     label: 'A match',
     cost: '1 credit',
     short: '1 credit = 1 match, ₹0.25',
-    note: 'Each new match for your consultants or requirements on the Tracker and Today, and each new AI Match result. A job you already paid for is never charged again, and reposts of the same requirement are merged.',
+    note: 'Each new match for your consultants or requirements on the Tracker and Today, and each new AI Match result. A job you already paid for is never charged again, and reposts of the same requirement are merged. Free accounts get up to 10 new matches per consultant a day; paid accounts 30 by default, up to 100, set per consultant on the Tracker. Turn AI Matches off on the Tracker to pause them.',
   },
   {
     label: '“Not a match”',

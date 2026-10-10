@@ -218,12 +218,39 @@ export default function BoardPage() {
 
   // Matches found while the account was out of credits, per column.
   const [waiting, setWaiting] = useState<Record<string, number>>({});
+  // Daily match limit per column: today's count and the cap (10 on free
+  // accounts; 30 by default on paid ones, changeable per column).
+  const [caps, setCaps] = useState<{ paid: boolean; bySubject: Record<string, { cap: number; today: number }> }>({ paid: false, bySubject: {} });
+  // AI Matches on/off for the whole account (accounts.auto_match_enabled).
+  const [autoMatch, setAutoMatch] = useState(true);
+  useEffect(() => {
+    if (!account?.id) return;
+    void supabase.from('accounts').select('auto_match_enabled' as never).eq('id', account.id).maybeSingle()
+      .then(({ data }: { data: { auto_match_enabled?: boolean } | null }) => { if (data) setAutoMatch(data.auto_match_enabled !== false); });
+  }, [account?.id]);
+  const toggleAutoMatch = async () => {
+    const next = !autoMatch;
+    setAutoMatch(next);
+    trackEvent('tracker_auto_match_toggled', { enabled: next });
+    const { error: rpcError } = await supabase.rpc('set_auto_match' as never, { p_enabled: next } as never);
+    if (rpcError) { setAutoMatch(!next); setError('Could not change AI Matches. Try again.'); }
+  };
+  const changeCap = async (subjectId: string, cap: number) => {
+    setCaps((c) => ({ ...c, bySubject: { ...c.bySubject, [subjectId]: { cap, today: c.bySubject[subjectId]?.today ?? 0 } } }));
+    trackEvent('tracker_daily_cap_changed', { cap });
+    await supabase.rpc('set_subject_match_cap' as never, { p_subject_id: subjectId, p_cap: cap } as never);
+  };
 
   const loadSubjects = useCallback(async () => {
     void supabase.rpc('get_waiting_match_counts' as never).then(({ data }: { data: Array<{ subject_id: string; waiting: number }> | null }) => {
       const next: Record<string, number> = {};
       for (const row of data ?? []) next[row.subject_id] = Number(row.waiting);
       setWaiting(next);
+    });
+    void supabase.rpc('get_match_caps' as never).then(({ data }: { data: { paid?: boolean; subjects?: Array<{ subject_id: string; cap: number; today: number }> } | null }) => {
+      const bySubject: Record<string, { cap: number; today: number }> = {};
+      for (const row of data?.subjects ?? []) bySubject[row.subject_id] = { cap: Number(row.cap), today: Number(row.today) };
+      setCaps({ paid: Boolean(data?.paid), bySubject });
     });
     const [subj, cnt] = await Promise.all([
       supabase.rpc('get_pipeline_subjects' as never, { p_kind: subjectKind } as never),
@@ -771,9 +798,21 @@ export default function BoardPage() {
             </button>
           )}
         </div>
-        <span className="hidden shrink-0 items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-1.5 text-[11px] font-semibold text-green-700 sm:inline-flex dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-600" /> Live
-        </span>
+        {/* AI Matches on/off: off means no new matches and no match alerts. */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={autoMatch}
+          onClick={() => void toggleAutoMatch()}
+          title={autoMatch ? 'AI Matches are on: new matches arrive all day. Click to turn off.' : 'AI Matches are off: no new matches or alerts. Click to turn on.'}
+          className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold transition-colors ${autoMatch ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400' : 'border-gray-300 bg-white text-gray-500 dark:border-white/15 dark:bg-white/5 dark:text-slate-400'}`}
+        >
+          <span className="hidden sm:inline">AI Matches</span>
+          <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${autoMatch ? 'bg-green-600' : 'bg-gray-300 dark:bg-white/20'}`}>
+            <span className={`absolute h-3 w-3 rounded-full bg-white shadow transition-transform ${autoMatch ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+          </span>
+          {autoMatch ? 'On' : 'Off'}
+        </button>
         {/* New posts start in AI Match, like everywhere else. */}
         <button
           type="button"
@@ -785,20 +824,27 @@ export default function BoardPage() {
         </button>
       </div>
 
-      {/* Each new match costs a credit (charge_tracker_match), so at zero the
-          matcher quietly stops adding cards. Say so, or the board just looks
+      {!autoMatch && (
+        <div className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] text-gray-700 sm:mx-3 dark:border-white/10 dark:bg-[#20242a] dark:text-slate-200">
+          <span className="min-w-0 flex-1">AI Matches are off. No new matches arrive and no match alerts are sent.</span>
+          <button type="button" onClick={() => void toggleAutoMatch()} className="rounded-full bg-green-600 px-3 py-1 text-[12px] font-semibold text-white hover:bg-green-700">Turn on</button>
+        </div>
+      )}
+
+      {/* Each new match costs a credit (charge_tracker_match), so at zero new
+          matches wait instead of arriving. Say so, or the board just looks
           dead. Not dismissible: it goes away when there are credits again. */}
-      {account && Number(account.credits_balance ?? 0) < 1 && (
+      {autoMatch && account && Number(account.credits_balance ?? 0) < 1 && (
         <div className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900 sm:mx-3 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
           <span className="min-w-0 flex-1">
-            New matches are paused: you’re out of credits. Buy credits to resume (from ₹249).
+            You’re out of matches. New ones are waiting for you: top up to see them (₹250 buys 1,000).
           </span>
           <button
             type="button"
             onClick={() => { trackEvent('tracker_out_of_credits_clicked', {}); navigate('/billing'); }}
             className="rounded-full bg-amber-600 px-3 py-1 text-[12px] font-semibold text-white hover:bg-amber-700"
           >
-            Buy credits
+            Top up
           </button>
         </div>
       )}
@@ -949,6 +995,26 @@ export default function BoardPage() {
                     )}
                   </div>
                   {subject.detail && <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-[#94A3B8]">{subject.detail}</p>}
+                  {autoMatch && caps.bySubject[sid] && (
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-[#94A3B8]">
+                      <span className="tabular-nums">Today {Math.min(caps.bySubject[sid].today, caps.bySubject[sid].cap)}/{caps.bySubject[sid].cap} matches</span>
+                      {caps.paid ? (
+                        <select
+                          value={caps.bySubject[sid].cap}
+                          onChange={(e) => void changeCap(sid, Number(e.target.value))}
+                          aria-label="Daily match limit"
+                          title="Most new matches this column can get in a day"
+                          className="ml-auto rounded border border-gray-200 bg-white px-1 py-0.5 text-[11px] font-semibold text-gray-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                        >
+                          {[...new Set([10, 20, 30, 50, 75, 100, caps.bySubject[sid].cap])].sort((a, b) => a - b).map((v) => <option key={v} value={v}>{v} a day</option>)}
+                        </select>
+                      ) : (
+                        <button type="button" onClick={() => navigate('/billing')} className="ml-auto font-semibold text-blue-600 hover:underline dark:text-blue-400" title="Free accounts get 10 new matches per column a day">
+                          Free limit · get up to 100
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {resume && (
                     <div className="mt-1.5 flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 dark:border-white/10 dark:bg-[#171a1f] dark:text-slate-200">
                       <FileText size={11} className="shrink-0 text-gray-500" />
@@ -1026,10 +1092,10 @@ export default function BoardPage() {
                     </div>
                     <button
                       type="button"
-                      title="Rematch: find fresh matches now"
+                      title={autoMatch ? 'Rematch: find fresh matches now' : 'AI Matches are off'}
                       aria-label="Rematch"
                       onClick={() => void rematch(subject)}
-                      disabled={rematching === sid}
+                      disabled={rematching === sid || !autoMatch}
                       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:text-gray-800 disabled:opacity-60 dark:border-white/10 dark:bg-[#171a1f] dark:text-[#94A3B8]"
                     >
                       <RefreshCw size={13} className={rematching === sid ? 'animate-spin' : ''} />
