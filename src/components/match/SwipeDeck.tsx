@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Send, Share2, Sparkles, X } from 'lucide-react';
+import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
 import { agoLabel, hashColor } from '../../lib/match-fit';
-import { fitFor, leadOrg, leadTitle, missingFor, subjectName, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
+import { fitFor, leadOrg, leadTitle, missingFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
 import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
 
 // When each section of a card arrives (ms). Sections move as one block (many
@@ -20,7 +20,7 @@ const section = (at: number) => ({ animation: `ppSection 450ms cubic-bezier(.2,.
 // sits in the page beside the detail.
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
@@ -30,6 +30,8 @@ export default function SwipeDeck({
   reelMs?: number;
   /** Shown after the last card, instead of the plain "All caught up". */
   endScreen?: ReactNode;
+  /** Today's cards: show how long each has left before it leaves Today. */
+  expiring?: boolean;
   /** Ask the poster for what the post leaves out. */
   asked?: Record<string, Question[]>; onAsk?: (item: CardItem, q: Question) => void;
   onClose?: () => void; onCurrent?: (item: CardItem | null) => void; onStep?: (d: 1 | -1, toId: string | null) => void;
@@ -217,6 +219,7 @@ export default function SwipeDeck({
   const subject = subjects[item.subject_id];
   const fit = fitFor(kind, subject, lead);
   const site = kind === 'hotlist' && lead.source === 'career_site';
+  const left = expiring ? timeLeft(item) : null;
   const color = hashColor(item.subject_id);
   const name = subjectName(kind, subject);
   const saved = Boolean(item.saved_at);
@@ -272,7 +275,12 @@ export default function SwipeDeck({
       <div key={item.card_id} ref={cardRef} style={{ justifyContent: 'safe center' }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20 ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
         <div className="flex items-center gap-2.5" style={section(0)}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
-          <div className="min-w-0"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-white/75">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
+          <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-white/75">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
+          {left && (
+            <span title="Today's matches leave after 24 hours. Save it to keep it." className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-bold ${left.urgent ? 'bg-rose-500/90 text-white' : 'bg-white/15 text-white/85'}`}>
+              <Timer size={12} />{left.label}
+            </span>
+          )}
         </div>
         <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
         <div className="flex items-center gap-3" style={section(T.ring)}>

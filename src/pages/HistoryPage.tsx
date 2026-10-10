@@ -21,7 +21,7 @@ const TABS: Array<{ key: Tab; label: string; icon: typeof Eye }> = [
   { key: 'applied', label: 'Applied', icon: Send },
 ];
 const EMPTY: Record<Tab, [string, string]> = {
-  viewed: ['Nothing viewed yet', 'Matches you open and leave move here the next morning.'],
+  viewed: ['Nothing viewed yet', 'Matches you open move here when their 24 hours in Today are up.'],
   saved: ['Nothing saved', 'Tap the bookmark on any match. Saving is free and saved matches never expire.'],
   applied: ['No applications yet', 'Everything you apply to is listed here.'],
 };

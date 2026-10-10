@@ -7,7 +7,8 @@ import Anthropic from "npm:@anthropic-ai/sdk@0.131.0";
 // as simple props) and the image model draws it. Stored once per job in the
 // public job-visuals bucket and recorded in job_visuals.
 //
-//   POST { job_ids: string[] }  (up to 3; Today asks a few cards ahead)
+//   POST { job_ids: string[], regenerate?: true }  (up to 3; Today asks a few
+//   cards ahead; regenerate redoes existing pictures, internal accounts only)
 //   -> { visuals: { [job_id]: { status: "done" | "pending" | "failed" | "off", url?: string } } }
 //
 // Spend: at most JOB_VISUAL_DAILY_CAP new images a day across everyone
@@ -28,33 +29,60 @@ function respond(payload: Record<string, unknown>, status = 200) {
 const str = (v: unknown, max = 300) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
 // Who the picture shows. Varied on purpose, and never chosen from the job's
-// details, so no role gets one kind of face.
+// details, so no role gets one kind of face. Outfits differ too, so two
+// pictures side by side don't read as the same person.
 const PERSONAS = [
-  "a woman in her late 20s with curly dark hair and round glasses",
-  "a man in his 30s with a short beard and warm brown skin",
-  "a woman in her 40s with a silver-streaked bob and light skin",
-  "a man in his late 20s with locs tied back and deep brown skin",
-  "a woman in her 30s with long straight black hair and a bright smile",
-  "a man in his 40s with salt-and-pepper hair and olive skin",
-  "a woman in her 20s with a short pixie cut and freckles",
-  "a man in his 30s with wavy hair, glasses and tan skin",
-  "a woman in her 30s wearing a patterned headscarf and a confident smile",
-  "a man in his 20s with a fade haircut and dark skin",
-  "a woman in her 40s with braided hair and medium brown skin",
-  "a man in his 30s with a turban and a neat beard",
+  "a woman in her late 20s with curly dark hair, round glasses and a mustard sweater",
+  "a man in his 30s with a short beard, warm brown skin and a denim jacket",
+  "a woman in her 40s with a silver-streaked bob, light skin and a teal blazer",
+  "a man in his late 20s with locs tied back, deep brown skin and an orange hoodie",
+  "a woman in her 30s with long straight black hair, a bright smile and a red jacket",
+  "a man in his 40s with salt-and-pepper hair, olive skin and a navy cardigan",
+  "a woman in her 20s with a short pink pixie cut, freckles and a green bomber jacket",
+  "a man in his 30s with wavy hair, glasses, tan skin and a striped shirt",
+  "a woman in her 30s wearing a patterned headscarf, a confident smile and a lilac top",
+  "a man in his 20s with a fade haircut, dark skin and a yellow windbreaker",
+  "a woman in her 40s with braided hair, medium brown skin and a coral blouse",
+  "a man in his 30s with a turban, a neat beard and a crisp white shirt",
+  "a woman in her 50s with short grey curls, brown skin and a cobalt blazer",
+  "a man in his 20s with messy red hair, pale skin and a black turtleneck",
+  "a woman in her late 20s with a high ponytail, East Asian features and an oversized purple sweater",
+  "a man in his 50s with a bald head, a grey goatee, light brown skin and a plaid shirt",
 ];
+const shuffle = <T,>(list: T[]) => list.map((v) => [Math.random(), v] as const).sort((a, b) => a[0] - b[0]).map(([, v]) => v);
 
-const DIRECTION = `You are the art director for ProfilePush's Today reel, where recruiters swipe through job matches like stories. Write ONE image prompt for a vertical poster that makes this job feel exciting and instantly clear.
+// One persona per picture, avoiding the ones the last few pictures used.
+async function pickPersonas(admin: SupabaseClient, count: number): Promise<string[]> {
+  const { data } = await admin.from("job_visuals").select("persona").not("persona", "is", null)
+    .order("updated_at", { ascending: false }).limit(8);
+  const recent = new Set((data ?? []).map((r) => r.persona as string));
+  const fresh = shuffle(PERSONAS.filter((p) => !recent.has(p)));
+  return [...fresh, ...shuffle(PERSONAS.filter((p) => recent.has(p)))].slice(0, count);
+}
 
-Always:
-- One persona: the professional who would do this job, shown waist-up, face clearly visible, confident and warm, looking slightly off-camera. Use the persona you are given exactly.
-- Style: stylized 3D character art like a still from a modern animated film. Soft clay-like shading, expressive face, bold saturated colors, neon rim light, glossy floating sticker-like props.
-- Tell this job's own story with three or four simple props or scene cues taken from its details: its tools and skills as simple glowing shapes or objects (never logos or brand marks), its place (a stylized hint of that city or region), its work mode (a home setup for remote, an office or site for onsite), and its field (hospital, bank, lab, warehouse, data center and so on).
-- Simple and uncluttered: one subject, one clear idea, a smooth gradient background in two or three bold colors that suit the role.
-- Keep the bottom third calm and darker so text can sit on it.
-- No text, letters, numbers, logos, watermarks, flags or real people.
+// Where the job happens, for the picture's background.
+function workMode(job: Record<string, unknown>): string {
+  const place = str(job.location, 160);
+  const text = `${str(job.job_title, 200)} ${str(job.post_content, 1500)}`;
+  if (/\bremote\b|anywhere/i.test(place)) return "remote";
+  if (/\bhybrid\b/i.test(`${place} ${text}`)) return "hybrid";
+  if (/\b(fully|100%|completely)\s+remote\b|location\s*[:-]?\s*remote\b|\bremote\s*\((us|usa|united states)\b/i.test(text)) return "remote";
+  // A city wins over a stray "remote" in the post.
+  if (place) return "onsite";
+  return /\bremote\b|work from home|\bwfh\b/i.test(text) ? "remote" : "";
+}
 
-Reply with the prompt only, 90 to 140 words.`;
+const DIRECTION = `You are the art director for ProfilePush's Today reel, where recruiters swipe through job matches like stories. Write ONE image prompt for a vertical poster that makes this job feel exciting and instantly clear at a glance.
+
+The picture always has:
+1. One persona: the professional who would do this job, waist-up, face clearly visible, confident and playful. Use the persona you are given exactly.
+2. The skills, held: three to five glowing 3D objects, each a playful visual stand-in for one of the job's most important skills. The persona really holds them: the most important one in one hand, another balanced on a fingertip or tucked under an arm, the rest orbiting close around them. Pick the skills a recruiter would recognize first. Draw each as an object, never as a logo, letter or brand mark. Stand-ins to use when they fit: Java a steaming coffee cup; Spring or Spring Boot a glowing green leaf; React a spinning atom with orbit rings; Angular a faceted shield crystal; Python a friendly coiled snake; JavaScript or TypeScript a bright lightning bolt; AWS, Azure or GCP a glowing cloud; Docker a small whale carrying boxes; Kubernetes a ship's wheel; Terraform building blocks forming terrain; Kafka or streaming flowing light ribbons; SQL or databases stacked glowing cylinders; Snowflake a crystal snowflake; Spark or PySpark a sparkler; Tableau, Power BI or analytics a floating bar chart; Excel a green grid tile; security a padlock shield; testing or QA a magnifying glass; mobile a glowing phone; AI or ML a brain made of light; Agile or Scrum a sticky-note board; nursing or patient care a heart monitor line; finance a stack of coins; logistics a parcel on a conveyor. Invent equally simple stand-ins for anything else.
+3. The place is the whole background. If the job has one location, the background is that city's most famous, instantly recognizable view: its skyline, a landmark or its landscape (for example Chicago's skyline over the lake, the Blue Ridge Mountains for Asheville, desert mountains and saguaros for Phoenix), at golden hour or dusk, a little soft so the persona stands out. If the city has no famous view, use the best-known view of its region or state. For several locations, blend each city's landmark into one continuous skyline behind the persona. Only when work_mode is "remote", a cozy home workspace with a big window onto that location's view (or a glowing night city when there is no location); for "hybrid", the city's view seen through a home window. No signs with writing, no flags.
+4. Style: stylized 3D character art like a still from a modern animated film. Soft clay-like shading, expressive face, bold saturated colors, neon rim light, glossy sticker-like objects, and the place behind in the same stylized look with colors that suit the role. Energetic but uncluttered: the face and the held objects read first, the place right after.
+5. The bottom third calm and darker so text can sit on it.
+6. No text, letters, numbers, logos, watermarks or real people anywhere; screens, notes and signs stay blank of writing.
+
+Reply with the prompt only, 110 to 170 words.`;
 
 async function writePrompt(job: Record<string, unknown>, persona: string): Promise<string> {
   const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "" });
@@ -62,20 +90,27 @@ async function writePrompt(job: Record<string, unknown>, persona: string): Promi
     title: str(job.job_title, 200),
     company: str(job.company_name, 120),
     location: str(job.location, 160),
+    work_mode: workMode(job),
     employment_type: str(job.employment_type, 60),
     pay: str(job.salary_range, 80) || (job.extracted_hourly_rate_max ? `$${job.extracted_hourly_rate_max}/hr` : ""),
     skills: Array.isArray(job.extracted_skills) ? (job.extracted_skills as unknown[]).filter((s) => typeof s === "string").slice(0, 10) : [],
     category: str(job.job_category, 30),
     post_excerpt: str(job.post_content, 700),
   };
-  const message = await client.messages.create({
-    model: PROMPT_MODEL,
-    max_tokens: 700,
-    system: DIRECTION,
-    messages: [{ role: "user", content: `Persona: ${persona}\n\nJob details:\n${JSON.stringify(details, null, 2)}` }],
-  });
-  if (message.stop_reason === "refusal") throw new Error("Claude declined to describe this job.");
-  const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+  // A prompt that stops short (no background yet) gets one more try.
+  let text = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const message = await client.messages.create({
+      model: PROMPT_MODEL,
+      max_tokens: 700,
+      system: DIRECTION,
+      messages: [{ role: "user", content: `Persona: ${persona}\n\nJob details:\n${JSON.stringify(details, null, 2)}` }],
+    });
+    if (message.stop_reason === "refusal") throw new Error("Claude declined to describe this job.");
+    text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+    if (message.stop_reason === "end_turn" && text.length >= 600) return text;
+    console.warn("job-visual short prompt", message.stop_reason, text.length);
+  }
   if (text.length < 40) throw new Error("The art direction came back empty.");
   return text;
 }
@@ -97,14 +132,13 @@ async function drawImage(prompt: string): Promise<Uint8Array> {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
-async function makeVisual(admin: SupabaseClient, jobId: string, userId: string) {
+async function makeVisual(admin: SupabaseClient, jobId: string, userId: string, persona: string) {
   const { data: job } = await admin.from("social_jobs")
     .select("job_title, company_name, location, employment_type, salary_range, extracted_hourly_rate_max, extracted_skills, job_category, post_content")
     .eq("id", jobId).maybeSingle();
   if (!job) return { status: "failed" as const };
-  await admin.from("job_visuals").upsert({ job_id: jobId, status: "pending", requested_by: userId, error: null, updated_at: new Date().toISOString() });
+  await admin.from("job_visuals").upsert({ job_id: jobId, status: "pending", requested_by: userId, persona, error: null, updated_at: new Date().toISOString() });
   try {
-    const persona = PERSONAS[Math.floor(Math.random() * PERSONAS.length)];
     const prompt = await writePrompt(job, persona);
     const bytes = await drawImage(prompt);
     const path = `${jobId}.webp`;
@@ -135,6 +169,8 @@ Deno.serve(async (req: Request) => {
     if (!user) return respond({ error: "Unauthorized" }, 401);
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const ids = [...new Set((Array.isArray(body.job_ids) ? body.job_ids : []).map(String).filter((id) => UUID.test(id)))].slice(0, 3);
+    // Internal accounts can redo a picture (to compare art directions).
+    const regenerate = body.regenerate === true;
     if (ids.length === 0) return respond({ visuals: {} });
 
     const { data: member } = await admin.from("account_members").select("account_id, accounts(is_internal)")
@@ -145,7 +181,7 @@ Deno.serve(async (req: Request) => {
     const { data: existing } = await admin.from("job_visuals").select("job_id, status, url, updated_at").in("job_id", ids);
     const todo: string[] = [];
     for (const id of ids) {
-      const row = (existing ?? []).find((r) => r.job_id === id);
+      const row = regenerate && internal ? undefined : (existing ?? []).find((r) => r.job_id === id);
       const age = row ? Date.now() - new Date(row.updated_at).getTime() : Infinity;
       if (row?.status === "done") visuals[id] = { status: "done", url: row.url };
       else if (row?.status === "pending" && age < 5 * 60_000) visuals[id] = { status: "pending" };
@@ -165,7 +201,8 @@ Deno.serve(async (req: Request) => {
     }
     const go = todo.slice(0, room);
     for (const id of todo.slice(room)) visuals[id] = { status: "off" };
-    const made = await Promise.all(go.map((id) => makeVisual(admin, id, user.id)));
+    const personas = await pickPersonas(admin, go.length);
+    const made = await Promise.all(go.map((id, i) => makeVisual(admin, id, user.id, personas[i])));
     go.forEach((id, i) => { visuals[id] = made[i]; });
     return respond({ visuals });
   } catch (error) {

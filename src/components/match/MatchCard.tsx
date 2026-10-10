@@ -36,7 +36,7 @@ export default function MatchCard({ item, kind, subject, selected, showFor, onOp
             <span className="truncate">{leadOrg(lead)}</span>
             <span className="text-gray-300 dark:text-slate-600">·</span>
             <span>{agoLabel(lead.posted_at)}</span>
-            {seen && <span className="inline-flex items-center gap-0.5 rounded-md bg-gray-100 px-1.5 text-[11px] font-bold text-gray-500 dark:bg-white/10 dark:text-slate-400" title="Opened. Moves to History tomorrow."><Eye size={11} />Viewed</span>}
+            {seen && <span className="inline-flex items-center gap-0.5 rounded-md bg-gray-100 px-1.5 text-[11px] font-bold text-gray-500 dark:bg-white/10 dark:text-slate-400" title="Opened. Moves to History when its 24 hours in Today are up."><Eye size={11} />Viewed</span>}
           </p>
         </div>
         <FitRing value={item.fit ?? Math.round(item.similarity * 100)} />

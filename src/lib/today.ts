@@ -26,6 +26,17 @@ export type CardItem = {
   eng?: { views: number; applies: number; saves: number; shares: number };
 };
 
+/** Today's matches leave 24 hours after they arrive (get_today, expire_unopened_matches). */
+export const TODAY_HOURS = 24;
+
+/** "5h left" on a Today card, urgent in its last 3 hours; null once it's gone. */
+export function timeLeft(item: Pick<CardItem, 'added_at'>, now = Date.now()): { label: string; urgent: boolean } | null {
+  const ms = new Date(item.added_at).getTime() + TODAY_HOURS * 3_600_000 - now;
+  if (!(ms > 0)) return null;
+  const mins = Math.ceil(ms / 60_000);
+  return { label: mins < 60 ? `${mins}m left` : `${Math.floor(mins / 60)}h left`, urgent: mins < 180 };
+}
+
 export type ResumeFile = { id: string; url: string; file_name: string; is_default: boolean };
 
 export type Subject = {

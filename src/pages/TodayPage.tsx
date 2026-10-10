@@ -21,8 +21,8 @@ import { loadToday, markViewed, strings, subjectName, type CardItem, type Kind, 
 // full screen, with the search and the profile chips on the card itself; the
 // app's header and bottom bar slide in when you swipe up. Open a card for why it fits and the application;
 // Apply (Ask Resume, for vendors), Save, Share or Pass. Cards move on their
-// own: applied ones go to Tracker, opened ones to History the next day, and
-// unopened ones leave after 3 days.
+// own: each stays 24 hours (the card shows the time left), then opened ones
+// go to History and unopened ones leave; applied ones go to Tracker.
 
 function useMedia(query: string) {
   const [match, setMatch] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
@@ -192,7 +192,7 @@ export default function TodayPage() {
     : undefined;
 
   const deckProps = {
-    items, kind, subjects, appliedToday, emptyMessage,
+    items, kind, subjects, appliedToday, emptyMessage, expiring: true,
     onSeen: see, onApply: applyQuick, onSave: save, onShare: (i: CardItem) => void share(i), onDismiss: dismiss,
     onDetails: (i: CardItem) => open(i),
     asked: actions.asked, onAsk: (i: CardItem, q: Question) => void actions.ask(i, q),
