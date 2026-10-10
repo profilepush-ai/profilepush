@@ -9,6 +9,8 @@ const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.profilepush.
 // A match usually takes 30-50s. The bar and the countdown are paced on this
 // until scoring reports real progress.
 const EXPECTED_SECONDS = 40;
+// Each item stays up this long; three fit inside one wait.
+const SLIDE_MS = 6000;
 
 function stepOf(phase: string | null): number {
   const p = (phase ?? '').toLowerCase();
@@ -27,27 +29,6 @@ async function loadWeekCount(kind: 'jobs' | 'hotlist'): Promise<number | null> {
   if (error || !Array.isArray(data)) return null;
   const total = (data as Array<{ facet_category: string; facet_count: number }>).find((r) => r.facet_category === 'total');
   return total ? Number(total.facet_count) : null;
-}
-
-function ChecklistItem({ icon, done, title, detail, action, delay }: {
-  icon: LucideIcon; done: boolean; title: string; detail: string; action?: ReactNode; delay: number;
-}) {
-  const Icon = icon;
-  return (
-    <li
-      className="flex items-center gap-3.5 rounded-xl border border-gray-200 bg-white px-4 py-3.5 motion-safe:animate-fade-in-up dark:border-white/10 dark:bg-[#20242a]"
-      style={{ animationDelay: `${delay}ms`, animationFillMode: 'backwards' }}
-    >
-      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${done ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-slate-300'}`}>
-        {done ? <Check size={18} strokeWidth={2.75} /> : <Icon size={17} />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[14.5px] font-semibold">{title}</p>
-        <p className="mt-0.5 text-[13px] leading-snug text-gray-500 dark:text-slate-400">{detail}</p>
-      </div>
-      {action && <div className="shrink-0">{action}</div>}
-    </li>
-  );
 }
 
 // Full screen while AI Match runs: the progress of this match, then three
@@ -70,6 +51,8 @@ export default function AiMatchProcessing({ kind, subject, phase, pct, gmailConn
   const scoringFrom = useRef<{ at: number; pct: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [shown, setShown] = useState(4);
+  const slideFrom = useRef(Date.now());
+  const [slideBase, setSlideBase] = useState(0);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 400);
@@ -102,67 +85,78 @@ export default function AiMatchProcessing({ kind, subject, phase, pct, gmailConn
   let left = EXPECTED_SECONDS - elapsed;
   const s0 = scoringFrom.current;
   if (s0 && pct != null && pct > s0.pct + 3) left = (100 - pct) / ((pct - s0.pct) / ((now - s0.at) / 1000));
-  const leftLabel = left > 4 ? `About ${Math.ceil(left / 5) * 5}s left` : 'Almost done';
+  const leftLabel = left > 4 ? `~${Math.ceil(left / 5) * 5}s left` : 'almost done';
   const noun = kind === 'hotlist' ? 'consultants' : 'jobs';
-  const status = step === 0 ? 'Reading what you pasted'
-    : weekCount ? `Searching ${weekCount.toLocaleString()} ${noun} from the last 7 days` : `Searching the last 7 days of ${noun}`;
+  const status = step === 0 ? 'Reading your post'
+    : weekCount ? `${weekCount.toLocaleString()} ${noun} · last 7 days` : `${noun[0].toUpperCase()}${noun.slice(1)} · last 7 days`;
   const heading = kind === 'hotlist' ? 'Finding consultants for your requirement' : 'Finding jobs for your consultant';
 
-  const button = 'inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 text-[13px] font-semibold text-gray-800 hover:bg-gray-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10';
-  const alertsOn = native ? pushState === 'granted' : false;
-  const appAction = native
-    ? (pushState === 'granted' ? undefined : <button type="button" onClick={() => { void enableWebPush().then(setPushState); }} className={button}><Bell size={14} />Turn on</button>)
-    : <a href={PLAY_URL} target="_blank" rel="noreferrer" className={button}><Smartphone size={14} />Get the app</a>;
-  const ready = Number(gmailConnected) * 2 + Number(alertsOn);
+  const primary = 'inline-flex h-11 items-center gap-2 rounded-full bg-blue-600 px-6 text-[14px] font-semibold text-white shadow-sm hover:bg-blue-700';
+  const okBadge = (label: string) => (
+    <span className="inline-flex h-11 items-center gap-2 rounded-full bg-emerald-50 px-5 text-[14px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+      <Check size={17} strokeWidth={3} />{label}
+    </span>
+  );
+  const alertsOn = native && pushState === 'granted';
+  const slides: Array<{ key: string; icon: LucideIcon; title: string; line: string; action: ReactNode }> = [
+    {
+      key: 'gmail', icon: Mail, title: 'Connect Gmail', line: 'Send from your own inbox.',
+      action: gmailConnected ? okBadge('Connected') : <button type="button" onClick={onConnectGmail} className={primary}><Mail size={16} />Connect Gmail</button>,
+    },
+    {
+      key: 'bulk', icon: Send, title: 'Bulk send', line: 'All your matches, one click.',
+      action: gmailConnected ? okBadge('Ready') : <button type="button" onClick={onConnectGmail} className={primary}><Mail size={16} />Connect Gmail first</button>,
+    },
+    {
+      key: 'app', icon: Smartphone, title: 'Get the app', line: 'New matches on your phone.',
+      action: !native
+        ? <a href={PLAY_URL} target="_blank" rel="noreferrer" className={primary}><Smartphone size={16} />Get the app</a>
+        : alertsOn ? okBadge('Alerts on')
+        : <button type="button" onClick={() => { void enableWebPush().then(setPushState); }} className={primary}><Bell size={16} />Turn on alerts</button>,
+    },
+  ];
+  const index = Math.floor((now - slideFrom.current) / SLIDE_MS) % slides.length;
+  const slide = slides[(index + slideBase) % slides.length];
+  const goTo = (i: number) => { slideFrom.current = Date.now(); setSlideBase(i); setNow(Date.now()); };
 
   return (
     <div className="fixed inset-0 z-[65] overflow-y-auto bg-[#f3f2ee] text-gray-900 dark:bg-[#1B1D21] dark:text-slate-100" role="dialog" aria-modal="true" aria-label="AI Match in progress">
-      <div className="mx-auto flex min-h-full w-full max-w-lg flex-col justify-center px-4 py-8">
+      <div className="mx-auto flex min-h-full w-full max-w-md flex-col justify-center gap-6 px-4 py-8">
+        {/* This match: one line of what, one bar, the numbers. */}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#20242a]">
-          <p className="text-[12px] font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">AI Match</p>
-          <p className="mt-1 text-[18px] font-bold leading-snug">{heading}</p>
-          {subject && <p className="mt-1 truncate text-[13px] text-gray-500 dark:text-slate-400">“{subject}”</p>}
-          <div className="mt-4 flex items-baseline justify-between gap-3">
-            <span className="min-w-0 truncate text-[13px] text-gray-600 dark:text-slate-300">{status}</span>
-            <span className="shrink-0 text-[15px] font-bold tabular-nums">{percent}%</span>
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+          <p className="text-[17px] font-bold">{heading}</p>
+          {subject && <p className="mt-0.5 truncate text-[13px] text-gray-500 dark:text-slate-400">{subject}</p>}
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
             <div className="h-full rounded-full bg-blue-600 transition-[width] duration-500 ease-out" style={{ width: `${percent}%` }} />
           </div>
-          <p className="mt-2 text-[12px] tabular-nums text-gray-400">{leftLabel}</p>
+          <div className="mt-2 flex items-center justify-between text-[12.5px] tabular-nums text-gray-500 dark:text-slate-400">
+            <span>{status}</span>
+            <span><b className="text-gray-900 dark:text-white">{percent}%</b> · {leftLabel}</span>
+          </div>
         </div>
 
-        <div className="mt-7 flex items-baseline justify-between px-1">
-          <p className="text-[15px] font-bold">Get ready while we match</p>
-          <p className="text-[12.5px] tabular-nums text-gray-500 dark:text-slate-400">{ready} of 3 ready</p>
+        {/* One thing at a time. */}
+        <div className="rounded-2xl border border-gray-200 bg-white px-6 pb-6 pt-8 text-center shadow-sm dark:border-white/10 dark:bg-[#20242a]">
+          <div key={slide.key} className="flex flex-col items-center motion-safe:animate-fade-in-up">
+            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+              <slide.icon size={30} strokeWidth={1.75} />
+            </span>
+            <p className="mt-4 text-[20px] font-bold">{slide.title}</p>
+            <p className="mt-1 text-[14.5px] text-gray-500 dark:text-slate-400">{slide.line}</p>
+            <div className="mt-5">{slide.action}</div>
+          </div>
+          <div className="mt-6 flex justify-center gap-2">
+            {slides.map((sl, i) => (
+              <button
+                key={sl.key}
+                type="button"
+                onClick={() => goTo(i)}
+                aria-label={sl.title}
+                className={`h-2 rounded-full transition-all ${sl.key === slide.key ? 'w-6 bg-blue-600' : 'w-2 bg-gray-300 hover:bg-gray-400 dark:bg-white/20'}`}
+              />
+            ))}
+          </div>
         </div>
-        <ul className="mt-3 space-y-2">
-          <ChecklistItem
-            icon={Mail}
-            done={gmailConnected}
-            title={gmailConnected ? 'Gmail connected' : 'Connect Gmail'}
-            detail="Submissions go from your own inbox, and replies come back to it."
-            action={gmailConnected ? undefined : <button type="button" onClick={onConnectGmail} className={button}><Mail size={14} />Connect</button>}
-            delay={0}
-          />
-          <ChecklistItem
-            icon={Send}
-            done={gmailConnected}
-            title={gmailConnected ? 'Bulk send is ready' : 'Bulk send'}
-            detail={gmailConnected
-              ? 'When your matches load, tick the ones you want and press Send Now.'
-              : 'Send to all your matches in one click. Needs Gmail connected.'}
-            delay={120}
-          />
-          <ChecklistItem
-            icon={Smartphone}
-            done={alertsOn}
-            title={alertsOn ? 'Alerts are on' : 'Get the mobile app'}
-            detail="New matches reach your phone the moment they land."
-            action={appAction}
-            delay={240}
-          />
-        </ul>
       </div>
     </div>
   );
