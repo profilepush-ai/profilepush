@@ -1,4 +1,5 @@
-import { FileText, Loader2, Mail, Send, Sparkles } from 'lucide-react';
+import { ExternalLink, FileText, Loader2, Mail, Send, Sparkles } from 'lucide-react';
+import ApplyOnSiteButton, { isCareerSiteLead } from './ApplyOnSite';
 import { renderInvitePreview, type InvitePreviewLead } from '../lib/invite-preview';
 
 // The draft, beside the matches.
@@ -10,7 +11,7 @@ import { renderInvitePreview, type InvitePreviewLead } from '../lib/invite-previ
 // exact wording is rendered here for free.
 
 type Props = {
-  lead: (InvitePreviewLead & { id: string }) | null;
+  lead: (InvitePreviewLead & { id: string; postSource?: string; applyUrl?: string | null; posterName?: string }) | null;
   senderName: string | undefined;
   /** The vendor's requirement this run is for, named in a resume request. */
   requirementTitle?: string | null;
@@ -24,15 +25,42 @@ type Props = {
   /** Generate the real email for this card and send it, in one action. */
   onGenerateAndSend?: () => void;
   isSending?: boolean;
+  /** Career-site jobs: the consultant this run is for, so Apply moves their Tracker card. */
+  applySubjectId?: string | null;
 };
 
 export default function AiMatchInvitePane({
-  lead, senderName, requirementTitle = null, isGenerating, onSend, inline = false, draft = null, onGenerateAndSend, isSending = false,
+  lead, senderName, requirementTitle = null, isGenerating, onSend, inline = false, draft = null, onGenerateAndSend, isSending = false, applySubjectId = null,
 }: Props) {
   if (!lead) {
     return (
       <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 p-6 text-center dark:border-indigo-400/20 dark:bg-indigo-500/[0.05]">
         <p className="text-[12px] text-indigo-400 dark:text-indigo-300/70">Pick a match to see the message that goes out.</p>
+      </div>
+    );
+  }
+
+  // A job from a firm's careers site has no recruiter to email: the action is
+  // Apply on the firm's site, which is free.
+  const careerLead = { ...lead, postSource: lead.postSource ?? '', kind: lead.kind ?? 'job' } as Parameters<typeof isCareerSiteLead>[0];
+  if (isCareerSiteLead(careerLead)) {
+    const firm = lead.posterName?.trim() || 'the firm';
+    return (
+      <div className={`flex flex-col overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/70 dark:border-indigo-400/25 dark:bg-indigo-500/[0.07] ${inline ? '' : 'h-full'}`}>
+        <div className="flex items-center gap-2 border-b border-indigo-200/70 bg-indigo-100/50 px-3.5 py-2.5 dark:border-indigo-400/20 dark:bg-indigo-500/10">
+          <ExternalLink size={14} className="shrink-0 text-indigo-600 dark:text-indigo-300" />
+          <p className="text-[12px] font-semibold text-indigo-900 dark:text-indigo-100">Apply on career site</p>
+          <span className="ml-auto text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">Free</span>
+        </div>
+        <div className={`flex flex-col items-center justify-center gap-2.5 px-5 text-center ${inline ? 'py-7' : 'flex-1'}`}>
+          <p className="text-[13px] font-semibold text-indigo-900 dark:text-indigo-100">Apply on {firm}&apos;s site</p>
+          <p className="max-w-[16rem] text-[11.5px] leading-snug text-indigo-500/90 dark:text-indigo-300/70">
+            This job is posted on {firm}&apos;s own careers site, so there is no recruiter email. Applying is free and counts as a submission.
+          </p>
+          <div className="mt-1 flex w-full max-w-[14rem]">
+            <ApplyOnSiteButton lead={careerLead} variant="panel" subjectId={applySubjectId} />
+          </div>
+        </div>
       </div>
     );
   }

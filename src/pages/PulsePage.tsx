@@ -3317,6 +3317,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
           ? { subject: aiMatchInlineDraft.emailSubject, body: aiMatchInlineDraft.emailContent }
           : null}
         onGenerateAndSend={() => { void handleGenerateAndSend(aiMatchPreviewLead); }}
+        applySubjectId={aiMatchTarget === 'jobs' ? aiMatchSourcePostId : null}
         onSend={() => { void handleAskAI(aiMatchPreviewLead); }}
       />
     );
@@ -6179,6 +6180,9 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     if (!aiMatch || !account?.id) return;
     const first = filteredFeed.find((lead) => lead.aiMatchScore != null);
     if (!first || leadIsHotlist(first)) return;
+    // Career-site jobs are applied to on the firm's site, and a post with no
+    // email has no one to write to: the pane shows those without a draft.
+    if (first.postSource === 'career_site' || !extractPrimaryEmail(first.posterEmail)) return;
     if (aiMatchPreviewLead?.id !== first.id) return;
     if (askAIPreview || processingAskAILeadId) return;
     if (aiMatchAutoDraftedRef.current.has(first.id)) return;
@@ -8128,6 +8132,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                                         ? { subject: aiMatchInlineDraft.emailSubject, body: aiMatchInlineDraft.emailContent }
                                         : null}
                                       onGenerateAndSend={() => { if (aiMatchPreviewLead) void handleGenerateAndSend(aiMatchPreviewLead); }}
+                                      applySubjectId={aiMatchTarget === 'jobs' ? aiMatchSourcePostId : null}
                                       onSend={() => { if (aiMatchPreviewLead) void handleAskAI(aiMatchPreviewLead); }}
                                     />
                                   </div>
