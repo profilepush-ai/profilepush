@@ -6,6 +6,7 @@ import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPan
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
 import AdminCareerSitesPanel from '../components/AdminCareerSitesPanel';
 import AdminCareerJobsPanel from '../components/AdminCareerJobsPanel';
+import AdminRevenuePanel from '../components/AdminRevenuePanel';
 import AdminAiPromptsPanel from '../components/AdminAiPromptsPanel';
 import AdminChannelsPanel from '../components/AdminChannelsPanel';
 import AdminListsPanel from '../components/AdminListsPanel';
@@ -105,12 +106,13 @@ interface LinkedinScraperConfig {
   updated_at: string;
 }
 
-type AdminView = 'stats' | 'websites' | 'lists' | 'emails' | 'feedback' | 'scraper' | 'scraper-logs' | 'career-sites' | 'career-jobs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social' | 'notifications';
+type AdminView = 'revenue' | 'stats' | 'websites' | 'lists' | 'emails' | 'feedback' | 'scraper' | 'scraper-logs' | 'career-sites' | 'career-jobs' | 'ai-prompts' | 'channels' | 'market' | 'trends' | 'post-outreach' | 'social' | 'notifications';
 
 // The sidebar renders from this rather than from nine hand-written buttons,
 // which is what the top nav had become — adding a section meant editing the
 // markup in three places and the subtitle chain in a fourth.
 const ADMIN_NAV: Array<{ id: AdminView; label: string; Icon: typeof TrendingUp }> = [
+  { id: 'revenue', label: 'Revenue', Icon: TrendingUp },
   { id: 'stats', label: 'Account Stats', Icon: UserRound },
   { id: 'websites', label: 'Websites', Icon: Globe },
   { id: 'lists', label: 'Lists', Icon: ListIcon },
@@ -1343,6 +1345,7 @@ export default function AdminDashboard() {
     />
   )}
   {adminView === 'career-jobs' && <AdminCareerJobsPanel />}
+  {adminView === 'revenue' && <AdminRevenuePanel />}
 
         {adminView === 'ai-prompts' && <AdminAiPromptsPanel />}
         {adminView === 'websites' && <AdminWebsitesPanel />}
