@@ -8255,6 +8255,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
       {aiMatch && aiMatchRunning && (
         <AiMatchProcessing
           kind={aiMatchTarget === 'hotlist' ? 'hotlist' : 'jobs'}
+          subject={aiMatchDescription.trim().split('\n')[0]?.slice(0, 120)}
           phase={aiMatchProgress}
           pct={aiMatchProgressPct}
           gmailConnected={gmailIntegrationStatus === 'connected'}
