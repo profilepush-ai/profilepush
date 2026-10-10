@@ -488,6 +488,9 @@ export interface LeadCardProps {
   /** Always the compact card (no skills); a click opens the lead (the Feed's
    *  full preview popup) instead of expanding the card. */
   onOpen?: (lead: SocialLead) => void;
+  /** Always the compact card (no skills), keeping the card's own click
+   *  behaviour. Used for AI Match results. */
+  compact?: boolean;
 }
 
 // Extracted out of PulsePage's renderLeadCards loop and wrapped in memo() so a
@@ -503,12 +506,12 @@ export const LeadCard = memo(function LeadCard({
   onPreview, onAskAI, onToggleInlineBreakdown, onExpandSkills, onCollapseSkills, onToggleField,
   hideActions, isSelected, onSelect,
   bulkSelectable, isBulkSelected, onToggleBulkSelect, matchRank, isFocused, onFocus,
-  onChat, isProcessingChat, collapsible = false, defaultCollapsed = true, onDismiss, applySubjectId, onExternalApplied, onOpen,
+  onChat, isProcessingChat, collapsible = false, defaultCollapsed = true, onDismiss, applySubjectId, onExternalApplied, onOpen, compact: forceCompact,
 }: LeadCardProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   // The Tracker's collapsed card is the one look for lists: the Feed (onOpen)
   // and the select-to-view lists on Today and the Feed's detail layout.
-  const compact = (collapsible && collapsed) || Boolean(onOpen) || Boolean(hideActions);
+  const compact = (collapsible && collapsed) || Boolean(onOpen) || Boolean(hideActions) || Boolean(forceCompact);
   const cardPalette = CARD_PALETTE[paletteIndex % CARD_PALETTE.length];
   const cardFillClass = cardPalette.fill;
   // An opened post reads as visited: grey title (like a visited link).
