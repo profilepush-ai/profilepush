@@ -8,9 +8,10 @@ import { CompanyLogo, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap }
 // Swipe mode: one match per screen, stories style. Swipe or tap the sides to
 // move; the rail on the right is Apply, Save, Share and Pass. It is Today's
 // default view (inline, inside the page) and can also cover the screen.
-export default function SwipeDeck({ items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, onClose, onCurrent, onSeen, onApply, onSave, onShare, onDismiss, onDetails }: {
+export default function SwipeDeck({ items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage, onClose, onCurrent, onStep, onSeen, onApply, onSave, onShare, onDismiss, onDetails }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
-  inline?: boolean; hideDetails?: boolean; onClose?: () => void; onCurrent?: (item: CardItem | null) => void;
+  inline?: boolean; hideDetails?: boolean; paused?: boolean; emptyMessage?: { title: string; text: string };
+  onClose?: () => void; onCurrent?: (item: CardItem | null) => void; onStep?: (d: 1 | -1, toId: string | null) => void;
   onSeen: (item: CardItem) => void; onApply: (item: CardItem) => void; onSave: (item: CardItem) => void;
   onShare: (item: CardItem) => void; onDismiss: (item: CardItem) => void; onDetails: (item: CardItem) => void;
 }) {
@@ -39,13 +40,15 @@ export default function SwipeDeck({ items, kind, subjects, startId, focusId, app
   const step = (d: 1 | -1) => {
     const j = index + d;
     if (index < 0 || j < 0) return;
-    if (j >= items.length) { setCurrentId(null); return; }
+    if (j >= items.length) { setCurrentId(null); onStep?.(d, null); return; }
     setCurrentId(items[j].card_id);
     setDir(d > 0 ? 'n' : 'p');
+    onStep?.(d, items[j].card_id);
   };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (paused) return;
       // Not while typing (the application email sits beside the deck on desktop).
       const t = e.target as HTMLElement | null;
       if (t && (t.closest('input, textarea, select, [contenteditable="true"]') || t.isContentEditable)) return;
@@ -72,8 +75,8 @@ export default function SwipeDeck({ items, kind, subjects, startId, focusId, app
         <div className="relative z-10 flex justify-end p-2">{corner}</div>
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
           <span className="grid h-[72px] w-[72px] place-items-center rounded-full bg-emerald-600"><Check size={36} strokeWidth={3} /></span>
-          <h2 className="text-[26px] font-extrabold">All caught up</h2>
-          <p className="max-w-[28ch] text-white/80">{appliedToday} applied today. New matches arrive every 10 minutes.</p>
+          <h2 className="text-[26px] font-extrabold">{emptyMessage?.title ?? 'All caught up'}</h2>
+          <p className="max-w-[28ch] text-white/80">{emptyMessage?.text ?? `${appliedToday} applied today. New matches arrive every 10 minutes.`}</p>
           {inline ? (
             <div className="mt-2 flex flex-wrap justify-center gap-2">
               <Link to="/history" className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-4 py-2.5 font-bold"><History size={16} />History</Link>
