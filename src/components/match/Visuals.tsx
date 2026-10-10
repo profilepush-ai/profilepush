@@ -152,22 +152,24 @@ export function SkillTiles({ skills, onDark = false, animate = false, at: start 
   if (skills.length === 0) return <p className={`text-[12.5px] ${onDark ? 'text-white/70' : 'text-gray-500'}`}>No skills listed in the post.</p>;
   const lit = skills.filter((s) => s.ok).length;
   let missing = 0;
+  // Outlined chips with the skill's full name: a solid border in the skill's
+  // color and a check when the profile has it, dashed when it doesn't.
   return (
-    <div className="flex flex-wrap gap-[7px]">
+    <div className="flex flex-wrap gap-1.5">
       {skills.map((s, i) => {
         const look = skillLook(s.name);
         const at = start + i * gap;
+        const tint = onDark ? `color-mix(in srgb, ${look.color} 65%, white)` : look.color;
         return s.ok ? (
-          <span key={s.name} title={s.name} className="relative flex h-16 w-[60px] flex-col justify-between rounded-[13px] px-[7px] py-1.5 text-white"
-            style={{ background: `linear-gradient(150deg, ${look.color}, color-mix(in srgb, ${look.color} 70%, #000))`, boxShadow: `0 2px 6px color-mix(in srgb, ${look.color} 30%, transparent)`, ...anim(animate, 'ppTileIn', 420, at) }}>
-            <b className="text-[21px] font-extrabold leading-none tracking-tight">{look.symbol}</b>
-            <small className="truncate text-[9.5px] font-bold opacity-95">{s.name}</small>
-            <i className="absolute right-[5px] top-[5px] grid h-[15px] w-[15px] place-items-center rounded-full bg-white not-italic" style={{ color: look.color, ...anim(animate, 'ppStamp', 320, at + 260, 'ease-out') }}><Check size={9} strokeWidth={4} /></i>
+          <span key={s.name} className={`inline-flex max-w-full items-center gap-1.5 rounded-full border-[1.5px] py-[3px] pl-1 pr-2.5 text-[12.5px] font-bold ${onDark ? 'text-white' : 'text-gray-900 dark:text-slate-100'}`}
+            style={{ borderColor: tint, ...anim(animate, 'ppTileIn', 420, at) }}>
+            <i className="grid h-[17px] w-[17px] shrink-0 place-items-center rounded-full not-italic text-white" style={{ background: tint, ...anim(animate, 'ppStamp', 320, at + 260, 'ease-out') }}><Check size={10} strokeWidth={4} /></i>
+            <span className="min-w-0 break-words">{s.name}</span>
           </span>
         ) : (
-          <span key={s.name} title={`${s.name}: not on the profile`} style={anim(animate, 'ppFadeIn', 300, start + lit * gap + 120 + (missing++) * 50, 'ease-out')} className={`flex h-16 w-[60px] flex-col justify-between rounded-[13px] border-[1.5px] border-dashed px-[7px] py-1.5 opacity-80 ${onDark ? 'border-white/45 text-white/65' : 'border-gray-400 text-gray-500 dark:border-slate-500 dark:text-slate-400'}`}>
-            <b className="text-[21px] font-extrabold leading-none tracking-tight">{look.symbol}</b>
-            <small className="truncate text-[9.5px] font-bold">{s.name}</small>
+          <span key={s.name} title={`${s.name}: not on the profile`} style={anim(animate, 'ppFadeIn', 300, start + lit * gap + 120 + (missing++) * 50, 'ease-out')}
+            className={`inline-flex max-w-full items-center rounded-full border-[1.5px] border-dashed px-2.5 py-[3px] text-[12.5px] font-semibold ${onDark ? 'border-white/40 text-white/65' : 'border-gray-300 text-gray-500 dark:border-slate-600 dark:text-slate-400'}`}>
+            <span className="min-w-0 break-words">{s.name}</span>
           </span>
         );
       })}

@@ -163,9 +163,60 @@ async function loadLead(admin: SupabaseClient, kind: string, id: string): Promis
   } };
 }
 
+// Skill stand-ins for the template below (the same ones Claude is given).
+const OBJECTS: Array<[RegExp, string]> = [
+  [/\bjava\b(?!script)/i, "a steaming coffee cup"], [/spring/i, "a glowing green leaf"], [/react/i, "a spinning atom with orbit rings"],
+  [/angular/i, "a faceted shield crystal"], [/python/i, "a friendly coiled snake"], [/javascript|typescript|node/i, "a bright lightning bolt"],
+  [/aws|azure|gcp|cloud/i, "a glowing cloud"], [/docker/i, "a small whale carrying boxes"], [/kubernetes|k8s/i, "a ship's wheel"],
+  [/terraform|iac/i, "building blocks forming terrain"], [/kafka|stream/i, "flowing light ribbons"], [/snowflake/i, "a crystal snowflake"],
+  [/spark/i, "a sparkler"], [/sql|database|oracle|postgres|mongo/i, "stacked glowing database cylinders"],
+  [/tableau|power ?bi|analytic|report/i, "a floating bar chart"], [/excel/i, "a green grid tile"], [/secur|cyber/i, "a padlock shield"],
+  [/test|qa\b|quality/i, "a magnifying glass"], [/mobile|ios|android/i, "a glowing phone"], [/\bai\b|ml\b|machine learning/i, "a brain made of light"],
+  [/agile|scrum|jira/i, "a sticky-note board"], [/nurs|patient|rn\b|clinical/i, "a heart monitor line"], [/financ|account/i, "a stack of coins"],
+  [/logistic|supply/i, "a parcel on a conveyor"], [/servicenow|itsm/i, "a glowing service ticket"],
+];
+
+// Without Claude (unavailable or out of credits): the same rules, filled in.
+function templatePrompt(lead: Lead): string {
+  const d = lead.details;
+  const skills = (d.skills as string[]).slice(0, 4);
+  const objects = [...new Set(skills.map((k) => OBJECTS.find(([re]) => re.test(k))?.[1] ?? `a glowing object that stands for ${k}`))];
+  const place = String(lead.kind === "job" ? d.location : d.locations ?? "");
+  // Several cities: more than one part that isn't a two-letter state code.
+  const several = place.split(/[;,]/).map((x) => x.trim()).filter((x) => x.length > 2).length > 1;
+  const background = d.work_mode === "remote"
+    ? `a cozy home workspace with a big window onto ${place ? `the famous view of ${place}` : "a glowing night city"}`
+    : place
+      ? several
+        ? `one continuous skyline blending the most famous landmarks of ${place}, at golden hour, a little soft`
+        : `the most famous, instantly recognizable view of ${place} (its skyline, a landmark or its landscape), at golden hour, a little soft`
+      : "a smooth gradient in bold colors";
+  const things = objects.length ? objects.join(", ") : "glowing objects that stand for the work";
+  const style = "Stylized 3D art like a still from a modern animated film, soft clay-like shading, bold saturated colors, neon rim light, glossy sticker-like objects. The bottom third calm and darker. No text, letters, numbers, logos, watermarks or real people anywhere; screens and signs stay blank.";
+  return lead.kind === "job"
+    ? `Vertical poster for a ${String(d.title || "job")} job. A confident, playful [PERSONA], shown waist-up, face clearly visible and expressive, really holding glowing objects for the job's skills: ${things}; the most important one in one hand, the rest orbiting close. The background is ${background}. ${style}`
+    : `Vertical poster for a ${String(d.role || "consultant")} profile, with no people at all. Glowing objects for the profile's skills, ${things}, float above a glowing pedestal in the middle like a hero display. The background is ${background}. ${style}`;
+}
+
+// Claude can't answer (out of credits, key or service trouble): not worth retrying.
+const claudeDown = (error: unknown) => {
+  const e = error as { status?: number; message?: string } | null;
+  return Boolean(e && (e.status === 401 || e.status === 403 || (e.status ?? 0) >= 500 || (e.status === 400 && /credit balance|billing/i.test(e.message ?? ""))));
+};
+
 // One art direction per post. One that stops short (no background yet) gets
-// one more try.
-async function writePrompt(lead: Lead): Promise<string> {
+// one more try; without Claude, the template.
+async function writePrompt(lead: Lead): Promise<{ prompt: string; by: string }> {
+  try {
+    return { prompt: await askClaude(lead), by: PROMPT_MODEL };
+  } catch (error) {
+    if (!claudeDown(error)) throw error;
+    console.warn("job-visual: Claude unavailable, using the template", (error as Error).message?.slice(0, 120));
+    return { prompt: templatePrompt(lead), by: "template" };
+  }
+}
+
+async function askClaude(lead: Lead): Promise<string> {
   const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "" });
   const job = lead.kind === "job";
   let text = "";
@@ -231,6 +282,7 @@ async function draw(admin: SupabaseClient, rows: Row[]) {
         .eq("lead_id", r.lead_id).eq("variant", r.variant);
     };
     let template: string;
+    let by: string;
     try {
       const lead = await loadLead(admin, versions[0].lead_kind, leadId);
       if (!lead) {
@@ -239,7 +291,7 @@ async function draw(admin: SupabaseClient, rows: Row[]) {
         tally.failed += versions.length;
         return;
       }
-      template = await writePrompt(lead);
+      ({ prompt: template, by } = await writePrompt(lead));
     } catch (error) {
       for (const r of versions) await fail(r, error);
       return;
@@ -254,7 +306,7 @@ async function draw(admin: SupabaseClient, rows: Row[]) {
         const { error: upErr } = await admin.storage.from("job-visuals").upload(path, bytes, { contentType: "image/webp", upsert: true });
         if (upErr) throw new Error(upErr.message);
         const url = `${admin.storage.from("job-visuals").getPublicUrl(path).data.publicUrl}?v=${Date.now()}`;
-        await admin.from("match_visuals").update({ status: "done", url, prompt, error: null, model: `${PROMPT_MODEL} + ${IMAGE_MODEL}`, updated_at: now() })
+        await admin.from("match_visuals").update({ status: "done", url, prompt, error: null, model: `${by} + ${IMAGE_MODEL}`, updated_at: now() })
           .eq("lead_id", r.lead_id).eq("variant", r.variant);
         tally.done++;
       } catch (error) {
