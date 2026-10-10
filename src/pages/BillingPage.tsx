@@ -564,7 +564,7 @@ export default function BillingPage() {
                   <p className="text-2xl font-extrabold text-white">₹0.25<span className="text-[15px] font-semibold text-blue-200"> a match</span></p>
                   <p className="text-[13px] text-blue-200 mt-0.5 mb-4">Any amount from ₹100 · never expire · no subscription</p>
                   <ul className="space-y-2 text-[13px] text-white flex-1 mb-4">
-                    {['₹250 = 1,000 matches', 'Only matches cost credits; everything else is free', 'Unlimited open consultants or requirements', 'First top-up? 2× matches on ₹250 and ₹500 when the offer shows'].map(item => (
+                    {['₹250 = 1,000 matches', 'Up to 100 matches a day per consultant (free: 10)', 'Choose your minimum match, 50–80% (free: 70%)', 'Unlimited open consultants or requirements', 'Only matches cost credits; everything else is free'].map(item => (
                       <li key={item} className="flex items-start gap-2">
                         <Check size={12} className="mt-0.5 shrink-0 text-white" />
                         {item}
@@ -578,7 +578,7 @@ export default function BillingPage() {
               </div>
 
               {/* The one setting that controls spend: how strong a match must be. */}
-              <MinMatchSetting accountId={account?.id ?? null} />
+              <MinMatchSetting accountId={account?.id ?? null} onUpgrade={openBuyCreditsModal} />
 
               {/* Purchase history: every paid top-up, newest first. */}
               {purchases.length > 0 && (
@@ -1175,17 +1175,20 @@ function TierComparison({ currentUsd }: { currentUsd: number }) {
 // The first-purchase offer doubles these packs only.
 const OFFER_TIERS = [249, 250, 500];
 
-// New matches must reach this match % (50-80, default 70). Higher means fewer,
-// stronger matches and less spent.
-function MinMatchSetting({ accountId }: { accountId: string | null }) {
+// New matches must reach this match %. Paid accounts choose 50-80%; free
+// accounts match at 70%. Higher means fewer, stronger matches and less spent.
+function MinMatchSetting({ accountId, onUpgrade }: { accountId: string | null; onUpgrade: () => void }) {
   const [value, setValue] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
+  const [paid, setPaid] = useState<boolean | null>(null);
   useEffect(() => {
     if (!accountId) return;
+    void supabase.rpc('get_match_caps' as never).then(({ data }: { data: { paid?: boolean } | null }) => setPaid(Boolean(data?.paid)));
     void supabase.from('accounts').select('match_min_score' as never).eq('id', accountId).maybeSingle()
       .then(({ data }: { data: { match_min_score?: number } | null }) => setValue(data?.match_min_score ?? 70));
   }, [accountId]);
   const change = async (next: number) => {
+    if (!paid) return;
     setValue(next);
     setSaved(false);
     const { error } = await supabase.rpc('set_match_min_score' as never, { p_score: next } as never);
@@ -1196,7 +1199,11 @@ function MinMatchSetting({ accountId }: { accountId: string | null }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[13px] font-bold text-gray-800">Minimum match</p>
-          <p className="mt-0.5 text-[12px] text-gray-500">New matches must reach this score. Higher means fewer, stronger matches.</p>
+          <p className="mt-0.5 text-[12px] text-gray-500">
+            {paid === false
+              ? 'Free accounts match at 70%. On any paid plan, choose 50–80%: lower for more matches, higher for fewer, stronger ones.'
+              : 'New matches must reach this score. Higher means fewer, stronger matches.'}
+          </p>
         </div>
         <div className="flex items-center gap-1" role="radiogroup" aria-label="Minimum match">
           {[50, 55, 60, 65, 70, 75, 80].map((v) => (
@@ -1206,8 +1213,8 @@ function MinMatchSetting({ accountId }: { accountId: string | null }) {
               role="radio"
               aria-checked={value === v}
               onClick={() => void change(v)}
-              disabled={value == null}
-              className={`h-8 rounded-lg px-2.5 text-[12.5px] font-bold tabular-nums transition-colors ${value === v ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              disabled={value == null || !paid}
+              className={`h-8 rounded-lg px-2.5 text-[12.5px] font-bold tabular-nums transition-colors disabled:cursor-not-allowed ${value === v ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:hover:bg-gray-100'}`}
             >
               {v}%
             </button>
@@ -1215,6 +1222,11 @@ function MinMatchSetting({ accountId }: { accountId: string | null }) {
         </div>
       </div>
       {saved && <p className="mt-2 text-[11.5px] font-semibold text-emerald-600">Saved. New matches use {value}%.</p>}
+      {paid === false && (
+        <button type="button" onClick={onUpgrade} className="mt-3 inline-flex h-8 items-center rounded-lg bg-blue-600 px-3 text-[12.5px] font-bold text-white hover:bg-blue-700">
+          Unlock with any top-up from ₹100
+        </button>
+      )}
     </div>
   );
 }
