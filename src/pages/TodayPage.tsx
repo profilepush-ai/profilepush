@@ -12,6 +12,7 @@ import { CompanyLogo, FitRing, Initials } from '../components/match/Visuals';
 import ToastBar from '../components/match/ToastBar';
 import ApplyFrame from '../components/match/ApplyFrame';
 import { loadAvatar } from '../lib/avatar';
+import { supabase } from '../lib/supabase';
 import { useMatchActions } from '../components/match/useMatchActions';
 import { useSwipe } from '../components/match/useSwipe';
 import { useAuth } from '../contexts/AuthContext';
@@ -177,6 +178,14 @@ export default function TodayPage() {
   const actions = useMatchActions({ kind, accountId, userId: user?.id, subjects, take, onChanged: () => void load(), onOpen: open });
   const { gmailConnected, connectGmail, busy, appliedNow, applyEmail, applySite, askResume, applyQuick, save, dismiss, share, showToast } = actions;
 
+  // A reported picture goes away for them now, and is drawn again.
+  const reportPicture = (item: CardItem, url: string) => {
+    void supabase.rpc('report_match_visual' as never, { p_lead: item.lead_id, p_url: url } as never);
+    setData((d) => d && { ...d, items: d.items.map((i) => (i.lead_id === item.lead_id ? { ...i, my_visual: null, lead: i.lead && { ...i.lead, visuals: null } } : i)) });
+    actions.showToast("Thanks for telling us. We'll draw a new picture.");
+    trackEvent('picture_reported');
+  };
+
   // ?profile=<id> opens that profile (from History and Settings).
   const [params, setParams] = useSearchParams();
   useEffect(() => {
@@ -221,6 +230,7 @@ export default function TodayPage() {
     onSeen: see, onApply: applyQuick, onSave: save, onShare: (i: CardItem) => void share(i), onDismiss: dismiss,
     onDetails: (i: CardItem) => open(i),
     asked: actions.asked, onAsk: (i: CardItem, q: Question) => void actions.ask(i, q),
+    onReportPicture: reportPicture,
   };
 
   const detailFor = (item: CardItem, mode: 'sheet' | 'pane') => {

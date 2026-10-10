@@ -13,6 +13,7 @@ import GooglePlayBanner from './GooglePlayBanner';
 import FirstPurchaseOfferModal from './FirstPurchaseOfferModal';
 import FeedbackPrompt from './FeedbackPrompt';
 import { supabase } from '../lib/supabase';
+import { useMyAvatar } from '../lib/avatar';
 import { trackEvent } from '../lib/track';
 import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
@@ -376,12 +377,15 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
     navigate('/');
   }
 
+  const myAvatar = useMyAvatar(Boolean(user));
   const initials = user?.user_metadata?.full_name
     ? (user.user_metadata.full_name as string).split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
     : user?.email?.[0]?.toUpperCase() ?? '?';
-  // Supabase's Google provider maps the OIDC `picture` claim to both keys
-  // depending on flow (signInWithIdToken vs signInWithOAuth) — check both.
-  const pictureUrl = (user?.user_metadata?.avatar_url as string | undefined)
+  // Their avatar while it's on; otherwise their Google photo. Supabase's
+  // Google provider maps the OIDC `picture` claim to both keys depending on
+  // flow (signInWithIdToken vs signInWithOAuth) — check both.
+  const pictureUrl = myAvatar
+    || (user?.user_metadata?.avatar_url as string | undefined)
     || (user?.user_metadata?.picture as string | undefined)
     || null;
 

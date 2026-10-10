@@ -97,7 +97,7 @@ function workMode(place: string, text: string): string {
   return /\bremote\b|work from home|\bwfh\b/i.test(text) ? "remote" : "";
 }
 
-const STAND_INS = `Stand-ins to use when they fit: Java a steaming coffee cup; Spring or Spring Boot a green leaf; React a spinning atom with orbit rings; Angular a faceted shield crystal; Python a friendly coiled snake; JavaScript or TypeScript a bright lightning bolt; AWS, Azure or GCP a soft cloud; Docker a small whale carrying boxes; Kubernetes a ship's wheel; Terraform building blocks forming terrain; Kafka or streaming flowing ribbons; SQL or databases stacked cylinders; Snowflake a crystal snowflake; Spark or PySpark a sparkler; Tableau, Power BI or analytics a floating bar chart; Excel a green grid tile; security a padlock shield; testing or QA a magnifying glass; mobile a phone; AI or ML a soft brain shape; Agile or Scrum a sticky-note board; nursing or patient care a heart monitor line; finance a stack of coins; logistics a parcel on a conveyor. Invent equally simple stand-ins for anything else.`;
+const STAND_INS = `Stand-ins to use when they fit: Java a steaming coffee cup; Spring or Spring Boot a green leaf; React a spinning atom with orbit rings; Angular a faceted shield crystal; Python a blue-and-yellow cube; JavaScript or TypeScript a bright lightning bolt; AWS, Azure or GCP a soft cloud; Docker stacked shipping containers; Kubernetes a ship's wheel; Terraform building blocks forming terrain; Kafka or streaming flowing ribbons; SQL or databases stacked cylinders; Snowflake a crystal snowflake; Spark or PySpark a sparkler; Tableau, Power BI or analytics a floating bar chart; Excel a green grid tile; security a padlock shield; testing or QA a magnifying glass; mobile a phone; AI or ML a soft brain shape; Agile or Scrum a sticky-note board; nursing or patient care a heart monitor line; finance a stack of coins; logistics a parcel on a conveyor. Invent equally simple stand-ins for anything else.`;
 
 const PLACE = `The place is the whole background. If there is one location, the background is that city's most famous, instantly recognizable view: its skyline, a landmark or its landscape (for example Chicago's skyline over the lake, the Blue Ridge Mountains for Asheville, desert mountains and saguaros for Phoenix), at golden hour or dusk, a little soft so the foreground stands out. If the city has no famous view, use the best-known view of its region or state. For several locations, blend each city's landmark into one continuous skyline. Only when work_mode is "remote", a cozy home workspace with a big window onto that location's view (or a calm night city when there is no location); for "hybrid", the city's view seen through a home window. No signs with writing, no flags.`;
 
@@ -108,11 +108,13 @@ const JOB_DIRECTION = `You are the art director for ProfilePush's Today reel, wh
 
 The picture always has:
 1. One persona: the professional who would do this job, waist-up, face clearly visible, expressive, confident and playful. The same scene is drawn twice with different people, so write the persona as the exact token [PERSONA] once (it is filled in later, as in "A confident [PERSONA], shown waist-up"). Never use he, she, his or her: say "they" or "the persona". Describe no other trait of the person.
-2. The skills, held: three to five objects, each a playful visual stand-in for one of the job's most important skills. The persona really holds them: the most important one in one hand, another balanced on a fingertip or tucked under an arm, the rest orbiting close around them. Pick the skills a recruiter would recognize first, and skip soft skills (communication, empathy, listening, patience, teamwork): use the role's own tools instead (a nurse: a stethoscope and a heart-rate line; pediatrics: a small teddy bear). Draw each as an object, never as a logo, letter or brand mark. Name only the objects: never write a skill, tool or brand name anywhere in the prompt (not even in brackets), or the image model paints it as text. ${STAND_INS}
+2. The skills, held: three to five objects, each a playful visual stand-in for one of the job's most important skills. The persona really holds them: the most important one in one hand, another balanced on a fingertip or tucked under an arm, the rest orbiting close around them. Pick the skills a recruiter would recognize first, and skip soft skills (communication, empathy, listening, patience, teamwork): use the role's own tools instead (a nurse: a stethoscope and a heart-rate line; pediatrics: a small colorful toy rocket). Draw each as an object, never as a logo, letter or brand mark. Name only the objects: never write a skill, tool or brand name anywhere in the prompt (not even in brackets), or the image model paints it as text. ${STAND_INS}
 3. ${PLACE}
 4. ${STYLE} Calm and uncluttered: the face and the held objects read first, the place right after.
 5. The bottom third calm, plain and darker.
-6. Nothing written anywhere and no logos, watermarks or real people; screens, notes and signs stay blank. Never use the words text, letters, words, captions or labels in the prompt, not even to forbid them: the image model draws whatever they name.
+6. Nothing written anywhere and no logos, watermarks or real people; screens, notes and signs stay blank.
+7. No animals of any kind, real, toy or shaped (no snakes, whales, teddy bears, birds or pets), even when a skill's name suggests one.
+8. Show the persona with dignity and warmth, as a capable professional: no stereotypes, caricature or exaggerated features of any ethnicity, culture, religion, age, gender or disability. Keep their described appearance exactly and add no cultural, religious, national or political symbols, flags or costumes. Never use the words text, letters, words, captions or labels in the prompt, not even to forbid them: the image model draws whatever they name.
 
 Reply with the prompt only, 110 to 170 words.`;
 
@@ -121,11 +123,12 @@ const PROFILE_DIRECTION = `You are the art director for ProfilePush's Today reel
 It stands for a real candidate, so it has NO people at all: no faces, figures, silhouettes, hands or body parts.
 
 The picture always has:
-1. The skills, on show: four to six objects, each a playful visual stand-in for one of the profile's most important skills, floating above a soft pedestal in the middle of the frame like a hero display. Pick the skills a recruiter would recognize first, and skip soft skills (communication, empathy, listening, patience, teamwork): use the role's own tools instead (a nurse: a stethoscope and a heart-rate line; pediatrics: a small teddy bear). Draw each as an object, never as a logo, letter or brand mark. Name only the objects: never write a skill, tool or brand name anywhere in the prompt (not even in brackets), or the image model paints it as text. ${STAND_INS}
+1. The skills, on show: four to six objects, each a playful visual stand-in for one of the profile's most important skills, floating above a soft pedestal in the middle of the frame like a hero display. Pick the skills a recruiter would recognize first, and skip soft skills (communication, empathy, listening, patience, teamwork): use the role's own tools instead (a nurse: a stethoscope and a heart-rate line; pediatrics: a small colorful toy rocket). Draw each as an object, never as a logo, letter or brand mark. Name only the objects: never write a skill, tool or brand name anywhere in the prompt (not even in brackets), or the image model paints it as text. ${STAND_INS}
 2. ${PLACE} The locations are where this consultant is or will work.
 3. ${STYLE} Calm and uncluttered: the objects read first, the place right after.
 4. The bottom third calm, plain and darker.
-5. Nothing written anywhere and no logos, watermarks or people; screens, notes and signs stay blank. Never use the words text, letters, words, captions or labels in the prompt, not even to forbid them: the image model draws whatever they name.
+5. Nothing written anywhere and no logos, watermarks or people; screens, notes and signs stay blank.
+6. No animals of any kind, real, toy or shaped (no snakes, whales, teddy bears, birds or pets), even when a skill's name suggests one. No cultural, religious, national or political symbols or flags. Never use the words text, letters, words, captions or labels in the prompt, not even to forbid them: the image model draws whatever they name.
 
 Reply with the prompt only, 90 to 150 words.`;
 
@@ -168,8 +171,8 @@ async function loadLead(admin: SupabaseClient, kind: string, id: string): Promis
 // Skill stand-ins for the template below (the same ones the writer is given).
 const OBJECTS: Array<[RegExp, string]> = [
   [/\bjava\b(?!script)/i, "a steaming coffee cup"], [/spring/i, "a green leaf"], [/react/i, "a spinning atom with orbit rings"],
-  [/angular/i, "a faceted shield crystal"], [/python/i, "a friendly coiled snake"], [/javascript|typescript|node/i, "a bright lightning bolt"],
-  [/aws|azure|gcp|cloud/i, "a soft cloud"], [/docker/i, "a small whale carrying boxes"], [/kubernetes|k8s/i, "a ship's wheel"],
+  [/angular/i, "a faceted shield crystal"], [/python/i, "a blue-and-yellow cube"], [/javascript|typescript|node/i, "a bright lightning bolt"],
+  [/aws|azure|gcp|cloud/i, "a soft cloud"], [/docker/i, "stacked shipping containers"], [/kubernetes|k8s/i, "a ship's wheel"],
   [/terraform|iac/i, "building blocks forming terrain"], [/kafka|stream/i, "flowing ribbons"], [/snowflake/i, "a crystal snowflake"],
   [/spark/i, "a sparkler"], [/sql|database|oracle|postgres|mongo/i, "stacked database cylinders"],
   [/tableau|power ?bi|analytic|report/i, "a floating bar chart"], [/excel/i, "a green grid tile"], [/secur|cyber/i, "a padlock shield"],
@@ -194,7 +197,7 @@ function templatePrompt(lead: Lead): string {
         : `the most famous, instantly recognizable view of ${place} (its skyline, a landmark or its landscape), at golden hour, a little soft`
       : "a smooth gradient in bold colors";
   const things = objects.length ? objects.join(", ") : "objects that stand for the work";
-  const style = `${STYLE} The bottom third calm, plain and darker. Nothing written anywhere, no logos or real people; screens and signs stay blank.`;
+  const style = `${STYLE} The bottom third calm, plain and darker. Nothing written anywhere, no logos or real people, no animals; screens and signs stay blank. The person is shown with dignity, with no stereotypes and no added cultural or religious symbols.`;
   return lead.kind === "job"
     ? `Vertical poster for a ${String(d.title || "job")} job. A confident, playful [PERSONA], shown waist-up, face clearly visible and expressive, really holding objects for the job's skills: ${things}; the most important one in one hand, the rest orbiting close. The background is ${background}. ${style}`
     : `Vertical poster for a ${String(d.role || "consultant")} profile, with no people at all. Objects for the profile's skills, ${things}, float above a soft pedestal in the middle like a hero display. The background is ${background}. ${style}`;
@@ -240,7 +243,7 @@ async function askWriter(lead: Lead): Promise<string> {
     // The image model paints what a prompt names: words in brackets ("a
     // coffee cup (Java)") and any sentence about text or labels come out.
     text = String(((await res.json()) as { text?: unknown }).text ?? "").trim().replace(/^["']|["']$/g, "").replace(/\s*\([^)]*\)/g, "")
-      .split(/(?<=[.!?])\s+/).filter((sentence) => !/\b(text|texts|caption|letters?|words?|labels?|typography|overlay|writing)\b/i.test(sentence)).join(" ");
+      .split(/(?<=[.!?])\s+/).filter((sentence) => !/\b(text|texts|caption|letters?|words?|labels?|typography|overlay|writing)\b/i.test(sentence) && !ANIMAL.test(sentence)).join(" ");
     if (text.length >= (job ? 600 : 450) && (!job || text.includes("[PERSONA]"))) return text;
     console.warn("job-visual short prompt", text.length);
   }
@@ -249,6 +252,10 @@ async function askWriter(lead: Lead): Promise<string> {
 }
 
 class RateLimited extends Error {}
+
+// We never show animals (a "Python" snake, a "Docker" whale): a sentence that
+// names one is dropped from the writer's prompt.
+const ANIMAL = /\b(snakes?|serpents?|pythons?|whales?|teddy|bears?|birds?|dogs?|cats?|fish|owls?|lions?|tigers?|elephants?|horses?|butterfl\w*|animals?|pets?|puppy|puppies|kittens?|dolphins?|penguins?|foxe?s?|rabbits?|bunny|monkeys?|parrots?|doves?|eagles?|mascots?)\b/i;
 
 // reference: a user's avatar, whose person the picture keeps.
 async function drawImage(prompt: string, reference?: string): Promise<{ bytes: Uint8Array; type: string }> {
@@ -341,7 +348,8 @@ async function drawMine(admin: SupabaseClient, rows: MyRow[]) {
       const avatar = avatarOf.get(r.user_id);
       if (!avatar) { await set({ status: "failed", attempts: 3, error: "No active avatar." }); tally.failed++; return; }
       let template = sceneOf.get(r.lead_id);
-      if (!template) {
+      // An older scene that still names an animal is written again.
+      if (!template || ANIMAL.test(template)) {
         const lead = await loadLead(admin, "job", r.lead_id);
         if (!lead) { await set({ status: "failed", attempts: 3, error: "Post not found." }); tally.failed++; return; }
         template = (await writePrompt(lead)).prompt;

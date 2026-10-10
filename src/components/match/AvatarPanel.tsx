@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, ImageUp, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { loadAvatar, type AvatarState } from '../../lib/avatar';
+import { avatarChanged, loadAvatar, type AvatarState } from '../../lib/avatar';
 import { trackEvent } from '../../lib/track';
 import LogoSpinner from '../LogoSpinner';
 
@@ -35,7 +35,8 @@ export default function AvatarPanel() {
     try {
       const { data, error: err } = await supabase.functions.invoke('my-avatar', { body });
       if (err || data?.error) throw new Error(data?.error || 'Something went wrong. Try again.');
-      setState(await loadAvatar());
+      avatarChanged();
+      setState(await loadAvatar(true));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Try again.');
     } finally {

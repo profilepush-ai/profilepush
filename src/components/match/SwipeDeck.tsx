@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
+import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, pictureFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
 import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
@@ -21,7 +21,7 @@ const section = (at: number) => ({ animation: `ppSection 450ms cubic-bezier(.2,.
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
   top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
-  onSeen, onApply, onSave, onShare, onDismiss, onDetails,
+  onSeen, onApply, onSave, onShare, onDismiss, onDetails, onReportPicture,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
   inline?: boolean; hideDetails?: boolean; paused?: boolean; emptyMessage?: { title: string; text: string };
@@ -45,6 +45,8 @@ export default function SwipeDeck({
   onSwipeUp?: () => void; onSwipeDown?: () => void; onTouch?: () => void;
   onSeen: (item: CardItem) => void; onApply: (item: CardItem) => void; onSave: (item: CardItem) => void;
   onShare: (item: CardItem) => void; onDismiss: (item: CardItem) => void; onDetails: (item: CardItem) => void;
+  /** "Report this picture" on a card's AI picture. */
+  onReportPicture?: (item: CardItem, url: string) => void;
 }) {
   const [currentId, setCurrentId] = useState<string | null>(startId ?? items[0]?.card_id ?? null);
   const [dir, setDir] = useState<'n' | 'p' | null>('n');
@@ -57,7 +59,9 @@ export default function SwipeDeck({
   // Reel playback: on unless turned off; holding a finger down pauses it.
   const [playing, setPlaying] = useState(() => { try { return localStorage.getItem('reel_autoplay') !== '0'; } catch { return true; } });
   const [held, setHeld] = useState(false);
-  const running = Boolean(reelMs) && playing && !held && !paused;
+  // The AI picture note, open for this card.
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const running = Boolean(reelMs) && playing && !held && !paused && !noteFor;
   const togglePlay = () => setPlaying((p) => { try { localStorage.setItem('reel_autoplay', p ? '0' : '1'); } catch { /* fine */ } return !p; });
   const stampTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flash = (text: string, color: string) => {
@@ -296,6 +300,26 @@ export default function SwipeDeck({
       <div className="relative z-20 flex items-center gap-2.5 py-2.5 pl-3 pr-2">
         <Initials name={name} id={item.subject_id} size={32} />
         <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b><small className="block truncate text-[11.5px] text-white/75">{kind === 'hotlist' ? subject?.title : 'Your job'}</small></div>
+        {picture && (
+          <span data-rail className="relative">
+            <button type="button" onClick={() => setNoteFor(noteFor === item.card_id ? null : item.card_id)} aria-expanded={noteFor === item.card_id}
+              className="inline-flex h-7 items-center gap-1 rounded-full bg-black/30 px-2.5 text-[11.5px] font-semibold text-white/90 backdrop-blur hover:bg-black/45">
+              <Info size={13} />AI picture
+            </button>
+            {noteFor === item.card_id && (
+              <span role="dialog" aria-label="About this picture" className="absolute right-0 top-9 z-50 block w-[270px] rounded-2xl bg-white p-3.5 text-left text-[12.5px] leading-snug text-gray-700 shadow-2xl dark:bg-[#20242a] dark:text-slate-200">
+                <b className="mb-1 block text-[13.5px] text-gray-900 dark:text-white">An AI illustration</b>
+                Made by AI to picture this role. It isn&apos;t a real person, and it&apos;s never chosen from anyone&apos;s name or background. ProfilePush stands against racism and discrimination of any kind. If a picture feels wrong, tell us and we&apos;ll draw a new one.
+                {onReportPicture && (
+                  <button type="button" onClick={() => { onReportPicture(item, picture); setNoteFor(null); }}
+                    className="mt-2.5 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-gray-100 text-[13px] font-bold text-gray-800 hover:bg-gray-200 dark:bg-white/10 dark:text-white">
+                    <Flag size={14} />Report this picture
+                  </button>
+                )}
+              </span>
+            )}
+          </span>
+        )}
         {ownControls && playButton}
         {ownControls && sizeButton}
         {corner}

@@ -7,6 +7,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 // with it. Drawn on Cloudflare (FLUX.2) through our pp-image-worker.
 //
 //   POST { action: "get" }                       -> { avatar, google_photo, avatar_on }
+// While it's on, it's their photo everywhere: posts, network profile, header.
 //   POST { action: "make", source: "google" }    -> { avatar }   (a preview, not used yet)
 //   POST { action: "make", source: "upload", image: "<base64>" }
 //   POST { action: "use" }                       -> { avatar, queued }
@@ -113,6 +114,8 @@ Deno.serve(async (req: Request) => {
       // Their pictures from before (an earlier avatar) are redrawn.
       await admin.from("match_visuals_me").update({ status: "queued", attempts: 0 }).eq("user_id", user.id);
       const { data: queued } = await admin.rpc("queue_my_today", { p_user: user.id });
+      // Their posts and network profile show it from now on.
+      await admin.rpc("pp_sync_user_photo", { p_user: user.id });
       return respond({ avatar: await current(), queued: queued ?? 0 });
     }
 
@@ -123,6 +126,8 @@ Deno.serve(async (req: Request) => {
       for (let i = 0; i < paths.length; i += 100) await admin.storage.from("job-visuals").remove(paths.slice(i, i + 100));
       await admin.from("match_visuals_me").delete().eq("user_id", user.id);
       await admin.from("user_avatars").delete().eq("user_id", user.id);
+      // Back to their Google photo on their posts and network profile.
+      await admin.rpc("pp_sync_user_photo", { p_user: user.id });
       return respond({ removed: true });
     }
 
