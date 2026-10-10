@@ -6,6 +6,8 @@ import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, pictureFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
 import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitLine, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
 import { usePictureColors } from './usePictureColors';
+import PushStreak from './PushStreak';
+import { PUSH_EASE, PUSH_MS, pushGhost } from '../../lib/push';
 
 // When each section of a card arrives (ms). Sections move as one block (many
 // small animations at once stutter on phones); inside, only the match ring
@@ -72,6 +74,13 @@ export default function SwipeDeck({
   const swiped = useRef(false);
   // The card follows the finger while it's dragged sideways, then flies off.
   const cardRef = useRef<HTMLDivElement | null>(null);
+  // Moving on is a push: the next card shoves this one (and its picture) off.
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const picRef = useRef<HTMLDivElement | null>(null);
+  const [push, setPush] = useState<{ n: number; to: 1 | -1; at: number } | null>(null);
+  const pushOut = (to: 1 | -1) => {
+    if (pushGhost(shellRef.current, [picRef.current, cardRef.current], to)) setPush((p) => ({ n: (p?.n ?? 0) + 1, to, at: Date.now() }));
+  };
   // A big stamp after Apply, Save or Pass, so the action is unmistakable.
   const [stamp, setStamp] = useState<{ text: string; color: string; n: number } | null>(null);
   // Reel playback: on unless turned off; holding a finger down pauses it.
@@ -118,6 +127,7 @@ export default function SwipeDeck({
     }
     const j = index + d;
     if (index < 0 || j < 0) return;
+    pushOut(d > 0 ? -1 : 1);
     if (j >= items.length) { setEnded(true); setCurrentId(null); onStep?.(d, null); return; }
     setCurrentId(items[j].card_id);
     setDir(d > 0 ? 'n' : 'p');
@@ -234,12 +244,7 @@ export default function SwipeDeck({
       const d: 1 | -1 = dx < 0 ? 1 : -1;
       if (Math.abs(dx) > 50 && !(d === -1 && index <= 0)) {
         swiped.current = true;
-        if (el) {
-          el.style.transition = 'transform .18s ease-in, opacity .18s ease-in';
-          el.style.transform = `translateX(${dx < 0 ? -130 : 130}%) rotate(${dx < 0 ? -14 : 14}deg)`;
-          el.style.opacity = '0';
-        }
-        setTimeout(() => step(d), 150);
+        step(d);
         return;
       }
       settle(el);
@@ -257,7 +262,7 @@ export default function SwipeDeck({
 
   if (!item || !item.lead) {
     return (
-      <div className={`${shell} pp-anim`} role={inline || !onClose ? 'region' : 'dialog'} aria-label="All caught up" {...gestures}>
+      <div ref={shellRef} className={`${shell} pp-anim`} role={inline || !onClose ? 'region' : 'dialog'} aria-label="All caught up" {...gestures}>
         <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: 'radial-gradient(closest-side, #10b981, transparent)' }} />
         {topSlot}
         {corner && <div className="relative z-10 flex justify-end p-2">{corner}</div>}
@@ -277,6 +282,7 @@ export default function SwipeDeck({
           )}
         </div>
         )}
+        {push && Date.now() - push.at < PUSH_MS + 100 && <PushStreak key={push.n} to={push.to} />}
         {stampEl}
         {handle}
       </div>
@@ -293,11 +299,14 @@ export default function SwipeDeck({
   const name = subjectName(kind, subject);
   const saved = Boolean(item.saved_at);
   const T = reelMs ? SLOW : FAST;
+  // Just pushed: this card (and its picture) slides in from the other side.
+  const pushIn = push && Date.now() - push.at < PUSH_MS ? `${push.to < 0 ? 'ppPushInL' : 'ppPushInR'} ${PUSH_MS}ms ${PUSH_EASE} both` : undefined;
   const rail = 'flex flex-col items-center gap-1 text-[11px] font-bold';
   const railIcon = 'grid h-[46px] w-[46px] place-items-center rounded-full bg-white text-gray-700 shadow-md ring-1 ring-black/5';
 
   return (
     <div
+      ref={shellRef}
       className={`${shell} pp-anim`}
       role={inline || !onClose ? 'region' : 'dialog'}
       aria-label="Swipe through matches"
@@ -307,7 +316,7 @@ export default function SwipeDeck({
         // The post's AI picture: sharp from below the profile row to about the
         // middle, on a smooth gradient of its own colors behind everything
         // else (the search and chips above it, the details below).
-        <div key={picture} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ animation: 'ppPicture .5s ease-out both' }}>
+        <div key={`${item.card_id}:${picture}`} ref={picRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ animation: pushIn ?? 'ppPicture .5s ease-out both' }}>
           {/* A smooth gradient of the picture's own colors, darkened. */}
           {tones && <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${tones[0]} 0%, ${tones[1]} 45%, ${tones[2]} 100%)` }} />}
           <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,.45) 30%, rgba(255,255,255,.9) 56%, #fff 78%)' }} />
@@ -315,7 +324,7 @@ export default function SwipeDeck({
             style={{ top: picTop, height: `max(160px, calc(56% - ${picTop}px))`, maskImage: 'linear-gradient(180deg, transparent, #000 16%, #000 60%, transparent)', WebkitMaskImage: 'linear-gradient(180deg, transparent, #000 16%, #000 60%, transparent)' }} />
         </div>
       ) : (
-        <div className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)` }} />
+        <div key={item.card_id} ref={picRef} className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)`, animation: pushIn }} />
       )}
       <div className="relative z-20 flex gap-[3px] px-2.5 pt-2.5" aria-hidden="true">
         {(() => {
@@ -367,7 +376,7 @@ export default function SwipeDeck({
       <button type="button" aria-label="Previous match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(-1); }} className="absolute bottom-[70px] left-0 top-[70px] z-10 w-[30%]" />
       <button type="button" aria-label="Next match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(1); }} className="absolute bottom-[70px] right-0 top-[70px] z-10 w-[30%]" />
 
-      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'safe flex-end' : 'safe center' }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'safe flex-end' : 'safe center', animation: pushIn }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
         {item.teaser ? (
           // A free preview: the title and match score; the rest unlocks with a top-up.
           <>
@@ -418,16 +427,16 @@ export default function SwipeDeck({
             <span className="grid h-[58px] w-[58px] place-items-center rounded-full bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]"><Lock size={22} /></span>Unlock
           </Link>
         ) : (<>
-        <button type="button" className={rail} onClick={() => { if (kind === 'hotlist') flash('APPLIED', '#34d399'); onApply(item); }} title={kind === 'job' ? 'Ask for the resume' : site ? 'Apply on their site' : 'Apply by email'}>
+        <button type="button" className={rail} onClick={() => { pushOut(1); if (kind === 'hotlist') flash('APPLIED', '#34d399'); onApply(item); }} title={kind === 'job' ? 'Ask for the resume' : site ? 'Apply on their site' : 'Apply by email'}>
           <span className={`grid h-[58px] w-[58px] place-items-center rounded-full ${site ? 'bg-emerald-600 shadow-[0_6px_18px_rgba(5,150,105,.5)]' : 'bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]'}`}>
             {kind === 'job' ? <FileText size={24} /> : site ? <ExternalLink size={22} /> : <Send size={24} />}
           </span>
           {kind === 'job' ? 'Ask Resume' : 'Apply'}
         </button>
-        <button type="button" className={rail} onClick={() => { flash('SAVED', '#60a5fa'); onSave(item); }}><span className={railIcon}><Bookmark size={20} fill={saved ? 'currentColor' : 'none'} /></span>Save</button>
+        <button type="button" className={rail} onClick={() => { if (!saved) pushOut(-1); flash('SAVED', '#60a5fa'); onSave(item); }}><span className={railIcon}><Bookmark size={20} fill={saved ? 'currentColor' : 'none'} /></span>Save</button>
         <button type="button" className={rail} onClick={() => onShare(item)}><span className={railIcon}><Share2 size={20} /></span>Share</button>
         </>)}
-        <button type="button" className={rail} onClick={() => { flash('PASS', '#f87171'); onDismiss(item); }}><span className={railIcon}><X size={20} /></span>Pass</button>
+        <button type="button" className={rail} onClick={() => { pushOut(-1); flash('PASS', '#f87171'); onDismiss(item); }}><span className={railIcon}><X size={20} /></span>Pass</button>
       </div>
 
       <div data-rail className={`relative z-30 flex items-center gap-2 px-4 pt-2.5 text-[13px] font-bold ${inline ? 'pb-4' : onSwipeUp ? 'pb-[calc(1.4rem+env(safe-area-inset-bottom))]' : 'pb-[calc(1rem+env(safe-area-inset-bottom))]'}`}>
@@ -439,6 +448,7 @@ export default function SwipeDeck({
         <span className="min-w-0 flex-1 truncate text-center text-[11px] font-semibold text-gray-400">{menuHint ? 'Swipe up for menu' : ''}</span>
         <span className="shrink-0 tabular-nums text-gray-500">{index + 1} / {items.length}</span>
       </div>
+      {push && Date.now() - push.at < PUSH_MS + 100 && <PushStreak key={push.n} to={push.to} />}
       {stampEl}
       {handle}
     </div>

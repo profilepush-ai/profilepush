@@ -18,12 +18,8 @@ import { supabase } from '../lib/supabase';
 
 const n = (v: number) => v.toLocaleString('en-US');
 
-// Who it's for, cycling through the hero's big background words.
-const WHO = ['Job posters', 'Job seekers', 'Bench marketers', 'Recruiters', 'Vendors', 'Staffing firms', 'Hiring managers'];
-const SHADE: React.CSSProperties = {
-  backgroundImage: 'linear-gradient(100deg, rgba(37,99,235,.15), rgba(37,99,235,.06) 55%, rgba(249,115,22,.11))',
-  WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
-};
+// What the AI Copilot is for, rotating in the hero's heading.
+const FOR = ['Job Hunting', 'Job Posting', 'Bench Sales'];
 
 function Step({ n: num, title, text, children }: { n: number; title: string; text: string; children: React.ReactNode }) {
   return (
@@ -57,8 +53,8 @@ export default function LandingNew() {
   const [users, setUsers] = useState<number | null>(null);
   useEffect(() => { void supabase.rpc('landing_user_count' as never).then(({ data }) => { const v = Number(data); if (Number.isFinite(v)) setUsers(v); }); }, []);
   const start = (where: string) => () => trackEvent('landing_v2_start', { where });
-  const [who, setWho] = useState(0);
-  useEffect(() => { const t = setInterval(() => setWho((i) => (i + 1) % WHO.length), 2800); return () => clearInterval(t); }, []);
+  const [forIdx, setForIdx] = useState(0);
+  useEffect(() => { const t = setInterval(() => setForIdx((i) => (i + 1) % FOR.length), 2400); return () => clearInterval(t); }, []);
 
   return (
     <div className="min-h-screen bg-[#f6f7fb] text-[#0f172a] dark:bg-[#1B1D21] dark:text-slate-100">
@@ -83,18 +79,27 @@ export default function LandingNew() {
       <section className="relative overflow-hidden">
         <div aria-hidden="true" className="pointer-events-none absolute -right-40 -top-40 h-[520px] w-[520px] rounded-full bg-[#2563EB]/15 blur-3xl" />
         <div aria-hidden="true" className="pointer-events-none absolute -left-32 top-64 h-[360px] w-[360px] rounded-full bg-[#FACC15]/15 blur-3xl" />
-        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-4 pb-4 pt-12 md:grid-cols-[1.1fr_1fr] md:pt-20">
+        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-4 pb-16 pt-12 md:grid-cols-[1.1fr_1fr] md:pt-20">
           <div>
             <p className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[13px] font-semibold text-gray-600 ring-1 ring-gray-200 dark:bg-white/5 dark:text-slate-300 dark:ring-white/10">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />{n(snap.stats.jobs24h)} new jobs in the last 24 hours
             </p>
-            <p className="mt-5 text-[15px] font-extrabold uppercase tracking-[0.12em] text-[#2563EB] sm:text-[17px]">
-              AI Copilot for <span key={who} className="inline-block animate-[ppWordIn_.7s_ease-out] text-[#0B1A3A] dark:text-white">{WHO[who]}</span>
-            </p>
-            <h1 className="mt-2 text-balance text-[44px] font-extrabold leading-[1.04] tracking-tight sm:text-[60px]">
-              Your best matches, <span className="text-[#2563EB]">every morning.</span>
+            <h1 className="mt-6 text-[46px] font-extrabold leading-[1.02] tracking-[-0.03em] sm:text-[66px]">
+              <span className="sr-only">AI Copilot for job hunting, job posting and bench sales</span>
+              <span aria-hidden="true">
+                AI Copilot for
+                {/* The rotating word rises in on its own line. */}
+                <span className="block h-[1.12em] overflow-hidden">
+                  <span key={forIdx} className="block animate-[ppWordIn_.8s_cubic-bezier(.2,.8,.2,1)]">
+                    <span className="text-[#2563EB]">{FOR[forIdx]}</span><span className="text-[#F97316]">.</span>
+                  </span>
+                </span>
+              </span>
             </h1>
-            <p className="mt-5 max-w-[34rem] text-[18px] leading-relaxed text-gray-600 dark:text-slate-300">
+            <p className="mt-4 text-balance text-[22px] font-extrabold leading-snug tracking-tight text-[#0B1A3A] dark:text-white sm:text-[26px]">
+              Stop searching. Your AI-powered matches arrive every day.
+            </p>
+            <p className="mt-3 max-w-[34rem] text-[17px] leading-relaxed text-gray-600 dark:text-slate-300">
               ProfilePush matches your profiles to fresh jobs, or your jobs to profiles, and plays them as a quick reel. Swipe, apply in a tap, and keep it all in one sheet.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
@@ -113,13 +118,6 @@ export default function LandingNew() {
           </div>
           {/* The latest real matches, shuffling. */}
           <LiveMatches />
-        </div>
-        {/* "AI Copilot for …" in very big, softly shaded letters along the
-            bottom, the second line cycling through who it's for. */}
-        <div aria-hidden="true" className="pointer-events-none relative -mt-2 select-none pb-6 text-center font-extrabold leading-[0.92] tracking-[-0.045em] md:-mt-24"
-          style={{ fontSize: 'clamp(54px, 10.5vw, 160px)' }}>
-          <span className="block whitespace-nowrap" style={SHADE}>AI Copilot for</span>
-          <span key={who} className="block animate-[ppWordIn_1s_cubic-bezier(.2,.8,.2,1)] whitespace-nowrap" style={SHADE}>{WHO[who]}</span>
         </div>
       </section>
 
