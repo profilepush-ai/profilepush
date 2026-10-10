@@ -5,10 +5,13 @@ import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, subjectName, type CardItem, type Kind, type Subject } from '../../lib/today';
 import { CompanyLogo, EngagementRow, FitBadges, FitRing, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
 
-// When each part of a card appears (ms). In the reel the details arrive one
-// to three seconds apart, about 15 seconds a card; elsewhere quickly.
-const SLOW = { title: 300, ring: 1500, badges: 2800, badgeGap: 260, skills: 4300, skillGap: 350, map: 7000, rate: 9300, eng: 11300, engGap: 400 };
-const FAST = { title: 90, ring: 150, badges: 250, badgeGap: 80, skills: 120, skillGap: 70, map: 0, rate: 0, eng: 600, engGap: 120 };
+// When each section of a card arrives (ms). Sections move as one block (many
+// small animations at once stutter on phones); inside, only the match ring
+// counts, the route draws and the rate marker slides. In the reel sections
+// arrive one to three seconds apart, about 15 seconds a card; elsewhere fast.
+const SLOW = { title: 250, ring: 1500, skills: 4000, map: 6500, rate: 8500, eng: 10500 };
+const FAST = { title: 60, ring: 150, skills: 300, map: 420, rate: 520, eng: 650 };
+const section = (at: number) => ({ animation: `ppSection 450ms cubic-bezier(.2,.8,.2,1) ${at}ms both`, willChange: 'transform, opacity' });
 
 // Swipe mode: one match per screen, stories style. Swipe or tap the sides to
 // move; the rail on the right is Apply, Save, Share and Pass. On a phone it is
@@ -253,28 +256,28 @@ export default function SwipeDeck({
       <button type="button" aria-label="Next match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(1); }} className="absolute bottom-[70px] right-0 top-[70px] z-10 w-[30%]" />
 
       <div key={item.card_id} ref={cardRef} style={{ justifyContent: 'safe center' }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20 ${dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
-        <div className="flex items-center gap-2.5" style={{ animation: 'ppFadeUp 350ms cubic-bezier(.2,.8,.2,1) 40ms both' }}>
+        <div className="flex items-center gap-2.5" style={section(0)}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
           <div className="min-w-0"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-white/75">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
         </div>
-        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={{ animation: `ppFadeUp 400ms cubic-bezier(.2,.8,.2,1) ${T.title}ms both` }}>{leadTitle(lead)}</h2>
-        <div className="flex items-center gap-3" style={{ animation: `ppFadeUp 350ms ease-out ${T.ring - 120}ms both` }}>
-          <FitRing value={item.fit ?? Math.round(item.similarity * 100)} size={72} onDark animate at={T.ring} />
-          <FitBadges fit={fit} onDark animate at={T.badges} gap={T.badgeGap} />
+        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
+        <div className="flex items-center gap-3" style={section(T.ring)}>
+          <FitRing value={item.fit ?? Math.round(item.similarity * 100)} size={72} onDark animate at={T.ring + 150} />
+          <FitBadges fit={fit} onDark />
         </div>
-        <SkillTiles skills={fit.skills.slice(0, 6)} onDark animate at={T.skills} gap={T.skillGap} />
+        <div style={section(T.skills)}><SkillTiles skills={fit.skills.slice(0, 6)} onDark /></div>
         {/* Where there's no room, the badges above say the same. */}
         {boxes && <div className="grid grid-cols-2 gap-2.5">
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5" style={{ animation: `ppFadeUp 350ms ease-out ${T.map - 250}ms both` }}>
-            <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} onDark animate at={T.map} />
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5" style={section(T.map)}>
+            <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} onDark animate wave={false} at={T.map - 300} />
             <p className="truncate text-[12px] font-semibold text-white/85">{fit.location.label}</p>
           </div>
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5" style={{ animation: `ppFadeUp 350ms ease-out ${T.rate - 250}ms both` }}>
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-2.5" style={section(T.rate)}>
             <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} onDark animate at={T.rate} />
             <p className="truncate text-[12px] font-semibold text-white/85">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr` : 'Rate not listed'}</p>
           </div>
         </div>}
-        <EngagementRow eng={item.eng} onDark animate at={boxes ? T.eng : Math.min(T.eng, T.map)} gap={T.engGap} />
+        <div style={section(boxes ? T.eng : T.map)}><EngagementRow eng={item.eng} onDark /></div>
       </div>
 
       <div data-rail className="absolute bottom-[76px] right-2 z-30 flex flex-col items-center gap-3.5">
