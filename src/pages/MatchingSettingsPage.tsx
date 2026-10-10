@@ -6,6 +6,7 @@ import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import { Initials } from '../components/match/Visuals';
 import AvatarPanel from '../components/match/AvatarPanel';
+import { PLAIN_SCORE_KEY, plainScore } from '../lib/prefs';
 import ReferPanel from '../components/ReferPanel';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -29,7 +30,7 @@ function Section({ title, detail, children, badge }: { title: string; detail: st
         </div>
         {badge}
       </div>
-      <div className="mt-3">{children}</div>
+      {children && <div className="mt-3">{children}</div>}
     </section>
   );
 }
@@ -37,6 +38,7 @@ function Section({ title, detail, children, badge }: { title: string; detail: st
 // Settings: everything that shapes matching (on/off, minimum match, daily
 // matches per profile or job, alerts), plus Gmail, plan and team.
 export default function MatchingSettingsPage() {
+  const [plain, setPlain] = useState(plainScore);
   const [currencyNow] = useCurrency();
   const price = priceLabels(currencyNow);
   const { account } = useAuth();
@@ -146,6 +148,16 @@ export default function MatchingSettingsPage() {
                 <Link to="/billing" className="font-semibold text-blue-600 hover:underline">Top up</Link>
               </p>
             </Section>
+
+            <Section title="Match score" detail={plain ? 'Shown as it is.' : 'Swings a moment before it lands on the score. Tap Show score on any card to skip it.'}
+              badge={(
+                <button type="button" role="switch" aria-checked={!plain} onClick={() => { const next = !plain; try { if (next) localStorage.setItem(PLAIN_SCORE_KEY, '1'); else localStorage.removeItem(PLAIN_SCORE_KEY); } catch { /* fine */ } setPlain(next); }}
+                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${!plain ? 'bg-green-600' : 'bg-gray-300 dark:bg-white/20'}`}>
+                  <span className={`absolute h-5 w-5 rounded-full bg-white shadow transition-transform ${!plain ? 'translate-x-6' : 'translate-x-1'}`} />
+                  <span className="sr-only">Animate the match score</span>
+                </button>
+              )}
+            >{null}</Section>
 
             <div id="refer" className="scroll-mt-20">
               <Section title="Refer and earn" detail="Share your link. When someone signs up with it, you get 100 credits and they get 50 bonus credits on top of their 100.">

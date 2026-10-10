@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
+import { PLAIN_SCORE_KEY, plainScore } from '../../lib/prefs';
 import { Bookmark, Check, Code2, DollarSign, Eye, Flame, Globe, MapPin, Send, Share2, ShieldCheck, Sparkles } from 'lucide-react';
 import { hashColor, skillLook, US_TILES, VISA_ORDER, type LocationFit } from '../../lib/match-fit';
 
@@ -76,10 +77,16 @@ function useCountUp(target: number, on: boolean, duration = 750, delay = 150) {
 // The match score "guessing": it swings past the score and back, each swing
 // smaller, for about three seconds, then lands on it. Playful, and it draws
 // the eye to the number.
-function useGuess(target: number, on: boolean, duration = 3200, delay = 150) {
-  const [value, setValue] = useState(on && !reducedMotion() ? 0 : target);
+
+// Anyone who'd rather not see it chooses "Show score" once (lib/prefs).
+function useGuess(target: number, on: boolean, duration = 3200, delay = 150): [number, boolean, () => void] {
+  const animated = on && !reducedMotion() && !plainScore();
+  const [value, setValue] = useState(animated ? 0 : target);
+  const [done, setDone] = useState(!animated);
+  const [skipped, setSkipped] = useState(false);
   useEffect(() => {
-    if (!on || reducedMotion()) { setValue(target); return; }
+    if (!animated || skipped) { setValue(target); setDone(true); return; }
+    setDone(false);
     let raf = 0;
     let t0 = 0;
     const tick = (t: number) => {
@@ -87,19 +94,21 @@ function useGuess(target: number, on: boolean, duration = 3200, delay = 150) {
       const p = Math.min(1, Math.max(0, (t - t0 - delay) / duration));
       const v = p >= 1 ? target : target * (1 - Math.exp(-3.4 * p) * Math.cos(2 * Math.PI * 2.2 * p));
       setValue(Math.max(0, Math.min(100, v)));
-      if (p < 1) raf = requestAnimationFrame(tick);
+      if (p < 1) raf = requestAnimationFrame(tick); else setDone(true);
     };
     setValue(0);
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [target, on, duration, delay]);
-  return value;
+  }, [target, animated, skipped, duration, delay]);
+  const skip = () => { try { localStorage.setItem(PLAIN_SCORE_KEY, '1'); } catch { /* fine */ } setSkipped(true); };
+  return [value, done, skip];
 }
 
 // The match score as a straight bar under the title, the number at its end.
 export function FitLine({ value, onDark = false, animate = false, at = 150 }: { value: number; onDark?: boolean; animate?: boolean; at?: number }) {
   const v = Math.max(0, Math.min(100, Math.round(value)));
-  const shown = Math.round(useGuess(v, animate, 3200, at));
+  const [guess, done, skip] = useGuess(v, animate, 3200, at);
+  const shown = Math.round(guess);
   const color = shown >= 85 ? '#10b981' : shown >= 75 ? '#3b82f6' : '#94a3b8';
   return (
     <div role="img" aria-label={`${v}% match`} className="flex items-center gap-2.5">
@@ -109,6 +118,12 @@ export function FitLine({ value, onDark = false, animate = false, at = 150 }: { 
       <b className={`shrink-0 text-[16px] font-extrabold tabular-nums leading-none ${onDark ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
         {shown}%<small className={`ml-1 text-[11px] font-semibold ${onDark ? 'text-white/70' : 'text-gray-500 dark:text-slate-400'}`}>match</small>
       </b>
+      {!done && (
+        <button type="button" data-rail onClick={(e) => { e.stopPropagation(); skip(); }}
+          className={`pointer-events-auto shrink-0 text-[11.5px] font-semibold underline underline-offset-2 ${onDark ? 'text-white/75' : 'text-gray-500'}`}>
+          Show score
+        </button>
+      )}
     </div>
   );
 }
