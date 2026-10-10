@@ -59,7 +59,7 @@ function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   return [
     { path: feedPath,       label: feedLabel,     mobileLabel: feedLabel,     icon: feedIcon,    hideOnMobile: false },
     // Today: each consultant's matches to submit to, against the daily target.
-    // Desktop only for now: the phone's bottom bar is the first five items.
+    // On a phone it takes the Profile slot in the bottom bar.
     ...(isBenchSales ? [{ path: '/today', label: 'Today', mobileLabel: 'Today', icon: Target, hideOnMobile: true }] : []),
     // Tracker: a column per consultant (or requirement), matches arriving
     // live as cards, with what was sent to each. It replaced the separate
@@ -598,14 +598,26 @@ export default function AppNav() {
             <FollowingIcon size={24} />
             <span>{followingItem.label}</span>
           </Link>
-          {/* My Profile in the phone bar; Inbox stays in the desktop nav. */}
-          <Link
-            to="/me"
-            className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/me') ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <CircleUser size={24} />
-            <span>Profile</span>
-          </Link>
+          {/* Bench sales get Today in the last slot (My profile stays in the
+              avatar menu); everyone else gets My Profile. Inbox stays in the
+              desktop nav. */}
+          {account?.active_persona === 'bench_sales' ? (
+            <Link
+              to="/today"
+              className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/today') ? 'text-blue-600' : 'text-gray-500'}`}
+            >
+              <Target size={24} />
+              <span>Today</span>
+            </Link>
+          ) : (
+            <Link
+              to="/me"
+              className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${location.pathname.startsWith('/me') ? 'text-blue-600' : 'text-gray-500'}`}
+            >
+              <CircleUser size={24} />
+              <span>Profile</span>
+            </Link>
+          )}
         </nav>
       )}
       {/* Not on Today: it would cover the Send button in the bottom corner. */}
