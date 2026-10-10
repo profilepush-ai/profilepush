@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Bell, Briefcase, Building2, Check, Copy, DollarSign, ExternalLink, GraduationCap, Mail, MapPin, Paperclip, Send, type LucideIcon } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { enableWebPush } from '../lib/onesignal';
@@ -8,7 +8,9 @@ const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.profilepush.
 const TICK_MS = 700;
 const TICKS_PER_SLIDE = 11;
 
-const STEP_LABELS = ['Reading your profile', 'Searching', 'Matching'];
+// A match usually takes 30-50s; the ring and the countdown are paced on this
+// until scoring reports real progress.
+const EXPECTED_SECONDS = 40;
 
 function stepOf(phase: string | null): number {
   const p = (phase ?? '').toLowerCase();
@@ -184,12 +186,12 @@ function ApplyScene({ t }: { t: number }) {
   );
 }
 
-type Feature = { key: string; bg: string; blobA: string; blobB: string; title: string; scene: (t: number) => ReactNode };
+type Feature = { key: string; title: string; scene: (t: number) => ReactNode };
 
 const FEATURES: Feature[] = [
-  { key: 'gmail', bg: 'from-blue-600 via-indigo-600 to-violet-600', blobA: 'bg-cyan-400', blobB: 'bg-fuchsia-500', title: 'AI Submit, resume attached', scene: (t) => <SubmitScene t={t} /> },
-  { key: 'career', bg: 'from-emerald-500 via-teal-500 to-cyan-500', blobA: 'bg-lime-300', blobB: 'bg-blue-600', title: 'Apply on 40+ career sites', scene: (t) => <ApplyScene t={t} /> },
-  { key: 'tracker', bg: 'from-orange-500 via-rose-500 to-pink-500', blobA: 'bg-yellow-300', blobB: 'bg-violet-600', title: 'Matches land all day', scene: (t) => <TrackerScene t={t} /> },
+  { key: 'gmail', title: 'AI Submit, resume attached', scene: (t) => <SubmitScene t={t} /> },
+  { key: 'career', title: 'Apply on 40+ career sites', scene: (t) => <ApplyScene t={t} /> },
+  { key: 'tracker', title: 'Matches land all day', scene: (t) => <TrackerScene t={t} /> },
 ];
 
 // Full screen while AI Match runs: a progress ring over a colour field, and
@@ -207,6 +209,15 @@ export default function AiMatchProcessing({ kind, phase, pct, gmailConnected, on
     typeof window !== 'undefined' && 'Notification' in window && !native ? Notification.permission : 'unsupported'
   ));
   const [weekCount, setWeekCount] = useState<number | null>(null);
+  const startedAt = useRef(Date.now());
+  const scoringFrom = useRef<{ at: number; pct: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [shown, setShown] = useState(5);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 400);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), TICK_MS);
@@ -229,8 +240,28 @@ export default function AiMatchProcessing({ kind, phase, pct, gmailConnected, on
   const t = tick % TICKS_PER_SLIDE;
   const feature = FEATURES[index];
   const step = stepOf(phase);
-  // Reading and searching fill the first half; scoring the second.
-  const ring = step < 2 ? 12 + step * 23 : 50 + Math.round((pct ?? 0) / 2);
+  const elapsed = (now - startedAt.current) / 1000;
+  if (step === 2 && pct != null && !scoringFrom.current) scoringFrom.current = { at: now, pct };
+  // Always moving: time-paced until scoring reports real progress, which then
+  // carries the second half. Never goes backwards, never shows 100 early.
+  const paced = 92 * (1 - Math.exp(-elapsed / 18));
+  const real = step < 2 ? 8 + step * 20 : 50 + (pct ?? 0) * 0.48;
+  const target = Math.min(99, Math.max(paced, real));
+  useEffect(() => {
+    setShown((cur) => (target > cur ? target : cur));
+  }, [target]);
+  const ring = Math.round(shown);
+  // Seconds left: from the scoring rate once there is one, else the usual pace.
+  const s0 = scoringFrom.current;
+  let left = EXPECTED_SECONDS - elapsed;
+  if (s0 && pct != null && pct > s0.pct + 3) {
+    const rate = (pct - s0.pct) / ((now - s0.at) / 1000);
+    left = (100 - pct) / rate;
+  }
+  const leftLabel = left > 4 ? `About ${Math.ceil(left / 5) * 5}s left` : 'Almost done';
+  const noun = kind === 'hotlist' ? 'consultants' : 'jobs';
+  const status = step === 0 ? 'Reading your profile'
+    : weekCount ? `Matching against ${weekCount.toLocaleString()} ${noun} · last 7 days` : `Matching against the last 7 days of ${noun}`;
   const R = 70;
   const C = 2 * Math.PI * R;
 
@@ -250,14 +281,8 @@ export default function AiMatchProcessing({ kind, phase, pct, gmailConnected, on
   })();
 
   return (
-    <div className="fixed inset-0 z-[65] overflow-hidden bg-indigo-950" role="dialog" aria-modal="true" aria-label="AI Match in progress">
-      {FEATURES.map((f, i) => (
-        <div key={f.key} className={`absolute inset-0 bg-gradient-to-br ${f.bg} transition-opacity duration-1000 ${i === index ? 'opacity-100' : 'opacity-0'}`}>
-          <div className={`animate-blob absolute -left-24 -top-24 h-[28rem] w-[28rem] rounded-full ${f.blobA} opacity-60 mix-blend-overlay blur-3xl`} />
-          <div className={`animate-blob-slow absolute -bottom-32 -right-24 h-[32rem] w-[32rem] rounded-full ${f.blobB} opacity-60 mix-blend-overlay blur-3xl`} />
-        </div>
-      ))}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.18)_100%)]" />
+    <div className="fixed inset-0 z-[65] overflow-hidden bg-indigo-600" role="dialog" aria-modal="true" aria-label="AI Match in progress">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(255,255,255,0.14)_0%,transparent_60%)]" />
 
       <div className="relative flex h-full flex-col items-center justify-center gap-6 overflow-y-auto px-5 py-6 text-white sm:gap-7">
         <div className="flex flex-col items-center">
@@ -275,11 +300,8 @@ export default function AiMatchProcessing({ kind, phase, pct, gmailConnected, on
             </div>
             <div className="animate-ping-slow absolute inset-0 rounded-full ring-2 ring-white/30" />
           </div>
-          <p className="mt-3 rounded-full bg-white/15 px-4 py-1.5 text-[12.5px] font-semibold tracking-wide backdrop-blur">
-            {step === 0 || !weekCount
-              ? STEP_LABELS[step]
-              : `${STEP_LABELS[step]} ${weekCount.toLocaleString()} ${kind === 'hotlist' ? 'consultants' : 'jobs'} · last 7 days`}
-          </p>
+          <p className="mt-3 text-[15px] font-bold">{status}</p>
+          <p className="mt-0.5 text-[13px] font-medium tabular-nums text-white/75">{leftLabel}</p>
         </div>
 
         <div key={feature.key} className="animate-fade-in-up flex flex-col items-center text-center">
