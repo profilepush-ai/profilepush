@@ -1,57 +1,29 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Bookmark, Check, ChevronRight, Copy, DollarSign, ExternalLink, Gift, Mail, MapPin, MousePointerClick, Send, Share2, ShieldCheck, Sparkles, Timer, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronRight, Copy, DollarSign, ExternalLink, Gift, Mail, MapPin, MousePointerClick, Send, ShieldCheck, Sparkles } from 'lucide-react';
 import Logo from '../components/Logo';
 import SiteFooter from '../components/SiteFooter';
 import SEO from '../components/SEO';
-import { FitLine } from '../components/match/Visuals';
 import { fetchMarketSnapshot, initialSnapshot, type MarketSnapshot } from '../lib/marketSnapshot';
 import { priceLabels, useCurrency } from '../lib/currency';
 import { trackEvent } from '../lib/track';
+import LiveMatches from '../components/landing/LiveMatches';
 import { supabase } from '../lib/supabase';
 
 // The landing page, rebuilt around what ProfilePush is now: daily matches
 // as a reel with a picture each, apply in a tap (email or ProfilePush Apply
 // on career sites), a tracker that's a sheet, pay per match. Every number on
-// it is live (the market snapshot); the cards are examples.
+// it is live (the market snapshot), and so is the top card (the latest
+// matches).
 
 const n = (v: number) => v.toLocaleString('en-US');
 
-function Ticking() {
-  const [s, setS] = useState(23 * 3600 + 41 * 60 + 7);
-  useEffect(() => { const t = setInterval(() => setS((x) => (x > 0 ? x - 1 : 23 * 3600)), 1000); return () => clearInterval(t); }, []);
-  const two = (v: number) => String(v).padStart(2, '0');
-  return <>{Math.floor(s / 3600)}:{two(Math.floor(s / 60) % 60)}:{two(s % 60)} left</>;
-}
-
-// An example match card, as Today shows it.
-function ReelCard() {
-  return (
-    <div className="relative w-[300px] overflow-hidden rounded-[26px] bg-[#0b0f1a] text-white shadow-[0_30px_80px_rgba(11,26,58,.35)] sm:w-[330px]" aria-label="An example match">
-      <img src="/landing-v2/java.webp" alt="" className="h-[300px] w-full object-cover object-[50%_20%] sm:h-[320px]" style={{ maskImage: 'linear-gradient(180deg,#000 70%,transparent)', WebkitMaskImage: 'linear-gradient(180deg,#000 70%,transparent)' }} />
-      <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/35 px-2.5 py-1 text-[11px] font-semibold backdrop-blur">AI picture</span>
-      <div className="-mt-10 space-y-3 px-4 pb-4">
-        <div className="flex items-center gap-2.5">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#2563EB] text-[17px] font-extrabold">N</span>
-          <div className="min-w-0 flex-1"><b className="block text-[14px]">Northwind Tech</b><small className="text-[11.5px] text-white/70">Apply by email · 2h ago</small></div>
-          <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-1 text-[11px] font-bold tabular-nums"><Timer size={11} /><Ticking /></span>
-        </div>
-        <h3 className="text-[22px] font-extrabold leading-tight tracking-tight">Senior Java Developer</h3>
-        <FitLine value={91} onDark animate at={600} />
-        <div className="flex flex-wrap gap-1.5 text-[12px] font-bold">
-          {['Java', 'Spring Boot', 'AWS', 'React'].map((s) => <span key={s} className="inline-flex items-center gap-1 rounded-full border-[1.5px] border-[#93c5fd] px-2 py-[2px]"><Check size={11} strokeWidth={3} />{s}</span>)}
-          <span className="rounded-full border-[1.5px] border-dashed border-white/40 px-2 py-[2px] font-semibold text-white/65">Kafka</span>
-        </div>
-        <div className="grid grid-cols-4 gap-2 pt-1 text-center text-[10.5px] font-bold">
-          {[[Send, 'Apply', 'bg-[#2563EB]'], [Bookmark, 'Save', 'bg-white/15'], [Share2, 'Share', 'bg-white/15'], [X, 'Pass', 'bg-white/15']].map(([Icon, label, bg]) => {
-            const I = Icon as typeof Send;
-            return <span key={label as string} className="flex flex-col items-center gap-1"><span className={`grid h-10 w-10 place-items-center rounded-full ${bg as string}`}><I size={17} /></span>{label as string}</span>;
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
+// Who it's for, cycling through the hero's big background words.
+const WHO = ['Job posters', 'Job seekers', 'Bench marketers', 'Recruiters', 'Vendors', 'Staffing firms', 'Hiring managers'];
+const SHADE: React.CSSProperties = {
+  backgroundImage: 'linear-gradient(100deg, rgba(37,99,235,.15), rgba(37,99,235,.06) 55%, rgba(249,115,22,.11))',
+  WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+};
 
 function Step({ n: num, title, text, children }: { n: number; title: string; text: string; children: React.ReactNode }) {
   return (
@@ -85,6 +57,8 @@ export default function LandingNew() {
   const [users, setUsers] = useState<number | null>(null);
   useEffect(() => { void supabase.rpc('landing_user_count' as never).then(({ data }) => { const v = Number(data); if (Number.isFinite(v)) setUsers(v); }); }, []);
   const start = (where: string) => () => trackEvent('landing_v2_start', { where });
+  const [who, setWho] = useState(0);
+  useEffect(() => { const t = setInterval(() => setWho((i) => (i + 1) % WHO.length), 2800); return () => clearInterval(t); }, []);
 
   return (
     <div className="min-h-screen bg-[#f6f7fb] text-[#0f172a] dark:bg-[#1B1D21] dark:text-slate-100">
@@ -109,12 +83,14 @@ export default function LandingNew() {
       <section className="relative overflow-hidden">
         <div aria-hidden="true" className="pointer-events-none absolute -right-40 -top-40 h-[520px] w-[520px] rounded-full bg-[#2563EB]/15 blur-3xl" />
         <div aria-hidden="true" className="pointer-events-none absolute -left-32 top-64 h-[360px] w-[360px] rounded-full bg-[#FACC15]/15 blur-3xl" />
-        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-16 pt-12 md:grid-cols-[1.1fr_1fr] md:pt-20">
+        <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-4 pb-4 pt-12 md:grid-cols-[1.1fr_1fr] md:pt-20">
           <div>
             <p className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[13px] font-semibold text-gray-600 ring-1 ring-gray-200 dark:bg-white/5 dark:text-slate-300 dark:ring-white/10">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />{n(snap.stats.jobs24h)} new jobs in the last 24 hours
             </p>
-            <p className="mt-5 text-[13px] font-extrabold uppercase tracking-[0.14em] text-[#2563EB]">AI Copilot for recruiters, vendors and job seekers</p>
+            <p className="mt-5 text-[15px] font-extrabold uppercase tracking-[0.12em] text-[#2563EB] sm:text-[17px]">
+              AI Copilot for <span key={who} className="inline-block animate-[ppWordIn_.7s_ease-out] text-[#0B1A3A] dark:text-white">{WHO[who]}</span>
+            </p>
             <h1 className="mt-2 text-balance text-[44px] font-extrabold leading-[1.04] tracking-tight sm:text-[60px]">
               Your best matches, <span className="text-[#2563EB]">every morning.</span>
             </h1>
@@ -126,20 +102,24 @@ export default function LandingNew() {
               <a href="#how" className="inline-flex h-12 items-center rounded-full px-5 text-[16px] font-bold text-gray-700 ring-1 ring-gray-300 hover:bg-white dark:text-slate-200 dark:ring-white/15 dark:hover:bg-white/5">See how it works</a>
             </div>
             {users != null && users > 0 && (
-              <p className="mt-6 inline-flex items-center gap-2.5 text-[14.5px] font-semibold text-gray-700 dark:text-slate-200">
+              <p className="mt-6 flex items-center gap-2.5 text-[14.5px] font-semibold text-gray-700 dark:text-slate-200">
                 <span className="flex -space-x-2" aria-hidden="true">
                   {['#2563EB', '#F97316', '#10b981', '#7c3aed'].map((c) => <span key={c} className="h-7 w-7 rounded-full border-2 border-[#f6f7fb] dark:border-[#1B1D21]" style={{ background: c }} />)}
                 </span>
-                Trusted by <b className="tabular-nums">{n(users)}</b> job posters and job seekers
+                <span>Trusted by <b className="tabular-nums">{n(users)}</b> job posters and job seekers</span>
               </p>
             )}
             <p className="mt-2 text-[13px] text-gray-500 dark:text-slate-400">No card needed</p>
           </div>
-          <div className="relative mx-auto h-[560px] w-[330px] sm:w-[360px]">
-            <img src="/landing-v2/data.webp" alt="" className="absolute left-6 top-6 h-[480px] w-[300px] rotate-[-7deg] rounded-[26px] object-cover opacity-70 shadow-xl" />
-            <img src="/landing-v2/cloud.webp" alt="" className="absolute right-0 top-3 h-[480px] w-[300px] rotate-[6deg] rounded-[26px] object-cover opacity-80 shadow-xl" />
-            <div className="absolute left-1/2 top-0 -translate-x-1/2"><ReelCard /></div>
-          </div>
+          {/* The latest real matches, shuffling. */}
+          <LiveMatches />
+        </div>
+        {/* "AI Copilot for …" in very big, softly shaded letters along the
+            bottom, the second line cycling through who it's for. */}
+        <div aria-hidden="true" className="pointer-events-none relative -mt-2 select-none pb-6 text-center font-extrabold leading-[0.92] tracking-[-0.045em] md:-mt-24"
+          style={{ fontSize: 'clamp(54px, 10.5vw, 160px)' }}>
+          <span className="block whitespace-nowrap" style={SHADE}>AI Copilot for</span>
+          <span key={who} className="block animate-[ppWordIn_1s_cubic-bezier(.2,.8,.2,1)] whitespace-nowrap" style={SHADE}>{WHO[who]}</span>
         </div>
       </section>
 
