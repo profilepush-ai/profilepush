@@ -37,6 +37,8 @@ const PublicHotlistPage = lazy(() => import('./pages/PublicHotlistPage'));
 const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'));
 const MyProfilePage = lazy(() => import('./pages/MyProfilePage'));
 const BoardPage = lazy(() => import('./pages/BoardPage'));
+const TrackerPage = lazy(() => import('./pages/TrackerPage'));
+const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const TodayPage = lazy(() => import('./pages/TodayPage'));
 const PostApplicationsPage = lazy(() => import('./pages/PostApplicationsPage'));
 const HotlistRequestsPage = lazy(() => import('./pages/HotlistRequestsPage'));
@@ -159,7 +161,8 @@ function HomeRedirect() {
     let cancelled = false;
     void supabase.rpc('my_landing_path' as never).then(({ data, error }) => {
       if (cancelled) return;
-      const landing = !error && (data === '/today' || data === '/tracker' || data === '/match') ? (data as string) : '/match';
+      // Today is home; people who haven't posted anything start in AI Match.
+      const landing = !error && data === '/match' ? '/match' : '/today';
       setPath(landing);
     });
     return () => { cancelled = true; };
@@ -309,9 +312,11 @@ export default function App() {
             <Route path="/profile/:slug" element={<ErrorBoundary><PublicProfilePage /></ErrorBoundary>} />
             <Route path="/me" element={<ProtectedRoute><ErrorBoundary><MyProfilePage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/home" element={<ProtectedRoute><ErrorBoundary><HomeRedirect /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><BoardPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/history" element={<ProtectedRoute><ErrorBoundary><HistoryPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/today" element={<ProtectedRoute><ErrorBoundary><TodayPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/board" element={<Navigate to="/tracker" replace />} />
+            {/* The earlier column board, kept for anyone who still wants it. */}
+            <Route path="/board" element={<ProtectedRoute><ErrorBoundary><BoardPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
             <Route path="/terms" element={<ErrorBoundary><TermsAndConditions /></ErrorBoundary>} />
             <Route path="/security" element={<ErrorBoundary><SecurityPage /></ErrorBoundary>} />
@@ -345,7 +350,8 @@ export default function App() {
             <Route path="/support" element={<ProtectedRoute><ErrorBoundary><SupportPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/roadmap" element={<ProtectedRoute><ErrorBoundary><RoadmapPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><ErrorBoundary><BillingPage /></ErrorBoundary></ProtectedRoute>} />
-            <Route path="/settings/matching" element={<ProtectedRoute><ErrorBoundary><MatchingSettingsPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><ErrorBoundary><MatchingSettingsPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/settings/matching" element={<Navigate to="/settings" replace />} />
             <Route path="/team" element={<ProtectedRoute><ErrorBoundary><TeamPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/website" element={<ProtectedRoute><ErrorBoundary><WebsitePage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/tracker/requests" element={<Navigate to="/tracker" replace />} />
