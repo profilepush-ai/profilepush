@@ -35,7 +35,7 @@ const phases = [
     title: 'Matches land in your Tracker',
     tagline: 'A live column for every consultant and every requirement.',
     points: [
-      { label: 'A column each', text: 'Each thing you posted gets its own column, and new matches land in it all day, newest first. Each new match costs 1 credit, up to 10 a day on the free plan (30 once you have bought credits).' },
+      { label: 'A column each', text: 'Each thing you posted gets its own column, and new matches land in it all day, newest first. New matches are free and unlimited; credits are spent only when you send.' },
       { label: 'No noise twice', text: 'Reposts are merged into one card, and anything you mark "Not a match" never comes back.' },
       { label: 'Alerts', text: 'A notification on your phone (Android app) or browser when strong matches land, and an email if matches are waiting while you are away.' },
     ],
