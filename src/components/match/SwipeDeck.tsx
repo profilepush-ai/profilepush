@@ -38,7 +38,7 @@ function TimeLeft({ item }: { item: CardItem }) {
 
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, teaserSince = null, asked, onAsk, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, teaserSince = null, asked, onAsk, hideAsk = false, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails, onReportPicture,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
@@ -59,6 +59,8 @@ export default function SwipeDeck({
   expiring?: boolean;
   /** Ask the poster for what the post leaves out. */
   asked?: Record<string, Question[]>; onAsk?: (item: CardItem, q: Question) => void;
+  /** The Ask buttons live elsewhere (desktop: the detail beside the deck). */
+  hideAsk?: boolean;
   onClose?: () => void; onCurrent?: (item: CardItem | null) => void; onStep?: (d: 1 | -1, toId: string | null) => void;
   /** Full screen: back to the normal page. In the page: go full screen. */
   onCollapse?: () => void; onExpand?: () => void;
@@ -400,7 +402,7 @@ export default function SwipeDeck({
         <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
         <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
         <div style={section(T.ring)}><FitBadges fit={fit} hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} /></div>
-        {onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
+        {!hideAsk && onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
           <div data-rail className="pointer-events-auto" style={section(T.ask)}>
             <AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} />
           </div>

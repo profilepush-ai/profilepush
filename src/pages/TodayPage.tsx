@@ -459,6 +459,7 @@ export default function TodayPage() {
                   {...deckProps}
                   inline
                   hideDetails={wide}
+                  hideAsk={wide}
                   boxes={wide}
                   top={topBar}
                   endScreen={endScreen}
