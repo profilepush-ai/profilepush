@@ -147,12 +147,20 @@ export default function SwipeDeck({
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // The next two pictures load ahead, so a swipe never waits for one.
+  // The next three pictures (and the one before) are downloaded and decoded
+  // ahead and kept, so a swipe paints its picture at once, never blank first.
+  const ready = useRef(new Map<string, HTMLImageElement>());
   useEffect(() => {
     if (index < 0) return;
-    for (const next of items.slice(index + 1, index + 3)) {
+    const near = [...items.slice(index + 1, index + 4), items[index - 1]].filter(Boolean) as CardItem[];
+    for (const next of near) {
       const url = (avatarOn ? next.my_visual : null) || (next.lead ? pictureFor(next.lead, viewerId) : null);
-      if (url) new Image().src = url;
+      if (!url || ready.current.has(url)) continue;
+      const im = new Image();
+      im.src = url;
+      void im.decode?.().catch(() => {});
+      ready.current.set(url, im);
+      if (ready.current.size > 12) ready.current.delete(ready.current.keys().next().value as string);
     }
   }, [index, items, viewerId, avatarOn]);
 
@@ -284,6 +292,8 @@ export default function SwipeDeck({
       : [subject?.years ? `${Math.round(Number(subject.years))} yrs` : null, subject?.visa].filter(Boolean).join(' · ') || null;
   // Just pushed: this card (and its picture) slides in from the other side.
   const pushIn = push && Date.now() - push.at < PUSH_MS ? `${push.to < 0 ? 'ppPushInL' : 'ppPushInR'} ${PUSH_MS}ms ${PUSH_EASE} both` : undefined;
+  // Pushed in: the card slides in whole; its parts don't fade in again on top.
+  const sec = (at: number) => (pushIn ? undefined : section(at));
   const rail = 'flex flex-col items-center gap-1 text-[11px] font-bold';
   const railIcon = 'grid h-[46px] w-[46px] place-items-center rounded-full bg-white text-gray-700 shadow-md ring-1 ring-black/5';
 
@@ -300,7 +310,7 @@ export default function SwipeDeck({
         // light fade at the top keeps the search and stories readable; the
         // details sit on frosted glass at the bottom.
         <div key={`${item.card_id}:${picture}`} ref={picRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden bg-[#e8eef8]" style={{ animation: pushIn ?? 'ppPicture .6s ease-out both' }}>
-          <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[50%_26%]" />
+          <img src={picture} alt="" decoding="sync" className="absolute inset-0 h-full w-full object-cover object-[50%_26%]" />
           <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(248,250,252,.82) 0%, rgba(248,250,252,.45) 13%, rgba(248,250,252,0) 26%, rgba(248,250,252,0) 62%, rgba(248,250,252,.35) 100%)' }} />
         </div>
       ) : (
@@ -362,10 +372,10 @@ export default function SwipeDeck({
         {item.teaser ? (
           // A free preview: the title and match score; the rest unlocks with a top-up.
           <>
-            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-bold text-amber-700 ring-1 ring-amber-200" style={section(0)}><Lock size={13} />Free preview</span>
-            <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
-            <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
-            <div className="space-y-2.5 rounded-2xl border border-gray-200 bg-gray-50 p-3.5" style={section(T.skills)}>
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-bold text-amber-700 ring-1 ring-amber-200" style={sec(0)}><Lock size={13} />Free preview</span>
+            <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={sec(T.title)}>{leadTitle(lead)}</h2>
+            <div className="-mt-1.5" style={sec(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
+            <div className="space-y-2.5 rounded-2xl border border-gray-200 bg-gray-50 p-3.5" style={sec(T.skills)}>
               <div aria-hidden="true" className="space-y-2">{[78, 62, 88, 50].map((w) => <i key={w} className="block h-2.5 rounded-full bg-gray-200" style={{ width: `${w}%` }} />)}</div>
               <p className="text-[13px] font-semibold text-gray-700">The company, rate, skills and how to apply are in this match.{previewDays != null ? ` ${previewDays} ${previewDays === 1 ? 'day' : 'days'} of free previews left.` : ''}</p>
               <Link to="/billing" data-rail className="pointer-events-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[14.5px] font-extrabold text-white">
@@ -375,31 +385,31 @@ export default function SwipeDeck({
           </>
         ) : (
         <div className={`${picture ? '-mr-16 rounded-[26px] bg-white/60 py-3.5 pl-3.5 pr-[4.5rem] shadow-[0_10px_30px_rgba(11,26,58,.12)] ring-1 ring-white/70 backdrop-blur-2xl' : ''} flex flex-col gap-3`}>
-        <div className="flex items-center gap-2.5" style={section(0)}>
+        <div className="flex items-center gap-2.5" style={sec(0)}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
           <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-gray-500">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
         </div>
-        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
-        <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
-        <div style={section(T.ring)}><FitBadges fit={fit} hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} /></div>
+        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={sec(T.title)}>{leadTitle(lead)}</h2>
+        <div className="-mt-1.5" style={sec(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
+        <div style={sec(T.ring)}><FitBadges fit={fit} hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} /></div>
         {!hideAsk && onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
-          <div data-rail className="pointer-events-auto" style={section(T.ask)}>
+          <div data-rail className="pointer-events-auto" style={sec(T.ask)}>
             <AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} />
           </div>
         )}
-        <div style={section(T.skills)}><SkillTiles skills={fit.skills.slice(0, 6)} /></div>
+        <div style={sec(T.skills)}><SkillTiles skills={fit.skills.slice(0, 6)} /></div>
         {/* Where there's no room (short phones, or a picture), the badges above say the same. */}
         {boxes && !picture && <div className="grid grid-cols-2 gap-2.5">
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={section(T.map)}>
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={sec(T.map)}>
             <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} animate wave={false} at={T.map - 300} />
             <p className="truncate text-[12px] font-semibold text-gray-700">{fit.location.label}</p>
           </div>
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={section(T.rate)}>
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={sec(T.rate)}>
             <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} animate at={T.rate} />
             <p className="truncate text-[12px] font-semibold text-gray-700">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr` : 'Rate not listed'}</p>
           </div>
         </div>}
-        <div style={section(boxes && !picture ? T.eng : T.map)}><EngagementRow eng={item.eng} /></div>
+        <div style={sec(boxes && !picture ? T.eng : T.map)}><EngagementRow eng={item.eng} /></div>
         </div>)}
       </div>
 
