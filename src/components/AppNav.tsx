@@ -581,22 +581,18 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
             <Kanban size={24} />
             <span>Tracker</span>
           </Link>
-          {/* AI Match is the centre action, raised above the bar so it reads as
-              the primary thing to do. It uses the same py-2 / gap-1 / 24px icon
-              slot as the other four items so every label sits on one baseline;
-              the circle is positioned out of that slot upwards and takes no
-              layout space, which is what keeps the row aligned. */}
+          {/* AI Match, the centre action, like PhonePe's Scan: a large solid
+              brand circle inside the bar (nothing popping out above it), no
+              label; the bar's height is unchanged. */}
           <Link
             to="/match"
             aria-label="AI Match"
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-semibold ${location.pathname.startsWith('/match') ? 'text-blue-600' : 'text-gray-600'}`}
+            title="AI Match"
+            className="flex flex-1 items-center justify-center py-1"
           >
-            <span className="relative h-6 w-full">
-              <span className="absolute bottom-1 left-1/2 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30 ring-[3px] ring-white transition-transform active:scale-95">
-                <Sparkles size={22} strokeWidth={2.25} />
-              </span>
+            <span className={`grid h-[52px] w-[52px] place-items-center rounded-full text-white transition-transform active:scale-95 ${location.pathname.startsWith('/match') ? 'bg-[#1d4ed8]' : 'bg-[#2563EB]'}`}>
+              <Sparkles size={24} strokeWidth={2.3} />
             </span>
-            <span>AI Match</span>
           </Link>
           <Link
             to="/history"
