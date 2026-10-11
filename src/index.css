@@ -485,4 +485,4 @@
 @keyframes ppSeamR { 0% { transform: translateX(-100%); opacity: 0; } 12% { opacity: 1; } 72% { opacity: 1; } 100% { transform: none; opacity: 0; } }
 @keyframes ppConfetti { 0% { transform: translateY(-24px) rotate(0); opacity: 1; } 100% { transform: translateY(105vh) rotate(720deg); opacity: .85; } }
 /* One block at a time: a section of the swipe card arriving. */
-@keyframes ppSection { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes ppSection { from { opacity: 0; transform: translateY(18px) scale(.985); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
