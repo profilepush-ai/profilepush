@@ -250,13 +250,13 @@ export default function SwipeDeck({
         {sizeButton && ownControls && <div className="relative z-30 flex justify-end px-3 pt-2">{sizeButton}</div>}
         {endScreen && !emptyMessage ? <div className="relative z-10 flex min-h-0 flex-1 flex-col">{endScreen}</div> : (
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-          <span className="grid h-[72px] w-[72px] place-items-center rounded-full bg-emerald-600"><Check size={36} strokeWidth={3} /></span>
+          <span className="grid h-[72px] w-[72px] place-items-center rounded-full bg-emerald-600 text-white"><Check size={36} strokeWidth={3} /></span>
           <h2 className="text-[26px] font-extrabold">{emptyMessage?.title ?? 'All caught up'}</h2>
           <p className="max-w-[28ch] text-gray-600">{emptyMessage?.text ?? `${appliedToday} applied today. New matches arrive every 10 minutes.`}</p>
           {inline || !onClose ? (
             <div className="mt-2 flex flex-wrap justify-center gap-2">
               <Link to="/history" className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-4 py-2.5 font-bold text-gray-800"><History size={16} />History</Link>
-              <Link to="/match" className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2.5 font-bold"><Sparkles size={16} />Run AI Match</Link>
+              <Link to="/match" className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2.5 font-bold text-white"><Sparkles size={16} />Run AI Match</Link>
             </div>
           ) : (
             <button type="button" onClick={onClose} className="mt-2 rounded-full bg-gray-100 px-5 py-2.5 font-bold text-gray-800">Back to Today</button>
@@ -411,11 +411,11 @@ export default function SwipeDeck({
       <div data-rail className="absolute bottom-[76px] right-2 z-30 flex flex-col items-center gap-3.5">
         {item.teaser ? (
           <Link to="/billing" className={rail} title="Top up to see this match">
-            <span className="grid h-[58px] w-[58px] place-items-center rounded-full bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]"><Lock size={22} /></span>Unlock
+            <span className="grid h-[58px] w-[58px] place-items-center rounded-full bg-blue-600 text-white shadow-[0_6px_18px_rgba(37,99,235,.5)]"><Lock size={22} /></span>Unlock
           </Link>
         ) : (<>
         <button type="button" className={rail} onClick={() => { pushOut(1); if (kind === 'hotlist') flash('APPLIED', '#34d399'); onApply(item); }} title={kind === 'job' ? 'Ask for the resume' : site ? 'Apply on their site' : 'Apply by email'}>
-          <span className={`grid h-[58px] w-[58px] place-items-center rounded-full ${site ? 'bg-emerald-600 shadow-[0_6px_18px_rgba(5,150,105,.5)]' : 'bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]'}`}>
+          <span className={`grid h-[58px] w-[58px] place-items-center rounded-full text-white ${site ? 'bg-emerald-600 shadow-[0_6px_18px_rgba(5,150,105,.5)]' : 'bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]'}`}>
             {kind === 'job' ? <FileText size={24} /> : site ? <ExternalLink size={22} /> : <Send size={24} />}
           </span>
           {kind === 'job' ? 'Ask Resume' : 'Apply'}

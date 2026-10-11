@@ -371,7 +371,7 @@ export default function TodayPage() {
     <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-5 py-4 text-center">
       <Confetti />
       <AskForRating when={appliedToday > 0} />
-      <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-emerald-600 shadow-[0_0_0_8px_rgba(16,185,129,.18)]" style={{ animation: 'ppPop 420ms cubic-bezier(.2,.8,.2,1) both' }}><Check size={32} strokeWidth={3} /></span>
+      <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-emerald-600 text-white shadow-[0_0_0_8px_rgba(16,185,129,.18)]" style={{ animation: 'ppPop 420ms cubic-bezier(.2,.8,.2,1) both' }}><Check size={32} strokeWidth={3} /></span>
       <div style={{ animation: 'ppFadeUp 400ms ease-out 120ms both' }}>
         <h2 className="text-[26px] font-extrabold leading-tight">{free && (reel?.new_today ?? 0) >= (reel?.free_daily ?? 10) ? "That's today's 10" : 'Reel complete'}</h2>
         <p className="mt-0.5 text-[13.5px] text-gray-500">{filter !== 'all' && subjects[filter] ? `You watched every match for ${subjectName(kind, subjects[filter])}.` : free ? 'You watched every match for today.' : 'You watched every new match.'}</p>
@@ -407,7 +407,7 @@ export default function TodayPage() {
             : data?.teasers?.since
               ? `Your free credits are used: 10 previews a day, title and match score only. Next 10 in ${countdown}.`
               : `Free plan: 10 new matches a day. Next 10 in ${countdown}.`}</p>
-          <Link to="/billing" className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[14px] font-extrabold"><Sparkles size={16} />Get up to 100 a day</Link>
+          <Link to="/billing" className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[14px] font-extrabold text-white"><Sparkles size={16} />Get up to 100 a day</Link>
         </div>
       ) : (
         <p className="text-[13.5px] text-gray-500">New matches arrive every 10 minutes.</p>
