@@ -35,8 +35,8 @@ const phases = [
     title: 'Matches land in your Tracker',
     tagline: 'A live column for every consultant and every requirement.',
     points: [
-      { label: 'A column each', text: 'Each thing you posted gets its own column, and new matches land in it all day, newest first. Each new match costs 1 credit (₹0.25 in India, $0.01 elsewhere); a job you already paid for is never charged again, and “Not a match” gives the credit back.' },
-      { label: 'No noise twice', text: 'Reposts are merged into one card, and anything you mark "Not a match" never comes back.' },
+      { label: 'A column each', text: 'Each thing you posted gets its own column, and new matches land in it all day, newest first. Each new match costs 1 credit (₹0.25 in India, $0.01 elsewhere); a job you already paid for is never charged again, and Pass gives the credit back.' },
+      { label: 'No noise twice', text: 'Reposts are merged into one card, and anything you Pass never comes back.' },
       { label: 'Alerts', text: 'A notification on your phone (Android app) or browser when strong matches land, and an email if matches are waiting while you are away.' },
     ],
   },

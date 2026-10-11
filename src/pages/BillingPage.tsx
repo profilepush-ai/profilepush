@@ -52,9 +52,9 @@ const CREDIT_COST_ITEMS: { label: string; cost: string; short: string; note?: st
     note: 'Each new match for your consultants or requirements on the Tracker and Today, and each new AI Match result. A job you already paid for is never charged again, and reposts of the same requirement are merged. Free accounts get 10 new matches a day in all; the rest wait until you top up. Paid accounts get 30 a day for each profile or job by default, up to 100, set in Settings. Turn AI Matches off in Settings to pause them.',
   },
   {
-    label: '“Not a match”',
+    label: 'Pass',
     cost: 'Refunded',
-    short: 'Mark a match “Not a match” and get the credit back',
+    short: 'Pass on a match and get the credit back',
     note: 'Up to 20% of your matches in the last 30 days.',
   },
   {

@@ -1,11 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Lock, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
 import { priceLabels, useCurrency } from '../../lib/currency';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, pictureFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
 import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitLine, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
-import { usePictureColors } from './usePictureColors';
 import PushStreak from './PushStreak';
 import { PUSH_EASE, PUSH_MS, pushGhost } from '../../lib/push';
 
@@ -150,24 +149,6 @@ export default function SwipeDeck({
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // The sharp picture starts below the profile row (search and chips sit on
-  // the blurred one); this is where that row ends, kept up to date.
-  const forRowRef = useRef<HTMLDivElement | null>(null);
-  const currentPicture = item?.lead ? (avatarOn ? item.my_visual : null) || pictureFor(item.lead, viewerId) : null;
-  const [picTop, setPicTop] = useState(0);
-  useLayoutEffect(() => {
-    const row = forRowRef.current;
-    if (!row) return undefined;
-    const measure = () => setPicTop(row.offsetTop + row.offsetHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(row);
-    if (row.offsetParent) ro.observe(row.offsetParent);
-    return () => ro.disconnect();
-  });
-
-  const tones = usePictureColors(currentPicture);
-
   // The next two pictures load ahead, so a swipe never waits for one.
   useEffect(() => {
     if (index < 0) return;
@@ -301,6 +282,9 @@ export default function SwipeDeck({
   const name = subjectName(kind, subject);
   const saved = Boolean(item.saved_at);
   const T = reelMs ? SLOW : FAST;
+  const forLine = kind === 'job' ? 'Your job'
+    : subject?.name ? subject.title
+      : [subject?.years ? `${Math.round(Number(subject.years))} yrs` : null, subject?.visa].filter(Boolean).join(' · ') || null;
   // Just pushed: this card (and its picture) slides in from the other side.
   const pushIn = push && Date.now() - push.at < PUSH_MS ? `${push.to < 0 ? 'ppPushInL' : 'ppPushInR'} ${PUSH_MS}ms ${PUSH_EASE} both` : undefined;
   const rail = 'flex flex-col items-center gap-1 text-[11px] font-bold';
@@ -314,18 +298,7 @@ export default function SwipeDeck({
       aria-label="Swipe through matches"
       {...gestures}
     >
-      {picture ? (
-        // The post's AI picture: sharp from below the profile row to about the
-        // middle, on a smooth gradient of its own colors behind everything
-        // else (the search and chips above it, the details below).
-        <div key={`${item.card_id}:${picture}`} ref={picRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ animation: pushIn ?? 'ppPicture .5s ease-out both' }}>
-          {/* A smooth gradient of the picture's own colors, darkened. */}
-          {tones && <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${tones[0]} 0%, ${tones[1]} 45%, ${tones[2]} 100%)` }} />}
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,.45) 30%, rgba(255,255,255,.9) 56%, #fff 78%)' }} />
-          <img src={picture} alt="" decoding="async" className="absolute inset-x-0 w-full object-cover object-[50%_22%]"
-            style={{ top: picTop, height: `max(160px, calc(56% - ${picTop}px))`, maskImage: 'linear-gradient(180deg, transparent, #000 16%, #000 60%, transparent)', WebkitMaskImage: 'linear-gradient(180deg, transparent, #000 16%, #000 60%, transparent)' }} />
-        </div>
-      ) : (
+      {!picture && (
         <div key={item.card_id} ref={picRef} className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)`, animation: pushIn }} />
       )}
       <div className="relative z-20 flex gap-[3px] px-2.5 pt-2.5" aria-hidden="true">
@@ -347,14 +320,16 @@ export default function SwipeDeck({
         })()}
       </div>
       {topSlot}
-      <div ref={forRowRef} className="relative z-20 flex items-center gap-2.5 py-2.5 pl-3 pr-2">
+      <div className="relative z-20 flex items-center gap-2.5 py-2.5 pl-3 pr-2">
         <Initials name={name} id={item.subject_id} size={32} />
-        <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b><small className="block truncate text-[11.5px] text-gray-500">{kind === 'hotlist' ? subject?.title : 'Your job'}</small></div>
+        <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b>{forLine && <small className="block truncate text-[11.5px] text-gray-500">{forLine}</small>}</div>
+        {expiring && !item.teaser && <TimeLeft item={item} />}
         {picture && (
           <span data-rail className="relative">
             <button type="button" onClick={() => setNoteFor(noteFor === item.card_id ? null : item.card_id)} aria-expanded={noteFor === item.card_id}
-              className="inline-flex h-7 items-center gap-1 rounded-full bg-white/85 px-2.5 text-[11.5px] font-semibold text-gray-700 shadow-sm ring-1 ring-black/5 backdrop-blur hover:bg-white">
-              <Info size={13} />AI picture
+              aria-label="About this AI picture" title="AI picture"
+              className="grid h-7 w-7 place-items-center rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">
+              <Info size={15} />
             </button>
             {noteFor === item.card_id && (
               <span role="dialog" aria-label="About this picture" className="absolute right-0 top-9 z-50 block w-[270px] rounded-2xl bg-white p-3.5 text-left text-[12.5px] leading-snug text-gray-700 shadow-2xl dark:bg-[#20242a] dark:text-slate-200">
@@ -378,7 +353,13 @@ export default function SwipeDeck({
       <button type="button" aria-label="Previous match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(-1); }} className="absolute bottom-[70px] left-0 top-[70px] z-10 w-[30%]" />
       <button type="button" aria-label="Next match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(1); }} className="absolute bottom-[70px] right-0 top-[70px] z-10 w-[30%]" />
 
-      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'safe flex-end' : 'safe center', animation: pushIn }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'flex-start' : 'safe center', animation: pushIn }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+        {/* The post's AI picture: a clean block filling the room above the details. */}
+        {picture && (
+          <div className="relative -mr-16 min-h-[130px] flex-1 overflow-hidden rounded-3xl bg-gray-100 ring-1 ring-black/5">
+            <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[50%_22%]" />
+          </div>
+        )}
         {item.teaser ? (
           // A free preview: the title and match score; the rest unlocks with a top-up.
           <>
@@ -397,7 +378,6 @@ export default function SwipeDeck({
         <div className="flex items-center gap-2.5" style={section(0)}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
           <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-gray-500">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
-          {expiring && <TimeLeft item={item} />}
         </div>
         <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
         <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>

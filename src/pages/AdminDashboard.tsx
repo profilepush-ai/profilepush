@@ -144,7 +144,7 @@ const COLUMNS: Column[] = [
   { group: 'Matches', key: 'watched', label: 'Watched', kind: 'number', width: 85 },
   { group: 'Matches', key: 'saved', label: 'Saved', kind: 'number', width: 75 },
   { group: 'Matches', key: 'shared', label: 'Shared', kind: 'number', width: 75 },
-  { group: 'Matches', key: 'not_a_match', label: 'Not a match', kind: 'number', width: 100 },
+  { group: 'Matches', key: 'not_a_match', label: 'Passed', kind: 'number', width: 100 },
   { group: 'Matches', key: 'last_match_at', label: 'Last match', kind: 'date', width: 150 },
   { group: 'Applying', key: 'applied', label: 'Applied', kind: 'number', width: 85, title: 'Email + site + Ask Resume' },
   { group: 'Applying', key: 'applied_email', label: 'By email', kind: 'number', width: 85 },

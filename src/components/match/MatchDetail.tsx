@@ -196,7 +196,7 @@ export default function MatchDetail({
       // Opens the resume pick and the AI-written email.
       : <button type="button" onClick={() => setSending(true)} disabled={busy || !email} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 text-[15px] font-bold text-white hover:bg-blue-700 disabled:opacity-50">{busy ? <LogoSpinner size={15} /> : <Send size={17} />}{email ? 'Send resume' : 'No email in the post'}</button>;
   const secondary = item.stage === 'new' && !saved && onDismiss
-    ? <button type="button" onClick={onDismiss} className="h-12 shrink-0 rounded-xl border border-gray-300 px-4 text-[14px] font-bold text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5">Not a match</button>
+    ? <button type="button" onClick={onDismiss} className="h-12 shrink-0 rounded-xl border border-gray-300 px-4 text-[14px] font-bold text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5">Pass</button>
     : <button type="button" onClick={onSave} className="h-12 shrink-0 rounded-xl border border-gray-300 px-4 text-[14px] font-bold text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5">{saved ? 'Unsave' : 'Save'}</button>;
 
   return (

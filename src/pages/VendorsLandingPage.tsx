@@ -460,7 +460,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                         <path d="M2 2l6 6-6 6" fill="none" stroke="#2563eb" strokeWidth="2.6" strokeLinecap="round"></path>
                       </svg>
                     </span>
-                    “Not a match” never comes back
+                    A match you Pass never comes back
                   </li>
                   <li>
                     <span className="ddc" aria-hidden="true">

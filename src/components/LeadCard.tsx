@@ -483,7 +483,7 @@ export interface LeadCardProps {
    *  actions) that expands to the full card. Used on the Tracker. */
   collapsible?: boolean;
   defaultCollapsed?: boolean;
-  /** Tracker: dismiss this match ("Not a match"), an icon in the action bar. */
+  /** Tracker: dismiss this match ("Pass"), an icon in the action bar. */
   onDismiss?: (lead: SocialLead) => void;
   /** Always the compact card (no skills); a click opens the lead (the Feed's
    *  full preview popup) instead of expanding the card. */
@@ -594,8 +594,8 @@ export const LeadCard = memo(function LeadCard({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onDismiss(lead); }}
-          title="Not a match (won't be suggested again)"
-          aria-label="Not a match"
+          title="Pass (won't be suggested again)"
+          aria-label="Pass"
           className="inline-flex h-9 w-10 shrink-0 items-center justify-center bg-red-50 text-red-600 transition-colors hover:bg-red-100 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
         >
           <X size={16} strokeWidth={1.75} />
@@ -640,8 +640,8 @@ export const LeadCard = memo(function LeadCard({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onDismiss(lead); }}
-          title="Not a match (won't be suggested again)"
-          aria-label="Not a match"
+          title="Pass (won't be suggested again)"
+          aria-label="Pass"
           className={`${iconButtonClass} text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10`}
         >
           <X size={16} strokeWidth={2} />

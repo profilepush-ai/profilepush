@@ -356,7 +356,7 @@ export function startBench(root: HTMLElement, data: StoryData, opts: EngineOptio
     } else if (liveStep === 2) add(POOL[4]);
     else if (liveStep === 3) {
       const el = sl.children[0] as HTMLElement;
-      $('.tc-h', el).insertAdjacentHTML('beforeend', '<span class="tag nm">Not a match</span>');
+      $('.tc-h', el).insertAdjacentHTML('beforeend', '<span class="tag nm">Passed</span>');
       S.timeout(() => {
         el.classList.add('gone');
         S.timeout(() => { el.remove(); nEl.textContent = String(sl.children.length); }, 500);
