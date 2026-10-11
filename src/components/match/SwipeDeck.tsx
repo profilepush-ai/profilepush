@@ -147,12 +147,20 @@ export default function SwipeDeck({
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // The next two pictures load ahead, so a swipe never waits for one.
+  // The next three pictures (and the one before) are downloaded and decoded
+  // ahead and kept, so a swipe paints its picture at once, never blank first.
+  const ready = useRef(new Map<string, HTMLImageElement>());
   useEffect(() => {
     if (index < 0) return;
-    for (const next of items.slice(index + 1, index + 3)) {
+    const near = [...items.slice(index + 1, index + 4), items[index - 1]].filter(Boolean) as CardItem[];
+    for (const next of near) {
       const url = (avatarOn ? next.my_visual : null) || (next.lead ? pictureFor(next.lead, viewerId) : null);
-      if (url) new Image().src = url;
+      if (!url || ready.current.has(url)) continue;
+      const im = new Image();
+      im.src = url;
+      void im.decode?.().catch(() => {});
+      ready.current.set(url, im);
+      if (ready.current.size > 12) ready.current.delete(ready.current.keys().next().value as string);
     }
   }, [index, items, viewerId, avatarOn]);
 
@@ -250,13 +258,13 @@ export default function SwipeDeck({
         {sizeButton && ownControls && <div className="relative z-30 flex justify-end px-3 pt-2">{sizeButton}</div>}
         {endScreen && !emptyMessage ? <div className="relative z-10 flex min-h-0 flex-1 flex-col">{endScreen}</div> : (
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-          <span className="grid h-[72px] w-[72px] place-items-center rounded-full bg-emerald-600"><Check size={36} strokeWidth={3} /></span>
+          <span className="grid h-[72px] w-[72px] place-items-center rounded-full bg-emerald-600 text-white"><Check size={36} strokeWidth={3} /></span>
           <h2 className="text-[26px] font-extrabold">{emptyMessage?.title ?? 'All caught up'}</h2>
           <p className="max-w-[28ch] text-gray-600">{emptyMessage?.text ?? `${appliedToday} applied today. New matches arrive every 10 minutes.`}</p>
           {inline || !onClose ? (
             <div className="mt-2 flex flex-wrap justify-center gap-2">
               <Link to="/history" className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-4 py-2.5 font-bold text-gray-800"><History size={16} />History</Link>
-              <Link to="/match" className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2.5 font-bold"><Sparkles size={16} />Run AI Match</Link>
+              <Link to="/match" className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2.5 font-bold text-white"><Sparkles size={16} />Run AI Match</Link>
             </div>
           ) : (
             <button type="button" onClick={onClose} className="mt-2 rounded-full bg-gray-100 px-5 py-2.5 font-bold text-gray-800">Back to Today</button>
@@ -284,6 +292,8 @@ export default function SwipeDeck({
       : [subject?.years ? `${Math.round(Number(subject.years))} yrs` : null, subject?.visa].filter(Boolean).join(' · ') || null;
   // Just pushed: this card (and its picture) slides in from the other side.
   const pushIn = push && Date.now() - push.at < PUSH_MS ? `${push.to < 0 ? 'ppPushInL' : 'ppPushInR'} ${PUSH_MS}ms ${PUSH_EASE} both` : undefined;
+  // Pushed in: the card slides in whole; its parts don't fade in again on top.
+  const sec = (at: number) => (pushIn ? undefined : section(at));
   const rail = 'flex flex-col items-center gap-1 text-[11px] font-bold';
   const railIcon = 'grid h-[46px] w-[46px] place-items-center rounded-full bg-white text-gray-700 shadow-md ring-1 ring-black/5';
 
@@ -296,11 +306,12 @@ export default function SwipeDeck({
       {...gestures}
     >
       {picture ? (
-        // The picture, heavily blurred, fills the screen behind everything:
-        // its own colours as a soft glow; the details sit on frosted glass.
-        <div key={`${item.card_id}:${picture}`} ref={picRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ animation: pushIn ?? 'ppPicture .6s ease-out both' }}>
-          <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full scale-[1.4] object-cover blur-[40px] saturate-[1.6]" />
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.46) 0%, rgba(255,255,255,.18) 34%, rgba(255,255,255,.30) 70%, rgba(255,255,255,.5) 100%)' }} />
+        // The picture, sharp, full screen behind everything like a reel: a
+        // light fade at the top keeps the search and stories readable; the
+        // details sit on frosted glass at the bottom.
+        <div key={`${item.card_id}:${picture}`} ref={picRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden bg-[#e8eef8]" style={{ animation: pushIn ?? 'ppPicture .6s ease-out both' }}>
+          <img src={picture} alt="" decoding="sync" className="absolute inset-0 h-full w-full object-cover object-[50%_26%]" />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(248,250,252,.82) 0%, rgba(248,250,252,.45) 13%, rgba(248,250,252,0) 26%, rgba(248,250,252,0) 62%, rgba(248,250,252,.35) 100%)' }} />
         </div>
       ) : (
         <div key={item.card_id} ref={picRef} className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)`, animation: pushIn }} />
@@ -324,7 +335,7 @@ export default function SwipeDeck({
         })()}
       </div>
       {topSlot}
-      <div className="relative z-20 flex items-center gap-2.5 py-2.5 pl-3 pr-2">
+      <div className={`relative z-20 flex items-center gap-2.5 ${picture ? 'mx-2 mt-1.5 rounded-2xl bg-white/65 py-2 pl-2 pr-1.5 ring-1 ring-white/60 backdrop-blur-md' : 'py-2.5 pl-3 pr-2'}`}>
         <Initials name={name} id={item.subject_id} size={32} />
         <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b>{forLine && <small className="block truncate text-[11.5px] text-gray-500">{forLine}</small>}</div>
         {expiring && !item.teaser && <TimeLeft item={item} />}
@@ -357,20 +368,14 @@ export default function SwipeDeck({
       <button type="button" aria-label="Previous match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(-1); }} className="absolute bottom-[70px] left-0 top-[70px] z-10 w-[30%]" />
       <button type="button" aria-label="Next match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(1); }} className="absolute bottom-[70px] right-0 top-[70px] z-10 w-[30%]" />
 
-      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'flex-start' : 'safe center', animation: pushIn }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
-        {/* The post's AI picture: a clean block filling the room above the details. */}
-        {picture && (
-          <div className="relative -mr-16 min-h-[130px] flex-1 overflow-hidden rounded-3xl bg-white/40 shadow-[0_12px_32px_rgba(11,26,58,.16)] ring-1 ring-white/60" style={section(0)}>
-            <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[50%_22%]" />
-          </div>
-        )}
+      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'safe flex-end' : 'safe center', animation: pushIn }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
         {item.teaser ? (
           // A free preview: the title and match score; the rest unlocks with a top-up.
           <>
-            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-bold text-amber-700 ring-1 ring-amber-200" style={section(0)}><Lock size={13} />Free preview</span>
-            <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
-            <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
-            <div className="space-y-2.5 rounded-2xl border border-gray-200 bg-gray-50 p-3.5" style={section(T.skills)}>
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-bold text-amber-700 ring-1 ring-amber-200" style={sec(0)}><Lock size={13} />Free preview</span>
+            <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={sec(T.title)}>{leadTitle(lead)}</h2>
+            <div className="-mt-1.5" style={sec(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
+            <div className="space-y-2.5 rounded-2xl border border-gray-200 bg-gray-50 p-3.5" style={sec(T.skills)}>
               <div aria-hidden="true" className="space-y-2">{[78, 62, 88, 50].map((w) => <i key={w} className="block h-2.5 rounded-full bg-gray-200" style={{ width: `${w}%` }} />)}</div>
               <p className="text-[13px] font-semibold text-gray-700">The company, rate, skills and how to apply are in this match.{previewDays != null ? ` ${previewDays} ${previewDays === 1 ? 'day' : 'days'} of free previews left.` : ''}</p>
               <Link to="/billing" data-rail className="pointer-events-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[14.5px] font-extrabold text-white">
@@ -380,42 +385,42 @@ export default function SwipeDeck({
           </>
         ) : (
         <div className={`${picture ? '-mr-16 rounded-[26px] bg-white/60 py-3.5 pl-3.5 pr-[4.5rem] shadow-[0_10px_30px_rgba(11,26,58,.12)] ring-1 ring-white/70 backdrop-blur-2xl' : ''} flex flex-col gap-3`}>
-        <div className="flex items-center gap-2.5" style={section(0)}>
+        <div className="flex items-center gap-2.5" style={sec(0)}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
           <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-gray-500">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
         </div>
-        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={section(T.title)}>{leadTitle(lead)}</h2>
-        <div className="-mt-1.5" style={section(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
-        <div style={section(T.ring)}><FitBadges fit={fit} hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} /></div>
+        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={sec(T.title)}>{leadTitle(lead)}</h2>
+        <div className="-mt-1.5" style={sec(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
+        <div style={sec(T.ring)}><FitBadges fit={fit} hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} /></div>
         {!hideAsk && onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
-          <div data-rail className="pointer-events-auto" style={section(T.ask)}>
+          <div data-rail className="pointer-events-auto" style={sec(T.ask)}>
             <AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} />
           </div>
         )}
-        <div style={section(T.skills)}><SkillTiles skills={fit.skills.slice(0, 6)} /></div>
+        <div style={sec(T.skills)}><SkillTiles skills={fit.skills.slice(0, 6)} /></div>
         {/* Where there's no room (short phones, or a picture), the badges above say the same. */}
         {boxes && !picture && <div className="grid grid-cols-2 gap-2.5">
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={section(T.map)}>
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={sec(T.map)}>
             <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} animate wave={false} at={T.map - 300} />
             <p className="truncate text-[12px] font-semibold text-gray-700">{fit.location.label}</p>
           </div>
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={section(T.rate)}>
+          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={sec(T.rate)}>
             <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} animate at={T.rate} />
             <p className="truncate text-[12px] font-semibold text-gray-700">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr` : 'Rate not listed'}</p>
           </div>
         </div>}
-        <div style={section(boxes && !picture ? T.eng : T.map)}><EngagementRow eng={item.eng} /></div>
+        <div style={sec(boxes && !picture ? T.eng : T.map)}><EngagementRow eng={item.eng} /></div>
         </div>)}
       </div>
 
       <div data-rail className="absolute bottom-[76px] right-2 z-30 flex flex-col items-center gap-3.5">
         {item.teaser ? (
           <Link to="/billing" className={rail} title="Top up to see this match">
-            <span className="grid h-[58px] w-[58px] place-items-center rounded-full bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]"><Lock size={22} /></span>Unlock
+            <span className="grid h-[58px] w-[58px] place-items-center rounded-full bg-blue-600 text-white shadow-[0_6px_18px_rgba(37,99,235,.5)]"><Lock size={22} /></span>Unlock
           </Link>
         ) : (<>
         <button type="button" className={rail} onClick={() => { pushOut(1); if (kind === 'hotlist') flash('APPLIED', '#34d399'); onApply(item); }} title={kind === 'job' ? 'Ask for the resume' : site ? 'Apply on their site' : 'Apply by email'}>
-          <span className={`grid h-[58px] w-[58px] place-items-center rounded-full ${site ? 'bg-emerald-600 shadow-[0_6px_18px_rgba(5,150,105,.5)]' : 'bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]'}`}>
+          <span className={`grid h-[58px] w-[58px] place-items-center rounded-full text-white ${site ? 'bg-emerald-600 shadow-[0_6px_18px_rgba(5,150,105,.5)]' : 'bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]'}`}>
             {kind === 'job' ? <FileText size={24} /> : site ? <ExternalLink size={22} /> : <Send size={24} />}
           </span>
           {kind === 'job' ? 'Ask Resume' : 'Apply'}
