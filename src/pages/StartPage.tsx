@@ -10,7 +10,7 @@ import { INTRO_SEEN_KEY } from '../lib/prefs';
 // Before signing up (the app's first launch): four slides, mostly pictures.
 // Swipe or tap through; Get started goes to signup and isn't shown again.
 
-const FOR = ['Job Hunting', 'Job Posting', 'Bench Sales'];
+const FOR = ['find jobs', 'find profiles'];
 
 function Rotating() {
   const [i, setI] = useState(0);
@@ -24,7 +24,7 @@ function Rotating() {
 
 const SLIDES: Array<{ visual: ReactNode; title: ReactNode; text: string }> = [
   // The live deck is 330×560; shown at 0.74 in a box of its scaled size.
-  { visual: <div className="h-[414px] w-[244px] shrink-0"><div className="w-[330px] origin-top-left scale-[.74]"><LiveMatches /></div></div>, title: <>AI Copilot for<Rotating /></>, text: 'Live matches for your profile, your consultants or your jobs, every day.' },
+  { visual: <div className="h-[414px] w-[244px] shrink-0"><div className="w-[330px] origin-top-left scale-[.74]"><LiveMatches /></div></div>, title: <>AI Copilot to<Rotating /></>, text: 'Live matches for your profile, your consultants or your jobs, every day.' },
   { visual: <PushDemo />, title: <>Swipe. Push. Apply.</>, text: 'Every match has its score, the skills that fit and an AI picture. Apply in one tap.' },
   { visual: <SendDemo />, title: <>Send the resume. AI writes the email.</>, text: 'Pick a resume or upload one. It goes from your own Gmail.' },
   { visual: <SheetDemo />, title: <>Every application in one sheet.</>, text: 'Replies, interviews and placements, tracked for you.' },

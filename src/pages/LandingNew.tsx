@@ -18,8 +18,8 @@ import { supabase } from '../lib/supabase';
 
 const n = (v: number) => v.toLocaleString('en-US');
 
-// What the AI Copilot is for, rotating in the hero's heading.
-const FOR = ['Job Hunting', 'Job Posting', 'Bench Sales'];
+// What the AI Copilot does, rotating in the hero's heading.
+const FOR = ['find jobs', 'find profiles'];
 
 // Plain answers, shown on the page and given to search and answer engines
 // as FAQPage data (the two must say the same thing).
@@ -74,7 +74,7 @@ export default function LandingNew() {
 
   return (
     <div className="min-h-screen bg-[#f6f7fb] text-[#0f172a] dark:bg-[#1B1D21] dark:text-slate-100">
-      <SEO title="ProfilePush: AI Copilot for Job Hunting, Job Posting and Bench Sales" canonical="https://profilepush.ai/"
+      <SEO title="ProfilePush: AI Copilot to Find Jobs and Profiles" canonical="https://profilepush.ai/"
         description="AI job matches every day for IT job seekers, bench sales recruiters and job posters. Send your resume in one tap, track every application. 100 free matches."
         jsonLd={FAQ_LD} />
       <header className="sticky top-0 z-40 border-b border-gray-200/70 bg-white/85 backdrop-blur dark:border-white/10 dark:bg-[#1B1D21]/85">
@@ -102,9 +102,9 @@ export default function LandingNew() {
               <span className="h-2 w-2 rounded-full bg-emerald-500" />{n(snap.stats.jobs24h)} new jobs in the last 24 hours
             </p>
             <h1 className="mt-6 text-[46px] font-extrabold leading-[1.02] tracking-[-0.03em] sm:text-[66px]">
-              <span className="sr-only">AI Copilot for job hunting, job posting and bench sales</span>
+              <span className="sr-only">AI Copilot to find jobs and to find profiles</span>
               <span aria-hidden="true">
-                AI Copilot for
+                AI Copilot to
                 {/* The rotating word rises in on its own line. */}
                 <span className="block h-[1.12em] overflow-hidden">
                   <span key={forIdx} className="block animate-[ppWordIn_.8s_cubic-bezier(.2,.8,.2,1)]">
