@@ -20,7 +20,7 @@ const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.profilepush.
 const MIN_OPTIONS = [50, 55, 60, 65, 70, 75, 80];
 const CAP_OPTIONS = [10, 20, 30, 50, 75, 100];
 
-type Subject = { subject_id: string; kind: 'hotlist' | 'job'; title: string; cap: number; today: number };
+type Subject = { subject_id: string; kind: 'hotlist' | 'job'; title: string; cap: number; today: number; on?: boolean };
 
 // Wider than a phone: sections show open; on a phone each is a tappable row.
 function useWide() {
@@ -135,6 +135,15 @@ export default function MatchingSettingsPage() {
     trackEvent('min_match_changed', { value: v, from: 'settings' });
     const { error } = await supabase.rpc('set_match_min_score' as never, { p_score: v } as never);
     if (!error) flash(`Minimum match set to ${v}%`);
+  };
+  // One profile's (or job's) matches on or off.
+  const toggleSubject = async (s: Subject) => {
+    const next = s.on === false;
+    setSubjects((list) => list.map((x) => (x.subject_id === s.subject_id ? { ...x, on: next } : x)));
+    trackEvent('subject_matches_toggled', { on: next, from: 'settings' });
+    const { error } = await supabase.rpc('set_subject_matches' as never, { p_subject_id: s.subject_id, p_on: next } as never);
+    if (error) setSubjects((list) => list.map((x) => (x.subject_id === s.subject_id ? { ...x, on: !next } : x)));
+    else flash(next ? `Matches on for ${s.title}` : `Matches off for ${s.title}`);
   };
   const changeCap = async (subjectId: string, cap: number) => {
     if (!paid) return;
@@ -274,9 +283,8 @@ export default function MatchingSettingsPage() {
                 </div>
               </Section>
               <Section
-                title="Daily matches"
-                detail={paid ? `Most new matches each one can get in a day. ${defaultCap} unless you change it.` : 'Free accounts get 10 new matches a day in all. Paid accounts choose up to 100 for each.'}
-                badge={lockBadge}
+                title="Matches for each profile"
+                detail={paid ? `Turn each one's matches on or off, and choose how many it can get a day (${defaultCap} unless you change it).` : "Turn each one's matches on or off. Free accounts get 10 new matches a day in all; paid accounts choose up to 100 for each."}
               >
                 {subjects.length === 0 ? (
                   <p className="text-[13px] text-gray-500">Nothing posted yet. <Link to="/today" className="font-semibold text-blue-600 hover:underline">Add a profile or job</Link>.</p>
@@ -289,18 +297,23 @@ export default function MatchingSettingsPage() {
                           <span className="min-w-0">
                             <span className="block truncate text-[13.5px] font-semibold">{s.title}</span>
                             <span className="block text-[12px] tabular-nums text-gray-500 dark:text-slate-400">
-                              {s.kind === 'hotlist' ? 'Profile' : 'Job'} · today {Math.min(s.today, s.cap)} of {s.cap}
+                              {s.kind === 'hotlist' ? 'Profile' : 'Job'} · {s.on === false ? 'Matches off' : `today ${Math.min(s.today, s.cap)} of ${s.cap}`}
                             </span>
                           </span>
                         </button>
-                        {paid ? (
+                        {s.on === false ? null : paid ? (
                           <select value={s.cap} onChange={(e) => void changeCap(s.subject_id, Number(e.target.value))} aria-label={`Daily matches for ${s.title}`}
-                            className="h-9 rounded-lg border border-gray-200 bg-white px-2 text-[13px] font-semibold dark:border-white/10 dark:bg-white/5">
+                            className="h-9 shrink-0 rounded-lg border border-gray-200 bg-white px-2 text-[13px] font-semibold dark:border-white/10 dark:bg-white/5">
                             {[...new Set([...CAP_OPTIONS, s.cap])].sort((a, b) => a - b).map((v) => <option key={v} value={v}>{v} a day</option>)}
                           </select>
                         ) : (
-                          <span className="text-[13px] font-semibold tabular-nums text-gray-500">10 a day</span>
+                          <span className="shrink-0 text-[13px] font-semibold tabular-nums text-gray-500">10 a day</span>
                         )}
+                        {/* This profile's matches on or off. */}
+                        <button type="button" role="switch" aria-checked={s.on !== false} onClick={() => void toggleSubject(s)} aria-label={`Matches for ${s.title}`}
+                          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${s.on !== false ? 'bg-green-600' : 'bg-gray-300 dark:bg-white/20'}`}>
+                          <span className={`absolute h-5 w-5 rounded-full bg-white shadow transition-transform ${s.on !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
                       </li>
                     ))}
                   </ul>

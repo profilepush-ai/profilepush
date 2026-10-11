@@ -19,6 +19,8 @@ export default function ProfileSheet({ subject, kind, newCount, accountId, mode,
   const name = subjectName(kind, subject);
   const [apps, setApps] = useState<CardItem[] | null>(null);
   const [cap, setCap] = useState<{ value: number; paid: boolean } | null>(null);
+  // This profile's (or job's) matches on or off.
+  const [matchesOn, setMatchesOn] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [resumes, setResumes] = useState(subject.resumes ?? []);
   useEffect(() => { setResumes(subject.resumes ?? []); }, [subject.resumes]);
@@ -26,9 +28,11 @@ export default function ProfileSheet({ subject, kind, newCount, accountId, mode,
   useEffect(() => {
     let alive = true;
     void loadTracker(kind).then((d) => { if (alive) setApps((d?.items ?? []).filter((i) => i.subject_id === subject.id)); }).catch(() => setApps([]));
-    void supabase.rpc('get_match_caps' as never).then(({ data }: { data: { paid?: boolean; default_cap?: number; subjects?: Array<{ subject_id: string; cap: number }> } | null }) => {
+    void supabase.rpc('get_match_caps' as never).then(({ data }: { data: { paid?: boolean; default_cap?: number; subjects?: Array<{ subject_id: string; cap: number; on?: boolean }> } | null }) => {
       if (!alive || !data) return;
-      const own = data.subjects?.find((c) => c.subject_id === subject.id)?.cap;
+      const mine = data.subjects?.find((c) => c.subject_id === subject.id);
+      const own = mine?.cap;
+      setMatchesOn(mine?.on !== false);
       setCap({ value: own ?? data.default_cap ?? (data.paid ? 30 : 10), paid: Boolean(data.paid) });
     });
     return () => { alive = false; };
@@ -160,7 +164,24 @@ export default function ProfileSheet({ subject, kind, newCount, accountId, mode,
 
         <section className={box}>
           <h4 className={boxTitle}>Matching</h4>
-          <div className="flex items-center gap-3">
+          <div className="mb-3 flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <b className="block text-[14px]">New matches</b>
+              <small className="block text-[12px] text-gray-500">{matchesOn ? `On: new ${kind === 'hotlist' ? 'jobs' : 'profiles'} come for ${name} every day` : 'Off: nothing new comes for this one'}</small>
+            </div>
+            <button type="button" role="switch" aria-checked={matchesOn} aria-label="New matches"
+              onClick={() => {
+                const next = !matchesOn;
+                setMatchesOn(next);
+                void supabase.rpc('set_subject_matches' as never, { p_subject_id: subject.id, p_on: next } as never).then(({ error }) => {
+                  if (error) { setMatchesOn(!next); showToast('Could not change it.'); } else { showToast(next ? 'Matches on' : 'Matches off'); onChanged(); }
+                });
+              }}
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${matchesOn ? 'bg-green-600' : 'bg-gray-300 dark:bg-white/20'}`}>
+              <span className={`absolute h-5 w-5 rounded-full bg-white shadow transition-transform ${matchesOn ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+          <div className={`flex items-center gap-3 ${matchesOn ? '' : 'pointer-events-none opacity-40'}`}>
             <div className="min-w-0 flex-1">
               <b className="block text-[14px]">Matches a day</b>
               <small className="block text-[12px] text-gray-500">{cap?.paid ? 'Up to 100 on your plan' : 'Free plan: 10 a day in all. Paid: up to 100 each.'}</small>
