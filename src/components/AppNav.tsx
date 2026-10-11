@@ -321,8 +321,8 @@ function NotificationBell({ userId }: { userId: string }) {
   );
 }
 
-// `immersive`: the page is full screen (Today on a phone). The header and the
-// bottom bar float over it and slide in only while `chromeVisible`.
+// `immersive`: the page is full screen (Today on a phone). The header floats
+// over it and slides in only while `chromeVisible`; the bottom bar stays.
 export default function AppNav({ immersive = false, chromeVisible = true }: { immersive?: boolean; chromeVisible?: boolean } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -564,9 +564,9 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
 
       {/* Mobile Bottom Navigation */}
       {user && (
-        <nav className={`app-bottom-nav fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden ${immersive
-          ? `z-[95] shadow-[0_-6px_20px_rgba(0,0,0,.15)] transition-transform duration-300 ${chromeVisible ? 'translate-y-0' : 'translate-y-[calc(100%+2.5rem)]'}`
-          : 'z-50'}`}>
+        // Always there on a phone, full-screen pages included: it's the way to
+        // the other places.
+        <nav className={`app-bottom-nav fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden ${immersive ? 'z-[95]' : 'z-50'}`}>
           <Link
             to="/today"
             className={`relative flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-medium ${isActive('/today') ? 'text-blue-600' : 'text-gray-500'}`}

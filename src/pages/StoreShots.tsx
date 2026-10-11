@@ -56,8 +56,6 @@ function TopBar() {
         <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full bg-white/90 pl-3.5 pr-1.5 shadow-sm ring-1 ring-gray-200">
           <Search size={16} className="shrink-0 text-gray-400" /><span className="text-[14px] text-gray-400">Search</span>
         </label>
-        <span className="inline-flex h-10 shrink-0 items-center gap-1 rounded-full bg-orange-50 px-3 text-[13px] font-extrabold text-orange-600 ring-1 ring-orange-200"><Flame size={14} fill="currentColor" />6</span>
-        <span className="inline-flex h-10 shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-3 text-[13px] font-extrabold text-emerald-700 ring-1 ring-emerald-200"><Check size={14} strokeWidth={3} />4</span>
         {controls}
       </div>
       <ProfileStories kind="hotlist" subjects={Object.values(PROFILES)} filter="all" onFilter={noop} onAdd={noop}

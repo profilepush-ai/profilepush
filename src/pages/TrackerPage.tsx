@@ -4,6 +4,7 @@ import { Check, Copy, Download, Search, Target } from 'lucide-react';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
 import MatchSheet from '../components/match/MatchSheet';
+import MatchList from '../components/match/MatchList';
 import TrackerStats, { type ActivityStats } from '../components/match/TrackerStats';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -118,7 +119,7 @@ export default function TrackerPage() {
                   <option value="all">Email and site</option><option value="email">By email</option><option value="site">On site</option>
                 </select>
               )}
-              <span className="ml-auto flex items-center gap-2">
+              <span className="ml-auto hidden items-center gap-2 sm:flex">
                 <button type="button" onClick={copy} title="Copy these rows, then paste them into Google Sheets or Excel" className={`${control} inline-flex items-center gap-1.5`}>
                   {copied ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}{copied ? 'Copied' : 'Copy rows'}
                 </button>
@@ -126,11 +127,18 @@ export default function TrackerPage() {
                 <button type="button" onClick={() => downloadCsv(exportRows(), 'profilepush-tracker')} title="Download as CSV" className={`${control} inline-flex items-center gap-1.5`}><Download size={15} />CSV</button>
               </span>
             </div>
-            {rows.length ? (
-              <MatchSheet items={rows} kind={kind} mode="tracker" dateLabel="Applied" dateOf={(i) => i.applied_at} viewerId={user?.id}
-                onOpen={(i) => i.lead && navigate(`/${i.lead.kind === 'job' ? 'job' : 'hotlist'}/${i.lead.id}`)}
-                onStatus={(i, st) => void changeStatus(i, st)} onNotes={(i, n) => void changeNotes(i, n)} />
-            ) : <p className="rounded-xl border border-gray-200 bg-white p-6 text-center text-[13px] text-gray-400 dark:border-white/10 dark:bg-[#20242a]">Nothing here.</p>}
+            {rows.length ? (<>
+              {/* Phones: a card per application. Wider: the sheet. */}
+              <div className="sm:hidden">
+                <MatchList items={rows} kind={kind} mode="tracker" dateOf={(i) => i.applied_at} viewerId={user?.id}
+                  onOpen={(i) => i.lead && navigate(`/${i.lead.kind === 'job' ? 'job' : 'hotlist'}/${i.lead.id}`)} onStatus={(i, st) => void changeStatus(i, st)} />
+              </div>
+              <div className="hidden sm:block">
+                <MatchSheet items={rows} kind={kind} mode="tracker" dateLabel="Applied" dateOf={(i) => i.applied_at} viewerId={user?.id}
+                  onOpen={(i) => i.lead && navigate(`/${i.lead.kind === 'job' ? 'job' : 'hotlist'}/${i.lead.id}`)}
+                  onStatus={(i, st) => void changeStatus(i, st)} onNotes={(i, n) => void changeNotes(i, n)} />
+              </div>
+            </>) : <p className="rounded-xl border border-gray-200 bg-white p-6 text-center text-[13px] text-gray-400 dark:border-white/10 dark:bg-[#20242a]">Nothing here.</p>}
           </>
         )}
       </main>

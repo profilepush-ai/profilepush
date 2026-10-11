@@ -35,7 +35,7 @@ function TimeLeft({ item }: { item: CardItem }) {
 
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, teaserSince = null, asked, onAsk, hideAsk = false, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, teaserSince = null, asked, onAsk, hideAsk = false, navBelow = false, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails, onReportPicture,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
@@ -52,6 +52,8 @@ export default function SwipeDeck({
   reelMs?: number;
   /** Shown after the last card, instead of the plain "All caught up". */
   endScreen?: ReactNode;
+  /** The app's bottom menu sits right below (phones): no room kept for the home bar. */
+  navBelow?: boolean;
   /** Today's cards: show how long each has left before it leaves Today. */
   expiring?: boolean;
   /** Ask the poster for what the post leaves out. */
@@ -352,7 +354,7 @@ export default function SwipeDeck({
       {/* The card: the picture on its stage, then the details and the actions.
           It lets taps through to the sides (previous/next) except on its
           own buttons and panel. */}
-      <div key={item.card_id} ref={cardRef} style={{ animation: pushIn }} className={`pointer-events-none relative z-20 flex min-h-0 flex-1 flex-col gap-2.5 px-3 pb-2 pt-2 ${inline ? 'pb-3' : onSwipeUp ? 'pb-[calc(1.1rem+env(safe-area-inset-bottom))]' : 'pb-[calc(.6rem+env(safe-area-inset-bottom))]'} ${pushIn ? '' : entryDir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : entryDir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+      <div key={item.card_id} ref={cardRef} style={{ animation: pushIn }} className={`pointer-events-none relative z-20 flex min-h-0 flex-1 flex-col gap-2.5 px-3 pb-2 pt-2 ${inline || navBelow ? 'pb-3' : onSwipeUp ? 'pb-[calc(1.1rem+env(safe-area-inset-bottom))]' : 'pb-[calc(.6rem+env(safe-area-inset-bottom))]'} ${pushIn ? '' : entryDir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : entryDir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
         {picture ? (
           // The stage: the picture, sharp and framed on the person, its edges
           // fading into the blurred copy behind (no border).
