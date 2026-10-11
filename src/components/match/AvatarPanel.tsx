@@ -74,10 +74,10 @@ export default function AvatarPanel() {
       <div className="min-w-0 flex-1 space-y-3">
         {active ? (
           state?.avatar_on
-            ? <p className="text-[13px] text-gray-600 dark:text-slate-300">Your job matches show you, holding each job&apos;s skills.</p>
+            ? <p className="text-[13px] text-gray-600 dark:text-slate-300">It&apos;s your photo on your profile, your posts and Network.</p>
             : <p className="text-[13px] text-amber-700 dark:text-amber-300">Paused: your avatar shows while you have matches left. <Link to="/billing" className="font-semibold underline">Top up</Link> to bring it back.</p>
         ) : avatar?.status === 'ready' ? (
-          <p className="text-[13px] text-gray-600 dark:text-slate-300">Here&apos;s your avatar. Use it and your job matches will show you, holding each job&apos;s skills.</p>
+          <p className="text-[13px] text-gray-600 dark:text-slate-300">Here&apos;s your avatar. Use it as your photo on your profile, your posts and Network.</p>
         ) : (
           <p className="text-[13px] text-gray-600 dark:text-slate-300">
             {state?.google_photo ? 'Make a 3D avatar from your Google photo, or upload another photo.' : 'Upload a photo of yourself and we\'ll make a 3D avatar from it.'}{' '}

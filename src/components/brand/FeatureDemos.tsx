@@ -71,20 +71,6 @@ export function SheetDemo() {
   );
 }
 
-// Your own avatar in a match picture.
-export function AvatarDemo() {
-  return (
-    <div className="relative h-[330px] w-[250px] overflow-hidden rounded-[26px] bg-white shadow-[0_24px_60px_rgba(11,26,58,.18)] ring-1 ring-black/5">
-      <img src="/landing-v2/avatar-job.webp" alt="" className="h-[230px] w-full object-cover object-[50%_20%]" style={{ animation: 'ppFadeIn .6s ease-out both' }} />
-      <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-gray-800"><Sparkles size={12} className="text-[#F97316]" />You, in this job</span>
-      <div className="space-y-2 px-3.5 pt-3">
-        <b className="block text-[17px] font-extrabold leading-tight">Senior Java Developer</b>
-        <FitLine value={92} />
-      </div>
-    </div>
-  );
-}
-
 // ProfilePush Apply filling a career site's form, field by field.
 export function ExtensionDemo() {
   const fields: Array<[string, string]> = [['Full name', 'Ravi K.'], ['Email', 'ravi.k@example.com'], ['Work authorization', 'H1B'], ['Years of experience', '9'], ['Expected rate', '$68/hr']];
@@ -108,7 +94,6 @@ export function ExtensionDemo() {
 const FEATURES: Array<{ visual: React.ReactNode; title: string; text: string }> = [
   { visual: <PushDemo />, title: 'Swipe. Push. Apply.', text: 'Your matches play as a reel: the score, the skills that fit and an AI picture of the role.' },
   { visual: <SendDemo />, title: 'Send the resume in one tap', text: 'Pick a resume and AI writes the email to the poster, sent from your own Gmail.' },
-  { visual: <AvatarDemo />, title: 'See yourself in every match', text: 'Make your avatar and every job pictures you in the role.' },
   { visual: <SheetDemo />, title: 'Every application in one sheet', text: 'Replies, interviews and placements, tracked for you. Copy it into Google Sheets anytime.' },
   { visual: <ExtensionDemo />, title: 'Career sites, filled for you', text: 'The ProfilePush Apply Chrome extension fills the application. You press Apply.' },
 ];

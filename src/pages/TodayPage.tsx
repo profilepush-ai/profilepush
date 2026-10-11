@@ -277,7 +277,7 @@ export default function TodayPage() {
     : undefined;
 
   const deckProps = {
-    items, kind, subjects, appliedToday, emptyMessage, expiring: true, viewerId: user?.id, avatarOn: Boolean(data?.avatar_on), teaserSince: data?.teasers?.since ?? null,
+    items, kind, subjects, appliedToday, emptyMessage, expiring: true, viewerId: user?.id, teaserSince: data?.teasers?.since ?? null,
     onSeen: see, onApply: applyQuick, onSave: save, onShare: (i: CardItem) => void share(i), onDismiss: dismiss,
     onDetails: (i: CardItem) => open(i),
     asked: actions.asked, onAsk: (i: CardItem, q: Question) => void actions.ask(i, q),
@@ -411,7 +411,7 @@ export default function TodayPage() {
       {kind === 'hotlist' && !hasAvatar && (
         <Link to="/settings#avatar" onClick={() => trackEvent('avatar_nudge_clicked')} className="flex w-full max-w-sm items-center gap-3 rounded-2xl bg-gray-50 p-3 text-left ring-1 ring-gray-200">
           <Sparkles size={20} className="shrink-0 text-amber-500" />
-          <span className="min-w-0 flex-1"><b className="block text-[14px]">See yourself in your matches</b><small className="block text-[12px] text-gray-500">Make a 3D avatar from your photo. Free.</small></span>
+          <span className="min-w-0 flex-1"><b className="block text-[14px]">Get your 3D avatar</b><small className="block text-[12px] text-gray-500">Your profile photo, made from your photo. Free.</small></span>
           <ChevronRight size={16} className="shrink-0" />
         </Link>
       )}

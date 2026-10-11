@@ -39,7 +39,7 @@ Each page states the count for the last 30 days, how many arrived in the last 7,
 - **History**: everything viewed, saved, applied to and shared.
 - **AI Match**: paste a profile or a job and get ranked matches on demand.
 - **ProfilePush Apply (Chrome extension)**: fills in a career site's application form for the chosen profile; the user reviews it and presses the site's own Apply.
-- **Avatar**: the user's own avatar can appear in the match pictures (shown while they have matches left).
+- **Avatar**: a 3D avatar made from the user's photo can be their profile photo on their posts and Network profile (shown while they have matches left). Match pictures are always the job's own.
 - **Alerts**: push notifications (Android and browser) and emails link straight to the match.
 - **Refer and earn**: a referral link gives the referrer 100 credits and the new user 50 extra credits.
 - **AI pictures**: illustrations made by AI for each job, never chosen from anyone's name or background; any picture can be reported and is redrawn.
