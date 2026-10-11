@@ -164,9 +164,9 @@ export default function MatchingSettingsPage() {
         {loading ? (
           <div className="flex justify-center py-16"><LogoSpinner size={20} /></div>
         ) : (
-          <div className="grid items-start gap-2.5 lg:grid-cols-2 lg:gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-2.5 lg:grid-cols-2 lg:gap-3">
             {/* Your settings. */}
-            <div className="order-2 space-y-2.5 lg:order-1">
+            <div className="order-2 min-w-0 space-y-2.5 lg:order-1">
               <Section title="Account" detail="Where applications go from, your plan and your team.">
                 <ul className="divide-y divide-gray-100 dark:divide-white/10">
                   <li className="flex items-center gap-3 py-2.5">
@@ -242,7 +242,7 @@ export default function MatchingSettingsPage() {
               >{null}</Section>
             </div>
             {/* Matches and profiles (first on phones). */}
-            <div className="order-1 space-y-2.5 lg:order-2">
+            <div className="order-1 min-w-0 space-y-2.5 lg:order-2">
               <Section
                 title="AI Matches"
                 detail={autoMatch ? 'On: new matches arrive all day and you get alerts.' : 'Off: no new matches and no match alerts. Your existing matches stay.'}
