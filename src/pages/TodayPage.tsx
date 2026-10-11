@@ -319,7 +319,8 @@ export default function TodayPage() {
   // account (nothing posted yet) or an error, which get the plain page.
   const immersive = !wide && full && !loadError && (hasSubjects || (loading && !data));
 
-  // The search, the streak and applied counts, and the profile stories.
+  // The search and the profile stories (the streak and today's applies live
+  // on the Tracker cards and the end-of-reel screen).
   const topBar = (controls: ReactNode) => (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -339,14 +340,6 @@ export default function TodayPage() {
             <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-gray-500 hover:bg-black/5"><X size={15} /></button>
           )}
         </label>
-        {(reel?.streak ?? 0) > 0 && (
-          <span title={`${reel!.streak}-day streak`} className="inline-flex h-10 shrink-0 items-center gap-1 rounded-full bg-orange-50 px-3 text-[13px] font-extrabold tabular-nums text-orange-600 ring-1 ring-orange-200">
-            <Flame size={14} fill="currentColor" />{reel!.streak}
-          </span>
-        )}
-        <span title={`${appliedToday} applied today`} className="inline-flex h-10 shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-3 text-[13px] font-extrabold tabular-nums text-emerald-700 ring-1 ring-emerald-200">
-          <Check size={14} strokeWidth={3} />{appliedToday}
-        </span>
         {controls}
       </div>
       {locked > 0 && (
@@ -450,7 +443,9 @@ export default function TodayPage() {
             key={deckKey}
             {...deckProps}
             top={topBar}
-            layer="z-[60]"
+            // Above the bottom menu, which stays on a phone.
+            layer="z-[60] bottom-[calc(4.25rem+env(safe-area-inset-bottom))]"
+            navBelow
             boxes={tall}
             reelMs={REEL_MS}
             endScreen={endScreen}

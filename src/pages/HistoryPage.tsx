@@ -6,6 +6,7 @@ import LogoSpinner from '../components/LogoSpinner';
 import { AiSubmitDialog } from '../components/AiSubmit';
 import MatchDetail from '../components/match/MatchDetail';
 import MatchSheet from '../components/match/MatchSheet';
+import MatchList from '../components/match/MatchList';
 import ToastBar from '../components/match/ToastBar';
 import ApplyFrame from '../components/match/ApplyFrame';
 import { useMatchActions } from '../components/match/useMatchActions';
@@ -104,17 +105,19 @@ export default function HistoryPage() {
     <div className="min-h-[100dvh] bg-[#f3f2ee] pb-[calc(5.5rem+env(safe-area-inset-bottom))] text-gray-900 dark:bg-[#1B1D21] dark:text-slate-100 sm:pb-10">
       <AppNav />
       <main className="mx-auto w-full max-w-[1400px] space-y-2 px-2 pt-2 sm:px-4 sm:pt-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex h-9 rounded-lg border border-gray-200 bg-white p-[3px] dark:border-white/10 dark:bg-[#20242a]" role="tablist">
+        <div className="flex items-center gap-2">
+          <div className="-mx-2 flex min-w-0 flex-1 overflow-x-auto px-2 [scrollbar-width:none] sm:mx-0 sm:flex-none sm:px-0">
+          <div className="inline-flex h-10 shrink-0 rounded-full border border-gray-200 bg-white p-1 sm:h-9 sm:rounded-lg sm:p-[3px] dark:border-white/10 dark:bg-[#20242a]" role="tablist">
             {TABS.map(({ key, label, icon: Icon }) => (
               <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => { setParams({ tab: key }, { replace: true }); setOpenId(null); }}
-                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-semibold tabular-nums ${tab === key ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'text-gray-600 dark:text-slate-300'}`}>
+                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[13px] font-semibold tabular-nums sm:rounded-md sm:px-2.5 sm:text-[12.5px] ${tab === key ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'text-gray-600 dark:text-slate-300'}`}>
                 <Icon size={14} />{label}{counts ? ` ${counts[key]}` : ''}
               </button>
             ))}
           </div>
+          </div>
           {(items ?? []).length > 0 && (
-            <span className="ml-auto flex items-center gap-2">
+            <span className="ml-auto hidden items-center gap-2 sm:flex">
               <button type="button" onClick={copy} title="Copy these rows, then paste them into Google Sheets or Excel" className={`${control} inline-flex items-center gap-1.5`}>
                 {copied ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}{copied ? 'Copied' : 'Copy rows'}
               </button>
@@ -132,13 +135,24 @@ export default function HistoryPage() {
             <h3 className="text-[18px] font-extrabold">{EMPTY[tab][0]}</h3>
             <p className="max-w-[34ch] text-[13.5px] text-gray-600 dark:text-slate-400">{EMPTY[tab][1]}</p>
           </div>
-        ) : tab === 'applied' ? (
-          <MatchSheet items={items!} kind={kind} mode="tracker" dateLabel={DATE[tab]} dateOf={dateOf} viewerId={user?.id}
-            onOpen={(i) => i.lead && navigate(`/${i.lead.kind === 'job' ? 'job' : 'hotlist'}/${i.lead.id}`)}
-            onStatus={(i, st) => void changeStatus(i, st)} onNotes={(i, n) => void changeNotes(i, n)} />
-        ) : (
-          <MatchSheet items={items!} kind={kind} mode="history" dateLabel={DATE[tab]} dateOf={dateOf} onOpen={open} viewerId={user?.id} />
-        )}
+        ) : (<>
+          {/* Phones: a card per match. Wider: the sheet. */}
+          <div className="sm:hidden">
+            {tab === 'applied'
+              ? <MatchList items={items!} kind={kind} mode="tracker" dateOf={dateOf} viewerId={user?.id}
+                  onOpen={(i) => i.lead && navigate(`/${i.lead.kind === 'job' ? 'job' : 'hotlist'}/${i.lead.id}`)} onStatus={(i, st) => void changeStatus(i, st)} />
+              : <MatchList items={items!} kind={kind} mode="history" dateOf={dateOf} viewerId={user?.id} onOpen={open} />}
+          </div>
+          <div className="hidden sm:block">
+            {tab === 'applied' ? (
+              <MatchSheet items={items!} kind={kind} mode="tracker" dateLabel={DATE[tab]} dateOf={dateOf} viewerId={user?.id}
+                onOpen={(i) => i.lead && navigate(`/${i.lead.kind === 'job' ? 'job' : 'hotlist'}/${i.lead.id}`)}
+                onStatus={(i, st) => void changeStatus(i, st)} onNotes={(i, n) => void changeNotes(i, n)} />
+            ) : (
+              <MatchSheet items={items!} kind={kind} mode="history" dateLabel={DATE[tab]} dateOf={dateOf} onOpen={open} viewerId={user?.id} />
+            )}
+          </div>
+        </>)}
       </main>
 
       {openItem && (

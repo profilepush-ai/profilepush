@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, Check, ChevronDown, ChevronRight, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Lock, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
+import { Bookmark, Check, ChevronRight, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Lock, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
 import { priceLabels, useCurrency } from '../../lib/currency';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, pictureFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
@@ -35,7 +35,7 @@ function TimeLeft({ item }: { item: CardItem }) {
 
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, teaserSince = null, asked, onAsk, hideAsk = false, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, teaserSince = null, asked, onAsk, hideAsk = false, navBelow = false, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails, onReportPicture,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
@@ -52,6 +52,8 @@ export default function SwipeDeck({
   reelMs?: number;
   /** Shown after the last card, instead of the plain "All caught up". */
   endScreen?: ReactNode;
+  /** The app's bottom menu sits right below (phones): no room kept for the home bar. */
+  navBelow?: boolean;
   /** Today's cards: show how long each has left before it leaves Today. */
   expiring?: boolean;
   /** Ask the poster for what the post leaves out. */
@@ -182,10 +184,18 @@ export default function SwipeDeck({
     : <button type="button" onClick={onClose} aria-label="Close" className="grid h-10 w-10 place-items-center rounded-full text-gray-600 hover:bg-black/5"><X size={22} /></button>;
   const sizeButton = onCollapse || onExpand ? (
     <span data-rail>
-      <button type="button" onClick={onCollapse ?? onExpand} aria-label={onCollapse ? 'Close full screen' : 'Full screen'} title={onCollapse ? 'Close full screen' : 'Full screen'}
-        className="grid h-9 w-9 place-items-center rounded-full bg-white/80 text-gray-700 shadow-sm ring-1 ring-black/5 backdrop-blur hover:bg-white">
-        {onCollapse ? <ChevronDown size={20} /> : <Maximize2 size={16} />}
-      </button>
+      {onCollapse ? (
+        // Out of full screen, said in words.
+        <button type="button" onClick={onCollapse} title="Close full screen"
+          className="inline-flex h-9 items-center rounded-full bg-white/85 px-3.5 text-[13.5px] font-bold text-gray-800 shadow-sm ring-1 ring-black/5 backdrop-blur hover:bg-white">
+          Close
+        </button>
+      ) : (
+        <button type="button" onClick={onExpand} aria-label="Full screen" title="Full screen"
+          className="grid h-9 w-9 place-items-center rounded-full bg-white/80 text-gray-700 shadow-sm ring-1 ring-black/5 backdrop-blur hover:bg-white">
+          <Maximize2 size={16} />
+        </button>
+      )}
     </span>
   ) : null;
   const playButton = reelMs && item ? (
@@ -352,7 +362,7 @@ export default function SwipeDeck({
       {/* The card: the picture on its stage, then the details and the actions.
           It lets taps through to the sides (previous/next) except on its
           own buttons and panel. */}
-      <div key={item.card_id} ref={cardRef} style={{ animation: pushIn }} className={`pointer-events-none relative z-20 flex min-h-0 flex-1 flex-col gap-2.5 px-3 pb-2 pt-2 ${inline ? 'pb-3' : onSwipeUp ? 'pb-[calc(1.1rem+env(safe-area-inset-bottom))]' : 'pb-[calc(.6rem+env(safe-area-inset-bottom))]'} ${pushIn ? '' : entryDir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : entryDir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+      <div key={item.card_id} ref={cardRef} style={{ animation: pushIn }} className={`pointer-events-none relative z-20 flex min-h-0 flex-1 flex-col gap-2.5 px-3 pb-2 pt-2 ${inline || navBelow ? 'pb-3' : onSwipeUp ? 'pb-[calc(1.1rem+env(safe-area-inset-bottom))]' : 'pb-[calc(.6rem+env(safe-area-inset-bottom))]'} ${pushIn ? '' : entryDir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : entryDir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
         {picture ? (
           // The stage: the picture, sharp and framed on the person, its edges
           // fading into the blurred copy behind (no border).

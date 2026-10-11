@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bell, Check, ChevronRight, CreditCard, Lock, Mail, Smartphone, Star, UserCog, Users } from 'lucide-react';
+import { Bell, Check, ChevronDown, ChevronRight, CreditCard, Lock, Mail, Smartphone, Star, UserCog, Users } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import AppNav from '../components/AppNav';
 import LogoSpinner from '../components/LogoSpinner';
@@ -22,7 +22,37 @@ const CAP_OPTIONS = [10, 20, 30, 50, 75, 100];
 
 type Subject = { subject_id: string; kind: 'hotlist' | 'job'; title: string; cap: number; today: number };
 
-function Section({ title, detail, children, badge }: { title: string; detail: string; children: React.ReactNode; badge?: React.ReactNode }) {
+// Wider than a phone: sections show open; on a phone each is a tappable row.
+function useWide() {
+  const q = '(min-width: 640px)';
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches);
+  useEffect(() => {
+    const m = window.matchMedia(q);
+    const on = () => setWide(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
+function Section({ title, detail, children, badge, open = false }: { title: string; detail: string; children: React.ReactNode; badge?: React.ReactNode; open?: boolean }) {
+  const wide = useWide();
+  if (!wide) {
+    // A phone: the title (and its switch) as a row; tap to see the rest.
+    return (
+      <details open={open} className="group rounded-2xl bg-white ring-1 ring-gray-200 dark:bg-[#20242a] dark:ring-white/10">
+        <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
+          <b className="min-w-0 flex-1 text-[15px] font-bold text-gray-900 dark:text-white">{title}</b>
+          {badge && <span onClick={(e) => e.preventDefault()}>{badge}</span>}
+          <ChevronDown size={18} className="shrink-0 text-gray-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="border-t border-gray-100 px-4 pb-4 pt-3 dark:border-white/10">
+          <p className="text-[13px] leading-snug text-gray-500 dark:text-slate-400">{detail}</p>
+          {children && <div className="mt-3">{children}</div>}
+        </div>
+      </details>
+    );
+  }
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-[#20242a]">
       <div className="flex items-start justify-between gap-3">
