@@ -5,10 +5,9 @@ import { drawAvatar, googlePhotoUrl, isFacePhoto, storeImage } from "../_shared/
 // Makes the 3D avatar for everyone whose Google photo is a real photo of
 // their face and who doesn't have one (and never turned theirs off), and
 // turns it on. Letters, logos and drawings are skipped for good: an avatar
-// from those would be a stranger. It shows in their match
-// pictures, posts and header while they have credits or a plan, and falls
-// back to the standard pictures and their Google photo at 0 credits. The app
-// tells them once and lets them keep it or turn it off.
+// from those would be a stranger. It's their profile photo (posts, Network
+// profile, header) while they have credits or a plan, back to their Google
+// photo at 0 credits; match pictures are always the job's own.
 //
 // Run every few minutes (cron) and safe to call by anyone: it only ever does
 // the work that's waiting, a few people at a time.
@@ -40,7 +39,6 @@ async function makeFor(admin: SupabaseClient, userId: string, photo: string): Pr
     // On, but not yet confirmed by them (consented_at stays empty until they keep it).
     await admin.from("user_avatars").update({ status: "active", url: saved.url, consented_at: null, error: null, updated_at: new Date().toISOString() }).eq("user_id", userId);
     await admin.rpc("pp_sync_user_photo", { p_user: userId });
-    await admin.rpc("queue_my_today_if_active", { p_user: userId });
     return true;
   } catch (error) {
     await admin.from("user_avatars").update({ status: "failed", error: (error as Error).message.slice(0, 300), updated_at: new Date().toISOString() }).eq("user_id", userId);

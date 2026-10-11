@@ -169,10 +169,10 @@ export default function LandingNew() {
       {/* Features */}
       <section className="mx-auto max-w-6xl px-4 pb-20">
         <div className="grid gap-4 md:grid-cols-2">
-          <Feature title="A picture for every match" text="Each job gets its own picture: its skills, its city. Turn on your avatar and the person in it is you.">
+          <Feature title="A picture for every match" text="Each job gets its own picture: its skills, its city. You can tell your day's jobs apart at a glance.">
             <div className="flex items-end gap-3">
               <img src="/landing-v2/analyst.webp" alt="" className="h-40 w-28 rounded-2xl object-cover object-[50%_20%] shadow-lg" />
-              <img src="/landing-v2/avatar.webp" alt="" className="h-32 w-24 rounded-2xl object-cover shadow-lg" />
+              <img src="/landing-v2/data.webp" alt="" className="h-32 w-24 rounded-2xl object-cover object-[50%_20%] shadow-lg" />
             </div>
           </Feature>
           <Feature title="Your tracker is a sheet" text="Every application in one row, status and notes in the cell. Copy the rows straight into Google Sheets or Excel.">

@@ -35,7 +35,7 @@ function TimeLeft({ item }: { item: CardItem }) {
 
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, teaserSince = null, asked, onAsk, hideAsk = false, navBelow = false, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, reelMs, endScreen, expiring = false, viewerId, teaserSince = null, asked, onAsk, hideAsk = false, navBelow = false, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails, onReportPicture,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
@@ -44,8 +44,6 @@ export default function SwipeDeck({
   top?: ReactNode | ((controls: ReactNode) => ReactNode); layer?: string; boxes?: boolean; menuHint?: boolean;
   /** Picks which version of a post's picture this viewer sees. */
   viewerId?: string;
-  /** Show the viewer's own avatar pictures (they have credits or a plan). */
-  avatarOn?: boolean;
   /** A free account's previews began (for the days left on a teaser). */
   teaserSince?: string | null;
   /** Plays like a reel: each card moves on after this long (hold to pause). */
@@ -160,7 +158,7 @@ export default function SwipeDeck({
     if (index < 0) return;
     const near = [...items.slice(index + 1, index + 4), items[index - 1]].filter(Boolean) as CardItem[];
     for (const next of near) {
-      const url = (avatarOn ? next.my_visual : null) || (next.lead ? pictureFor(next.lead, viewerId) : null);
+      const url = next.lead ? pictureFor(next.lead, viewerId) : null;
       if (!url || ready.current.has(url)) continue;
       const im = new Image();
       im.src = url;
@@ -168,7 +166,7 @@ export default function SwipeDeck({
       ready.current.set(url, im);
       if (ready.current.size > 12) ready.current.delete(ready.current.keys().next().value as string);
     }
-  }, [index, items, viewerId, avatarOn]);
+  }, [index, items, viewerId]);
 
   const shell = inline
     ? 'relative flex h-full min-h-0 select-none flex-col overflow-hidden rounded-[22px] bg-white text-gray-900 ring-1 ring-gray-200'
@@ -296,7 +294,8 @@ export default function SwipeDeck({
   const subject = subjects[item.subject_id];
   const fit = fitFor(kind, subject, lead);
   const site = kind === 'hotlist' && lead.source === 'career_site';
-  const picture = (avatarOn ? item.my_visual : null) || pictureFor(lead, viewerId);
+  // The job's own picture (avatars are for people's profiles, not matches).
+  const picture = pictureFor(lead, viewerId);
   const previewDays = teaserSince ? Math.max(0, 7 - Math.floor((Date.now() - new Date(teaserSince).getTime()) / 86_400_000)) : null;
   const color = hashColor(item.subject_id);
   const name = subjectName(kind, subject);

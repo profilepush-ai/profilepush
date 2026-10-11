@@ -212,7 +212,7 @@ export default function MatchingSettingsPage() {
                 </div>
               </Section>
               <div id="avatar" className="scroll-mt-20">
-                <Section title="Your avatar" detail="See yourself in your job matches, holding each job's skills. Free to make. It shows while you have matches left.">
+                <Section title="Your avatar" detail="A 3D avatar as your photo on your profile, your posts and Network. Free to make. It shows while you have matches left.">
                   <AvatarPanel />
                 </Section>
               </div>

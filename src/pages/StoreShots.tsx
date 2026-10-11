@@ -15,7 +15,7 @@ import type { CardItem, Subject } from '../lib/today';
 // Store listing screenshots: the real Today, detail and Tracker components
 // with example data (IT jobs, sample names), so no customer's data or a real
 // company's logo ends up in a public listing. Development only.
-//   /store-shots?shot=today | avatar | detail | send | tracker | done | splash | role | loader
+//   /store-shots?shot=today | detail | send | tracker | done | splash | role | loader
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
 
@@ -68,9 +68,9 @@ export default function StoreShots() {
   const [params] = useSearchParams();
   if (!import.meta.env.DEV) return <Navigate to="/" replace />;
   const shot = params.get('shot') ?? 'today';
-  const deck = (items: CardItem[], avatarOn = false) => (
+  const deck = (items: CardItem[]) => (
     <SwipeDeck items={items} kind="hotlist" subjects={SUBJECTS} startId={items[0].card_id} appliedToday={4} top={TopBar()} layer="z-[60]"
-      boxes reelMs={60_000} expiring viewerId="demo" avatarOn={avatarOn} onCollapse={noop}
+      boxes reelMs={60_000} expiring viewerId="demo" onCollapse={noop}
       onSeen={noop} onApply={noop} onSave={noop} onShare={noop} onDismiss={noop} onDetails={noop} />
   );
 
@@ -88,7 +88,6 @@ export default function StoreShots() {
   const bare = ITEMS.map((i) => ({ ...i, eng: undefined }));
   // Screenshot 1 leads with a different match than the avatar one.
   if (shot === 'today') return deck([bare[1], bare[0], bare[2]]);
-  if (shot === 'avatar') return deck([{ ...bare[0], my_visual: '/landing-v2/avatar-job.webp' }], true);
   if (shot === 'detail' || shot === 'send') {
     return (
       <div className="h-[100dvh] bg-[#f3f2ee]">

@@ -13,7 +13,7 @@ import { drawAvatar, googlePhotoUrl, isFacePhoto, pathOf, storeImage } from "../
 // While it's on, it's their photo everywhere: posts, network profile, header.
 //   POST { action: "make", source: "google" }    -> { avatar }   (a preview, not used yet)
 //   POST { action: "make", source: "upload", image: "<base64>" }
-//   POST { action: "use" }                       -> { avatar, queued }
+//   POST { action: "use" }                       -> { avatar }
 //   POST { action: "remove" }                    -> { removed: true }
 
 const corsHeaders = {
@@ -96,12 +96,10 @@ Deno.serve(async (req: Request) => {
       const avatar = await current();
       if (!avatar?.url || !["ready", "active"].includes(avatar.status as string)) return respond({ error: "Make your avatar first." }, 400);
       await admin.from("user_avatars").update({ status: "active", consented_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("user_id", user.id);
-      // Their pictures from before (an earlier avatar) are redrawn.
-      await admin.from("match_visuals_me").update({ status: "queued", attempts: 0 }).eq("user_id", user.id);
-      const { data: queued } = await admin.rpc("queue_my_today", { p_user: user.id });
-      // Their posts and network profile show it from now on.
+      // Their profile photo: posts and Network profile show it from now on.
+      // (Match pictures are always the job's own.)
       await admin.rpc("pp_sync_user_photo", { p_user: user.id });
-      return respond({ avatar: await current(), queued: queued ?? 0 });
+      return respond({ avatar: await current() });
     }
 
     if (body.action === "remove") {
