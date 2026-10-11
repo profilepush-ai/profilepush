@@ -3,6 +3,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import SwipeDeck from '../components/match/SwipeDeck';
 import MatchDetail from '../components/match/MatchDetail';
 import MatchSheet from '../components/match/MatchSheet';
+import MatchList from '../components/match/MatchList';
 import TrackerStats from '../components/match/TrackerStats';
 import ProfileStories from '../components/match/ProfileStories';
 import SendResumeSheet from '../components/match/SendResumeSheet';
@@ -112,7 +113,8 @@ export default function StoreShots() {
           days: Array.from({ length: 14 }, (_, k) => ({ day: `d${k}`, matches: [12, 9, 14, 10, 0, 11, 13, 15, 12, 10, 16, 14, 11, 18][k], watched: [3, 2, 0, 4, 0, 5, 3, 6, 7, 4, 8, 6, 5, 9][k], applied: [1, 0, 2, 1, 0, 2, 1, 3, 2, 1, 4, 2, 3, 3][k] })),
           week: { matches: 96, watched: 45, applied: 18, saved: 7, passed: 9, asked: 5 }, all: { matches: 410, watched: 160, applied: 52, saved: 21, asked: 14 }, streak: 6,
         }} />
-        <MatchSheet items={rows} kind="hotlist" mode="tracker" dateLabel="Applied" dateOf={(i) => i.applied_at} viewerId="demo" onOpen={noop} onStatus={noop} onNotes={noop} />
+<div className="sm:hidden"><MatchList items={rows} kind="hotlist" mode="tracker" dateOf={(i) => i.applied_at} viewerId="demo" onOpen={noop} onStatus={noop} /></div>
+        <div className="hidden sm:block">        <MatchSheet items={rows} kind="hotlist" mode="tracker" dateLabel="Applied" dateOf={(i) => i.applied_at} viewerId="demo" onOpen={noop} onStatus={noop} onNotes={noop} /></div>
       </div>
     );
   }
