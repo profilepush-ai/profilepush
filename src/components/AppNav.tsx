@@ -581,22 +581,24 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
             <Kanban size={24} />
             <span>Tracker</span>
           </Link>
-          {/* AI Match is the centre action, raised above the bar so it reads as
-              the primary thing to do. It uses the same py-2 / gap-1 / 24px icon
-              slot as the other four items so every label sits on one baseline;
-              the circle is positioned out of that slot upwards and takes no
-              layout space, which is what keeps the row aligned. */}
+          {/* AI Match, the centre action, like PhonePe's Scan: a large solid
+              brand circle inside the bar (nothing popping out above it), no
+              label; the bar's height is unchanged. */}
           <Link
             to="/match"
             aria-label="AI Match"
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-semibold ${location.pathname.startsWith('/match') ? 'text-blue-600' : 'text-gray-600'}`}
+            title="AI Match"
+            className="flex flex-1 items-center justify-center py-0.5"
           >
-            <span className="relative h-6 w-full">
-              <span className="absolute bottom-1 left-1/2 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30 ring-[3px] ring-white transition-transform active:scale-95">
-                <Sparkles size={22} strokeWidth={2.25} />
-              </span>
+            <span className={`grid h-[56px] w-[56px] place-items-center rounded-full text-white shadow-md shadow-blue-600/25 transition-transform active:scale-95 ${location.pathname.startsWith('/match') ? 'bg-[#1d4ed8]' : 'bg-[#2563EB]'}`}>
+              {/* Scan a profile, find what fits: scan corners, a person, an AI spark. */}
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                <path d="M4 10.5V7a3 3 0 0 1 3-3h3.5M21.5 4H25a3 3 0 0 1 3 3v3.5M28 21.5V25a3 3 0 0 1-3 3h-3.5M10.5 28H7a3 3 0 0 1-3-3v-3.5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="16" cy="13" r="3.7" fill="currentColor" />
+                <path d="M9.6 23.6c.6-3.5 3.2-5.6 6.4-5.6s5.8 2.1 6.4 5.6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+                <path d="M23.4 7.2l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z" fill="#FACC15" stroke="#FACC15" strokeWidth=".8" strokeLinejoin="round" />
+              </svg>
             </span>
-            <span>AI Match</span>
           </Link>
           <Link
             to="/history"
