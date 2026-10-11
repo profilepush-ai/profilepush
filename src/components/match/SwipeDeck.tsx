@@ -296,11 +296,12 @@ export default function SwipeDeck({
       {...gestures}
     >
       {picture ? (
-        // The picture, heavily blurred, fills the screen behind everything:
-        // its own colours as a soft glow; the details sit on frosted glass.
-        <div key={`${item.card_id}:${picture}`} ref={picRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ animation: pushIn ?? 'ppPicture .6s ease-out both' }}>
-          <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full scale-[1.4] object-cover blur-[40px] saturate-[1.6]" />
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.46) 0%, rgba(255,255,255,.18) 34%, rgba(255,255,255,.30) 70%, rgba(255,255,255,.5) 100%)' }} />
+        // The picture, sharp, full screen behind everything like a reel: a
+        // light fade at the top keeps the search and stories readable; the
+        // details sit on frosted glass at the bottom.
+        <div key={`${item.card_id}:${picture}`} ref={picRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden bg-[#e8eef8]" style={{ animation: pushIn ?? 'ppPicture .6s ease-out both' }}>
+          <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[50%_26%]" />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(248,250,252,.82) 0%, rgba(248,250,252,.45) 13%, rgba(248,250,252,0) 26%, rgba(248,250,252,0) 62%, rgba(248,250,252,.35) 100%)' }} />
         </div>
       ) : (
         <div key={item.card_id} ref={picRef} className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)`, animation: pushIn }} />
@@ -324,7 +325,7 @@ export default function SwipeDeck({
         })()}
       </div>
       {topSlot}
-      <div className="relative z-20 flex items-center gap-2.5 py-2.5 pl-3 pr-2">
+      <div className={`relative z-20 flex items-center gap-2.5 ${picture ? 'mx-2 mt-1.5 rounded-2xl bg-white/65 py-2 pl-2 pr-1.5 ring-1 ring-white/60 backdrop-blur-md' : 'py-2.5 pl-3 pr-2'}`}>
         <Initials name={name} id={item.subject_id} size={32} />
         <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b>{forLine && <small className="block truncate text-[11.5px] text-gray-500">{forLine}</small>}</div>
         {expiring && !item.teaser && <TimeLeft item={item} />}
@@ -357,13 +358,7 @@ export default function SwipeDeck({
       <button type="button" aria-label="Previous match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(-1); }} className="absolute bottom-[70px] left-0 top-[70px] z-10 w-[30%]" />
       <button type="button" aria-label="Next match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(1); }} className="absolute bottom-[70px] right-0 top-[70px] z-10 w-[30%]" />
 
-      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'flex-start' : 'safe center', animation: pushIn }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
-        {/* The post's AI picture: a clean block filling the room above the details. */}
-        {picture && (
-          <div className="relative -mr-16 min-h-[130px] flex-1 overflow-hidden rounded-3xl bg-white/40 shadow-[0_12px_32px_rgba(11,26,58,.16)] ring-1 ring-white/60" style={section(0)}>
-            <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[50%_22%]" />
-          </div>
-        )}
+      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'safe flex-end' : 'safe center', animation: pushIn }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
         {item.teaser ? (
           // A free preview: the title and match score; the rest unlocks with a top-up.
           <>
