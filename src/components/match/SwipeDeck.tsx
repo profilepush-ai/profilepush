@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, Check, ChevronRight, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Lock, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
+import { Bookmark, Check, ChevronRight, DollarSign, ExternalLink, FileText, History, MapPin, Maximize2, Pause, Play, Flag, Info, Lock, Send, Share2, ShieldCheck, Sparkles, Timer, X } from 'lucide-react';
 import { priceLabels, useCurrency } from '../../lib/currency';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, pictureFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
-import { AskChips, CompanyLogo, FitBadges, FitLine, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
+import { CompanyLogo, FitBadges, FitLine, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
 import PushStreak from './PushStreak';
 import { PUSH_EASE, PUSH_MS, pushGhost } from '../../lib/push';
 
@@ -432,14 +432,29 @@ export default function SwipeDeck({
             <div className="mt-1.5" style={sec(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5" style={sec(T.ring)}>
               <FitBadges fit={fit} hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} />
-              {!hideAsk && onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
-                <span data-rail><AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} /></span>
-              )}
             </div>
             <div className="mt-2 max-h-[62px] overflow-hidden" style={sec(T.skills)}><SkillTiles skills={fit.skills.slice(0, 5)} /></div>
           </>)}
 
-          <div data-rail className="mt-3 flex items-center gap-2">
+          {/* What the post leaves out, asked of its poster: a small row of
+              secondary actions just above the main ones. */}
+          {!item.teaser && !hideAsk && onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
+            <div data-rail className="-mx-0.5 mt-3 flex items-center gap-1.5 overflow-x-auto px-0.5 [scrollbar-width:none]">
+              <span className="shrink-0 text-[11.5px] font-semibold text-gray-500">Not in the post:</span>
+              {missingFor(kind, fit).map((q) => {
+                const done = (asked?.[item.lead_id] ?? []).includes(q);
+                const Icon = q === 'rate' ? DollarSign : q === 'visa' ? ShieldCheck : MapPin;
+                return (
+                  <button key={q} type="button" disabled={done} onClick={() => onAsk(item, q)}
+                    title={done ? 'Asked. The reply comes to your email.' : `Ask the poster for the ${q}`}
+                    className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-[12px] font-bold ${done ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
+                    {done ? <Check size={13} strokeWidth={3} /> : <Icon size={13} />}{done ? `${q[0].toUpperCase()}${q.slice(1)} asked` : `Ask ${q}`}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div data-rail className="mt-2.5 flex items-center gap-2">
             {item.teaser ? (
               <Link to="/billing" className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-blue-600 text-[15px] font-extrabold text-white shadow-[0_8px_22px_rgba(37,99,235,.35)]">
                 <Lock size={16} />Unlock · from {price.minTopup}
