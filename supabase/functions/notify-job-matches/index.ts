@@ -24,9 +24,9 @@ const corsHeaders = {
 const NOTIF_TYPE = "job_matches_daily";
 const DEFAULT_WINDOW_HOURS = 24;
 const DEFAULT_MIN_SIMILARITY = 0.7;
-// Where the notification leads: their own consultants, each with a Matches
-// button. Not straight into a run, which spends credits.
-const NOTIF_LINK = '/tracker';
+// Where the notification leads: Today, where new matches are. Not straight
+// into a run, which spends credits.
+const NOTIF_LINK = '/today';
 
 function respond(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

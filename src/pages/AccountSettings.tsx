@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import LogoSpinner from '../components/LogoSpinner';
 import { isPaidPlanEffective, shouldShowCreditsUi } from '../lib/feature-gates';
+import { priceLabels, useCurrency } from '../lib/currency';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -120,6 +121,8 @@ function CardHeader({ icon: Icon, title, description, action }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AccountSettings() {
+  const [currencyNow] = useCurrency();
+  const price = priceLabels(currencyNow);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, account, membership, subscription, refreshAccount, signOut } = useAuth();
@@ -773,7 +776,7 @@ export default function AccountSettings() {
                       <p className="text-[13px] text-gray-400 mt-1">
                         {hasPaid
                           ? 'Up to 100 new matches a day for each profile or job, and you choose the minimum match. Top up any time.'
-                          : '10 new matches a day at a 70% minimum. Any top-up from ₹100 raises it to up to 100 a day for each profile or job and lets you choose the minimum.'}
+                          : `10 new matches a day at a 70% minimum. Any top-up from ${price.minTopup} raises it to up to 100 a day for each profile or job and lets you choose the minimum.`}
                       </p>
                     </div>
                     {isOwner && (

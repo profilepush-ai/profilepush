@@ -28,10 +28,10 @@
 
     <!-- Primary SEO -->
     <!-- What crawlers and link previews see before JS runs; mirrors the
-         homepage's <SEO> (src/pages/LandingPage.tsx). Keep the two in step. -->
-    <title>ProfilePush — AI Copilot for US IT Staffing</title>
-    <meta name="description" content="AI Copilot for US IT staffing. Vendors get matching bench consultants; bench sales get matching C2C requirements, live all day. Free to start. On Android." />
-    <meta name="keywords" content="AI copilot for US IT staffing, C2C requirements, bench sales recruiter software, hotlist consultants, IT staffing vendor software, bench consultants, AI matching for consultants and requirements, live staffing tracker, AI resume request, AI submission email, C2C W2 contract staffing, US IT staffing app" />
+         homepage's <SEO> (src/pages/LandingNew.tsx). Keep the two in step. -->
+    <title>ProfilePush: AI Copilot for Job Hunting, Job Posting and Bench Sales</title>
+    <meta name="description" content="AI job matches every day for IT job seekers, bench sales recruiters and job posters. Send your resume in one tap, track every application. 100 free matches." />
+    <meta name="keywords" content="AI job search, AI job matching, AI copilot for job hunting, IT jobs, C2C jobs, contract jobs, H1B jobs, remote IT jobs, bench sales, bench sales recruiter software, job posting, hotlist, send resume, job application tracker, auto apply Chrome extension, US IT staffing app" />
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
     <meta name="author" content="ProfilePush" />
 
@@ -40,19 +40,19 @@
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://profilepush.ai/" />
-    <meta property="og:title" content="ProfilePush — AI Copilot for US IT Staffing" />
-    <meta property="og:description" content="Vendors get matching bench consultants. Bench sales get matching C2C requirements for every consultant. Live all day, emails sent from your own Gmail. Free to start, on web and Android." />
+    <meta property="og:title" content="ProfilePush: AI Copilot for Job Hunting, Job Posting and Bench Sales" />
+    <meta property="og:description" content="Live AI job matches for your profile, your consultants or your jobs, with the score, the skills that fit and an AI picture. Send the resume in one tap from your own Gmail. 100 free matches, then pay per match. Web and Android." />
     <meta property="og:image" content="https://profilepush.ai/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="ProfilePush: AI Copilot for US IT Staffing. Vendors, bench sales, live market." />
+    <meta property="og:image:alt" content="ProfilePush: AI Copilot for job hunting, job posting and bench sales." />
 
     <!-- Twitter / X -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@profilepush" />
-    <meta name="twitter:title" content="ProfilePush — AI Copilot for US IT Staffing" />
-    <meta name="twitter:description" content="Vendors get matching bench consultants. Bench sales get matching C2C requirements for every consultant. Live all day, emails sent from your own Gmail. Free to start, on web and Android." />
-    <meta name="twitter:image:alt" content="ProfilePush: AI Copilot for US IT Staffing. Vendors, bench sales, live market." />
+    <meta name="twitter:title" content="ProfilePush: AI Copilot for Job Hunting, Job Posting and Bench Sales" />
+    <meta name="twitter:description" content="Live AI job matches for your profile, your consultants or your jobs, with the score, the skills that fit and an AI picture. Send the resume in one tap from your own Gmail. 100 free matches, then pay per match. Web and Android." />
+    <meta name="twitter:image:alt" content="ProfilePush: AI Copilot for job hunting, job posting and bench sales." />
     <meta name="twitter:image" content="https://profilepush.ai/og-image.png" />
 
     <!-- Canonical -->
@@ -68,7 +68,7 @@
       "name": "ProfilePush",
       "url": "https://profilepush.ai",
       "logo": "https://profilepush.ai/logo.png",
-      "description": "ProfilePush makes the AI Copilot for US IT staffing. Vendors post requirements and get matching bench consultants; bench sales recruiters paste a hotlist and get matching C2C requirements for every consultant. Matches land in a live Tracker, and AI-written emails send from the user's own Gmail. Available on the web and on Android.",
+      "description": "ProfilePush makes the AI Copilot for job hunting, job posting and bench sales in US IT staffing. IT job seekers and bench sales recruiters get live AI job matches for their profiles; job posters get matching profiles. Resumes go by AI-written email from the user's own Gmail in one tap. Available on the web, on Android and as a Chrome extension.",
       "email": "poorna@profilepush.ai",
       "areaServed": ["US", "IN"],
       "sameAs": [
@@ -86,54 +86,58 @@
 
     <!-- JSON-LD: SoftwareApplication. One entity for the web app and the
          Android app (com.profilepush.app). Prices are the real ones:
-         supabase/functions/_shared/credit-tiers.ts, 100 signup credits per
-         the accounts trigger. No aggregateRating here: RatingBlock adds it
-         on this same @id only when there are 10+ real user ratings. -->
+         supabase/functions/_shared/credit-tiers.ts (1 credit = 1 match,
+         ₹0.25 or $0.01; top-ups from ₹100 or $5), 100 signup credits. No
+         aggregateRating: only with real ratings. -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "@id": "https://profilepush.ai/#software",
       "name": "ProfilePush",
-      "alternateName": "ProfilePush AI Copilot",
+      "alternateName": ["ProfilePush AI Copilot", "ProfilePush: AI Job Search"],
       "url": "https://profilepush.ai/",
       "applicationCategory": "BusinessApplication",
-      "applicationSubCategory": "Staffing and recruiting",
-      "operatingSystem": "Web, Android",
+      "applicationSubCategory": "Job search, recruiting and IT staffing",
+      "operatingSystem": "Web, Android, Chrome",
       "downloadUrl": "https://play.google.com/store/apps/details?id=com.profilepush.app",
       "installUrl": "https://play.google.com/store/apps/details?id=com.profilepush.app",
       "image": "https://profilepush.ai/og-image.png",
-      "screenshot": [
-        "https://profilepush.ai/screens/vendors.jpg",
-        "https://profilepush.ai/screens/bench-sales.jpg"
-      ],
-      "description": "The AI Copilot for US IT staffing. Vendors post a requirement and matching bench consultants land in a live Tracker; bench sales recruiters paste a hotlist and every consultant gets a live column of matching C2C requirements. AI Request and AI Submit write the email, sent from the user's own Gmail.",
+      "description": "AI Copilot for job hunting, job posting and bench sales. Live AI job matches for a profile, a bench of consultants or a job post, each with a match score, the skills that fit and an AI picture; the resume goes by an AI-written email from the user's own Gmail in one tap, and every application is tracked in one sheet.",
       "featureList": [
-        "Tracker: a live column for each posted consultant or requirement, with new matches arriving all day",
-        "AI Match: paste a consultant or a requirement and get ranked matches with fit and skill gaps",
-        "AI Request: one tap asks a bench recruiter for a consultant's resume, rate, visa and availability (draft free)",
-        "AI Submit: an AI-written submission email with the resume attached, sent from your own Gmail",
-        "Hotlist paste: post a whole bench, up to 50 consultants, in one paste",
-        "Inbound resume requests in one list, replies free",
-        "Match alerts on Android, web push and email",
-        "Optional AI video screening with a recording, a score and a summary",
-        "Team accounts with unlimited members"
+        "Today: the day's AI matches as a swipeable reel, newest first; each stays 24 hours",
+        "Match score, matching skills, visa, rate and location for every match, with an AI picture of the role",
+        "Send resume: pick or upload a resume and AI writes the email to the poster, sent from your own Gmail",
+        "Ask the poster for a missing rate, visa or location in one tap",
+        "Ask Resume for job posters: request a matched profile's resume, rate and availability",
+        "Tracker: every application in one sheet with status and notes; copy to Google Sheets or download CSV",
+        "History of viewed, saved, applied and shared matches",
+        "AI Match: paste a profile or a job for ranked matches on demand",
+        "ProfilePush Apply Chrome extension: fills career-site application forms for your profile",
+        "Your own avatar in the match pictures",
+        "Match alerts by push and email; refer a friend for 100 credits"
       ],
       "offers": [
         {
           "@type": "Offer",
-          "name": "Free",
+          "name": "Free start",
           "price": "0",
           "priceCurrency": "INR",
-          "description": "Free to start: 100 credits at signup that never expire. Posting and submissions are free; up to 3 open consultants or requirements on the free plan."
+          "description": "100 free matches at signup. Viewing jobs, sending resumes, the tracker and history are free."
         },
         {
-          "@type": "AggregateOffer",
-          "name": "Credit packs",
-          "lowPrice": "249",
-          "highPrice": "5000",
+          "@type": "Offer",
+          "name": "Pay per match (India)",
+          "price": "0.25",
           "priceCurrency": "INR",
-          "description": "One-time credit packs from ₹249 to ₹5,000 at ₹1 per credit. Credits never expire. No subscription."
+          "description": "₹0.25 a match, in one-time top-ups from ₹100 (₹250 buys 1,000 matches). No subscription; credits never expire."
+        },
+        {
+          "@type": "Offer",
+          "name": "Pay per match (outside India)",
+          "price": "0.01",
+          "priceCurrency": "USD",
+          "description": "$0.01 a match, in one-time top-ups from $5 (500 matches). No subscription; credits never expire."
         }
       ],
       "publisher": { "@id": "https://profilepush.ai/#organization" }
@@ -148,7 +152,7 @@
       "@id": "https://profilepush.ai/#website",
       "url": "https://profilepush.ai",
       "name": "ProfilePush",
-      "description": "AI Copilot for US IT Staffing: vendors and bench sales recruiters, matched on the live market.",
+      "description": "AI Copilot for job hunting, job posting and bench sales: live AI job matches, one-tap resume sending and an application tracker.",
       "inLanguage": "en-US",
       "publisher": { "@id": "https://profilepush.ai/#organization" }
     }

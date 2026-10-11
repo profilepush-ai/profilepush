@@ -9,6 +9,9 @@ interface Account {
   credits_balance: number;
   is_trial: boolean;
   active_persona: 'vendor' | 'bench_sales' | null;
+  billing_currency?: 'INR' | 'USD' | null;
+  /** Looking for a job for themselves (works the profile side, like bench sales). */
+  job_seeker?: boolean;
   created_at: string;
 }
 

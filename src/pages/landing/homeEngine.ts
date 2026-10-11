@@ -410,7 +410,7 @@ export function startHome(root: HTMLElement, data: StoryData, opts: EngineOption
       el.style.borderColor = '#8b5cf6';
     } else if (L.step === 4) {
       const el = sl.children[0] as HTMLElement;
-      $('.tc-h', el).insertAdjacentHTML('beforeend', '<span class="tag nm">Not a match</span>');
+      $('.tc-h', el).insertAdjacentHTML('beforeend', '<span class="tag nm">Passed</span>');
       S.timeout(() => {
         el.classList.add('gone');
         S.timeout(() => { el.remove(); nEl.textContent = String(sl.children.length); }, 500);

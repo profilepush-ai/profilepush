@@ -378,7 +378,7 @@ export function startVendors(root: HTMLElement, data: StoryData, opts: EngineOpt
       el.style.borderColor = '#8b5cf6';
     } else if (liveStep === 5) {
       const el = sl.children[0] as HTMLElement;
-      retag(el, '<span class="tag nm">Not a match</span>');
+      retag(el, '<span class="tag nm">Passed</span>');
       S.timeout(() => {
         el.classList.add('gone');
         S.timeout(() => { el.remove(); nEl.textContent = String(sl.children.length); }, 500);

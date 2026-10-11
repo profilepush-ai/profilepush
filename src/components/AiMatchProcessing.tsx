@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { Link } from 'react-router-dom';
 import { enableWebPush } from '../lib/onesignal';
 import { supabase } from '../lib/supabase';
+import { priceLabels, useCurrency } from '../lib/currency';
 
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.profilepush.app';
 const DISPLAY_FONT_URL = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap';
@@ -65,6 +66,8 @@ function AppIcon() {
 
 // Free vs paid, side by side: what the free plan gives and what paying adds.
 function PlansVisual({ paid }: { paid: boolean }) {
+  const [currencyNow] = useCurrency();
+  const price = priceLabels(currencyNow);
   const row = (label: string, free: string, pro: string) => (
     <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-t border-slate-100 py-2.5 text-[13.5px]">
       <span className="text-slate-500">{label}</span>
@@ -83,9 +86,9 @@ function PlansVisual({ paid }: { paid: boolean }) {
         {row('Matches a day', '10', 'Up to 100')}
         {row('Per consultant', 'Fixed', 'You choose')}
         {row('Minimum match', '70% fixed', '50–80%')}
-        {row('Price', '100 free', '₹0.25 each')}
+        {row('Price', '100 free', `${price.perMatch} each`)}
       </div>
-      <span className="amw-badge" style={{ left: '50%', bottom: 18, transform: 'translateX(-50%)' }}>₹250 = 1,000 matches</span>
+      <span className="amw-badge" style={{ left: '50%', bottom: 18, transform: 'translateX(-50%)' }}>{price.thousand} = 1,000 matches</span>
     </div>
   );
 }
@@ -161,6 +164,8 @@ export default function AiMatchProcessing({ kind, phase, pct }: {
   gmailConnected?: boolean;
   onConnectGmail?: () => void;
 }) {
+  const [currencyNow] = useCurrency();
+  const price = priceLabels(currencyNow);
   const native = Capacitor.isNativePlatform();
   // The account's plan and settings, for the plans and settings slides.
   const [plan, setPlan] = useState<{ paid: boolean; dailyCap: number }>({ paid: false, dailyCap: 10 });
@@ -241,7 +246,7 @@ export default function AiMatchProcessing({ kind, phase, pct }: {
       key: 'plans',
       title: plan.paid ? <>Up to 100<br />matches a day.</> : <>10 free matches<br />a day.</>,
       visual: <PlansVisual paid={plan.paid} />,
-      action: plan.paid ? done('You’re on paid') : <Link to="/billing" className="amw-cta">Upgrade from ₹100</Link>,
+      action: plan.paid ? done('You’re on paid') : <Link to="/billing" className="amw-cta">Upgrade from {price.minTopup}</Link>,
     },
     {
       key: 'app',
@@ -257,7 +262,7 @@ export default function AiMatchProcessing({ kind, phase, pct }: {
       title: <>You set<br />the bar.</>,
       visual: <SettingsVisual minMatch={minMatch} onMinMatch={changeMinMatch} paid={plan.paid} dailyCap={plan.dailyCap} />,
       action: !plan.paid
-        ? <Link to="/billing" className="amw-cta">Unlock from ₹100</Link>
+        ? <Link to="/billing" className="amw-cta">Unlock from {price.minTopup}</Link>
         : savedMin ? done(`Saved · ${minMatch}% minimum`) : <Link to="/settings" className="amw-cta">All matching settings</Link>,
     },
   ];

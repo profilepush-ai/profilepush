@@ -556,7 +556,7 @@ const PageBody = memo(function PageBody({ data }: { data: StoryData }) {
                           <use href="#ddc"></use>
                         </svg>
                       </span>
-                      “Not a match” never comes back
+                      A match you Pass never comes back
                     </li>
                     <li>
                       <span className="ddc" aria-hidden="true">

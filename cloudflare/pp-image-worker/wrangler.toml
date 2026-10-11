@@ -1,0 +1,15 @@
+name = "pp-image-worker"
+main = "src/index.ts"
+compatibility_date = "2026-08-13"
+workers_dev = true
+preview_urls = false
+
+# Workers AI draws the pictures; Images turns them into small WebP files.
+[ai]
+binding = "AI"
+
+[images]
+binding = "IMAGES"
+
+# Secret (wrangler secret put): DRAW_SECRET, shared with the job-visual
+# Supabase function (IMAGE_WORKER_SECRET there).

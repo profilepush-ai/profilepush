@@ -23,6 +23,7 @@
     "dev:edge": "npm run build && wrangler pages dev dist --port 5173 --compatibility-date=2026-09-01"
   },
   "dependencies": {
+    "@capacitor-community/in-app-review": "^6.0.0",
     "@capacitor/android": "^6.2.1",
     "@capacitor/app": "^6.0.3",
     "@capacitor/browser": "^6.0.6",
@@ -31,6 +32,7 @@
     "@capacitor/ios": "^6.2.1",
     "@supabase/supabase-js": "^2.57.4",
     "@types/diff": "^7.0.2",
+    "@types/qrcode": "^1.5.6",
     "@uiw/react-codemirror": "^4.25.11",
     "capacitor-razorpay": "github:razorpay/razorpay-capacitor#v1.2.1",
     "diff": "^9.0.0",
@@ -38,6 +40,7 @@
     "lucide-react": "^0.344.0",
     "onesignal-cordova-plugin": "^5.2.15",
     "pdfjs-dist": "^3.11.174",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.17.0"

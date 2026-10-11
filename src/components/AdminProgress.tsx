@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { buildMetricSeries, type DailyRow } from '../lib/admin-signups-series';
-import { buildSignupSeries } from '../lib/admin-signups-series';
 import { SIGNUPS_BASE_TARGET } from '../lib/admin-targets';
+import type { AccountRow, Totals } from '../lib/admin-account-stats';
 import {
   DEPARTMENTS,
   departmentScore,
@@ -11,25 +11,12 @@ import {
   type GoalResult,
 } from '../lib/admin-progress';
 
-type Account = {
-  created_at: string;
-  active_persona: 'vendor' | 'bench_sales' | null;
-  session_count: number;
-  job_posts_count: number;
-  hotlist_posts_count: number;
-  job_previews_count: number;
-  hotlist_previews_count: number;
-  ai_pitches_count: number;
-  ai_requests_count: number;
-  ai_match_runs_count: number;
-  gmail_connected: boolean;
-  active_days: number;
-  is_trial: boolean;
-};
-
 type Props = {
-  accounts: Account[];
+  accounts: Pick<AccountRow, 'created_at' | 'active_days'>[];
   daily: DailyRow[];
+  /** The 'all' funnel: stage key -> accounts, for signups in the range. */
+  funnel: Record<string, number> | undefined;
+  totals: Partial<Totals>;
   startDate: string | null;
   endDate: string | null;
   rangeLabel: string;
@@ -54,48 +41,55 @@ function formatAttainment(value: number | null): string {
   return `${pct > 0 ? '+' : ''}${pct}%`;
 }
 
-export default function AdminProgress({ accounts, daily, startDate, endDate, rangeLabel }: Props) {
+export default function AdminProgress({ accounts, daily, funnel, totals, startDate, endDate, rangeLabel }: Props) {
   const results = useMemo<GoalResult[]>(() => {
-    const inRange = accounts.filter((a) => {
+    const signups = funnel?.signed_up ?? 0;
+    const stage = (key: string) => funnel?.[key] ?? 0;
+    const flow = (metric: string | string[]) => buildMetricSeries(daily, metric, 'all', startDate, endDate);
+    // Came back on 2+ days: of the accounts that signed up in the range.
+    const returned = accounts.filter((a) => {
       const created = Date.parse(a.created_at);
       if (Number.isNaN(created)) return false;
       if (startDate && created < Date.parse(startDate)) return false;
       if (endDate && created > Date.parse(endDate)) return false;
-      return true;
-    });
-    const cohort = inRange.length;
-    const flow = (key: string) => buildMetricSeries(daily, key, 'all', startDate, endDate);
-    const share = (test: (a: Account) => boolean) => inRange.filter(test).length;
+      return (a.active_days ?? 0) >= 2;
+    }).length;
 
     const goals: Goal[] = [
       // ── Growth ──────────────────────────────────────────────────────────
-      { key: 'signups', department: 'Growth', label: 'Signups', kind: 'flow', points: buildSignupSeries(inRange, startDate, endDate), base: SIGNUPS_BASE_TARGET },
-      { key: 'persona-chosen', department: 'Growth', label: 'Chose a persona', kind: 'rate', numerator: share((a) => a.active_persona != null), denominator: cohort, target: 0.9 },
-      { key: 'activated', department: 'Growth', label: 'Signed in at least once', kind: 'rate', numerator: share((a) => a.session_count > 0), denominator: cohort, target: 0.8 },
-      { key: 'retained', department: 'Growth', label: 'Came back 2+ days', kind: 'rate', numerator: share((a) => a.active_days >= 2), denominator: cohort, target: 0.4 },
+      { key: 'signups', department: 'Growth', label: 'Signups', kind: 'flow', points: flow('signups'), base: SIGNUPS_BASE_TARGET },
+      { key: 'chose-role', department: 'Growth', label: 'Chose a role', kind: 'rate', numerator: stage('chose_role'), denominator: signups, target: 0.9 },
+      { key: 'activated', department: 'Growth', label: 'Activated (applied at least once)', kind: 'rate', numerator: stage('applied'), denominator: signups, target: 0.3 },
+      { key: 'retained', department: 'Growth', label: 'Came back 2+ days', kind: 'rate', numerator: returned, denominator: signups, target: 0.4 },
 
       // ── Product ─────────────────────────────────────────────────────────
-      { key: 'previews', department: 'Product', label: 'Post previews', kind: 'flow', points: flow('previews') },
-      { key: 'ai-submits', department: 'Product', label: 'AI submits sent', kind: 'flow', points: (() => { const a = flow('ai_pitches'); const b = flow('ai_requests'); return a.map((p, i) => ({ key: p.key, count: p.count + (b[i]?.count ?? 0) })); })() },
-      { key: 'ai-matches', department: 'Product', label: 'AI matches delivered', kind: 'flow', points: flow('ai_matches') },
-      { key: 'posts', department: 'Product', label: 'Posts published', kind: 'flow', points: (() => { const a = flow('job_posts'); const b = flow('hotlist_posts'); return a.map((p, i) => ({ key: p.key, count: p.count + (b[i]?.count ?? 0) })); })() },
+      { key: 'matches', department: 'Product', label: 'Matches sent', kind: 'flow', points: flow('matches') },
+      { key: 'watched', department: 'Product', label: 'Matches watched', kind: 'rate', numerator: totals.matches_watched ?? 0, denominator: totals.matches ?? 0, target: 0.3 },
+      { key: 'applied', department: 'Product', label: 'Applied (email, site, Ask Resume)', kind: 'flow', points: flow(['applied_email', 'applied_site', 'ask_resume']) },
+      { key: 'ai-apply', department: 'Product', label: 'AI Apply fills', kind: 'flow', points: flow('ai_apply_fills') },
+
+      // ── Results ─────────────────────────────────────────────────────────
+      { key: 'replies', department: 'Results', label: 'Replies', kind: 'flow', points: flow('replies') },
+      { key: 'interviews', department: 'Results', label: 'Interviews', kind: 'flow', points: flow('interviews') },
+      { key: 'placed', department: 'Results', label: 'Placed', kind: 'flow', points: flow('placed') },
 
       // ── Income ──────────────────────────────────────────────────────────
-      { key: 'paid-conversion', department: 'Income', label: 'Upgraded to paid', kind: 'rate', numerator: share((a) => a.is_trial === false), denominator: cohort, target: 0.05 },
-      { key: 'revenue', department: 'Income', label: 'Revenue', kind: 'missing', missing: 'Razorpay payments are not exposed to this dashboard. admin-stats would need to read the subscription and order tables.' },
-      { key: 'arpu', department: 'Income', label: 'Revenue per account', kind: 'missing', missing: 'Needs revenue above before it can be computed.' },
+      { key: 'paid-conversion', department: 'Income', label: 'Paid (of signups)', kind: 'rate', numerator: stage('paid'), denominator: signups, target: 0.05 },
+      { key: 'paid-orders', department: 'Income', label: 'Paid orders', kind: 'flow', points: flow('paid_orders') },
+      { key: 'revenue-inr', department: 'Income', label: 'Revenue ₹', kind: 'flow', points: flow('revenue_inr') },
+      { key: 'revenue-usd', department: 'Income', label: 'Revenue $', kind: 'flow', points: flow('revenue_usd') },
 
       // ── Marketing ───────────────────────────────────────────────────────
-      { key: 'visitors', department: 'Marketing', label: 'Website visitors', kind: 'missing', missing: 'Lives in Google Analytics (G-Y4Z8FJQMG0). Connecting the GA4 Data API would bring visitors and the visitor-to-signup rate in.' },
-      { key: 'social-posts', department: 'Marketing', label: 'Social posts published', kind: 'missing', missing: 'admin_social_posts is not included in the admin-stats payload yet.' },
-      { key: 'shares', department: 'Marketing', label: 'Jobs and hotlists shared', kind: 'missing', missing: 'The public /job/:id and /hotlist/:id permalinks carry no share tracking. Instrumenting them is a small change and would also measure the referral loop.' },
+      { key: 'referrals', department: 'Marketing', label: 'Referrals', kind: 'flow', points: flow('referrals') },
+      { key: 'shared', department: 'Marketing', label: 'Matches shared', kind: 'flow', points: flow('shared') },
+      { key: 'social-posts', department: 'Marketing', label: 'Social posts published', kind: 'missing', missing: 'admin_social_posts is not in the admin-stats payload yet.' },
 
       // ── HR ──────────────────────────────────────────────────────────────
       { key: 'headcount', department: 'HR', label: 'Team headcount', kind: 'missing', missing: 'Nothing about the team is recorded in this database. HR goals need a source before they can appear here.' },
     ];
 
     return goals.map(evaluateGoal);
-  }, [accounts, daily, startDate, endDate]);
+  }, [accounts, daily, funnel, totals, startDate, endDate]);
 
   const byDepartment = (department: Department) => results.filter((r) => r.department === department);
 
@@ -111,7 +105,9 @@ export default function AdminProgress({ accounts, daily, startDate, endDate, ran
                 <h2 className="text-sm font-semibold text-gray-900">{department}</h2>
                 <span className="text-[11px] text-gray-500">
                   {score.measured === 0 ? (
-                    <span className="text-gray-400">no source connected</span>
+                    // Measured but nothing to plan against yet: a flow that
+                    // started at zero has no opening level to grow from.
+                    <span className="text-gray-400">{goals.every((g) => g.missing) ? 'no source connected' : 'no baseline yet'}</span>
                   ) : (
                     <>
                       <span className={`font-semibold ${score.met === score.measured ? 'text-green-600' : 'text-gray-900'}`}>
@@ -161,9 +157,9 @@ export default function AdminProgress({ accounts, daily, startDate, endDate, ran
       </div>
 
       <p className="px-1 text-[11px] text-gray-400">
-        Flow goals are measured against the 10-a-day plan compounding 5% daily, summed across {rangeLabel.toLowerCase()}.
-        Rate goals are measured against a fixed share, because a conversion rate compounding 5% a day would pass 100%
-        inside a month. Goals with no source are left blank rather than shown as zero.
+        Flow goals are measured against the 5%-a-day plan (signups from 10 a day, the rest from their own opening level),
+        summed across {rangeLabel.toLowerCase()}. Rate goals are a fixed share of the accounts that signed up in the range,
+        because a rate compounding 5% a day would pass 100% inside a month. Goals with no source are left blank, not zero.
       </p>
     </div>
   );

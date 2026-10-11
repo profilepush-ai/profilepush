@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { CREDITS_PER_RUPEE, FIRST_PURCHASE_OFFER_PACKS, isValidTopupAmount, MAX_TOPUP_INR, MIN_TOPUP_INR } from "../_shared/credit-tiers.ts";
+import { CREDITS_PER_DOLLAR, CREDITS_PER_RUPEE, FIRST_PURCHASE_OFFER_PACKS, INR_PER_USD_ESTIMATE, isValidTopupAmount, isValidUsdTopup, MAX_TOPUP_INR, MAX_TOPUP_USD, MIN_TOPUP_INR, MIN_TOPUP_USD } from "../_shared/credit-tiers.ts";
 
 // Creates a plain one-time Razorpay Order (not a Subscription) for a credit
 // top-up: any whole-rupee amount at ₹0.25 a match (4 credits a rupee). Separate from
@@ -44,12 +44,15 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
-    // amount_inr is what the buyer pays; an older client sent the same rupee
-    // figure as `credits` when a credit was ₹1.
+    // { currency: "USD", amount } pays in dollars (outside India); otherwise
+    // rupees: amount_inr, or the same rupee figure as `credits` from an
+    // older client when a credit was ₹1.
     const body = await req.json();
-    const amountInr = Number(body?.amount_inr ?? body?.credits);
-    if (!isValidTopupAmount(amountInr)) {
-      return new Response(JSON.stringify({ error: `Choose an amount from ₹${MIN_TOPUP_INR} to ₹${MAX_TOPUP_INR.toLocaleString("en-IN")}` }), { status: 400, headers: corsHeaders });
+    const usd = body?.currency === "USD";
+    const amount = Number(usd ? body?.amount : (body?.amount_inr ?? body?.amount ?? body?.credits));
+    if (usd ? !isValidUsdTopup(amount) : !isValidTopupAmount(amount)) {
+      const range = usd ? `$${MIN_TOPUP_USD} to $${MAX_TOPUP_USD.toLocaleString("en-US")}` : `₹${MIN_TOPUP_INR} to ₹${MAX_TOPUP_INR.toLocaleString("en-IN")}`;
+      return new Response(JSON.stringify({ error: `Choose a whole amount from ${range}` }), { status: 400, headers: corsHeaders });
     }
 
     const { data: member } = await supabaseAdmin
@@ -60,14 +63,16 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (!member) return new Response(JSON.stringify({ error: "Account not found" }), { status: 404, headers: corsHeaders });
 
-    const amountInrPaise = amountInr * 100;
-    const credits = amountInr * CREDITS_PER_RUPEE;
+    // What's charged, in paise or cents; the rupee figure for reports.
+    const amountMinor = amount * 100;
+    const amountInrPaise = usd ? amount * INR_PER_USD_ESTIMATE * 100 : amountMinor;
+    const credits = amount * (usd ? CREDITS_PER_DOLLAR : CREDITS_PER_RUPEE);
 
     // First-purchase offer: while it's live, the 249 and 500 packs come with
     // as many bonus credits again (other packs are unchanged).
     // apply_credit_topup adds the bonus once, on the first paid order.
     let bonusCredits = 0;
-    if (FIRST_PURCHASE_OFFER_PACKS.includes(amountInr)) {
+    if (!usd && FIRST_PURCHASE_OFFER_PACKS.includes(amount)) {
       const { data: offerActive } = await supabaseAdmin.rpc("first_purchase_offer_active", { p_account_id: member.account_id });
       if (offerActive === true) bonusCredits = credits;
     }
@@ -76,8 +81,8 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: { Authorization: razorpayAuth(), "Content-Type": "application/json" },
       body: JSON.stringify({
-        amount: amountInrPaise,
-        currency: "INR",
+        amount: amountMinor,
+        currency: usd ? "USD" : "INR",
         notes: {
           type: "credit_topup",
           account_id: member.account_id,
@@ -96,8 +101,11 @@ Deno.serve(async (req: Request) => {
       credits,
       bonus_credits: bonusCredits,
       amount_inr_paise: amountInrPaise,
+      currency: usd ? "USD" : "INR",
+      amount_minor: amountMinor,
       status: "created",
     });
+    await supabaseAdmin.from("accounts").update({ billing_currency: usd ? "USD" : "INR" }).eq("id", member.account_id);
     if (insertError) throw new Error(`Could not save pending top-up order: ${insertError.message}`);
 
     return new Response(
@@ -105,6 +113,8 @@ Deno.serve(async (req: Request) => {
         order_id: order.id,
         key_id: getRequiredEnv("RAZORPAY_KEY_ID"),
         amount_inr_paise: amountInrPaise,
+        amount: amountMinor,
+        currency: usd ? "USD" : "INR",
         credits,
         bonus_credits: bonusCredits,
       }),

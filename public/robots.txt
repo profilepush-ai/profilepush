@@ -32,6 +32,16 @@ Disallow: /feed
 Disallow: /posts
 Disallow: /active-list
 Disallow: /contacts
+Disallow: /today
+Disallow: /history
+Disallow: /match
+Disallow: /settings
+Disallow: /extension
+Disallow: /start
+Disallow: /store-shots
+# The previous homepage and the old preview path (same content as /).
+Disallow: /old
+Disallow: /new
 
 # Note: /job/:id and /hotlist/:id are intentionally NOT disallowed — these
 # are public, unauthenticated pages meant to be shared/indexed (a post

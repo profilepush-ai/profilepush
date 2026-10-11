@@ -4,10 +4,13 @@ import { Capacitor } from '@capacitor/core';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
-import LandingPage from './pages/LandingPage';
+import LandingNew from './pages/LandingNew';
 import LogoSpinner from './components/LogoSpinner';
+import BrandLoader from './components/brand/BrandLoader';
+import { INTRO_SEEN_KEY } from './lib/prefs';
 import StartupSplash from './components/StartupSplash';
 import UserActivityTracker from './components/UserActivityTracker';
+import ReferralClaim, { ReferralLanding } from './components/ReferralClaim';
 import PostPromptNudge from './components/PostPromptNudge';
 import OnboardingChecklist from './components/OnboardingChecklist';
 import AndroidBackButtonHandler from './components/AndroidBackButtonHandler';
@@ -40,6 +43,15 @@ const BoardPage = lazy(() => import('./pages/BoardPage'));
 const TrackerPage = lazy(() => import('./pages/TrackerPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const TodayPage = lazy(() => import('./pages/TodayPage'));
+const ExtensionConnectPage = lazy(() => import('./pages/ExtensionConnectPage'));
+// The app's first-launch slides, before signup.
+const StartPage = lazy(() => import('./pages/StartPage'));
+// AI Match: one box, then its matches in Today.
+const AiMatchPage = lazy(() => import('./pages/AiMatchPage'));
+// The previous landing page, kept at /old.
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+// Store listing screenshots with example data (development only).
+const StoreShots = lazy(() => import('./pages/StoreShots'));
 const PostApplicationsPage = lazy(() => import('./pages/PostApplicationsPage'));
 const HotlistRequestsPage = lazy(() => import('./pages/HotlistRequestsPage'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -74,7 +86,7 @@ const AdminWebsitesPage = lazy(() => import('./pages/AdminWebsitesPage'));
 function PageLoader() {
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <LogoSpinner size={32} />
+      <BrandLoader width={180} />
     </div>
   );
 }
@@ -133,12 +145,12 @@ function OneSignalIdentitySync() {
 
 // The marketing landing page has no place in the installed app — a native
 // user has already "installed", so app launch skips straight to account
-// creation (or, once signed in, straight past auth entirely). Web keeps the
-// landing page unchanged.
+// creation (or, once signed in, straight past auth entirely). Web shows the
+// landing page.
 function AppEntry() {
   const { user, loading } = useAuth();
 
-  if (!Capacitor.isNativePlatform()) return <LandingPage />;
+  if (!Capacitor.isNativePlatform()) return <LandingNew />;
 
   if (loading) {
     return (
@@ -148,8 +160,12 @@ function AppEntry() {
     );
   }
 
-  // Opening the app signed in lands where signing in lands.
-  return <Navigate to={user ? '/home' : '/signup'} replace />;
+  // Opening the app signed in lands where signing in lands; the first time
+  // signed out, the intro slides come before signup.
+  if (user) return <Navigate to="/home" replace />;
+  let seen = false;
+  try { seen = localStorage.getItem(INTRO_SEEN_KEY) === '1'; } catch { /* fine */ }
+  return <Navigate to={seen ? '/signup' : '/start'} replace />;
 }
 
 // Where a signed-in user lands (my_landing_path decides): Today when they
@@ -270,12 +286,14 @@ function SupabaseSetupRequired() {
 }
 
 export default function App() {
-  const [showStartupSplash, setShowStartupSplash] = useState(true);
+  // The opening splash is for the installed app; on the web it would only
+  // hold back the page.
+  const [showStartupSplash, setShowStartupSplash] = useState(() => Capacitor.isNativePlatform());
 
   useEffect(() => {
     initializeOneSignal();
     registerNativeAuthDeepLinkListener();
-    const timer = window.setTimeout(() => setShowStartupSplash(false), 1500);
+    const timer = window.setTimeout(() => setShowStartupSplash(false), 1700);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -292,6 +310,7 @@ export default function App() {
           <OneSignalIdentitySync />
           <AndroidBackButtonHandler />
           <UserActivityTracker />
+          <ReferralClaim />
           <PostPromptNudge />
           <OnboardingChecklist />
           <PersistentJobFinder />
@@ -302,6 +321,11 @@ export default function App() {
             <Route path="/" element={<ErrorBoundary><AppEntry /></ErrorBoundary>} />
             <Route path="/signup" element={<ErrorBoundary><SignUp /></ErrorBoundary>} />
             <Route path="/signin" element={<ErrorBoundary><SignIn /></ErrorBoundary>} />
+            <Route path="/start" element={<ErrorBoundary><StartPage /></ErrorBoundary>} />
+            <Route path="/r/:code" element={<ReferralLanding />} />
+            <Route path="/new" element={<Navigate to="/" replace />} />
+            <Route path="/old" element={<ErrorBoundary><LandingPage /></ErrorBoundary>} />
+            <Route path="/store-shots" element={<StoreShots />} />
             <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
             <Route path="/onboard/:token" element={<ErrorBoundary><CandidateOnboarding /></ErrorBoundary>} />
             <Route path="/welcome" element={<ProtectedRoute><ErrorBoundary><OnboardingVideo /></ErrorBoundary></ProtectedRoute>} />
@@ -315,6 +339,7 @@ export default function App() {
             <Route path="/tracker" element={<ProtectedRoute><ErrorBoundary><TrackerPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/history" element={<ProtectedRoute><ErrorBoundary><HistoryPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/today" element={<ProtectedRoute><ErrorBoundary><TodayPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/extension" element={<ProtectedRoute><ErrorBoundary><ExtensionConnectPage /></ErrorBoundary></ProtectedRoute>} />
             {/* The earlier column board, kept for anyone who still wants it. */}
             <Route path="/board" element={<ProtectedRoute><ErrorBoundary><BoardPage /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/privacy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
@@ -372,7 +397,8 @@ export default function App() {
             {/* AI Match renders the feed page in its match mode, so results use the
                 same cards, detail view and submit flow. keyed so moving between
                 /feed and /match never carries one list's state into the other. */}
-            <Route path="/match" element={<ProtectedRoute><ErrorBoundary><PulsePage key="ai-match" feedKind="feed" aiMatch /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/match" element={<ProtectedRoute><ErrorBoundary><AiMatchPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/match/old" element={<ProtectedRoute><ErrorBoundary><PulsePage key="ai-match" feedKind="feed" aiMatch /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/match/:kind/:id" element={<ProtectedRoute><ErrorBoundary><PulsePage key="ai-match" feedKind="feed" aiMatch /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/jobs" element={<ProtectedRoute><Navigate to="/feed/jobs" replace /></ProtectedRoute>} />
             <Route path="/hotlist" element={<ProtectedRoute><Navigate to="/feed/hotlist" replace /></ProtectedRoute>} />

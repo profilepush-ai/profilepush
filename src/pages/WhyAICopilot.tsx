@@ -194,7 +194,7 @@ export default function WhyAICopilot() {
                 title: 'Finding the Requirements',
                 old: 'Scroll requirement emails and job boards all day, copying the same search into tab after tab.',
                 newWay: 'The AI Copilot reads every new requirement on ProfilePush as it arrives and matches it against each consultant you posted.',
-                ai: 'Only what fits is pushed into the consultant’s column. Reposts merge into one card, and “Not a match” never comes back.',
+                ai: 'Only what fits is pushed into the consultant’s column. Reposts merge into one card, and a match you Pass never comes back.',
               },
               {
                 icon: <Target size={16} />,

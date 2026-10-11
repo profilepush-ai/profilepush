@@ -5,14 +5,18 @@ import {
   Building2, CreditCard, AlertTriangle,
   Bell, BellRing, Check, X,
   Briefcase, Mail, UserRound, Rss,
-  Kanban, Globe, Target, SlidersHorizontal, UsersRound, History } from 'lucide-react';
+  Kanban, Globe, Target, SlidersHorizontal, UsersRound, History, Gift, Search
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
 import GooglePlayBanner from './GooglePlayBanner';
 import FirstPurchaseOfferModal from './FirstPurchaseOfferModal';
 import FeedbackPrompt from './FeedbackPrompt';
+import GetAppQr from './GetAppQr';
+import ExtensionPill from './ExtensionPill';
 import { supabase } from '../lib/supabase';
+import { useMyAvatar } from '../lib/avatar';
 import { trackEvent } from '../lib/track';
 import type { AppNotification } from '../lib/notifications';
 import { shouldShowCreditsUi } from '../lib/feature-gates';
@@ -48,14 +52,16 @@ function UserAvatar({ pictureUrl, initials, sizeClass }: { pictureUrl: string | 
 // AI Match's own tab; Pulse and List are hidden from the nav. Their routes
 // all still work.
 // The five places, the same for everyone and on every screen: Today (new
-// matches), Tracker (applications), AI Match, History and Settings. Feed,
-// Network, Inbox and My profile live in the avatar menu.
-function getNavItems() {
+// matches), Tracker (applications), AI Match, History and Settings; on wider
+// screens Network too. Feed, Inbox and My profile (and Network on phones)
+// live in the avatar menu.
+function getNavItems(persona: 'vendor' | 'bench_sales' | null | undefined) {
   return [
     { path: '/today',    label: 'Today',    mobileLabel: 'Today',    icon: Target,            hideOnMobile: false },
     { path: '/tracker',  label: 'Tracker',  mobileLabel: 'Tracker',  icon: Kanban,            hideOnMobile: false },
     { path: '/match',    label: 'AI Match', mobileLabel: 'AI Match', icon: Sparkles,          hideOnMobile: false },
     { path: '/history',  label: 'History',  mobileLabel: 'History',  icon: History,           hideOnMobile: false },
+    { path: networkPath(persona), label: 'Network', mobileLabel: 'Network', icon: Rss,           hideOnMobile: true },
     { path: '/settings', label: 'Settings', mobileLabel: 'Settings', icon: SlidersHorizontal, hideOnMobile: false },
   ];
 }
@@ -117,8 +123,9 @@ function CreditsChip({ balance }: { balance: number }) {
 // everywhere else: Vendor works the Jobs side (blue), Bench Sales the
 // hotlist side (orange).
 const PERSONA_OPTIONS = [
-  { id: 'vendor', label: 'Vendor', icon: Briefcase, iconClass: 'text-blue-600' },
-  { id: 'bench_sales', label: 'Bench Sales', icon: UserRound, iconClass: 'text-orange-500' },
+  { id: 'job_seeker', label: 'Job seeker', icon: Search, iconClass: 'text-emerald-600' },
+  { id: 'bench_sales', label: 'Recruiter (bench sales)', icon: UserRound, iconClass: 'text-orange-500' },
+  { id: 'vendor', label: 'Job poster (vendor)', icon: Briefcase, iconClass: 'text-blue-600' },
 ] as const;
 
 // Persona choice, shown as a section of the avatar menu. Choosing writes
@@ -129,10 +136,12 @@ function PersonaMenuSection({ onChosen }: { onChosen: () => void }) {
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
 
   if (!account?.active_persona) return null;
+  // A job seeker is the profile side with accounts.job_seeker on.
+  const current = account.job_seeker ? 'job_seeker' : account.active_persona;
 
   async function choose(persona: string) {
     if (switchingTo) return;
-    if (persona === account?.active_persona) { onChosen(); return; }
+    if (persona === current) { onChosen(); return; }
     setSwitchingTo(persona);
     try {
       const { error } = await supabase.rpc('set_active_persona' as never, { p_persona: persona } as never);
@@ -147,7 +156,7 @@ function PersonaMenuSection({ onChosen }: { onChosen: () => void }) {
     <div role="group" aria-label="Working as" className="border-b border-gray-100 pb-1 mb-1">
       <p className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Working as</p>
       {PERSONA_OPTIONS.map((option) => {
-        const selected = account.active_persona === option.id;
+        const selected = current === option.id;
         return (
           <button
             key={option.id}
@@ -318,7 +327,7 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
   const location = useLocation();
   const navigate = useNavigate();
   const { user, account, signOut } = useAuth();
-  const navItems = getNavItems();
+  const navItems = getNavItems(account?.active_persona);
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
   const [menuOpen, setMenuOpen] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(0);
@@ -376,12 +385,15 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
     navigate('/');
   }
 
+  const myAvatar = useMyAvatar(Boolean(user));
   const initials = user?.user_metadata?.full_name
     ? (user.user_metadata.full_name as string).split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
     : user?.email?.[0]?.toUpperCase() ?? '?';
-  // Supabase's Google provider maps the OIDC `picture` claim to both keys
-  // depending on flow (signInWithIdToken vs signInWithOAuth) — check both.
-  const pictureUrl = (user?.user_metadata?.avatar_url as string | undefined)
+  // Their avatar while it's on; otherwise their Google photo. Supabase's
+  // Google provider maps the OIDC `picture` claim to both keys depending on
+  // flow (signInWithIdToken vs signInWithOAuth) — check both.
+  const pictureUrl = myAvatar
+    || (user?.user_metadata?.avatar_url as string | undefined)
     || (user?.user_metadata?.picture as string | undefined)
     || null;
 
@@ -402,7 +414,7 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
 
       <nav className="hidden sm:flex items-center gap-1 flex-1">
         {navItems.map(({ path, label, mobileLabel, icon: Icon, hideOnMobile }) => {
-          const active = location.pathname === path || location.pathname.startsWith(path + '/');
+          const active = location.pathname === path || location.pathname.startsWith(path + '/') || (label === 'Network' && location.pathname.startsWith('/network'));
           return (
             <Link
               key={path}
@@ -433,6 +445,8 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
           flex-1 does that. The persona choice lives in the avatar menu. */}
       {user && (
         <div className="ml-auto sm:ml-0 flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <ExtensionPill />
+          <GetAppQr />
           {shouldShowCreditsUi() && account != null && (
             <CreditsChip balance={account.credits_balance} />
           )}
@@ -476,6 +490,7 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
                   { to: feedPathFor(account?.active_persona), label: 'Feed', Icon: account?.active_persona === 'bench_sales' ? Briefcase : UserRound },
                   { to: networkPath(account?.active_persona), label: followingLabelForPersona(account?.active_persona), Icon: Rss },
                   { to: '/inbox', label: 'Inbox', Icon: Mail },
+                  { to: '/settings#refer', label: 'Refer and earn 100 credits', Icon: Gift },
                 ].map(({ to, label, Icon }) => (
                   <button
                     key={to}

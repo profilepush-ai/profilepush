@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bell, Filter, Lock, Menu, RefreshCcw, Target, TrendingUp, Search, UserCheck, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, LogIn, Clock, CalendarDays, Activity, Megaphone, FileSearch, Send, FileText, MessageSquare, Download, UserRound, LayoutGrid, Sparkles, Rss, Users, Smartphone, List as ListIcon, Table as TableIcon, Star, Globe, Building2, Briefcase } from 'lucide-react';
+import { Bell, Filter, Lock, Menu, RefreshCcw, Target, TrendingUp, Search, Database, Calendar, ChevronDown, X, Plus, Mail, Play, Pause, Trash2, ExternalLink, Save, SlidersHorizontal, Activity, Megaphone, FileSearch, Send, MessageSquare, UserRound, LayoutGrid, Sparkles, List as ListIcon, Table as TableIcon, Star, Zap, Globe, Building2, Briefcase } from 'lucide-react';
 import LogoSpinner from '../components/LogoSpinner';
 import LinkedinKeywordScraperPanel from '../components/LinkedinKeywordScraperPanel';
 import AdminScraperLogsPanel from '../components/AdminScraperLogsPanel';
@@ -18,70 +18,28 @@ import AdminNotificationsPanel from '../components/AdminNotificationsPanel';
 import AdminTrendCharts from '../components/AdminTrendCharts';
 import AdminFunnels from '../components/AdminFunnels';
 import AdminProgress from '../components/AdminProgress';
+import AdminEventsTable from '../components/AdminEventsTable';
 import { buildMetricSeries, type DailyRow } from '../lib/admin-signups-series';
 import { formatChange, trendOf, type Trend } from '../lib/admin-targets';
 import type { BriefLine } from '../lib/admin-briefing';
+import {
+  ROLE_FILTERS,
+  ROLE_LABEL,
+  TEASER_LABEL,
+  formatInr,
+  formatUsd,
+  isCurrentPayload,
+  totalsFor,
+  type AccountRow,
+  type EventRow,
+  type RoleFilter,
+  type Totals,
+} from '../lib/admin-account-stats';
 import AdminTrendsPanel from '../components/AdminTrendsPanel';
 import AdminPostOutreachPanel from '../components/AdminPostOutreachPanel';
 import { AdminWebsitesPanel } from './AdminWebsitesPage';
 import { supabase } from '../lib/supabase';
-import { filterAndSortAccountStats, formatUserType, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
-
-interface AccountStats {
-  id: string;
-  name: string;
-  created_at: string;
-  user_name: string;
-  user_email: string;
-  active_persona: 'vendor' | 'bench_sales' | null;
-  credits_balance: number;
-  searches_count: number;
-  job_posts_count: number;
-  hotlist_posts_count: number;
-  job_previews_count: number;
-  hotlist_previews_count: number;
-  /** Drafts generated — the act the credit is charged for. Distinct from
-   *  sending: a draft can be generated and never sent. */
-  /** Credits used, summed from the ledger. Not derived from the balance,
-   *  which top-ups and refunds also move. */
-  /** What this account was granted at signup. Read per account because the
-   *  grant changed from 500 to 100 on 2026-09-21. */
-  credits_granted: number;
-  credits_spent: number;
-  ai_drafts_count: number;
-  /** Sends triggered from the bulk bar. Zero for sends made before
-   *  send_source existed, which is not the same as none. */
-  ai_bulk_sends_count: number;
-  ai_pitches_count: number;
-  ai_requests_count: number;
-  ai_match_runs_count: number;
-  ai_match_matches_count: number;
-  gmail_connected: boolean;
-  gmail_address: string | null;
-  chats_count: number;
-  vendor_downloads_count: number;
-  recruiter_downloads_count: number;
-  // Network: subscriptions the account chose, ones its AI Submits/Invites
-  // created, Subscribe taps in the range, and who subscribes to its profile.
-  subscriptions_count: number;
-  auto_subscriptions_count: number;
-  subscribe_taps_count: number;
-  subscribers_count: number;
-  play_clicks_count: number;
-  account_age_days: number;
-  session_count: number;
-  active_seconds: number;
-  active_days: number;
-  last_activity_at: string | null;
-  last_logged_in: string | null;
-  is_trial: boolean;
-  /** Bought any credit pack (or ever had a subscription). */
-  is_paid: boolean;
-  /** Emails we sent this account in the range, and per day since email
-   *  logging began on 2026-10-01. */
-  emails_received_count: number;
-  emails_received_daily_avg: number;
-}
+import { filterAndSortAccountStats, sortValue, type AdminStatsSortDirection, type AdminStatsSortKey } from '../lib/admin-dashboard-table';
 
 interface LinkedinGroupRow {
   group_id: string;
@@ -157,41 +115,64 @@ function getDateRange(preset: DatePreset, customStart: string, customEnd: string
   return { start_date: d.toISOString(), end_date: null };
 }
 
-const COLUMNS: Array<{ key: keyof AccountStats; label: string; icon: React.ReactNode; kind: 'text' | 'persona' | 'plan' | 'number' | 'duration' | 'age' | 'date'; widthClass: string }> = [
-  { key: 'user_name', label: 'User Name', icon: <UserCheck size={12} />, kind: 'text', widthClass: 'w-[140px]' },
-  { key: 'user_email', label: 'User Email', icon: <Mail size={12} />, kind: 'text', widthClass: 'w-[210px]' },
-  { key: 'active_persona', label: 'User Type', icon: <UserRound size={12} />, kind: 'persona', widthClass: 'w-[125px]' },
-  { key: 'is_paid', label: 'Plan', icon: <Star size={12} />, kind: 'plan', widthClass: 'w-[90px]' },
-  { key: 'credits_balance', label: 'Credits', icon: <Database size={12} />, kind: 'number', widthClass: 'w-[110px]' },
-  { key: 'emails_received_count', label: 'Emails Sent', icon: <Mail size={12} />, kind: 'number', widthClass: 'w-[115px]' },
-  { key: 'emails_received_daily_avg', label: 'Emails / Day', icon: <Mail size={12} />, kind: 'number', widthClass: 'w-[115px]' },
-  { key: 'searches_count', label: 'Searches', icon: <Search size={12} />, kind: 'number', widthClass: 'w-[95px]' },
-  { key: 'job_posts_count', label: 'Job Posts', icon: <Megaphone size={12} />, kind: 'number', widthClass: 'w-[100px]' },
-  { key: 'hotlist_posts_count', label: 'Hotlist Posts', icon: <Megaphone size={12} />, kind: 'number', widthClass: 'w-[115px]' },
-  { key: 'job_previews_count', label: 'Job Previews', icon: <FileSearch size={12} />, kind: 'number', widthClass: 'w-[115px]' },
-  { key: 'hotlist_previews_count', label: 'Hotlist Previews', icon: <FileSearch size={12} />, kind: 'number', widthClass: 'w-[135px]' },
-  { key: 'ai_pitches_count', label: 'AI Pitches', icon: <Send size={12} />, kind: 'number', widthClass: 'w-[105px]' },
-  { key: 'ai_requests_count', label: 'AI Requests', icon: <FileText size={12} />, kind: 'number', widthClass: 'w-[115px]' },
-  // Matches delivered, not runs: that is what was charged and what the user
-  // actually received. Runs ride along in the cell's tooltip.
-  { key: 'ai_match_matches_count', label: 'AI Matches', icon: <Sparkles size={12} />, kind: 'number', widthClass: 'w-[115px]' },
-  { key: 'gmail_address', label: 'Gmail', icon: <Mail size={12} />, kind: 'text', widthClass: 'w-[200px]' },
-  { key: 'chats_count', label: 'Chats', icon: <MessageSquare size={12} />, kind: 'number', widthClass: 'w-[90px]' },
-  { key: 'subscriptions_count', label: 'Subscriptions', icon: <Rss size={12} />, kind: 'number', widthClass: 'w-[120px]' },
-  { key: 'auto_subscriptions_count', label: 'Auto Subscriptions', icon: <Rss size={12} />, kind: 'number', widthClass: 'w-[150px]' },
-  { key: 'subscribe_taps_count', label: 'Subscribe Taps', icon: <Rss size={12} />, kind: 'number', widthClass: 'w-[125px]' },
-  { key: 'subscribers_count', label: 'Subscribers', icon: <Users size={12} />, kind: 'number', widthClass: 'w-[110px]' },
-  { key: 'play_clicks_count', label: 'Play Store Clicks', icon: <Smartphone size={12} />, kind: 'number', widthClass: 'w-[140px]' },
-  { key: 'vendor_downloads_count', label: 'Vendor Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[140px]' },
-  { key: 'recruiter_downloads_count', label: 'Recruiter Downloads', icon: <Download size={12} />, kind: 'number', widthClass: 'w-[150px]' },
-  { key: 'created_at', label: 'Created', icon: <Calendar size={12} />, kind: 'date', widthClass: 'w-[155px]' },
-  { key: 'account_age_days', label: 'Created Since', icon: <CalendarDays size={12} />, kind: 'age', widthClass: 'w-[120px]' },
-  { key: 'session_count', label: 'Sessions', icon: <LogIn size={12} />, kind: 'number', widthClass: 'w-[95px]' },
-  { key: 'active_seconds', label: 'Active Time', icon: <Clock size={12} />, kind: 'duration', widthClass: 'w-[110px]' },
-  { key: 'active_days', label: 'Active Days', icon: <CalendarDays size={12} />, kind: 'number', widthClass: 'w-[105px]' },
-  { key: 'last_activity_at', label: 'Last Activity', icon: <Activity size={12} />, kind: 'date', widthClass: 'w-[155px]' },
-  { key: 'last_logged_in', label: 'Last Logged In', icon: <Calendar size={12} />, kind: 'date', widthClass: 'w-[155px]' },
+type ColumnGroup = 'Who' | 'Money' | 'Matches' | 'Applying' | 'Results' | 'Extras';
+type ColumnKind = 'name' | 'text' | 'role' | 'number' | 'inr' | 'usd' | 'duration' | 'age' | 'date' | 'yes' | 'plan' | 'teaser';
+type Column = { key: AdminStatsSortKey; label: string; kind: ColumnKind; group: ColumnGroup; width: number; title?: string };
+
+// Grouped the way the product runs. Activity columns count inside the chosen
+// range; state columns (role, paid, credits, profiles or jobs, last active)
+// are as of now.
+const COLUMNS: Column[] = [
+  { group: 'Who', key: 'name', label: 'Name', kind: 'name', width: 170 },
+  { group: 'Who', key: 'email', label: 'Email', kind: 'text', width: 210 },
+  { group: 'Who', key: 'role', label: 'Role', kind: 'role', width: 100 },
+  { group: 'Who', key: 'created_at', label: 'Signed up', kind: 'date', width: 150 },
+  { group: 'Who', key: 'age_days', label: 'Age', kind: 'age', width: 70 },
+  { group: 'Who', key: 'last_active', label: 'Last active', kind: 'date', width: 150, title: 'Last activity, any time' },
+  { group: 'Who', key: 'sessions', label: 'Sessions', kind: 'number', width: 85 },
+  { group: 'Who', key: 'active_seconds', label: 'Active time', kind: 'duration', width: 95 },
+  { group: 'Who', key: 'active_days', label: 'Active days', kind: 'number', width: 95 },
+  { group: 'Money', key: 'paid', label: 'Plan', kind: 'plan', width: 70, title: 'Any paid top-up, ever' },
+  { group: 'Money', key: 'revenue_inr', label: 'Revenue ₹', kind: 'inr', width: 95 },
+  { group: 'Money', key: 'revenue_usd', label: 'Revenue $', kind: 'usd', width: 90 },
+  { group: 'Money', key: 'credits_balance', label: 'Credits', kind: 'number', width: 80, title: 'Balance now' },
+  { group: 'Money', key: 'credits_bought', label: 'Bought', kind: 'number', width: 80 },
+  { group: 'Money', key: 'credits_spent', label: 'Spent', kind: 'number', width: 80, title: 'Usage net of refunds' },
+  { group: 'Money', key: 'teaser_state', label: 'Free state', kind: 'teaser', width: 115, title: 'Out of credits: teasers, then paused, then a second chance' },
+  { group: 'Matches', key: 'profiles_or_jobs', label: 'Profiles/Jobs', kind: 'number', width: 105, title: 'Open profiles or jobs now' },
+  { group: 'Matches', key: 'matches', label: 'Matches', kind: 'number', width: 85 },
+  { group: 'Matches', key: 'watched', label: 'Watched', kind: 'number', width: 85 },
+  { group: 'Matches', key: 'saved', label: 'Saved', kind: 'number', width: 75 },
+  { group: 'Matches', key: 'shared', label: 'Shared', kind: 'number', width: 75 },
+  { group: 'Matches', key: 'not_a_match', label: 'Passed', kind: 'number', width: 100 },
+  { group: 'Matches', key: 'last_match_at', label: 'Last match', kind: 'date', width: 150 },
+  { group: 'Applying', key: 'applied', label: 'Applied', kind: 'number', width: 85, title: 'Email + site + Ask Resume' },
+  { group: 'Applying', key: 'applied_email', label: 'By email', kind: 'number', width: 85 },
+  { group: 'Applying', key: 'applied_site', label: 'On site', kind: 'number', width: 80 },
+  { group: 'Applying', key: 'ask_resume', label: 'Ask Resume', kind: 'number', width: 100 },
+  { group: 'Applying', key: 'asks', label: 'Asks', kind: 'number', width: 70, title: 'Rate, visa or location asked of the poster' },
+  { group: 'Results', key: 'replies', label: 'Replies', kind: 'number', width: 80 },
+  { group: 'Results', key: 'interviews', label: 'Interviews', kind: 'number', width: 95 },
+  { group: 'Results', key: 'placed', label: 'Placed', kind: 'number', width: 75 },
+  { group: 'Extras', key: 'ai_match_runs', label: 'AI Match runs', kind: 'number', width: 115 },
+  { group: 'Extras', key: 'ai_apply_fills', label: 'AI Apply fills', kind: 'number', width: 110 },
+  { group: 'Extras', key: 'referrals_made', label: 'Referrals', kind: 'number', width: 85 },
+  { group: 'Extras', key: 'referred_by', label: 'Referred', kind: 'yes', width: 80 },
+  { group: 'Extras', key: 'gmail_connected', label: 'Gmail', kind: 'yes', width: 70 },
+  { group: 'Extras', key: 'avatar_on', label: 'Avatar', kind: 'yes', width: 70 },
+  { group: 'Extras', key: 'picture_reports', label: 'Pic reports', kind: 'number', width: 95 },
+  { group: 'Extras', key: 'emails_received', label: 'Emails sent', kind: 'number', width: 100, title: 'Emails we sent this account' },
+  { group: 'Extras', key: 'billing_currency', label: 'Currency', kind: 'text', width: 85 },
 ];
+
+const COLUMN_GROUPS = COLUMNS.reduce<Array<{ group: ColumnGroup; span: number }>>((groups, col) => {
+  const last = groups[groups.length - 1];
+  if (last?.group === col.group) last.span += 1;
+  else groups.push({ group: col.group, span: 1 });
+  return groups;
+}, []);
+const TABLE_WIDTH = COLUMNS.reduce((total, col) => total + col.width, 0);
+const RIGHT_ALIGNED = new Set<ColumnKind>(['number', 'inr', 'usd', 'duration', 'age']);
 
 const STATS_PANES = [
   { key: 'charts', label: 'Charts', icon: Activity },
@@ -199,6 +180,7 @@ const STATS_PANES = [
   { key: 'progress', label: 'Progress', icon: Target },
   { key: 'cards', label: 'Summary', icon: LayoutGrid },
   { key: 'table', label: 'Accounts', icon: TableIcon },
+  { key: 'events', label: 'Events', icon: Zap },
 ] as const;
 
 type StatsPane = (typeof STATS_PANES)[number]['key'];
@@ -232,12 +214,74 @@ function formatActiveTime(totalSeconds: number) {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
+const muted = (value: number) => (value > 0 ? 'text-gray-800' : 'text-gray-400');
+
+function AccountCell({ account, col }: { account: AccountRow; col: Column }) {
+  const value = sortValue(account, col.key);
+  const num = Number(value) || 0;
+  switch (col.kind) {
+    case 'number':
+      return <span className={`text-xs tabular-nums ${muted(num)}`}>{num.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>;
+    case 'inr':
+      return <span className={`text-xs tabular-nums ${muted(num)}`}>{num > 0 ? formatInr(num) : '-'}</span>;
+    case 'usd':
+      return <span className={`text-xs tabular-nums ${muted(num)}`}>{num > 0 ? formatUsd(num) : '-'}</span>;
+    case 'duration':
+      return <span className={`text-xs tabular-nums ${muted(num)}`}>{formatActiveTime(num)}</span>;
+    case 'age':
+      return <span className="text-xs tabular-nums text-gray-700">{`${Math.max(0, num).toLocaleString()}d`}</span>;
+    case 'date':
+      return <span className="block truncate whitespace-nowrap text-xs text-gray-600">{typeof value === 'string' ? formatCompactDateTime(value) : '-'}</span>;
+    case 'yes':
+      return <span className={`text-xs ${value ? 'font-semibold text-emerald-700' : 'text-gray-400'}`}>{value ? 'Yes' : '-'}</span>;
+    case 'plan':
+      return (
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${value ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+          {value ? 'Paid' : 'Free'}
+        </span>
+      );
+    case 'teaser':
+      return <span className={`text-xs ${account.teaser_state === 'none' ? 'text-gray-400' : 'text-amber-700'}`}>{TEASER_LABEL[account.teaser_state] ?? '-'}</span>;
+    case 'role':
+      return account.role === 'none' ? (
+        <span className="text-xs text-gray-400">-</span>
+      ) : (
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+          account.role === 'jobs' ? 'bg-blue-50 text-blue-700' : account.role === 'job_seeker' ? 'bg-violet-50 text-violet-700' : 'bg-emerald-50 text-emerald-700'
+        }`}
+        >
+          {ROLE_LABEL[account.role]}
+        </span>
+      );
+    case 'name':
+      return (
+        <span className="flex items-center gap-1.5">
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${accountPulse(account.last_active)}`}
+            title={account.last_active ? `Last active ${formatCompactDateTime(account.last_active)}` : 'Never active'}
+          />
+          <span className="block truncate text-xs text-gray-800">{account.name || '-'}</span>
+          {account.internal && <span className="shrink-0 rounded bg-gray-100 px-1 text-[9px] font-semibold uppercase text-gray-500">internal</span>}
+        </span>
+      );
+    default:
+      return <span className="block truncate text-xs text-gray-800">{typeof value === 'string' && value ? value : '-'}</span>;
+  }
+}
+
 export default function AdminDashboard() {
   const [authed, setAuthed] = useState(!!sessionStorage.getItem('admin_authed'));
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<AccountStats[]>([]);
+  const [stats, setStats] = useState<AccountRow[]>([]);
+  const [funnel, setFunnel] = useState<Record<string, Record<string, number>>>({});
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [statTotals, setStatTotals] = useState<Record<string, Totals>>({});
+  // True when admin-stats answered in its pre-RPC shape: it needs deploying.
+  const [staleStats, setStaleStats] = useState(false);
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  const [includeInternal, setIncludeInternal] = useState(false);
   // Section and pane live in the URL so a refresh returns to what you were
   // looking at instead of resetting to the default view — and so a particular
   // chart or section can be linked to.
@@ -312,7 +356,7 @@ export default function AdminDashboard() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: authPw, start_date, end_date }),
+          body: JSON.stringify({ password: authPw, start_date, end_date, include_internal: includeInternal }),
         }
       );
       if (!res.ok) {
@@ -322,8 +366,13 @@ export default function AdminDashboard() {
         return false;
       }
       const data = await res.json();
-      setStats(data.stats ?? []);
-      setDaily(data.daily ?? []);
+      const current = isCurrentPayload(data);
+      setStaleStats(!current);
+      setStats(current ? data.accounts : []);
+      setDaily(current ? data.daily ?? [] : []);
+      setFunnel(current ? data.funnel ?? {} : {});
+      setEvents(current ? data.events ?? [] : []);
+      setStatTotals(current ? data.totals ?? {} : {});
       setLoading(false);
       return true;
     } catch {
@@ -527,12 +576,13 @@ export default function AdminDashboard() {
     setSavingLinkedinGroupId(null);
   }
 
-  // Re-fetch when date range changes (if already authed)
+  // Re-fetch when the date range or the internal-accounts switch changes (if
+  // already authed).
   useEffect(() => {
-    if (authed && datePreset !== 'custom') {
+    if (authed && (datePreset !== 'custom' || customStart || customEnd)) {
       fetchStats();
     }
-  }, [datePreset]);
+  }, [datePreset, includeInternal]);
 
   useEffect(() => {
     if (authed) {
@@ -550,12 +600,11 @@ export default function AdminDashboard() {
   const filteredStats = useMemo(() => {
     return filterAndSortAccountStats(stats, {
       query: searchQuery,
-      startDate: customStart,
-      endDate: customEnd,
+      role: roleFilter,
       sortKey,
       sortDirection,
     });
-  }, [stats, searchQuery, customStart, customEnd, sortKey, sortDirection]);
+  }, [stats, searchQuery, roleFilter, sortKey, sortDirection]);
 
   const filteredLinkedinGroups = useMemo(() => {
     const query = linkedinGroupsSearch.trim().toLowerCase();
@@ -564,14 +613,6 @@ export default function AdminDashboard() {
       group.group_id.includes(query) || (group.group_name ?? '').toLowerCase().includes(query)
     ));
   }, [linkedinGroups, linkedinGroupsSearch]);
-
-  // Totals row
-  const totals: Record<string, number> = {};
-  for (const col of COLUMNS) {
-    totals[col.key] = col.kind === 'number' || col.kind === 'duration'
-      ? filteredStats.reduce((sum, s) => sum + ((s[col.key] as number) || 0), 0)
-      : 0;
-  }
 
   useEffect(() => {
     // Functional form: it reads the current params without this effect
@@ -596,70 +637,70 @@ export default function AdminDashboard() {
   const signupRange = getDateRange(datePreset, customStart, customEnd);
 
   // Direction of travel per card, from the same daily buckets the charts use.
-  // Cards measuring a level rather than a flow — credits balance, average
-  // active time — are left out: "up" means nothing for those.
+  // Cards measuring a level rather than a flow (watched %, avatars on) are
+  // left out: "up" means nothing for those.
   const cardTrends = useMemo(() => {
-    const backing: Record<string, string[]> = {
-      Accounts: ['signups'],
-      Active: ['active_users'],
-      Sessions: ['sessions'],
-      Searches: ['searches'],
-      Posts: ['job_posts', 'hotlist_posts'],
-      Previews: ['previews'],
-      'AI Asks': ['ai_pitches', 'ai_requests'],
-      'AI Matches': ['ai_matches'],
-      Chats: ['chats'],
-      Downloads: ['downloads'],
-      Subscribes: ['subscribes'],
-      'Play Store Clicks': ['play_clicks'],
+    const backing: Record<string, string | string[]> = {
+      Accounts: 'signups',
+      Active: 'active_users',
+      'Matches sent': 'matches',
+      Applied: ['applied_email', 'applied_site', 'ask_resume'],
+      Replies: 'replies',
+      Interviews: 'interviews',
+      Placed: 'placed',
+      'Paid accounts': 'paid_orders',
+      'Revenue ₹': 'revenue_inr',
+      'Revenue $': 'revenue_usd',
+      'Credits spent': 'credits_spent',
+      'AI Apply fills': 'ai_apply_fills',
+      Referrals: 'referrals',
     };
     const out: Record<string, Trend> = {};
-    for (const [label, keys] of Object.entries(backing)) {
-      const merged = keys
-        .map((key) => buildMetricSeries(daily, key, 'all', signupRange.start_date, signupRange.end_date))
-        .reduce<{ key: string; count: number }[]>((total, series) => (
-          total.length
-            ? total.map((point, i) => ({ key: point.key, count: point.count + (series[i]?.count ?? 0) }))
-            : series
-        ), []);
-      if (merged.length) out[label] = trendOf(merged);
+    for (const [label, metric] of Object.entries(backing)) {
+      const series = buildMetricSeries(daily, metric, roleFilter, signupRange.start_date, signupRange.end_date);
+      if (series.length) out[label] = trendOf(series);
     }
     return out;
-  }, [daily, signupRange.start_date, signupRange.end_date]);
+  }, [daily, roleFilter, signupRange.start_date, signupRange.end_date]);
 
   // Breakages the data cannot report on, because they are why it is missing.
   const blockers = useMemo<BriefLine[]>(() => {
     const lines: BriefLine[] = [];
-    if (!daily.length) {
-      lines.push({ key: 'no-daily', text: 'No daily data: redeploy admin-stats, or every chart here stays empty.', tone: 'bad' });
+    if (staleStats) {
+      lines.push({ key: 'stale-stats', text: 'admin-stats is out of date: apply the admin_account_stats migration and deploy admin-stats.', tone: 'bad' });
+    } else if (!daily.length) {
+      lines.push({ key: 'no-daily', text: 'No daily data in this range.', tone: 'neutral' });
     }
     return lines;
-  }, [daily.length]);
+  }, [daily.length, staleStats]);
 
-  // Summary cards. A raw sum only means something for activity counters —
-  // adding up credits_balance across accounts totals everyone's *remaining*
-  // balance, which says nothing about the cohort, so it's deliberately not a
-  // card. What an admin actually reads this view for is composition (who
-  // these accounts are) and engagement (what they did in the selected
-  // range), so the counters that split by persona are paired back together
-  // with the split shown underneath.
-  const accountCount = filteredStats.length;
-  const vendorCount = filteredStats.filter((s) => s.active_persona === 'vendor').length;
-  const benchSalesCount = filteredStats.filter((s) => s.active_persona === 'bench_sales').length;
-  // "Active" = did anything at all in the range. session_count comes from
-  // user_activity_daily, which admin-stats already filters to the same date
-  // range, so a 0 here means genuinely dormant for the period — the single
-  // most useful number on the page and previously absent.
-  const activeAccounts = filteredStats.filter((s) => (s.session_count || 0) > 0).length;
-  const totalPosts = (totals.job_posts_count ?? 0) + (totals.hotlist_posts_count ?? 0);
-  const totalPreviews = (totals.job_previews_count ?? 0) + (totals.hotlist_previews_count ?? 0);
-  const totalAiAsks = (totals.ai_pitches_count ?? 0) + (totals.ai_requests_count ?? 0);
-  const totalDownloads = (totals.vendor_downloads_count ?? 0) + (totals.recruiter_downloads_count ?? 0);
-  const gmailConnectedCount = filteredStats.filter((row) => row.gmail_connected).length;
-  // Averaged over *active* accounts, not all of them — dividing by dormant
-  // accounts drags the number toward zero and hides how long real users stay.
-  const avgActiveSeconds = activeAccounts > 0 ? Math.round((totals.active_seconds ?? 0) / activeAccounts) : 0;
-  const shareOfAccounts = (count: number) => (accountCount > 0 ? `${Math.round((count / accountCount) * 100)}% of accounts` : '-');
+  // Summary cards: the selected role's totals, counted in SQL.
+  const t = totalsFor(statTotals, roleFilter);
+  const n = (key: keyof Totals) => Number(t[key] ?? 0);
+  const share = (count: number, of: number) => (of > 0 ? `${Math.round((count / of) * 100)}%` : '-');
+  const appliedTotal = n('applied_email') + n('applied_site') + n('ask_resume');
+  const roleSplit = roleFilter === 'all'
+    ? (['profiles', 'jobs', 'job_seeker'] as const)
+      .map((r) => `${Number(statTotals[r]?.accounts ?? 0).toLocaleString()} ${ROLE_LABEL[r]}`).join(' · ')
+    : ROLE_LABEL[roleFilter];
+  const summaryCards: Array<{ label: string; value: string; hint: string }> = [
+    { label: 'Accounts', value: n('accounts').toLocaleString(), hint: `+${n('signups').toLocaleString()} new · ${roleSplit}` },
+    { label: 'Active', value: n('active').toLocaleString(), hint: `${share(n('active'), n('accounts'))} of accounts · ${n('sessions').toLocaleString()} sessions` },
+    { label: 'Matches sent', value: n('matches').toLocaleString(), hint: `${n('ai_match_runs').toLocaleString()} AI Match runs` },
+    { label: 'Watched', value: share(n('matches_watched'), n('matches')), hint: `${n('matches_watched').toLocaleString()} of the matches sent were opened` },
+    { label: 'Applied', value: appliedTotal.toLocaleString(), hint: `${n('applied_email').toLocaleString()} email · ${n('applied_site').toLocaleString()} site · ${n('ask_resume').toLocaleString()} Ask Resume` },
+    { label: 'Replies', value: n('replies').toLocaleString(), hint: `${n('asks').toLocaleString()} questions asked of posters` },
+    { label: 'Interviews', value: n('interviews').toLocaleString(), hint: 'cards moved to interview' },
+    { label: 'Placed', value: n('placed').toLocaleString(), hint: 'cards moved to placed' },
+    { label: 'Paid accounts', value: n('paid_accounts').toLocaleString(), hint: `${n('paid_orders').toLocaleString()} paid orders in range` },
+    { label: 'Revenue ₹', value: formatInr(n('revenue_inr')), hint: 'paid top-ups in INR' },
+    { label: 'Revenue $', value: formatUsd(n('revenue_usd')), hint: 'paid top-ups in USD' },
+    { label: 'Credits spent', value: Math.round(n('credits_spent')).toLocaleString(), hint: `${n('credits_bought').toLocaleString()} bought in range` },
+    { label: 'AI Apply fills', value: n('ai_apply_fills').toLocaleString(), hint: 'Chrome extension form fills' },
+    { label: 'Referrals', value: n('referrals').toLocaleString(), hint: `${n('referred').toLocaleString()} accounts came by referral` },
+    { label: 'Avatars on', value: n('avatars_on').toLocaleString(), hint: `${share(n('avatars_on'), n('accounts'))} of accounts` },
+    { label: 'Picture reports', value: n('picture_reports').toLocaleString(), hint: `${(events.find((e) => e.event === 'picture_reported')?.count ?? 0).toLocaleString()} report taps (events)` },
+  ];
 
   if (!authed) {
     return (
@@ -708,7 +749,7 @@ export default function AdminDashboard() {
   // Stats is the only view whose subtitle depends on live data, so it is the
   // only one that needs to be computed.
   const viewSubtitle = adminView === 'stats'
-    ? `${filteredStats.length} of ${stats.length} accounts`
+    ? `${filteredStats.length} of ${stats.length} accounts${includeInternal ? ' · internal included' : ''}`
     : adminView === 'scraper'
       ? (scraperConfigTab === 'group'
         ? `${linkedinGroups.filter((group) => group.is_active).length} active of ${linkedinGroups.length} LinkedIn groups`
@@ -776,7 +817,10 @@ export default function AdminDashboard() {
             Refresh
           </button>
           <button
-            onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); setStats([]); setDaily([]); }}
+            onClick={() => {
+              sessionStorage.removeItem('admin_authed'); setAuthed(false);
+              setStats([]); setDaily([]); setFunnel({}); setEvents([]); setStatTotals({});
+            }}
             className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium text-gray-500 transition hover:bg-red-50 hover:text-red-600"
           >
             <Lock size={14} className="shrink-0" />
@@ -831,7 +875,7 @@ export default function AdminDashboard() {
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search by name, username, or email"
+                placeholder="Search by name, email or role"
                 className="h-10 w-full rounded-md border border-gray-300 bg-white pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
               {searchQuery && (
@@ -930,27 +974,46 @@ export default function AdminDashboard() {
               <p className="text-sm text-gray-500">Loading account data...</p>
             </div>
           ) : (
-            <div className="flex h-full min-h-0 flex-col gap-3">
-              <div className={`shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white sm:grid-cols-4 lg:grid-cols-6 ${statsPane === 'cards' ? 'grid' : 'hidden'}`}>
-                {[
-                  { label: 'Accounts', value: accountCount.toLocaleString(), hint: currentPresetLabel },
-                  { label: 'Vendors', value: vendorCount.toLocaleString(), hint: shareOfAccounts(vendorCount) },
-                  { label: 'Bench Sales', value: benchSalesCount.toLocaleString(), hint: shareOfAccounts(benchSalesCount) },
-                  { label: 'Active', value: activeAccounts.toLocaleString(), hint: shareOfAccounts(activeAccounts) },
-                  { label: 'Sessions', value: (totals.session_count ?? 0).toLocaleString(), hint: 'sign-ins in range' },
-                  { label: 'Avg Active Time', value: formatActiveTime(avgActiveSeconds), hint: 'per active account' },
-                  { label: 'Searches', value: (totals.searches_count ?? 0).toLocaleString(), hint: 'profile searches' },
-                  { label: 'Posts', value: totalPosts.toLocaleString(), hint: `${(totals.job_posts_count ?? 0).toLocaleString()} job · ${(totals.hotlist_posts_count ?? 0).toLocaleString()} hotlist` },
-                  { label: 'Previews', value: totalPreviews.toLocaleString(), hint: `${(totals.job_previews_count ?? 0).toLocaleString()} job · ${(totals.hotlist_previews_count ?? 0).toLocaleString()} hotlist` },
-                  { label: 'AI Asks', value: totalAiAsks.toLocaleString(), hint: `${(totals.ai_pitches_count ?? 0).toLocaleString()} pitch · ${(totals.ai_requests_count ?? 0).toLocaleString()} request` },
-                  { label: 'AI Matches', value: (totals.ai_match_matches_count ?? 0).toLocaleString(), hint: `${(totals.ai_match_runs_count ?? 0).toLocaleString()} runs` },
-                  { label: 'Gmail Connected', value: gmailConnectedCount.toLocaleString(), hint: shareOfAccounts(gmailConnectedCount) },
-                  { label: 'Chats', value: (totals.chats_count ?? 0).toLocaleString(), hint: 'messages sent' },
-                  { label: 'Downloads', value: totalDownloads.toLocaleString(), hint: `${(totals.vendor_downloads_count ?? 0).toLocaleString()} vendor · ${(totals.recruiter_downloads_count ?? 0).toLocaleString()} recruiter` },
-                  { label: 'Subscriptions', value: ((totals.subscriptions_count ?? 0) + (totals.auto_subscriptions_count ?? 0)).toLocaleString(), hint: `${(totals.subscriptions_count ?? 0).toLocaleString()} chosen · ${(totals.auto_subscriptions_count ?? 0).toLocaleString()} from AI Submit/Invite · ${(totals.subscribe_taps_count ?? 0).toLocaleString()} taps in range` },
-                  { label: 'Play Store Clicks', value: (totals.play_clicks_count ?? 0).toLocaleString(), hint: 'Signed-in clicks on Get it on Google Play; signed-out clicks show in the chart' },
-                ].map((metric) => (
-                  <div key={metric.label} className="border-b border-r border-gray-200 px-4 py-3 [&:nth-child(2n)]:border-r-0 [&:nth-child(n+11)]:border-b-0 sm:[&:nth-child(4n)]:border-r-0 sm:[&:nth-child(n+9)]:border-b-0 lg:[&:nth-child(6n)]:border-r-0 lg:[&:nth-child(n+7)]:border-b-0">
+            <div className="flex h-full min-h-0 flex-col gap-3 pt-3">
+              {/* One role switch for every pane it applies to, and the
+                  internal-accounts switch, which refetches. */}
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {statsPane !== 'events' && statsPane !== 'progress' && (
+                  <div className="inline-flex rounded-full border border-gray-300 bg-white p-0.5">
+                    {ROLE_FILTERS.map((option) => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() => setRoleFilter(option.key)}
+                        aria-pressed={roleFilter === option.key}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                          roleFilter === option.key ? 'bg-blue-600 text-white' : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={includeInternal}
+                    onChange={(e) => setIncludeInternal(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-gray-300"
+                  />
+                  Include internal
+                </label>
+                {staleStats && (
+                  <span className="text-xs font-semibold text-red-600">
+                    admin-stats is out of date: apply the admin_account_stats migration and deploy admin-stats.
+                  </span>
+                )}
+              </div>
+
+              <div className={`shrink-0 grid-cols-2 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-4 lg:grid-cols-8 ${statsPane === 'cards' ? 'grid' : 'hidden'}`}>
+                {summaryCards.map((metric) => (
+                  <div key={metric.label} className="min-w-0 bg-white px-4 py-3">
                     <div className="flex items-center gap-1.5">
                       {cardTrends[metric.label] && (
                         <span
@@ -961,60 +1024,84 @@ export default function AdminDashboard() {
                           title={`${formatChange(cardTrends[metric.label].change)} — recent half of the range vs the half before`}
                         />
                       )}
-                      <p className="text-[10px] font-semibold uppercase text-gray-500">{metric.label}</p>
+                      <p className="truncate text-[10px] font-semibold uppercase text-gray-500">{metric.label}</p>
                     </div>
                     <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{metric.value}</p>
                     <p className="mt-0.5 truncate text-[10px] text-gray-400" title={metric.hint}>{metric.hint}</p>
                   </div>
                 ))}
               </div>
-              <div className={`min-h-0 flex-1 overflow-y-auto pt-3 ${statsPane === 'charts' ? 'block' : 'hidden'}`}>
+              <div className={`min-h-0 flex-1 overflow-y-auto ${statsPane === 'charts' ? 'block' : 'hidden'}`}>
                 <AdminTrendCharts
                   daily={daily}
-                  accounts={stats}
+                  role={roleFilter}
                   startDate={signupRange.start_date}
                   endDate={signupRange.end_date}
                   rangeLabel={currentPresetLabel}
                   blockers={blockers}
                 />
               </div>
-              <div className={`min-h-0 flex-1 overflow-y-auto pt-3 ${statsPane === 'progress' ? 'block' : 'hidden'}`}>
+              <div className={`min-h-0 flex-1 overflow-y-auto ${statsPane === 'progress' ? 'block' : 'hidden'}`}>
                 <AdminProgress
                   accounts={stats}
                   daily={daily}
+                  funnel={funnel.all}
+                  totals={totalsFor(statTotals, 'all')}
                   startDate={signupRange.start_date}
                   endDate={signupRange.end_date}
                   rangeLabel={currentPresetLabel}
                 />
               </div>
-              <div className={`min-h-0 flex-1 overflow-y-auto pt-3 ${statsPane === 'funnel' ? 'block' : 'hidden'}`}>
+              <div className={`min-h-0 flex-1 overflow-y-auto ${statsPane === 'funnel' ? 'block' : 'hidden'}`}>
                 <AdminFunnels
-                  accounts={stats}
+                  funnel={funnel}
+                  role={roleFilter}
                   startDate={signupRange.start_date}
                   endDate={signupRange.end_date}
                   rangeLabel={currentPresetLabel}
                 />
+              </div>
+              <div className={`min-h-0 flex-1 overflow-y-auto ${statsPane === 'events' ? 'block' : 'hidden'}`}>
+                <AdminEventsTable events={events} rangeLabel={currentPresetLabel} />
               </div>
               <div className={`min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white ${statsPane === 'table' ? 'flex' : 'hidden'} ${statsPane === 'cards' ? 'lg:flex' : ''}`}>
               <div className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full min-w-[2360px] table-fixed text-left">
+              <table className="table-fixed text-left" style={{ width: TABLE_WIDTH, minWidth: '100%' }}>
+                <colgroup>
+                  {COLUMNS.map((col) => <col key={col.key} style={{ width: col.width }} />)}
+                </colgroup>
                 <thead className="sticky top-0 z-[4]">
+                  <tr className="border-b border-gray-200 bg-gray-100">
+                    {COLUMN_GROUPS.map((g, i) => (
+                      <th
+                        key={g.group}
+                        colSpan={g.span}
+                        className={`px-4 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500 ${i > 0 ? 'border-l border-gray-200' : ''}`}
+                      >
+                        {g.group}
+                      </th>
+                    ))}
+                  </tr>
                   <tr className="border-b border-gray-200 bg-gray-50">
-                    {COLUMNS.map(col => (
-                      <th key={col.key} className={`${col.widthClass} px-4 py-2.5 text-[10px] font-semibold uppercase text-gray-600 whitespace-nowrap ${col.kind === 'number' || col.kind === 'duration' || col.kind === 'age' ? 'text-right' : 'text-left'}`}>
+                    {COLUMNS.map((col, i) => (
+                      <th
+                        key={col.key}
+                        title={col.title}
+                        className={`px-4 py-2.5 text-[10px] font-semibold uppercase text-gray-600 whitespace-nowrap ${RIGHT_ALIGNED.has(col.kind) ? 'text-right' : 'text-left'} ${i === 0 ? 'sticky left-0 z-[5] bg-gray-50' : ''}`}
+                      >
                         <button
-                          title={`Sort by ${col.label}`}
-                          className={`flex w-full items-center gap-1.5 transition-colors hover:text-blue-600 ${col.kind === 'number' || col.kind === 'duration' || col.kind === 'age' ? 'justify-end text-right' : 'justify-start text-left'}`}
+                          title={col.title ?? `Sort by ${col.label}`}
+                          className={`flex w-full items-center gap-1.5 transition-colors hover:text-blue-600 ${RIGHT_ALIGNED.has(col.kind) ? 'justify-end text-right' : 'justify-start text-left'}`}
                           onClick={() => {
                             if (sortKey === col.key) {
                               setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'));
                             } else {
-                              setSortKey(col.key as AdminStatsSortKey);
+                              setSortKey(col.key);
                               setSortDirection('desc');
                             }
                           }}
                         >
-                          {col.icon} {col.label}
+                          {col.label}
                           {sortKey === col.key && (
                             <span className="text-[10px] text-blue-600">{sortDirection === 'desc' ? '↓' : '↑'}</span>
                           )}
@@ -1034,61 +1121,17 @@ export default function AdminDashboard() {
 
                   {filteredStats.map((account) => (
                     <tr
-                      key={account.id}
-                      className="border-b border-gray-200 bg-white transition-colors hover:bg-gray-50"
+                      key={account.account_id}
+                      className="group border-b border-gray-200 bg-white transition-colors hover:bg-gray-50"
                     >
-                      {COLUMNS.map(col => {
-                        const value = account[col.key];
-                        return (
-                          <td key={col.key} className={`px-4 py-2.5 ${col.kind === 'number' || col.kind === 'duration' || col.kind === 'age' ? 'text-right' : 'text-left'}`}>
-                            {col.kind === 'number' ? (
-                              <span className={`text-xs tabular-nums font-normal ${((value as number) || 0) > 0 ? 'text-gray-800' : 'text-gray-400'}`}>
-                                {((value as number) || 0).toLocaleString()}
-                              </span>
-                            ) : col.kind === 'duration' ? (
-                              <span className={`text-xs tabular-nums font-normal ${((value as number) || 0) > 0 ? 'text-gray-800' : 'text-gray-400'}`}>
-                                {formatActiveTime((value as number) || 0)}
-                              </span>
-                            ) : col.kind === 'age' ? (
-                              <span className="text-xs tabular-nums font-normal text-gray-700">
-                                {`${Math.max(0, (value as number) || 0).toLocaleString()}d`}
-                              </span>
-                            ) : col.kind === 'persona' ? (
-                              value ? (
-                                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${value === 'vendor' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                                  {formatUserType(value as AccountStats['active_persona'])}
-                                </span>
-                              ) : (
-                                <span className="text-xs font-normal text-gray-400">-</span>
-                              )
-                            ) : col.kind === 'plan' ? (
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${value ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
-                                {value ? 'Paid' : 'Free'}
-                              </span>
-                            ) : col.kind === 'date' ? (
-                              <span className="block truncate text-xs font-normal text-gray-600 whitespace-nowrap">
-                                {typeof value === 'string' ? formatCompactDateTime(value) : '-'}
-                              </span>
-                            ) : col.key === 'user_name' ? (
-                              <span className="flex items-center gap-1.5">
-                                <span
-                                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${accountPulse(account.last_activity_at)}`}
-                                  title={account.last_activity_at
-                                    ? `Last active ${formatCompactDateTime(account.last_activity_at)}`
-                                    : 'Never active'}
-                                />
-                                <span className="block truncate text-xs font-normal text-gray-800">
-                                  {typeof value === 'string' && value ? value : '-'}
-                                </span>
-                              </span>
-                            ) : (
-                              <span className="block truncate text-xs font-normal text-gray-800">
-                                {typeof value === 'string' && value ? value : '-'}
-                              </span>
-                            )}
-                          </td>
-                        );
-                      })}
+                      {COLUMNS.map((col, i) => (
+                        <td
+                          key={col.key}
+                          className={`px-4 py-2 ${RIGHT_ALIGNED.has(col.kind) ? 'text-right' : 'text-left'} ${i === 0 ? 'sticky left-0 z-[3] bg-white group-hover:bg-gray-50' : ''}`}
+                        >
+                          <AccountCell account={account} col={col} />
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>

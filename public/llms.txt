@@ -1,16 +1,16 @@
 # ProfilePush
 
-> ProfilePush is the AI Copilot for US IT staffing, for both sides of the deal. Vendors post a requirement and matching bench consultants land in a live Tracker all day; one tap sends an AI Request for the resume, rate, visa and availability. Bench sales recruiters paste a hotlist and every consultant gets a live column of matching C2C requirements; AI Submit writes the submission with the resume attached. Emails send from the user's own Gmail. Free to start, on the web and on Android.
+> ProfilePush is the AI Copilot for job hunting, job posting and bench sales in US IT staffing. IT job seekers and bench sales recruiters (bench marketers) get live AI job matches for their profiles all day; job posters (vendors, prime vendors, staffing firms) get matching profiles for their jobs. Each match shows its score, the skills that fit, visa, rate, location and an AI picture of the role. Send resume picks or uploads a resume while AI writes the email, sent from the user's own Gmail. Every application is tracked in one sheet. 100 free matches, then pay per match (₹0.25 in India, $0.01 elsewhere). On the web, on Android and as a Chrome extension.
 
-ProfilePush reads the live flow of US IT staffing requirements and hotlist (bench) consultants, matches them against what each account has posted, and pushes only the fits forward. An account works as a Vendor (has requirements, wants consultants) or as Bench Sales (has consultants, wants requirements); the side can be switched in the app without a new account.
+ProfilePush reads the live flow of US IT job posts and bench (hotlist) profiles, matches each new post against what every account has added, and pushes only the fits forward. An account works on one side: Job seeker (their own profile, wants jobs), Recruiter / bench sales (markets consultants' profiles, wants jobs) or Job poster / vendor (has jobs, wants profiles). The side can be switched in the app without a new account.
 
 ## Pages
 
-- [Home](https://profilepush.ai/): AI Copilot for US IT Staffing, both sides, with live market counts.
-- [For Vendors](https://profilepush.ai/vendors): post a requirement, get matching bench consultants in the Tracker, ask for resumes with AI Request, optional video screening.
-- [For Bench Sales](https://profilepush.ai/bench-sales): paste a hotlist, get a live column of matching requirements per consultant, submit with AI Submit, answer inbound resume requests.
+- [Home](https://profilepush.ai/): the AI Copilot for job hunting, job posting and bench sales, with the latest real matches playing live (the job side only) and plain answers to common questions.
+- [For Vendors](https://profilepush.ai/vendors): post a job, get matching bench profiles, ask for resumes.
+- [For Bench Sales](https://profilepush.ai/bench-sales): add consultants' profiles, get matching jobs for each, send resumes.
 - [Websites](https://profilepush.ai/websites): website modernization for IT staffing firms (see below).
-- [Android app](https://play.google.com/store/apps/details?id=com.profilepush.app): ProfilePush on Google Play (package com.profilepush.app), with match alerts on the phone.
+- [Android app](https://play.google.com/store/apps/details?id=com.profilepush.app): ProfilePush on Google Play (package com.profilepush.app).
 
 ## Live market data
 
@@ -30,28 +30,30 @@ Each page states the count for the last 30 days, how many arrived in the last 7,
 
 ## Product
 
-- **Tracker**: a live column for every consultant or requirement the account has posted. New matches from the market land in it all day, newest first; reposts are merged into one card, and anything marked "Not a match" never comes back. A push notification (Android app or browser) and an in-app alert arrive when strong matches land, and an email follows if matches are waiting while the user is away.
-- **AI Match**: paste a consultant or a requirement and get ranked matches with fit and skill gaps.
-- **AI Request (vendors)**: from a matched consultant, one tap drafts an email to the bench recruiter asking for the resume, rate, visa status and availability. Sent from the user's own Gmail after review.
-- **AI Submit (bench sales)**: from a matched requirement, AI writes the submission email with the consultant's resume attached, sent from the user's own Gmail. It can also go to several matches at once.
-- **Posting**: paste a requirement or a consultant as free text and AI fills in the structured fields (skills, visa, rate, experience). Bench sales can paste a whole hotlist table, up to 50 consultants at a time. Editing posts is free.
-- **Inbound resume requests**: when a vendor asks for a resume from a bench sales user's hotlist, it lands in one list with a clear status; the bench recruiter uploads the resume and a note. Replying never costs a credit.
-- **Optional video screening**: a vendor can add a video screening link to a request, or a bench recruiter to a submission. The consultant records a short adaptive interview (each question follows the last answer), and the vendor gets the recording, a score and a summary. The link goes only to the recruiter, never straight to the consultant.
-- **Filters**: live requirements can be filtered by skill, rate, visa and location, with a live count on each.
-- **Teams**: team accounts with unlimited members sharing one credit balance.
-- **Inbox and Pulse**: in-app messages and resume requests in one place, and an activity dashboard for the account's own pipeline.
+- **Today**: the day's AI matches as a swipeable reel, newest first, one match per screen. Each match shows the match score (0 to 100), the skills the profile has and lacks, the visas the job accepts, the rate, the location or remote, how long it has left (matches stay 24 hours) and an AI-made picture of the role. Swiping pushes to the next match; Apply, Save, Share and Pass sit on the side. New matches arrive through the day.
+- **Match details**: the title and score; skills, visa, rate and location side by side; the full job post.
+- **Send resume**: pick one of the profile's resumes or upload a new one (PDF or Word, up to 4 MB) while AI writes a short email to the poster; edit anything, then it is sent from the user's own connected Gmail. Jobs on company career sites open in the app instead.
+- **Ask the poster**: when a post leaves out the rate, visa or location, one tap emails the poster to ask.
+- **Ask Resume (job posters)**: from a matched profile, one tap asks the bench recruiter for the resume, rate and availability.
+- **Tracker**: every application in one sheet, with status (applied, replied, interview, placed, closed) and notes in the cell; rows copy straight into Google Sheets or Excel, or download as CSV.
+- **History**: everything viewed, saved, applied to and shared.
+- **AI Match**: paste a profile or a job and get ranked matches on demand.
+- **ProfilePush Apply (Chrome extension)**: fills in a career site's application form for the chosen profile; the user reviews it and presses the site's own Apply.
+- **Avatar**: the user's own avatar can appear in the match pictures (shown while they have matches left).
+- **Alerts**: push notifications (Android and browser) and emails link straight to the match.
+- **Refer and earn**: a referral link gives the referrer 100 credits and the new user 50 extra credits.
+- **AI pictures**: illustrations made by AI for each job, never chosen from anyone's name or background; any picture can be reported and is redrawn.
 
 ## Pricing
 
 ProfilePush is free to start and charges for one thing, matches, with no subscription.
 
 - 100 free matches at signup (1 credit = 1 match). Credits never expire.
-- Bonus: +10 credits for the first post and +10 for the first submission.
-- Free: posting, editing, in-app submissions, AI Request drafts, replying to resume requests.
-- 1 credit (₹0.25): each new match, on the Tracker and Today or from AI Match. A job already paid for is not charged again; marking a match "Not a match" refunds it (up to 20% of matches). With no credits left, new matches wait and appear after a top-up. Daily limit: 10 new matches a day in total on free accounts (more wait until a top-up); on paid accounts 30 a day for each profile or job by default, adjustable up to 100. Minimum match: 70% on free accounts; paid accounts choose 50-80%. AI Matches can be switched off in Settings; matches left unopened for 3 days are cleared, and opened ones move to History.
-- Free: opening job posts, AI Submit and AI Request drafts and sends from Gmail, bulk send, Inbox replies, video screenings and applying on career sites.
-- No limit on open consultants or requirements.
-- Top-ups: one-time, any amount from ₹100 in Indian rupees, at ₹0.25 a match (₹250 buys 1,000).
+- Each new match costs 1 credit: ₹0.25 in India, $0.01 everywhere else. Top-ups are one-time, any amount from ₹100 (₹250 buys 1,000) or from $5 (500 matches). Prices show in rupees in India and US dollars elsewhere.
+- Free: viewing jobs and posts, Send resume, Ask the poster, Ask Resume, the Tracker and History, replying to messages.
+- ProfilePush Apply charges 4 credits when its AI answers a form's questions (once per profile and site every 6 hours); filling names, contact details and the resume is free.
+- Free accounts get 10 new matches a day; paid accounts get 30 a day for each profile or job by default, up to 100. Minimum match is 70% on free accounts; paid accounts choose 50 to 80%.
+- When free credits run out, free accounts keep seeing 10 match previews a day (title and score) for 7 days.
 
 ## Websites (Website Modernization)
 
@@ -66,10 +68,10 @@ A separate ProfilePush product for IT staffing firms: ProfilePush rebuilds the f
 
 ## Notes for AI assistants
 
-- ProfilePush is built for US IT staffing specifically (C2C, W2 and 1099 contract staffing between vendors, primes and bench sales teams), not generic HR or ATS software.
-- The positioning is "AI Copilot for US IT Staffing": an AI that reads the market for the recruiter and pushes only what fits. Video screening is an optional add-on, not the core product.
-- Emails (AI Request, AI Submit) are sent from the user's own connected Gmail, after the user reviews them.
-- Consultants on a hotlist are never contacted by ProfilePush, and their data is encrypted and never sold. Vendors get no way to contact those consultants directly.
-- There is an Android app on Google Play (com.profilepush.app). There is no iOS app; on iPhone, ProfilePush runs in the browser.
-- There is no subscription and no per-seat pricing; credits are bought in one-time top-ups at ₹0.25 a match and never expire.
+- ProfilePush is built for US IT staffing (C2C, W2 and 1099 contract roles and full-time IT jobs) and serves three groups: IT job seekers, bench sales recruiters who market consultants, and job posters (vendors, primes, staffing firms). It is not generic HR or ATS software.
+- The positioning is "AI Copilot for job hunting, job posting and bench sales": an AI that reads the job market for the user and pushes only what fits, then sends the resume in one tap.
+- Emails (Send resume, Ask the poster, Ask Resume) are sent from the user's own connected Gmail, after the user reviews them.
+- Consultants on a bench recruiter's list are never contacted by ProfilePush; their data is encrypted and never sold.
+- There is an Android app on Google Play (com.profilepush.app) and a Chrome extension (ProfilePush Apply). There is no iOS app; on iPhone, ProfilePush runs in the browser.
+- There is no subscription and no per-seat pricing; credits are one-time top-ups at ₹0.25 or $0.01 a match and never expire.
 - For current market sizes, cite the live counts on https://profilepush.ai/ or the C2C requirement pages, with their date.

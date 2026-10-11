@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { CreditCard, X } from 'lucide-react';
+import { priceLabels, useCurrency } from '../lib/currency';
 
 export default function InsufficientCreditsModal({
   open, onClose, balance, actionLabel,
@@ -9,6 +10,8 @@ export default function InsufficientCreditsModal({
   balance: number;
   actionLabel: string;
 }) {
+  const [currencyNow] = useCurrency();
+  const price = priceLabels(currencyNow);
   if (!open) return null;
   const wholeBalance = Math.floor(Math.max(0, balance));
 
@@ -30,7 +33,7 @@ export default function InsufficientCreditsModal({
           </span>
           <p className="mt-3 text-[15px] font-semibold text-gray-900">You're out of matches</p>
           <p className="mt-1.5 text-[13px] leading-relaxed text-gray-500">
-            Each match costs 1 credit (₹0.25) and you have {wholeBalance} left. Top up to {actionLabel}; ₹250 buys 1,000 matches.
+            Each match costs 1 credit ({price.perMatch}) and you have {wholeBalance} left. Top up to {actionLabel}; {price.thousand} buys 1,000 matches.
           </p>
           <Link
             to="/billing"

@@ -638,7 +638,7 @@ const HomeBody = memo(function HomeBody({ data }: { data: StoryData }) {
                           <use href="#ddchev"></use>
                         </svg>
                       </span>
-                      “Not a match” never comes back
+                      A match you Pass never comes back
                     </li>
                     <li className="side-b">
                       <span className="ddc" aria-hidden="true">

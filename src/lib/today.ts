@@ -15,6 +15,8 @@ export type Lead = {
   rate_min?: number | null; rate_max?: number | null; skills: unknown; visas: unknown; exp?: number | null;
   type?: string | null; source?: string | null; post_url?: string | null; apply_url?: string | null;
   has_email: boolean; posted_at: string; open: boolean; category?: string | null; logo_domain?: string | null;
+  /** AI pictures of the post (match_visuals): a job has a (a woman) and b (a man), a profile has a (no person). */
+  visuals?: { a?: string; b?: string } | null;
 };
 
 export type CardItem = {
@@ -22,9 +24,47 @@ export type CardItem = {
   stage: string; closed_reason: string | null; viewed_at: string | null; saved_at: string | null; applied_at: string | null;
   added_at: string; reply_in_inbox: boolean; how: 'email' | 'site'; subject: Subject | null;
   lead: Lead | null; duplicate?: string | null;
+  /** The viewer's own picture of this post, drawn with their avatar (when their avatar is on). */
+  my_visual?: string | null;
+  /** Their own note (the Tracker sheet's Notes cell). */
+  notes?: string | null;
+  /** When they shared it (History > Shared). */
+  shared_at?: string | null;
+  /** A free account's preview: only the title and match score come down; a top-up reveals it. */
+  teaser?: boolean;
   /** Across ProfilePush: accounts that viewed, applied to, saved and shared the post. */
   eng?: { views: number; applies: number; saves: number; shares: number };
 };
+
+/** The post's picture for this viewer. Each viewer sees one version of a job,
+ * the same one every time, half the posts with a woman and half with a man. */
+export function pictureFor(lead: Pick<Lead, 'id' | 'visuals'>, viewerId: string | undefined): string | null {
+  const v = lead.visuals;
+  if (!v) return null;
+  let h = 0;
+  for (const c of `${viewerId ?? ''}${lead.id}`) h = (h * 31 + c.charCodeAt(0)) | 0;
+  const first = (h & 1) === 0 ? v.a : v.b;
+  return first ?? v.a ?? v.b ?? null;
+}
+
+/** Where a pushed or emailed match lives now, when it's no longer in Today. */
+export async function cardRoute(card: string | null, lead: string | null): Promise<string> {
+  const { data } = await supabase.rpc('pp_card_route' as never, { p_card: card, p_lead: lead } as never);
+  const path: unknown = data;
+  return typeof path === 'string' && path.startsWith('/') ? path : '/today';
+}
+
+/** Today's matches leave 24 hours after they arrive (get_today, expire_unopened_matches). */
+export const TODAY_HOURS = 24;
+
+/** "23:41:07 left" on a Today card (it ticks), urgent in its last 3 hours; null once it's gone. */
+export function timeLeft(item: Pick<CardItem, 'added_at'>, now = Date.now()): { label: string; urgent: boolean } | null {
+  const ms = new Date(item.added_at).getTime() + TODAY_HOURS * 3_600_000 - now;
+  if (!(ms > 0)) return null;
+  const secs = Math.floor(ms / 1000);
+  const two = (n: number) => String(n).padStart(2, '0');
+  return { label: `${Math.floor(secs / 3600)}:${two(Math.floor(secs / 60) % 60)}:${two(secs % 60)} left`, urgent: secs < 3 * 3600 };
+}
 
 export type ResumeFile = { id: string; url: string; file_name: string; is_default: boolean };
 
@@ -42,6 +82,10 @@ export type Reel = {
 export type TodayData = {
   kind: Kind; day_start: string; target: number; daily_cap: number; used_today: number; applied_today: number;
   subjects: Subject[]; items: CardItem[]; reel?: Reel;
+  /** Their avatar shows in pictures (credits or an active plan). */
+  avatar_on?: boolean;
+  /** A free account out of credits: previews since, and when matches paused. */
+  teasers?: { since: string | null; paused: string | null } | null;
 };
 
 export const timeZone = () => {
@@ -90,10 +134,10 @@ export async function loadToday(kind: Kind): Promise<TodayData | null> {
   return data as unknown as TodayData | null;
 }
 
-export async function loadHistory(kind: Kind, tab: 'viewed' | 'saved' | 'applied') {
+export async function loadHistory(kind: Kind, tab: 'viewed' | 'saved' | 'applied' | 'shared') {
   const { data, error } = await supabase.rpc('get_history' as never, { p_kind: kind, p_tab: tab, p_tz: timeZone() } as never);
   if (error) throw new Error(error.message);
-  return data as unknown as { tab: string; counts: { viewed: number; saved: number; applied: number }; items: CardItem[] } | null;
+  return data as unknown as { tab: string; counts: { viewed: number; saved: number; applied: number; shared: number }; items: CardItem[] } | null;
 }
 
 export async function loadTracker(kind: Kind) {
@@ -155,6 +199,10 @@ export const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 export function statusOf(item: Pick<CardItem, 'stage' | 'closed_reason'>): string {
   if (item.stage === 'closed') return ['not_selected', 'no_response', 'job_closed'].includes(item.closed_reason ?? '') ? item.closed_reason! : 'job_closed';
   return item.stage === 'submitted' ? 'applied' : item.stage;
+}
+export async function setNotes(cardId: string, notes: string) {
+  const { error } = await supabase.rpc('set_card_notes' as never, { p_id: cardId, p_notes: notes } as never);
+  if (error) throw new Error(error.message);
 }
 export async function setStatus(cardId: string, status: string) {
   const { error } = await supabase.rpc('set_card_status' as never, { p_id: cardId, p_status: status } as never);

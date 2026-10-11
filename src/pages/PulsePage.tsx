@@ -25,6 +25,7 @@ import { trackEvent } from '../lib/track';
 import ApplyOnSiteButton, { isCareerSiteLead, openApplyPage } from '../components/ApplyOnSite';
 import AiMatchProcessing from '../components/AiMatchProcessing';
 import LeadCard, { extractPrimaryEmail, CARD_PALETTE, getLeadBreakdownFieldValues, formatAgo, formatAgoCompact, type SocialLead, type FeedTimeBasis, type GlobalAskedJobState, type PredictCategory, type PredictResult, PersonaMissingTag, type LeadCardProps, shareLead, jobRowToLead, hotlistRowToLead, JOB_LEAD_COLUMNS, HOTLIST_LEAD_COLUMNS, safeNumber, type SocialJobRow, type HotlistLeadRow, getMissingJobDetails, hideEmails, openLeadPostContent, OutOfCreditsError, PostPreviewModal, LeadPreviewModal } from '../components/LeadCard';
+import { priceLabels, useCurrency } from '../lib/currency';
 
 type PulsePersona = {
   target_role: string;
@@ -1676,6 +1677,8 @@ function collectScroll(root: HTMLElement | null): Array<{ index: number; top: nu
 }
 
 export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publisherSlug }: PulsePageProps) {
+  const [currencyNow] = useCurrency();
+  const price = priceLabels(currencyNow);
   const profileMode = Boolean(publisherSlug);
   const { account, user, refreshAccount } = useAuth();
   const { isDark } = useTheme();
@@ -5229,7 +5232,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
         topBlockers: data?.top_blockers ?? [],
       });
       if (post?.status === 'created') {
-        const where = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
+        const where = aiMatchTarget === 'jobs' ? 'My profiles' : 'My jobs';
         showToast(post.count && post.count > 1 ? `${post.count} posts added to ${where}` : `Posted to ${where}`, 'success');
         // The rail is loaded once; without this the posts just created aren't
         // there to match the rest of the batch from.
@@ -5513,7 +5516,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
     });
   }, [aiMatchOwnPosts, aiMatchRecents, aiMatchTarget]);
 
-  const aiMatchOwnPostsLabel = aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs';
+  const aiMatchOwnPostsLabel = aiMatchTarget === 'jobs' ? 'My profiles' : 'My jobs';
   const aiMatchOwnPostsPath = aiMatchTarget === 'jobs' ? '/posts/hotlist' : '/posts/jobs';
 
   // Back to a clean page: the results, the summary and the restored session all
@@ -6676,7 +6679,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                             type="button"
                             onClick={(e) => { e.stopPropagation(); void runAiMatch(post.description, post.title, post.id); }}
                             disabled={aiMatchRunning}
-                            title={lastRun ? 'Find new matches · 1 credit (₹0.25) per new match' : 'Find matches · 1 credit (₹0.25) per match'}
+                            title={lastRun ? `Find new matches · 1 credit (${price.perMatch}) per new match` : `Find matches · 1 credit (${price.perMatch}) per match`}
                             className="inline-flex h-6 shrink-0 items-center gap-1 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2 text-[10px] font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <Sparkles size={10} />
@@ -6720,7 +6723,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                             type="button"
                             onClick={(e) => { e.stopPropagation(); void runAiMatch(item.description, item.title, item.postId); }}
                             disabled={aiMatchRunning}
-                            title="Find new matches · 1 credit (₹0.25) per new match"
+                            title={`Find new matches · 1 credit (${price.perMatch}) per new match`}
                             className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 px-2 py-1 text-[10px] font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <Sparkles size={10} />
@@ -7938,7 +7941,7 @@ export default function PulsePage({ feedKind = 'jobs', aiMatch = false, publishe
                           className="text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
                         >
                           · {aiMatchSummary.posted > 1 ? `${aiMatchSummary.posted} posted to ` : 'posted to '}
-                          {aiMatchTarget === 'jobs' ? 'My Hotlist' : 'My Jobs'}
+                          {aiMatchTarget === 'jobs' ? 'My profiles' : 'My jobs'}
                         </button>
                       )}
                         </>

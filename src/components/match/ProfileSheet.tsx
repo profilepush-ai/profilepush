@@ -4,7 +4,7 @@ import LogoSpinner from '../LogoSpinner';
 import { supabase } from '../../lib/supabase';
 import { hashColor, placeOf } from '../../lib/match-fit';
 import { loadTracker, strings, subjectName, type CardItem, type Kind, type Subject } from '../../lib/today';
-import { trackEvent } from '../../lib/track';
+import { uploadProfileResume } from '../../lib/resumes';
 import { CompanyLogo, Initials, SkillTiles, UsMap } from './Visuals';
 
 const STATUS_LABEL: Record<string, string> = { submitted: 'Applied', replied: 'Replied', interview: 'Interview', placed: 'Placed', closed: 'Closed' };
@@ -51,19 +51,10 @@ export default function ProfileSheet({ subject, kind, newCount, accountId, mode,
 
   const upload = async (file: File) => {
     if (!accountId) return;
-    if (!/\.(pdf|docx?)$/i.test(file.name)) { showToast('Attach a PDF or Word resume.'); return; }
-    if (file.size > 4 * 1024 * 1024) { showToast('Resume must be under 4 MB.'); return; }
     setUploading(true);
     try {
-      const safeName = file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80);
-      const path = `consultant-resumes/${accountId}/${crypto.randomUUID()}-${safeName}`;
-      const { error: upErr } = await supabase.storage.from('resumes').upload(path, file, { contentType: file.type || 'application/octet-stream' });
-      if (upErr) throw new Error(upErr.message);
-      const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(path);
-      const { data: id, error } = await supabase.rpc('set_hotlist_resume' as never, { p_hotlist_id: subject.id, p_url: urlData.publicUrl, p_file_name: file.name } as never);
-      if (error) throw new Error(error.message);
-      setResumes((rs) => [{ id: String(id), url: urlData.publicUrl, file_name: file.name, is_default: rs.length === 0 }, ...rs]);
-      trackEvent('consultant_resume_attached', { type: file.name.split('.').pop()?.toLowerCase() ?? '' });
+      const added = await uploadProfileResume(accountId, subject.id, file, resumes.length === 0);
+      setResumes((rs) => [added, ...rs]);
       onChanged();
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Could not add the resume.');

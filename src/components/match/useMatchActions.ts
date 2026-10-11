@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toExtension } from '../../lib/extension';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
@@ -25,6 +26,14 @@ export type Toast = { msg: string; undo?: () => void; tone?: 'error' };
 
 // Apply, Ask Resume, Save, Pass and Share for a match, the same on Today and
 // History. `take` removes the card from the page and returns how to put it back.
+/** A career site's application in a small window beside ProfilePush (not a tab). */
+export function openApplyWindow(url: string) {
+  const w = Math.min(960, Math.round(window.screen.availWidth * 0.6));
+  const h = Math.round(window.screen.availHeight * 0.9);
+  const win = window.open(url, 'pp-apply', `popup,width=${w},height=${h},left=${window.screen.availWidth - w},top=0`);
+  if (!win) window.open(url, '_blank', 'noopener');
+}
+
 export function useMatchActions({ kind, accountId, userId, subjects, take, onChanged, onOpen }: {
   kind: Kind; accountId: string | undefined; userId: string | undefined; subjects: Record<string, Subject>;
   take: (item: CardItem) => () => void; onChanged: () => void; onOpen: (item: CardItem) => void;
@@ -37,7 +46,7 @@ export function useMatchActions({ kind, accountId, userId, subjects, take, onCha
   // Career sites that let their page show inside ours (checked ahead, so the
   // tap opens it straight away), and the one open now.
   const [frameOk, setFrameOk] = useState<Record<string, boolean>>({});
-  const [frame, setFrame] = useState<{ item: CardItem; url: string } | null>(null);
+  const [frame, setFrame] = useState<{ item: CardItem; url: string; embed: boolean } | null>(null);
   const checking = useRef(new Set<string>());
   const checkFrame = useCallback((item: CardItem | null | undefined) => {
     if (!item?.lead || item.lead.source !== 'career_site' || Capacitor.isNativePlatform()) return;
@@ -125,11 +134,19 @@ export function useMatchActions({ kind, accountId, userId, subjects, take, onCha
   const applySite = (item: CardItem) => {
     if (!item.lead) return;
     const url = item.lead.apply_url || item.lead.post_url;
-    // Inside ProfilePush where we can: the app's in-app browser, or on the web
-    // our own window for sites that allow it; otherwise a new tab.
+    // ProfilePush Apply (the Chrome extension), if installed, fills that site's
+    // form for this profile.
+    if (url) void toExtension({ type: 'pp-apply-context', url, subject_id: item.subject_id, card_id: item.card_id });
+    // Inside ProfilePush: the app's in-app browser; on the web our apply
+    // popup, with their site inside it where the site allows that, or beside
+    // it in a small window where it doesn't (most career sites block being
+    // shown inside another site).
     if (url && Capacitor.isNativePlatform()) void Browser.open({ url, presentationStyle: 'popover' });
-    else if (url && frameOk[item.lead_id]) setFrame({ item, url });
-    else if (url) window.open(url, '_blank', 'noopener');
+    else if (url) {
+      const embed = Boolean(frameOk[item.lead_id]);
+      if (!embed) openApplyWindow(url);
+      setFrame({ item, url, embed });
+    }
     const restore = take(item);
     setAppliedNow((n) => n + 1);
     void supabase.rpc('mark_external_applied' as never, { p_job_id: item.lead_id, p_subject_id: item.subject_id } as never).then(() => onChanged());

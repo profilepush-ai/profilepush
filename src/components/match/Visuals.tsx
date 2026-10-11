@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
+import { PLAIN_SCORE_KEY, plainScore } from '../../lib/prefs';
 import { Bookmark, Check, Code2, DollarSign, Eye, Flame, Globe, MapPin, Send, Share2, ShieldCheck, Sparkles } from 'lucide-react';
 import { hashColor, skillLook, US_TILES, VISA_ORDER, type LocationFit } from '../../lib/match-fit';
 
@@ -73,6 +74,60 @@ function useCountUp(target: number, on: boolean, duration = 750, delay = 150) {
   return value;
 }
 
+// The match score "guessing": it swings past the score and back, each swing
+// smaller, for about three seconds, then lands on it. Playful, and it draws
+// the eye to the number.
+
+// Anyone who'd rather not see it chooses "Show score" once (lib/prefs).
+function useGuess(target: number, on: boolean, duration = 3200, delay = 150): [number, boolean, () => void] {
+  const animated = on && !reducedMotion() && !plainScore();
+  const [value, setValue] = useState(animated ? 0 : target);
+  const [done, setDone] = useState(!animated);
+  const [skipped, setSkipped] = useState(false);
+  useEffect(() => {
+    if (!animated || skipped) { setValue(target); setDone(true); return; }
+    setDone(false);
+    let raf = 0;
+    let t0 = 0;
+    const tick = (t: number) => {
+      if (!t0) t0 = t;
+      const p = Math.min(1, Math.max(0, (t - t0 - delay) / duration));
+      const v = p >= 1 ? target : target * (1 - Math.exp(-3.4 * p) * Math.cos(2 * Math.PI * 2.2 * p));
+      setValue(Math.max(0, Math.min(100, v)));
+      if (p < 1) raf = requestAnimationFrame(tick); else setDone(true);
+    };
+    setValue(0);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, animated, skipped, duration, delay]);
+  const skip = () => { try { localStorage.setItem(PLAIN_SCORE_KEY, '1'); } catch { /* fine */ } setSkipped(true); };
+  return [value, done, skip];
+}
+
+// The match score as a straight bar under the title, the number at its end.
+export function FitLine({ value, onDark = false, animate = false, at = 150 }: { value: number; onDark?: boolean; animate?: boolean; at?: number }) {
+  const v = Math.max(0, Math.min(100, Math.round(value)));
+  const [guess, done, skip] = useGuess(v, animate, 3200, at);
+  const shown = Math.round(guess);
+  const color = shown >= 85 ? '#10b981' : shown >= 75 ? '#3b82f6' : '#94a3b8';
+  return (
+    <div role="img" aria-label={`${v}% match`} className="flex items-center gap-2.5">
+      <div className={`h-2 min-w-0 flex-1 overflow-hidden rounded-full ${onDark ? 'bg-white/15' : 'bg-[var(--pp-ring-track)]'}`}>
+        <i className="block h-full rounded-full" style={{ width: `${shown}%`, background: color }} />
+      </div>
+      <b className={`shrink-0 text-[16px] font-extrabold tabular-nums leading-none ${onDark ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
+        {shown}%<small className={`ml-1 text-[11px] font-semibold ${onDark ? 'text-white/70' : 'text-gray-500 dark:text-slate-400'}`}>match</small>
+      </b>
+      {!done && (
+        <button type="button" data-rail onClick={(e) => { e.stopPropagation(); skip(); }}
+          className={`pointer-events-auto shrink-0 text-[11.5px] font-semibold underline underline-offset-2 ${onDark ? 'text-white/75' : 'text-gray-500'}`}>
+          Show score
+        </button>
+      )}
+    </div>
+  );
+}
+
 // The match %. Animated, the ring sweeps round as the number counts up and
 // changes colour as it passes 75 and 85; a strong match ends with a glow.
 export function FitRing({ value, size = 44, onDark = false, animate = false, at = 150 }: { value: number; size?: number; onDark?: boolean; animate?: boolean; at?: number }) {
@@ -119,7 +174,8 @@ export type FitSummary = {
 };
 
 // Skills, visa, location and rate as four coloured badges.
-export function FitBadges({ fit, onDark = false, animate = false, at = 250, gap = 80 }: { fit: FitSummary; onDark?: boolean; animate?: boolean; at?: number; gap?: number }) {
+// hide: values the card already offers to ask the poster for (no empty badge beside the Ask).
+export function FitBadges({ fit, onDark = false, animate = false, at = 250, gap = 80, hide = [] }: { fit: FitSummary; onDark?: boolean; animate?: boolean; at?: number; gap?: number; hide?: string[] }) {
   const tones = onDark ? TONE_DARK : TONE;
   const okSkills = fit.skills.filter((s) => s.ok).length;
   const skillTone: Tone = fit.skills.length === 0 ? 'na' : okSkills / fit.skills.length >= 0.6 ? 'good' : 'warn';
@@ -131,16 +187,22 @@ export function FitBadges({ fit, onDark = false, animate = false, at = 250, gap 
       <span className={`${badge} ${tones[skillTone]}`} style={anim(animate, 'ppPop', 320, at)} title={`${okSkills} of ${fit.skills.length} skills`}>
         <Code2 size={13} strokeWidth={2.4} />{fit.skills.length ? `${okSkills}/${fit.skills.length}` : 'Skills?'}
       </span>
-      <span className={`${badge} ${tones[visaTone]}`} style={anim(animate, 'ppPop', 320, at + gap)} title={fit.visa.accepted.length ? `Accepts ${fit.visa.accepted.join(', ')}` : 'Visa not listed'}>
-        <ShieldCheck size={13} strokeWidth={2.4} />{fit.visa.mine ?? (fit.visa.accepted[0] || 'Visa?')}
-      </span>
-      <span className={`${badge} ${tones[locTone]}`} style={anim(animate, 'ppPop', 320, at + gap * 2)} title={fit.location.label}>
-        {fit.location.kind === 'remote' ? <Globe size={13} strokeWidth={2.4} /> : <MapPin size={13} strokeWidth={2.4} />}
-        <span className="max-w-[9rem] truncate">{fit.location.kind === 'city' ? 'Same city' : fit.location.kind === 'state' ? fit.location.jobState : fit.location.kind === 'remote' ? 'Remote' : fit.location.jobState ?? '–'}</span>
-      </span>
-      <span className={`${badge} ${tones[fit.rate.kind]}`} style={anim(animate, 'ppPop', 320, at + gap * 3)} title={fit.rate.job ? `$${fit.rate.job}/hr` : 'Rate not listed'}>
-        <DollarSign size={13} strokeWidth={2.4} />{fit.rate.job ? Math.round(fit.rate.job) : '–'}
-      </span>
+      {!hide.includes('visa') && (
+        <span className={`${badge} ${tones[visaTone]}`} style={anim(animate, 'ppPop', 320, at + gap)} title={fit.visa.accepted.length ? `Accepts ${fit.visa.accepted.join(', ')}` : 'Visa not listed'}>
+          <ShieldCheck size={13} strokeWidth={2.4} />{fit.visa.mine ?? (fit.visa.accepted[0] || 'Visa?')}
+        </span>
+      )}
+      {!hide.includes('location') && (
+        <span className={`${badge} ${tones[locTone]}`} style={anim(animate, 'ppPop', 320, at + gap * 2)} title={fit.location.label}>
+          {fit.location.kind === 'remote' ? <Globe size={13} strokeWidth={2.4} /> : <MapPin size={13} strokeWidth={2.4} />}
+          <span className="max-w-[9rem] truncate">{fit.location.kind === 'city' ? 'Same city' : fit.location.kind === 'state' ? fit.location.jobState : fit.location.kind === 'remote' ? 'Remote' : fit.location.jobState ?? '–'}</span>
+        </span>
+      )}
+      {!hide.includes('rate') && (
+        <span className={`${badge} ${tones[fit.rate.kind]}`} style={anim(animate, 'ppPop', 320, at + gap * 3)} title={fit.rate.job ? `$${fit.rate.job}/hr` : 'Rate not listed'}>
+          <DollarSign size={13} strokeWidth={2.4} />{fit.rate.job ? Math.round(fit.rate.job) : '–'}
+        </span>
+      )}
     </div>
   );
 }
@@ -152,22 +214,24 @@ export function SkillTiles({ skills, onDark = false, animate = false, at: start 
   if (skills.length === 0) return <p className={`text-[12.5px] ${onDark ? 'text-white/70' : 'text-gray-500'}`}>No skills listed in the post.</p>;
   const lit = skills.filter((s) => s.ok).length;
   let missing = 0;
+  // Outlined chips with the skill's full name: a solid border in the skill's
+  // color and a check when the profile has it, dashed when it doesn't.
   return (
-    <div className="flex flex-wrap gap-[7px]">
+    <div className="flex flex-wrap gap-1.5">
       {skills.map((s, i) => {
         const look = skillLook(s.name);
         const at = start + i * gap;
+        const tint = onDark ? `color-mix(in srgb, ${look.color} 65%, white)` : look.color;
         return s.ok ? (
-          <span key={s.name} title={s.name} className="relative flex h-16 w-[60px] flex-col justify-between rounded-[13px] px-[7px] py-1.5 text-white"
-            style={{ background: `linear-gradient(150deg, ${look.color}, color-mix(in srgb, ${look.color} 70%, #000))`, boxShadow: `0 2px 6px color-mix(in srgb, ${look.color} 30%, transparent)`, ...anim(animate, 'ppTileIn', 420, at) }}>
-            <b className="text-[21px] font-extrabold leading-none tracking-tight">{look.symbol}</b>
-            <small className="truncate text-[9.5px] font-bold opacity-95">{s.name}</small>
-            <i className="absolute right-[5px] top-[5px] grid h-[15px] w-[15px] place-items-center rounded-full bg-white not-italic" style={{ color: look.color, ...anim(animate, 'ppStamp', 320, at + 260, 'ease-out') }}><Check size={9} strokeWidth={4} /></i>
+          <span key={s.name} className={`inline-flex max-w-full items-center gap-1.5 rounded-full border-[1.5px] py-[3px] pl-1 pr-2.5 text-[12.5px] font-bold ${onDark ? 'text-white' : 'text-gray-900 dark:text-slate-100'}`}
+            style={{ borderColor: tint, ...anim(animate, 'ppTileIn', 420, at) }}>
+            <i className="grid h-[17px] w-[17px] shrink-0 place-items-center rounded-full not-italic text-white" style={{ background: tint, ...anim(animate, 'ppStamp', 320, at + 260, 'ease-out') }}><Check size={10} strokeWidth={4} /></i>
+            <span className="min-w-0 break-words">{s.name}</span>
           </span>
         ) : (
-          <span key={s.name} title={`${s.name}: not on the profile`} style={anim(animate, 'ppFadeIn', 300, start + lit * gap + 120 + (missing++) * 50, 'ease-out')} className={`flex h-16 w-[60px] flex-col justify-between rounded-[13px] border-[1.5px] border-dashed px-[7px] py-1.5 opacity-80 ${onDark ? 'border-white/45 text-white/65' : 'border-gray-400 text-gray-500 dark:border-slate-500 dark:text-slate-400'}`}>
-            <b className="text-[21px] font-extrabold leading-none tracking-tight">{look.symbol}</b>
-            <small className="truncate text-[9.5px] font-bold">{s.name}</small>
+          <span key={s.name} title={`${s.name}: not on the profile`} style={anim(animate, 'ppFadeIn', 300, start + lit * gap + 120 + (missing++) * 50, 'ease-out')}
+            className={`inline-flex max-w-full items-center rounded-full border-[1.5px] border-dashed px-2.5 py-[3px] text-[12.5px] font-semibold ${onDark ? 'border-white/40 text-white/65' : 'border-gray-300 text-gray-500 dark:border-slate-600 dark:text-slate-400'}`}>
+            <span className="min-w-0 break-words">{s.name}</span>
           </span>
         );
       })}

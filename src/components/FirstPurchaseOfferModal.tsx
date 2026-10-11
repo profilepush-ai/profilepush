@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Clock, X, Zap } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchFirstPurchaseOffer, formatCountdown, useOfferCountdown } from '../lib/first-purchase-offer';
+import { useCurrency } from '../lib/currency';
 
 // Shown when someone with under 50 credits who has never paid opens the app:
 // double credits on their first top-up, for one hour. Once per browser
@@ -15,6 +16,8 @@ export default function FirstPurchaseOfferModal() {
   const location = useLocation();
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [open, setOpen] = useState(false);
+  // The 2× offer is on rupee packs; dollar buyers don't see it.
+  const [currencyNow] = useCurrency();
   const left = useOfferCountdown(expiresAt);
 
   const balance = account?.credits_balance ?? null;
@@ -40,6 +43,7 @@ export default function FirstPurchaseOfferModal() {
     if (open && expiresAt && left === 0) setOpen(false);
   }, [open, expiresAt, left]);
 
+  if (currencyNow !== 'INR') return null;
   if (!open || !expiresAt) return null;
 
   return (
