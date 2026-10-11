@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, Check, ChevronDown, ChevronRight, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Lock, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
+import { Bookmark, Check, ChevronRight, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Lock, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
 import { priceLabels, useCurrency } from '../../lib/currency';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, pictureFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
@@ -184,10 +184,18 @@ export default function SwipeDeck({
     : <button type="button" onClick={onClose} aria-label="Close" className="grid h-10 w-10 place-items-center rounded-full text-gray-600 hover:bg-black/5"><X size={22} /></button>;
   const sizeButton = onCollapse || onExpand ? (
     <span data-rail>
-      <button type="button" onClick={onCollapse ?? onExpand} aria-label={onCollapse ? 'Close full screen' : 'Full screen'} title={onCollapse ? 'Close full screen' : 'Full screen'}
-        className="grid h-9 w-9 place-items-center rounded-full bg-white/80 text-gray-700 shadow-sm ring-1 ring-black/5 backdrop-blur hover:bg-white">
-        {onCollapse ? <ChevronDown size={20} /> : <Maximize2 size={16} />}
-      </button>
+      {onCollapse ? (
+        // Out of full screen, said in words.
+        <button type="button" onClick={onCollapse} title="Close full screen"
+          className="inline-flex h-9 items-center rounded-full bg-white/85 px-3.5 text-[13.5px] font-bold text-gray-800 shadow-sm ring-1 ring-black/5 backdrop-blur hover:bg-white">
+          Close
+        </button>
+      ) : (
+        <button type="button" onClick={onExpand} aria-label="Full screen" title="Full screen"
+          className="grid h-9 w-9 place-items-center rounded-full bg-white/80 text-gray-700 shadow-sm ring-1 ring-black/5 backdrop-blur hover:bg-white">
+          <Maximize2 size={16} />
+        </button>
+      )}
     </span>
   ) : null;
   const playButton = reelMs && item ? (

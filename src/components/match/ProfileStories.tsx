@@ -100,7 +100,7 @@ export default function ProfileStories({ kind, subjects, filter, onFilter, count
           <Story key={s.id} on={filter === s.id} counts={c} onClick={() => onFilter(s.id)} fill={hashColor(s.id)}
             title={`${subjectName(kind, s)}: ${c.total} matches, ${c.fresh} new, ${c.expiring} leaving within 3 hours`}>
             <span className="flex max-w-full flex-col items-center leading-[1.05] text-white">
-              <b className={`max-w-full truncate font-extrabold ${label.main.length > 7 ? 'text-[9px]' : 'text-[11px]'}`}>{label.main}</b>
+              <b className={`max-w-full truncate font-extrabold ${label.main.length > 7 ? 'text-[8.5px]' : label.main.length > 5 ? 'text-[9.5px]' : 'text-[11px]'}`}>{label.main}</b>
               {label.sub && <small className="max-w-full truncate text-[8px] font-bold opacity-85">{label.sub}</small>}
             </span>
           </Story>
