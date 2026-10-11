@@ -61,7 +61,7 @@ function TopBar() {
         {controls}
       </div>
       <ProfileStories kind="hotlist" subjects={Object.values(PROFILES)} filter="all" onFilter={noop} onAdd={noop}
-        countsFor={(id) => (id === 'all' ? { total: 24, unseen: 17 } : { total: 8, unseen: id === 'p-suresh' ? 0 : 6 })} />
+        countsFor={(id) => (id === 'all' ? { total: 24, fresh: 13, seen: 8, expiring: 3 } : id === 'p-suresh' ? { total: 8, fresh: 0, seen: 8, expiring: 0 } : { total: 8, fresh: 5, seen: 2, expiring: 1 })} />
     </div>
   );
 }

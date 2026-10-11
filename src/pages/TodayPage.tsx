@@ -17,7 +17,7 @@ import { useMatchActions } from '../components/match/useMatchActions';
 import { useSwipe } from '../components/match/useSwipe';
 import { useAuth } from '../contexts/AuthContext';
 import { trackEvent } from '../lib/track';
-import { cardRoute, loadToday, markViewed, strings, subjectName, type CardItem, type Kind, type Question, type Subject, type TodayData } from '../lib/today';
+import { cardRoute, loadToday, markViewed, strings, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject, type TodayData } from '../lib/today';
 import { priceLabels, useCurrency } from '../lib/currency';
 import { maybeAskForPlayReview } from '../lib/rate';
 import ProfileStories from '../components/match/ProfileStories';
@@ -151,10 +151,13 @@ export default function TodayPage() {
     if (first && first.card_id !== items[0]?.card_id) { setDeckId(first.card_id); setDeckFocus(first.card_id); }
   }, [seenAtStart, data, items, kind]);
   useEffect(() => { if (deckId) try { sessionStorage.setItem(`pp_today_at_${kind}`, deckId); } catch { /* fine */ } }, [deckId, kind]);
-  // Each profile's matches today, and how many aren't watched yet (story rings).
+  // Each profile's matches today for its status ring: leaving within 3
+  // hours (red), new (green) and watched (grey).
   const storyCounts = (id: string) => {
     const list = (data?.items ?? []).filter((i) => i.lead && (id === 'all' || i.subject_id === id));
-    return { total: list.length, unseen: list.filter((i) => !i.viewed_at).length };
+    const expiring = list.filter((i) => timeLeft(i)?.urgent).length;
+    const fresh = list.filter((i) => !i.viewed_at && !timeLeft(i)?.urgent).length;
+    return { total: list.length, expiring, fresh, seen: list.length - expiring - fresh };
   };
   const totalNew = data?.items.length ?? 0;
   const locked = (data?.subjects ?? []).reduce((n, s) => n + (s.locked || 0), 0);
