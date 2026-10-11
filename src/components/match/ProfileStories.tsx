@@ -46,8 +46,8 @@ function Story({ on, counts, onClick, title, children, fill }: {
 }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={on} title={title}
-      className={`relative h-[60px] w-[60px] shrink-0 rounded-full transition-transform active:scale-95 ${on ? 'scale-[1.06]' : ''}`}>
-      <Ring colors={segments(counts)} size={60} />
+      className={`relative h-[54px] w-[54px] shrink-0 rounded-full transition-transform active:scale-95 ${on ? 'scale-[1.06]' : ''}`}>
+      <Ring colors={segments(counts)} size={54} />
       <span className={`absolute inset-[6px] grid place-items-center overflow-hidden rounded-full px-1 text-center ${on ? 'ring-[2.5px] ring-[#2563EB] ring-offset-1' : ''}`} style={{ background: fill }}>
         {children}
       </span>
@@ -60,8 +60,18 @@ function Story({ on, counts, onClick, title, children, fill }: {
   );
 }
 
-// What fits inside the circle: the person's first name, or the job title.
-const shortName = (kind: Kind, s: Subject) => (s.name ? s.name.trim().split(/\s+/)[0] : subjectName(kind, s));
+// What fits inside the circle, enough to tell profiles apart: the person's
+// first name, else the title's key word ("Python" from "Senior Python Data
+// Engineer"), with years and visa (or a job's city) underneath.
+const FILLER = /^(senior|sr\.?|junior|jr\.?|lead|principal|staff|mid|level|entry|associate|the|a|an|and|of|for|with|in|developer|engineer|consultant|analyst|specialist|administrator|admin|manager|full|stack)$/i;
+function storyLabel(kind: Kind, s: Subject): { main: string; sub: string | null } {
+  const years = s.years ? `${Math.round(Number(s.years))}y` : null;
+  if (s.name) return { main: s.name.trim().split(/\s+/)[0], sub: years };
+  const words = (s.title ?? '').split(/[\s/,()|–-]+/).filter(Boolean);
+  const main = words.find((w) => !FILLER.test(w)) ?? words[0] ?? subjectName(kind, s);
+  const sub = kind === 'job' ? (s.location ?? '').split(',')[0] || null : [years, s.visa].filter(Boolean).join(' ') || null;
+  return { main, sub };
+}
 
 export default function ProfileStories({ kind, subjects, filter, onFilter, countsFor, onAdd }: {
   kind: Kind; subjects: Subject[]; filter: string; onFilter: (id: string) => void;
@@ -85,16 +95,19 @@ export default function ProfileStories({ kind, subjects, filter, onFilter, count
       </Story>
       {subjects.map((s) => {
         const c = countsFor(s.id);
-        const name = shortName(kind, s);
+        const label = storyLabel(kind, s);
         return (
           <Story key={s.id} on={filter === s.id} counts={c} onClick={() => onFilter(s.id)} fill={hashColor(s.id)}
             title={`${subjectName(kind, s)}: ${c.total} matches, ${c.fresh} new, ${c.expiring} leaving within 3 hours`}>
-            <b className={`line-clamp-2 break-words font-extrabold leading-[1.1] text-white ${name.length > 8 ? 'text-[8.5px]' : 'text-[10.5px]'}`}>{name}</b>
+            <span className="flex max-w-full flex-col items-center leading-[1.05] text-white">
+              <b className={`max-w-full truncate font-extrabold ${label.main.length > 7 ? 'text-[9px]' : 'text-[11px]'}`}>{label.main}</b>
+              {label.sub && <small className="max-w-full truncate text-[8px] font-bold opacity-85">{label.sub}</small>}
+            </span>
           </Story>
         );
       })}
       {onAdd && (
-        <button type="button" onClick={onAdd} className="grid h-[60px] w-[60px] shrink-0 place-items-center rounded-full border-2 border-dashed border-gray-300 bg-white/70 text-gray-500"
+        <button type="button" onClick={onAdd} className="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-full border-2 border-dashed border-gray-300 bg-white/70 text-gray-500"
           title={kind === 'hotlist' ? 'Add a profile' : 'Add a job'} aria-label={kind === 'hotlist' ? 'Add a profile' : 'Add a job'}>
           <Plus size={20} />
         </button>
