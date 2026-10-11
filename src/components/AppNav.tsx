@@ -14,6 +14,7 @@ import GooglePlayBanner from './GooglePlayBanner';
 import FirstPurchaseOfferModal from './FirstPurchaseOfferModal';
 import FeedbackPrompt from './FeedbackPrompt';
 import GetAppQr from './GetAppQr';
+import ExtensionPill from './ExtensionPill';
 import { supabase } from '../lib/supabase';
 import { useMyAvatar } from '../lib/avatar';
 import { trackEvent } from '../lib/track';
@@ -444,6 +445,7 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
           flex-1 does that. The persona choice lives in the avatar menu. */}
       {user && (
         <div className="ml-auto sm:ml-0 flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <ExtensionPill />
           <GetAppQr />
           {shouldShowCreditsUi() && account != null && (
             <CreditsChip balance={account.credits_balance} />

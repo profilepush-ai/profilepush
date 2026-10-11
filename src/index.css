@@ -447,38 +447,27 @@
 }
 @keyframes ppReel { from { width: 0; } to { width: 100%; } }
 @keyframes ppPicture { from { opacity: 0; } to { opacity: 1; } }
-/* The brand loader: the logo's two dots drop in and click together (a
-   match), then its chevron pushes forward in beats, a faint echo behind it,
-   while a separate bar below fills a step with each push and the % ticks up.
-   Sizes come from --drop (how far the dots fall) and --push. */
+/* The brand loader is the match score line: it fills a step at a time, a
+   small swing past each step like a score being worked out, while the %
+   ticks up with it; then it fades and starts again. */
 @property --pp-pct { syntax: '<integer>'; inherits: false; initial-value: 0; }
-.pp-ld-dot-a { animation: ppLdDotA 2.8s cubic-bezier(.3,.7,.2,1) infinite; }
-.pp-ld-dot-b { animation: ppLdDotB 2.8s cubic-bezier(.3,.7,.2,1) infinite; }
-.pp-ld-ring { transform-box: fill-box; transform-origin: center; animation: ppLdRing 2.8s ease-out infinite; }
-.pp-ld-push { animation: ppLdPush 2.8s cubic-bezier(.3,.7,.2,1) infinite; }
-.pp-ld-echo { animation: ppLdPush 2.8s cubic-bezier(.3,.7,.2,1) .09s infinite; }
-.pp-ld-bar { transform-origin: left; animation: ppLdBar 2.8s cubic-bezier(.3,.7,.2,1) infinite; }
-.pp-ld-pct { animation: ppLdPct 2.8s cubic-bezier(.3,.7,.2,1) infinite; counter-reset: pppct var(--pp-pct); }
+.pp-ld-bar { transform-origin: left; animation: ppLdBar 2.6s cubic-bezier(.3,.7,.2,1) infinite; }
+.pp-ld-pct { animation: ppLdPct 2.6s cubic-bezier(.3,.7,.2,1) infinite; counter-reset: pppct var(--pp-pct); }
 .pp-ld-pct::after { content: counter(pppct) '%'; }
-@keyframes ppLdDotA { 0% { transform: translateY(calc(var(--drop) * -1)); opacity: 0; } 10% { transform: translateY(calc(var(--drop) * .15)); opacity: 1; } 14%, 92% { transform: none; opacity: 1; } 100% { transform: none; opacity: 0; } }
-@keyframes ppLdDotB { 0% { transform: translateY(var(--drop)); opacity: 0; } 10% { transform: translateY(calc(var(--drop) * -.15)); opacity: 1; } 14%, 92% { transform: none; opacity: 1; } 100% { transform: none; opacity: 0; } }
-@keyframes ppLdRing { 0%, 12% { transform: scale(.5); opacity: 0; } 15% { opacity: .5; } 28%, 100% { transform: scale(1.35); opacity: 0; } }
-@keyframes ppLdPush {
-  0%, 15% { transform: translateX(calc(var(--push) * -1)); opacity: 0; }
-  22% { transform: none; opacity: 1; }
-  30% { transform: translateX(var(--push)); } 40% { transform: none; }
-  48% { transform: translateX(var(--push)); } 58% { transform: none; }
-  66% { transform: translateX(var(--push)); } 76% { transform: none; }
-  84% { transform: translateX(var(--push)); } 92% { transform: none; opacity: 1; }
-  100% { transform: none; opacity: 0; }
+@keyframes ppLdBar {
+  0% { transform: scaleX(0); opacity: 1; }
+  14% { transform: scaleX(.3); } 20% { transform: scaleX(.26); }
+  34% { transform: scaleX(.55); } 40% { transform: scaleX(.5); }
+  54% { transform: scaleX(.78); } 60% { transform: scaleX(.74); }
+  74% { transform: scaleX(.97); } 82%, 92% { transform: scaleX(.92); opacity: 1; }
+  100% { transform: scaleX(.92); opacity: 0; }
 }
-@keyframes ppLdBar { 0%, 22% { transform: scaleX(0); opacity: 1; } 32%, 40% { transform: scaleX(.25); } 50%, 58% { transform: scaleX(.5); } 68%, 76% { transform: scaleX(.75); } 86%, 92% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
-@keyframes ppLdPct { 0%, 22% { --pp-pct: 0; } 32%, 40% { --pp-pct: 25; } 50%, 58% { --pp-pct: 50; } 68%, 76% { --pp-pct: 75; } 86%, 100% { --pp-pct: 100; } }
-/* The splash runs it once, quicker: matched and pushed to 100% as it fades. */
-.pp-ld-quick :is(.pp-ld-dot-a, .pp-ld-dot-b, .pp-ld-ring, .pp-ld-push, .pp-ld-echo, .pp-ld-bar, .pp-ld-pct) { animation-duration: 1.8s; animation-iteration-count: 1; animation-fill-mode: both; }
+@keyframes ppLdPct { 0% { --pp-pct: 0; opacity: 1; } 14% { --pp-pct: 30; } 20% { --pp-pct: 26; } 34% { --pp-pct: 55; } 40% { --pp-pct: 50; } 54% { --pp-pct: 78; } 60% { --pp-pct: 74; } 74% { --pp-pct: 97; } 82%, 92% { --pp-pct: 92; opacity: 1; } 100% { --pp-pct: 92; opacity: 0; } }
+/* The splash runs it once, quicker, and holds at the end. */
+.pp-ld-quick :is(.pp-ld-bar, .pp-ld-pct) { animation-duration: 1.8s; animation-iteration-count: 1; animation-fill-mode: both; }
 @media (prefers-reduced-motion: reduce) {
-  .pp-ld-dot-a, .pp-ld-dot-b, .pp-ld-ring, .pp-ld-push, .pp-ld-echo, .pp-ld-bar, .pp-ld-pct { animation: none !important; }
-  .pp-ld-ring, .pp-ld-echo { opacity: 0; }
+  .pp-ld-bar, .pp-ld-pct { animation: none !important; }
+  .pp-ld-bar { transform: scaleX(.6); }
 }
 
 /* Intro: the AI email's lines writing themselves. */

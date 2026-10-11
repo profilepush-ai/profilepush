@@ -1,13 +1,13 @@
-import { LoaderMark } from './brand/BrandLoader';
+import { ScoreLine } from './brand/BrandLoader';
 
 interface LogoSpinnerProps {
   size?: number;
 }
 
 /**
- * The small brand loader used in place of spinners: the logo's two dots
- * click together, then its chevron pushes forward (see brand/BrandLoader).
+ * The small loader used in place of spinners: a short match score line
+ * filling a step at a time (see brand/BrandLoader).
  */
 export default function LogoSpinner({ size = 16 }: LogoSpinnerProps) {
-  return <LoaderMark height={size} />;
+  return <ScoreLine width={Math.round(size * 2)} thickness={Math.max(3, Math.round(size / 4))} />;
 }

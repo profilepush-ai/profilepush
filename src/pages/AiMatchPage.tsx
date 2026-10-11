@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, FileText, Paperclip, Sparkles, X } from 'lucide-react';
 import AppNav from '../components/AppNav';
-import { LoaderMark } from '../components/brand/BrandLoader';
+import LogoSpinner from '../components/LogoSpinner';
+import { FeatureShowcase } from '../components/brand/FeatureDemos';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, supabaseAnonKey, supabaseFunctionsUrl, buildSupabaseFunctionHeaders } from '../lib/supabase';
 import { trackEvent } from '../lib/track';
@@ -222,7 +223,7 @@ export default function AiMatchPage() {
           <div className="flex flex-wrap items-center gap-2 px-2 pb-1.5 pt-1">
             <button type="button" onClick={() => fileInput.current?.click()} disabled={reading}
               className="inline-flex h-10 items-center gap-1.5 rounded-full bg-gray-100 px-3.5 text-[13.5px] font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-60">
-              {reading ? <LoaderMark height={14} /> : <Paperclip size={15} />}{reading ? 'Reading…' : target === 'jobs' ? 'Upload resume' : 'Upload job'}
+              {reading ? <LogoSpinner size={14} /> : <Paperclip size={15} />}{reading ? 'Reading…' : target === 'jobs' ? 'Upload resume' : 'Upload job'}
             </button>
             <input ref={fileInput} type="file" accept=".pdf,.docx,.rtf,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void readFile(f); }} />
             {fileName && !reading && (
@@ -291,19 +292,22 @@ export default function AiMatchPage() {
         )}
       </main>
 
-      {/* Working: the brand mark, what it's doing, and how far along. */}
+      {/* Working: what it's doing on top, and meanwhile what ProfilePush does. */}
       {running && (
-        <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center gap-6 bg-white/95 px-6 text-center backdrop-blur" role="status" aria-live="polite">
-          <LoaderMark height={64} />
-          <div>
-            <b className="block text-[22px] font-extrabold tracking-tight">{running.label}</b>
-            <span className="mt-1 block text-[13px] tabular-nums text-gray-500">{elapsed}s · usually under a minute</span>
+        <div className="fixed inset-0 z-[90] flex flex-col bg-[#F8FAFC] pb-[env(safe-area-inset-bottom)]" role="status" aria-live="polite">
+          <div className="mx-auto mt-[calc(1rem+env(safe-area-inset-top))] flex w-[calc(100%-2rem)] max-w-md items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-gray-200">
+            <div className="min-w-0 flex-1 text-left">
+              <b className="block truncate text-[14px] font-extrabold">{running.label}</b>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#C8D7FA]">
+                {running.pct == null
+                  ? <i className="block h-full w-1/3 rounded-full bg-[#2563EB]" style={{ animation: 'ppIndeterminate 1.2s ease-in-out infinite' }} />
+                  : <i className="block h-full rounded-full bg-[#2563EB] transition-[width] duration-500" style={{ width: `${running.pct}%` }} />}
+              </div>
+            </div>
+            <span className="shrink-0 text-[12px] font-semibold tabular-nums text-gray-500">{elapsed}s</span>
           </div>
-          <div className="h-2 w-full max-w-xs overflow-hidden rounded-full bg-[#C8D7FA]">
-            {running.pct == null
-              ? <i className="block h-full w-1/3 rounded-full bg-[#2563EB]" style={{ animation: 'ppIndeterminate 1.2s ease-in-out infinite' }} />
-              : <i className="block h-full rounded-full bg-[#2563EB] transition-[width] duration-500" style={{ width: `${running.pct}%` }} />}
-          </div>
+          <FeatureShowcase />
+          <p className="pb-5 text-center text-[12px] text-gray-400">Your matches open in Today when it&apos;s done. Usually under a minute.</p>
         </div>
       )}
     </div>

@@ -1,5 +1,7 @@
 // The ProfilePush Apply Chrome extension (extension/ in this repo).
 export const EXTENSION_ID = 'bmafklabjfahaillaeemjfokdmangkhj';
+// Its Chrome Web Store page, once it's published (until then, /extension).
+export const CHROME_STORE_URL: string | null = null;
 
 type ChromeRuntime = { sendMessage: (id: string, msg: unknown, reply: (res: unknown) => void) => void; lastError?: unknown };
 const runtime = () => (window as unknown as { chrome?: { runtime?: ChromeRuntime } }).chrome?.runtime;
