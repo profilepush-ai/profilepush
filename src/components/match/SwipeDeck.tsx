@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, Check, ChevronDown, ChevronUp, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Lock, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
+import { Bookmark, Check, ChevronDown, ChevronRight, ExternalLink, FileText, History, Maximize2, Pause, Play, Flag, Info, Lock, Send, Share2, Sparkles, Timer, X } from 'lucide-react';
 import { priceLabels, useCurrency } from '../../lib/currency';
 import { agoLabel, hashColor } from '../../lib/match-fit';
 import { fitFor, leadOrg, leadTitle, missingFor, pictureFor, subjectName, timeLeft, type CardItem, type Kind, type Question, type Subject } from '../../lib/today';
-import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitLine, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
+import { AskChips, CompanyLogo, FitBadges, FitLine, Initials, RateBar, SkillTiles, UsMap } from './Visuals';
 import PushStreak from './PushStreak';
 import { PUSH_EASE, PUSH_MS, pushGhost } from '../../lib/push';
 
@@ -35,7 +35,7 @@ function TimeLeft({ item }: { item: CardItem }) {
 
 export default function SwipeDeck({
   items, kind, subjects, startId, focusId, appliedToday, inline = false, hideDetails = false, paused = false, emptyMessage,
-  top, layer = 'z-[80]', boxes = true, menuHint = false, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, teaserSince = null, asked, onAsk, hideAsk = false, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
+  top, layer = 'z-[80]', boxes = true, reelMs, endScreen, expiring = false, viewerId, avatarOn = false, teaserSince = null, asked, onAsk, hideAsk = false, onClose, onCollapse, onExpand, onCurrent, onStep, onSwipeUp, onSwipeDown, onTouch,
   onSeen, onApply, onSave, onShare, onDismiss, onDetails, onReportPicture,
 }: {
   items: CardItem[]; kind: Kind; subjects: Record<string, Subject>; startId: string | null; focusId?: string | null; appliedToday: number;
@@ -294,8 +294,6 @@ export default function SwipeDeck({
   const pushIn = push && Date.now() - push.at < PUSH_MS ? `${push.to < 0 ? 'ppPushInL' : 'ppPushInR'} ${PUSH_MS}ms ${PUSH_EASE} both` : undefined;
   // Pushed in: the card slides in whole; its parts don't fade in again on top.
   const sec = (at: number) => (pushIn ? undefined : section(at));
-  const rail = 'flex flex-col items-center gap-1 text-[11px] font-bold';
-  const railIcon = 'grid h-[46px] w-[46px] place-items-center rounded-full bg-white text-gray-700 shadow-md ring-1 ring-black/5';
 
   return (
     <div
@@ -306,12 +304,11 @@ export default function SwipeDeck({
       {...gestures}
     >
       {picture ? (
-        // The picture, sharp, full screen behind everything like a reel: a
-        // light fade at the top keeps the search and stories readable; the
-        // details sit on frosted glass at the bottom.
-        <div key={`${item.card_id}:${picture}`} ref={picRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden bg-[#e8eef8]" style={{ animation: pushIn ?? 'ppPicture .6s ease-out both' }}>
-          <img src={picture} alt="" decoding="sync" className="absolute inset-0 h-full w-full object-cover object-[50%_26%]" />
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(248,250,252,.82) 0%, rgba(248,250,252,.45) 13%, rgba(248,250,252,0) 26%, rgba(248,250,252,0) 62%, rgba(248,250,252,.35) 100%)' }} />
+        // Behind everything: the same picture, blurred, so the top bar and the
+        // details sit on its colours and the sharp one in the middle melts in.
+        <div key={`${item.card_id}:${picture}`} ref={picRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden bg-[#eef2f8]" style={{ animation: pushIn ?? 'ppPicture .6s ease-out both' }}>
+          <img src={picture} alt="" decoding="sync" className="absolute inset-0 h-full w-full scale-[1.3] object-cover blur-[38px] saturate-[1.5]" />
+          <div className="absolute inset-0 bg-white/30" />
         </div>
       ) : (
         <div key={item.card_id} ref={picRef} className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)`, animation: pushIn }} />
@@ -335,110 +332,114 @@ export default function SwipeDeck({
         })()}
       </div>
       {topSlot}
-      <div className={`relative z-20 flex items-center gap-2.5 ${picture ? 'mx-2 mt-1.5 rounded-2xl bg-white/65 py-2 pl-2 pr-1.5 ring-1 ring-white/60 backdrop-blur-md' : 'py-2.5 pl-3 pr-2'}`}>
-        <Initials name={name} id={item.subject_id} size={32} />
-        <div className="min-w-0 flex-1"><b className="block truncate text-[14px]">for {name}</b>{forLine && <small className="block truncate text-[11.5px] text-gray-500">{forLine}</small>}</div>
-        {expiring && !item.teaser && <TimeLeft item={item} />}
-        {picture && (
-          <span data-rail className="relative">
-            <button type="button" onClick={() => setNoteFor(noteFor === item.card_id ? null : item.card_id)} aria-expanded={noteFor === item.card_id}
-              aria-label="About this AI picture" title="AI picture"
-              className="grid h-7 w-7 place-items-center rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">
-              <Info size={15} />
-            </button>
-            {noteFor === item.card_id && (
-              <span role="dialog" aria-label="About this picture" className="absolute right-0 top-9 z-50 block w-[270px] rounded-2xl bg-white p-3.5 text-left text-[12.5px] leading-snug text-gray-700 shadow-2xl dark:bg-[#20242a] dark:text-slate-200">
-                <b className="mb-1 block text-[13.5px] text-gray-900 dark:text-white">An AI illustration</b>
-                Made by AI to picture this role. It isn&apos;t a real person, and it&apos;s never chosen from anyone&apos;s name or background. ProfilePush stands against racism and discrimination of any kind. If a picture feels wrong, tell us and we&apos;ll draw a new one.
-                {onReportPicture && (
-                  <button type="button" onClick={() => { onReportPicture(item, picture); setNoteFor(null); }}
-                    className="mt-2.5 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-gray-100 text-[13px] font-bold text-gray-800 hover:bg-gray-200 dark:bg-white/10 dark:text-white">
-                    <Flag size={14} />Report this picture
-                  </button>
-                )}
-              </span>
-            )}
-          </span>
-        )}
-        {ownControls && playButton}
-        {ownControls && sizeButton}
-        {corner}
-      </div>
+      {((ownControls && (playButton || sizeButton)) || corner) && (
+        <div className="relative z-20 flex justify-end gap-2 px-3 pt-2">{ownControls && playButton}{ownControls && sizeButton}{corner}</div>
+      )}
 
       <button type="button" aria-label="Previous match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(-1); }} className="absolute bottom-[70px] left-0 top-[70px] z-10 w-[30%]" />
       <button type="button" aria-label="Next match" onClick={() => { if (swiped.current) { swiped.current = false; return; } step(1); }} className="absolute bottom-[70px] right-0 top-[70px] z-10 w-[30%]" />
 
-      <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'safe flex-end' : 'safe center', animation: pushIn }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
-        {item.teaser ? (
-          // A free preview: the title and match score; the rest unlocks with a top-up.
-          <>
-            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-bold text-amber-700 ring-1 ring-amber-200" style={sec(0)}><Lock size={13} />Free preview</span>
-            <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={sec(T.title)}>{leadTitle(lead)}</h2>
-            <div className="-mt-1.5" style={sec(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
-            <div className="space-y-2.5 rounded-2xl border border-gray-200 bg-gray-50 p-3.5" style={sec(T.skills)}>
-              <div aria-hidden="true" className="space-y-2">{[78, 62, 88, 50].map((w) => <i key={w} className="block h-2.5 rounded-full bg-gray-200" style={{ width: `${w}%` }} />)}</div>
-              <p className="text-[13px] font-semibold text-gray-700">The company, rate, skills and how to apply are in this match.{previewDays != null ? ` ${previewDays} ${previewDays === 1 ? 'day' : 'days'} of free previews left.` : ''}</p>
-              <Link to="/billing" data-rail className="pointer-events-auto flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 text-[14.5px] font-extrabold text-white">
-                <Lock size={15} />Top up to see it · from {price.minTopup}
-              </Link>
+      {/* The card: the picture on its stage, then the details and the actions.
+          It lets taps through to the sides (previous/next) except on its
+          own buttons and panel. */}
+      <div key={item.card_id} ref={cardRef} style={{ animation: pushIn }} className={`pointer-events-none relative z-20 flex min-h-0 flex-1 flex-col gap-2.5 px-3 pb-2 pt-2 ${inline ? 'pb-3' : onSwipeUp ? 'pb-[calc(1.1rem+env(safe-area-inset-bottom))]' : 'pb-[calc(.6rem+env(safe-area-inset-bottom))]'} ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+        {picture ? (
+          // The stage: the picture, sharp and framed on the person, its edges
+          // fading into the blurred copy behind (no border).
+          <div className="relative min-h-[120px] flex-1" style={sec(0)}>
+            <img src={picture} alt="" decoding="sync" className="absolute inset-0 h-full w-full object-cover object-[50%_16%]"
+              style={{ maskImage: 'linear-gradient(180deg, transparent 0%, #000 10%, #000 84%, transparent 100%)', WebkitMaskImage: 'linear-gradient(180deg, transparent 0%, #000 10%, #000 84%, transparent 100%)' }} />
+            <span data-rail className="pointer-events-auto absolute right-0 top-1">
+              <button type="button" onClick={() => setNoteFor(noteFor === item.card_id ? null : item.card_id)} aria-expanded={noteFor === item.card_id}
+                aria-label="About this AI picture" title="AI picture"
+                className="grid h-8 w-8 place-items-center rounded-full bg-white/80 text-gray-700 shadow-sm ring-1 ring-black/5 backdrop-blur">
+                <Info size={16} />
+              </button>
+              {noteFor === item.card_id && (
+                <span role="dialog" aria-label="About this picture" className="absolute right-0 top-10 z-50 block w-[270px] rounded-2xl bg-white p-3.5 text-left text-[12.5px] leading-snug text-gray-700 shadow-2xl">
+                  <b className="mb-1 block text-[13.5px] text-gray-900">An AI illustration</b>
+                  Made by AI to picture this role. It isn&apos;t a real person, and it&apos;s never chosen from anyone&apos;s name or background. ProfilePush stands against racism and discrimination of any kind. If a picture feels wrong, tell us and we&apos;ll draw a new one.
+                  {onReportPicture && (
+                    <button type="button" onClick={() => { onReportPicture(item, picture); setNoteFor(null); }}
+                      className="mt-2.5 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-gray-100 text-[13px] font-bold text-gray-800 hover:bg-gray-200">
+                      <Flag size={14} />Report this picture
+                    </button>
+                  )}
+                </span>
+              )}
+            </span>
+          </div>
+        ) : boxes ? (
+          // No picture (desktop): where it is and what it pays, drawn.
+          <div className="grid min-h-0 flex-1 grid-cols-2 content-center gap-2.5">
+            <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-white/80 p-2.5" style={sec(T.map)}>
+              <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} animate wave={false} at={T.map - 300} />
+              <p className="truncate text-[12px] font-semibold text-gray-700">{fit.location.label}</p>
             </div>
-          </>
-        ) : (
-        <div className={`${picture ? '-mr-16 rounded-[26px] bg-white/60 py-3.5 pl-3.5 pr-[4.5rem] shadow-[0_10px_30px_rgba(11,26,58,.12)] ring-1 ring-white/70 backdrop-blur-2xl' : ''} flex flex-col gap-3`}>
-        <div className="flex items-center gap-2.5" style={sec(0)}>
-          <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
-          <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-gray-500">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
+            <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-white/80 p-2.5" style={sec(T.rate)}>
+              <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} animate at={T.rate} />
+              <p className="truncate text-[12px] font-semibold text-gray-700">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr` : 'Rate not listed'}</p>
+            </div>
+          </div>
+        ) : <div className="flex-1" />}
+
+        {/* The details: crisp, compact, and the actions within thumb's reach. */}
+        <div className="pointer-events-auto shrink-0 rounded-[24px] bg-white/95 p-3.5 shadow-[0_14px_36px_rgba(11,26,58,.16)] ring-1 ring-black/5 backdrop-blur-xl">
+          <div className="flex items-center gap-2 text-[12px]">
+            <Initials name={name} id={item.subject_id} size={22} />
+            <span className="min-w-0 flex-1 truncate font-semibold text-gray-500">for <b className="text-gray-900">{name}</b>{forLine ? ` · ${forLine}` : ''}</span>
+            {expiring && !item.teaser && <TimeLeft item={item} />}
+          </div>
+          {item.teaser ? (
+            // A free preview: the title and match score; the rest unlocks with a top-up.
+            <>
+              <span className="mt-2.5 inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-bold text-amber-700 ring-1 ring-amber-200" style={sec(0)}><Lock size={13} />Free preview</span>
+              <h2 className="mt-2 line-clamp-2 text-balance text-[22px] font-extrabold leading-[1.15] tracking-tight" style={sec(T.title)}>{leadTitle(lead)}</h2>
+              <div className="mt-1.5" style={sec(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
+              <p className="mt-2 text-[12.5px] font-semibold text-gray-600" style={sec(T.skills)}>The company, rate, skills and how to apply are in this match.{previewDays != null ? ` ${previewDays} ${previewDays === 1 ? 'day' : 'days'} of free previews left.` : ''}</p>
+            </>
+          ) : (<>
+            <div className="mt-2.5 flex items-center gap-2.5" style={sec(0)}>
+              <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={38} round={Boolean(lead.avatar)} />
+              <div className="min-w-0 flex-1"><b className="block truncate text-[14.5px]">{leadOrg(lead)}</b><small className="block truncate text-[12px] text-gray-500">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
+              {!hideDetails && (
+                <button type="button" data-rail onClick={() => onDetails(item)} className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-full bg-gray-100 pl-3 pr-2 text-[12.5px] font-bold text-gray-700 hover:bg-gray-200">
+                  Details<ChevronRight size={15} />
+                </button>
+              )}
+            </div>
+            <h2 className="mt-2 line-clamp-2 text-balance text-[22px] font-extrabold leading-[1.15] tracking-tight" style={sec(T.title)}>{leadTitle(lead)}</h2>
+            <div className="mt-1.5" style={sec(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5" style={sec(T.ring)}>
+              <FitBadges fit={fit} hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} />
+              {!hideAsk && onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
+                <span data-rail><AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} /></span>
+              )}
+            </div>
+            <div className="mt-2 max-h-[62px] overflow-hidden" style={sec(T.skills)}><SkillTiles skills={fit.skills.slice(0, 5)} /></div>
+          </>)}
+
+          <div data-rail className="mt-3 flex items-center gap-2">
+            {item.teaser ? (
+              <Link to="/billing" className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-blue-600 text-[15px] font-extrabold text-white shadow-[0_8px_22px_rgba(37,99,235,.35)]">
+                <Lock size={16} />Unlock · from {price.minTopup}
+              </Link>
+            ) : (<>
+              <button type="button" onClick={() => { pushOut(-1); flash('PASS', '#f87171'); onDismiss(item); }} aria-label="Pass" title="Pass"
+                className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"><X size={20} /></button>
+              <button type="button" onClick={() => { if (!saved) pushOut(-1); flash('SAVED', '#60a5fa'); onSave(item); }} aria-label={saved ? 'Saved' : 'Save'} title="Save"
+                className={`grid h-12 w-12 shrink-0 place-items-center rounded-full hover:bg-gray-200 ${saved ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-700'}`}><Bookmark size={19} fill={saved ? 'currentColor' : 'none'} /></button>
+              <button type="button" onClick={() => onShare(item)} aria-label="Share" title="Share"
+                className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"><Share2 size={19} /></button>
+              <button type="button" onClick={() => { pushOut(1); if (kind === 'hotlist') flash('APPLIED', '#34d399'); onApply(item); }}
+                title={kind === 'job' ? 'Ask for the resume' : site ? 'Apply on their site' : 'Apply by email'}
+                className={`inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full text-[15.5px] font-extrabold text-white ${site ? 'bg-emerald-600 shadow-[0_8px_22px_rgba(5,150,105,.35)]' : 'bg-blue-600 shadow-[0_8px_22px_rgba(37,99,235,.35)]'}`}>
+                {kind === 'job' ? <FileText size={18} /> : site ? <ExternalLink size={17} /> : <Send size={18} />}
+                {kind === 'job' ? 'Ask Resume' : site ? 'Apply on site' : 'Apply'}
+              </button>
+            </>)}
+          </div>
         </div>
-        <h2 className="text-balance text-[25px] font-extrabold leading-[1.15] tracking-tight" style={sec(T.title)}>{leadTitle(lead)}</h2>
-        <div className="-mt-1.5" style={sec(T.ring)}><FitLine value={item.fit ?? Math.round(item.similarity * 100)} animate at={T.ring + 150} /></div>
-        <div style={sec(T.ring)}><FitBadges fit={fit} hide={onAsk && lead.has_email ? missingFor(kind, fit) : []} /></div>
-        {!hideAsk && onAsk && lead.has_email && missingFor(kind, fit).length > 0 && (
-          <div data-rail className="pointer-events-auto" style={sec(T.ask)}>
-            <AskChips missing={missingFor(kind, fit)} asked={asked?.[item.lead_id] ?? []} onAsk={(q) => onAsk(item, q)} />
-          </div>
-        )}
-        <div style={sec(T.skills)}><SkillTiles skills={fit.skills.slice(0, 6)} /></div>
-        {/* Where there's no room (short phones, or a picture), the badges above say the same. */}
-        {boxes && !picture && <div className="grid grid-cols-2 gap-2.5">
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={sec(T.map)}>
-            <UsMap jobState={fit.location.jobState} profileState={fit.location.profileState} remote={fit.location.kind === 'remote'} profileColor={color} animate wave={false} at={T.map - 300} />
-            <p className="truncate text-[12px] font-semibold text-gray-700">{fit.location.label}</p>
-          </div>
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-gray-200 bg-gray-50 p-2.5" style={sec(T.rate)}>
-            <RateBar job={fit.rate.job} mine={fit.rate.mine} mineLabel={name.split(' ')[0]} mineColor={color} animate at={T.rate} />
-            <p className="truncate text-[12px] font-semibold text-gray-700">{fit.rate.job ? `Pays $${Math.round(fit.rate.job)}/hr` : 'Rate not listed'}</p>
-          </div>
-        </div>}
-        <div style={sec(boxes && !picture ? T.eng : T.map)}><EngagementRow eng={item.eng} /></div>
-        </div>)}
-      </div>
-
-      <div data-rail className="absolute bottom-[76px] right-2 z-30 flex flex-col items-center gap-3.5">
-        {item.teaser ? (
-          <Link to="/billing" className={rail} title="Top up to see this match">
-            <span className="grid h-[58px] w-[58px] place-items-center rounded-full bg-blue-600 text-white shadow-[0_6px_18px_rgba(37,99,235,.5)]"><Lock size={22} /></span>Unlock
-          </Link>
-        ) : (<>
-        <button type="button" className={rail} onClick={() => { pushOut(1); if (kind === 'hotlist') flash('APPLIED', '#34d399'); onApply(item); }} title={kind === 'job' ? 'Ask for the resume' : site ? 'Apply on their site' : 'Apply by email'}>
-          <span className={`grid h-[58px] w-[58px] place-items-center rounded-full text-white ${site ? 'bg-emerald-600 shadow-[0_6px_18px_rgba(5,150,105,.5)]' : 'bg-blue-600 shadow-[0_6px_18px_rgba(37,99,235,.5)]'}`}>
-            {kind === 'job' ? <FileText size={24} /> : site ? <ExternalLink size={22} /> : <Send size={24} />}
-          </span>
-          {kind === 'job' ? 'Ask Resume' : 'Apply'}
-        </button>
-        <button type="button" className={rail} onClick={() => { if (!saved) pushOut(-1); flash('SAVED', '#60a5fa'); onSave(item); }}><span className={railIcon}><Bookmark size={20} fill={saved ? 'currentColor' : 'none'} /></span>Save</button>
-        <button type="button" className={rail} onClick={() => onShare(item)}><span className={railIcon}><Share2 size={20} /></span>Share</button>
-        </>)}
-        <button type="button" className={rail} onClick={() => { pushOut(-1); flash('PASS', '#f87171'); onDismiss(item); }}><span className={railIcon}><X size={20} /></span>Pass</button>
-      </div>
-
-      <div data-rail className={`relative z-30 flex items-center gap-2 px-4 pt-2.5 text-[13px] font-bold ${inline ? 'pb-4' : onSwipeUp ? 'pb-[calc(1.4rem+env(safe-area-inset-bottom))]' : 'pb-[calc(1rem+env(safe-area-inset-bottom))]'}`}>
-        {item.teaser ? (
-          <Link to="/billing" className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-100 px-3.5 py-2 text-gray-800"><Lock size={15} />Top up to see it</Link>
-        ) : hideDetails ? <span className="text-gray-500">Swipe or use ← →</span> : (
-          <button type="button" onClick={() => onDetails(item)} className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-100 px-3.5 py-2 text-gray-800"><ChevronUp size={16} />{kind === 'job' ? 'Details' : 'Details and email'}</button>
-        )}
-        <span className="min-w-0 flex-1 truncate text-center text-[11px] font-semibold text-gray-400">{menuHint ? 'Swipe up for menu' : ''}</span>
-        <span className="shrink-0 tabular-nums text-gray-500">{index + 1} / {items.length}</span>
       </div>
       {push && Date.now() - push.at < PUSH_MS + 100 && <PushStreak key={push.n} to={push.to} />}
       {stampEl}
