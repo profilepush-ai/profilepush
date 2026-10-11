@@ -77,6 +77,10 @@ export default function SwipeDeck({
   const shellRef = useRef<HTMLDivElement | null>(null);
   const picRef = useRef<HTMLDivElement | null>(null);
   const [push, setPush] = useState<{ n: number; to: 1 | -1; at: number } | null>(null);
+  // How the card on screen came in, fixed while it's showing. Re-renders
+  // after the push (the match marked seen, a tick) must not swap its
+  // animation: a changed animation restarts, and that was the blink.
+  const entry = useRef<{ id: string; anim: string | undefined; pushed: boolean; dir: 'n' | 'p' | null } | null>(null);
   const pushOut = (to: 1 | -1) => {
     if (pushGhost(shellRef.current, [picRef.current, cardRef.current], to)) setPush((p) => ({ n: (p?.n ?? 0) + 1, to, at: Date.now() }));
   };
@@ -290,10 +294,16 @@ export default function SwipeDeck({
   const forLine = kind === 'job' ? 'Your job'
     : subject?.name ? subject.title
       : [subject?.years ? `${Math.round(Number(subject.years))} yrs` : null, subject?.visa].filter(Boolean).join(' · ') || null;
+  // A card's first render decides how it came in (pushed, slid, or plain).
+  if (entry.current?.id !== item.card_id) {
+    const pushNow = push && Date.now() - push.at < PUSH_MS ? `${push.to < 0 ? 'ppPushInL' : 'ppPushInR'} ${PUSH_MS}ms ${PUSH_EASE} both` : undefined;
+    entry.current = { id: item.card_id, anim: pushNow, pushed: Boolean(pushNow), dir };
+  }
   // Just pushed: this card (and its picture) slides in from the other side.
-  const pushIn = push && Date.now() - push.at < PUSH_MS ? `${push.to < 0 ? 'ppPushInL' : 'ppPushInR'} ${PUSH_MS}ms ${PUSH_EASE} both` : undefined;
+  const pushIn = entry.current.anim;
+  const entryDir = entry.current.dir;
   // Pushed in: the card slides in whole; its parts don't fade in again on top.
-  const sec = (at: number) => (pushIn ? undefined : section(at));
+  const sec = (at: number) => (entry.current?.pushed ? undefined : section(at));
 
   return (
     <div
@@ -342,7 +352,7 @@ export default function SwipeDeck({
       {/* The card: the picture on its stage, then the details and the actions.
           It lets taps through to the sides (previous/next) except on its
           own buttons and panel. */}
-      <div key={item.card_id} ref={cardRef} style={{ animation: pushIn }} className={`pointer-events-none relative z-20 flex min-h-0 flex-1 flex-col gap-2.5 px-3 pb-2 pt-2 ${inline ? 'pb-3' : onSwipeUp ? 'pb-[calc(1.1rem+env(safe-area-inset-bottom))]' : 'pb-[calc(.6rem+env(safe-area-inset-bottom))]'} ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
+      <div key={item.card_id} ref={cardRef} style={{ animation: pushIn }} className={`pointer-events-none relative z-20 flex min-h-0 flex-1 flex-col gap-2.5 px-3 pb-2 pt-2 ${inline ? 'pb-3' : onSwipeUp ? 'pb-[calc(1.1rem+env(safe-area-inset-bottom))]' : 'pb-[calc(.6rem+env(safe-area-inset-bottom))]'} ${pushIn ? '' : entryDir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : entryDir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
         {picture ? (
           // The stage: the picture, sharp and framed on the person, its edges
           // fading into the blurred copy behind (no border).
