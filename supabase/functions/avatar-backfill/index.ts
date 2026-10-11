@@ -12,7 +12,7 @@ import { drawAvatar, googlePhotoUrl, isFacePhoto, storeImage } from "../_shared/
 //
 // Run every few minutes (cron) and safe to call by anyone: it only ever does
 // the work that's waiting, a few people at a time.
-//   POST { limit?: number }  -> { made, skipped, left }
+//   POST { limit?: number }  -> { made, skipped, left, resynced }
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,7 +65,9 @@ Deno.serve(async (req: Request) => {
       skipped += done.filter((d) => !d).length;
     }
     const { data: left } = await admin.rpc("avatar_backfill_left");
-    return respond({ made, skipped, left: left ?? null });
+    // Anyone whose posts or Network profile still show the wrong photo.
+    const { data: resynced } = await admin.rpc("pp_resync_avatar_photos");
+    return respond({ made, skipped, left: left ?? null, resynced: resynced ?? 0 });
   } catch (error) {
     console.error("avatar-backfill", error);
     return respond({ error: error instanceof Error ? error.message : "Could not make avatars." }, 500);

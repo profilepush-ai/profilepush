@@ -252,6 +252,19 @@ export default function TodayPage() {
     void cardRoute(card, lead).then((to) => { if (to !== '/today') navigate(to, { replace: true }); });
   }, [params, data, setParams, navigate]);
 
+  // AI Match sends people here with ?for=<profile or job>: its new matches,
+  // full screen, from the first.
+  useEffect(() => {
+    const id = params.get('for');
+    if (!id || !data) return;
+    params.delete('for');
+    setParams(params, { replace: true });
+    const first = data.items.find((i) => i.lead && i.subject_id === id);
+    setFilter(id); setQuery(''); setFull(true);
+    if (first) { setDeckId(first.card_id); setDeckFocus(first.card_id); }
+    trackEvent('today_from_ai_match', { found: Boolean(first) });
+  }, [params, data, setParams]);
+
   const appliedToday = (data?.applied_today ?? 0) + appliedNow;
   const reel = data?.reel;
   const free = Boolean(reel && !reel.paid);

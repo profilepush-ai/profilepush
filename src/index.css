@@ -483,6 +483,8 @@
 
 /* Intro: the AI email's lines writing themselves. */
 @keyframes ppTypeLine { 0% { transform: scaleX(0); } 45%, 100% { transform: scaleX(1); } }
+/* AI Match working: a bar sliding across until there's a real %. */
+@keyframes ppIndeterminate { 0% { transform: translateX(-110%); } 100% { transform: translateX(320%); } }
 /* Tracker cards: bars rise, rings fill, the status bar grows. */
 @keyframes ppBarUp { from { transform: scaleY(0); } to { transform: none; } }
 @keyframes ppRingFill { from { stroke-dasharray: 0 100; } }

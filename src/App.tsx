@@ -46,6 +46,8 @@ const TodayPage = lazy(() => import('./pages/TodayPage'));
 const ExtensionConnectPage = lazy(() => import('./pages/ExtensionConnectPage'));
 // The app's first-launch slides, before signup.
 const StartPage = lazy(() => import('./pages/StartPage'));
+// AI Match: one box, then its matches in Today.
+const AiMatchPage = lazy(() => import('./pages/AiMatchPage'));
 // The previous landing page, kept at /old.
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 // Store listing screenshots with example data (development only).
@@ -395,7 +397,8 @@ export default function App() {
             {/* AI Match renders the feed page in its match mode, so results use the
                 same cards, detail view and submit flow. keyed so moving between
                 /feed and /match never carries one list's state into the other. */}
-            <Route path="/match" element={<ProtectedRoute><ErrorBoundary><PulsePage key="ai-match" feedKind="feed" aiMatch /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/match" element={<ProtectedRoute><ErrorBoundary><AiMatchPage /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/match/old" element={<ProtectedRoute><ErrorBoundary><PulsePage key="ai-match" feedKind="feed" aiMatch /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/match/:kind/:id" element={<ProtectedRoute><ErrorBoundary><PulsePage key="ai-match" feedKind="feed" aiMatch /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/jobs" element={<ProtectedRoute><Navigate to="/feed/jobs" replace /></ProtectedRoute>} />
             <Route path="/hotlist" element={<ProtectedRoute><Navigate to="/feed/hotlist" replace /></ProtectedRoute>} />
