@@ -8,13 +8,11 @@ import { AskChips, CompanyLogo, EngagementRow, FitBadges, FitLine, Initials, Rat
 import PushStreak from './PushStreak';
 import { PUSH_EASE, PUSH_MS, pushGhost } from '../../lib/push';
 
-// When each section of a card arrives (ms). Sections move as one block (many
-// small animations at once stutter on phones); inside, only the match ring
-// counts, the route draws and the rate marker slides. In the reel sections
-// arrive one to three seconds apart, about 15 seconds a card; elsewhere fast.
-const SLOW = { title: 250, ring: 1500, ask: 2800, skills: 4000, map: 6500, rate: 8500, eng: 10500 };
-const FAST = { title: 60, ring: 150, ask: 220, skills: 300, map: 420, rate: 520, eng: 650 };
-const section = (at: number) => ({ animation: `ppSection 450ms cubic-bezier(.2,.8,.2,1) ${at}ms both`, willChange: 'transform, opacity' });
+// When each section of a card arrives (ms): one quick cascade, the same in
+// the reel and out of it. Inside, only the match line swings, the route
+// draws and the rate marker slides.
+const T = { title: 70, ring: 140, ask: 210, skills: 280, map: 350, rate: 420, eng: 490 };
+const section = (at: number) => ({ animation: `ppSection 560ms cubic-bezier(.2,.9,.25,1) ${at}ms both`, willChange: 'transform, opacity, filter' });
 
 // Swipe mode: one match per screen, stories style. Swipe or tap the sides to
 // move; the rail on the right is Apply, Save, Share and Pass. On a phone it is
@@ -281,7 +279,6 @@ export default function SwipeDeck({
   const color = hashColor(item.subject_id);
   const name = subjectName(kind, subject);
   const saved = Boolean(item.saved_at);
-  const T = reelMs ? SLOW : FAST;
   const forLine = kind === 'job' ? 'Your job'
     : subject?.name ? subject.title
       : [subject?.years ? `${Math.round(Number(subject.years))} yrs` : null, subject?.visa].filter(Boolean).join(' · ') || null;
@@ -298,7 +295,14 @@ export default function SwipeDeck({
       aria-label="Swipe through matches"
       {...gestures}
     >
-      {!picture && (
+      {picture ? (
+        // The picture, heavily blurred, fills the screen behind everything:
+        // its own colours as a soft glow; the details sit on frosted glass.
+        <div key={`${item.card_id}:${picture}`} ref={picRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ animation: pushIn ?? 'ppPicture .6s ease-out both' }}>
+          <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full scale-[1.4] object-cover blur-[40px] saturate-[1.6]" />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.46) 0%, rgba(255,255,255,.18) 34%, rgba(255,255,255,.30) 70%, rgba(255,255,255,.5) 100%)' }} />
+        </div>
+      ) : (
         <div key={item.card_id} ref={picRef} className="pointer-events-none absolute -left-1/3 -right-1/3 -top-1/4 h-3/4 opacity-60" style={{ background: `radial-gradient(closest-side, ${hashColor(leadOrg(lead))}, transparent)`, animation: pushIn }} />
       )}
       <div className="relative z-20 flex gap-[3px] px-2.5 pt-2.5" aria-hidden="true">
@@ -356,7 +360,7 @@ export default function SwipeDeck({
       <div key={item.card_id} ref={cardRef} style={{ justifyContent: picture ? 'flex-start' : 'safe center', animation: pushIn }} className={`pointer-events-none relative z-0 flex min-h-0 flex-1 flex-col justify-center gap-3.5 overflow-hidden py-1.5 pl-4 pr-20  ${pushIn ? '' : dir === 'n' ? 'animate-[ppSwipeIn_.25s_ease-out]' : dir === 'p' ? 'animate-[ppSwipeBack_.25s_ease-out]' : ''}`}>
         {/* The post's AI picture: a clean block filling the room above the details. */}
         {picture && (
-          <div className="relative -mr-16 min-h-[130px] flex-1 overflow-hidden rounded-3xl bg-gray-100 ring-1 ring-black/5">
+          <div className="relative -mr-16 min-h-[130px] flex-1 overflow-hidden rounded-3xl bg-white/40 shadow-[0_12px_32px_rgba(11,26,58,.16)] ring-1 ring-white/60" style={section(0)}>
             <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full object-cover object-[50%_22%]" />
           </div>
         )}
@@ -374,7 +378,8 @@ export default function SwipeDeck({
               </Link>
             </div>
           </>
-        ) : (<>
+        ) : (
+        <div className={`${picture ? '-mr-16 rounded-[26px] bg-white/60 py-3.5 pl-3.5 pr-[4.5rem] shadow-[0_10px_30px_rgba(11,26,58,.12)] ring-1 ring-white/70 backdrop-blur-2xl' : ''} flex flex-col gap-3`}>
         <div className="flex items-center gap-2.5" style={section(0)}>
           <CompanyLogo name={leadOrg(lead)} avatar={lead.avatar} domain={lead.logo_domain} size={46} round={Boolean(lead.avatar)} />
           <div className="min-w-0 flex-1"><b className="block truncate text-[15px]">{leadOrg(lead)}</b><small className="block text-[12px] text-gray-500">{kind === 'job' ? 'Profile' : site ? 'Apply on site' : 'Apply by email'} · {agoLabel(lead.posted_at)} ago</small></div>
@@ -400,7 +405,7 @@ export default function SwipeDeck({
           </div>
         </div>}
         <div style={section(boxes && !picture ? T.eng : T.map)}><EngagementRow eng={item.eng} /></div>
-        </>)}
+        </div>)}
       </div>
 
       <div data-rail className="absolute bottom-[76px] right-2 z-30 flex flex-col items-center gap-3.5">
