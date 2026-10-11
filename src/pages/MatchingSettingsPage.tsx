@@ -8,6 +8,7 @@ import { Initials } from '../components/match/Visuals';
 import AvatarPanel from '../components/match/AvatarPanel';
 import { PLAIN_SCORE_KEY, plainScore } from '../lib/prefs';
 import { rateOnPlay } from '../lib/rate';
+import { PlayQr } from '../components/GetAppQr';
 import ReferPanel from '../components/ReferPanel';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -171,9 +172,12 @@ export default function MatchingSettingsPage() {
                     <span className="text-[12.5px] text-gray-500">Browser alerts are blocked. Allow notifications for profilepush.ai in your browser settings.</span>
                   ) : null}
                   {!native && (
+                    <span className="flex flex-wrap items-center gap-3">
+                      <span className="hidden lg:inline-flex"><PlayQr size={112} source="settings_qr" /></span>
                     <a href={PLAY_URL} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-gray-900 px-3 text-[13px] font-semibold text-white hover:bg-gray-800">
                       <Smartphone size={14} />Get the Android app
                     </a>
+                    </span>
                   )}
                 </div>
               </Section>
