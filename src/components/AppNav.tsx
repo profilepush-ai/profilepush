@@ -588,10 +588,16 @@ export default function AppNav({ immersive = false, chromeVisible = true }: { im
             to="/match"
             aria-label="AI Match"
             title="AI Match"
-            className="flex flex-1 items-center justify-center py-1"
+            className="flex flex-1 items-center justify-center py-0.5"
           >
-            <span className={`grid h-[52px] w-[52px] place-items-center rounded-full text-white transition-transform active:scale-95 ${location.pathname.startsWith('/match') ? 'bg-[#1d4ed8]' : 'bg-[#2563EB]'}`}>
-              <Sparkles size={24} strokeWidth={2.3} />
+            <span className={`grid h-[56px] w-[56px] place-items-center rounded-full text-white shadow-md shadow-blue-600/25 transition-transform active:scale-95 ${location.pathname.startsWith('/match') ? 'bg-[#1d4ed8]' : 'bg-[#2563EB]'}`}>
+              {/* Scan a profile, find what fits: scan corners, a person, an AI spark. */}
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                <path d="M4 10.5V7a3 3 0 0 1 3-3h3.5M21.5 4H25a3 3 0 0 1 3 3v3.5M28 21.5V25a3 3 0 0 1-3 3h-3.5M10.5 28H7a3 3 0 0 1-3-3v-3.5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="16" cy="13" r="3.7" fill="currentColor" />
+                <path d="M9.6 23.6c.6-3.5 3.2-5.6 6.4-5.6s5.8 2.1 6.4 5.6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+                <path d="M23.4 7.2l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z" fill="#FACC15" stroke="#FACC15" strokeWidth=".8" strokeLinejoin="round" />
+              </svg>
             </span>
           </Link>
           <Link
